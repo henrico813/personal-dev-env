@@ -51,15 +51,16 @@ FROM config as pdemain
 
     # Copy the install script into the container
     COPY install.sh install.sh
-    COPY .zsh_plugins.txt .zsh_plugins.txt
-    COPY .zshrc .zshrc
+    COPY .config/zsh/.zsh_plugins.txt .zsh_plugins.txt
+    COPY .config/zsh/.zshrc/ .zshrc
     COPY .config .config
+    COPY .config/tmux/.tmux.conf .tmux.conf
    
     # Make the install script executable
     RUN sudo chmod +x ./install.sh
 
     # Copy the screenrc file into the container
-    COPY .screenrc /home/$USER/.screenrc
+    COPY .config/screen/.screenrc /home/$USER/.screenrc
 
     # Run the install script
     RUN ./install.sh
