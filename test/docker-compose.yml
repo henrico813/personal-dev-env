@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   dev-environment:
+    hostname: fallingstar
     build:
       context: .
       dockerfile: ./docker/Dockerfile
@@ -43,7 +44,6 @@ services:
     secrets:
       - vnc_password
     restart: unless-stopped
-    network_mode: host # Allow access to host network
 
 volumes:
   workspace:

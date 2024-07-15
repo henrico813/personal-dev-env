@@ -16,8 +16,22 @@ HISTCONTROL=ignoreboth
 shopt -s histappend
 
 # for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-HISTSIZE=1000
-HISTFILESIZE=2000
+# HISTSIZE=1000
+# HISTFILESIZE=2000
+# ---------------------
+# Eternal bash history.
+# ---------------------
+# Undocumented feature which sets the size to "unlimited".
+# https://stackoverflow.com/questions/9457233/unlimited-bash-history
+export HISTFILESIZE=
+export HISTSIZE=
+export HISTTIMEFORMAT="[%F %T] "
+# Change the file location because certain bash sessions truncate .bash_history file upon close.
+# http://superuser.com/questions/575479/bash-history-truncated-to-500-lines-on-each-login
+export HISTFILE=~/.bash_eternal_history
+# Force prompt to write history after every command.
+# http://superuser.com/questions/20900/bash-history-loss
+PROMPT_COMMAND="history -a; $PROMPT_COMMAND"
 
 # check the window size after each command and, if necessary,
 # update the values of LINES and COLUMNS.
@@ -57,11 +71,12 @@ if [ -n "$force_color_prompt" ]; then
 fi
 
 if [ "$color_prompt" = yes ]; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+    PS1='\[\e[2m\]\t\[\e[0;91m\]|\[\e[38;5;208m\]\u@\H\[\e[91m\]:\[\e[0;41m\]\W\[\e[0;91m\]<\[\e[0;2m\]${PS1_CMD1}\[\e[0;91m\]>\[\e[97m\]\[\e[0m\]'
 else
     PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
 fi
 unset color_prompt force_color_prompt
+PROMPT_COMMAND='PS1_CMD1=$(git branch --show-current 2>/dev/null)' 
 
 # If this is an xterm set the title to user@host:dir
 case "$TERM" in
@@ -91,6 +106,36 @@ fi
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
+
+# eza aliases
+# Basic aliases
+alias ll='eza -alF --group-directories-first' # long list, all files, classify, directories first
+alias la='eza -a'                             # all files including hidden files
+alias l='eza -1'                              # single-column output
+
+# Detailed view
+alias lt='eza --tree'                         # tree view of directories
+alias lg='eza -l --git'                       # long list with git status
+alias ld='eza -ld'                            # list directories only
+
+# Sorting options
+alias lts='eza -S'                            # sort by size
+alias ltm='eza -t'                            # sort by modified time
+
+# File info
+alias lI='eza -I'                             # ignore specified patterns
+alias lh='eza -lh'                            # human-readable file sizes
+alias llh='eza -alFh --group-directories-first' # long list, all files, classify, human-readable, directories first
+
+# Color options
+alias lC='eza --color=always'                 # always use color
+
+# Permissions
+alias lp='eza -l --permissions'               # show detailed permissions
+
+# In case you want to replace 'ls' entirely
+alias ls='eza'
+
 
 # Add an "alert" alias for long running commands.  Use like so:
 #   sleep 10; alert
