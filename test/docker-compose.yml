@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  dev-environment:
+    hostname: fallingstar
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+      args:
+        DOCKER_IMAGE_VERSION: ${DOCKER_IMAGE_VERSION:-latest}
+    ports:
+      - "${VNC_PORT:-8080}:${VNC_PORT:-8080}"
+    environment:
+      - VNC_GEOMETRY=${VNC_GEOMETRY:-1280x800}
+      - VNC_PORT=${VNC_PORT:-8080}
+      - USER_NAME=${USER_NAME:-user}
+    env_file:
+      - .env
+    configs:
+      - source: tmux_config
+        target: /home/${USER_NAME:-user}/.tmux.conf
+      - source: bash_profile
+        target: /home/${USER_NAME:-user}/.bash_profile
+      - source: bashrc
+        target: /home/${USER_NAME:-user}/.bashrc
+      - source: displays
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/displays.xml
+      - source: thunar
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/thunar.xml
+      - source: desktop
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+      - source: keyboard-shortcuts
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml
+      - source: panel
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+      - source: xfwm4
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
+      - source: terminal
+        target: /home/${USER_NAME:-user}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-terminal.xml
+      - source: xprofile
+        target: /home/${USER_NAME:-user}/.xprofile
+    volumes:
+      - ${MY_PROJECT}:/home/${USER_NAME:-user}/workspace
+    secrets:
+      - vnc_password
+    restart: unless-stopped
+
+volumes:
+  workspace:
+
+configs:
+  tmux_config:
+    file: ./configs/.tmux.conf
+  bash_profile:
+    file: ./configs/.bash_profile
+  bashrc:
+    file: ./configs/.bashrc
+  displays:
+    file: ./configs/xfce4/displays.xml
+  thunar:
+    file: ./configs/xfce4/thunar.xml
+  desktop:
+    file: ./configs/xfce4/xfce4-desktop.xml
+  keyboard-shortcuts:
+    file: ./configs/xfce4/xfce4-keyboard-shortcuts.xml
+  panel:
+    file: ./configs/xfce4/xfce4-panel.xml
+  xfwm4:
+    file: ./configs/xfce4/xfwm4.xml
+  terminal:
+    file: ./configs/xfce4/xfce4-terminal.xml
+  xprofile:
+    file: ./configs/.xprofile
+  
+secrets:
+  vnc_password:
+    file: .secrets/vnc_password.txt
