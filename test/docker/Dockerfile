@@ -15,9 +15,18 @@ FROM ubuntu:22.04 as system
         xauth \
         sudo \
         curl \
-        nginx
+        nginx \
+        locales \
+        wget \
+        gpg
 
 FROM system as environment
+
+    RUN sudo mkdir -p /etc/apt/keyrings && \
+        wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/gierens.gpg && \
+        echo "deb [signed-by=/etc/apt/keyrings/gierens.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/gierens.list && \
+        sudo chmod 644 /etc/apt/keyrings/gierens.gpg /etc/apt/sources.list.d/gierens.list && \
+        sudo apt update
 
     # Install developer environment packages
     RUN apt install -y \
@@ -26,7 +35,8 @@ FROM system as environment
         tmux \
         vim \
         make \
-        git
+        git \
+        eza
     
     RUN pip install \
         pipenv \
@@ -72,7 +82,7 @@ FROM display as usercfg
     LABEL version="0.3.0"
     LABEL description="This is a personal development environment in Docker"
 
-    FROM usercfg as runner
+FROM usercfg as runner
 
     ARG DOCKER_IMAGE_VERSION
 
