@@ -1,0 +1,125 @@
+---
+- name: Setup Development Environment
+  hosts: local
+  become: yes
+  vars:
+    user: light
+
+  tasks:
+    - name: Update and upgrade apt packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install necessary packages
+      apt:
+        name:
+          - curl
+          - tar
+          - xz-utils
+          - sudo
+          - screen
+          - locales
+          - locales-all
+          - fontconfig
+          - fonts-dejavu-core
+          - fonts-dejavu-extra
+          - fonts-liberation
+          - ttf-mscorefonts-installer
+          - fonts-powerline
+          - zsh
+          - git
+          - neovim
+          - tmux
+          - stow
+          - python3
+          - fzf
+          - ripgrep
+          - bat
+        state: present
+
+    - name: Set locale
+      locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Add user
+      user:
+        name: "{{ user }}"
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Add user to sudoers
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        line: "{{ user }} ALL=(ALL) NOPASSWD:ALL"
+
+    - name: Download and install JetBrainsMono Nerd Font
+      become: yes
+      become_user: "{{ user }}"
+      command: >
+        curl -OL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz &&
+        tar -xJf JetBrainsMono.tar.xz -C ~/.local/share/fonts &&
+        fc-cache -fv
+
+    - name: Change default shell to zsh
+      user:
+        name: "{{ user }}"
+        shell: /bin/zsh
+
+    - name: Add zsh to valid login shells
+      lineinfile:
+        path: /etc/shells
+        state: present
+        line: /bin/zsh
+
+    - name: Copy configuration files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode | default(omit) }}"
+      with_items:
+        - { src: '.config/zsh/.zsh_plugins.txt', dest: '/home/{{ user }}/.zsh_plugins.txt' }
+        - { src: '.config/zsh/.zshrc', dest: '/home/{{ user }}/.zshrc' }
+        - { src: '.config/tmux/.tmux.conf', dest: '/home/{{ user }}/.tmux.conf' }
+        - { src: '.config', dest: '/home/{{ user }}/.config', mode: '0755' }
+        - { src: '.config/screen/.screenrc', dest: '/home/{{ user }}/.screenrc' }
+      become: yes
+      become_user: "{{ user }}"
+
+    - name: Change ownership of home directory files
+      file:
+        path: "/home/{{ user }}/{{ item }}"
+        owner: "{{ user }}"
+        recurse: yes
+      with_items:
+        - .zsh_plugins.txt
+        - .zshrc
+        - .tmux.conf
+        - .config
+        - .screenrc
+
+    - name: Install antibody
+      become: yes
+      become_user: "{{ user }}"
+      command: >
+        curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
+
+    - name: Bundle zsh plugins with antibody
+      become: yes
+      become_user: "{{ user }}"
+      shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+
+    - name: Install vim-plug for neovim
+      become: yes
+      become_user: "{{ user }}"
+      shell: >
+        curl -fLo /home/{{ user }}/.config/nvim/autoload/plug.vim --create-dirs
+        https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+
+    - name: Install lazyvim
+      become: yes
+      become_user: "{{ user }}"
+      shell: >
+        git clone https://github.com/LazyVim/starter ~/.config/nvim && rm -rf ~/.config/nvim/.git
