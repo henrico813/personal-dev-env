@@ -37,6 +37,7 @@
           - fzf
           - ripgrep
           - bat
+          - trash-cli
         state: present
 
     - name: Set locale
@@ -96,7 +97,7 @@
           get_url:
             url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
             dest: /tmp/JetBrainsMono.tar.xz
-          
+
         - name: Extract JetBrainsMono Nerd Font
           unarchive:
             src: /tmp/JetBrainsMono.tar.xz
@@ -104,12 +105,12 @@
             owner: "{{ user }}"
             group: "{{ user }}"
             remote_src: yes
-        
+
         - name: Refresh font cache
           command: fc-cache -fv
           become: yes
           become_user: "{{ user }}"
-        
+
         - name: Clean up downloaded archive
           file:
             path: /tmp/UbuntuMono.tar.xz
@@ -119,7 +120,7 @@
           file:
             path: /tmp/JetBrainsMono.tar.xz
             state: absent
-    
+
       when: not jetbrains_font_exists.stat.exists
       become: yes
 
@@ -140,11 +141,14 @@
         dest: "{{ item.dest }}"
         mode: "{{ item.mode | default(omit) }}"
       with_items:
-        - { src: 'config/zsh/.zsh_plugins.txt', dest: '/home/{{ user }}/.zsh_plugins.txt' }
-        - { src: 'config/zsh/.zshrc', dest: '/home/{{ user }}/.zshrc' }
-        - { src: 'config/tmux/.tmux.conf', dest: '/home/{{ user }}/.tmux.conf' }
-        - { src: 'config', dest: '/home/{{ user }}/config', mode: '0755' }
-        - { src: 'config/screen/.screenrc', dest: '/home/{{ user }}/.screenrc' }
+        - {
+            src: "config/zsh/.zsh_plugins.txt",
+            dest: "/home/{{ user }}/.zsh_plugins.txt",
+          }
+        - { src: "config/zsh/.zshrc", dest: "/home/{{ user }}/.zshrc" }
+        - { src: "config/tmux/.tmux.conf", dest: "/home/{{ user }}/.tmux.conf" }
+        - { src: "config", dest: "/home/{{ user }}/config", mode: "0755" }
+        - { src: "config/screen/.screenrc", dest: "/home/{{ user }}/.screenrc" }
       become: yes
       become_user: "{{ user }}"
 
@@ -183,6 +187,12 @@
       args:
         executable: /bin/bash
 
+    - name: Install the powerlevel10k zsh theme.
+      become: yes
+      become_user: "{{ user }}"
+      shell: >
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.config/powerlevel10k
+
     - name: Install lazyvim
       become: yes
       become_user: "{{ user }}"
@@ -194,11 +204,3 @@
       become_user: "{{ user }}"
       shell: >
         git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
-
-    - name: Install the powerlevel10k zsh theme. 
-      become: yes
-      become_user: "{{ user }}"
-      shell: >
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.config/powerlevel10k
-
-
