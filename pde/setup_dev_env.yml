@@ -29,7 +29,6 @@
           - fonts-powerline
           - zsh
           - git
-          - neovim
           - tmux
           - stow
           - python3
@@ -142,13 +141,6 @@
       become_user: "{{ user }}"
       shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
 
-    - name: Install vim-plug for neovim
-      become: yes
-      become_user: "{{ user }}"
-      shell: >
-        curl -fLo ~/.config/nvim/autoload/plug.vim --create-dirs
-        https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-
     - name: Install lazyvim
       become: yes
       become_user: "{{ user }}"
@@ -159,4 +151,4 @@
       become: yes
       become_user: "{{ user }}"
       shell: >
-        git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm && tmux source ~/.tmux.conf
+        git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
