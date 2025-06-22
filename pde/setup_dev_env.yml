@@ -123,3 +123,9 @@
       become_user: "{{ user }}"
       shell: >
         git clone https://github.com/LazyVim/starter ~/.config/nvim && rm -rf ~/.config/nvim/.git
+
+    - name: Configure tmux plugins and settings
+      become: yes
+      become_user: "{{ user }}"
+      shell: >
+        git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm && tmux source ~/.tmux.conf
