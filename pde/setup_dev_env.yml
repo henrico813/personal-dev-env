@@ -135,7 +135,7 @@
     - name: Install antibody
       become: yes
       become_user: "{{ user }}"
-      command: >
+      shell: >
         curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
 
     - name: Bundle zsh plugins with antibody
