@@ -3,7 +3,7 @@
   hosts: local
   become: yes
   vars:
-    user: light
+    user: "{{ user }}"
 
   tasks:
     - name: Update and upgrade apt packages
@@ -55,13 +55,46 @@
         state: present
         line: "{{ user }} ALL=(ALL) NOPASSWD:ALL"
 
-    - name: Download and install JetBrainsMono Nerd Font
+    - name: Create fonts directory
+      file:
+        path: "/home/{{ user }}/.local/share/fonts"
+        state: directory
+        owner: "{{ user }}"
+        group: "{{ user }}"
       become: yes
-      become_user: "{{ user }}"
-      command: >
-        curl -OL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz &&
-        tar -xJf JetBrainsMono.tar.xz -C ~/.local/share/fonts &&
-        fc-cache -fv
+
+    - name: Check if JetBrainsMono Nerd Font is already installed
+      stat:
+        path: "/home/{{ user }}/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf"
+      register: jetbrains_font_exists
+
+    - name: Download and install JetBrainsMono Nerd Font
+      block:
+        - name: Download JetBrainsMono Nerd Font
+          get_url:
+            url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
+            dest: /tmp/JetBrainsMono.tar.xz
+          
+        - name: Extract JetBrainsMono Nerd Font
+          unarchive:
+            src: /tmp/JetBrainsMono.tar.xz
+            dest: "/home/{{ user }}/.local/share/fonts"
+            owner: "{{ user }}"
+            group: "{{ user }}"
+            remote_src: yes
+        
+        - name: Refresh font cache
+          command: fc-cache -fv
+          become: yes
+          become_user: "{{ user }}"
+        
+        - name: Clean up downloaded archive
+          file:
+            path: /tmp/JetBrainsMono.tar.xz
+            state: absent
+    
+      when: not jetbrains_font_exists.stat.exists
+      become: yes
 
     - name: Change default shell to zsh
       user:
@@ -92,7 +125,6 @@
       file:
         path: "/home/{{ user }}/{{ item }}"
         owner: "{{ user }}"
-        recurse: yes
       with_items:
         - .zsh_plugins.txt
         - .zshrc
