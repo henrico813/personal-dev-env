@@ -67,8 +67,29 @@
         path: "/home/{{ user }}/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf"
       register: jetbrains_font_exists
 
-    - name: Download and install JetBrainsMono Nerd Font
+    - name: Download and install all Nerd Fonts
       block:
+        - name: Download UbuntuMono Nerd Font
+          get_url:
+            url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/UbuntuMono.zip
+            dest: /tmp/UbuntuMono.tar.xz
+
+        - name: Ensure destination directory exists
+          file:
+            path: "/home/{{ user }}/.fonts"
+            state: directory
+            owner: "{{ user }}"
+            group: "{{ user }}"
+            recurse: yes
+
+        - name: Extract UbuntuMono Nerd Font
+          unarchive:
+            src: /tmp/UbuntuMono.tar.xz
+            dest: "/home/{{ user }}/.fonts"
+            owner: "{{ user }}"
+            group: "{{ user }}"
+            remote_src: yes
+
         - name: Download JetBrainsMono Nerd Font
           get_url:
             url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
@@ -87,6 +108,11 @@
           become: yes
           become_user: "{{ user }}"
         
+        - name: Clean up downloaded archive
+          file:
+            path: /tmp/UbuntuMono.tar.xz
+            state: absent
+
         - name: Clean up downloaded archive
           file:
             path: /tmp/JetBrainsMono.tar.xz
