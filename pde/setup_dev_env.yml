@@ -72,6 +72,19 @@
 
     - name: Download and install all Nerd Fonts
       block:
+        - name: Download Nerd Fonts v3
+          get_url:
+            url: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/FiraCode.zip
+            dest: /tmp/FiraCode.zip
+
+        - name: Extract Nerd Fonts v3 Font
+          unarchive:
+            src: /tmp/FiraCode.zip
+            dest: "/home/{{ user }}/.fonts"
+            owner: "{{ user }}"
+            group: "{{ user }}"
+            remote_src: yes
+
         - name: Download UbuntuMono Nerd Font
           get_url:
             url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/UbuntuMono.zip
@@ -113,6 +126,11 @@
 
         - name: Clean up downloaded archive
           file:
+            path: /tmp/FiraCode.zip
+            state: absent
+
+        - name: Clean up downloaded archive
+          file:
             path: /tmp/UbuntuMono.tar.xz
             state: absent
 
@@ -124,6 +142,15 @@
       when: not jetbrains_font_exists.stat.exists
       become: yes
 
+    - name: Install antibody
+      become: yes
+      shell: >
+        curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
+
+    - name: Bundle zsh plugins with antibody
+      become: yes
+      become_user: "{{ user }}"
+      shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
     - name: Change default shell to zsh
       user:
         name: "{{ user }}"
@@ -163,16 +190,8 @@
         - .tmux.conf
         - .config
         - .screenrc
+        - .p10k.zsh
 
-    - name: Install antibody
-      become: yes
-      shell: >
-        curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
-
-    - name: Bundle zsh plugins with antibody
-      become: yes
-      become_user: "{{ user }}"
-      shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
 
     - name: Download and install nvm
       shell: >
