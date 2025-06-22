@@ -139,11 +139,11 @@
         dest: "{{ item.dest }}"
         mode: "{{ item.mode | default(omit) }}"
       with_items:
-        - { src: '.config/zsh/.zsh_plugins.txt', dest: '/home/{{ user }}/.zsh_plugins.txt' }
-        - { src: '.config/zsh/.zshrc', dest: '/home/{{ user }}/.zshrc' }
-        - { src: '.config/tmux/.tmux.conf', dest: '/home/{{ user }}/.tmux.conf' }
-        - { src: '.config', dest: '/home/{{ user }}/.config', mode: '0755' }
-        - { src: '.config/screen/.screenrc', dest: '/home/{{ user }}/.screenrc' }
+        - { src: 'config/zsh/.zsh_plugins.txt', dest: '/home/{{ user }}/.zsh_plugins.txt' }
+        - { src: 'config/zsh/.zshrc', dest: '/home/{{ user }}/.zshrc' }
+        - { src: 'config/tmux/.tmux.conf', dest: '/home/{{ user }}/.tmux.conf' }
+        - { src: 'config', dest: '/home/{{ user }}/config', mode: '0755' }
+        - { src: 'config/screen/.screenrc', dest: '/home/{{ user }}/.screenrc' }
       become: yes
       become_user: "{{ user }}"
 
@@ -179,3 +179,11 @@
       become_user: "{{ user }}"
       shell: >
         git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+
+    - name: Install the powerlevel10k zsh theme. 
+      become: yes
+      become_user: "{{ user }}"
+      shell: >
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.config/powerlevel10k
+
+
