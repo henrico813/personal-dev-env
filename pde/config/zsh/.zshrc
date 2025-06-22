@@ -49,7 +49,7 @@ export BAT_THEME="gruvbox-dark"
 if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-source ~/config/powerlevel10k/powerlevel10k.zsh-theme
+source ~/.config/powerlevel10k/powerlevel10k.zsh-theme
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 # Increase the limit of commands held in the history and enable realtime sharing between
