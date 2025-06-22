@@ -29,6 +29,7 @@
           - fonts-powerline
           - zsh
           - git
+          - neovim
           - tmux
           - stow
           - python3
