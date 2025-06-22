@@ -42,7 +42,7 @@ export BAT_THEME="gruvbox-dark"
 if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
 # To customize Spaceship Prompt installed by antibody:
-SPACESHIP_USER_SHOW=always
+SPACESHIP_USER_SHOW=true
 
 SPACESHIP_PROMPT_ORDER=(
   user           # Username section
@@ -107,9 +107,15 @@ SPACESHIP_PROMPT_ORDER=(
 
 # Configure right prompt order
 SPACESHIP_RPROMPT_PREFIX_SHOW=true
+SPACESHIP_USER_SHOW=false
+SPACESHIP_USER_PREFIX=""
+SPACESHIP_USER_SUFFIX=""
 SPACESHIP_HOST_SHOW=always
+SPACESHIP_HOST_SUFFIX=""
+SPACESHIP_HOST_PREFIX=""
 SPACESHIP_TIME_SHOW=always
-SPACESHIP_TIME_FORMAT='%D{%H:%M:%S.%.}'
+SPACESHIP_TIME_SUFFIX="@"
+SPACESHIP_TIME_FORMAT='%w %*'   # Jan 15 2:30 PM
 
 SPACESHIP_RPROMPT_ORDER=(
   time
