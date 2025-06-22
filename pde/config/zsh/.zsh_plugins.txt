@@ -6,7 +6,7 @@ robbyrussell/oh-my-zsh path:plugins/git
 robbyrussell/oh-my-zsh path:plugins/git-extras
 robbyrussell/oh-my-zsh path:plugins/node
 
-spaceship-prompt/spaceship-prompt
+romkatv/powerlevel10k
 
 rupa/z
 
