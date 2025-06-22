@@ -168,6 +168,20 @@
       become_user: "{{ user }}"
       shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
 
+    - name: Download and install nvm
+      shell: >
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      args:
+        creates: "{{ ansible_env.HOME }}/.nvm"
+
+    - name: Install Node.js using nvm
+      shell: >
+        source {{ ansible_env.HOME }}/.nvm/nvm.sh &&
+        nvm install {{ node_version | default('18') }} &&
+        nvm use {{ node_version | default('18') }}
+      args:
+        executable: /bin/bash
+
     - name: Install lazyvim
       become: yes
       become_user: "{{ user }}"
