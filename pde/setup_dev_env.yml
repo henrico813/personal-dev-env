@@ -147,15 +147,6 @@
       shell: >
         curl -sfL git.io/antibody | sh -s - -b /usr/local/bin
 
-    - name: Bundle zsh plugins with antibody
-      become: yes
-      become_user: "{{ user }}"
-      shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
-    - name: Change default shell to zsh
-      user:
-        name: "{{ user }}"
-        shell: /bin/zsh
-
     - name: Add zsh to valid login shells
       lineinfile:
         path: /etc/shells
@@ -179,6 +170,15 @@
         - { src: "config/powerlevel10k/.p10k.zsh", dest: "/home/{{ user }}/.p10k.zsh" }
       become: yes
       become_user: "{{ user }}"
+
+    - name: Bundle zsh plugins with antibody
+      become: yes
+      become_user: "{{ user }}"
+      shell: antibody bundle < ~/.zsh_plugins.txt > ~/.zsh_plugins.sh
+    - name: Change default shell to zsh
+      user:
+        name: "{{ user }}"
+        shell: /bin/zsh
 
     - name: Change ownership of home directory files
       file:
