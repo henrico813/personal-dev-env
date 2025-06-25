@@ -46,6 +46,11 @@
         name: en_US.UTF-8
         state: present
 
+    - name: Set timezone to Los Angeles
+      timezone:
+        name: America/Los_Angeles
+      become: yes
+
     - name: Add user
       user:
         name: "{{ user }}"
