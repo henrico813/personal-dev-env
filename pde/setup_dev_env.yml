@@ -166,7 +166,7 @@
           }
         - { src: "config/zsh/.zshrc", dest: "/home/{{ user }}/.zshrc" }
         - { src: "config/tmux/.tmux.conf", dest: "/home/{{ user }}/.tmux.conf" }
-        - { src: "config", dest: "/home/{{ user }}/config", mode: "0755" }
+        - { src: "config", dest: "/home/{{ user }}/.config", mode: "0755" }
         - { src: "config/screen/.screenrc", dest: "/home/{{ user }}/.screenrc" }
         - { src: "config/powerlevel10k/.p10k.zsh", dest: "/home/{{ user }}/.p10k.zsh" }
       become: yes
