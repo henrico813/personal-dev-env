@@ -81,7 +81,7 @@
         - name: Extract Nerd Fonts v3 Font
           unarchive:
             src: /tmp/FiraCode.zip
-            dest: "/home/{{ user }}/.fonts"
+            dest: "/home/{{ user }}/.local/share/fonts"
             owner: "{{ user }}"
             group: "{{ user }}"
             remote_src: yes
@@ -93,7 +93,7 @@
 
         - name: Ensure destination directory exists
           file:
-            path: "/home/{{ user }}/.fonts"
+            dest: "/home/{{ user }}/.local/share/fonts"
             state: directory
             owner: "{{ user }}"
             group: "{{ user }}"
@@ -102,7 +102,7 @@
         - name: Extract UbuntuMono Nerd Font
           unarchive:
             src: /tmp/UbuntuMono.tar.xz
-            dest: "/home/{{ user }}/.fonts"
+            dest: "/home/{{ user }}/.local/share/fonts"
             owner: "{{ user }}"
             group: "{{ user }}"
             remote_src: yes
