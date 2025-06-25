@@ -38,6 +38,7 @@
           - ripgrep
           - bat
           - trash-cli
+          - unzip
         state: present
 
     - name: Set locale
