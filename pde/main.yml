@@ -1,40 +1,75 @@
-# User setup and configuration playbook
-- name: Setup user environment with development tools
+- name: "System Configuration"
   hosts: localhost
   become: yes
   vars:
-    user_name: "{{ user }}"
+    target_user: "{{ user }}"
     user_home: "/home/{{ user }}"
+    fonts_dir: "{{ user_home }}/.local/share/fonts"
     node_version: "{{ node_version | default('18') }}"
-    nerd_fonts_version: "v3.2.1"
-    nvm_version: "v0.39.0"
+
+    # Font URLs - centralized for easier maintenance
+    font_downloads:
+      - name: "FiraCode"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/FiraCode.zip"
+        archive_type: "zip"
+      - name: "UbuntuMono"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/UbuntuMono.zip"
+        archive_type: "zip"
+      - name: "JetBrainsMono"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"
+        archive_type: "tar.xz"
+
+    # Configuration files to copy
+    config_files:
+      - src: "config/zsh/.zsh_plugins.txt"
+        dest: "{{ user_home }}/.zsh_plugins.txt"
+      - src: "config/zsh/.zshrc"
+        dest: "{{ user_home }}/.zshrc"
+      - src: "config/tmux/.tmux.conf"
+        dest: "{{ user_home }}/.tmux.conf"
+      - src: "config"
+        dest: "{{ user_home }}/.config"
+        mode: "0755"
+      - src: "config/screen/.screenrc"
+        dest: "{{ user_home }}/.screenrc"
+      - src: "config/powerlevel10k/.p10k.zsh"
+        dest: "{{ user_home }}/.p10k.zsh"
 
   tasks:
-    # fn init() {
-    # System configuration
-    - name: Configure system locale
+    # ============================================
+    # INIT SYSTEM CONFIGURATION
+    # ============================================
+
+    - name: "Configure system locale"
       locale_gen:
-        name: en_US.UTF-8
+        name: "en_US.UTF-8"
         state: present
+      tags: ["system", "locale"]
 
-    - name: Create user account
+    - name: "Set system timezone"
+      timezone:
+        name: "America/Los_Angeles"
+      tags: ["system", "timezone"]
+
+    - name: "Create user account"
       user:
-        name: "{{ user_name }}"
-        shell: /bin/bash
+        name: "{{ target_user }}"
+        shell: "/bin/bash"
         create_home: yes
+      tags: ["user", "setup"]
 
-    # This is a safety mechanism that validates the sudoers file
-    # before saving. A corrupted sudoers file can lock you out
-    # of sudo access entirely.
-    - name: Grant sudo privileges to user
+    - name: "Grant sudo privileges to user"
       lineinfile:
-        path: /etc/sudoers
+        path: "/etc/sudoers"
         state: present
-        line: "{{ user_name }} ALL=(ALL) NOPASSWD:ALL"
-        validate: "visudo -cf %s"
-    # }
+        line: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL"
+        validate: "/usr/sbin/visudo -cf %s"
+      tags: ["user", "sudo"]
 
-    # fn main() {
+    # ============================================
+    # MAIN INSTALLATIONS
+    # ============================================
+
     # Font installation
     - name: Setup fonts
       include_tasks: tasks/install_fonts.yml
@@ -50,4 +85,3 @@
     # Configuration files
     - name: Deploy configuration files
       include_tasks: tasks/install_configs.yml
-    # }
