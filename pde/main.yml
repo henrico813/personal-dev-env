@@ -1,0 +1,53 @@
+# User setup and configuration playbook
+- name: Setup user environment with development tools
+  hosts: localhost
+  become: yes
+  vars:
+    user_name: "{{ user }}"
+    user_home: "/home/{{ user }}"
+    node_version: "{{ node_version | default('18') }}"
+    nerd_fonts_version: "v3.2.1"
+    nvm_version: "v0.39.0"
+
+  tasks:
+    # fn init() {
+    # System configuration
+    - name: Configure system locale
+      locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Create user account
+      user:
+        name: "{{ user_name }}"
+        shell: /bin/bash
+        create_home: yes
+
+    # This is a safety mechanism that validates the sudoers file
+    # before saving. A corrupted sudoers file can lock you out
+    # of sudo access entirely.
+    - name: Grant sudo privileges to user
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        line: "{{ user_name }} ALL=(ALL) NOPASSWD:ALL"
+        validate: "visudo -cf %s"
+    # }
+
+    # fn main() {
+    # Font installation
+    - name: Setup fonts
+      include_tasks: tasks/install_fonts.yml
+
+    # Shell configuration
+    - name: Setup zsh environment
+      include_tasks: tasks/install_zsh.yml
+
+    # Development tools
+    - name: Install development tools
+      include_tasks: tasks/install_dev.yml
+
+    # Configuration files
+    - name: Deploy configuration files
+      include_tasks: tasks/install_configs.yml
+    # }
