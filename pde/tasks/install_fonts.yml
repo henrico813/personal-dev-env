@@ -1,84 +1,115 @@
-- name: Create fonts directory
+# Font Installation Playbook 
+#
+# ## Description
+#
+# This playbook configures a Linux system with user accounts, fonts, shell environment, and development tools.
+#
+# ## Variables
+#
+# | Variable | Description | Default |
+# |----------|-------------|---------|
+# | `user` | Target username | *required* |
+# | `node_version` | Node.js version to install | `18` |
+#
+# ## Usage
+#
+# ```bash
+# # Basic usage
+# ansible-playbook system-setup.yml --extra-vars "user=myuser"
+#
+# # Run specific components
+# ansible-playbook system-setup.yml --tags "fonts,shell"
+#
+# # Skip development tools
+# ansible-playbook system-setup.yml --skip-tags "dev"
+# ```
+#
+# ## Tags
+#
+# | Tag | Description |
+# |-----|-------------|
+# | `system` | System-level configuration (locale, timezone) |
+# | `user` | User account management and sudo configuration |
+# | `fonts` | Nerd Fonts installation and configuration |
+# | `shell` | Shell environment setup (zsh, antibody, themes) |
+# | `dev` | Development tools (nvm, nodejs, nvim, tmux) |
+# | `cleanup` | File ownership and cleanup tasks |
+#
+# ## Notes
+#
+# - Uses `loop_control.label` for cleaner output during loops
+# - Tasks are idempotent and can be run multiple times
+# - Font installation is conditional to avoid re-downloading
+#
+---
+- name: "Create fonts directory"
+  tags: ["fonts", "setup"]
   file:
-    path: "/home/{{ user }}/.local/share/fonts"
+    path: "{{ fonts_dir }}"
     state: directory
-    owner: "{{ user }}"
-    group: "{{ user }}"
-  become: yes
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    mode: "0755"
 
-- name: Check if JetBrainsMono Nerd Font is already installed
-  stat:
-    path: "/home/{{ user }}/.local/share/fonts/JetBrainsMonoNerdFont-Regular.ttf"
-  register: jetbrains_font_exists
+- name: "Check each font installation status"
+  find:
+    paths: "{{ fonts_dir }}"
+    patterns: "{{ item.name }}*.ttf"
+    use_regex: true
+  loop: "{{ font_downloads }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: font_check_results
 
-- name: Download and install all Nerd Fonts
+- name: "Set fonts installed variable"
+  set_fact:
+    fonts_installed: >
+      {{
+        font_check_results.results
+        | selectattr('files', 'length', '>=', 1)
+        | list
+        | length
+        == font_downloads | length
+      }}
+
+- name: "Display missing fonts"
+  debug:
+    msg: "Missing fonts: {{ missing_fonts | map(attribute='name') | list }}"
+  when: missing_fonts | length > 0
+
+- name: "Install individual fonts"
+  when: missing_fonts | length > 0
+  tags: ["fonts", "install"]
   block:
-    - name: Download Nerd Fonts v3
+    - name: "Download missing font archives"
       get_url:
-        url: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/FiraCode.zip
-        dest: /tmp/FiraCode.zip
+        url: "{{ item.url }}"
+        dest: "/tmp/{{ item.name }}.{{ item.archive_type }}"
+        mode: "0644"
+      loop: "{{ missing_fonts }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-    - name: Extract Nerd Fonts v3 Font
+    - name: "Extract missing font archives"
       unarchive:
-        src: /tmp/FiraCode.zip
-        dest: "/home/{{ user }}/.fonts"
-        owner: "{{ user }}"
-        group: "{{ user }}"
+        src: "/tmp/{{ item.name }}.{{ item.archive_type }}"
+        dest: "{{ fonts_dir }}"
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
         remote_src: yes
+        creates: "{{ fonts_dir }}/{{ item.name }}NerdFont-Regular.ttf"
+      loop: "{{ missing_fonts }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-    - name: Download UbuntuMono Nerd Font
-      get_url:
-        url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/UbuntuMono.zip
-        dest: /tmp/UbuntuMono.tar.xz
+    - name: "Refresh font cache"
+      command: "fc-cache -fv"
+      become_user: "{{ target_user }}"
 
-    - name: Ensure destination directory exists
+    - name: "Clean up downloaded archives"
       file:
-        path: "/home/{{ user }}/.fonts"
-        state: directory
-        owner: "{{ user }}"
-        group: "{{ user }}"
-        recurse: yes
-
-    - name: Extract UbuntuMono Nerd Font
-      unarchive:
-        src: /tmp/UbuntuMono.tar.xz
-        dest: "/home/{{ user }}/.fonts"
-        owner: "{{ user }}"
-        group: "{{ user }}"
-        remote_src: yes
-
-    - name: Download JetBrainsMono Nerd Font
-      get_url:
-        url: https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
-        dest: /tmp/JetBrainsMono.tar.xz
-
-    - name: Extract JetBrainsMono Nerd Font
-      unarchive:
-        src: /tmp/JetBrainsMono.tar.xz
-        dest: "/home/{{ user }}/.local/share/fonts"
-        owner: "{{ user }}"
-        group: "{{ user }}"
-        remote_src: yes
-
-    - name: Refresh font cache
-      command: fc-cache -fv
-      become: yes
-      become_user: "{{ user }}"
-
-    - name: Clean up downloaded archive
-      file:
-        path: /tmp/FiraCode.zip
+        path: "/tmp/{{ item.name }}.{{ item.archive_type }}"
         state: absent
-
-    - name: Clean up downloaded archive
-      file:
-        path: /tmp/UbuntuMono.tar.xz
-        state: absent
-
-    - name: Clean up downloaded archive
-      file:
-        path: /tmp/JetBrainsMono.tar.xz
-        state: absent
-
-  when: not jetbrains_font_exists.stat.exists
-  become: yes
+      loop: "{{ missing_fonts }}"
+      loop_control:
+        label: "{{ item.name }}"
