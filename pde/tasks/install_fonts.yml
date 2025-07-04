@@ -4,13 +4,6 @@
 #
 # This playbook configures a Linux system with user accounts, fonts, shell environment, and development tools.
 #
-# ## Variables
-#
-# | Variable | Description | Default |
-# |----------|-------------|---------|
-# | `user` | Target username | *required* |
-# | `node_version` | Node.js version to install | `18` |
-#
 # ## Usage
 #
 # ```bash
@@ -52,6 +45,7 @@
     mode: "0755"
 
 - name: "Check each font installation status"
+  tags: ["fonts", "setup"]
   find:
     paths: "{{ fonts_dir }}"
     patterns: "{{ item.name }}*.ttf"
@@ -62,23 +56,27 @@
   register: font_check_results
 
 - name: "Set fonts installed variable"
+  tags: ["fonts", "setup"]
   set_fact:
-    fonts_installed: >
-      {{
-        font_check_results.results
-        | selectattr('files', 'length', '>=', 1)
-        | list
-        | length
-        == font_downloads | length
-      }}
+    fonts_installed: "{{ font_check_results.results | selectattr('files', 'defined') | selectattr('files', '!=', []) | list | length == font_downloads | length }}"
 
-- name: "Display missing fonts"
-  debug:
-    msg: "Missing fonts: {{ missing_fonts | map(attribute='name') | list }}"
-  when: missing_fonts | length > 0
+- name: Find all files in a directory
+  tags: ["fonts", "setup"]
+  find:
+    paths: "{{ fonts_dir }}"
+    file_type: file
+  register: file_list
+
+- name: Extract filenames into a variable
+  tags: ["fonts", "setup"]
+  set_fact:
+    _filenames: "{{ file_list.files | map(attribute='path') | list }}"
+
+- name: Extract base names from file_paths
+  set_fact:
+    filenames: "{{ _filenames | map('basename') | list }}"
 
 - name: "Install individual fonts"
-  when: missing_fonts | length > 0
   tags: ["fonts", "install"]
   block:
     - name: "Download missing font archives"
@@ -86,7 +84,8 @@
         url: "{{ item.url }}"
         dest: "/tmp/{{ item.name }}.{{ item.archive_type }}"
         mode: "0644"
-      loop: "{{ missing_fonts }}"
+      when: item.name in filenames 
+      loop: "{{ font_downloads }}"
       loop_control:
         label: "{{ item.name }}"
 
@@ -97,19 +96,23 @@
         owner: "{{ target_user }}"
         group: "{{ target_user }}"
         remote_src: yes
-        creates: "{{ fonts_dir }}/{{ item.name }}NerdFont-Regular.ttf"
-      loop: "{{ missing_fonts }}"
+        creates: "{{ fonts_dir }}/{{ item.name }}NerdFont-*.ttf"
+      when: item.name in filenames 
+      loop: "{{ font_downloads }}"
       loop_control:
         label: "{{ item.name }}"
 
     - name: "Refresh font cache"
       command: "fc-cache -fv"
+      when: fonts_installed 
       become_user: "{{ target_user }}"
 
     - name: "Clean up downloaded archives"
       file:
         path: "/tmp/{{ item.name }}.{{ item.archive_type }}"
         state: absent
-      loop: "{{ missing_fonts }}"
+      when: item.name in filenames 
+      loop: "{{ font_downloads }}"
       loop_control:
         label: "{{ item.name }}"
+
