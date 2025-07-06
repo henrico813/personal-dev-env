@@ -20,11 +20,15 @@
       - fonts-liberation
       - ttf-mscorefonts-installer
       - fonts-powerline
-      - zsh
+      - unzip
+    state: present
+
+- name: Install development dependencies
+  apt:
+    name:
       - git
-      - tmux
       - npm
       - python3
-      - unzip
-      - eza
     state: present
+
+
