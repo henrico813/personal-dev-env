@@ -39,6 +39,11 @@
   become: yes
   become_user: "{{ user }}"
 
+- name: Install the powerlevel10k zsh theme.
+  become: yes
+  become_user: "{{ user }}"
+  shell: >
+    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.config/powerlevel10k
 
 - name: Configure tmux plugins and settings
   become: yes
