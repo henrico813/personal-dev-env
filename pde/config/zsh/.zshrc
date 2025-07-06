@@ -4,7 +4,7 @@ export NVM_DIR=${HOME}/.nvm
 export NVM_COMPLETION=true
 
 # Plugin management using antidote
-source ${ZDOTDIR:-$HOME}/.config/antidote/antidote.zsh
+source ${ZDOTDIR:-$HOME}/.config/config/antidote/antidote.zsh
 antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
 
 # Bundle zsh plugins via antibody
