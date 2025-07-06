@@ -1,3 +1,16 @@
+- name: Install necessary packages
+  apt:
+    name:
+      - ffmpeg
+      - 7zip
+      - jq
+      - poppler-utils
+      - fd-find
+      - fzf
+      - zoxide
+      - imagemagick
+    state: present
+
 - name: Download Neovim AppImage
   become: yes
   get_url:
@@ -26,4 +39,40 @@
     src: /opt/nvim
     dest: /usr/local/bin/vim
     state: link
-    force: yes  # Overwrite existing vim if present
+    force: yes
+
+- name: Check if Rust is already installed
+  stat:
+    path: "{{ user_home }}/.cargo/bin/yazi"
+  register: yazi_installed
+
+- name: func_setup_yazi
+  block:
+    - name: func_yazi_install 
+      block:
+
+      - name: Install if TGUI file manager
+        become: yes
+        become_user: "{{ user }}"
+        shell: cargo install --locked yazi-fm yazi-cli
+        args:
+          creates: "{{ user_home }}/.cargo/bin/yazi"
+
+      when: not yazi_installed.stat.exists
+          
+    - name: func_ueberzugpp_install
+      block:
+
+      - name: Install dependencies for TGUI image previews
+        become: yes
+        apt:
+          deb: https://download.opensuse.org/repositories/home:/justkidding/xUbuntu_24.04/amd64/ueberzugpp_2.9.7_amd64.deb
+          state: present
+
+    - name: Update Rust if already installed
+      become: yes
+      become_user: "{{ user }}"
+      shell: "{{ user_home }}/.cargo/bin/rustup update"
+      when: yazi_installed.stat.exists
+      ignore_errors: yes
+
