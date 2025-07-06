@@ -4,7 +4,8 @@
   vars:
     target_user: "{{ user }}"
     user_home: "/home/{{ user }}"
-    fonts_dir: "{{ user_home }}/.local/share/fonts"
+    app_data_dir: "{{ user_home }}/.local/share/"
+    fonts_dir: "{{ app_data_dir }}/fonts"
     node_version: "{{ node_version | default('18') }}"
 
     # Font URLs - centralized for easier maintenance

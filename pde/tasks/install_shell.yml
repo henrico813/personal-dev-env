@@ -9,7 +9,7 @@
   become: yes
   become_user: "{{ user }}"
   stat:
-    path: "{{ user_home }}/.config/config/antidote"
+    path: "{{ app_data_dir }}/antidote"
   register: antidote_check
 
 - name: Install antidote
@@ -17,7 +17,7 @@
   become_user: "{{ user }}"
   git:
     repo: https://github.com/mattmc3/antidote.git
-    dest: "{{ user_home }}/.config/config/antidote"
+    dest: "{{ app_data_dir }}/antidote"
     depth: 1
     clone: yes
     update: no
@@ -42,11 +42,15 @@
 - name: Install the powerlevel10k zsh theme.
   become: yes
   become_user: "{{ user }}"
-  shell: >
-    git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/.config/powerlevel10k
+  git:
+    repo: https://github.com/romkatv/powerlevel10k.git
+    dest: "{{ app_data_dir }}/powerlevel10k"
+    force: yes
 
 - name: Configure tmux plugins and settings
   become: yes
   become_user: "{{ user }}"
-  shell: >
-    git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+  git:
+    repo: https://github.com/tmux-plugins/tpm
+    dest: ~/.tmux/plugins/tpm
+    force: yes
