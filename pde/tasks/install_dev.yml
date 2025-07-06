@@ -28,3 +28,11 @@
   become_user: "{{ user }}"
   shell: >
     rm -rf ~/.config/nvim/.git
+
+- name: Create vim symlink to nvim
+  become: yes
+  file:
+    src: /opt/nvim
+    dest: /usr/local/bin/vim
+    state: link
+    force: yes  # Overwrite existing vim if present
