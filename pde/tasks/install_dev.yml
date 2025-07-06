@@ -7,7 +7,6 @@
       - trash-cli
     state: present
 
-
 - name: Install lazyvim
   become: yes
   become_user: "{{ user }}"
