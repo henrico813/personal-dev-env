@@ -1,5 +1,5 @@
 ---
-- name: Copy configuration files
+- name: Copy user config files
   copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
