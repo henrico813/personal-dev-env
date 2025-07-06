@@ -10,5 +10,13 @@
 - name: Install lazyvim
   become: yes
   become_user: "{{ user }}"
+  git:
+    repo: https://github.com/LazyVim/starter
+    dest: "{{ app_data_dir }}/nvim"
+    force: yes
+
+- name: Remove starter git data
+  become: yes
+  become_user: "{{ user }}"
   shell: >
-    git clone https://github.com/LazyVim/starter ~/.config/nvim && rm -rf ~/.config/nvim/.git
+    rm -rf ~/.config/nvim/.git
