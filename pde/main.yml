@@ -89,9 +89,9 @@
       include_tasks: tasks/install_shell.yml
 
     # Development tools
-    - name: Install development tools
+    - name: Install tools
       tags: ["dev"]
-      include_tasks: tasks/install_dev.yml
+      include_tasks: tasks/install_tools.yml
 
     # Configuration files
     - name: Deploy configuration files
