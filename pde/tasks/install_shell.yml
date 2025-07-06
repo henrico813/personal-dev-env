@@ -5,6 +5,20 @@
       - tmux
     state: present
 
+- name: Check if antidote is already installed
+  stat:
+    path: "{{ ansible_env.ZDOTDIR | default(ansible_env.HOME) }}/.config/antidote"
+  register: antidote_check
+
+- name: Install antidote
+  git:
+    repo: https://github.com/mattmc3/antidote.git
+    dest: "{{ ansible_env.ZDOTDIR | default(ansible_env.HOME) }}/.config/antidote"
+    depth: 1
+    clone: yes
+    update: no
+  when: not antidote_check.stat.exists
+
 - name: Change default shell to zsh for specific user
   user:
     name: "{{ target_user }}"
