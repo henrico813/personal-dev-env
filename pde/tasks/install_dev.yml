@@ -7,6 +7,14 @@
       - trash-cli
     state: present
 
+- name: Download Neovim AppImage
+  become: yes
+  get_url:
+    url: https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
+    dest: /opt/nvim
+    mode: '0755'
+    force: yes
+
 - name: Install lazyvim
   become: yes
   become_user: "{{ user }}"
