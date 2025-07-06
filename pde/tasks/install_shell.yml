@@ -5,3 +5,8 @@
       - tmux
     state: present
 
+- name: Change default shell to zsh for specific user
+  user:
+    name: "{{ target_user }}"
+    shell: /bin/zsh
+  become: yes
