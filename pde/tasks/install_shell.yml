@@ -4,6 +4,7 @@
       - zsh
       - tmux
       - eza
+      - fd-find
       - fzf
       - ripgrep
       - bat
