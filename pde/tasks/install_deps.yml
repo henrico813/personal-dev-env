@@ -25,6 +25,5 @@
       - tmux
       - npm
       - python3
-      - trash-cli
       - unzip
     state: present
