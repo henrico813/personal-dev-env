@@ -3,7 +3,9 @@
 export NVM_DIR=${HOME}/.nvm
 export NVM_COMPLETION=true
 
-source ${HOME}/.zsh_plugins.sh
+# Plugin management using antidote
+source ${ZDOTDIR:-$HOME}/.config/antidote/antidote.zsh
+antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
 
 # Bundle zsh plugins via antibody
 alias update-antibody='antibody bundle < $HOME/.zsh_plugins.txt > $HOME/.zsh_plugins.sh'
@@ -49,4 +51,10 @@ if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile
 HISTFILE=~/.zsh_history
 HISTSIZE=1000000
 SAVEHIST=1000000
-setopt SHARE_HISTORY
+
+# History options
+setopt SHARE_HISTORY          # Share history between sessions
+setopt HIST_VERIFY            # Show command before executing from history expansion
+setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
+setopt APPEND_HISTORY         # Append to history file rather than overwriting
+setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
