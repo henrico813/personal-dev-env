@@ -1,0 +1,8 @@
+- name: Install necessary packages
+  apt:
+    name:
+      - fzf
+      - ripgrep
+      - bat
+      - trash-cli
+    state: present

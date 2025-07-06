@@ -1,0 +1,7 @@
+- name: Install necessary packages
+  apt:
+    name:
+      - zsh
+      - tmux
+    state: present
+

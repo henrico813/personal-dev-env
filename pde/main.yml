@@ -19,14 +19,17 @@
         url: "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"
         archive_type: "tar.xz"
 
-    # Configuration files to copy
-    config_files:
+    # Shell Configuration Files
+    shell_cfgs:
       - src: "config/zsh/.zsh_plugins.txt"
         dest: "{{ user_home }}/.zsh_plugins.txt"
       - src: "config/zsh/.zshrc"
         dest: "{{ user_home }}/.zshrc"
       - src: "config/tmux/.tmux.conf"
         dest: "{{ user_home }}/.tmux.conf"
+        #
+    # User Configuration files
+    user_cfgs:
       - src: "config"
         dest: "{{ user_home }}/.config"
         mode: "0755"
@@ -40,9 +43,8 @@
     # INIT SYSTEM CONFIGURATION
     # ============================================
 
-    # Dependencies installation
     - name: Install dependencies
-      tags: ["init", "deps"]
+      tags: ["deps"]
       include_tasks: tasks/install_deps.yml
 
     - name: "Configure system locale"
@@ -81,9 +83,9 @@
       include_tasks: tasks/install_fonts.yml
 
     # Shell configuration
-    - name: Setup zsh environment
+    - name: Setup zsh and tmux environment
       tags: ["shell"]
-      include_tasks: tasks/install_zsh.yml
+      include_tasks: tasks/install_shell.yml
 
     # Development tools
     - name: Install development tools
