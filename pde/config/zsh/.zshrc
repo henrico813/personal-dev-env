@@ -27,6 +27,10 @@ alias vimrc='vim ${HOME}/.config/nvim/init.vim'
 alias cat='bat'
 # colored ls output
 alias ls='eza -al'
+# fd-find -> fd
+alias fd='fd-find'
+# yazi file manager
+alias yazi='~/.cargo/bin/yazi'
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
@@ -39,8 +43,8 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 # nvim path may help git use nvim
 export PATH="$PATH:/opt/nvim/"
 # add rust to path
-export PATH="$PATH:/.cargo/"
-export PATH="$PATH:/.rustup/"
+export PATH="$PATH:/.cargo/bin"
+export PATH="$PATH:/.rustup/bin"
 # export PATH=${PATH}:/usr/local/go/bin
 # export PATH=${PATH}:${HOME}/go/bin
 
