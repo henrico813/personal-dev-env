@@ -1,0 +1,30 @@
+---
+- name: Update and upgrade apt packages
+  apt:
+    update_cache: yes
+    upgrade: dist
+
+- name: Install necessary packages
+  apt:
+    name:
+      - curl
+      - tar
+      - xz-utils
+      - sudo
+      - screen
+      - locales
+      - locales-all
+      - fontconfig
+      - fonts-dejavu-core
+      - fonts-dejavu-extra
+      - fonts-liberation
+      - ttf-mscorefonts-installer
+      - fonts-powerline
+      - zsh
+      - git
+      - tmux
+      - npm
+      - python3
+      - trash-cli
+      - unzip
+    state: present
