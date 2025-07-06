@@ -1,0 +1,15 @@
+---
+- name: Change default shell to zsh for specific user
+  user:
+    name: "{{ target_user }}"
+    shell: /bin/zsh
+  become: yes
+
+- name: Copy configuration files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ config_files }}"
+  become: yes
+  become_user: "{{ user }}"
