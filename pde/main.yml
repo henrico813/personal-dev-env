@@ -40,23 +40,28 @@
     # INIT SYSTEM CONFIGURATION
     # ============================================
 
+    # Dependencies installation
+    - name: Install dependencies
+      tags: ["init", "deps"]
+      include_tasks: tasks/install_deps.yml
+
     - name: "Configure system locale"
       locale_gen:
         name: "en_US.UTF-8"
         state: present
-      tags: ["system", "locale"]
+      tags: ["init", "locale"]
 
     - name: "Set system timezone"
       timezone:
         name: "America/Los_Angeles"
-      tags: ["system", "timezone"]
+      tags: ["init", "timezone"]
 
     - name: "Create user account"
       user:
         name: "{{ target_user }}"
-        shell: "/bin/bash"
+        shell: "/bin/zsh"
         create_home: yes
-      tags: ["user", "setup"]
+      tags: ["init", "user"]
 
     - name: "Grant sudo privileges to user"
       lineinfile:
@@ -64,7 +69,7 @@
         state: present
         line: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL"
         validate: "/usr/sbin/visudo -cf %s"
-      tags: ["user", "sudo"]
+      tags: ["init", "sudo"]
 
     # ============================================
     # MAIN INSTALLATIONS
@@ -72,16 +77,20 @@
 
     # Font installation
     - name: Setup fonts
+      tags: ["fonts"]
       include_tasks: tasks/install_fonts.yml
 
     # Shell configuration
     - name: Setup zsh environment
+      tags: ["shell"]
       include_tasks: tasks/install_zsh.yml
 
     # Development tools
     - name: Install development tools
+      tags: ["dev"]
       include_tasks: tasks/install_dev.yml
 
     # Configuration files
     - name: Deploy configuration files
+      tags: ["configs"]
       include_tasks: tasks/install_configs.yml
