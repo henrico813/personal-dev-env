@@ -17,6 +17,7 @@ alias list-npm-globals='npm list -g --depth=0'
 # https://github.com/sindresorhus/empty-trash-cli
 alias rm='trash'
 # use neovim instead of vim
+alias nvim='/opt/nvim'
 alias vim='nvim'
 # checkout branch using fzf
 alias gcob='git branch | fzf | xargs git checkout'
@@ -35,6 +36,7 @@ export FZF_DEFAULT_COMMAND="rg --files --hidden --glob '!.git'"
 export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1"
 
 # PATH
+export PATH="$PATH:/opt/nvim/"
 # export PATH=${PATH}:/usr/local/go/bin
 # export PATH=${PATH}:${HOME}/go/bin
 
