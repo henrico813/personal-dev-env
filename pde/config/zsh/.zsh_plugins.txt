@@ -8,7 +8,7 @@ robbyrussell/oh-my-zsh path:plugins/node
 
 romkatv/powerlevel10k
 
-rupa/z
+agkozak/zsh-z
 
 zsh-users/zsh-autosuggestions
 zsh-users/zsh-completions
