@@ -3,6 +3,11 @@
     name:
       - zsh
       - tmux
+      - eza
+      - fzf
+      - ripgrep
+      - bat
+      - trash-cli
     state: present
 
 - name: Check if antidote is already installed
