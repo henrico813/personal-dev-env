@@ -36,7 +36,7 @@ export FZF_DEFAULT_COMMAND="rg --files --hidden --glob '!.git'"
 export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1"
 
 # PATH
-export PATH="$PATH:/opt/nvim/"
+export PATH="$PATH:/opt/nvim"
 # export PATH=${PATH}:/usr/local/go/bin
 # export PATH=${PATH}:${HOME}/go/bin
 
