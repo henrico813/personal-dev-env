@@ -41,7 +41,7 @@
     state: link
     force: yes
 
-- name: Check if Rust is already installed
+- name: Check if the TGUI file manager is already installed
   stat:
     path: "{{ user_home }}/.cargo/bin/yazi"
   register: yazi_installed
