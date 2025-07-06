@@ -6,14 +6,16 @@
     state: present
 
 - name: Check if antidote is already installed
+  become: no
   stat:
-    path: "{{ ansible_env.ZDOTDIR | default(ansible_env.HOME) }}/.config/antidote"
+    path: "{{ user_home }}/.config/config/antidote"
   register: antidote_check
 
 - name: Install antidote
+  become: no
   git:
     repo: https://github.com/mattmc3/antidote.git
-    dest: "{{ ansible_env.ZDOTDIR | default(ansible_env.HOME) }}/.config/antidote"
+    dest: "{{ user_home }}/.config/config/antidote"
     depth: 1
     clone: yes
     update: no
@@ -24,3 +26,12 @@
     name: "{{ target_user }}"
     shell: /bin/zsh
   become: yes
+
+- name: Copy shell config files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ shell_cfgs }}"
+  become: yes
+  become_user: "{{ user }}"
