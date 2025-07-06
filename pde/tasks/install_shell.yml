@@ -6,13 +6,15 @@
     state: present
 
 - name: Check if antidote is already installed
-  become: no
+  become: yes
+  become_user: "{{ user }}"
   stat:
     path: "{{ user_home }}/.config/config/antidote"
   register: antidote_check
 
 - name: Install antidote
-  become: no
+  become: yes
+  become_user: "{{ user }}"
   git:
     repo: https://github.com/mattmc3/antidote.git
     dest: "{{ user_home }}/.config/config/antidote"
@@ -26,6 +28,7 @@
     name: "{{ target_user }}"
     shell: /bin/zsh
   become: yes
+  become_user: "{{ user }}"
 
 - name: Copy shell config files
   copy:
@@ -35,3 +38,10 @@
   loop: "{{ shell_cfgs }}"
   become: yes
   become_user: "{{ user }}"
+
+
+- name: Configure tmux plugins and settings
+  become: yes
+  become_user: "{{ user }}"
+  shell: >
+    git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
