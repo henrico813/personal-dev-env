@@ -4,7 +4,7 @@ export NVM_DIR=${HOME}/.nvm
 export NVM_COMPLETION=true
 
 # Plugin management using antidote
-source ${ZDOTDIR:-$HOME}/.config/config/antidote/antidote.zsh
+source ${ZDOTDIR:-$HOME}/.local/share/antidote/antidote.zsh
 antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
 
 # Bundle zsh plugins via antibody
@@ -41,7 +41,7 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 export BAT_THEME="gruvbox-dark"
 
 # nix
-if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
+#if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
