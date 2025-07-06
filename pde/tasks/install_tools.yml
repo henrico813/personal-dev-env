@@ -1,12 +1,3 @@
-- name: Install necessary packages
-  apt:
-    name:
-      - fzf
-      - ripgrep
-      - bat
-      - trash-cli
-    state: present
-
 - name: Download Neovim AppImage
   become: yes
   get_url:
