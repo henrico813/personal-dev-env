@@ -37,25 +37,27 @@
   register: rust_installed
 
 - name: Install Rust
+  become: yes
+  become_user: "{{ user }}"
   block:
-    - name: Install if Rust is missing
-      block:
+  - name: Install if Rust is missing
+    block:
 
-        - name: Download rustup installer
-          get_url:
-            url: https://sh.rustup.rs
-            dest: /tmp/rustup-init.sh
-            mode: '0755'
-        - name: Install Rust via rustup
-          shell: /tmp/rustup-init.sh -y
-          environment:
-            CARGO_HOME: "{{ user_home }}/.cargo"
-            RUSTUP_HOME: "{{ user_home }}/.rustup"
+    - name: Download rustup installer
+      get_url:
+        url: https://sh.rustup.rs
+        dest: /tmp/rustup-init.sh
+        mode: '0755'
+    - name: Install Rust via rustup
+      shell: /tmp/rustup-init.sh -y
+      environment:
+        CARGO_HOME: "{{ user_home }}/.cargo"
+        RUSTUP_HOME: "{{ user_home }}/.rustup"
 
-      when: not rust_installed.stat.exists
+    when: not rust_installed.stat.exists
 
-    - name: Update Rust if already installed
-      shell: "{{ user_home }}/.cargo/bin/rustup update"
-      when: rust_installed.stat.exists
-      ignore_errors: yes
+  - name: Update Rust if already installed
+    shell: "{{ user_home }}/.cargo/bin/rustup update"
+    when: rust_installed.stat.exists
+    ignore_errors: yes
 
