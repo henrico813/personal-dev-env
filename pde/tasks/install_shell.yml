@@ -1,8 +1,7 @@
 - name: Install necessary packages
   apt:
     name:
-      - fzf
-      - ripgrep
-      - bat
-      - trash-cli
+      - zsh
+      - tmux
     state: present
+
