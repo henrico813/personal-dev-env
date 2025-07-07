@@ -27,8 +27,8 @@ alias vimrc='vim ${HOME}/.config/nvim/init.vim'
 alias cat='bat'
 # colored ls output
 alias ls='eza -al'
-# fd-find -> fd
-alias fd='fd-find'
+# fdfind -> fd
+alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
 # aider shortcu
