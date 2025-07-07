@@ -29,7 +29,7 @@
         become_user: "{{ user }}"
         git:
           repo: https://github.com/LazyVim/starter
-          dest: "{{ app_data_dir }}/nvim"
+          dest: "{{ user_home }}/.config/nvim"
           force: yes
 
       - name: clean(tools) lazyvim
