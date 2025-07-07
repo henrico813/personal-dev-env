@@ -99,7 +99,7 @@ model: ollama_cat/devstral:24b
 #architect: false
 
 ## Enable/disable automatic acceptance of architect changes (default: True)
-#auto-accept-architect: true
+auto-accept-architect: true
 
 ## Specify the model to use for commit messages and chat history summarization (default depends on --model)
 #weak-model: xxx
@@ -111,7 +111,7 @@ model: ollama_cat/devstral:24b
 #editor-edit-format: xxx
 
 ## Only work with models that have meta-data available (default: True)
-#show-model-warnings: true
+show-model-warnings: false
 
 ## Check if model accepts settings like reasoning_effort/thinking_tokens (default: True)
 #check-model-accepts-settings: true
