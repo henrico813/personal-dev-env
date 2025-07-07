@@ -88,7 +88,7 @@
     # Shell configuration
     - name: Setup zsh and tmux environment
       tags: ["shell"]
-      include_tasks: tasks/install_shell.yml
+      import_tasks: tasks/install_shell.yml
 
     # Development tools
     - name: Install tools
@@ -98,4 +98,4 @@
     # Configuration files
     - name: Deploy configuration files
       tags: ["configs"]
-      include_tasks: tasks/install_configs.yml
+      import_tasks: tasks/install_configs.yml
