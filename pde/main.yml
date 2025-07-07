@@ -28,7 +28,9 @@
         dest: "{{ user_home }}/.zshrc"
       - src: "config/tmux/.tmux.conf"
         dest: "{{ user_home }}/.tmux.conf"
-        #
+      - src: "config/powerlevel10k/.p10k.zsh"
+        dest: "{{ user_home }}/.p10k.zsh"
+        
     # User Configuration files
     user_cfgs:
       - src: "config"
@@ -36,8 +38,8 @@
         mode: "0755"
       - src: "config/screen/.screenrc"
         dest: "{{ user_home }}/.screenrc"
-      - src: "config/powerlevel10k/.p10k.zsh"
-        dest: "{{ user_home }}/.p10k.zsh"
+      - src: "config/aider/.aider.conf.yml"
+        dest: "{{ user_home }}/.aider.conf.yml"
 
   tasks:
     # ============================================
