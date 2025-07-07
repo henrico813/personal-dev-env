@@ -31,6 +31,8 @@ alias ls='eza -al'
 alias fd='fd-find'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
+# aider shortcu
+alias ai='aider --subtree-only' 
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
@@ -42,6 +44,8 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 # PATH
 # nvim path may help git use nvim
 export PATH="$PATH:/opt/nvim/"
+# use local, useful for aider
+export PATH="$PATH/.local/bin"
 # add rust to path
 export PATH="$PATH:/.cargo/bin"
 export PATH="$PATH:/.rustup/bin"
@@ -68,3 +72,7 @@ setopt HIST_VERIFY            # Show command before executing from history expan
 setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
 setopt APPEND_HISTORY         # Append to history file rather than overwriting
 setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
+
+# AI
+# aider configs
+export OLLAMA_API_BASE='http://192.168.100.158:11434'
