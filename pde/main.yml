@@ -92,8 +92,8 @@
 
     # Development tools
     - name: Install tools
-      tags: ["dev"]
-      include_tasks: tasks/install_tools.yml
+      tags: ["tools"]
+      import_tasks: tasks/install_tools.yml
 
     # Configuration files
     - name: Deploy configuration files
