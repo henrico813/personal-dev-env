@@ -1,4 +1,4 @@
-- name: Install necessary packages
+- name: install(tool) dependencies
   apt:
     name:
       - ffmpeg
@@ -11,7 +11,7 @@
       - imagemagick
     state: present
 
-- name: Download Neovim AppImage
+- name: install(tool) neovim 
   become: yes
   get_url:
     url: https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
@@ -19,29 +19,33 @@
     mode: '0755'
     force: yes
 
-- name: Install lazyvim
-  become: yes
-  become_user: "{{ user }}"
-  git:
-    repo: https://github.com/LazyVim/starter
-    dest: "{{ app_data_dir }}/nvim"
-    force: yes
+- name: func_setup_lazyvim
+  block:
+    - name: func_yazi_install 
+      block:
 
-- name: Remove starter git data
-  become: yes
-  become_user: "{{ user }}"
-  shell: >
-    rm -rf ~/.config/nvim/.git
+      - name: install(tool) lazyvim
+        become: yes
+        become_user: "{{ user }}"
+        git:
+          repo: https://github.com/LazyVim/starter
+          dest: "{{ app_data_dir }}/nvim"
+          force: yes
 
-- name: Create vim symlink to nvim
-  become: yes
-  file:
-    src: /opt/nvim
-    dest: /usr/local/bin/vim
-    state: link
-    force: yes
+      - name: clean(tools) lazyvim
+        become: yes
+        become_user: "{{ user }}"
+        shell: rm -rf ~/.config/nvim/.git
 
-- name: Check if the TGUI file manager is already installed
+      - name: config(tools) symlink nvim
+        become: yes
+        file:
+          src: /opt/nvim
+          dest: /usr/local/bin/vim
+          state: link
+          force: yes
+
+- name: Check(tools) if the TGUI file manager already installed
   stat:
     path: "{{ user_home }}/.cargo/bin/yazi"
   register: yazi_installed
@@ -51,7 +55,7 @@
     - name: func_yazi_install 
       block:
 
-      - name: Install if TGUI file manager
+      - name: install(tools) TGUI file manager
         become: yes
         become_user: "{{ user }}"
         shell: cargo install --locked yazi-fm yazi-cli
@@ -63,16 +67,32 @@
     - name: func_ueberzugpp_install
       block:
 
-      - name: Install dependencies for TGUI image previews
+      - name: install(tools) TGUI file manager image preview dependencies
         become: yes
         apt:
           deb: https://download.opensuse.org/repositories/home:/justkidding/xUbuntu_24.04/amd64/ueberzugpp_2.9.7_amd64.deb
           state: present
 
-    - name: Update Rust if already installed
+    - name: install(tools) Update TGUI file manager 
       become: yes
       become_user: "{{ user }}"
       shell: "{{ user_home }}/.cargo/bin/rustup update"
       when: yazi_installed.stat.exists
       ignore_errors: yes
 
+
+- name: check(tools) if the TGUI file manager is already installed
+  stat:
+    path: "{{ user_home }}/.cargo/bin/yazi"
+  register: yazi_installed
+
+- name: func_setup_aider
+  block:
+
+    - name: install(tools) Aider 
+      become: yes
+      become_user: "{{ user }}"
+      shell: curl -LsSf https://aider.chat/install.sh | sh
+      args:
+        creates: /usr/local/bin/aider
+      
