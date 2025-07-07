@@ -18,7 +18,7 @@
 # Main model:
 
 ## Specify the model to use for the main chat
-model: ollama_cat/devstral:24b
+model: ollama_chat/devstral:24b
 
 ########################
 # API Keys and settings:
@@ -246,7 +246,7 @@ auto-commits: true
 #git-commit-verify: false
 
 ## Commit all pending changes with a suitable commit message, then exit
-commit: true
+#commit: false
 
 ## Specify a custom prompt for generating commit messages
 #commit-prompt: xxx
