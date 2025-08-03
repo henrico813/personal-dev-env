@@ -20,6 +20,11 @@
     mode: '0755'
     force: yes
 
+- name: Check(tools) if lazyvim is already installed
+  stat:
+    path: "{{ user_home }}/.config/nvim"
+  register: lazyvim_installed
+
 - name: func_setup_lazyvim
   block:
     - name: func_yazi_install 
@@ -45,8 +50,9 @@
           dest: /usr/local/bin/vim
           state: link
           force: yes
+  when: not lazyvim_installed.stat.exists
 
-- name: Check(tools) if the TGUI file manager already installed
+- name: check(tools) if the TGUI file manager is already installed
   stat:
     path: "{{ user_home }}/.cargo/bin/yazi"
   register: yazi_installed
