@@ -3,7 +3,6 @@
     name:
       - zsh
       - tmux
-      - eza
       - fd-find
       - fzf
       - ripgrep
@@ -12,6 +11,11 @@
       - zoxide
       - jq
     state: present
+
+- name: Install eza via cargo
+  become: yes
+  become_user: "{{ user }}"
+  shell: cargo install eza
 
 - name: Check if antidote is already installed
   become: yes
