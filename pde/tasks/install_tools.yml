@@ -21,7 +21,7 @@
       - name: install(tools) TGUI file manager
         become: yes
         become_user: "{{ user }}"
-        shell: cargo install --locked yazi-fm yazi-cli
+        shell: "{{ user_home }}/.cargo/bin/cargo install --locked yazi-fm yazi-cli"
         args:
           creates: "{{ user_home }}/.cargo/bin/yazi"
 
