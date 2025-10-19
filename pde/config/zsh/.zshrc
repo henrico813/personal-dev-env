@@ -49,6 +49,8 @@ export PATH="$PATH/.local/bin"
 # add rust to path
 export PATH="$PATH:/.cargo/bin"
 export PATH="$PATH:/.rustup/bin"
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # export PATH=${PATH}:/usr/local/go/bin
 # export PATH=${PATH}:${HOME}/go/bin
 
