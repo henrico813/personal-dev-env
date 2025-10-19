@@ -9,6 +9,8 @@
       - ripgrep
       - bat
       - trash-cli
+      - zoxide
+      - jq
     state: present
 
 - name: Check if antidote is already installed
@@ -60,3 +62,37 @@
     repo: https://github.com/tmux-plugins/tpm
     dest: ~/.tmux/plugins/tpm
     force: yes
+
+- name: install neovim 
+  become: yes
+  get_url:
+    url: https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
+    dest: /opt/nvim
+    mode: '0755'
+    force: yes
+
+- name: func_setup_lazyvim
+  block:
+    - name: func_lazyvim_install 
+      block:
+
+      - name: install lazyvim
+        become: yes
+        become_user: "{{ user }}"
+        git:
+          repo: https://github.com/LazyVim/starter
+          dest: "{{ app_data_dir }}/nvim"
+          force: yes
+
+      - name: clean lazyvim
+        become: yes
+        become_user: "{{ user }}"
+        shell: rm -rf ~/.config/nvim/.git
+
+      - name: config symlink nvim
+        become: yes
+        file:
+          src: /opt/nvim
+          dest: /usr/local/bin/vim
+          state: link
+          force: yes
