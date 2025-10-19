@@ -15,7 +15,9 @@
 - name: Install eza via cargo
   become: yes
   become_user: "{{ user }}"
-  shell: cargo install eza
+  shell: "{{ user_home }}/.cargo/bin/cargo install eza"
+  args:
+    creates: "{{ user_home }}/.cargo/bin/eza"
 
 - name: Check if antidote is already installed
   become: yes
