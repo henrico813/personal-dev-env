@@ -35,6 +35,7 @@
         apt:
           deb: https://download.opensuse.org/repositories/home:/justkidding/xUbuntu_24.04/amd64/ueberzugpp_2.9.7_amd64.deb
           state: present
+        ignore_errors: yes
 
     - name: install(tools) Update TGUI file manager 
       become: yes
