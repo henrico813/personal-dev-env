@@ -24,7 +24,7 @@ alias gcob='git branch | fzf | xargs git checkout'
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.vim'
 # cat -> bat
-alias cat='bat'
+alias cat='batcat'
 # colored ls output
 alias ls='eza -al'
 # fdfind -> fd
