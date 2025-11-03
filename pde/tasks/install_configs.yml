@@ -1,9 +1,0 @@
----
-- name: Copy user config files
-  copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: "{{ item.mode | default(omit) }}"
-  loop: "{{ user_cfgs }}"
-  become: yes
-  become_user: "{{ user }}"
