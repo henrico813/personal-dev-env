@@ -63,7 +63,24 @@
 
   when: not aider_installed.stat.exists
 
-- name: Copy config files for aider, claude 
+- name: check(tools) if claude-code is already installed
+  stat:
+    path: "{{ user_home }}/.npm-global/bin/claude"
+  register: claude_installed
+
+- name: func_setup_claude_code
+  block:
+
+    - name: install(tools) Claude Code
+      become: yes
+      become_user: "{{ user }}"
+      shell: npm install -g @anthropic-ai/claude-code
+      args:
+        creates: "{{ user_home }}/.npm-global/bin/claude"
+
+  when: not claude_installed.stat.exists
+
+- name: Copy config files for aider, claude
   copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
