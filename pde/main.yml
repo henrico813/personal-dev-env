@@ -30,14 +30,9 @@
         dest: "{{ user_home }}/.tmux.conf"
       - src: "config/powerlevel10k/.p10k.zsh"
         dest: "{{ user_home }}/.p10k.zsh"
-        
+
     # User Configuration files
-    user_cfgs:
-      - src: "config"
-        dest: "{{ user_home }}/.config"
-        mode: "0755"
-      - src: "config/screen/.screenrc"
-        dest: "{{ user_home }}/.screenrc"
+    tool_cfgs:
       - src: "config/aider/.aider.conf.yml"
         dest: "{{ user_home }}/.aider.conf.yml"
 
@@ -94,8 +89,3 @@
     - name: Install tools
       tags: ["tools"]
       import_tasks: tasks/install_tools.yml
-
-    # Configuration files
-    - name: Deploy configuration files
-      tags: ["configs"]
-      import_tasks: tasks/install_configs.yml

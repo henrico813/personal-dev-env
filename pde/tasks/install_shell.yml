@@ -44,15 +44,6 @@
   become: yes
   become_user: "{{ user }}"
 
-- name: Copy shell config files
-  copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: "{{ item.mode | default(omit) }}"
-  loop: "{{ shell_cfgs }}"
-  become: yes
-  become_user: "{{ user }}"
-
 - name: Install the powerlevel10k zsh theme.
   become: yes
   become_user: "{{ user }}"
@@ -102,3 +93,13 @@
           dest: /usr/local/bin/vim
           state: link
           force: yes
+
+- name: Copy config files for zsh and tmux 
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ shell_cfgs }}"
+  become: yes
+  become_user: "{{ user }}"
+
