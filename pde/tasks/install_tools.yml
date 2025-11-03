@@ -62,4 +62,12 @@
         creates: /usr/local/bin/aider
 
   when: not aider_installed.stat.exists
-      
+
+- name: Copy config files for aider, claude 
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode | default(omit) }}"
+  loop: "{{ tool_cfgs }}"
+  become: yes
+  become_user: "{{ user }}"
