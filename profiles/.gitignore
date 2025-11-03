@@ -1,0 +1,6 @@
+# Ignore all profile files (may contain secrets)
+*.env
+
+# Except template and default
+!default.env
+!litellm-template.env
