@@ -1,0 +1,30 @@
+# LiteLLM Provider Template
+# Copy this file to create your own custom provider configurations
+# Example: cp litellm-template.toml my-litellm.toml
+
+# Specify the model to use
+# model = "gpt-4o"
+
+# Specify which provider to use (must match a key in [model_providers])
+# model_provider = "litellm"
+
+# Define a custom model provider
+# [model_providers.litellm]
+# name = "LiteLLM Proxy"
+# base_url = "http://192.168.100.158:4000/v1"
+# env_key = "LITELLM_API_KEY"  # Environment variable containing your API key
+# wire_api = "chat"  # Valid values: "chat" or "responses"
+# query_params = {}  # Optional: additional query parameters
+
+# Example: OpenAI-compatible provider
+# [model_providers.my-provider]
+# name = "My Custom Provider"
+# base_url = "https://api.example.com/v1"
+# env_key = "MY_PROVIDER_API_KEY"
+# wire_api = "chat"
+
+# Example: Ollama local instance
+# [model_providers.ollama]
+# name = "Ollama Local"
+# base_url = "http://localhost:11434/v1"
+# wire_api = "chat"
