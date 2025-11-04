@@ -79,7 +79,7 @@ setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
 # aider configs
 export OLLAMA_API_BASE='http://192.168.100.158:11434'
 
-# Claude Code Integration
-# Run Claude Code Makefile from anywhere
+# Codex Integration
+# Run Codex Makefile from anywhere
 export PERSONAL_DEV_ENV="${HOME}/Projects/personal-dev-env"
-alias claude='make -C ${PERSONAL_DEV_ENV} claude'
+alias codex='make -C ${PERSONAL_DEV_ENV} codex'

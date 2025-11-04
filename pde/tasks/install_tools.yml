@@ -63,24 +63,24 @@
 
   when: not aider_installed.stat.exists
 
-- name: check(tools) if claude-code is already installed
+- name: check(tools) if codex is already installed
   stat:
-    path: "{{ user_home }}/.npm-global/bin/claude"
-  register: claude_installed
+    path: "{{ user_home }}/.npm-global/bin/codex"
+  register: codex_installed
 
-- name: func_setup_claude_code
+- name: func_setup_codex
   block:
 
-    - name: install(tools) Claude Code
+    - name: install(tools) OpenAI Codex
       become: yes
       become_user: "{{ user }}"
-      shell: npm install -g @anthropic-ai/claude-code
+      shell: npm install -g @openai/codex
       args:
-        creates: "{{ user_home }}/.npm-global/bin/claude"
+        creates: "{{ user_home }}/.npm-global/bin/codex"
 
-  when: not claude_installed.stat.exists
+  when: not codex_installed.stat.exists
 
-- name: Copy config files for aider, claude
+- name: Copy config files for aider, codex
   copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
