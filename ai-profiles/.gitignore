@@ -1,0 +1,14 @@
+# Ignore all config files (may contain API keys and secrets)
+*.toml
+
+# Except template, default, and the config.toml symlink
+!default.toml
+!litellm-template.toml
+!config.toml
+
+# Ignore Codex-generated files and directories
+log/
+logs/
+sessions/
+version.json
+*.log
