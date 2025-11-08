@@ -22,11 +22,14 @@ NC := \033[0m
 
 .PHONY: help
 help: ## Display all available commands with descriptions
-	@echo "$(BLUE)Codex Configuration System$(NC)"
+	@echo "$(BLUE)Personal Dev Env - AI Tool Launcher$(NC)"
 	@echo "=================================="
 	@echo ""
-	@echo "$(GREEN)Main Command:$(NC)"
+	@echo "$(GREEN)Codex Commands:$(NC)"
 	@grep -E '^codex:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(GREEN)Claude Code Commands:$(NC)"
+	@grep -E '^claude-.*?:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Configuration Management:$(NC)"
 	@grep -E '^(list-configs|create-config):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
@@ -34,9 +37,11 @@ help: ## Display all available commands with descriptions
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make codex                           # Default OpenAI configuration"
 	@echo "  make codex CONFIG=my-litellm         # Custom configuration"
+	@echo "  make claude-default                  # Claude with Anthropic API"
+	@echo "  make claude-glm4.5-air               # Claude with GLM4.5 Air"
 	@echo "  make create-config CONFIG=my-litellm"
 	@echo ""
-	@echo "$(GREEN)Note:$(NC) Model and provider settings are defined in TOML config files"
+	@echo "$(GREEN)Note:$(NC) Model and provider settings are defined in config files"
 
 # ============================================================================
 # Main Codex Launcher
@@ -59,6 +64,33 @@ codex: ## Launch Codex (default or CONFIG=<name> for custom)
 		cd $(CONFIG_DIR) && ln -sf $(CONFIG).toml config.toml; \
 		CODEX_HOME=$(CONFIG_DIR) codex; \
 	fi
+
+# ============================================================================
+# Claude Code Launcher
+# ============================================================================
+
+.PHONY: claude-default
+claude-default: ## Launch Claude Code with default Anthropic profile
+	@if [ ! -f "$(CONFIG_DIR)/claude/default.env" ]; then \
+		echo "$(RED)Error:$(NC) Default profile not found at $(CONFIG_DIR)/claude/default.env"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Launching Claude Code with default profile$(NC)"
+	@source $(CONFIG_DIR)/claude/default.env && claude
+
+.PHONY: claude-glm4.5-air
+claude-glm4.5-air: ## Launch Claude Code with GLM4.5 Air model via LiteLLM
+	@if [ ! -f "$(CONFIG_DIR)/claude/glm4.5-air.env" ]; then \
+		echo "$(RED)Error:$(NC) GLM4.5 Air profile not found at $(CONFIG_DIR)/claude/glm4.5-air.env"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Launching Claude Code with GLM4.5 Air profile$(NC)"
+	@source $(CONFIG_DIR)/claude/glm4.5-air.env && \
+		if [ -n "$$DEFAULT_MODEL" ]; then \
+			claude --model $$DEFAULT_MODEL; \
+		else \
+			claude; \
+		fi
 
 # ============================================================================
 # Configuration Management
@@ -122,4 +154,4 @@ clean: ## Remove any generated files
 	@echo "$(GREEN)✓$(NC) Clean complete"
 
 # Declare all targets as phony
-.PHONY: help codex list-configs create-config clean
+.PHONY: help codex claude-default claude-glm4.5-air list-configs create-config clean
