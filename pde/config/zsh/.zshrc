@@ -31,8 +31,7 @@ alias ls='eza -al'
 alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
-# aider shortcu
-alias ai='aider --subtree-only' 
+# aider shortcut (moved to ai function below) 
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
@@ -83,3 +82,96 @@ export OLLAMA_API_BASE='http://192.168.100.158:11434'
 # Run Codex Makefile from anywhere
 export PERSONAL_DEV_ENV="${HOME}/Projects/personal-dev-env"
 alias codex='make -C ${PERSONAL_DEV_ENV} codex'
+
+# AI Tools CLI - Unified launcher for aider, claude, and codex
+ai() {
+    if [ -z "$1" ]; then
+        echo "Usage: ai <tool> [profile]"
+        echo ""
+        echo "Available tools:"
+        echo "  aider          - Launch Aider with --subtree-only"
+        echo "  claude [prof]  - Launch Claude Code (default, glm4.5-air)"
+        echo "  codex [config] - Launch Codex with configuration"
+        echo ""
+        echo "Examples:"
+        echo "  ai aider"
+        echo "  ai claude"
+        echo "  ai claude glm4.5-air"
+        echo "  ai codex"
+        return 1
+    fi
+
+    local tool=$1
+    local profile=$2
+
+    case $tool in
+        aider)
+            aider --subtree-only
+            ;;
+
+        claude)
+            if [ -z "$PERSONAL_DEV_ENV" ]; then
+                echo "Error: PERSONAL_DEV_ENV not set"
+                return 1
+            fi
+
+            if [ -z "$profile" ]; then
+                echo "Select Claude profile:"
+                select profile in "default" "glm4.5-air"; do
+                    if [ -n "$profile" ]; then
+                        break
+                    fi
+                done
+            fi
+
+            # Handle authentication based on profile
+            if [ "$profile" = "default" ]; then
+                # Default profile uses claude.ai login, unset API key vars
+                unset ANTHROPIC_API_KEY
+                unset ANTHROPIC_BASE_URL
+                claude
+            elif [ "$profile" = "glm4.5-air" ]; then
+                # LiteLLM profile needs API key, source the env file
+                source ${PERSONAL_DEV_ENV}/ai-profiles/claude/glm4.5-air.env
+                if [ -n "$DEFAULT_MODEL" ]; then
+                    claude --model $DEFAULT_MODEL
+                else
+                    claude
+                fi
+            else
+                echo "Unknown profile: $profile"
+                return 1
+            fi
+            ;;
+
+        codex)
+            if [ -z "$PERSONAL_DEV_ENV" ]; then
+                echo "Error: PERSONAL_DEV_ENV not set"
+                return 1
+            fi
+
+            if [ -z "$profile" ]; then
+                echo "Select Codex configuration:"
+                local configs=($(ls ${PERSONAL_DEV_ENV}/ai-profiles/*.toml 2>/dev/null | xargs -n1 basename | sed 's/.toml$//'))
+                if [ ${#configs[@]} -eq 0 ]; then
+                    echo "No configurations found"
+                    return 1
+                fi
+                select config in "${configs[@]}"; do
+                    if [ -n "$config" ]; then
+                        make -C ${PERSONAL_DEV_ENV} codex CONFIG=${config}
+                        break
+                    fi
+                done
+            else
+                make -C ${PERSONAL_DEV_ENV} codex CONFIG=${profile}
+            fi
+            ;;
+
+        *)
+            echo "Unknown tool: $tool"
+            echo "Available tools: aider, claude, codex"
+            return 1
+            ;;
+    esac
+}
