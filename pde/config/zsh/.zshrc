@@ -86,23 +86,26 @@ alias codex='make -C ${PERSONAL_DEV_ENV} codex'
 # AI Tools CLI - Unified launcher for aider, claude, and codex
 ai() {
     if [ -z "$1" ]; then
-        echo "Usage: ai <tool> [profile]"
+        echo "Usage: ai <tool> [model|profile]"
         echo ""
         echo "Available tools:"
-        echo "  aider          - Launch Aider with --subtree-only"
-        echo "  claude [prof]  - Launch Claude Code (default, glm4.5-air)"
-        echo "  codex [config] - Launch Codex with configuration"
+        echo "  aider              - Launch Aider with --subtree-only"
+        echo "  claude [model]     - Launch Claude Code with local models"
+        echo "  claude default     - Launch Claude Code with Anthropic API"
+        echo "  codex [config]     - Launch Codex with configuration"
         echo ""
         echo "Examples:"
         echo "  ai aider"
         echo "  ai claude"
-        echo "  ai claude glm4.5-air"
+        echo "  ai claude openai/glm4.5-air-reap"
+        echo "  ai claude openai/qwen3-30b-a3b-thinking"
+        echo "  ai claude default"
         echo "  ai codex"
         return 1
     fi
 
     local tool=$1
-    local profile=$2
+    local arg=$2
 
     case $tool in
         aider)
@@ -115,32 +118,17 @@ ai() {
                 return 1
             fi
 
-            if [ -z "$profile" ]; then
-                echo "Select Claude profile:"
-                select profile in "default" "glm4.5-air"; do
-                    if [ -n "$profile" ]; then
-                        break
-                    fi
-                done
-            fi
-
-            # Handle authentication based on profile
-            if [ "$profile" = "default" ]; then
-                # Default profile uses claude.ai login, unset API key vars
-                unset ANTHROPIC_API_KEY
-                unset ANTHROPIC_BASE_URL
-                claude
-            elif [ "$profile" = "glm4.5-air" ]; then
-                # LiteLLM profile needs API key, source the env file
-                source ${PERSONAL_DEV_ENV}/ai-profiles/claude/glm4.5-air.env
-                if [ -n "$DEFAULT_MODEL" ]; then
-                    claude --model $DEFAULT_MODEL
-                else
-                    claude
-                fi
+            # If no argument or argument is "default", use PROFILE
+            # Otherwise treat argument as MODEL
+            if [ -z "$arg" ]; then
+                # No argument: use local profile with default model
+                make -C ${PERSONAL_DEV_ENV} claude
+            elif [ "$arg" = "default" ]; then
+                # Use official Anthropic API
+                make -C ${PERSONAL_DEV_ENV} claude PROFILE=default
             else
-                echo "Unknown profile: $profile"
-                return 1
+                # Treat argument as model name
+                make -C ${PERSONAL_DEV_ENV} claude MODEL="$arg"
             fi
             ;;
 
