@@ -118,17 +118,20 @@ ai() {
                 return 1
             fi
 
+            # Capture current directory before make changes it
+            local current_dir=$(pwd)
+
             # If no argument or argument is "default", use PROFILE
             # Otherwise treat argument as MODEL
             if [ -z "$arg" ]; then
                 # No argument: use local profile with default model
-                make -C ${PERSONAL_DEV_ENV} claude
+                make -C ${PERSONAL_DEV_ENV} claude LAUNCH_DIR="$current_dir"
             elif [ "$arg" = "default" ]; then
                 # Use official Anthropic API
-                make -C ${PERSONAL_DEV_ENV} claude PROFILE=default
+                make -C ${PERSONAL_DEV_ENV} claude PROFILE=default LAUNCH_DIR="$current_dir"
             else
                 # Treat argument as model name
-                make -C ${PERSONAL_DEV_ENV} claude MODEL="$arg"
+                make -C ${PERSONAL_DEV_ENV} claude MODEL="$arg" LAUNCH_DIR="$current_dir"
             fi
             ;;
 
