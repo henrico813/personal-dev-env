@@ -80,12 +80,16 @@ claude: ## Launch Claude Code (PROFILE=local|default, MODEL=<model-name>)
 		ls -1 $(CONFIG_DIR)/claude/*.env | xargs -n1 basename | sed 's/.env//' | sed 's/^/  /'; \
 		exit 1; \
 	fi; \
+	launch_dir="$(LAUNCH_DIR)"; \
+	if [ -z "$$launch_dir" ]; then \
+		launch_dir=$$(pwd); \
+	fi; \
 	if [ -n "$(MODEL)" ]; then \
 		echo "$(BLUE)Launching Claude Code with profile '$$profile' and model '$(MODEL)'$(NC)"; \
-		source $(CONFIG_DIR)/claude/$$profile.env && claude --model $(MODEL); \
+		source $(CONFIG_DIR)/claude/$$profile.env && cd "$$launch_dir" && claude --model $(MODEL); \
 	else \
 		echo "$(BLUE)Launching Claude Code with profile '$$profile'$(NC)"; \
-		source $(CONFIG_DIR)/claude/$$profile.env && \
+		source $(CONFIG_DIR)/claude/$$profile.env && cd "$$launch_dir" && \
 		if [ -n "$$DEFAULT_MODEL" ]; then \
 			echo "$(YELLOW)Using default model: $$DEFAULT_MODEL$(NC)"; \
 			claude --model $$DEFAULT_MODEL; \
