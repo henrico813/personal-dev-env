@@ -29,19 +29,21 @@ help: ## Display all available commands with descriptions
 	@grep -E '^codex:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Claude Code Commands:$(NC)"
-	@grep -E '^claude-.*?:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^claude:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Configuration Management:$(NC)"
 	@grep -E '^(list-configs|create-config):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make codex                           # Default OpenAI configuration"
-	@echo "  make codex CONFIG=my-litellm         # Custom configuration"
-	@echo "  make claude-default                  # Claude with Anthropic API"
-	@echo "  make claude-glm4.5-air               # Claude with GLM4.5 Air"
-	@echo "  make create-config CONFIG=my-litellm"
+	@echo "  make codex                                      # Default OpenAI configuration"
+	@echo "  make codex CONFIG=my-litellm                    # Custom configuration"
+	@echo "  make claude                                     # Local models (uses default model)"
+	@echo "  make claude MODEL=openai/glm4.5-air-reap        # Specify model"
+	@echo "  make claude MODEL=openai/qwen3-30b-a3b-thinking # Another model"
+	@echo "  make claude PROFILE=default                     # Use Anthropic API"
+	@echo "  make create-config CONFIG=my-litellm            # Create new codex config"
 	@echo ""
-	@echo "$(GREEN)Note:$(NC) Model and provider settings are defined in config files"
+	@echo "$(GREEN)Note:$(NC) Model names must match those configured in your LiteLLM proxy"
 
 # ============================================================================
 # Main Codex Launcher
@@ -69,28 +71,28 @@ codex: ## Launch Codex (default or CONFIG=<name> for custom)
 # Claude Code Launcher
 # ============================================================================
 
-.PHONY: claude-default
-claude-default: ## Launch Claude Code with default Anthropic profile
-	@if [ ! -f "$(CONFIG_DIR)/claude/default.env" ]; then \
-		echo "$(RED)Error:$(NC) Default profile not found at $(CONFIG_DIR)/claude/default.env"; \
+.PHONY: claude
+claude: ## Launch Claude Code (PROFILE=local|default, MODEL=<model-name>)
+	@profile=$${PROFILE:-local}; \
+	if [ ! -f "$(CONFIG_DIR)/claude/$$profile.env" ]; then \
+		echo "$(RED)Error:$(NC) Profile '$$profile' not found at $(CONFIG_DIR)/claude/$$profile.env"; \
+		echo "$(YELLOW)Available profiles:$(NC)"; \
+		ls -1 $(CONFIG_DIR)/claude/*.env | xargs -n1 basename | sed 's/.env//' | sed 's/^/  /'; \
 		exit 1; \
-	fi
-	@echo "$(BLUE)Launching Claude Code with default profile$(NC)"
-	@source $(CONFIG_DIR)/claude/default.env && claude
-
-.PHONY: claude-glm4.5-air
-claude-glm4.5-air: ## Launch Claude Code with GLM4.5 Air model via LiteLLM
-	@if [ ! -f "$(CONFIG_DIR)/claude/glm4.5-air.env" ]; then \
-		echo "$(RED)Error:$(NC) GLM4.5 Air profile not found at $(CONFIG_DIR)/claude/glm4.5-air.env"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Launching Claude Code with GLM4.5 Air profile$(NC)"
-	@source $(CONFIG_DIR)/claude/glm4.5-air.env && \
+	fi; \
+	if [ -n "$(MODEL)" ]; then \
+		echo "$(BLUE)Launching Claude Code with profile '$$profile' and model '$(MODEL)'$(NC)"; \
+		source $(CONFIG_DIR)/claude/$$profile.env && claude --model $(MODEL); \
+	else \
+		echo "$(BLUE)Launching Claude Code with profile '$$profile'$(NC)"; \
+		source $(CONFIG_DIR)/claude/$$profile.env && \
 		if [ -n "$$DEFAULT_MODEL" ]; then \
+			echo "$(YELLOW)Using default model: $$DEFAULT_MODEL$(NC)"; \
 			claude --model $$DEFAULT_MODEL; \
 		else \
 			claude; \
-		fi
+		fi; \
+	fi
 
 # ============================================================================
 # Configuration Management
@@ -154,4 +156,4 @@ clean: ## Remove any generated files
 	@echo "$(GREEN)✓$(NC) Clean complete"
 
 # Declare all targets as phony
-.PHONY: help codex claude-default claude-glm4.5-air list-configs create-config clean
+.PHONY: help codex claude list-configs create-config clean
