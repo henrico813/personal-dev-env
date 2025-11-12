@@ -55,6 +55,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 export BAT_THEME="gruvbox-dark"
 
+# EDITOR
+export EDITOR=$(which nvim)
+
 # nix
 #if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
