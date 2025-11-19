@@ -8,6 +8,38 @@
       - imagemagick
     state: present
 
+- name: Install nvm
+  become: yes
+  become_user: "{{ user }}"
+  shell: |
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+  args:
+    creates: "{{ user_home }}/.nvm/nvm.sh"
+  environment:
+    NVM_DIR: "{{ user_home }}/.nvm"
+
+- name: Install Node.js 20 via nvm
+  become: yes
+  become_user: "{{ user }}"
+  shell: |
+    source {{ user_home }}/.nvm/nvm.sh
+    nvm install 20
+    nvm alias default 20
+  args:
+    executable: /bin/bash
+    creates: "{{ user_home }}/.nvm/versions/node/v20"
+
+- name: Configure npm global directory
+  become: yes
+  become_user: "{{ user }}"
+  shell: |
+    source {{ user_home }}/.nvm/nvm.sh
+    mkdir -p {{ user_home }}/.npm-global
+    npm config set prefix '{{ user_home }}/.npm-global'
+  args:
+    executable: /bin/bash
+    creates: "{{ user_home }}/.npmrc"
+
 - name: check(tools) if the TGUI file manager is already installed
   stat:
     path: "{{ user_home }}/.cargo/bin/yazi"
@@ -74,8 +106,11 @@
     - name: install(tools) OpenAI Codex
       become: yes
       become_user: "{{ user }}"
-      shell: npm install -g @openai/codex
+      shell: |
+        source {{ user_home }}/.nvm/nvm.sh
+        npm install -g @openai/codex
       args:
+        executable: /bin/bash
         creates: "{{ user_home }}/.npm-global/bin/codex"
 
   when: not codex_installed.stat.exists
@@ -91,8 +126,11 @@
     - name: install(tools) Claude Code
       become: yes
       become_user: "{{ user }}"
-      shell: npm install -g @anthropic-ai/claude-code
+      shell: |
+        source {{ user_home }}/.nvm/nvm.sh
+        npm install -g @anthropic-ai/claude-code
       args:
+        executable: /bin/bash
         creates: "{{ user_home }}/.npm-global/bin/claude"
 
   when: not claude_installed.stat.exists
