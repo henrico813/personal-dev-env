@@ -27,7 +27,6 @@
   apt:
     name:
       - git
-      - npm
       - python3
     state: present
 
