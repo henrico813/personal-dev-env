@@ -59,6 +59,9 @@ export BAT_THEME="gruvbox-dark"
 # EDITOR
 export EDITOR=$(which nvim)
 
+# LITELLM
+# export LITELLM_MASTER_KEY=<your-litellm-master-key>
+
 # nix
 #if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
