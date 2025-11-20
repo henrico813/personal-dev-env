@@ -95,7 +95,8 @@ ai() {
         echo "  aider              - Launch Aider with --subtree-only"
         echo "  claude [model]     - Launch Claude Code with local models"
         echo "  claude default     - Launch Claude Code with Anthropic API"
-        echo "  codex [config]     - Launch Codex with configuration"
+        echo "  codex [model]      - Launch Codex with local models"
+        echo "  codex default      - Launch Codex with OpenAI API"
         echo ""
         echo "Examples:"
         echo "  ai aider"
@@ -104,6 +105,9 @@ ai() {
         echo "  ai claude openai/qwen3-30b-a3b-thinking"
         echo "  ai claude default"
         echo "  ai codex"
+        echo "  ai codex openai/glm4.5-air-helium"
+        echo "  ai codex o3-mini"
+        echo "  ai codex default"
         return 1
     fi
 
@@ -144,21 +148,20 @@ ai() {
                 return 1
             fi
 
-            if [ -z "$profile" ]; then
-                echo "Select Codex configuration:"
-                local configs=($(ls ${PERSONAL_DEV_ENV}/ai-profiles/*.toml 2>/dev/null | xargs -n1 basename | sed 's/.toml$//'))
-                if [ ${#configs[@]} -eq 0 ]; then
-                    echo "No configurations found"
-                    return 1
-                fi
-                select config in "${configs[@]}"; do
-                    if [ -n "$config" ]; then
-                        make -C ${PERSONAL_DEV_ENV} codex CONFIG=${config}
-                        break
-                    fi
-                done
+            # Capture current directory before make changes it
+            local current_dir=$(pwd)
+
+            # If no argument or argument is "default", use PROFILE
+            # Otherwise treat argument as MODEL
+            if [ -z "$arg" ]; then
+                # No argument: use local profile with default model
+                make -C ${PERSONAL_DEV_ENV} codex LAUNCH_DIR="$current_dir"
+            elif [ "$arg" = "default" ]; then
+                # Use official OpenAI API
+                make -C ${PERSONAL_DEV_ENV} codex PROFILE=default LAUNCH_DIR="$current_dir"
             else
-                make -C ${PERSONAL_DEV_ENV} codex CONFIG=${profile}
+                # Treat argument as model name
+                make -C ${PERSONAL_DEV_ENV} codex MODEL="$arg" LAUNCH_DIR="$current_dir"
             fi
             ;;
 
