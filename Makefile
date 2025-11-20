@@ -31,17 +31,15 @@ help: ## Display all available commands with descriptions
 	@echo "$(GREEN)Claude Code Commands:$(NC)"
 	@grep -E '^claude:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
-	@echo "$(GREEN)Configuration Management:$(NC)"
-	@grep -E '^(list-configs|create-config):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
-	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make codex                                      # Default OpenAI configuration"
-	@echo "  make codex CONFIG=my-litellm                    # Custom configuration"
+	@echo "  make codex                                      # Local models (uses default model)"
+	@echo "  make codex MODEL=openai/glm4.5-air-helium      # Specify model"
+	@echo "  make codex MODEL=o3-mini                       # Another model"
+	@echo "  make codex PROFILE=default                     # Use OpenAI API"
 	@echo "  make claude                                     # Local models (uses default model)"
 	@echo "  make claude MODEL=openai/glm4.5-air-reap        # Specify model"
 	@echo "  make claude MODEL=openai/qwen3-30b-a3b-thinking # Another model"
 	@echo "  make claude PROFILE=default                     # Use Anthropic API"
-	@echo "  make create-config CONFIG=my-litellm            # Create new codex config"
 	@echo ""
 	@echo "$(GREEN)Note:$(NC) Model names must match those configured in your LiteLLM proxy"
 
@@ -50,22 +48,25 @@ help: ## Display all available commands with descriptions
 # ============================================================================
 
 .PHONY: codex
-codex: ## Launch Codex (default or CONFIG=<name> for custom)
-	@if [ -z "$(CONFIG)" ]; then \
-		echo "$(BLUE)Launching Codex with default configuration$(NC)"; \
-		cd $(CONFIG_DIR) && ln -sf default.toml config.toml; \
-		CODEX_HOME=$(CONFIG_DIR) codex; \
-	else \
-		if [ ! -f "$(CONFIG_DIR)/$(CONFIG).toml" ]; then \
-			echo "$(RED)Error:$(NC) Configuration '$(CONFIG)' not found"; \
-			echo ""; \
-			$(MAKE) -s list-configs; \
-			exit 1; \
-		fi; \
-		echo "$(BLUE)Launching Codex with configuration: $(CONFIG)$(NC)"; \
-		cd $(CONFIG_DIR) && ln -sf $(CONFIG).toml config.toml; \
-		CODEX_HOME=$(CONFIG_DIR) codex; \
-	fi
+codex: ## Launch Codex (PROFILE=local|default, MODEL=<model-name>)
+	@profile=$${PROFILE:-local}; \
+	if [ ! -f "$(CONFIG_DIR)/codex/$$profile.toml" ]; then \
+		echo "$(RED)Error:$(NC) Profile '$$profile' not found at $(CONFIG_DIR)/codex/$$profile.toml"; \
+		echo "$(YELLOW)Available profiles:$(NC)"; \
+		ls -1 $(CONFIG_DIR)/codex/*.toml 2>/dev/null | xargs -n1 basename | sed 's/.toml//' | sed 's/^/  /'; \
+		exit 1; \
+	fi; \
+	launch_dir="$(LAUNCH_DIR)"; \
+	if [ -z "$$launch_dir" ]; then \
+		launch_dir=$$(pwd); \
+	fi; \
+	model="$(MODEL)"; \
+	if [ -z "$$model" ]; then \
+		model="gpt-5-codex"; \
+	fi; \
+	echo "$(BLUE)Launching Codex with profile '$$profile' and model '$$model'$(NC)"; \
+	cd $(CONFIG_DIR)/codex && ln -sf $$profile.toml config.toml; \
+	cd "$$launch_dir" && CODEX_HOME=$(CONFIG_DIR)/codex codex --model "$$model"
 
 # ============================================================================
 # Claude Code Launcher
@@ -99,57 +100,6 @@ claude: ## Launch Claude Code (PROFILE=local|default, MODEL=<model-name>)
 	fi
 
 # ============================================================================
-# Configuration Management
-# ============================================================================
-
-.PHONY: list-configs
-list-configs: ## Show all available configurations
-	@echo "$(BLUE)Available Configurations:$(NC)"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@for config in $(CONFIG_DIR)/*.toml; do \
-		if [ -f "$$config" ]; then \
-			name=$$(basename "$$config" .toml); \
-			model=$$(grep -E "^model = " "$$config" 2>/dev/null | cut -d'"' -f2); \
-			provider=$$(grep -E "^model_provider = " "$$config" 2>/dev/null | cut -d'"' -f2); \
-			if [ -n "$$model" ] && [ -n "$$provider" ]; then \
-				printf "  $(YELLOW)%-20s$(NC) Model: $(GREEN)%s$(NC), Provider: $(GREEN)%s$(NC)\n" "$$name" "$$model" "$$provider"; \
-			elif [ -n "$$model" ]; then \
-				printf "  $(YELLOW)%-20s$(NC) Model: $(GREEN)%s$(NC)\n" "$$name" "$$model"; \
-			else \
-				printf "  $(YELLOW)%-20s$(NC)\n" "$$name"; \
-			fi; \
-		fi; \
-	done
-	@echo ""
-	@echo "Usage: make codex CONFIG=<name>"
-
-.PHONY: create-config
-create-config: ## Create new configuration from template (CONFIG=<name>)
-	@if [ -z "$(CONFIG)" ]; then \
-		echo "$(RED)Error:$(NC) CONFIG argument required"; \
-		echo "$(YELLOW)Usage:$(NC) make create-config CONFIG=<name>"; \
-		exit 1; \
-	fi
-	@if [ -f "$(CONFIG_DIR)/$(CONFIG).toml" ]; then \
-		echo "$(YELLOW)Warning:$(NC) Configuration '$(CONFIG)' already exists"; \
-		echo "Edit it at: $(CONFIG_DIR)/$(CONFIG).toml"; \
-		exit 1; \
-	fi
-	@cp $(CONFIG_DIR)/litellm-template.toml $(CONFIG_DIR)/$(CONFIG).toml
-	@echo "$(GREEN)✓$(NC) Created new configuration: $(CONFIG)"
-	@echo ""
-	@echo "$(YELLOW)⚠ IMPORTANT:$(NC) Edit your configuration and uncomment/set these values:"
-	@echo "  - model = \"your-model-name\""
-	@echo "  - model_provider = \"your-provider\""
-	@echo "  - [model_providers.your-provider] section"
-	@echo ""
-	@echo "Edit your configuration at:"
-	@echo "  $(CONFIG_DIR)/$(CONFIG).toml"
-	@echo ""
-	@echo "Then use it with:"
-	@echo "  make codex CONFIG=$(CONFIG)"
-
-# ============================================================================
 # Utility Targets
 # ============================================================================
 
@@ -160,4 +110,4 @@ clean: ## Remove any generated files
 	@echo "$(GREEN)✓$(NC) Clean complete"
 
 # Declare all targets as phony
-.PHONY: help codex claude list-configs create-config clean
+.PHONY: help codex claude clean
