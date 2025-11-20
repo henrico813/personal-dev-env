@@ -32,7 +32,14 @@ alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
 # codex shortcut for neuro profile
-alias ask='codex e -p neuro'
+function ask() {
+    echo "user:"
+    echo "$@"
+    echo ""
+    echo "ai:"
+    codex e -p neuro "$@" --json 2>/dev/null | \
+        jq -r 'select(.type == "item.completed") | .item.text'
+}
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
