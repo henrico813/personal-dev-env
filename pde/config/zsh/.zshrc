@@ -31,7 +31,8 @@ alias ls='eza -al'
 alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
-# aider shortcut (moved to ai function below) 
+# codex shortcut for neuro profile
+alias ask='codex e -p neuro'
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
