@@ -77,37 +77,20 @@ setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
 setopt APPEND_HISTORY         # Append to history file rather than overwriting
 setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
 
-# AI
-# aider configs
-export OLLAMA_API_BASE='http://192.168.100.158:11434'
-
-# Codex Integration
-# Run Codex Makefile from anywhere
-export PERSONAL_DEV_ENV="${HOME}/Projects/personal-dev-env"
-alias codex='make -C ${PERSONAL_DEV_ENV} codex'
-
-# AI Tools CLI - Unified launcher for aider, claude, and codex
+# AI Tools CLI - Unified launcher for claude
 ai() {
     if [ -z "$1" ]; then
         echo "Usage: ai <tool> [model|profile]"
         echo ""
         echo "Available tools:"
-        echo "  aider              - Launch Aider with --subtree-only"
         echo "  claude [model]     - Launch Claude Code with local models"
         echo "  claude default     - Launch Claude Code with Anthropic API"
-        echo "  codex [model]      - Launch Codex with local models"
-        echo "  codex default      - Launch Codex with OpenAI API"
         echo ""
         echo "Examples:"
-        echo "  ai aider"
         echo "  ai claude"
         echo "  ai claude openai/glm4.5-air-reap"
         echo "  ai claude openai/qwen3-30b-a3b-thinking"
         echo "  ai claude default"
-        echo "  ai codex"
-        echo "  ai codex openai/glm4.5-air-helium"
-        echo "  ai codex o3-mini"
-        echo "  ai codex default"
         return 1
     fi
 
@@ -141,33 +124,9 @@ ai() {
                 make -C ${PERSONAL_DEV_ENV} claude MODEL="$arg" LAUNCH_DIR="$current_dir"
             fi
             ;;
-
-        codex)
-            if [ -z "$PERSONAL_DEV_ENV" ]; then
-                echo "Error: PERSONAL_DEV_ENV not set"
-                return 1
-            fi
-
-            # Capture current directory before make changes it
-            local current_dir=$(pwd)
-
-            # If no argument or argument is "default", use PROFILE
-            # Otherwise treat argument as MODEL
-            if [ -z "$arg" ]; then
-                # No argument: use local profile with default model
-                make -C ${PERSONAL_DEV_ENV} codex LAUNCH_DIR="$current_dir"
-            elif [ "$arg" = "default" ]; then
-                # Use official OpenAI API
-                make -C ${PERSONAL_DEV_ENV} codex PROFILE=default LAUNCH_DIR="$current_dir"
-            else
-                # Treat argument as model name
-                make -C ${PERSONAL_DEV_ENV} codex MODEL="$arg" LAUNCH_DIR="$current_dir"
-            fi
-            ;;
-
         *)
             echo "Unknown tool: $tool"
-            echo "Available tools: aider, claude, codex"
+            echo "Available tools: claude"
             return 1
             ;;
     esac
