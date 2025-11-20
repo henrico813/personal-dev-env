@@ -1,8 +1,8 @@
 ---
-- name: Update and upgrade apt packages
+- name: Update apt cache
   apt:
     update_cache: yes
-    upgrade: dist
+    cache_valid_time: 3600
 
 - name: Install necessary packages
   apt:
@@ -21,14 +21,14 @@
       - ttf-mscorefonts-installer
       - fonts-powerline
       - unzip
-    state: present
+    state: latest
 
 - name: Install development dependencies
   apt:
     name:
       - git
       - python3
-    state: present
+    state: latest
 
 - name: Check if Rust is already installed
   stat:
