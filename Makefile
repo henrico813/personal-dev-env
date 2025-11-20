@@ -25,48 +25,16 @@ help: ## Display all available commands with descriptions
 	@echo "$(BLUE)Personal Dev Env - AI Tool Launcher$(NC)"
 	@echo "=================================="
 	@echo ""
-	@echo "$(GREEN)Codex Commands:$(NC)"
-	@grep -E '^codex:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
-	@echo ""
 	@echo "$(GREEN)Claude Code Commands:$(NC)"
 	@grep -E '^claude:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-35s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make codex                                      # Local models (uses default model)"
-	@echo "  make codex MODEL=openai/glm4.5-air-helium      # Specify model"
-	@echo "  make codex MODEL=o3-mini                       # Another model"
-	@echo "  make codex PROFILE=default                     # Use OpenAI API"
 	@echo "  make claude                                     # Local models (uses default model)"
 	@echo "  make claude MODEL=openai/glm4.5-air-reap        # Specify model"
 	@echo "  make claude MODEL=openai/qwen3-30b-a3b-thinking # Another model"
 	@echo "  make claude PROFILE=default                     # Use Anthropic API"
 	@echo ""
 	@echo "$(GREEN)Note:$(NC) Model names must match those configured in your LiteLLM proxy"
-
-# ============================================================================
-# Main Codex Launcher
-# ============================================================================
-
-.PHONY: codex
-codex: ## Launch Codex (PROFILE=local|default, MODEL=<model-name>)
-	@profile=$${PROFILE:-local}; \
-	if [ ! -f "$(CONFIG_DIR)/codex/$$profile.toml" ]; then \
-		echo "$(RED)Error:$(NC) Profile '$$profile' not found at $(CONFIG_DIR)/codex/$$profile.toml"; \
-		echo "$(YELLOW)Available profiles:$(NC)"; \
-		ls -1 $(CONFIG_DIR)/codex/*.toml 2>/dev/null | xargs -n1 basename | sed 's/.toml//' | sed 's/^/  /'; \
-		exit 1; \
-	fi; \
-	launch_dir="$(LAUNCH_DIR)"; \
-	if [ -z "$$launch_dir" ]; then \
-		launch_dir=$$(pwd); \
-	fi; \
-	model="$(MODEL)"; \
-	if [ -z "$$model" ]; then \
-		model="gpt-5-codex"; \
-	fi; \
-	echo "$(BLUE)Launching Codex with profile '$$profile' and model '$$model'$(NC)"; \
-	cd $(CONFIG_DIR)/codex && ln -sf $$profile.toml config.toml; \
-	cd "$$launch_dir" && CODEX_HOME=$(CONFIG_DIR)/codex codex --model "$$model"
 
 # ============================================================================
 # Claude Code Launcher
