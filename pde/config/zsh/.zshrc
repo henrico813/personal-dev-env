@@ -33,12 +33,9 @@ alias fd='fdfind'
 alias yazi='~/.cargo/bin/yazi'
 # codex shortcut for neuro profile
 function ask() {
-    echo "user:"
-    echo "$@"
-    echo ""
-    echo "ai:"
-    codex e -p neuro "$@" --json 2>/dev/null | \
-        jq -r 'select(.type == "item.completed") | .item.text'
+    # Use --output-last-message to get only the clean formatted AI response
+    codex e -p neuro "$@" --color always --output-last-message /tmp/ask_response.txt 2>/dev/null
+    cat /tmp/ask_response.txt
 }
 
 # DIRCOLORS (MacOS)
