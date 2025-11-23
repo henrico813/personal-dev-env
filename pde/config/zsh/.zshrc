@@ -31,10 +31,10 @@ alias ls='eza -al'
 alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
-# codex shortcut for neuro profile
+# codex shortcut for neuro20b profile
 function ask() {
     # Use --output-last-message to get only the clean formatted AI response
-    codex e -p neuro "$@" --color always --output-last-message /tmp/ask_response.txt 2>/dev/null
+    codex e -p neuro20b "$@" --color always --output-last-message /tmp/ask_response.txt 2>/dev/null
     cat /tmp/ask_response.txt
 }
 
@@ -49,10 +49,10 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 # nvim path may help git use nvim
 export PATH="$PATH:/opt/nvim/"
 # use local, useful for aider
-export PATH="$PATH/.local/bin"
+export PATH="$PATH:$HOME/.local/bin"
 # add rust to path
-export PATH="$PATH:/.cargo/bin"
-export PATH="$PATH:/.rustup/bin"
+export PATH="$PATH:$HOME/.cargo/bin"
+export PATH="$PATH:$HOME/.rustup/bin"
 export PATH="$HOME/.cargo/bin:$PATH"
 
 # export PATH=${PATH}:/usr/local/go/bin
