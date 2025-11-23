@@ -45,6 +45,11 @@ export CLICOLOR=1
 export FZF_DEFAULT_COMMAND="rg --files --hidden --glob '!.git'"
 export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1"
 
+# PDE Configuration - Load install paths
+if [[ -f "${HOME}/.config/pde/paths.env" ]]; then
+    source "${HOME}/.config/pde/paths.env"
+fi
+
 # PATH
 # nvim path may help git use nvim
 export PATH="$PATH:/opt/nvim/"
@@ -111,8 +116,15 @@ ai() {
             ;;
 
         claude)
-            if [ -z "$PERSONAL_DEV_ENV" ]; then
-                echo "Error: PERSONAL_DEV_ENV not set"
+            if [ -z "$PDE_INSTALL_PATH" ]; then
+                echo "Error: PDE not configured. Config file missing at ~/.config/pde/paths.env"
+                echo "Please run the Ansible playbook to configure your environment."
+                return 1
+            fi
+
+            if [ ! -f "$PDE_INSTALL_PATH/Makefile" ]; then
+                echo "Error: PDE Makefile not found at $PDE_INSTALL_PATH/Makefile"
+                echo "The repository may have moved. Update ~/.config/pde/paths.env with the correct path."
                 return 1
             fi
 
@@ -123,13 +135,13 @@ ai() {
             # Otherwise treat argument as MODEL
             if [ -z "$arg" ]; then
                 # No argument: use local profile with default model
-                make -C ${PERSONAL_DEV_ENV} claude LAUNCH_DIR="$current_dir"
+                make -C ${PDE_INSTALL_PATH} claude LAUNCH_DIR="$current_dir"
             elif [ "$arg" = "default" ]; then
                 # Use official Anthropic API
-                make -C ${PERSONAL_DEV_ENV} claude PROFILE=default LAUNCH_DIR="$current_dir"
+                make -C ${PDE_INSTALL_PATH} claude PROFILE=default LAUNCH_DIR="$current_dir"
             else
                 # Treat argument as model name
-                make -C ${PERSONAL_DEV_ENV} claude MODEL="$arg" LAUNCH_DIR="$current_dir"
+                make -C ${PDE_INSTALL_PATH} claude MODEL="$arg" LAUNCH_DIR="$current_dir"
             fi
             ;;
         *)
