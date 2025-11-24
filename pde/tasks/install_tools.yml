@@ -47,18 +47,51 @@
 
 - name: func_setup_yazi
   block:
-    - name: func_yazi_install 
+    - name: func_yazi_install
       block:
 
-      - name: install(tools) TGUI file manager
+      - name: Download yazi pre-built binary
+        get_url:
+          url: https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip
+          dest: /tmp/yazi.zip
+          mode: '0644'
+
+      - name: Extract yazi binary
+        unarchive:
+          src: /tmp/yazi.zip
+          dest: /tmp/
+          remote_src: yes
+
+      - name: Install yazi binary
         become: yes
-        become_user: "{{ user }}"
-        shell: "{{ user_home }}/.cargo/bin/cargo install --locked yazi-fm yazi-cli"
-        args:
-          creates: "{{ user_home }}/.cargo/bin/yazi"
+        copy:
+          src: /tmp/yazi-x86_64-unknown-linux-gnu/yazi
+          dest: "{{ user_home }}/.cargo/bin/yazi"
+          mode: '0755'
+          owner: "{{ user }}"
+          group: "{{ user }}"
+          remote_src: yes
+
+      - name: Install ya (yazi CLI) binary
+        become: yes
+        copy:
+          src: /tmp/yazi-x86_64-unknown-linux-gnu/ya
+          dest: "{{ user_home }}/.cargo/bin/ya"
+          mode: '0755'
+          owner: "{{ user }}"
+          group: "{{ user }}"
+          remote_src: yes
+
+      - name: Cleanup yazi download
+        file:
+          path: "{{ item }}"
+          state: absent
+        loop:
+          - /tmp/yazi.zip
+          - /tmp/yazi-x86_64-unknown-linux-gnu
 
       when: not yazi_installed.stat.exists
-          
+
     - name: func_ueberzugpp_install
       block:
 
@@ -68,13 +101,6 @@
           deb: https://download.opensuse.org/repositories/home:/justkidding/xUbuntu_24.04/amd64/ueberzugpp_2.9.7_amd64.deb
           state: present
         ignore_errors: yes
-
-    - name: install(tools) Update TGUI file manager 
-      become: yes
-      become_user: "{{ user }}"
-      shell: "{{ user_home }}/.cargo/bin/rustup update"
-      when: yazi_installed.stat.exists
-      ignore_errors: yes
 
   when: not yazi_installed.stat.exists
 
