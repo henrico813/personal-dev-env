@@ -135,6 +135,16 @@
 
   when: not claude_installed.stat.exists
 
+- name: Ensure .codex directory exists
+  file:
+    path: "{{ user_home }}/.codex"
+    state: directory
+    owner: "{{ user }}"
+    group: "{{ user }}"
+    mode: '0755'
+  become: yes
+  become_user: "{{ user }}"
+
 - name: Copy config files for aider, codex
   copy:
     src: "{{ item.src }}"
