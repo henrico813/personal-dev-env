@@ -35,6 +35,8 @@
     tool_cfgs:
       - src: "config/aider/.aider.conf.yml"
         dest: "{{ user_home }}/.aider.conf.yml"
+      - src: "../ai-profiles/codex/config.toml"
+        dest: "{{ user_home }}/.codex/config.toml"
 
   tasks:
     # ============================================
