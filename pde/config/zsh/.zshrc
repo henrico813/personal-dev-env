@@ -3,9 +3,16 @@
 export NVM_DIR=${HOME}/.nvm
 export NVM_COMPLETION=true
 
+# Disable terminal flow control to enable Ctrl-S for forward history search
+stty -ixon
+
 # Plugin management using antidote
 source ${ZDOTDIR:-$HOME}/.local/share/antidote/antidote.zsh
 antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
+
+# Fix Ctrl-R and Ctrl-S for history search (must be after plugins load)
+bindkey '^R' history-incremental-search-backward
+bindkey '^S' history-incremental-search-forward
 
 # Bundle zsh plugins via antibody
 alias update-antibody='antibody bundle < $HOME/.zsh_plugins.txt > $HOME/.zsh_plugins.sh'
