@@ -140,12 +140,15 @@
       when: install_neovim | default(true)
       tags: [system, neovim]
 
-    - name: Create neovim symlink
+    - name: Create neovim symlinks
       file:
         src: /opt/nvim
-        dest: /usr/local/bin/vim
+        dest: "/usr/local/bin/{{ item }}"
         state: link
         force: yes
+      loop:
+        - vim
+        - nvim
       when: install_neovim | default(true)
       tags: [system, neovim]
 
