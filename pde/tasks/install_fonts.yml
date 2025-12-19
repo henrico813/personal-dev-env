@@ -1,118 +1,45 @@
-# Font Installation Playbook 
-#
-# ## Description
-#
-# This playbook configures a Linux system with user accounts, fonts, shell environment, and development tools.
-#
-# ## Usage
-#
-# ```bash
-# # Basic usage
-# ansible-playbook system-setup.yml --extra-vars "user=myuser"
-#
-# # Run specific components
-# ansible-playbook system-setup.yml --tags "fonts,shell"
-#
-# # Skip development tools
-# ansible-playbook system-setup.yml --skip-tags "dev"
-# ```
-#
-# ## Tags
-#
-# | Tag | Description |
-# |-----|-------------|
-# | `system` | System-level configuration (locale, timezone) |
-# | `user` | User account management and sudo configuration |
-# | `fonts` | Nerd Fonts installation and configuration |
-# | `shell` | Shell environment setup (zsh, antibody, themes) |
-# | `dev` | Development tools (nvm, nodejs, nvim, tmux) |
-# | `cleanup` | File ownership and cleanup tasks |
-#
-# ## Notes
-#
-# - Uses `loop_control.label` for cleaner output during loops
-# - Tasks are idempotent and can be run multiple times
-# - Font installation is conditional to avoid re-downloading
-#
 ---
-- name: "Create fonts directory"
-  tags: ["fonts", "setup"]
+# Font Installation
+# Downloads and installs Nerd Fonts to user fonts directory
+# No sudo needed - runs as regular user
+
+- name: Create fonts directory
   file:
     path: "{{ fonts_dir }}"
     state: directory
-    owner: "{{ target_user }}"
-    group: "{{ target_user }}"
     mode: "0755"
 
-- name: "Check each font installation status"
-  tags: ["fonts", "setup"]
-  find:
-    paths: "{{ fonts_dir }}"
-    patterns: "{{ item.name }}*.ttf"
-    use_regex: true
+- name: Download font archives
+  get_url:
+    url: "{{ item.url }}"
+    dest: "/tmp/{{ item.name }}.{{ item.archive_type }}"
+    mode: "0644"
+    timeout: 120
   loop: "{{ font_downloads }}"
   loop_control:
     label: "{{ item.name }}"
-  register: font_check_results
+  retries: 3
+  delay: 5
+  register: download_result
+  until: download_result is succeeded
 
-- name: "Set fonts installed variable"
-  tags: ["fonts", "setup"]
-  set_fact:
-    fonts_installed: "{{ font_check_results.results | selectattr('files', 'defined') | selectattr('files', '!=', []) | list | length == font_downloads | length }}"
+- name: Extract font archives
+  unarchive:
+    src: "/tmp/{{ item.name }}.{{ item.archive_type }}"
+    dest: "{{ fonts_dir }}"
+    remote_src: yes
+  loop: "{{ font_downloads }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Find all files in a directory
-  tags: ["fonts", "setup"]
-  find:
-    paths: "{{ fonts_dir }}"
-    file_type: file
-  register: file_list
+- name: Refresh font cache
+  command: fc-cache -fv
+  changed_when: false
 
-- name: Extract filenames into a variable
-  tags: ["fonts", "setup"]
-  set_fact:
-    _filenames: "{{ file_list.files | map(attribute='path') | list }}"
-
-- name: Extract base names from file_paths
-  set_fact:
-    filenames: "{{ _filenames | map('basename') | list }}"
-
-- name: "Install individual fonts"
-  tags: ["fonts", "install"]
-  block:
-    - name: "Download missing font archives"
-      get_url:
-        url: "{{ item.url }}"
-        dest: "/tmp/{{ item.name }}.{{ item.archive_type }}"
-        mode: "0644"
-      when: item.name in filenames 
-      loop: "{{ font_downloads }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: "Extract missing font archives"
-      unarchive:
-        src: "/tmp/{{ item.name }}.{{ item.archive_type }}"
-        dest: "{{ fonts_dir }}"
-        owner: "{{ target_user }}"
-        group: "{{ target_user }}"
-        remote_src: yes
-        creates: "{{ fonts_dir }}/{{ item.name }}NerdFont-*.ttf"
-      when: item.name in filenames 
-      loop: "{{ font_downloads }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: "Refresh font cache"
-      command: "fc-cache -fv"
-      when: fonts_installed 
-      become_user: "{{ target_user }}"
-
-    - name: "Clean up downloaded archives"
-      file:
-        path: "/tmp/{{ item.name }}.{{ item.archive_type }}"
-        state: absent
-      when: item.name in filenames 
-      loop: "{{ font_downloads }}"
-      loop_control:
-        label: "{{ item.name }}"
-
+- name: Clean up downloaded archives
+  file:
+    path: "/tmp/{{ item.name }}.{{ item.archive_type }}"
+    state: absent
+  loop: "{{ font_downloads }}"
+  loop_control:
+    label: "{{ item.name }}"
