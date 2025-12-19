@@ -44,7 +44,7 @@
 
     - name: Install shell tools via apt
       apt:
-        name: "{{ shell_tools | default(['fd-find', 'fzf', 'ripgrep', 'bat', 'trash-cli', 'zoxide', 'jq']) }}"
+        name: "{{ shell_tools | default(['fd-find', 'fzf', 'ripgrep', 'bat', 'trash-cli', 'jq']) }}"
         state: present
       tags: [system, apt, shell]
 

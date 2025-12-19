@@ -7,6 +7,11 @@
   args:
     creates: "{{ ansible_env.HOME }}/.cargo/bin/eza"
 
+- name: Install zoxide via cargo-binstall
+  shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y zoxide"
+  args:
+    creates: "{{ ansible_env.HOME }}/.cargo/bin/zoxide"
+
 - name: Check if antidote is installed
   stat:
     path: "{{ app_data_dir }}/antidote"
