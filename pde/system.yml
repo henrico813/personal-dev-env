@@ -55,6 +55,19 @@
       when: install_dev_tools | default(false)
       tags: [system, apt, tools]
 
+    - name: Install alacritty build dependencies
+      apt:
+        name:
+          - cmake
+          - pkg-config
+          - libfreetype6-dev
+          - libfontconfig1-dev
+          - libxcb-xfixes0-dev
+          - libxkbcommon-dev
+        state: present
+      when: install_alacritty | default(true)
+      tags: [system, apt, alacritty]
+
     - name: Configure system locale
       locale_gen:
         name: "{{ locale | default('en_US.UTF-8') }}"
