@@ -1,0 +1,12 @@
+---
+# Main orchestrator - runs both system and user playbooks
+# Usage:
+#   Full install:    ansible-playbook site.yml --ask-become-pass
+#   User tools only: ansible-playbook site.yml --tags user
+#   System only:     ansible-playbook site.yml --tags system --ask-become-pass
+
+- import_playbook: system.yml
+  tags: [system]
+
+- import_playbook: user.yml
+  tags: [user]
