@@ -2,15 +2,33 @@
 # Shell environment setup - user level
 # No sudo needed
 
-- name: Install eza via cargo-binstall
-  shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y eza"
-  args:
-    creates: "{{ ansible_env.HOME }}/.cargo/bin/eza"
+- name: Check if eza is installed
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/eza"
+  register: eza_check
 
-- name: Install zoxide via cargo-binstall
-  shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y zoxide"
-  args:
-    creates: "{{ ansible_env.HOME }}/.cargo/bin/zoxide"
+- name: Install eza
+  block:
+    - name: Try eza via cargo-binstall
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y --no-confirm eza"
+  rescue:
+    - name: Fallback to cargo install eza
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install eza"
+  when: not eza_check.stat.exists
+
+- name: Check if zoxide is installed
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/zoxide"
+  register: zoxide_check
+
+- name: Install zoxide
+  block:
+    - name: Try zoxide via cargo-binstall
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y --no-confirm zoxide"
+  rescue:
+    - name: Fallback to cargo install zoxide
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install zoxide"
+  when: not zoxide_check.stat.exists
 
 - name: Check if antidote is installed
   stat:
