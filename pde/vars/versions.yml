@@ -19,7 +19,8 @@ node_version: "20"
 neovim_version: "latest"
 
 # Tmux (3.2+ required for copy-command and allow-passthrough)
-tmux_version: "3.5a"
+# https://github.com/tmux/tmux/releases
+tmux_version: "3.6a"
 
 # Nerd Fonts
 nerd_fonts_version: "v3.2.1"
