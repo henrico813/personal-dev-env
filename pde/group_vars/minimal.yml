@@ -1,0 +1,35 @@
+---
+# Minimal profile - absolute essentials
+# For containers, jump boxes, or very constrained environments
+
+pde_profile: minimal
+
+# Feature flags
+install_fonts: false
+install_dev_tools: false
+install_shell: true
+install_ai_tools: false
+
+# Shell tools - bare minimum
+shell_tools:
+  - zsh
+  - tmux
+  - ripgrep  # Too useful to skip
+  - jq       # Essential for JSON work
+
+# No development tools
+dev_tools: []
+
+# Minimal shell setup
+install_yazi: false
+install_neovim: false  # Use system vim
+install_lazyvim: false
+
+# No AI tools
+ai_tools: []
+
+# Skip Node.js
+skip_node: true
+
+# Use simpler shell theme
+use_minimal_theme: true

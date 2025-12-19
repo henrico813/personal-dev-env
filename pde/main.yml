@@ -1,6 +1,18 @@
+# DEPRECATED: Use site.yml instead
+# This file is maintained for backwards compatibility only.
+# It will be removed in a future release.
+#
+# Migration:
+#   Old: ansible-playbook main.yml -e "user=myuser"
+#   New: ansible-playbook site.yml --ask-become-pass
+#
 - name: "System Configuration"
   hosts: localhost
   become: yes
+
+  vars_files:
+    - vars/versions.yml
+
   vars:
     target_user: "{{ user }}"
     user_home: "/home/{{ user }}"
@@ -8,16 +20,16 @@
     fonts_dir: "{{ app_data_dir }}/fonts"
     node_version: "{{ node_version | default('18') }}"
 
-    # Font URLs - centralized for easier maintenance
+    # Font URLs - uses nerd_fonts_version from vars/versions.yml
     font_downloads:
       - name: "FiraCode"
-        url: "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/FiraCode.zip"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/FiraCode.zip"
         archive_type: "zip"
       - name: "UbuntuMono"
-        url: "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/UbuntuMono.zip"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/UbuntuMono.zip"
         archive_type: "zip"
       - name: "JetBrainsMono"
-        url: "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz"
+        url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/JetBrainsMono.tar.xz"
         archive_type: "tar.xz"
 
     # Shell Configuration Files
@@ -65,12 +77,13 @@
         create_home: yes
       tags: ["init", "user"]
 
-    - name: "Grant sudo privileges to user"
+    - name: "Grant sudo privileges (guarded - not recommended)"
       lineinfile:
         path: "/etc/sudoers"
         state: present
         line: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL"
         validate: "/usr/sbin/visudo -cf %s"
+      when: grant_passwordless_sudo | default(false)
       tags: ["init", "sudo"]
 
     # ============================================
