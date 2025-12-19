@@ -1,0 +1,44 @@
+---
+# Development profile - full installation
+# Applied to hosts in 'development' inventory group
+
+pde_profile: development
+
+# Feature flags
+install_fonts: true
+install_dev_tools: true
+install_shell: true
+install_ai_tools: true
+
+# Shell tools - full suite
+shell_tools:
+  - zsh
+  - tmux
+  - fd-find
+  - fzf
+  - ripgrep
+  - bat
+  - trash-cli
+  - zoxide
+  - jq
+
+# Development tools
+dev_tools:
+  - ffmpeg
+  - 7zip
+  - poppler-utils
+  - imagemagick
+
+# Enable all optional features
+install_yazi: true
+install_neovim: true
+install_lazyvim: true
+
+# AI coding tools
+ai_tools:
+  - aider
+  - codex
+  - claude
+
+# Node.js version for development
+node_version: "20"

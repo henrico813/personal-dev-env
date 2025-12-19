@@ -1,0 +1,39 @@
+---
+# User-overrideable defaults for personal-dev-env
+#
+# Override these values by:
+#   1. Creating pde/user-overrides.yml (gitignored) with your settings
+#   2. Passing on command line: -e "timezone=America/New_York"
+#   3. Setting in your inventory.yml host/group vars
+#
+# Example user-overrides.yml:
+#   ---
+#   timezone: "America/New_York"
+#   locale: "en_GB.UTF-8"
+#   node_version: "22"
+
+# System Configuration
+timezone: "America/Los_Angeles"
+locale: "en_US.UTF-8"
+
+# User Configuration
+# By default, uses the current user running ansible
+# Override with -e "target_user=someone" if provisioning for a different user
+target_user: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+
+# Security Configuration
+# WARNING: Passwordless sudo is a security risk. Only enable if you understand
+# the implications and have other security measures in place.
+# Default: false (requires --ask-become-pass for sudo operations)
+grant_passwordless_sudo: false
+
+# Optional: Create user account if it doesn't exist
+# Set to true when provisioning new machines
+create_user: false
+
+# Profile Defaults (typically set in inventory.yml, not here)
+# These are fallback values if not specified elsewhere
+install_fonts: false
+install_dev_tools: false
+install_shell: true
+install_ai_tools: false

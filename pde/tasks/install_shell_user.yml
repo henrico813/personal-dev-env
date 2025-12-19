@@ -1,0 +1,49 @@
+---
+# Shell environment setup - user level
+# No sudo needed
+
+- name: Install eza via cargo-binstall
+  shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y eza"
+  args:
+    creates: "{{ ansible_env.HOME }}/.cargo/bin/eza"
+
+- name: Check if antidote is installed
+  stat:
+    path: "{{ app_data_dir }}/antidote"
+  register: antidote_check
+
+- name: Install antidote (zsh plugin manager)
+  git:
+    repo: https://github.com/mattmc3/antidote.git
+    dest: "{{ app_data_dir }}/antidote"
+    depth: 1
+  when: not antidote_check.stat.exists
+
+- name: Install powerlevel10k theme
+  git:
+    repo: https://github.com/romkatv/powerlevel10k.git
+    dest: "{{ app_data_dir }}/powerlevel10k"
+    update: yes
+
+- name: Install tmux plugin manager
+  git:
+    repo: https://github.com/tmux-plugins/tpm
+    dest: "{{ ansible_env.HOME }}/.tmux/plugins/tpm"
+    update: yes
+
+- name: Check if LazyVim is installed
+  stat:
+    path: "{{ app_data_dir }}/nvim"
+  register: lazyvim_check
+
+- name: Install LazyVim starter
+  git:
+    repo: https://github.com/LazyVim/starter
+    dest: "{{ app_data_dir }}/nvim"
+  when: not lazyvim_check.stat.exists and (install_lazyvim | default(true))
+
+- name: Clean LazyVim git directory
+  file:
+    path: "{{ app_data_dir }}/nvim/.git"
+    state: absent
+  when: install_lazyvim | default(true)
