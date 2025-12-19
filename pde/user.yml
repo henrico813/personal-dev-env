@@ -24,9 +24,8 @@
       when: install_shell | default(true)
       tags: [user, shell]
 
-    # Fonts
+    # Fonts (always installed - required for terminal/editor icons)
     - include_tasks: tasks/install_fonts.yml
-      when: install_fonts | default(false)
       tags: [user, fonts]
 
     # Development tools (nvm, node, yazi, AI tools)
