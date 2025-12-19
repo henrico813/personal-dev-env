@@ -30,6 +30,20 @@
       shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install zoxide"
   when: not zoxide_check.stat.exists
 
+- name: Check if alacritty is installed
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/alacritty"
+  register: alacritty_check
+
+- name: Install alacritty
+  block:
+    - name: Try alacritty via cargo-binstall
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y --no-confirm alacritty"
+  rescue:
+    - name: Fallback to cargo install alacritty
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install alacritty"
+  when: not alacritty_check.stat.exists and (install_alacritty | default(true))
+
 - name: Check if antidote is installed
   stat:
     path: "{{ app_data_dir }}/antidote"
