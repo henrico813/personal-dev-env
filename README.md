@@ -1,1 +1,1 @@
-My personal development environment in a docker container.
+My personal development environment setup using Ansible.
