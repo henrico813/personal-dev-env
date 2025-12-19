@@ -1,0 +1,5 @@
+# Ansible retry files
+*.retry
+
+# User overrides (if used)
+user-overrides.yml
