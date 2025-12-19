@@ -24,6 +24,11 @@
     - src: "config/powerlevel10k/.p10k.zsh"
       dest: "{{ ansible_env.HOME }}/.p10k.zsh"
 
+- name: Install tmux plugins via TPM
+  shell: "{{ ansible_env.HOME }}/.tmux/plugins/tpm/bin/install_plugins"
+  register: tpm_install
+  changed_when: "'Installing' in tpm_install.stdout"
+
 - name: Copy aider configuration
   copy:
     src: "config/aider/.aider.conf.yml"
