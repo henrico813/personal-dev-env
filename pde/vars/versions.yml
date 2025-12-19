@@ -18,6 +18,9 @@ node_version: "20"
 # Use "latest" for newest release, or pin: "v0.10.2"
 neovim_version: "latest"
 
+# Tmux (3.2+ required for copy-command and allow-passthrough)
+tmux_version: "3.5a"
+
 # Nerd Fonts
 nerd_fonts_version: "v3.2.1"
 
