@@ -31,6 +31,7 @@ dev_tools:
 install_yazi: true
 install_neovim: true
 install_lazyvim: true
+install_alacritty: true
 
 # AI coding tools
 ai_tools:
