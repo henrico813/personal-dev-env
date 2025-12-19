@@ -68,19 +68,25 @@
     dest: "{{ ansible_env.HOME }}/.tmux/plugins/tpm"
     update: yes
 
+- name: Ensure .config directory exists
+  file:
+    path: "{{ ansible_env.HOME }}/.config"
+    state: directory
+    mode: '0755'
+
 - name: Check if LazyVim is installed
   stat:
-    path: "{{ app_data_dir }}/nvim"
+    path: "{{ ansible_env.HOME }}/.config/nvim/lazy-lock.json"
   register: lazyvim_check
 
 - name: Install LazyVim starter
   git:
     repo: https://github.com/LazyVim/starter
-    dest: "{{ app_data_dir }}/nvim"
+    dest: "{{ ansible_env.HOME }}/.config/nvim"
   when: not lazyvim_check.stat.exists and (install_lazyvim | default(true))
 
 - name: Clean LazyVim git directory
   file:
-    path: "{{ app_data_dir }}/nvim/.git"
+    path: "{{ ansible_env.HOME }}/.config/nvim/.git"
     state: absent
-  when: install_lazyvim | default(true)
+  when: not lazyvim_check.stat.exists and (install_lazyvim | default(true))
