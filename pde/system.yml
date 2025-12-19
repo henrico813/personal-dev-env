@@ -65,7 +65,7 @@
           - libxcb-xfixes0-dev
           - libxkbcommon-dev
         state: present
-      when: install_alacritty | default(true)
+      when: install_alacritty | default(false)
       tags: [system, apt, alacritty]
 
     - name: Configure system locale
