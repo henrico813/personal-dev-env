@@ -1,0 +1,99 @@
+---
+# System-level configuration - requires sudo
+# Run with: ansible-playbook system.yml --ask-become-pass
+- name: System-level setup
+  hosts: all
+  become: yes
+
+  vars_files:
+    - defaults.yml
+    - vars/versions.yml
+
+  vars:
+    target_user: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: [system, apt]
+
+    - name: Install system packages
+      apt:
+        name:
+          - curl
+          - tar
+          - xz-utils
+          - sudo
+          - screen
+          - locales
+          - locales-all
+          - fontconfig
+          - fonts-dejavu-core
+          - fonts-dejavu-extra
+          - fonts-liberation
+          - fonts-powerline
+          - unzip
+          - git
+          - python3
+          - zsh
+          - tmux
+        state: present
+      tags: [system, apt]
+
+    - name: Install shell tools via apt
+      apt:
+        name: "{{ shell_tools | default(['fd-find', 'fzf', 'ripgrep', 'bat', 'trash-cli', 'zoxide', 'jq']) }}"
+        state: present
+      tags: [system, apt, shell]
+
+    - name: Install dev tool dependencies
+      apt:
+        name: "{{ dev_tools | default(['ffmpeg', '7zip', 'poppler-utils', 'imagemagick']) }}"
+        state: present
+      when: install_dev_tools | default(false)
+      tags: [system, apt, tools]
+
+    - name: Configure system locale
+      locale_gen:
+        name: "{{ locale | default('en_US.UTF-8') }}"
+        state: present
+      tags: [system, locale]
+
+    - name: Set system timezone
+      timezone:
+        name: "{{ timezone | default('America/Los_Angeles') }}"
+      tags: [system, timezone]
+
+    - name: Install neovim to /opt
+      get_url:
+        url: "https://github.com/neovim/neovim/releases/{{ neovim_version }}/download/nvim-linux-x86_64.appimage"
+        dest: /opt/nvim
+        mode: '0755'
+      when: install_neovim | default(true)
+      tags: [system, neovim]
+
+    - name: Create neovim symlink
+      file:
+        src: /opt/nvim
+        dest: /usr/local/bin/vim
+        state: link
+        force: yes
+      when: install_neovim | default(true)
+      tags: [system, neovim]
+
+    - name: Set user shell to zsh
+      user:
+        name: "{{ target_user }}"
+        shell: /bin/zsh
+      tags: [system, shell]
+
+    - name: Grant sudo privileges (guarded - not recommended)
+      lineinfile:
+        path: "/etc/sudoers"
+        state: present
+        line: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL"
+        validate: "/usr/sbin/visudo -cf %s"
+      when: grant_passwordless_sudo | default(false)
+      tags: [system, sudo]

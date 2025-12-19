@@ -1,0 +1,45 @@
+---
+# Version pinning for all external dependencies
+#
+# Update these when you want to upgrade tools.
+# Using explicit versions improves reproducibility.
+#
+# To find latest versions:
+#   - NVM: https://github.com/nvm-sh/nvm/releases
+#   - Nerd Fonts: https://github.com/ryanoasis/nerd-fonts/releases
+#   - Neovim: https://github.com/neovim/neovim/releases
+#   - Yazi: https://github.com/sxyazi/yazi/releases
+
+# Node.js / NVM
+nvm_version: "v0.40.0"
+node_version: "20"
+
+# Neovim
+# Use "latest" for newest release, or pin: "v0.10.2"
+neovim_version: "latest"
+
+# Nerd Fonts
+nerd_fonts_version: "v3.2.1"
+
+# Fonts to install (when install_fonts is true)
+font_downloads:
+  - name: "FiraCode"
+    url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/FiraCode.zip"
+    archive_type: "zip"
+  - name: "UbuntuMono"
+    url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/UbuntuMono.zip"
+    archive_type: "zip"
+  - name: "JetBrainsMono"
+    url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/JetBrainsMono.tar.xz"
+    archive_type: "tar.xz"
+
+# Yazi (terminal file manager)
+# Uses architecture detection: x86_64, aarch64
+yazi_arch_map:
+  x86_64: "x86_64-unknown-linux-gnu"
+  aarch64: "aarch64-unknown-linux-gnu"
+
+# Ueberzugpp (image preview for Yazi)
+# Only available for Ubuntu 24.04 on x86_64
+ueberzugpp_version: "2.9.7"
+ueberzugpp_ubuntu_version: "24.04"
