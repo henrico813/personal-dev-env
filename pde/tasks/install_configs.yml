@@ -40,11 +40,6 @@
     mode: '0644'
   when: install_alacritty | default(false)
 
-- name: Install tmux plugins via TPM
-  shell: "{{ ansible_env.HOME }}/.tmux/plugins/tpm/bin/install_plugins"
-  register: tpm_install
-  changed_when: "'Installing' in tpm_install.stdout"
-
 - name: Copy aider configuration
   copy:
     src: "config/aider/.aider.conf.yml"
