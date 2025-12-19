@@ -38,9 +38,57 @@
           - git
           - python3
           - zsh
-          - tmux
         state: present
       tags: [system, apt]
+
+    - name: Install tmux build dependencies
+      apt:
+        name:
+          - build-essential
+          - libevent-dev
+          - libncurses-dev
+          - bison
+        state: present
+      tags: [system, apt, tmux]
+
+    - name: Check installed tmux version
+      shell: tmux -V 2>/dev/null | grep -oP '\d+\.\d+[a-z]?' || echo "0"
+      register: installed_tmux
+      changed_when: false
+      tags: [system, tmux]
+
+    - name: Install tmux from source
+      block:
+        - name: Download tmux source
+          get_url:
+            url: "https://github.com/tmux/tmux/releases/download/{{ tmux_version }}/tmux-{{ tmux_version }}.tar.gz"
+            dest: "/tmp/tmux-{{ tmux_version }}.tar.gz"
+            mode: '0644'
+
+        - name: Extract tmux source
+          unarchive:
+            src: "/tmp/tmux-{{ tmux_version }}.tar.gz"
+            dest: /tmp
+            remote_src: yes
+
+        - name: Compile and install tmux
+          shell: |
+            cd /tmp/tmux-{{ tmux_version }}
+            ./configure --prefix=/usr/local
+            make -j$(nproc)
+            make install
+          args:
+            creates: /usr/local/bin/tmux
+
+        - name: Clean up tmux source
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "/tmp/tmux-{{ tmux_version }}.tar.gz"
+            - "/tmp/tmux-{{ tmux_version }}"
+      when: installed_tmux.stdout != tmux_version
+      tags: [system, tmux]
 
     - name: Install shell tools via apt
       apt:
