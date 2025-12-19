@@ -42,7 +42,7 @@
   rescue:
     - name: Fallback to cargo install alacritty
       shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install alacritty"
-  when: not alacritty_check.stat.exists and (install_alacritty | default(true))
+  when: not alacritty_check.stat.exists and (install_alacritty | default(false))
 
 - name: Check if antidote is installed
   stat:
