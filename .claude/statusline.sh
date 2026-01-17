@@ -3,7 +3,11 @@
 
 # Read stdin
 INPUT=$(cat)
-[ -z "$INPUT" ] && exit 0
+if [ -z "$INPUT" ]; then
+    # Output minimal statusline on empty input (e.g., after /new)
+    printf '%s\n' "Claude | 0%"
+    exit 0
+fi
 
 # Parse JSON (requires jq)
 MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "Claude"')
@@ -77,7 +81,7 @@ fi
 
 # Context with color (thresholds: green <30%, yellow 30-60%, red >=60%)
 CTX_DISPLAY=""
-if [ -n "$USED_PCT" ] && [ "$USED_PCT" -gt 0 ] 2>/dev/null; then
+if [ -n "$USED_PCT" ] 2>/dev/null; then
     if [ "$USED_PCT" -lt 30 ]; then
         CTX_DISPLAY=$'\033[32m'"${USED_PCT}%"$'\033[0m'  # green
     elif [ "$USED_PCT" -lt 60 ]; then
