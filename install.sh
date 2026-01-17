@@ -7,12 +7,13 @@ TARGET_DIR="$HOME/.claude"
 
 echo "Installing Claude Code configuration..."
 
-# Preserve session history
-PROJECTS_BACKUP=""
-if [ -d "$TARGET_DIR/projects" ]; then
-    PROJECTS_BACKUP=$(mktemp -d)
-    echo "Preserving session history..."
-    mv "$TARGET_DIR/projects" "$PROJECTS_BACKUP/"
+# Preserve session history and credentials
+PRESERVE_BACKUP=""
+if [ -d "$TARGET_DIR/projects" ] || [ -f "$TARGET_DIR/.credentials.json" ]; then
+    PRESERVE_BACKUP=$(mktemp -d)
+    echo "Preserving session history and credentials..."
+    [ -d "$TARGET_DIR/projects" ] && mv "$TARGET_DIR/projects" "$PRESERVE_BACKUP/"
+    [ -f "$TARGET_DIR/.credentials.json" ] && mv "$TARGET_DIR/.credentials.json" "$PRESERVE_BACKUP/"
 fi
 
 # Backup existing
@@ -26,11 +27,12 @@ fi
 echo "Copying configuration to $TARGET_DIR"
 cp -r "$SOURCE_DIR" "$TARGET_DIR"
 
-# Restore session history
-if [ -n "$PROJECTS_BACKUP" ] && [ -d "$PROJECTS_BACKUP/projects" ]; then
-    echo "Restoring session history..."
-    mv "$PROJECTS_BACKUP/projects" "$TARGET_DIR/"
-    rmdir "$PROJECTS_BACKUP"
+# Restore session history and credentials
+if [ -n "$PRESERVE_BACKUP" ]; then
+    echo "Restoring session history and credentials..."
+    [ -d "$PRESERVE_BACKUP/projects" ] && mv "$PRESERVE_BACKUP/projects" "$TARGET_DIR/"
+    [ -f "$PRESERVE_BACKUP/.credentials.json" ] && mv "$PRESERVE_BACKUP/.credentials.json" "$TARGET_DIR/"
+    rmdir "$PRESERVE_BACKUP" 2>/dev/null || true
 fi
 
 # Make hooks executable
