@@ -1,7 +1,7 @@
 # Personal Dev Environment - Improvement Plan
 
-**Based on:** Code Review + Security Analysis
-**Date:** 2025-12-18
+**Based on:** Code Review + Security Analysis + Implementation Review
+**Date:** 2025-12-18 (Revised: 2026-01-17)
 **Target:** Ubuntu/Debian x86_64 only
 **Focus:** Simplicity, Maintainability, Security
 
@@ -12,399 +12,88 @@
 Refactor personal-dev-env to be more maintainable, secure, and user-friendly while keeping it simple for Ubuntu/Debian x86_64 environments.
 
 **Key Changes:**
-1. Split into modular system/user playbooks (security separation)
-2. Add comprehensive documentation
-3. Fix variable usage inconsistencies
-4. Improve version management
-5. Remove unnecessary sudo operations
+1. Split into modular system/user playbooks (security separation) - DONE
+2. Add comprehensive documentation - DONE
+3. Fix variable usage inconsistencies - DONE
+4. Improve version management - DONE
+5. Remove unnecessary sudo operations - DONE
+6. **NEW:** Fix bugs identified in implementation review
 
-**Estimated Time:** 4-5 hours total
-**Complexity:** Low-Medium (mostly refactoring)
+**Status:** All phases complete (1-6).
 
 ---
 
-## Phase 1: Security & Structure (2 hours)
+## Implementation Status
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Security & Structure | COMPLETE |
+| 2 | Fix Variable Usage | COMPLETE |
+| 3 | Refactor Task Files | COMPLETE |
+| 4 | Documentation | COMPLETE |
+| 5 | Update Makefile | COMPLETE |
+| 6 | Bug Fixes (NEW) | COMPLETE |
+
+---
+
+## Phase 6: Bug Fixes (NEW)
 
 ### Goal
-Separate privileged operations from user-level operations for better security hygiene and clarity.
+Address blocking issues and suggestions from implementation review.
 
-### Changes
+### 6.1 Remove Legacy Task File Confusion
 
-#### 1.1 Create Modular Playbook Structure
+**Problem:** Both old (`install_shell.yml`, `install_tools.yml`, `install_deps.yml`) and new (`install_shell_user.yml`, `install_tools_user.yml`, `install_rust.yml`) task files exist, creating maintenance confusion.
 
-**New Files:**
+**Solution:** Rename legacy files to clearly mark them as deprecated.
+
+```bash
+# Rename legacy files
+mv pde/tasks/install_shell.yml pde/tasks/install_shell_legacy.yml
+mv pde/tasks/install_tools.yml pde/tasks/install_tools_legacy.yml
+mv pde/tasks/install_deps.yml pde/tasks/install_deps_legacy.yml
+
+# Update main.yml to use renamed files
 ```
-pde/
-├── main.yml           # Orchestrator (MODIFY)
-├── system.yml         # NEW: Requires sudo
-├── user.yml           # NEW: No sudo needed
-├── defaults.yml       # NEW: User overrides
-└── vars/
-    └── versions.yml   # NEW: Version pinning
-```
 
-#### 1.2 Split Tasks by Privilege Level
-
-**system.yml** - Requires sudo (run with `--ask-become-pass`):
+**Update main.yml references:**
 ```yaml
----
-- name: System-level configuration
-  hosts: localhost
-  become: yes
-  vars_files:
-    - defaults.yml
-    - vars/versions.yml
-
-  tasks:
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-        cache_valid_time: 3600
-
-    - name: Install system packages
-      apt:
-        name:
-          - curl
-          - tar
-          - xz-utils
-          - sudo
-          - screen
-          - locales
-          - locales-all
-          - fontconfig
-          # ... all apt packages
-        state: present
-
-    - name: Configure system locale
-      locale_gen:
-        name: "{{ locale }}"
-        state: present
-
-    - name: Set system timezone
-      timezone:
-        name: "{{ timezone }}"
-
-    - name: Create user account
-      user:
-        name: "{{ target_user }}"
-        shell: /bin/zsh
-        create_home: yes
-      when: create_user | default(false)
-
-    - name: Install neovim to /opt
-      get_url:
-        url: "https://github.com/neovim/neovim/releases/{{ neovim_version }}/download/nvim-linux-x86_64.appimage"
-        dest: /opt/nvim
-        mode: '0755'
-        force: yes
-
-    - name: Create neovim symlink
-      file:
-        src: /opt/nvim
-        dest: /usr/local/bin/vim
-        state: link
-        force: yes
+# In pde/main.yml, update task imports:
+- import_tasks: tasks/install_shell_legacy.yml  # Was: install_shell.yml
+- import_tasks: tasks/install_tools_legacy.yml  # Was: install_tools.yml
+- include_tasks: tasks/install_deps_legacy.yml  # Was: install_deps.yml
 ```
 
-**user.yml** - No sudo needed (run as regular user):
+### 6.2 Fix Node Version Path Idempotency Bug
+
+**Problem:** `install_tools_user.yml:22` uses `creates: ~/.nvm/versions/node/v{{ node_version }}` but NVM creates directories like `v20.11.1`, not `v20`. This breaks idempotency - node install runs every time.
+
+**Location:** `/home/justin/Projects/personal-dev-env/pde/tasks/install_tools_user.yml:22`
+
+**Current:**
 ```yaml
----
-- name: User-level configuration
-  hosts: localhost
-  become: no
-  vars_files:
-    - defaults.yml
-    - vars/versions.yml
-
-  vars:
-    user_home: "{{ ansible_env.HOME }}"
-    app_data_dir: "{{ user_home }}/.local/share"
-    fonts_dir: "{{ app_data_dir }}/fonts"
-
-  tasks:
-    # Rust installation
-    - include_tasks: tasks/install_rust.yml
-
-    # Shell setup (zsh, tmux, antidote, p10k)
-    - include_tasks: tasks/install_shell.yml
-
-    # Fonts
-    - include_tasks: tasks/install_fonts.yml
-
-    # Development tools (nvm, node, yazi, aider, codex, claude)
-    - include_tasks: tasks/install_tools.yml
-
-    # Copy all config files
-    - include_tasks: tasks/install_configs.yml
-
-    # Write PDE install path
-    - name: Create PDE config directory
-      file:
-        path: "{{ user_home }}/.config/pde"
-        state: directory
-        mode: '0755'
-
-    - name: Write PDE install path configuration
-      copy:
-        content: |
-          # Personal Dev Environment configuration
-          # Auto-generated by Ansible
-          export PDE_INSTALL_PATH="{{ playbook_dir | dirname }}"
-        dest: "{{ user_home }}/.config/pde/paths.env"
-        mode: '0644'
-```
-
-**main.yml** - Orchestrator:
-```yaml
----
-# Run both system and user playbooks
-# Usage:
-#   Full install:    ansible-playbook main.yml --ask-become-pass
-#   User tools only: ansible-playbook main.yml --tags user
-#   System only:     ansible-playbook main.yml --tags system --ask-become-pass
-
-- import_playbook: system.yml
-  tags: [system]
-
-- import_playbook: user.yml
-  tags: [user]
-```
-
-#### 1.3 Create defaults.yml
-
-**pde/defaults.yml:**
-```yaml
----
-# User-overrideable defaults
-# Override by passing: -e "timezone=America/New_York"
-# Or create: pde/user-overrides.yml (gitignored)
-
-# System Configuration
-timezone: "America/Los_Angeles"  # Default: LA
-locale: "en_US.UTF-8"
-
-# User Configuration
-target_user: "{{ ansible_env.USER }}"
-
-# Optional: Create user account (disabled by default)
-create_user: false
-
-# Optional: Grant passwordless sudo (NOT RECOMMENDED)
-grant_passwordless_sudo: false
-```
-
-#### 1.4 Create versions.yml
-
-**pde/vars/versions.yml:**
-```yaml
----
-# Version pinning for all external dependencies
-# Update these when you want to upgrade
-
-# Node/npm
-nvm_version: "v0.40.0"
-node_version: "20"
-
-# Neovim
-neovim_version: "latest"  # or specific: "v0.9.5"
-
-# Fonts (Nerd Fonts)
-nerd_fonts_version: "v3.2.1"
-
-# Tools
-# Note: Some tools use "latest" from GitHub, others have specific versions
-ueberzugpp_version: "2.9.7"
-ubuntu_version: "24.04"  # For Ubuntu-specific packages
-```
-
-#### 1.5 Remove Dangerous sudo Task
-
-**DELETE from system.yml:**
-```yaml
-# DON'T DO THIS - Security risk
-- name: "Grant sudo privileges to user"
-  lineinfile:
-    path: "/etc/sudoers"
-    line: "{{ target_user }} ALL=(ALL) NOPASSWD:ALL"
-```
-
-**Rationale:** You already have sudo via `--ask-become-pass`. Passwordless sudo is a security risk and unnecessary for dev environments.
-
----
-
-## Phase 2: Fix Variable Usage (30 min)
-
-### Goal
-Fix inconsistencies where variables are defined but not used.
-
-### Changes
-
-#### 2.1 Fix Node Version Usage
-
-**Current (install_tools.yml:26):**
-```yaml
-nvm install 20  # Hardcoded!
+- name: Install Node.js via nvm
+  shell: |
+    source {{ ansible_env.HOME }}/.nvm/nvm.sh
+    nvm install {{ node_version }}
+    nvm alias default {{ node_version }}
+  args:
+    executable: /bin/bash
+    creates: "{{ ansible_env.HOME }}/.nvm/versions/node/v{{ node_version }}"  # BUG: v20 != v20.11.1
 ```
 
 **Fixed:**
 ```yaml
-nvm install {{ node_version }}
-nvm alias default {{ node_version }}
-```
-
-Also update the creates check:
-```yaml
-creates: "{{ user_home }}/.nvm/versions/node/v{{ node_version }}"
-```
-
-#### 2.2 Use Version Variables
-
-**install_tools.yml:**
-```yaml
-# Current
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
-
-# Fixed
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
-```
-
-**install_fonts.yml:**
-```yaml
-# Current
-url: "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/FiraCode.zip"
-
-# Fixed
-url: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ nerd_fonts_version }}/FiraCode.zip"
-```
-
-#### 2.3 Remove Unused node_version from main.yml
-
-Since we're moving it to `vars/versions.yml`, remove:
-```yaml
-# DELETE this line from main.yml
-node_version: "{{ node_version | default('18') }}"
-```
-
----
-
-## Phase 3: Refactor Task Files (1 hour)
-
-### Goal
-Clean up task files to work with new structure (no `become` needed, consistent naming).
-
-### Changes
-
-#### 3.1 Update install_deps.yml → install_rust.yml
-
-**Rename:** `tasks/install_deps.yml` → `tasks/install_rust.yml`
-
-**New content:**
-```yaml
----
-# Install Rust toolchain
-# Runs as regular user (no sudo needed)
-
-- name: Check if Rust is installed
-  stat:
-    path: "{{ ansible_env.HOME }}/.cargo/bin/rustc"
-  register: rust_installed
-
-- name: Download rustup installer
-  get_url:
-    url: https://sh.rustup.rs
-    dest: /tmp/rustup-init.sh
-    mode: '0755'
-  when: not rust_installed.stat.exists
-
-- name: Install Rust via rustup
-  shell: /tmp/rustup-init.sh -y
-  environment:
-    CARGO_HOME: "{{ ansible_env.HOME }}/.cargo"
-    RUSTUP_HOME: "{{ ansible_env.HOME }}/.rustup"
-  when: not rust_installed.stat.exists
-
-- name: Clean up rustup installer
-  file:
-    path: /tmp/rustup-init.sh
-    state: absent
-
-- name: Update Rust toolchain
-  shell: "{{ ansible_env.HOME }}/.cargo/bin/rustup update"
-  when: rust_installed.stat.exists
-  ignore_errors: yes  # May fail if rustup itself needs updating (non-critical)
-  register: rust_update
-  changed_when: "'updated' in rust_update.stdout"
-
-- name: Display Rust update status
-  debug:
-    msg: "{{ rust_update.stdout_lines }}"
-  when: rust_installed.stat.exists and rust_update is succeeded
-```
-
-#### 3.2 Update install_shell.yml
-
-**Remove all `become` statements** (runs as user):
-```yaml
----
-# Shell environment setup
-# Runs as regular user (no sudo needed)
-
-- name: Install eza via cargo
-  shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install eza"
-  args:
-    creates: "{{ ansible_env.HOME }}/.cargo/bin/eza"
-
-- name: Check if antidote is installed
-  stat:
-    path: "{{ app_data_dir }}/antidote"
-  register: antidote_check
-
-- name: Install antidote (zsh plugin manager)
-  git:
-    repo: https://github.com/mattmc3/antidote.git
-    dest: "{{ app_data_dir }}/antidote"
-    depth: 1
-  when: not antidote_check.stat.exists
-
-- name: Install powerlevel10k theme
-  git:
-    repo: https://github.com/romkatv/powerlevel10k.git
-    dest: "{{ app_data_dir }}/powerlevel10k"
-    force: yes
-
-- name: Install tmux plugin manager
-  git:
-    repo: https://github.com/tmux-plugins/tpm
-    dest: "{{ ansible_env.HOME }}/.tmux/plugins/tpm"
-    force: yes
-
-- name: Install LazyVim starter
-  git:
-    repo: https://github.com/LazyVim/starter
-    dest: "{{ app_data_dir }}/nvim"
-    force: yes
-
-- name: Clean LazyVim git directory
-  file:
-    path: "{{ app_data_dir }}/nvim/.git"
-    state: absent
-```
-
-#### 3.3 Update install_tools.yml
-
-**Standardize naming, remove `become`:**
-```yaml
----
-# Development tools installation
-# Runs as regular user (no sudo needed)
-
-- name: Install nvm (Node Version Manager)
+- name: Check if Node.js is installed via nvm
   shell: |
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
+    source {{ ansible_env.HOME }}/.nvm/nvm.sh
+    nvm ls {{ node_version }} 2>/dev/null | grep -q "v{{ node_version }}"
   args:
-    creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
-  environment:
-    NVM_DIR: "{{ ansible_env.HOME }}/.nvm"
+    executable: /bin/bash
+  register: node_check
+  ignore_errors: yes
+  changed_when: false
+  when: not (skip_node | default(false))
 
 - name: Install Node.js via nvm
   shell: |
@@ -413,602 +102,298 @@ Clean up task files to work with new structure (no `become` needed, consistent n
     nvm alias default {{ node_version }}
   args:
     executable: /bin/bash
-    creates: "{{ ansible_env.HOME }}/.nvm/versions/node/v{{ node_version }}"
+  when: not (skip_node | default(false)) and (node_check.rc != 0)
+```
 
-- name: Configure npm global directory
-  shell: |
-    source {{ ansible_env.HOME }}/.nvm/nvm.sh
-    mkdir -p {{ ansible_env.HOME }}/.npm-global
-    npm config set prefix '{{ ansible_env.HOME }}/.npm-global'
-  args:
-    executable: /bin/bash
-    creates: "{{ ansible_env.HOME }}/.npmrc"
+### 6.3 Add Rust/Cargo Dependency Guard
 
-- name: Check if yazi is installed
+**Problem:** `install_shell_user.yml` calls cargo-binstall without verifying Rust is installed. Fails if `--tags shell` skips rust installation.
+
+**Location:** `/home/justin/Projects/personal-dev-env/pde/tasks/install_shell_user.yml:13,27,41`
+
+**Add at top of install_shell_user.yml:**
+```yaml
+---
+# Shell environment setup - user level
+# REQUIRES: install_rust.yml must run before this file
+
+- name: Verify cargo-binstall is available
   stat:
-    path: "{{ ansible_env.HOME }}/.cargo/bin/yazi"
-  register: yazi_installed
+    path: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall"
+  register: cargo_binstall_check
 
-- name: Install yazi (terminal file manager)
+- name: Verify cargo is available (fallback)
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/cargo"
+  register: cargo_check
+
+- name: Fail if Rust toolchain not installed
+  fail:
+    msg: "Rust toolchain not found. Run install_rust.yml first or use full playbook."
+  when: not cargo_check.stat.exists
+```
+
+**Update eza/zoxide/alacritty install blocks to use guard:**
+```yaml
+- name: Install eza
   block:
-    - name: Download yazi binary
-      get_url:
-        url: https://github.com/sxyazi/yazi/releases/latest/download/yazi-x86_64-unknown-linux-gnu.zip
-        dest: /tmp/yazi.zip
-        mode: '0644'
+    - name: Try eza via cargo-binstall
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall -y --no-confirm eza"
+  rescue:
+    - name: Fallback to cargo install eza
+      shell: "{{ ansible_env.HOME }}/.cargo/bin/cargo install eza"
+  when: not eza_check.stat.exists and cargo_check.stat.exists  # Added guard
+```
 
-    - name: Extract yazi
-      unarchive:
-        src: /tmp/yazi.zip
-        dest: /tmp/
-        remote_src: yes
+### 6.4 Add NVM Existence Check for npm Commands
 
-    - name: Copy yazi binary to cargo bin
-      copy:
-        src: /tmp/yazi-x86_64-unknown-linux-gnu/yazi
-        dest: "{{ ansible_env.HOME }}/.cargo/bin/yazi"
-        mode: '0755'
-        remote_src: yes
+**Problem:** Tasks source nvm.sh without checking if it exists. Fails silently if NVM installation was skipped or failed.
 
-    - name: Copy ya (yazi CLI) binary
-      copy:
-        src: /tmp/yazi-x86_64-unknown-linux-gnu/ya
-        dest: "{{ ansible_env.HOME }}/.cargo/bin/ya"
-        mode: '0755'
-        remote_src: yes
+**Location:** `/home/justin/Projects/personal-dev-env/pde/tasks/install_tools_user.yml:88,97`
 
-    - name: Clean up yazi download
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /tmp/yazi.zip
-        - /tmp/yazi-x86_64-unknown-linux-gnu
-
-  when: not yazi_installed.stat.exists
-
-- name: Check if aider is installed
+**Add NVM check before npm installs:**
+```yaml
+- name: Check if NVM is installed
   stat:
-    path: "{{ ansible_env.HOME }}/.local/bin/aider"
-  register: aider_installed
+    path: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
+  register: nvm_installed
 
-- name: Install aider (AI coding assistant)
-  shell: curl -LsSf https://aider.chat/install.sh | sh
-  args:
-    creates: "{{ ansible_env.HOME }}/.local/bin/aider"
-  when: not aider_installed.stat.exists
-
-- name: Check if codex is installed
-  shell: |
-    source {{ ansible_env.HOME }}/.nvm/nvm.sh
-    npm list -g @openai/codex --json
-  args:
-    executable: /bin/bash
-  register: codex_check
-  ignore_errors: yes
-  changed_when: false
-
-- name: Install codex (OpenAI Codex CLI)
+- name: Install codex via npm
   shell: |
     source {{ ansible_env.HOME }}/.nvm/nvm.sh
     npm install -g @openai/codex
   args:
     executable: /bin/bash
-  when: codex_check.rc != 0
+    creates: "{{ ansible_env.HOME }}/.npm-global/bin/codex"
+  when: install_ai_tools | default(false) and nvm_installed.stat.exists  # Added guard
 
-- name: Check if Claude Code is installed
-  shell: |
-    source {{ ansible_env.HOME }}/.nvm/nvm.sh
-    npm list -g @anthropic-ai/claude-code --json
-  args:
-    executable: /bin/bash
-  register: claude_check
-  ignore_errors: yes
-  changed_when: false
-
-- name: Install Claude Code
+- name: Install Claude Code via npm
   shell: |
     source {{ ansible_env.HOME }}/.nvm/nvm.sh
     npm install -g @anthropic-ai/claude-code
   args:
     executable: /bin/bash
-  when: claude_check.rc != 0
+    creates: "{{ ansible_env.HOME }}/.npm-global/bin/claude"
+  when: install_ai_tools | default(false) and nvm_installed.stat.exists  # Added guard
 ```
 
-#### 3.4 Create install_configs.yml
+### 6.5 Remove Duplicate Variable Definitions
 
-**New file: tasks/install_configs.yml**
+**Problem:** `node_version` is defined in both `vars/versions.yml:15` AND `group_vars/development.yml:43`. Per Ansible precedence, group_vars wins, making versions.yml entry ignored.
+
+**Location:** `/home/justin/Projects/personal-dev-env/pde/group_vars/development.yml:43`
+
+**Fix:** Remove duplicate from group_vars/development.yml:
 ```yaml
----
-# Copy all configuration files to user home
-# Runs as regular user
-
-- name: Ensure .codex directory exists
-  file:
-    path: "{{ ansible_env.HOME }}/.codex"
-    state: directory
-    mode: '0755'
-
-- name: Copy shell configuration files
-  copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: "{{ item.mode | default('0644') }}"
-  loop:
-    - src: "config/zsh/.zsh_plugins.txt"
-      dest: "{{ ansible_env.HOME }}/.zsh_plugins.txt"
-    - src: "config/zsh/.zshrc"
-      dest: "{{ ansible_env.HOME }}/.zshrc"
-    - src: "config/tmux/.tmux.conf"
-      dest: "{{ ansible_env.HOME }}/.tmux.conf"
-    - src: "config/powerlevel10k/.p10k.zsh"
-      dest: "{{ ansible_env.HOME }}/.p10k.zsh"
-
-- name: Copy tool configuration files
-  copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    mode: "{{ item.mode | default('0644') }}"
-  loop:
-    - src: "config/aider/.aider.conf.yml"
-      dest: "{{ ansible_env.HOME }}/.aider.conf.yml"
-    - src: "../ai-profiles/codex/config.toml"
-      dest: "{{ ansible_env.HOME }}/.codex/config.toml"
-  ignore_errors: yes  # ai-profiles may not exist
+# DELETE this line from group_vars/development.yml
+# node_version: "20"  # Already defined in vars/versions.yml
 ```
 
----
+### 6.6 Add Missing Default Variables
 
-## Phase 4: Documentation (1 hour)
+**Problem:** `install_lazyvim` defaults to `true` in task `when` clauses but isn't defined in `defaults.yml`, making it non-discoverable.
 
-### Goal
-Create comprehensive user-facing documentation.
+**Location:** `/home/justin/Projects/personal-dev-env/pde/defaults.yml`
 
-### Changes
-
-#### 4.1 Create README.md
-
-**New file: README.md**
-```markdown
-# Personal Development Environment
-
-Automated setup for a productive Ubuntu/Debian development environment using Ansible.
-
-## What Gets Installed
-
-### System Packages (requires sudo)
-- **Shell:** zsh, tmux, screen
-- **CLI Tools:** fd-find, fzf, ripgrep, bat, trash-cli, zoxide, jq
-- **Development:** git, python3, curl, tar
-- **Fonts:** DejaVu, Liberation, MS Core Fonts, Powerline
-
-### User Tools (no sudo needed)
-- **Rust:** Latest stable toolchain via rustup
-- **Node.js:** Version 20 via nvm
-- **Editors:** Neovim (latest) with LazyVim
-- **Shell Enhancement:** antidote (plugin manager), powerlevel10k theme
-- **CLI Tools:** eza (ls replacement), yazi (file manager)
-- **AI Tools:** aider, codex, Claude Code
-
-### Configuration
-- Zsh with plugins and custom theme
-- Tmux with plugin manager
-- Neovim/LazyVim configuration
-- XFCE4 desktop settings (if needed)
-
----
-
-## Quick Start
-
-### Prerequisites
-- Ubuntu 22.04+ or Debian 11+ (x86_64)
-- Ansible 2.9+
-- sudo access
-
-### Install Ansible
-```bash
-sudo apt update
-sudo apt install -y ansible
-```
-
-### Clone Repository
-```bash
-git clone ssh://git@git.blathers.goog:3022/hco/personal-dev-env.git
-cd personal-dev-env
-```
-
-### Full Installation
-```bash
-cd pde
-ansible-playbook main.yml --ask-become-pass
-```
-
-**What happens:**
-1. Installs system packages (requires password)
-2. Configures locale and timezone
-3. Installs user-level tools
-4. Copies configuration files
-
-**Duration:** ~10-15 minutes (depends on internet speed)
-
----
-
-## Advanced Usage
-
-### System Setup Only
-Install only system packages and configuration:
-```bash
-ansible-playbook main.yml --tags system --ask-become-pass
-```
-
-### User Tools Only
-Install/update user-level tools (no sudo needed):
-```bash
-ansible-playbook main.yml --tags user
-```
-
-### Specific Components
-Use Ansible tags for selective installation:
-```bash
-# Install only shell environment
-ansible-playbook user.yml --tags shell
-
-# Install only fonts
-ansible-playbook user.yml --tags fonts
-
-# Install only development tools
-ansible-playbook user.yml --tags tools
-```
-
----
-
-## Customization
-
-### Override Defaults
-
-Create `pde/user-overrides.yml` (gitignored):
+**Add to defaults.yml:**
 ```yaml
----
-timezone: "America/New_York"
-locale: "en_GB.UTF-8"
-node_version: "18"
+# Tool Installation Flags
+# These control which optional tools are installed
+install_lazyvim: true      # LazyVim starter config for Neovim
+install_yazi: true         # Yazi terminal file manager
+install_alacritty: false   # Alacritty terminal (requires build deps)
 ```
 
-Then run:
-```bash
-ansible-playbook main.yml -e @user-overrides.yml --ask-become-pass
-```
+### 6.7 Fix Redundant Package Lists
 
-### Or use command-line:
-```bash
-ansible-playbook main.yml -e "timezone=Europe/London" --ask-become-pass
-```
+**Problem:** `group_vars/servers.yml:16-17` lists `zsh` and `tmux` in `shell_tools`, but `system.yml:40` already installs `zsh` unconditionally. This creates confusion about where packages come from.
 
-### Change Versions
+**Location:** `/home/justin/Projects/personal-dev-env/pde/group_vars/servers.yml:16-22`
 
-Edit `pde/vars/versions.yml` to pin or update tool versions:
+**Current:**
 ```yaml
-nvm_version: "v0.40.1"  # Update nvm
-node_version: "22"       # Use Node 22 instead of 20
-neovim_version: "v0.9.5" # Pin specific neovim version
+shell_tools:
+  - zsh      # Already installed by system.yml
+  - tmux     # Should be in system.yml
+  - fd-find
+  - fzf
+  - ripgrep
+  - bat
+  - jq
+```
+
+**Fixed:**
+```yaml
+# Note: zsh is always installed by system.yml
+# tmux is built from source by system.yml for modern features
+shell_tools:
+  - fd-find
+  - fzf
+  - ripgrep
+  - bat
+  - jq
+```
+
+### 6.8 Add Deprecation Timeline to main.yml
+
+**Problem:** `main.yml:3` says "will be removed in a future release" but doesn't specify when.
+
+**Location:** `/home/justin/Projects/personal-dev-env/pde/main.yml:1-8`
+
+**Update header:**
+```yaml
+# DEPRECATED: Use site.yml instead
+# This file is maintained for backwards compatibility only.
+# REMOVAL DATE: After 2026-06-01 or v2.0 release (whichever comes first)
+#
+# Migration:
+#   Old: ansible-playbook main.yml -e "user=myuser"
+#   New: ansible-playbook site.yml --ask-become-pass
+```
+
+### 6.9 Add Pre-task System Prerequisite Check (Optional)
+
+**Problem:** Running `site.yml --tags user` skips system prerequisites (git, zsh, curl). User tasks may fail unexpectedly.
+
+**Location:** `/home/justin/Projects/personal-dev-env/pde/user.yml`
+
+**Add pre_tasks section:**
+```yaml
+- name: User-level setup
+  hosts: all
+  become: no
+
+  pre_tasks:
+    - name: Verify system prerequisites are installed
+      command: which {{ item }}
+      register: prereq_check
+      failed_when: false
+      changed_when: false
+      loop:
+        - git
+        - zsh
+        - curl
+        - unzip
+      tags: [always]
+
+    - name: Warn if system prerequisites missing
+      debug:
+        msg: "WARNING: {{ item.item }} not found. Run system.yml first for full functionality."
+      when: item.rc != 0
+      loop: "{{ prereq_check.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      tags: [always]
 ```
 
 ---
 
-## Configuration Files
+## Updated Implementation Checklist
 
-All dotfiles are in `pde/config/`:
-```
-pde/config/
-├── aider/           # Aider AI configuration
-├── nvim/            # Neovim/LazyVim config
-├── powerlevel10k/   # p10k theme config
-├── tmux/            # Tmux configuration
-├── xfce4/           # XFCE4 desktop settings
-└── zsh/             # Zsh shell configuration
-```
+### Phase 1-5: Original Plan (COMPLETE)
+- [x] Create `pde/system.yml`
+- [x] Create `pde/user.yml`
+- [x] Create `pde/site.yml` as orchestrator
+- [x] Create `pde/defaults.yml`
+- [x] Create `pde/vars/versions.yml`
+- [x] Guard sudoers modification task
+- [x] Fix node version usage
+- [x] Use version variables throughout
+- [x] Rename `install_deps.yml` → `install_rust.yml`
+- [x] Create user-level task files
+- [x] Create `install_configs.yml`
+- [x] Create comprehensive `README.md`
+- [x] Update Makefile with deployment targets
 
-Edit these files and re-run the playbook to apply changes.
-
----
-
-## Troubleshooting
-
-### "User not found" error
-Make sure to pass your username:
-```bash
-ansible-playbook main.yml -e "target_user=$USER" --ask-become-pass
-```
-
-### Ansible not found
-Install it:
-```bash
-sudo apt update && sudo apt install -y ansible
-```
-
-### Permission denied errors
-Make sure to use `--ask-become-pass` for system-level changes.
-
-### Tools not in PATH
-After installation, restart your shell or source the config:
-```bash
-source ~/.zshrc
-```
+### Phase 6: Bug Fixes (COMPLETE)
+- [x] Rename legacy task files (`*_legacy.yml`)
+- [x] Update main.yml to reference renamed files
+- [x] Fix node version idempotency check
+- [x] Add Rust/cargo dependency guard to install_shell_user.yml
+- [x] Add NVM existence check for npm install tasks
+- [x] Remove duplicate `node_version` from group_vars/development.yml
+- [x] Add `install_lazyvim`, `install_yazi`, `install_alacritty` to defaults.yml
+- [x] Remove redundant zsh/tmux from servers.yml shell_tools
+- [x] Add deprecation timeline to main.yml header
+- [x] Add pre-task system prerequisite warnings to user.yml
 
 ---
 
-## Updating
+## Updated Success Criteria
 
-### Update User Tools
-```bash
-cd personal-dev-env/pde
-git pull
-ansible-playbook user.yml
-```
-
-### Update System Packages
-```bash
-ansible-playbook system.yml --ask-become-pass
-```
-
----
-
-## Platform Support
-
-- **Supported:** Ubuntu 22.04+, Debian 11+ (x86_64)
-- **Not supported:** macOS, Fedora, Arch, ARM architectures
-
-This is intentionally focused on Ubuntu/Debian x86_64 for simplicity.
+- [x] Can run full install with: `make deploy-dev`
+- [x] Can update user tools with: `ansible-playbook user.yml` (no sudo)
+- [x] Clear separation: system.yml vs user.yml
+- [x] No hardcoded values (all in defaults.yml or versions.yml)
+- [x] Comprehensive README exists
+- [x] All tasks have clear, consistent names
+- [x] Passwordless sudo guarded by flag (default: false)
+- [x] **NEW:** No duplicate variable definitions across files
+- [x] **NEW:** All task files clearly named (legacy vs current)
+- [x] **NEW:** Idempotent node installation
+- [x] **NEW:** Dependency guards prevent partial installation failures
+- [x] **NEW:** Clear deprecation timeline for legacy files
 
 ---
 
-## Files Modified
+## Testing Plan for Phase 6
 
-After running, these files in your home directory will be modified:
-- `~/.zshrc`, `~/.zsh_plugins.txt`
-- `~/.tmux.conf`
-- `~/.p10k.zsh`
-- `~/.aider.conf.yml`
-- `~/.codex/config.toml`
-- `~/.config/pde/paths.env`
-
-Your shell will be changed to zsh.
-
----
-
-## Security
-
-- System packages installed via official apt repositories
-- Tools downloaded from official GitHub releases
-- No passwordless sudo configured
-- User-level tools installed to `~/.cargo`, `~/.local`, `~/.nvm` (no system pollution)
-
----
-
-## License
-
-Personal use only.
-
----
-
-## Structure
-
-```
-personal-dev-env/
-├── README.md              # This file
-├── REVIEW.md              # Code review findings
-├── IMPROVEMENT-PLAN.md    # Implementation plan
-├── Makefile               # Claude Code launcher
-├── ai-profiles/           # AI tool profiles
-└── pde/                   # Ansible playbooks
-    ├── main.yml           # Orchestrator
-    ├── system.yml         # System-level (sudo)
-    ├── user.yml           # User-level (no sudo)
-    ├── defaults.yml       # Default variables
-    ├── vars/
-    │   └── versions.yml   # Version pinning
-    ├── tasks/
-    │   ├── install_rust.yml
-    │   ├── install_shell.yml
-    │   ├── install_fonts.yml
-    │   ├── install_tools.yml
-    │   └── install_configs.yml
-    └── config/            # Dotfiles
-        ├── aider/
-        ├── nvim/
-        ├── powerlevel10k/
-        ├── tmux/
-        ├── xfce4/
-        └── zsh/
-```
-```
-
-#### 4.2 Update .gitignore
-
-**Add:**
-```gitignore
-# User overrides
-pde/user-overrides.yml
-
-# Ansible retry files
-*.retry
-```
-
----
-
-## Phase 5: Update Makefile (15 min)
-
-### Goal
-Add helpful targets for common operations.
-
-### Changes
-
-**Add to Makefile:**
-```makefile
-# Ansible Playbook Targets
-.PHONY: install install-system install-user update help-ansible
-
-install: ## Full installation (system + user tools)
-	@echo "$(BLUE)Installing Personal Dev Environment$(NC)"
-	@echo "$(YELLOW)You will be prompted for sudo password$(NC)"
-	cd pde && ansible-playbook main.yml --ask-become-pass
-
-install-system: ## Install system packages only (requires sudo)
-	@echo "$(BLUE)Installing system packages$(NC)"
-	cd pde && ansible-playbook system.yml --ask-become-pass
-
-install-user: ## Install user tools only (no sudo)
-	@echo "$(BLUE)Installing user-level tools$(NC)"
-	cd pde && ansible-playbook user.yml
-
-update: install-user ## Update user tools (no sudo)
-
-help-ansible: ## Show Ansible-specific help
-	@echo "$(GREEN)Ansible Playbook Commands:$(NC)"
-	@echo "  make install         - Full installation (system + user)"
-	@echo "  make install-system  - System packages only"
-	@echo "  make install-user    - User tools only"
-	@echo "  make update          - Update user tools"
-	@echo ""
-	@echo "$(GREEN)Manual Commands:$(NC)"
-	@echo "  cd pde && ansible-playbook main.yml --ask-become-pass"
-	@echo "  cd pde && ansible-playbook user.yml"
-	@echo "  cd pde && ansible-playbook main.yml -e 'timezone=America/New_York' --ask-become-pass"
-
-# Update existing help target to include ansible help
-help: help-ansible
-	@echo ""
-	@echo "$(GREEN)Claude Code Commands:$(NC)"
-	# ... existing claude help ...
-```
-
----
-
-## Implementation Checklist
-
-### Phase 1: Security & Structure
-- [ ] Create `pde/system.yml`
-- [ ] Create `pde/user.yml`
-- [ ] Update `pde/main.yml` to orchestrate both
-- [ ] Create `pde/defaults.yml`
-- [ ] Create `pde/vars/versions.yml`
-- [ ] Remove sudoers modification task
-
-### Phase 2: Fix Variables
-- [ ] Fix node version usage in `install_tools.yml`
-- [ ] Use `nvm_version` variable
-- [ ] Use `nerd_fonts_version` in font downloads
-- [ ] Remove unused `node_version` from old main.yml
-
-### Phase 3: Refactor Tasks
-- [ ] Rename `install_deps.yml` → `install_rust.yml`
-- [ ] Remove all `become` statements from task files
-- [ ] Update `install_shell.yml` (remove become, standardize naming)
-- [ ] Update `install_tools.yml` (remove become, fix npm idempotency)
-- [ ] Create `install_configs.yml`
-- [ ] Update all task files to use `ansible_env.HOME`
-
-### Phase 4: Documentation
-- [ ] Create comprehensive `README.md`
-- [ ] Update `.gitignore` with `user-overrides.yml`
-- [ ] Add comments to `ignore_errors` usages
-
-### Phase 5: Makefile
-- [ ] Add `install`, `install-system`, `install-user` targets
-- [ ] Add `update` target
-- [ ] Add `help-ansible` target
-- [ ] Update main `help` target
-
-### Testing
-- [ ] Test system.yml on fresh Ubuntu VM
-- [ ] Test user.yml without sudo
-- [ ] Test main.yml full install
-- [ ] Test with user overrides
-- [ ] Verify all tools install correctly
-- [ ] Verify configs are copied
-
----
-
-## Success Criteria
-
-- [ ] Can run full install with: `make install`
-- [ ] Can update user tools with: `make update` (no sudo)
-- [ ] Clear separation: system.yml vs user.yml
-- [ ] No hardcoded values (all in defaults.yml or versions.yml)
-- [ ] Comprehensive README exists
-- [ ] All tasks have clear, consistent names
-- [ ] No passwordless sudo granted
-- [ ] All variables actually used
-
----
-
-## Rollback Plan
-
-If something breaks during refactoring:
-
-1. **Git commit before starting each phase**
+1. **Test legacy file rename:**
    ```bash
-   git commit -m "chore: checkpoint before phase 1"
+   ansible-playbook main.yml -e "user=$USER" --check
+   # Should reference *_legacy.yml files without error
    ```
 
-2. **Test incrementally**
-   - Don't refactor everything at once
-   - Test each phase before moving to next
-
-3. **Keep old files until verified**
+2. **Test node idempotency:**
    ```bash
-   mv pde/main.yml pde/main.yml.old
-   # Create new main.yml
-   # Test
-   # If works: rm pde/main.yml.old
-   # If broken: mv pde/main.yml.old pde/main.yml
+   ansible-playbook user.yml --tags tools
+   # Run twice - second run should show no changes for node
+   ```
+
+3. **Test dependency guards:**
+   ```bash
+   # Without rust installed, should fail gracefully
+   ansible-playbook user.yml --tags shell --skip-tags rust
+   # Should show clear error about missing cargo
+   ```
+
+4. **Test npm guards:**
+   ```bash
+   # Without nvm installed, should skip npm packages
+   ansible-playbook user.yml --tags tools -e "skip_node=true"
+   # Should skip codex/claude install, not fail
+   ```
+
+5. **Test prerequisite warnings:**
+   ```bash
+   # On fresh system without git/zsh
+   ansible-playbook user.yml --tags user
+   # Should show warnings but continue
    ```
 
 ---
 
-## Post-Implementation
+## Files to Modify (Phase 6)
 
-After completing all phases:
-
-1. **Test on fresh Ubuntu VM**
-2. **Update REVIEW.md** with "Fixed" status
-3. **Create git tag:** `git tag v2.0-modular`
-4. **Consider adding:**
-   - GitHub Actions / Gitea CI for validation
-   - `ansible-lint` integration
-   - Pre-commit hooks
-
----
-
-## Estimated Timeline
-
-| Phase | Task | Time | Cumulative |
-|-------|------|------|------------|
-| 1 | Create system.yml | 30m | 30m |
-| 1 | Create user.yml | 30m | 1h |
-| 1 | Create defaults/versions.yml | 15m | 1h 15m |
-| 1 | Update main.yml | 15m | 1h 30m |
-| 1 | Remove sudo task | 5m | 1h 35m |
-| 2 | Fix node version | 10m | 1h 45m |
-| 2 | Fix other variables | 20m | 2h 5m |
-| 3 | Refactor install_rust.yml | 20m | 2h 25m |
-| 3 | Refactor install_shell.yml | 20m | 2h 45m |
-| 3 | Refactor install_tools.yml | 30m | 3h 15m |
-| 3 | Create install_configs.yml | 15m | 3h 30m |
-| 4 | Write README.md | 40m | 4h 10m |
-| 4 | Update .gitignore | 5m | 4h 15m |
-| 5 | Update Makefile | 15m | 4h 30m |
-| Test | Full testing | 30m | 5h |
-
-**Total: ~5 hours**
+| File | Change |
+|------|--------|
+| `tasks/install_shell.yml` | Rename to `install_shell_legacy.yml` |
+| `tasks/install_tools.yml` | Rename to `install_tools_legacy.yml` |
+| `tasks/install_deps.yml` | Rename to `install_deps_legacy.yml` |
+| `main.yml` | Update imports + add deprecation date |
+| `tasks/install_tools_user.yml` | Fix node check + add NVM guards |
+| `tasks/install_shell_user.yml` | Add cargo dependency guard |
+| `group_vars/development.yml` | Remove duplicate node_version |
+| `group_vars/servers.yml` | Remove redundant zsh/tmux |
+| `defaults.yml` | Add install_lazyvim, install_yazi, install_alacritty |
+| `user.yml` | Add pre_tasks prerequisite check |
 
 ---
 
 ## Notes
 
-- This plan assumes Ubuntu/Debian x86_64 only (as specified)
-- No platform detection needed
-- No architecture detection needed
-- Los Angeles timezone is default (overrideable)
-- Focus is on simplicity, security, and maintainability
-- User tools should never require sudo
+- Phase 1-5 implemented privilege separation successfully
+- Phase 6 addresses edge cases and improves robustness
+- Legacy main.yml preserved for backwards compatibility until 2026-06-01
+- All changes are backwards compatible - no breaking changes
+- Focus remains on Ubuntu/Debian x86_64 only
