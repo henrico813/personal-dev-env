@@ -6,7 +6,7 @@ argument-hint: <plan-path> [additional guiding principles...]
 
 # Review Plan
 
-Review an implementation plan before implementation begins. Use parallel agents to evaluate architecture (SOLID, SoC), potential bugs, and completeness.
+Review an implementation plan before implementation begins. Use parallel agents to evaluate architecture, potential bugs, and completeness.
 
 ## Initial Response
 
@@ -44,8 +44,11 @@ Then wait for the user's input.
 ### Step 2: Parse Guiding Principles
 
 **Default focus areas** (always apply):
-- SOLID principles - SRP, OCP, DIP violations
-- Separation of Concerns - layer boundaries respected
+- Module depth - deep modules with simple interfaces, not shallow wrappers
+- Information hiding - design decisions encapsulated, not leaked across modules
+- Complexity direction - pulled down into implementations, not pushed to callers
+- Change amplification - single changes shouldn't ripple across many files
+- Implicit assumptions - surface undocumented beliefs, especially in AI-generated plans
 - Bug potential - edge cases, error handling, failure modes
 - Completeness - all affected files covered
 
@@ -56,10 +59,10 @@ Then wait for the user's input.
 Launch 3 agents IN PARALLEL (single message, multiple Task calls):
 
 1. **plan-architecture-reviewer**:
-   - Evaluate SOLID compliance
-   - Check separation of concerns
-   - Assess coupling and scalability
-   - Verify maintainability and testability
+   - Evaluate module depth and interface simplicity
+   - Check information hiding and complexity direction
+   - Surface implicit assumptions (especially critical for AI-generated plans)
+   - Flag over-engineering and unnecessary abstraction
 
 2. **plan-bug-reviewer**:
    - Anticipate runtime errors and edge cases
@@ -97,8 +100,9 @@ Present findings directly to the user (do NOT write to a file):
 
 ### Architecture
 [From plan-architecture-reviewer]
-- [SOLID violation or SoC issue with file:line reference]
-- [Coupling or maintainability concern]
+- [Module depth / information hiding issue with file:line reference]
+- [Implicit assumption that needs to be made explicit]
+- [Over-engineering or unnecessary complexity]
 
 ### Potential Bugs
 [From plan-bug-reviewer]
@@ -131,7 +135,7 @@ Present findings directly to the user (do NOT write to a file):
 2. **Wait for ALL agents** before synthesizing findings
 3. **Be specific** - always cite file:line references for concerns
 4. **Don't block on minor issues** - note them as suggestions
-5. **Focus on the guiding principles** - SOLID, SoC, bugs, completeness
+5. **Focus on the guiding principles** - module depth, information hiding, complexity direction, bugs, completeness
 6. **Present findings directly** - do NOT write the review to a file
 7. **Read files FULLY** - never use limit/offset parameters
 
