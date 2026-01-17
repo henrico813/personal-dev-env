@@ -7,13 +7,14 @@ TARGET_DIR="$HOME/.claude"
 
 echo "Installing Claude Code configuration..."
 
-# Preserve session history and credentials
+# Preserve user data (sessions, credentials, prompt history)
 PRESERVE_BACKUP=""
-if [ -d "$TARGET_DIR/projects" ] || [ -f "$TARGET_DIR/.credentials.json" ]; then
+if [ -d "$TARGET_DIR/projects" ] || [ -f "$TARGET_DIR/.credentials.json" ] || [ -f "$TARGET_DIR/history.jsonl" ]; then
     PRESERVE_BACKUP=$(mktemp -d)
-    echo "Preserving session history and credentials..."
-    [ -d "$TARGET_DIR/projects" ] && mv "$TARGET_DIR/projects" "$PRESERVE_BACKUP/"
-    [ -f "$TARGET_DIR/.credentials.json" ] && mv "$TARGET_DIR/.credentials.json" "$PRESERVE_BACKUP/"
+    echo "Preserving user data:"
+    [ -d "$TARGET_DIR/projects" ] && echo "  - projects/ (session data)" && mv "$TARGET_DIR/projects" "$PRESERVE_BACKUP/"
+    [ -f "$TARGET_DIR/.credentials.json" ] && echo "  - .credentials.json (auth)" && mv "$TARGET_DIR/.credentials.json" "$PRESERVE_BACKUP/"
+    [ -f "$TARGET_DIR/history.jsonl" ] && echo "  - history.jsonl (prompt history)" && mv "$TARGET_DIR/history.jsonl" "$PRESERVE_BACKUP/"
 fi
 
 # Backup existing
@@ -27,11 +28,12 @@ fi
 echo "Copying configuration to $TARGET_DIR"
 cp -r "$SOURCE_DIR" "$TARGET_DIR"
 
-# Restore session history and credentials
+# Restore user data
 if [ -n "$PRESERVE_BACKUP" ]; then
-    echo "Restoring session history and credentials..."
+    echo "Restoring user data..."
     [ -d "$PRESERVE_BACKUP/projects" ] && mv "$PRESERVE_BACKUP/projects" "$TARGET_DIR/"
     [ -f "$PRESERVE_BACKUP/.credentials.json" ] && mv "$PRESERVE_BACKUP/.credentials.json" "$TARGET_DIR/"
+    [ -f "$PRESERVE_BACKUP/history.jsonl" ] && mv "$PRESERVE_BACKUP/history.jsonl" "$TARGET_DIR/"
     rmdir "$PRESERVE_BACKUP" 2>/dev/null || true
 fi
 
