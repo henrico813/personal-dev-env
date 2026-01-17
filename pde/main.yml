@@ -1,6 +1,6 @@
 # DEPRECATED: Use site.yml instead
 # This file is maintained for backwards compatibility only.
-# It will be removed in a future release.
+# REMOVAL DATE: After 2026-06-01 or v2.0 release (whichever comes first)
 #
 # Migration:
 #   Old: ansible-playbook main.yml -e "user=myuser"
@@ -57,7 +57,7 @@
 
     - name: Install dependencies
       tags: ["deps"]
-      include_tasks: tasks/install_deps.yml
+      include_tasks: tasks/install_deps_legacy.yml
 
     - name: "Configure system locale"
       locale_gen:
@@ -98,12 +98,12 @@
     # Shell configuration
     - name: Setup zsh and tmux environment
       tags: ["shell"]
-      import_tasks: tasks/install_shell.yml
+      import_tasks: tasks/install_shell_legacy.yml
 
     # Development tools
     - name: Install tools
       tags: ["tools"]
-      import_tasks: tasks/install_tools.yml
+      import_tasks: tasks/install_tools_legacy.yml
 
     # ============================================
     # PDE CONFIGURATION

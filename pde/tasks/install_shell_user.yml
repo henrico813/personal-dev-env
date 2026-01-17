@@ -1,6 +1,22 @@
 ---
 # Shell environment setup - user level
 # No sudo needed
+# REQUIRES: install_rust.yml must run before this file
+
+- name: Verify cargo-binstall is available
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/cargo-binstall"
+  register: cargo_binstall_check
+
+- name: Verify cargo is available
+  stat:
+    path: "{{ ansible_env.HOME }}/.cargo/bin/cargo"
+  register: cargo_check
+
+- name: Fail if Rust toolchain not installed
+  fail:
+    msg: "Rust toolchain not found. Run install_rust.yml first or use full playbook."
+  when: not cargo_check.stat.exists
 
 - name: Check if eza is installed
   stat:
