@@ -22,6 +22,9 @@ cp -r "$SOURCE_DIR" "$TARGET_DIR"
 chmod +x "$TARGET_DIR/hooks/"*.py 2>/dev/null || true
 chmod +x "$TARGET_DIR/statusline.sh" 2>/dev/null || true
 
+# Make scripts executable
+chmod +x "$TARGET_DIR/scripts/"*.sh 2>/dev/null || true
+
 echo "Done! Configuration installed to $TARGET_DIR"
 echo ""
 echo "Note: statusline.sh requires 'jq' - install with:"
