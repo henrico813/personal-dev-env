@@ -1,12 +1,12 @@
 ---
-description: Review an implementation plan using parallel agents for simplicity, bugs, maintainability, and codebase consistency
+description: Review an implementation plan for architecture, bugs, and completeness using parallel agents
 model: opus
 argument-hint: <plan-path> [additional guiding principles...]
 ---
 
 # Review Plan
 
-You are tasked with reviewing an implementation plan before implementation begins. Use parallel agents to evaluate the plan for simplicity, bugs, maintainability, and codebase consistency.
+Review an implementation plan before implementation begins. Use parallel agents to evaluate architecture (SOLID, SoC), potential bugs, and completeness.
 
 ## Initial Response
 
@@ -18,8 +18,8 @@ When this command is invoked:
 I'll review an implementation plan. Please provide the path to the plan file.
 
 Example usage:
-- /review_plan docs/plans/2025-01-15-feature-name.md
-- /review_plan docs/plans/2025-01-15-feature-name.md with focus on security and performance
+- /review_plan docs/planning/active/2025-01-15-feature-name.md
+- /review_plan docs/planning/active/2025-01-15-feature-name.md with focus on security
 ```
 
 Then wait for the user's input.
@@ -35,21 +35,19 @@ Then wait for the user's input.
 1. **Read the plan FULLY** - no limit/offset parameters
 2. **Read any referenced files**:
    - Original tickets or requirements documents
-   - Related research documents
-   - Files mentioned in "Changes Required" sections
+   - Files mentioned in "Changes Required" or "Files to Modify" sections
 3. **Identify key elements**:
    - Proposed changes and files to be modified
    - Implementation phases
    - Success criteria
-4. **Create a review checklist** using TodoWrite to track review tasks
 
 ### Step 2: Parse Guiding Principles
 
 **Default focus areas** (always apply):
-- Simplicity - is the plan over-engineered?
-- Bugs - potential issues in proposed changes
-- Maintainability - long-term health of the codebase
-- Codebase consistency - follows existing patterns
+- SOLID principles - SRP, OCP, DIP violations
+- Separation of Concerns - layer boundaries respected
+- Bug potential - edge cases, error handling, failure modes
+- Completeness - all affected files covered
 
 **Additional principles**: If $ARGUMENTS contains text beyond the plan path (e.g., "with focus on security"), extract those as additional review criteria.
 
@@ -57,29 +55,29 @@ Then wait for the user's input.
 
 Launch 3 agents IN PARALLEL (single message, multiple Task calls):
 
-1. **codebase-analyzer**:
-   - Analyze the files the plan proposes to modify
-   - Check for potential bugs, edge cases, logical issues in the proposed approach
-   - Evaluate against the guiding principles
-   - Cite specific file:line references
+1. **plan-architecture-reviewer**:
+   - Evaluate SOLID compliance
+   - Check separation of concerns
+   - Assess coupling and scalability
+   - Verify maintainability and testability
 
-2. **codebase-pattern-finder**:
-   - Find existing patterns in the codebase related to what the plan implements
-   - Verify the plan follows established conventions
-   - Check for consistency with how similar features are implemented
-   - Flag deviations from existing patterns
+2. **plan-bug-finder**:
+   - Anticipate runtime errors and edge cases
+   - Check error handling coverage
+   - Identify async pitfalls and race conditions
+   - Validate input handling
 
-3. **codebase-locator**:
-   - Locate related code the plan might have missed
-   - Find integration points and dependencies
-   - Identify affected areas not mentioned in the plan
-   - Check for code that should be updated but isn't listed
+3. **plan-completeness-reviewer**:
+   - Find files the plan missed (dependents, tests, configs)
+   - Verify all integration points covered
+   - Check for missing migrations or documentation
+   - Ensure test coverage addressed
 
 Each agent prompt should include:
 - Summary of what the plan proposes to change
+- List of files to be modified
 - The guiding principles to evaluate against
 - Instructions to cite specific file:line references
-- Focus on finding issues, not documenting what's fine
 
 ### Step 4: Wait and Synthesize
 
@@ -97,20 +95,20 @@ Present findings directly to the user (do NOT write to a file):
 ```
 ## Plan Review: [Plan Name]
 
-### Potential Issues
-[From codebase-analyzer]
-- [Bug or edge case with file:line reference]
-- [Logical issue in proposed approach]
+### Architecture
+[From plan-architecture-reviewer]
+- [SOLID violation or SoC issue with file:line reference]
+- [Coupling or maintainability concern]
 
-### Codebase Consistency
-[From codebase-pattern-finder]
-- [Pattern deviation or convention violation]
-- [Inconsistency with existing implementation]
+### Potential Bugs
+[From plan-bug-finder]
+- [Critical] [Bug that will cause runtime failure]
+- [Warning] [Edge case or error handling gap]
 
-### Missing Considerations
-[From codebase-locator]
-- [Related code not addressed in plan]
-- [Integration point or dependency missed]
+### Completeness
+[From plan-completeness-reviewer]
+- [Missing file that needs to be in plan]
+- [Integration point not addressed]
 
 ### Consolidated Concerns
 
@@ -129,18 +127,18 @@ Present findings directly to the user (do NOT write to a file):
 
 ## Important Guidelines
 
-1. **Spawn agents in parallel** for efficiency - use a single message with multiple Task calls
+1. **Spawn agents in parallel** - use a single message with multiple Task calls
 2. **Wait for ALL agents** before synthesizing findings
 3. **Be specific** - always cite file:line references for concerns
-4. **Don't block on minor issues** - note them as suggestions but don't mark BLOCKED
-5. **Focus on the guiding principles** - simplicity, bugs, maintainability, consistency
+4. **Don't block on minor issues** - note them as suggestions
+5. **Focus on the guiding principles** - SOLID, SoC, bugs, completeness
 6. **Present findings directly** - do NOT write the review to a file
 7. **Read files FULLY** - never use limit/offset parameters
 
 ## Example Usage
 
 ```
-/review_plan docs/plans/2025-01-15-auth-feature.md
-/review_plan docs/plans/2025-01-15-auth-feature.md with focus on security
-/review_plan docs/planning/active/2025-01-15-new-api.md with focus on performance and backwards compatibility
+/review_plan docs/planning/active/2025-01-15-auth-feature.md
+/review_plan docs/planning/active/2025-01-15-auth-feature.md with focus on security
+/review_plan docs/planning/active/2025-01-15-new-api.md with focus on performance
 ```
