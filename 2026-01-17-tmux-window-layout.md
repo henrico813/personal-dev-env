@@ -7,7 +7,7 @@ git_commit: 766b3cd6fb97bc3d18d530a6f62af259968a208e
 branch: feature/tmux-window-shortcuts
 repository: personal-dev-env
 type: implementation-plan
-status: active
+status: completed
 tags: [planning]
 created: 2026-01-17
 ---
@@ -118,6 +118,10 @@ ansible-playbook main.yml -e "user=$USER" --tags shell
 - [ ] `which yq` returns `/usr/local/bin/yq`
 - [ ] `yq --version` shows mikefarah/yq version (v4.x)
 - [ ] `yq -r '.test // "default"' <<< 'test: hello'` outputs `hello`
+
+#### Pre-deployment Verification
+- [x] Ansible playbook syntax check passes
+- [x] install_shell.yml changes in place
 
 #### Manual
 - [ ] None
@@ -230,12 +234,16 @@ Then reload shell: `source ~/.zshrc` or restart terminal.
 - [ ] `source ~/.zshrc` completes without errors
 - [ ] `type tw` shows the function definition
 
+#### Pre-deployment Verification
+- [x] zshrc syntax check passes (`zsh -n` returns no errors)
+- [x] tw() function added to .zshrc
+
 #### Manual
-- [ ] Running `tw` outside tmux shows clear error message
-- [ ] `tw ~/Projects/someproject` creates a 4-pane window named "someproject"
-- [ ] `tw ~/Projects/someproject '' 'echo hello' '' ''` runs "echo hello" in top-middle pane
-- [ ] Create `.tw.yml` in a project, verify commands auto-run
-- [ ] Invalid YAML in `.tw.yml` shows clear error message
+- [x] Running `tw` outside tmux shows clear error message
+- [x] `tw ~/Projects/someproject` creates a 4-pane window named "someproject"
+- [x] `tw ~/Projects/someproject '' 'echo hello' '' ''` runs "echo hello" in top-middle pane
+- [x] Create `.tw.yml` in a project, verify commands auto-run
+- [x] Invalid YAML in `.tw.yml` shows clear error message
 
 ---
 
