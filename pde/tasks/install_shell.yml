@@ -19,6 +19,33 @@
   args:
     creates: "{{ user_home }}/.cargo/bin/eza"
 
+- name: Check if yq is already installed
+  stat:
+    path: /usr/local/bin/yq
+  register: yq_installed
+
+- name: Install Mike Farah's yq (Go-based YAML processor)
+  block:
+    - name: Download yq binary
+      get_url:
+        url: https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        dest: /tmp/yq_linux_amd64
+        mode: '0755'
+
+    - name: Install yq to /usr/local/bin
+      become: yes
+      copy:
+        src: /tmp/yq_linux_amd64
+        dest: /usr/local/bin/yq
+        mode: '0755'
+        remote_src: yes
+
+    - name: Cleanup yq download
+      file:
+        path: /tmp/yq_linux_amd64
+        state: absent
+  when: not yq_installed.stat.exists
+
 - name: Check if antidote is already installed
   become: yes
   become_user: "{{ user }}"
