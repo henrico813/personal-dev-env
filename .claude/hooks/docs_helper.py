@@ -46,6 +46,30 @@ def is_help_query(prompt: str) -> bool:
     """Detect if the prompt is asking for help about Claude Code."""
     prompt_lower = prompt.lower()
 
+    # Explicit "claude code" mention with info-seeking signals
+    if "claude code" in prompt_lower or "claudecode" in prompt_lower:
+        # Signals that suggest asking, not commanding
+        # Include common typo variants (missing first letter)
+        signals = [
+            "?", "help", "explain", "show", "tell me",
+            "how", "ow",      # typo: "ow do i"
+            "what", "hat",    # typo: "hat is"
+            "why", "hy",      # typo: "hy does"
+            "where", "here",  # typo: "here is"
+            "when", "hen",
+            "which", "hich",
+            "can i", "can you", "could", "should",
+            "does", "do i", "do you",
+            "is it", "is there", "are there",
+            "use", "using", "work", "works",
+        ]
+        if any(s in prompt_lower for s in signals):
+            return True
+
+        # Very short prompt about claude code is likely a query
+        if len(prompt.split()) <= 4:
+            return True
+
     # Check for concept keywords
     has_keyword = any(kw in prompt_lower for kw in CONCEPT_KEYWORDS)
     if not has_keyword:
