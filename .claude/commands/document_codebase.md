@@ -7,42 +7,62 @@ argument-hint: [optional: specific file or directory to focus on]
 
 Current working directory: !`pwd`
 Recent changes: !`git log --oneline -5`
-Documentation files: !`find . -name "*.md" -type f 2>/dev/null | head -20`
+Directory structure: !`find . -type d -not -path '*/\.*' -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/__pycache__/*' 2>/dev/null | head -30`
 
 ## Your Task
 
 $ARGUMENTS
 
-Execute a complete documentation workflow in three phases:
+Execute a documentation workflow with progressive disclosure in five phases:
 
-## Phase 1: Documentation Review
+## Phase 1: Directory Structure Scan
 
-Use the **docs-reviewer** agent to analyze the current state of documentation:
-- Identify code changes that need corresponding documentation updates
-- Find documentation that has become outdated
-- Suggest areas where new documentation should be added
-- Review documentation quality and consistency
+Scan the directory structure (not file contents) to understand the codebase layout:
+- Identify directories with source code
+- Note which directories already have README.md files
+- Skip build artifacts (dist, node_modules, __pycache__, etc.)
+
+If $ARGUMENTS specifies a scope, focus only on that area.
+
+## Phase 2: Identify Documentation Needs
+
+Based on the structure scan, identify:
+- Directories that should have README.md but don't
+- Prioritize by: code complexity, frequent modification, public interfaces
+
+Do NOT read all markdown files upfront. Only note which directories need attention.
+
+## Phase 3: Documentation Review
+
+Use the **docs-reviewer** agent to analyze documentation for the identified directories:
+- Check for outdated content in existing README.md files
+- Identify documentation gaps
+- Check file sizes for token concerns
 
 Provide the agent with:
-- The scope (from $ARGUMENTS if provided, otherwise entire project)
+- The specific directories to review (from Phase 2)
 - Recent git changes for context
-- Current documentation structure
+- The scope (from $ARGUMENTS if provided)
 
 Wait for the review to complete before proceeding.
 
-## Phase 2: Implement Changes
+## Phase 4: Implement Changes
 
 Use the **docs-writer** agent to execute the review recommendations:
-- Update existing documentation files
-- Create new documentation where needed
+- Create README.md files in directories that need them
+- Update existing documentation with corrections
 - Fix broken links and references
-- Ensure consistent formatting and quality
 
-Pass the complete findings from Phase 1 to this agent.
+The docs-writer will:
+- Use the directory README.md template
+- Ask before creating files over 500 lines
+- Never add component docs to CLAUDE.md
+
+Pass the complete findings from Phase 3 to this agent.
 
 Wait for implementation to complete before proceeding.
 
-## Phase 3: Commit Changes
+## Phase 5: Commit Changes
 
 After documentation updates are complete:
 
@@ -53,7 +73,8 @@ After documentation updates are complete:
 
 ## Guidelines
 
+- Progressive disclosure: Scan structure first, read files only when needed
 - If $ARGUMENTS specifies a file or directory, focus the entire workflow on that scope
-- Otherwise, perform a comprehensive documentation review of the project
 - Execute phases sequentially - each must complete before the next begins
+- Directory-local README.md files are the primary output (not CLAUDE.md)
 - Present a summary of all changes at the end
