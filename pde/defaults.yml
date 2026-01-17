@@ -37,3 +37,9 @@ install_fonts: false
 install_dev_tools: false
 install_shell: true
 install_ai_tools: false
+
+# Tool Installation Flags
+# These control which optional tools are installed
+install_lazyvim: true       # LazyVim starter config for Neovim
+install_yazi: true          # Yazi terminal file manager
+install_alacritty: false    # Alacritty terminal (requires build deps)

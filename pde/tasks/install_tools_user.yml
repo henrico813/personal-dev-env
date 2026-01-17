@@ -12,6 +12,17 @@
     NVM_DIR: "{{ ansible_env.HOME }}/.nvm"
   when: not (skip_node | default(false))
 
+- name: Check if Node.js is installed via nvm
+  shell: |
+    source {{ ansible_env.HOME }}/.nvm/nvm.sh
+    nvm ls {{ node_version }} 2>/dev/null | grep -q "v{{ node_version }}"
+  args:
+    executable: /bin/bash
+  register: node_check
+  ignore_errors: yes
+  changed_when: false
+  when: not (skip_node | default(false))
+
 - name: Install Node.js via nvm
   shell: |
     source {{ ansible_env.HOME }}/.nvm/nvm.sh
@@ -19,8 +30,7 @@
     nvm alias default {{ node_version }}
   args:
     executable: /bin/bash
-    creates: "{{ ansible_env.HOME }}/.nvm/versions/node/v{{ node_version }}"
-  when: not (skip_node | default(false))
+  when: not (skip_node | default(false)) and (node_check.rc != 0)
 
 - name: Configure npm global directory
   shell: |
@@ -72,6 +82,11 @@
   when: not yazi_installed.stat.exists and (install_yazi | default(true))
 
 # AI Tools (aider, codex, claude)
+- name: Check if NVM is installed
+  stat:
+    path: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
+  register: nvm_installed
+
 - name: Check if aider is installed
   stat:
     path: "{{ ansible_env.HOME }}/.local/bin/aider"
@@ -90,7 +105,7 @@
   args:
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.npm-global/bin/codex"
-  when: install_ai_tools | default(false)
+  when: (install_ai_tools | default(false)) and nvm_installed.stat.exists
 
 - name: Install Claude Code via npm
   shell: |
@@ -99,4 +114,4 @@
   args:
     executable: /bin/bash
     creates: "{{ ansible_env.HOME }}/.npm-global/bin/claude"
-  when: install_ai_tools | default(false)
+  when: (install_ai_tools | default(false)) and nvm_installed.stat.exists
