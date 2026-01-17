@@ -9,7 +9,15 @@ INPUT=$(cat)
 MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "Claude"')
 PROJECT_DIR=$(echo "$INPUT" | jq -r '.workspace.project_dir // .workspace.current_dir // ""')
 CURRENT_DIR=$(echo "$INPUT" | jq -r '.workspace.current_dir // ""')
-USED_PCT=$(echo "$INPUT" | jq -r '.context_window.used_percentage // ""')
+
+# Calculate context usage percentage (used_percentage not provided by Claude Code)
+TOTAL_INPUT=$(echo "$INPUT" | jq -r '.context_window.total_input_tokens // 0')
+CTX_SIZE=$(echo "$INPUT" | jq -r '.context_window.context_window_size // 0')
+if [ "$CTX_SIZE" -gt 0 ] 2>/dev/null; then
+    USED_PCT=$((TOTAL_INPUT * 100 / CTX_SIZE))
+else
+    USED_PCT=""
+fi
 
 # Project name
 if [ -n "$PROJECT_DIR" ]; then
@@ -67,24 +75,21 @@ EOF
     fi
 fi
 
-# Context color
+# Context with color (thresholds: green <30%, yellow 30-60%, red >=60%)
 CTX_DISPLAY=""
-if [ -n "$USED_PCT" ] && [ "$USED_PCT" != "null" ]; then
-    PCT=${USED_PCT%.*}
-    [ "$PCT" -gt 100 ] 2>/dev/null && PCT=100
-    if [ "$PCT" -lt 50 ]; then
-        COLOR="32"  # green
-    elif [ "$PCT" -lt 80 ]; then
-        COLOR="33"  # yellow
+if [ -n "$USED_PCT" ] && [ "$USED_PCT" -gt 0 ] 2>/dev/null; then
+    if [ "$USED_PCT" -lt 30 ]; then
+        CTX_DISPLAY=$'\033[32m'"${USED_PCT}%"$'\033[0m'  # green
+    elif [ "$USED_PCT" -lt 60 ]; then
+        CTX_DISPLAY=$'\033[33m'"${USED_PCT}%"$'\033[0m'  # yellow
     else
-        COLOR="31"  # red
+        CTX_DISPLAY=$'\033[31m'"${USED_PCT}%"$'\033[0m'  # red
     fi
-    CTX_DISPLAY="\033[${COLOR}m${PCT}% Context\033[0m"
 fi
 
-# Build output (text only, no emojis per CLAUDE.md)
+# Build output
 OUTPUT="$PROJECT | $MODEL"
 [ -n "$GIT_BRANCH" ] && OUTPUT="$OUTPUT | ${GIT_BRANCH}${GIT_STATUS}"
 [ -n "$CTX_DISPLAY" ] && OUTPUT="$OUTPUT | $CTX_DISPLAY"
 
-echo -e "$OUTPUT"
+printf '%b\n' "$OUTPUT"
