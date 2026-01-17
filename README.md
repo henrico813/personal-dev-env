@@ -23,6 +23,18 @@ Then in any project:
 | `/review_plan` | Validate a plan |
 | `/implement_plan` | Execute a plan |
 
+## What install.sh Preserves
+
+The install script preserves your user data across updates:
+
+| File | Contents |
+|------|----------|
+| `projects/` | Session conversation data |
+| `.credentials.json` | Authentication credentials |
+| `history.jsonl` | Prompt history (up-arrow recall) |
+
+Old configurations are backed up to `~/.claude.backup.<timestamp>`.
+
 ## Requirements
 
 - `jq` (optional, for status line): `sudo apt install jq`
