@@ -14,11 +14,14 @@ MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "Claude"')
 PROJECT_DIR=$(echo "$INPUT" | jq -r '.workspace.project_dir // .workspace.current_dir // ""')
 CURRENT_DIR=$(echo "$INPUT" | jq -r '.workspace.current_dir // ""')
 
-# Calculate context usage percentage (used_percentage not provided by Claude Code)
-TOTAL_INPUT=$(echo "$INPUT" | jq -r '.context_window.total_input_tokens // 0')
+# Calculate context usage percentage from current_usage (actual context, not cumulative API calls)
+INPUT_TOKENS=$(echo "$INPUT" | jq -r '.context_window.current_usage.input_tokens // 0')
+CACHE_CREATE=$(echo "$INPUT" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
+CACHE_READ=$(echo "$INPUT" | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
 CTX_SIZE=$(echo "$INPUT" | jq -r '.context_window.context_window_size // 0')
+USED_TOKENS=$((INPUT_TOKENS + CACHE_CREATE + CACHE_READ))
 if [ "$CTX_SIZE" -gt 0 ] 2>/dev/null; then
-    USED_PCT=$((TOTAL_INPUT * 100 / CTX_SIZE))
+    USED_PCT=$((USED_TOKENS * 100 / CTX_SIZE))
 else
     USED_PCT=""
 fi
