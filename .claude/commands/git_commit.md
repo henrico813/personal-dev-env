@@ -1,6 +1,6 @@
 ---
 description: Create intelligent git commits based on conversation context
-argument-hint: [description] | [multi-commit request]
+argument-hint: "[description] | [multi-commit request]"
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*)
 model: haiku
 ---
