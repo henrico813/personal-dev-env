@@ -12,9 +12,9 @@ install_ai_tools: false
 
 # Shell tools - core essentials only
 # Lighter than development, skip heavy tools
+# Note: zsh is always installed by system.yml
+# Note: tmux is built from source by system.yml for modern features
 shell_tools:
-  - zsh
-  - tmux
   - fd-find
   - fzf
   - ripgrep

@@ -14,6 +14,28 @@
     app_data_dir: "{{ user_home }}/.local/share"
     fonts_dir: "{{ app_data_dir }}/fonts"
 
+  pre_tasks:
+    - name: Verify system prerequisites are installed
+      command: which {{ item }}
+      register: prereq_check
+      failed_when: false
+      changed_when: false
+      loop:
+        - git
+        - zsh
+        - curl
+        - unzip
+      tags: [always]
+
+    - name: Warn if system prerequisites missing
+      debug:
+        msg: "WARNING: {{ item.item }} not found. Run system.yml first for full functionality."
+      when: item.rc != 0
+      loop: "{{ prereq_check.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      tags: [always]
+
   tasks:
     # Rust installation
     - include_tasks: tasks/install_rust.yml
