@@ -1,6 +1,6 @@
 ---
 description: Export current plan to markdown for another AI to implement
-argument-hint: [description]
+argument-hint: "[description]"
 ---
 
 # Export Plan
