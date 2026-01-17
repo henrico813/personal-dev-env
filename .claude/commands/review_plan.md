@@ -142,5 +142,5 @@ Present findings directly to the user (do NOT write to a file):
 ```
 /review_plan docs/plans/2025-01-15-auth-feature.md
 /review_plan docs/plans/2025-01-15-auth-feature.md with focus on security
-/review_plan thoughts/shared/plans/2025-01-15-ENG-1234-new-api.md with focus on performance and backwards compatibility
+/review_plan docs/planning/active/2025-01-15-new-api.md with focus on performance and backwards compatibility
 ```
