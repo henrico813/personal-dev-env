@@ -94,7 +94,7 @@ Edit `vars/versions.yml` to pin specific versions.
 | `site.yml` | Main orchestrator (use this) |
 | `system.yml` | System-level setup (sudo required) |
 | `user.yml` | User-level setup (no sudo) |
-| `main.yml` | DEPRECATED - use site.yml |
+| `main.yml` | DEPRECATED - use site.yml (removal: 2026-06-01) |
 
 ### Task Files (new - no sudo)
 | File | Purpose |
@@ -105,11 +105,14 @@ Edit `vars/versions.yml` to pin specific versions.
 | `tasks/install_configs.yml` | Config file copying |
 
 ### Task Files (legacy - for backwards compatibility)
+
+These files support the deprecated `main.yml` and will be removed after 2026-06-01.
+
 | File | Purpose |
 |------|---------|
-| `tasks/install_deps.yml` | System dependencies (used by main.yml) |
-| `tasks/install_shell.yml` | Shell setup (used by main.yml) |
-| `tasks/install_tools.yml` | Dev tools (used by main.yml) |
+| `tasks/install_deps_legacy.yml` | System dependencies |
+| `tasks/install_shell_legacy.yml` | Shell setup |
+| `tasks/install_tools_legacy.yml` | Dev tools |
 | `tasks/install_fonts.yml` | Font installation (used by both) |
 
 ### Configuration
@@ -119,3 +122,13 @@ Edit `vars/versions.yml` to pin specific versions.
 | `vars/versions.yml` | Version pinning |
 | `inventory.yml` | Host and profile definitions |
 | `group_vars/*.yml` | Profile-specific variables |
+
+## Dependency Guards
+
+The playbooks include dependency guards to prevent partial installation failures:
+
+- **user.yml** checks for system prerequisites (git, zsh, curl, unzip) and warns if missing
+- **install_shell_user.yml** requires Rust/cargo to be installed first
+- **npm-based tools** skip gracefully if NVM is not installed
+
+If you see warnings about missing prerequisites, run `system.yml` first.

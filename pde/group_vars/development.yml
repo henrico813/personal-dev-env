@@ -39,5 +39,4 @@ ai_tools:
   - codex
   - claude
 
-# Node.js version for development
-node_version: "20"
+# Node.js version is defined in vars/versions.yml
