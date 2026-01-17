@@ -61,7 +61,7 @@ Launch 3 agents IN PARALLEL (single message, multiple Task calls):
    - Assess coupling and scalability
    - Verify maintainability and testability
 
-2. **plan-bug-finder**:
+2. **plan-bug-reviewer**:
    - Anticipate runtime errors and edge cases
    - Check error handling coverage
    - Identify async pitfalls and race conditions
@@ -101,7 +101,7 @@ Present findings directly to the user (do NOT write to a file):
 - [Coupling or maintainability concern]
 
 ### Potential Bugs
-[From plan-bug-finder]
+[From plan-bug-reviewer]
 - [Critical] [Bug that will cause runtime failure]
 - [Warning] [Edge case or error handling gap]
 
