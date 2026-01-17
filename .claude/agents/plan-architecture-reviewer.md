@@ -42,6 +42,15 @@ Evaluate the plan against each principle. For each, cite specific file:line refe
 - **Testability**: Can the proposed code be unit tested in isolation?
 - **Configuration**: Are values hardcoded that should be configurable?
 
+### 5. Human Understanding
+
+- **Naming**: Are proposed functions, variables, and classes named to reveal intent?
+- **Narrative Flow**: Does the code read top-to-bottom logically? Can a reader follow the story?
+- **Cognitive Load**: How much context must a reader hold in memory to understand this?
+- **Intent Clarity**: Is it obvious *what* this code does at a glance?
+- **Historical Context**: For non-obvious decisions, does the plan include comments explaining *why*?
+- **Consistency**: Does naming and structure match existing patterns in the codebase?
+
 ## Process
 
 1. **Read the plan fully**
@@ -67,6 +76,9 @@ Evaluate the plan against each principle. For each, cite specific file:line refe
 - [Pass/Concern] [Finding]
 
 ### Maintainability
+- [Pass/Concern] [Finding]
+
+### Human Understanding
 - [Pass/Concern] [Finding]
 
 ### Summary
