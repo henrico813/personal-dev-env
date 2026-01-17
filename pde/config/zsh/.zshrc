@@ -158,3 +158,84 @@ ai() {
             ;;
     esac
 }
+
+# Tmux Window - create window with VSCode-style layout
+# Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]
+# Config: Place .tw.yml in project root with keys: left, top, bottom, right
+tw() {
+    # Validate prerequisites
+    if [[ -z "$TMUX" ]]; then
+        echo "Error: tw must be run from inside a tmux session"
+        echo "Start tmux first: tmux new -s dev"
+        return 1
+    fi
+
+    # Resolve directory
+    local dir="${1:-.}"
+    dir="$(cd "$dir" 2>/dev/null && pwd)" || {
+        echo "Error: Directory not found: $1"
+        return 1
+    }
+
+    # Sanitize window name (tmux uses : . [ ] as special chars)
+    local name="$(basename "$dir" | tr ':.[]-' '_')"
+    [[ "$name" == "/" ]] && name="root"
+    [[ -z "$name" ]] && name="unnamed"
+
+    local config="$dir/.tw.yml"
+
+    # Parse commands from config or positional args
+    local cmd_left="" cmd_top="" cmd_bottom="" cmd_right=""
+
+    if [[ -f "$config" ]]; then
+        if ! command -v yq &>/dev/null; then
+            echo "Error: yq is required to parse .tw.yml but not installed"
+            echo "Run the PDE ansible playbook to install it"
+            return 1
+        fi
+        if ! yq -e '.' "$config" &>/dev/null; then
+            echo "Error: Invalid YAML in $config"
+            return 1
+        fi
+        cmd_left="$(yq -r '.left // ""' "$config")"
+        cmd_top="$(yq -r '.top // ""' "$config")"
+        cmd_bottom="$(yq -r '.bottom // ""' "$config")"
+        cmd_right="$(yq -r '.right // ""' "$config")"
+        # Handle explicit YAML null
+        [[ "$cmd_left" == "null" ]] && cmd_left=""
+        [[ "$cmd_top" == "null" ]] && cmd_top=""
+        [[ "$cmd_bottom" == "null" ]] && cmd_bottom=""
+        [[ "$cmd_right" == "null" ]] && cmd_right=""
+    elif [[ $# -gt 1 ]]; then
+        cmd_left="${2:-}"
+        cmd_top="${3:-}"
+        cmd_bottom="${4:-}"
+        cmd_right="${5:-}"
+    fi
+
+    # Create window and capture ID for robust pane targeting
+    local window_id
+    window_id=$(tmux new-window -n "$name" -c "$dir" -P -F "#{window_id}")
+
+    if [[ -z "$window_id" ]]; then
+        echo "Error: Failed to create tmux window"
+        return 1
+    fi
+
+    # Build layout: left | middle (top/bottom) | right
+    # Note: Pane indices depend on this exact split order
+    tmux split-window -t "$window_id" -hb -l 15% -c "$dir"
+    tmux select-pane -t "$window_id" -R
+    tmux split-window -t "$window_id" -h -l 18% -c "$dir"
+    tmux select-pane -t "$window_id" -L
+    tmux split-window -t "$window_id" -v -c "$dir"
+
+    # Send commands to panes (0=left, 1=top, 2=bottom, 3=right)
+    [[ -n "$cmd_left" ]] && tmux send-keys -t "${window_id}.0" "$cmd_left" C-m
+    [[ -n "$cmd_top" ]] && tmux send-keys -t "${window_id}.1" "$cmd_top" C-m
+    [[ -n "$cmd_bottom" ]] && tmux send-keys -t "${window_id}.2" "$cmd_bottom" C-m
+    [[ -n "$cmd_right" ]] && tmux send-keys -t "${window_id}.3" "$cmd_right" C-m
+
+    # Focus top-middle (main editor area)
+    tmux select-pane -t "${window_id}.1"
+}
