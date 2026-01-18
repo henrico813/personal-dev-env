@@ -6,6 +6,11 @@ export NVM_COMPLETION=true
 # Disable terminal flow control to enable Ctrl-S for forward history search
 stty -ixon
 
+# SSH agent via keychain (lazy key loading)
+if command -v keychain &>/dev/null; then
+    eval "$(keychain --eval --agents ssh --quiet)"
+fi
+
 # Plugin management using antidote
 source ${ZDOTDIR:-$HOME}/.local/share/antidote/antidote.zsh
 antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
