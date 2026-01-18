@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# pde - Personal Dev Environment
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPT_DIR
+
+# Ensure cargo is in PATH for partial re-runs
+export PATH="$HOME/.cargo/bin:$PATH"
+
+source "$SCRIPT_DIR/lib/core.sh"
+
+# Clean up temp directories on exit
+cleanup() {
+    rm -rf /tmp/tmux-build-$$ /tmp/yazi-$$ /tmp/font-*-$$ 2>/dev/null || true
+}
+trap cleanup EXIT
+
+usage() {
+    cat <<EOF
+Usage: pde <profile>
+
+Profiles:
+  minimal   Full shell experience (any remote machine)
+  full      Everything + AI tools + fonts (GUI machines)
+
+Options:
+  --help    Show this help
+EOF
+}
+
+install_configs() {
+    section "Config Files"
+
+    # Create PDE config first
+    PDE_PROFILE="minimal"
+    create_pde_config
+
+    link_config "$SCRIPT_DIR/config/zsh/zshrc" "$HOME/.zshrc"
+    link_config "$SCRIPT_DIR/config/zsh/zsh_plugins.txt" "$HOME/.zsh_plugins.txt"
+    link_config "$SCRIPT_DIR/config/tmux/tmux.conf" "$HOME/.tmux.conf"
+    link_config "$SCRIPT_DIR/config/p10k/p10k.zsh" "$HOME/.p10k.zsh"
+}
+
+install_configs_ai() {
+    section "AI Config Files"
+
+    # Update PDE config with full profile
+    PDE_PROFILE="full"
+    create_pde_config
+
+    # Alacritty
+    mkdir -p "$HOME/.config/alacritty"
+    link_config "$SCRIPT_DIR/config/alacritty/alacritty.toml" \
+                "$HOME/.config/alacritty/alacritty.toml"
+}
+
+main() {
+    local profile="${1:-}"
+
+    case "$profile" in
+        minimal)
+            section "Installing minimal profile"
+            need_sudo
+
+            source "$SCRIPT_DIR/lib/shell.sh"
+            source "$SCRIPT_DIR/lib/tools.sh"
+            source "$SCRIPT_DIR/lib/editor.sh"
+
+            install_shell      # zsh, tmux from source, plugins
+            install_tools      # apt + cargo tools, yazi
+            install_editor     # neovim + lazyvim
+            install_configs    # all configs except ai
+            ;;
+
+        full)
+            section "Installing full profile"
+            need_sudo
+
+            source "$SCRIPT_DIR/lib/shell.sh"
+            source "$SCRIPT_DIR/lib/tools.sh"
+            source "$SCRIPT_DIR/lib/editor.sh"
+            source "$SCRIPT_DIR/lib/ai.sh"
+            source "$SCRIPT_DIR/lib/fonts.sh"
+
+            install_shell
+            install_tools
+            install_tools_full   # adds trash-cli
+            install_editor
+            install_ai           # nvm, node, claude
+            install_fonts
+            install_configs
+            install_configs_ai   # adds ai() function, alacritty
+            ;;
+
+        --help|-h)
+            usage
+            exit 0
+            ;;
+
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+
+    section "Done!"
+}
+
+main "$@"
