@@ -38,7 +38,7 @@ install_cargo() {
     for tool in "$@"; do
         if ! has "$tool"; then
             log "Installing $tool via cargo-binstall..."
-            "$HOME/.cargo/bin/cargo-binstall" -y --no-confirm "$tool" \
+            "$HOME/.cargo/bin/cargo-binstall" -y "$tool" \
                 || die "cargo-binstall $tool failed"
         fi
     done

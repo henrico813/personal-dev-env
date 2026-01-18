@@ -835,3 +835,108 @@ For each test VM:
 - [ ] Running same profile twice completes without errors
 - [ ] No duplicate backups created
 - [ ] Symlinks unchanged on re-run
+
+## Automated Test Infrastructure
+
+Docker-based testing in `test/` directory.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile.base` | Pre-built base image with tmux compiled |
+| `run-tests.sh` | Test orchestrator |
+| `verify.sh` | Post-install verification |
+
+### Usage
+
+```bash
+# First time: build base images (slow, but only once)
+./test/run-tests.sh build-base
+
+# Run tests
+./test/run-tests.sh minimal    # Ubuntu 22.04 + 24.04
+./test/run-tests.sh full       # Ubuntu 24.04 only
+./test/run-tests.sh idempotent # Run installer twice
+./test/run-tests.sh all        # Everything
+./test/run-tests.sh clean      # Remove test images
+```
+
+### What Gets Tested
+
+**verify.sh** checks:
+- Core tools exist (zsh, tmux, rust, eza, zoxide, fzf, rg, bat, jq, yazi)
+- Tmux version matches expected
+- Neovim binary runs
+- Plugin managers installed (antidote, p10k, tpm)
+- LazyVim config present
+- Config symlinks point to .pde
+- Runtime: zsh starts, tmux creates session, nvim runs
+- Full profile: trash-cli, node, claude, fonts, alacritty config
+
+### Design Decisions
+
+**Why Docker instead of pytest?**
+- Tests the actual install path on real Ubuntu versions
+- No Python dependency in the test subject
+- Base image caching makes iteration fast
+- Matches production: fresh user, sudo access, network
+
+**Why pre-built base images?**
+- tmux build takes ~2 minutes
+- Base image has: Ubuntu, apt packages, tmux 3.6a compiled
+- Test image just copies pde/ and runs installer
+
+## Testing Notes
+
+Lessons learned while building the Docker-based test infrastructure.
+
+### Neovim Verification
+
+**Problem:** Using `nvim --headless +qa` for verification triggers full LazyVim plugin download, taking several minutes per test run.
+
+**Solution:** Use `nvim --version` instead - verifies binary works without triggering plugin system.
+
+```bash
+# Bad - triggers plugin download
+if /usr/local/bin/nvim --headless +qa; then
+
+# Good - just verifies binary runs
+if /usr/local/bin/nvim --version &>/dev/null; then
+```
+
+### LazyVim Detection
+
+**Problem:** Checking for `~/.config/nvim/lazy-lock.json` fails because lock file only created on first interactive nvim run with plugin sync.
+
+**Solution:** Check for `~/.config/nvim/init.lua` which exists in the starter template immediately after clone.
+
+### Pre-built Base Images
+
+Building tmux from source adds ~2 minutes per test run. Use pre-built base images with tmux already compiled:
+
+```bash
+# Build once (slow)
+./test/run-tests.sh build-base
+
+# Future tests are fast
+./test/run-tests.sh minimal
+```
+
+### Bash Arithmetic in Conditionals
+
+**Problem:** This pattern silently fails when `failed=0`:
+
+```bash
+test_something || ((failed++))
+```
+
+When `failed=0`, the expression `((0))` evaluates to false (exit code 1), causing `set -e` to terminate the script.
+
+**Solution:** Use explicit if statements:
+
+```bash
+if ! test_something; then
+    ((failed++))
+fi
+```
