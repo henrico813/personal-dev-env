@@ -18,11 +18,8 @@ bindkey '^S' history-incremental-search-forward
 alias update-antibody='antibody bundle < $HOME/.zsh_plugins.txt > $HOME/.zsh_plugins.sh'
 # List out all globally installed npm packages
 alias list-npm-globals='npm list -g --depth=0'
-# Adds better handling for `rm` using trash-cli
-# https://github.com/sindresorhus/trash-cli
-# You can empty the trash using the empty-trash command
-# https://github.com/sindresorhus/empty-trash-cli
-alias rm='trash'
+# Conditional trash alias (only if trash-cli installed)
+command -v trash &>/dev/null && alias rm='trash'
 # use neovim instead of vim
 alias nvim='/opt/nvim'
 alias vim='nvim'
@@ -38,12 +35,6 @@ alias ls='eza -al'
 alias fd='fdfind'
 # yazi file manager
 alias yazi='~/.cargo/bin/yazi'
-# codex shortcut for neuro20b profile
-function ask() {
-    # Use --output-last-message to get only the clean formatted AI response
-    codex e -p neuro20b "$@" --color always --output-last-message /tmp/ask_response.txt 2>/dev/null
-    cat /tmp/ask_response.txt
-}
 
 # DIRCOLORS (MacOS)
 export CLICOLOR=1
@@ -60,7 +51,7 @@ fi
 # PATH
 # nvim path may help git use nvim
 export PATH="$PATH:/opt/nvim/"
-# use local, useful for aider
+# use local, useful for pip installs
 export PATH="$PATH:$HOME/.local/bin"
 # add rust to path
 export PATH="$PATH:$HOME/.cargo/bin"
@@ -97,68 +88,6 @@ setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
 setopt APPEND_HISTORY         # Append to history file rather than overwriting
 setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
 
-# AI Tools CLI - Unified launcher for claude
-ai() {
-    if [ -z "$1" ]; then
-        echo "Usage: ai <tool> [model|profile]"
-        echo ""
-        echo "Available tools:"
-        echo "  claude [model]     - Launch Claude Code with local models"
-        echo "  claude default     - Launch Claude Code with Anthropic API"
-        echo ""
-        echo "Examples:"
-        echo "  ai claude"
-        echo "  ai claude openai/glm4.5-air-reap"
-        echo "  ai claude openai/qwen3-30b-a3b-thinking"
-        echo "  ai claude default"
-        return 1
-    fi
-
-    local tool=$1
-    local arg=$2
-
-    case $tool in
-        aider)
-            aider --subtree-only
-            ;;
-
-        claude)
-            if [ -z "$PDE_INSTALL_PATH" ]; then
-                echo "Error: PDE not configured. Config file missing at ~/.config/pde/paths.env"
-                echo "Please run the Ansible playbook to configure your environment."
-                return 1
-            fi
-
-            if [ ! -f "$PDE_INSTALL_PATH/Makefile" ]; then
-                echo "Error: PDE Makefile not found at $PDE_INSTALL_PATH/Makefile"
-                echo "The repository may have moved. Update ~/.config/pde/paths.env with the correct path."
-                return 1
-            fi
-
-            # Capture current directory before make changes it
-            local current_dir=$(pwd)
-
-            # If no argument or argument is "default", use PROFILE
-            # Otherwise treat argument as MODEL
-            if [ -z "$arg" ]; then
-                # No argument: use local profile with default model
-                make -C ${PDE_INSTALL_PATH} claude LAUNCH_DIR="$current_dir"
-            elif [ "$arg" = "default" ]; then
-                # Use official Anthropic API
-                make -C ${PDE_INSTALL_PATH} claude PROFILE=default LAUNCH_DIR="$current_dir"
-            else
-                # Treat argument as model name
-                make -C ${PDE_INSTALL_PATH} claude MODEL="$arg" LAUNCH_DIR="$current_dir"
-            fi
-            ;;
-        *)
-            echo "Unknown tool: $tool"
-            echo "Available tools: claude"
-            return 1
-            ;;
-    esac
-}
-
 # Tmux Window - create window with VSCode-style layout
 # Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]
 # Config: Place .tw.yml in project root with keys: left, top, bottom, right
@@ -190,7 +119,7 @@ tw() {
     if [[ -f "$config" ]]; then
         if ! command -v yq &>/dev/null; then
             echo "Error: yq is required to parse .tw.yml but not installed"
-            echo "Run the PDE ansible playbook to install it"
+            echo "Run the PDE installer to install it"
             return 1
         fi
         if ! yq -e '.' "$config" &>/dev/null; then
