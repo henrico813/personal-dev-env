@@ -8,6 +8,7 @@ PDE_DIR="$(dirname "$SCRIPT_DIR")"
 # Config - single source of truth
 UBUNTU_VERSIONS=("22.04" "24.04")
 TMUX_VERSION="3.6a"
+QUIET="${QUIET:-false}"
 
 # Colors
 RED='\033[0;31m'
@@ -42,9 +43,11 @@ build_base_images() {
 
 build_test_image() {
     local version="$1"
+    local quiet_flag=""
+    [[ "$QUIET" == "true" ]] && quiet_flag="-q"
 
     if has_base_image "$version"; then
-        if ! docker build -t "pde-test:$version" -f - "$PDE_DIR" <<EOF
+        if ! docker build $quiet_flag -t "pde-test:$version" -f - "$PDE_DIR" <<EOF
 FROM pde-base:$version
 COPY --chown=testuser:testuser . /home/testuser/.pde
 EOF
@@ -55,7 +58,7 @@ EOF
     else
         warn "No base image for $version - building from scratch (slow)"
         warn "Run '$0 build-base' first for faster tests"
-        if ! docker build -t "pde-test:$version" -f - "$PDE_DIR" <<EOF
+        if ! docker build $quiet_flag -t "pde-test:$version" -f - "$PDE_DIR" <<EOF
 FROM ubuntu:$version
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y sudo git curl
@@ -74,22 +77,45 @@ EOF
 test_profile() {
     local version="$1"
     local profile="$2"
+    local logfile="/tmp/pde-test-$version-$profile.log"
 
     log "Testing Ubuntu $version with profile '$profile'..."
     if ! build_test_image "$version"; then
         return 1
     fi
 
-    if docker run --rm "pde-test:$version" bash -c "
-        set -e
-        cd ~/.pde
-        ./pde \"$profile\"
-        ./test/verify.sh \"$profile\" \"$TMUX_VERSION\"
-    "; then
-        pass "Ubuntu $version - $profile"
+    if [[ "$QUIET" == "true" ]]; then
+        # Quiet mode: capture output, show only on failure
+        if docker run --rm "pde-test:$version" bash -c "
+            set -e
+            cd ~/.pde
+            ./pde \"$profile\" 2>&1
+            echo '---VERIFY---'
+            ./test/verify.sh \"$profile\" \"$TMUX_VERSION\"
+        " > "$logfile" 2>&1; then
+            # Show just verification output
+            sed -n '/^---VERIFY---$/,$ p' "$logfile" | tail -n +2
+            pass "Ubuntu $version - $profile"
+        else
+            # Show full log on failure
+            echo "--- Full output ---"
+            cat "$logfile"
+            fail "Ubuntu $version - $profile"
+            return 1
+        fi
     else
-        fail "Ubuntu $version - $profile"
-        return 1
+        # Verbose mode: show everything
+        if docker run --rm "pde-test:$version" bash -c "
+            set -e
+            cd ~/.pde
+            ./pde \"$profile\"
+            ./test/verify.sh \"$profile\" \"$TMUX_VERSION\"
+        "; then
+            pass "Ubuntu $version - $profile"
+        else
+            fail "Ubuntu $version - $profile"
+            return 1
+        fi
     fi
 }
 
