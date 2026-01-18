@@ -30,7 +30,7 @@ install_shell() {
     # Set shell to zsh
     if [[ "$SHELL" != */zsh ]]; then
         log "Changing shell to zsh..."
-        sudo chsh -s "$(which zsh)" "$USER"
+        sudo chsh -s "$(which zsh)" "$(whoami)"
     fi
 }
 
