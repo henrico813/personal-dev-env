@@ -11,6 +11,7 @@ model: haiku
 - Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
 - Recent commits: !`git log --oneline -10`
+- Worktrees: !`git worktree list --porcelain 2>/dev/null | grep -E '^worktree|^branch' | paste - - | sed 's/worktree //;s/branch refs\/heads\//\t/' || echo "none"`
 
 ## Your Task
 
@@ -43,6 +44,10 @@ Create git commit(s) intelligently based on the request and conversation context
 3. **Use conversation history** - Look at recent messages to understand what we've been working on
 4. **Ask when ambiguous** - If it's unclear what to commit, ask the user
 5. **Simple messages** - Write clear, descriptive commit messages
+
+### Worktree Awareness
+
+Before committing, check if any files you edited in this conversation are outside the current working directory. If they are in a different worktree, ask the user which location to commit from, then use `git -C <path>` for all git commands in that worktree.
 
 ### Commit Message Guidelines
 
