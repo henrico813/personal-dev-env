@@ -1,5 +1,0 @@
-require('fallingstar.telescope')
-require('fallingstar.lightline')
-require('fallingstar.gitsigns')
-require('fallingstar.lsp')
-require('fallingstar.treesitter')
