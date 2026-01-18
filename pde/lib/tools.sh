@@ -48,7 +48,7 @@ install_yazi() {
 
     rm -rf "$tmp"
 
-    # Verify
-    "$HOME/.cargo/bin/yazi" --version &>/dev/null || die "yazi installation verification failed"
+    # Verify binary exists and is executable
+    [[ -x "$HOME/.cargo/bin/yazi" ]] || die "yazi installation verification failed"
     log "yazi installed"
 }

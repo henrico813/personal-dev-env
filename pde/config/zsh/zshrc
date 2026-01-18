@@ -21,7 +21,7 @@ alias list-npm-globals='npm list -g --depth=0'
 # Conditional trash alias (only if trash-cli installed)
 command -v trash &>/dev/null && alias rm='trash'
 # use neovim instead of vim
-alias nvim='/opt/nvim'
+alias nvim='/usr/local/bin/nvim'
 alias vim='nvim'
 # checkout branch using fzf
 alias gcob='git branch | fzf | xargs git checkout'
@@ -50,7 +50,7 @@ fi
 
 # PATH
 # nvim path may help git use nvim
-export PATH="$PATH:/opt/nvim/"
+export PATH="$PATH:/usr/local/bin"
 # use local, useful for pip installs
 export PATH="$PATH:$HOME/.local/bin"
 # add rust to path
