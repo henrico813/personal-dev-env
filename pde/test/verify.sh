@@ -148,7 +148,7 @@ if [[ "$PROFILE" == "full" ]]; then
         fail "node not found"
     fi
 
-    claude_bin=$(find ~/.nvm/versions/node -name claude -type f 2>/dev/null | head -1)
+    claude_bin=$(find ~/.nvm/versions/node -name claude \( -type f -o -type l \) 2>/dev/null | head -1)
     if [[ -x "$claude_bin" ]]; then
         pass "claude"
     else

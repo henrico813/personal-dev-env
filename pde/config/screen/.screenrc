@@ -1,4 +1,0 @@
-# ~/.screenrc
-
-# Start Zsh in the new screen session
-shell -$SHELL
