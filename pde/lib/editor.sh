@@ -11,7 +11,7 @@ install_editor() {
 }
 
 install_neovim() {
-    if [[ -f /opt/nvim ]] && /opt/nvim --version &>/dev/null; then
+    if [[ -x /usr/local/bin/nvim ]] && /usr/local/bin/nvim --version &>/dev/null; then
         log "Neovim already installed"
         return 0
     fi
@@ -26,16 +26,27 @@ install_neovim() {
 
     log "Installing Neovim ($arch)..."
     local url="https://github.com/neovim/neovim/releases/download/$NEOVIM_VERSION/nvim-linux-${arch}.appimage"
+    local tmp="/tmp/nvim-$$"
 
-    sudo curl -fsSL "$url" -o /opt/nvim || die "Neovim download failed"
-    sudo chmod +x /opt/nvim
+    mkdir -p "$tmp"
+    curl -fsSL "$url" -o "$tmp/nvim.appimage" || die "Neovim download failed"
+    chmod +x "$tmp/nvim.appimage"
 
-    # Symlinks
-    sudo ln -sf /opt/nvim /usr/local/bin/nvim
-    sudo ln -sf /opt/nvim /usr/local/bin/vim
+    # Extract AppImage (works without FUSE)
+    cd "$tmp"
+    ./nvim.appimage --appimage-extract &>/dev/null || die "Failed to extract Neovim AppImage"
+
+    # Install extracted version
+    sudo rm -rf /opt/nvim
+    sudo mv squashfs-root /opt/nvim
+    sudo ln -sf /opt/nvim/usr/bin/nvim /usr/local/bin/nvim
+    sudo ln -sf /opt/nvim/usr/bin/nvim /usr/local/bin/vim
+
+    cd /
+    rm -rf "$tmp"
 
     # Verify
-    /opt/nvim --version &>/dev/null || die "Neovim installation verification failed"
+    /usr/local/bin/nvim --version &>/dev/null || die "Neovim installation verification failed"
     log "Neovim installed"
 }
 
