@@ -6,7 +6,7 @@ install_tools() {
 
     # Apt packages (available on all Ubuntu versions)
     # Note: unzip needed for yazi installation
-    install_apt fd-find fzf ripgrep bat jq htop unzip
+    install_apt fd-find fzf ripgrep bat jq htop unzip keychain
 
     # Cargo tools (not reliably available via apt)
     install_cargo eza zoxide
