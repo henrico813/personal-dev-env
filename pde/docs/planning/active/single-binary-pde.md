@@ -887,56 +887,10 @@ Docker-based testing in `test/` directory.
 - Base image has: Ubuntu, apt packages, tmux 3.6a compiled
 - Test image just copies pde/ and runs installer
 
-## Testing Notes
+### Gotchas
 
-Lessons learned while building the Docker-based test infrastructure.
+**Neovim verification:** `nvim --headless +qa` triggers full LazyVim plugin download. Use `nvim --version` instead.
 
-### Neovim Verification
+**LazyVim detection:** `lazy-lock.json` only created on first interactive run. Check `init.lua` instead.
 
-**Problem:** Using `nvim --headless +qa` for verification triggers full LazyVim plugin download, taking several minutes per test run.
-
-**Solution:** Use `nvim --version` instead - verifies binary works without triggering plugin system.
-
-```bash
-# Bad - triggers plugin download
-if /usr/local/bin/nvim --headless +qa; then
-
-# Good - just verifies binary runs
-if /usr/local/bin/nvim --version &>/dev/null; then
-```
-
-### LazyVim Detection
-
-**Problem:** Checking for `~/.config/nvim/lazy-lock.json` fails because lock file only created on first interactive nvim run with plugin sync.
-
-**Solution:** Check for `~/.config/nvim/init.lua` which exists in the starter template immediately after clone.
-
-### Pre-built Base Images
-
-Building tmux from source adds ~2 minutes per test run. Use pre-built base images with tmux already compiled:
-
-```bash
-# Build once (slow)
-./test/run-tests.sh build-base
-
-# Future tests are fast
-./test/run-tests.sh minimal
-```
-
-### Bash Arithmetic in Conditionals
-
-**Problem:** This pattern silently fails when `failed=0`:
-
-```bash
-test_something || ((failed++))
-```
-
-When `failed=0`, the expression `((0))` evaluates to false (exit code 1), causing `set -e` to terminate the script.
-
-**Solution:** Use explicit if statements:
-
-```bash
-if ! test_something; then
-    ((failed++))
-fi
-```
+**Bash arithmetic in conditionals:** `test_something || ((failed++))` fails when `failed=0` because `((0))` returns exit code 1. Use `if ! test; then ((failed++)); fi` instead.
