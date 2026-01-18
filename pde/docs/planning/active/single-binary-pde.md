@@ -64,7 +64,6 @@ Based on user requirements:
 | fontconfig | no | yes | apt (needed for fc-cache) |
 | **Shell Functions** |
 | tw() | yes | yes | Tmux helper, useful everywhere |
-| ai() | no | yes | Claude launcher |
 | **Legacy** |
 | screen | no | no | Skipped entirely |
 
@@ -84,7 +83,6 @@ pde/
 ├── config/
 │   ├── zsh/
 │   │   ├── zshrc           # Main config with tw(), conditional rm alias
-│   │   ├── zshrc.ai        # ai() function only
 │   │   └── zsh_plugins.txt
 │   ├── tmux/
 │   │   └── tmux.conf
@@ -165,7 +163,7 @@ main() {
             install_ai           # nvm, node, claude
             install_fonts
             install_configs
-            install_configs_ai   # adds ai() function, alacritty, aider
+            install_configs_ai   # adds alacritty config
             ;;
 
         --help|-h)
@@ -643,8 +641,7 @@ install_font() {
 **Same zshrc everywhere** with conditional features:
 
 ```
-config/zsh/zshrc       # Full config including tw(), conditional rm alias, sources zshrc.ai if exists
-config/zsh/zshrc.ai    # ai() function only
+config/zsh/zshrc       # Full config including tw(), conditional rm alias
 ```
 
 ### Key zshrc changes from current:
@@ -655,16 +652,10 @@ config/zsh/zshrc.ai    # ai() function only
 command -v trash &>/dev/null && alias rm='trash'
 ```
 
-2. **Source AI config if present**:
-```bash
-# AI tools (installed separately by full profile)
-[[ -f ~/.zshrc.ai ]] && source ~/.zshrc.ai
-```
+2. **tw() stays in main zshrc** - It's tmux-related
 
-3. **tw() stays in main zshrc** - It's tmux-related, not AI-related
-
-- `pde minimal` - Links zshrc only (rm works normally)
-- `pde full` - Links zshrc AND zshrc.ai (rm uses trash)
+- `pde minimal` - Links zshrc (rm works normally)
+- `pde full` - Links zshrc (rm uses trash since trash-cli installed)
 
 ## Config Installation
 
@@ -672,7 +663,7 @@ command -v trash &>/dev/null && alias rm='trash'
 install_configs() {
     section "Config Files"
 
-    # Create PDE config first (sets PDE_INSTALL_PATH for ai() function)
+    # Create PDE config first
     PDE_PROFILE="minimal"
     create_pde_config
 
@@ -689,8 +680,6 @@ install_configs_ai() {
     PDE_PROFILE="full"
     create_pde_config
 
-    link_config "$SCRIPT_DIR/config/zsh/zshrc.ai" "$HOME/.zshrc.ai"
-
     # Alacritty
     mkdir -p "$HOME/.config/alacritty"
     link_config "$SCRIPT_DIR/config/alacritty/alacritty.toml" \
@@ -700,7 +689,7 @@ install_configs_ai() {
 
 ## Makefile Retention
 
-Keep a minimal Makefile for the `make claude` target that ai() function uses:
+Keep a minimal Makefile for the `make claude` target:
 
 ```makefile
 # Makefile - Minimal version for claude launcher
@@ -714,8 +703,6 @@ LAUNCH_DIR ?= $(shell pwd)
 claude:
 	cd $(LAUNCH_DIR) && claude --profile $(PROFILE) --model $(MODEL)
 ```
-
-The ai() function in zshrc.ai will use `$PDE_INSTALL_PATH` (set in paths.env) to find this Makefile.
 
 ## Remote Installation
 
@@ -795,32 +782,30 @@ After implementation is tested:
 
 ## Implementation Order
 
-1. [ ] lib/core.sh - Helpers with error handling, sudo keepalive
-2. [ ] lib/shell.sh - zsh, tmux from source, rust, plugins
-3. [ ] lib/tools.sh - apt + cargo tools, yazi (with unzip dep)
-4. [ ] lib/editor.sh - neovim (arch-aware), lazyvim
-5. [ ] lib/ai.sh - nvm, node, claude (with verification)
-6. [ ] lib/fonts.sh - nerd fonts (with fontconfig dep)
-7. [ ] Rename config files:
+1. [x] lib/core.sh - Helpers with error handling, sudo keepalive
+2. [x] lib/shell.sh - zsh, tmux from source, rust, plugins
+3. [x] lib/tools.sh - apt + cargo tools, yazi (with unzip dep)
+4. [x] lib/editor.sh - neovim (arch-aware), lazyvim
+5. [x] lib/ai.sh - nvm, node, claude (with verification)
+6. [x] lib/fonts.sh - nerd fonts (with fontconfig dep)
+7. [x] Rename config files:
    - config/zsh/.zshrc -> config/zsh/zshrc
    - config/zsh/.zsh_plugins.txt -> config/zsh/zsh_plugins.txt
    - config/tmux/.tmux.conf -> config/tmux/tmux.conf
    - config/powerlevel10k/.p10k.zsh -> config/p10k/p10k.zsh
-8. [ ] Update config/zsh/zshrc:
+8. [x] Update config/zsh/zshrc:
    - Make rm=trash alias conditional
-   - Add `[[ -f ~/.zshrc.ai ]] && source ~/.zshrc.ai` at end
-9. [ ] Create config/zsh/zshrc.ai (extract ai() function)
-10. [ ] Main pde script
-11. [ ] bootstrap.sh
-12. [ ] Minimal Makefile (claude target only)
-13. [ ] Test minimal on fresh Ubuntu 22.04 VM
-14. [ ] Test minimal on fresh Ubuntu 24.04 VM
-15. [ ] Test full on fresh Ubuntu 24.04 VM
-16. [ ] Test re-run (idempotency) on both profiles
-17. [ ] Remove Ansible files
-18. [ ] Remove orphaned config files
-19. [ ] Update README.md
-20. [ ] Update .gitignore
+9. [x] Main pde script
+10. [x] bootstrap.sh
+11. [x] Minimal Makefile (claude target only)
+12. [ ] Test minimal on fresh Ubuntu 22.04 VM
+13. [ ] Test minimal on fresh Ubuntu 24.04 VM
+14. [ ] Test full on fresh Ubuntu 24.04 VM
+15. [ ] Test re-run (idempotency) on both profiles
+16. [ ] Remove Ansible files
+17. [ ] Remove orphaned config files
+18. [ ] Update README.md
+19. [ ] Update .gitignore
 
 ## Testing Checklist
 
@@ -844,7 +829,6 @@ For each test VM:
 **After `pde full` (in addition to above):**
 - [ ] trash-cli works (`rm` uses trash)
 - [ ] claude command available
-- [ ] ai() function works
 - [ ] Nerd Fonts installed
 
 **Idempotency:**
