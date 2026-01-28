@@ -42,6 +42,38 @@ make deploy-server HOST=myserver
 - Shell: antidote, powerlevel10k, eza
 - AI Tools: aider, codex, Claude Code (development profile only)
 
+## Neovim Plugin Customization
+
+Custom Neovim plugins are managed in `pde/config/nvim/lua/plugins/`. These plugins are **always synced** to `~/.config/nvim/lua/plugins/` on every deploy, regardless of whether LazyVim is freshly installed or already exists.
+
+This allows you to:
+- Add new plugins by creating `.lua` files in `pde/config/nvim/lua/plugins/`
+- Update plugin configurations and have them applied on next deploy
+- Keep your custom plugins version-controlled in this repo
+
+### Adding a Custom Plugin
+
+1. Create a new file in `pde/config/nvim/lua/plugins/`:
+   ```lua
+   -- pde/config/nvim/lua/plugins/my-plugin.lua
+   return {
+     "author/plugin-name",
+     opts = {
+       -- plugin configuration
+     },
+   }
+   ```
+
+2. Deploy to sync: `./pde full` or `./pde minimal`
+
+3. Open nvim - lazy.nvim will auto-install the new plugin
+
+### Current Custom Plugins
+
+| Plugin | Purpose |
+|--------|---------|
+| `llm.lua` | FIM autocomplete via local LLM backend |
+
 ## Architecture
 
 This playbook uses a privilege-separated architecture:
