@@ -55,21 +55,27 @@ install_lazyvim() {
 
     if [[ -f "$nvim_config/lazy-lock.json" ]]; then
         log "LazyVim already installed"
-        return 0
+    else
+        log "Installing LazyVim starter..."
+
+        # Backup existing config (preserves any custom config)
+        if [[ -d "$nvim_config" ]]; then
+            local backup="$nvim_config.bak.$(date +%s)"
+            log "Backing up existing nvim config to $backup"
+            mv "$nvim_config" "$backup"
+        fi
+
+        git clone --depth 1 https://github.com/LazyVim/starter "$nvim_config" \
+            || die "LazyVim clone failed"
+        rm -rf "$nvim_config/.git"
+
+        log "LazyVim installed (previous config backed up if it existed)"
     fi
 
-    log "Installing LazyVim starter..."
-
-    # Backup existing config (preserves any custom config)
-    if [[ -d "$nvim_config" ]]; then
-        local backup="$nvim_config.bak.$(date +%s)"
-        log "Backing up existing nvim config to $backup"
-        mv "$nvim_config" "$backup"
+    # Always sync custom plugins from pde config
+    local pde_nvim_plugins="$SCRIPT_DIR/../config/nvim/lua/plugins"
+    if [[ -d "$pde_nvim_plugins" ]]; then
+        log "Syncing custom nvim plugins..."
+        cp -r "$pde_nvim_plugins"/* "$nvim_config/lua/plugins/"
     fi
-
-    git clone --depth 1 https://github.com/LazyVim/starter "$nvim_config" \
-        || die "LazyVim clone failed"
-    rm -rf "$nvim_config/.git"
-
-    log "LazyVim installed (previous config backed up if it existed)"
 }
