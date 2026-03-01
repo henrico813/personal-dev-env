@@ -27,29 +27,74 @@ def contains_emoji(text):
         "]+", flags=re.UNICODE)
     return bool(emoji_pattern.search(text))
 
+def extract_commit_metadata(command):
+    """Extract message, author, and trailers from a git commit command."""
+    result = {'message': None, 'author': None, 'trailers': []}
+
+    # Heredoc: -m "$(cat <<'EOF'\n...\nEOF\n)"
+    heredoc = re.search(
+        r'''(?:-m|--message)\s*=?\s*"\$\(cat\s+<<'?(\w+)'?\n(.*?)\n\s*\1\s*\)"''',
+        command, re.DOTALL)
+    if heredoc:
+        result['message'] = heredoc.group(2)
+    else:
+        # Double-quoted: -m "msg" or --message="msg"
+        msg = re.search(
+            r'''(?:-m|--message)\s*=?\s*"((?:[^"\\]|\\.)*)"''',
+            command, re.DOTALL)
+        if msg:
+            result['message'] = msg.group(1)
+        else:
+            # Single-quoted: -m 'msg'
+            msg = re.search(
+                r"""(?:-m|--message)\s*=?\s*'([^']*)'""",
+                command, re.DOTALL)
+            if msg:
+                result['message'] = msg.group(1)
+
+    # Author: --author "value" or --author="value"
+    author = re.search(r'''--author\s*=?\s*"((?:[^"\\]|\\.)*)"''', command)
+    if not author:
+        author = re.search(r"""--author\s*=?\s*'([^']*)'""", command)
+    if author:
+        result['author'] = author.group(1)
+
+    # Trailers: --trailer "value" (can appear multiple times)
+    result['trailers'] = re.findall(
+        r'''--trailer\s*=?\s*"((?:[^"\\]|\\.)*)"''', command)
+    result['trailers'] += re.findall(
+        r"""--trailer\s*=?\s*'([^']*)'""", command)
+
+    return result
+
+
 def check_git_commit_command(command):
-    """Check if a git commit command contains prohibited terms."""
+    """Check if commit metadata (message, author, trailers) contains prohibited terms."""
     prohibited_terms = ['claude', 'anthropic']
-    command_lower = command.lower()
 
-    # Check for emojis in the command
-    if contains_emoji(command):
-        return True, "Command contains emojis - removing emojis from commit"
+    metadata = extract_commit_metadata(command)
 
-    # Check for prohibited terms in the entire command
-    for term in prohibited_terms:
-        if term in command_lower:
-            return True, f"Command contains '{term}' - removing all Claude/Anthropic references"
+    if metadata['message']:
+        msg_lower = metadata['message'].lower()
 
-    # Specific checks for git commit patterns
-    if 'git commit' in command:
-        # Check for co-author patterns
-        if re.search(r'co-authored-by:.*claude', command_lower):
-            return True, "Removing Claude as co-author from commit"
+        if contains_emoji(metadata['message']):
+            return True, "Commit message contains emojis - removing emojis from commit"
 
-        # Check for author override attempts
-        if '--author' in command and any(term in command_lower for term in prohibited_terms):
-            return True, "Cannot set Claude/Anthropic as commit author"
+        for term in prohibited_terms:
+            if term in msg_lower:
+                return True, f"Commit message contains '{term}' - removing all Claude/Anthropic references"
+
+    if metadata['author']:
+        author_lower = metadata['author'].lower()
+        for term in prohibited_terms:
+            if term in author_lower:
+                return True, "Cannot set Claude/Anthropic as commit author"
+
+    for trailer in metadata['trailers']:
+        trailer_lower = trailer.lower()
+        for term in prohibited_terms:
+            if term in trailer_lower:
+                return True, f"Trailer contains '{term}' - removing Claude/Anthropic references"
 
     return False, None
 
