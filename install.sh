@@ -44,8 +44,32 @@ chmod +x "$TARGET_DIR/statusline.sh" 2>/dev/null || true
 # Make scripts executable
 chmod +x "$TARGET_DIR/scripts/"*.sh 2>/dev/null || true
 
-echo "Done! Configuration installed to $TARGET_DIR"
+# Install Linux dependencies
+if [[ "$(uname)" == "Linux" ]]; then
+    echo ""
+    echo "Installing Linux dependencies..."
+
+    # Detect package manager and install
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y jq xprintidle
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y jq xprintidle
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --noconfirm jq xprintidle
+    else
+        echo "Warning: Unknown package manager. Please install manually: jq, xprintidle"
+    fi
+fi
+
 echo ""
-echo "Note: statusline.sh requires 'jq' - install with:"
-echo "  sudo apt install jq  # Debian/Ubuntu"
-echo "  brew install jq      # macOS"
+echo "Done! Configuration installed to $TARGET_DIR"
+
+# Show macOS instructions if applicable
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo ""
+    echo "macOS detected. Install jq manually:"
+    echo "  brew install jq"
+    echo ""
+    echo "Note: xprintidle is not available on macOS."
+    echo "Notifications will fire on every task completion (with 5min debounce)."
+fi
