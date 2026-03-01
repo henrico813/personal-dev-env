@@ -120,6 +120,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/notify_done.py",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
