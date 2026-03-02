@@ -51,13 +51,13 @@ if [[ "$(uname)" == "Linux" ]]; then
 
     # Detect package manager and install
     if command -v apt-get &>/dev/null; then
-        sudo apt-get install -y jq xprintidle
+        sudo apt-get install -y jq
     elif command -v dnf &>/dev/null; then
-        sudo dnf install -y jq xprintidle
+        sudo dnf install -y jq
     elif command -v pacman &>/dev/null; then
-        sudo pacman -S --noconfirm jq xprintidle
+        sudo pacman -S --noconfirm jq
     else
-        echo "Warning: Unknown package manager. Please install manually: jq, xprintidle"
+        echo "Warning: Unknown package manager. Please install manually: jq"
     fi
 fi
 
@@ -75,7 +75,4 @@ if [[ "$(uname)" == "Darwin" ]]; then
     echo ""
     echo "macOS detected. Install jq manually:"
     echo "  brew install jq"
-    echo ""
-    echo "Note: xprintidle is not available on macOS."
-    echo "Notifications will fire on every task completion (with 5min debounce)."
 fi
