@@ -61,9 +61,17 @@ if [[ "$(uname)" == "Linux" ]]; then
     fi
 
     # Install specstory if not already present
+    # Note: upstream installer is broken (wrong filename pattern), so we download directly
     if ! command -v specstory &>/dev/null; then
         echo "Installing specstory..."
-        curl -sL https://raw.githubusercontent.com/specstoryai/getspecstory/main/install.sh | bash
+        SPECSTORY_VERSION=$(curl -sI https://github.com/specstoryai/getspecstory/releases/latest | grep -i location | sed 's/.*tag\///' | tr -d '\r\n')
+        SPECSTORY_ARCH=$(uname -m)
+        SPECSTORY_URL="https://github.com/specstoryai/getspecstory/releases/download/${SPECSTORY_VERSION}/SpecStoryCLI_Linux_${SPECSTORY_ARCH}.tar.gz"
+        SPECSTORY_TMP=$(mktemp -d)
+        curl -sL "$SPECSTORY_URL" | tar -xz -C "$SPECSTORY_TMP"
+        sudo mv "$SPECSTORY_TMP/specstory" /usr/local/bin/
+        rm -rf "$SPECSTORY_TMP"
+        echo "specstory ${SPECSTORY_VERSION} installed"
     else
         echo "specstory already installed, skipping"
     fi
