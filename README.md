@@ -25,7 +25,6 @@ Then in any project:
 | `/document_codebase` | Auto-generate directory-local documentation |
 | `/export_plan` | Export current plan to markdown for handoff |
 | `/git_commit` | Create intelligent commits from conversation context |
-| `/worktree` | Create new git worktree tracking remote branch |
 
 ## What install.sh Preserves
 
@@ -55,4 +54,8 @@ See [`.claude/hooks/README.md`](./.claude/hooks/README.md) for details.
 
 ## Requirements
 
-- `jq` (optional, for status line): `sudo apt install jq`
+- `jq` (for status line): `sudo apt install jq`
+
+## OpenCode Compatibility
+
+Commands and agents are also available in [OpenCode](https://opencode.ai) via directory symlinks in `.opencode/`. Run `install.sh` to set up global symlinks under `~/.config/opencode/`.
