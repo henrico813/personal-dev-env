@@ -59,6 +59,14 @@ if [[ "$(uname)" == "Linux" ]]; then
     else
         echo "Warning: Unknown package manager. Please install manually: jq"
     fi
+
+    # Install specstory if not already present
+    if ! command -v specstory &>/dev/null; then
+        echo "Installing specstory..."
+        curl -sL https://raw.githubusercontent.com/specstoryai/getspecstory/main/install.sh | bash
+    else
+        echo "specstory already installed, skipping"
+    fi
 fi
 
 # OpenCode compatibility: symlink commands and agents
@@ -73,6 +81,7 @@ echo "Done! Configuration installed to $TARGET_DIR"
 # Show macOS instructions if applicable
 if [[ "$(uname)" == "Darwin" ]]; then
     echo ""
-    echo "macOS detected. Install jq manually:"
+    echo "macOS detected. Install dependencies manually:"
     echo "  brew install jq"
+    echo "  brew tap specstoryai/tap && brew install specstory"
 fi
