@@ -6,7 +6,7 @@ Slash commands for common workflows. Type `/command-name` to invoke.
 
 | Command | Purpose |
 |---------|---------|
-| `/setup` | Create docs/ directory structure in current project |
+| `/setup` | Create docs/ directory in current project |
 | `/create_plan` | Design detailed implementation plan with iterative research |
 | `/review_plan` | Validate plan for architecture, bugs, completeness |
 | `/implement_plan` | Execute plan phases with verification |

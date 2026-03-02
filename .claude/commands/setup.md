@@ -4,12 +4,12 @@ description: Configure project documentation structure
 
 # Setup
 
-Configure the docs directory structure for the current project.
+Configure the docs directory for the current project.
 
 ## When Invoked
 
 1. Check if `docs/` already exists in the current directory
-2. If exists, inform user and ask if they want to add missing directories
+2. If exists, inform user — no further action needed
 3. If not, ask user to confirm creation
 4. Run the setup script: `bash ~/.claude/scripts/setup-docs.sh`
 5. Report what was created
@@ -18,18 +18,17 @@ Configure the docs directory structure for the current project.
 
 If docs/ doesn't exist:
 ```
-I'll set up the docs directory structure for this project.
+I'll set up the docs directory for this project.
 
 This will create:
   docs/
-  ├── planning/active/     # Plans in progress
-  ├── planning/completed/  # Finished plans
-  ├── planning/archive/    # Superseded plans
-  ├── research/            # Research documents
-  ├── operational/         # Operational guides
-  └── archive/             # General archive
 
-Create this structure in [current directory]?
+Documents use filename prefixes to indicate type:
+  research-YYYY-MM-DD-description.md   # Research documents
+  design-description.md                 # Design/implementation plans
+  NNN-description.md                    # Issues/tickets
+
+Create docs/ in [current directory]?
 ```
 
 Then use AskUserQuestion with options:
