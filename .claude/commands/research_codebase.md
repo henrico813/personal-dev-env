@@ -76,7 +76,7 @@ Then wait for the user's research query.
    - Highlight patterns, connections, and architectural decisions
    - Answer the user's specific questions with concrete evidence
 
-5. **Write research document** to `docs/research/YYYY-MM-DD-description.md`:
+5. **Write the research document** using this template:
 
      ```markdown
      # Research: [Topic]

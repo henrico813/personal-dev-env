@@ -22,15 +22,9 @@ Output the current implementation plan to a markdown file for handoff.
    - Run: `~/.claude/scripts/plan-frontmatter.sh "<title>" "<description>"`
    - Use the output as the document header
 
-3. **Determine output location**:
-   - Use `docs/planning/active/YYYY-MM-DD-{description}.md`
-   - Create directories as needed
+3. **Write the plan**:
    - Use $ARGUMENTS as description, or derive from plan title
-
-4. **Handle conflicts**:
-   - If file already exists, ask before overwriting
-
-5. **Write and confirm**:
+   - If a file already exists at the target path, ask before overwriting
    - Write the plan (frontmatter + content)
    - Report the path
 
