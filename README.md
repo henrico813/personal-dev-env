@@ -17,7 +17,7 @@ Then in any project:
 
 | Command | Purpose |
 |---------|---------|
-| `/setup` | Configure docs structure for current project |
+| `/setup` | Create flat docs/ directory in current project |
 | `/create_plan` | Create detailed implementation plans through iterative research |
 | `/research_codebase` | Document codebase architecture and behavior |
 | `/review_plan` | Validate plans for architecture and completeness |

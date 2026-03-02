@@ -1,6 +1,5 @@
 ---
 description: Review an implementation plan for architecture, bugs, and completeness using parallel agents
-model: opus
 argument-hint: <plan-path> [additional guiding principles...]
 ---
 
@@ -18,8 +17,8 @@ When this command is invoked:
 I'll review an implementation plan. Please provide the path to the plan file.
 
 Example usage:
-- /review_plan docs/planning/active/2025-01-15-feature-name.md
-- /review_plan docs/planning/active/2025-01-15-feature-name.md with focus on security
+- /review_plan docs/design-feature-name.md
+- /review_plan docs/design-feature-name.md with focus on security
 ```
 
 Then wait for the user's input.
@@ -142,7 +141,7 @@ Present findings directly to the user (do NOT write to a file):
 ## Example Usage
 
 ```
-/review_plan docs/planning/active/2025-01-15-auth-feature.md
-/review_plan docs/planning/active/2025-01-15-auth-feature.md with focus on security
-/review_plan docs/planning/active/2025-01-15-new-api.md with focus on performance
+/review_plan docs/design-auth-feature.md
+/review_plan docs/design-auth-feature.md with focus on security
+/review_plan docs/design-new-api.md with focus on performance
 ```
