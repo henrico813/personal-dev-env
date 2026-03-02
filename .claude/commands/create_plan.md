@@ -26,8 +26,8 @@ Please provide:
 
 I'll analyze this information and work with you to create a comprehensive plan.
 
-Tip: You can also invoke this command with a file directly: `/create_plan docs/planning/active/2025-01-15-feature-name.md`
-For deeper analysis, try: `/create_plan think deeply about docs/planning/active/2025-01-15-feature-name.md`
+Tip: You can also invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
+For deeper analysis, try: `/create_plan think deeply about docs/design-feature-name.md`
 ```
 
 Then wait for the user's input.
@@ -37,8 +37,8 @@ Then wait for the user's input.
 ### Step 1: Context Gathering & Initial Analysis
 
 1. **Read all mentioned files immediately and FULLY**:
-   - Planning documents (e.g., `docs/planning/active/2025-01-15-feature-name.md`)
-   - Research documents (e.g., `docs/research/2025-01-15-topic.md`)
+   - Design documents (e.g., `docs/design-feature-name.md`)
+   - Research documents (e.g., `docs/research-2025-01-15-topic.md`)
    - Related implementation plans
    - Any JSON/data files mentioned
    - **IMPORTANT**: Use the Read tool WITHOUT limit/offset parameters to read entire files
@@ -352,7 +352,7 @@ tasks = [
 User: /create_plan
 Assistant: I'll help you create a detailed implementation plan...
 
-User: We need to add parent-child tracking for Claude sub-tasks. See docs/research/2025-01-08-parent-child-tracking.md
+User: We need to add parent-child tracking for Claude sub-tasks. See docs/research-2025-01-08-parent-child-tracking.md
 Assistant: Let me read that document completely first...
 
 [Reads file fully]
