@@ -56,6 +56,18 @@ See [`.claude/hooks/README.md`](./.claude/hooks/README.md) for details.
 
 - `jq` (for status line): `sudo apt install jq`
 
+## Specstory
+
+Specstory captures Claude Code sessions as Markdown files in `.specstory/history/`.
+
+Launch Claude with session capture (saves all sessions to a central dir):
+
+    specstory run --output-dir ~/.claude/specstory --no-cloud-sync claude -c "claude --dangerously-skip-permissions"
+
+Sync past sessions from `~/.claude/projects/`:
+
+    specstory sync claude
+
 ## OpenCode Compatibility
 
 Commands and agents are also available in [OpenCode](https://opencode.ai) via directory symlinks in `.opencode/`. Run `install.sh` to set up global symlinks under `~/.config/opencode/`.
