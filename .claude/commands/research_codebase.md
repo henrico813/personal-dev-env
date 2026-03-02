@@ -1,6 +1,5 @@
 ---
 description: Document codebase as-is with thoughts directory for historical context
-model: opus
 ---
 
 # Research Codebase
@@ -77,93 +76,44 @@ Then wait for the user's research query.
    - Highlight patterns, connections, and architectural decisions
    - Answer the user's specific questions with concrete evidence
 
-5. **Gather metadata for the research document:**
-   - Gather git metadata: `git rev-parse HEAD`, `git branch --show-current`, etc.
-   - Filename: `docs/research/YYYY-MM-DD-description.md`
-     - Format: `YYYY-MM-DD-description.md` where:
-       - YYYY-MM-DD is today's date
-       - description is a brief kebab-case description of the research topic
-     - Examples:
-       - `2025-01-08-parent-child-tracking.md`
-       - `2025-01-08-authentication-flow.md`
+5. **Write research document** to `docs/research/YYYY-MM-DD-description.md`:
 
-6. **Generate research document:**
-   - Use the metadata gathered in step 5
-   - Structure the document with YAML frontmatter followed by content:
      ```markdown
-     ---
-     date: [Current date and time with timezone in ISO format]
-     researcher: [Researcher name]
-     git_commit: [Current commit hash]
-     branch: [Current branch name]
-     repository: [Repository name]
-     topic: "[User's Question/Topic]"
-     tags: [research, codebase, relevant-component-names]
-     status: complete
-     last_updated: [Current date in YYYY-MM-DD format]
-     last_updated_by: [Researcher name]
-     ---
+     # Research: [Topic]
 
-     # Research: [User's Question/Topic]
+     **Date**: YYYY-MM-DD
 
-     **Date**: [Current date and time with timezone from step 5]
-     **Researcher**: [Researcher name]
-     **Git Commit**: [Current commit hash from step 5]
-     **Branch**: [Current branch name from step 5]
-     **Repository**: [Repository name]
-
-     ## Research Question
+     ## Question
      [Original user query]
 
      ## Summary
-     [High-level documentation of what was found, answering the user's question by describing what exists]
+     [High-level answer]
 
-     ## Detailed Findings
+     ## Findings
 
      ### [Component/Area 1]
-     - Description of what exists ([file.ext:line](link))
+     - What exists (`path/to/file:line`)
      - How it connects to other components
-     - Current implementation details (without evaluation)
 
      ### [Component/Area 2]
      ...
 
      ## Code References
-     - `path/to/file.py:123` - Description of what's there
-     - `another/file.ts:45-67` - Description of the code block
-
-     ## Architecture Documentation
-     [Current patterns, conventions, and design implementations found in the codebase]
-
-     ## Historical Context (from docs/)
-     [Relevant insights from docs/ directory with references]
-     - `docs/research/something.md` - Historical decision about X
-     - `docs/planning/completed/notes.md` - Past exploration of Y
-
-     ## Related Research
-     [Links to other research documents in docs/research/]
+     - `path/to/file.py:123` - Description
+     - `another/file.ts:45-67` - Description
 
      ## Open Questions
-     [Any areas that need further investigation]
+     [If any remain]
      ```
 
-7. **Add GitHub permalinks (if applicable):**
-   - Check if on main branch or if commit is pushed: `git branch --show-current` and `git status`
-   - If on main/master or pushed, generate GitHub permalinks:
-     - Get repo info: `gh repo view --json owner,name`
-     - Create permalinks: `https://github.com/{owner}/{repo}/blob/{commit}/{file}#L{line}`
-   - Replace local file references with permalinks in the document
-
-8. **Present findings:**
+6. **Present findings:**
    - Present a concise summary of findings to the user
    - Include key file references for easy navigation
    - Ask if they have follow-up questions or need clarification
 
-9. **Handle follow-up questions:**
+7. **Handle follow-up questions:**
    - If the user has follow-up questions, append to the same research document
-   - Update the frontmatter fields `last_updated` and `last_updated_by` to reflect the update
-   - Add `last_updated_note: "Added follow-up research for [brief description]"` to frontmatter
-   - Add a new section: `## Follow-up Research [timestamp]`
+   - Add a new section: `## Follow-up: [brief description]`
    - Spawn new sub-agents as needed for additional investigation
    - Continue updating the document
 
@@ -175,8 +125,6 @@ Then wait for the user's research query.
 - Research documents should be self-contained with all necessary context
 - Each sub-agent prompt should be specific and focused on read-only documentation operations
 - Document cross-component connections and how systems interact
-- Include temporal context (when the research was conducted)
-- Link to GitHub when possible for permanent references
 - Keep the main agent focused on synthesis, not deep file reading
 - Have sub-agents document examples and usage patterns as they exist
 - Explore all of docs/ directory, not just research subdirectory
@@ -187,11 +135,4 @@ Then wait for the user's research query.
 - **Critical ordering**: Follow the numbered steps exactly
   - ALWAYS read mentioned files first before spawning sub-tasks (step 1)
   - ALWAYS wait for all sub-agents to complete before synthesizing (step 4)
-  - ALWAYS gather metadata before writing the document (step 5 before step 6)
   - NEVER write the research document with placeholder values
-- **Frontmatter consistency**:
-  - Always include frontmatter at the beginning of research documents
-  - Keep frontmatter fields consistent across all research documents
-  - Update frontmatter when adding follow-up research
-  - Use snake_case for multi-word field names (e.g., `last_updated`, `git_commit`)
-  - Tags should be relevant to the research topic and components studied
