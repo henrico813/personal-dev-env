@@ -165,124 +165,51 @@ Once aligned on approach:
 
 After structure approval:
 
-1. **Write the plan** to `docs/planning/active/YYYY-MM-DD-description.md`
-   - Format: `YYYY-MM-DD-description.md` where:
-     - YYYY-MM-DD is today's date
-     - description is a brief kebab-case description
-   - Examples:
-     - `2025-01-08-parent-child-tracking.md`
-     - `2025-01-08-improve-error-handling.md`
-2. **Use this template structure**:
+1. **Write the plan** using this template:
 
 ````markdown
-# [Feature/Task Name] Implementation Plan
+# [Title]
 
 ## Overview
 
-[Brief description of what we're implementing and why]
+[1-2 sentences: what and why]
 
-## Current State Analysis
+## Current State
 
-[What exists now, what's missing, key constraints discovered]
+[What exists now, key constraints, relevant file:line references]
 
-## Desired End State
+## Definition of Done
 
-[A Specification of the desired end state after this plan is complete, and how to verify it]
+- [ ] [Concrete, verifiable outcome]
+- [ ] [Another outcome]
 
-### Key Discoveries:
-- [Important finding with file:line reference]
-- [Pattern to follow]
-- [Constraint to work within]
+## Implementation
 
-## What We're NOT Doing
+### 1. [Change description]
 
-[Explicitly list out-of-scope items to prevent scope creep]
+[Explicit details: code to write, config to change, commands to run, etc.
+Each step must contain enough detail for review before execution.]
 
-## Implementation Approach
+### 2. [Change description]
 
-[High-level strategy and reasoning]
+[...]
 
-## Phase 1: [Descriptive Name]
+## Verification
 
-### Overview
-[What this phase accomplishes]
-
-### Changes Required:
-
-#### 1. [Component/File Group]
-**File**: `path/to/file.ext`
-**Changes**: [Summary of changes]
-
-```[language]
-// Specific code to add/modify
+```bash
+# Commands to verify the implementation
+make test
+make lint
 ```
-
-### Success Criteria:
-
-#### Automated Verification:
-- [ ] Migration applies cleanly: `make migrate`
-- [ ] Unit tests pass: `make test-component`
-- [ ] Type checking passes: `npm run typecheck`
-- [ ] Linting passes: `make lint`
-- [ ] Integration tests pass: `make test-integration`
-
-#### Manual Verification:
-- [ ] Feature works as expected when tested via UI
-- [ ] Performance is acceptable under load
-- [ ] Edge case handling verified manually
-- [ ] No regressions in related features
-
-**Implementation Note**: After completing this phase and all automated verification passes, pause here for manual confirmation from the human that the manual testing was successful before proceeding to the next phase.
-
----
-
-## Phase 2: [Descriptive Name]
-
-[Similar structure with both automated and manual success criteria...]
-
----
-
-## Testing Strategy
-
-### Unit Tests:
-- [What to test]
-- [Key edge cases]
-
-### Integration Tests:
-- [End-to-end scenarios]
-
-### Manual Testing Steps:
-1. [Specific step to verify feature]
-2. [Another verification step]
-3. [Edge case to test manually]
-
-## Performance Considerations
-
-[Any performance implications or optimizations needed]
-
-## Migration Notes
-
-[If applicable, how to handle existing data/systems]
-
-## References
-
-- Related research: `docs/research/[relevant].md`
-- Similar implementation: `[file:line]`
 ````
 
 ### Step 5: Review
 
-1. **Present the draft plan location**:
-   ```
-   I've created the initial implementation plan at:
-   `docs/planning/active/YYYY-MM-DD-description.md`
-
-   Please review it and let me know:
-   - Are the phases properly scoped?
+1. **Present the draft plan** and ask:
+   - Are the steps properly scoped?
    - Are the success criteria specific enough?
    - Any technical details that need adjustment?
    - Missing edge cases or considerations?
-   ```
 
 2. **Iterate based on feedback** - be ready to:
    - Add missing phases
