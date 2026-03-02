@@ -61,6 +61,12 @@ if [[ "$(uname)" == "Linux" ]]; then
     fi
 fi
 
+# OpenCode compatibility: symlink commands and agents
+OC_DIR="$HOME/.config/opencode"
+mkdir -p "$OC_DIR"
+ln -sfn "$TARGET_DIR/commands" "$OC_DIR/commands"
+ln -sfn "$TARGET_DIR/agents" "$OC_DIR/agents"
+
 echo ""
 echo "Done! Configuration installed to $TARGET_DIR"
 
