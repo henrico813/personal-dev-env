@@ -16,7 +16,7 @@ Personal Claude Code settings with privacy-focused defaults and workflow automat
 The `/` commands enable workflows:
 - **Planning**: `/create_plan`, `/review_plan`, `/implement_plan`
 - **Research**: `/research_codebase`, `/document_codebase`
-- **Git**: `/git_commit`, `/worktree`, `/export_plan`
+- **Git**: `/git_commit`, `/export_plan`
 - **Setup**: `/setup`
 
 ### Hooks

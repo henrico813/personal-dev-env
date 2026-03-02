@@ -23,7 +23,6 @@ Slash commands for common workflows. Type `/command-name` to invoke.
 | Command | Purpose |
 |---------|---------|
 | `/git_commit` | Create commits based on conversation context |
-| `/worktree` | Create new git worktree tracking default branch |
 | `/export_plan` | Export plan to markdown for handoff |
 
 Each command has detailed documentation in its `.md` file.
