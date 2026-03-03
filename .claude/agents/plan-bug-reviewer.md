@@ -1,5 +1,5 @@
 ---
-name: plan-bug-finder
+name: plan-bug-reviewer
 description: Anticipates bugs, edge cases, and failure modes in proposed implementations. Use to find potential issues before code is written.
 tools: Read, Grep, Glob, Bash
 model: sonnet

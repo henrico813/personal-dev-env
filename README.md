@@ -70,4 +70,4 @@ Sync past sessions from `~/.claude/projects/`:
 
 ## OpenCode Compatibility
 
-Commands and agents are also available in [OpenCode](https://opencode.ai) via directory symlinks in `.opencode/`. Run `install.sh` to set up global symlinks under `~/.config/opencode/`.
+Commands and agents are also available in [OpenCode](https://opencode.ai) via `.opencode/` configs (stripped of Claude-specific frontmatter fields). Run `install.sh` to copy them to `~/.config/opencode/`.
