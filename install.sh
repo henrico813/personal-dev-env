@@ -65,23 +65,32 @@ if [[ "$(uname)" == "Linux" ]]; then
     if ! command -v specstory &>/dev/null; then
         echo "Installing specstory..."
         SPECSTORY_VERSION=$(curl -sI https://github.com/specstoryai/getspecstory/releases/latest | grep -i location | sed 's/.*tag\///' | tr -d '\r\n')
-        SPECSTORY_ARCH=$(uname -m)
-        SPECSTORY_URL="https://github.com/specstoryai/getspecstory/releases/download/${SPECSTORY_VERSION}/SpecStoryCLI_Linux_${SPECSTORY_ARCH}.tar.gz"
-        SPECSTORY_TMP=$(mktemp -d)
-        curl -sL "$SPECSTORY_URL" | tar -xz -C "$SPECSTORY_TMP"
-        sudo mv "$SPECSTORY_TMP/specstory" /usr/local/bin/
-        rm -rf "$SPECSTORY_TMP"
-        echo "specstory ${SPECSTORY_VERSION} installed"
+        if [ -z "$SPECSTORY_VERSION" ]; then
+            echo "Warning: Could not detect specstory version, skipping installation"
+        else
+            SPECSTORY_ARCH=$(uname -m)
+            SPECSTORY_URL="https://github.com/specstoryai/getspecstory/releases/download/${SPECSTORY_VERSION}/SpecStoryCLI_Linux_${SPECSTORY_ARCH}.tar.gz"
+            SPECSTORY_TMP=$(mktemp -d)
+            curl -sL "$SPECSTORY_URL" | tar -xz -C "$SPECSTORY_TMP"
+            sudo mv "$SPECSTORY_TMP/specstory" /usr/local/bin/
+            rm -rf "$SPECSTORY_TMP"
+            echo "specstory ${SPECSTORY_VERSION} installed"
+        fi
     else
         echo "specstory already installed, skipping"
     fi
 fi
 
-# OpenCode compatibility: symlink commands and agents
+# OpenCode compatibility: copy opencode-specific config
 OC_DIR="$HOME/.config/opencode"
-mkdir -p "$OC_DIR"
-ln -sfn "$TARGET_DIR/commands" "$OC_DIR/commands"
-ln -sfn "$TARGET_DIR/agents" "$OC_DIR/agents"
+if [ -d "$SCRIPT_DIR/.opencode" ]; then
+    echo "Installing OpenCode configuration..."
+    mkdir -p "$OC_DIR"
+    # Remove stale symlinks from previous installs
+    [ -L "$OC_DIR/agents" ] && rm "$OC_DIR/agents"
+    [ -L "$OC_DIR/commands" ] && rm "$OC_DIR/commands"
+    cp -r "$SCRIPT_DIR/.opencode/." "$OC_DIR/"
+fi
 
 echo ""
 echo "Done! Configuration installed to $TARGET_DIR"
