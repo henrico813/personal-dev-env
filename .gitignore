@@ -32,3 +32,6 @@ Thumbs.db
 *.key
 *.pem
 pde/user-config.yml
+
+.specstory/
+pde/.specstory/
