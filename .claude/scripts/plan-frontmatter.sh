@@ -24,7 +24,6 @@ cat <<EOF
 title: "$TITLE"
 description: "$DESCRIPTION"
 date: $DATE_ISO
-
 git_commit: $GIT_COMMIT
 branch: $GIT_BRANCH
 repository: $REPO_NAME
