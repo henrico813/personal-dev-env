@@ -11,13 +11,44 @@ install_tools() {
     # Cargo tools (not reliably available via apt)
     install_cargo eza zoxide
 
-    # Yazi file manager
+    # Binary downloads (not available via apt or cargo)
+    install_yq
     install_yazi
 }
 
 install_tools_full() {
     section "CLI Tools (full additions)"
     install_apt trash-cli
+}
+
+install_yq() {
+    if has yq; then
+        log "yq already installed"
+        return 0
+    fi
+
+    section "Installing yq"
+    local arch
+    case "$(uname -m)" in
+        x86_64)  arch="amd64" ;;
+        aarch64) arch="arm64" ;;
+        *)       die "Unsupported architecture for yq: $(uname -m)" ;;
+    esac
+
+    local tmp="/tmp/yq-$$"
+    mkdir -p "$tmp"
+
+    download "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$arch" \
+             "$tmp/yq"
+
+    mkdir -p "$HOME/.cargo/bin"
+    cp "$tmp/yq" "$HOME/.cargo/bin/yq"
+    chmod +x "$HOME/.cargo/bin/yq"
+
+    rm -rf "$tmp"
+
+    [[ -x "$HOME/.cargo/bin/yq" ]] || die "yq installation verification failed"
+    log "yq installed"
 }
 
 install_yazi() {
