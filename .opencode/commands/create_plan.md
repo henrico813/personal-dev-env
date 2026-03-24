@@ -37,8 +37,8 @@ Then wait for the user's input.
 ### Step 1: Context Gathering & Initial Analysis
 
 1. **Read all mentioned files immediately and FULLY**:
-   - Design documents (e.g., `docs/design-feature-name.md`)
-   - Research documents (e.g., `docs/research-2025-01-15-topic.md`)
+   - Design documents (e.g., `DESIGN-feature-name.md`)
+   - Research documents (e.g., `RESEARCH-2025-01-15-topic.md`)
    - Related implementation plans
    - Any JSON/data files mentioned
    - **IMPORTANT**: Use the Read tool WITHOUT limit/offset parameters to read entire files
@@ -195,12 +195,10 @@ Each step must contain enough detail for review before execution.]
 
 ## Verification
 
-```bash
-# Commands to verify the implementation
-make test
-make lint
-```
-````
+[Test automation code or manual testing steps]
+
+[Include explicit details like code to write, config to change, commands to run, etc.
+Each step must contain enough detail for review before execution.]
 
 ### Step 5: Review
 
