@@ -14,7 +14,7 @@ Personal Claude Code settings with privacy-focused defaults and workflow automat
 
 ### Commands
 The `/` commands enable workflows:
-- **Planning**: `/create_plan`, `/review_plan`, `/implement_plan`
+- **Planning**: `/design_doc`, `/create_plan`, `/review_plan`, `/implement_plan`
 - **Research**: `/research_codebase`, `/document_codebase`
 
 ### Hooks
@@ -37,7 +37,7 @@ Specialized agents for parallel research:
 - **Privacy-focused**: Removes Claude attribution from commits automatically
 - **Auto-documentation**: Helps provide relevant docs when you ask questions
 - **Plan workflow**: Create, review, and implement detailed technical plans
-- **Context preservation**: Syncs docs hourly, tracks session state
+- **Context preservation**: Syncs docs on session start if >24h stale
 
 ## Configuration
 

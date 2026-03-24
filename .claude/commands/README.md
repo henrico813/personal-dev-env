@@ -16,6 +16,6 @@ Slash commands for common workflows. Type `/command-name` to invoke.
 | Command | Purpose |
 |---------|---------|
 | `/research_codebase` | Document how the codebase works (no changes) |
-| `/document_codebase` | Auto-generate README.md files for directories |
+| `/document_codebase` | Diagnose documentation gaps and fix them at the right level |
 
 Each command has detailed documentation in its `.md` file.
