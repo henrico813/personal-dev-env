@@ -103,10 +103,10 @@ check_file ~/.config/nvim/init.lua "LazyVim config"
 # PDE config
 check_file ~/.config/pde/paths.env "PDE paths.env"
 
-# Config symlinks (verify they point to .pde)
-check_link ~/.zshrc ".pde/config/zsh/zshrc"
-check_link ~/.tmux.conf ".pde/config/tmux/tmux.conf"
-check_link ~/.p10k.zsh ".pde/config/p10k/p10k.zsh"
+# Config symlinks (match the config suffix so both standalone and combined repo installs pass)
+check_link ~/.zshrc "pde/config/zsh/zshrc"
+check_link ~/.tmux.conf "pde/config/tmux/tmux.conf"
+check_link ~/.p10k.zsh "pde/config/p10k/p10k.zsh"
 
 # Runtime verification - actually run the tools
 echo "--- Runtime checks ---"

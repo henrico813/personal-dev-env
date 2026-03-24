@@ -31,7 +31,7 @@ alias vim='nvim'
 # checkout branch using fzf
 alias gcob='git branch | fzf | xargs git checkout'
 # open vim config from anywhere
-alias vimrc='vim ${HOME}/.config/nvim/init.vim'
+alias vimrc='vim ${HOME}/.config/nvim/init.lua'
 # cat -> bat
 alias cat='batcat'
 # colored ls output
@@ -59,12 +59,8 @@ export PATH="$PATH:/usr/local/bin"
 # use local, useful for pip installs
 export PATH="$PATH:$HOME/.local/bin"
 # add rust to path
-export PATH="$PATH:$HOME/.cargo/bin"
 export PATH="$PATH:$HOME/.rustup/bin"
 export PATH="$HOME/.cargo/bin:$PATH"
-
-# export PATH=${PATH}:/usr/local/go/bin
-# export PATH=${PATH}:${HOME}/go/bin
 
 export BAT_THEME="gruvbox-dark"
 
@@ -73,9 +69,6 @@ export EDITOR=$(which nvim)
 
 # LITELLM
 # export LITELLM_MASTER_KEY=<your-litellm-master-key>
-
-# nix
-#if [ -e ~/.nix-profile/etc/profile.d/nix.sh ]; then . ~/.nix-profile/etc/profile.d/nix.sh; fi
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
