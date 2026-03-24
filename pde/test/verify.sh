@@ -71,6 +71,7 @@ check_cmd fzf
 check_cmd rg
 check_cmd bat /usr/bin/batcat
 check_cmd jq
+check_cmd yq ~/.cargo/bin/yq
 check_cmd yazi ~/.cargo/bin/yazi
 check_cmd ya ~/.cargo/bin/ya
 

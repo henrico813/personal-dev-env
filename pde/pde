@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/lib/core.sh"
 
 # Clean up temp directories on exit
 cleanup() {
-    rm -rf /tmp/tmux-build-$$ /tmp/yazi-$$ /tmp/font-*-$$ 2>/dev/null || true
+    rm -rf /tmp/tmux-build-$$ /tmp/yazi-$$ /tmp/yq-$$ /tmp/font-*-$$ 2>/dev/null || true
 }
 trap cleanup EXIT
 
