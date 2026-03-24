@@ -21,12 +21,6 @@ Install the Claude config from the repo root:
 ./install.sh
 ```
 
-Then in any project:
-
-```text
-/setup
-```
-
 The install script preserves existing Claude user data such as `projects/`, `.credentials.json`, and `history.jsonl`, and it also installs the OpenCode-compatible commands and agents into `~/.config/opencode/`.
 
 ## Included Config

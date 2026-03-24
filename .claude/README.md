@@ -5,9 +5,9 @@ Personal Claude Code settings with privacy-focused defaults and workflow automat
 ## Directory Structure
 
 - `agents/` - Task agents for specialized research (codebase analysis, documentation review, plan evaluation)
-- `commands/` - Slash commands for common workflows (/setup, /create_plan, /implement_plan, etc.)
+- `commands/` - Slash commands for common workflows (/create_plan, /implement_plan, etc.)
 - `hooks/` - Event-driven scripts that modify Claude Code behavior
-- `scripts/` - Utility scripts for setup and documentation management
+- `scripts/` - Utility scripts for hooks and automation
 - `CLAUDE.md` - Core configuration with global instructions
 
 ## How It Works
@@ -16,8 +16,6 @@ Personal Claude Code settings with privacy-focused defaults and workflow automat
 The `/` commands enable workflows:
 - **Planning**: `/create_plan`, `/review_plan`, `/implement_plan`
 - **Research**: `/research_codebase`, `/document_codebase`
-- **Git**: `/git_commit`, `/export_plan`
-- **Setup**: `/setup`
 
 ### Hooks
 Hooks execute automatically on events:
