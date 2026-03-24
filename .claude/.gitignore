@@ -1,0 +1,23 @@
+# Credentials
+.credentials.json
+*.key
+*.pem
+
+# Cache and temp
+.cache/
+*.tmp
+*.log
+docs/
+
+# Runtime
+shell-snapshots/
+todos/
+statsig/
+projects/
+plans/
+plugins/cache/
+history.jsonl
+debug/
+file-history/
+.statusline_cache
+stats-cache.json

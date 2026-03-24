@@ -90,7 +90,7 @@ main() {
             install_ai           # nvm, node, claude
             install_fonts
             install_configs
-            install_configs_ai   # adds ai() function, alacritty
+            install_configs_ai   # adds full-profile config files
             ;;
 
         --help|-h)
