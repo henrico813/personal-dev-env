@@ -92,6 +92,32 @@ if [ -d "$SCRIPT_DIR/.opencode" ]; then
     cp -r "$SCRIPT_DIR/.opencode/." "$OC_DIR/"
 fi
 
+# Codex compatibility: install repo-managed skills without replacing user state
+CODEX_SKILLS_DIR="$HOME/.codex/skills"
+CODEX_BACKUP_DIR=""
+if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
+    echo "Installing Codex skills..."
+    mkdir -p "$CODEX_SKILLS_DIR"
+
+    for skill_path in "$SCRIPT_DIR/.codex/skills/"*; do
+        [ -d "$skill_path" ] || continue
+        skill_name="$(basename "$skill_path")"
+
+        if [ -d "$CODEX_SKILLS_DIR/$skill_name" ]; then
+            if [ -z "$CODEX_BACKUP_DIR" ]; then
+                CODEX_BACKUP_DIR="$HOME/.codex/skills.backup.$(date +%Y%m%d_%H%M%S)"
+                mkdir -p "$CODEX_BACKUP_DIR"
+                echo "Backing up managed Codex skills to $CODEX_BACKUP_DIR"
+            fi
+
+            cp -r "$CODEX_SKILLS_DIR/$skill_name" "$CODEX_BACKUP_DIR/"
+            rm -rf "$CODEX_SKILLS_DIR/$skill_name"
+        fi
+
+        cp -r "$skill_path" "$CODEX_SKILLS_DIR/"
+    done
+fi
+
 echo ""
 echo "Done! Configuration installed to $TARGET_DIR"
 

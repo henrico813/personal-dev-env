@@ -1,5 +1,6 @@
 ---
-description: Create detailed implementation plans through interactive research and iteration
+name: create-plan
+description: Use when the user asks to create a detailed implementation plan through interactive research and iteration.
 ---
 
 # Implementation Plan

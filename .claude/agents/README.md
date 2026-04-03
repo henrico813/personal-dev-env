@@ -17,7 +17,7 @@ Specialized task agents spawned by commands and reviewers to conduct parallel re
 | `docs-locator` | Discover what documents exist about a topic |
 | `docs-analyzer` | Extract insights from specific documents |
 | `docs-reviewer` | Analyze documentation for gaps and outdated content |
-| `docs-writer` | Create and update README.md files based on review findings |
+| `docs-writer` | Implement documentation changes (docstrings, comments, READMEs) based on review findings |
 
 ## Plan Review Agents
 
@@ -35,9 +35,9 @@ Specialized task agents spawned by commands and reviewers to conduct parallel re
 
 ## How They Work
 
-Commands like `/create_plan` and `/review_plan` spawn multiple agents in parallel:
+Commands like `/create_plan`, `/review_plan`, and `/document_codebase` spawn agents in parallel:
 - Each agent receives a focused prompt
 - Agents work concurrently to maximize efficiency
 - Results are synthesized when all complete
 
-Agents are read-only and never modify files.
+Most agents are read-only. The exception is `docs-writer`, which modifies files.

@@ -1,5 +1,6 @@
 ---
-description: Complete documentation workflow - diagnose documentation problems, fix at the right level, commit changes
+name: document-codebase
+description: Use when the user asks to review, improve, or generate project documentation across the codebase.
 ---
 
 ## Getting Started
