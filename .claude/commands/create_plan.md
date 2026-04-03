@@ -286,7 +286,7 @@ Each step must contain enough detail for review before execution.]
 - [ ] Performance is acceptable with 1000+ items
 - [ ] Error messages are user-friendly
 - [ ] Feature works correctly on mobile devices
-```
+````
 
 ## Common Patterns
 
