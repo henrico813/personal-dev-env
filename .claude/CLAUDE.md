@@ -27,7 +27,7 @@ Never commit these files to a PR branch. Issue docs, notes, and tracking files b
 
 ## Code Comments and Docstrings
 
-- Be extremely concise.
+- Be extremely concise by default, unless told otherwise.
 - Prefer examples over prose.
 - Assume technical competence.
 - Default to 1-2 sentence explanations.

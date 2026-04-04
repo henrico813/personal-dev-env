@@ -10,6 +10,7 @@ Slash commands for common workflows. Type `/command-name` to invoke.
 | `/create_plan` | Design detailed implementation plan with iterative research |
 | `/review_plan` | Validate plan for architecture, bugs, completeness |
 | `/implement_plan` | Execute plan phases with verification |
+| `/cleanup_plan` | Tear down completed plan worktrees and finish cleanup |
 
 ## Research & Documentation
 
