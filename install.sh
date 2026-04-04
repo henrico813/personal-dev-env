@@ -93,6 +93,7 @@ if [ -d "$SCRIPT_DIR/.opencode" ]; then
 fi
 
 # Codex compatibility: install repo-managed skills without replacing user state
+CODEX_DIR="$HOME/.codex"
 CODEX_SKILLS_DIR="$HOME/.codex/skills"
 CODEX_BACKUP_DIR=""
 if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
@@ -116,6 +117,26 @@ if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
 
         cp -r "$skill_path" "$CODEX_SKILLS_DIR/"
     done
+fi
+
+# Codex compatibility: point global instructions at the installed Claude config
+CODEX_AGENTS_PATH="$CODEX_DIR/AGENTS.md"
+CLAUDE_GLOBAL_INSTRUCTIONS="$TARGET_DIR/CLAUDE.md"
+if [ -f "$CLAUDE_GLOBAL_INSTRUCTIONS" ]; then
+    echo "Linking Codex global instructions to $CLAUDE_GLOBAL_INSTRUCTIONS"
+    mkdir -p "$CODEX_DIR"
+
+    if [ -L "$CODEX_AGENTS_PATH" ] && [ "$(readlink "$CODEX_AGENTS_PATH")" = "$CLAUDE_GLOBAL_INSTRUCTIONS" ]; then
+        :
+    else
+        if [ -e "$CODEX_AGENTS_PATH" ] || [ -L "$CODEX_AGENTS_PATH" ]; then
+            CODEX_AGENTS_BACKUP="$CODEX_DIR/AGENTS.md.backup.$(date +%Y%m%d_%H%M%S)"
+            echo "Backing up existing Codex AGENTS.md to $CODEX_AGENTS_BACKUP"
+            mv "$CODEX_AGENTS_PATH" "$CODEX_AGENTS_BACKUP"
+        fi
+
+        ln -s "$CLAUDE_GLOBAL_INSTRUCTIONS" "$CODEX_AGENTS_PATH"
+    fi
 fi
 
 echo ""
