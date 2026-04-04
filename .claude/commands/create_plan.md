@@ -164,7 +164,18 @@ Once aligned on approach:
 
 After structure approval:
 
-1. **Write the plan** using this template:
+1. Follow these guidelines:
+    - Keep prose optimized for human understanding. Humans understand writing best when it's presented as a story, narrative, or history. 
+    - The plan prose should flow like a narrative, not a taxonomy. It should tell the story of why the changes are needed, how they fit together, and what the expected outcome is.
+    - Code is not just implementation code. It's also configuration and test code. Any reference to code also references configurations, test automation, and business logic.
+    - Keep code documentation concise and focused on the "why" behind the code, not just the "what". The code blocks should include comments that explain the intent of the code in relation to the overall plan.
+    - Verification steps should map to the goals. View goals as acceptance criteria, and verification steps as the specific checks to confirm those criteria are met.
+    - Design for test. This means code implementation must be structured in a way that allows for unit and integration testing.
+    - Tests and documentation are critical parts that are two sides of the same system. Both express intent in their structure and content. They both document behaviors and important workflows in the system. They also connect different parts of the system together.
+    - Thus when writing test code, it's important to consider these leverage points: state, interfaces, and data models / contracts. These things extend across modules, sit on critical paths, and are often where the most important bugs hide.
+    - Thus when defining test code structure, it's important to structure tests in a way that documents behaviors, workflows, and connections between modules. 
+
+2. **Write the plan** using this template:
 
 ````markdown
 # [Title]
@@ -173,21 +184,29 @@ After structure approval:
 
 [1-2 sentences: what and why]
 
-## Current State
-
-[What exists now, key constraints, relevant file:line references]
-
 ## Definition of Done
 
-- [ ] [Concrete, verifiable outcome]
-- [ ] [Another outcome]
+[Inlcude a top level summary describing the narrative intent of the changes.]
+
+### Goals
+
+- [ ] [Concrete, verifiable outcome describing change intent]
+- [ ] [Another outcome, no more than 8 outcomes total. If you need more than 8, tell the user the change is too big.]
+
+### Current State
+
+[What exists now, key constraints, relevant file:line references,]
+
+### Module Shape
+
+[list the files or directories involved]
 
 ## Implementation
 
 ### 1. [Change description]
 
-[Explicit details: code to write, config to change, commands to run, etc.
-Each step must contain enough detail for review before execution.]
+[Explicit details: code to write, config to change, commands to run, accompanying documentation, etc.
+Each step must contain enough detail for review before execution. Present changes like a PR, with code blocks of actual changes and a comment explaining why the code exists in relation to the definition of done.]
 
 ### 2. [Change description]
 
@@ -197,8 +216,8 @@ Each step must contain enough detail for review before execution.]
 
 [Test automation code or manual testing steps]
 
-[Include explicit details like code to write, config to change, commands to run, etc.
-Each step must contain enough detail for review before execution.]
+[Explicit details: code to write, config to change, commands to run, accompanying documentation, etc.
+Each step must contain enough detail for review before execution. Present changes like a PR, with code blocks of actual changes and a comment explaining why the code exists in relation to the definition of done.]
 
 ### Step 5: Review
 
@@ -207,6 +226,11 @@ Each step must contain enough detail for review before execution.]
    - Are the success criteria specific enough?
    - Any technical details that need adjustment?
    - Missing edge cases or considerations?
+   - Is the plan overscoped (more than 8 goals)?
+   - Is there a narrative flow that explains the "why" behind the changes and how they fit together?
+   - Does the plan include explicit details for each change in the implementation and verification sections, such that a reviewer can understand the intent and verify the changes against the definition of done?
+   - Is code documentation included in the code blocks and is it concise? 
+   - Are there any edge cases that should be considered for the implementation or verification steps?
 
 2. **Iterate based on feedback** - be ready to:
    - Add missing phases
