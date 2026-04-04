@@ -15,7 +15,7 @@ When given a plan path:
 - Think deeply about how the pieces fit together
 - Create a todo list to track your progress
 - By default, create a new branch and new worktree for your work, unless the plan specifies otherwise.
-- The default branch name should follow conventional branch structure, e.g., `feature/short-description` or `bugfix/xxxx-###/short-description`, where xxxx is the plan id and ### is the plan number. If the plan specifies a branch name, use that instead. 
+- The default branch name should follow conventional branch structure, e.g., `feature/short-description` or `bugfix/xxxx-###/short-description`, where xxxx is the plan id and ### is the plan number. If the plan specifies a branch name, use that instead.
 - The default worktree path should be `./worktrees/name`, where name is derived from the plan title first, then the branch name otherwise. If the plan specifies a worktree path, use that instead.
 - Start implementing if you understand what needs to be done
 
@@ -112,10 +112,10 @@ Remember: You're implementing a solution, not just checking boxes. Keep the end 
 
 ## Cleaning Up
 
-After completing all phases, present your work to the user, present a commit message, and present a PR message. The commit message should always follow conventional commit structure and by default contain a high level summary of the changes explaining what changed, why it changed, and how it's important written in present tense. 
+After completing all phases, present your work to the user, present a commit message, and present a PR message. The commit message should always follow conventional commit structure and by default contain a high level summary of the changes explaining what changed, why it changed, and how it's important written in present tense.
 
-The PR message must contain an # Overview and # Testing section. The overview should mirror the commit message body or have a high level summary of all commit messages in a change. 
+The PR message must contain an # Overview and # Testing section. The overview should mirror the commit message body or have a high level summary of all commit messages in a change.
 
 The testing section should contain a detailed description of how to test the change, including any manual testing steps that need to be performed.
 
-The primary audience for your commit and PR messages is a reviewer or a maintainer. They don't need deep implementation details. They need to understand the high level changes, why they were made, and how to verify them. 
+The primary audience for your commit and PR messages is a reviewer or a maintainer. They don't need deep implementation details. They need to understand the high level changes, why they were made, and how to verify them.

@@ -165,7 +165,7 @@ Once aligned on approach:
 After structure approval:
 
 1. Follow these guidelines:
-    - Keep prose optimized for human understanding. Humans understand writing best when it's presented as a story, narrative, or history. 
+    - Keep prose optimized for human understanding. Humans understand writing best when it's presented as a story, narrative, or history.
     - The plan prose should flow like a narrative, not a taxonomy. It should tell the story of why the changes are needed, how they fit together, and what the expected outcome is.
     - Code is not just implementation code. It's also configuration and test code. Any reference to code also references configurations, test automation, and business logic.
     - Keep code documentation concise and focused on the "why" behind the code, not just the "what". The code blocks should include comments that explain the intent of the code in relation to the overall plan.
@@ -173,7 +173,7 @@ After structure approval:
     - Design for test. This means code implementation must be structured in a way that allows for unit and integration testing.
     - Tests and documentation are critical parts that are two sides of the same system. Both express intent in their structure and content. They both document behaviors and important workflows in the system. They also connect different parts of the system together.
     - Thus when writing test code, it's important to consider these leverage points: state, interfaces, and data models / contracts. These things extend across modules, sit on critical paths, and are often where the most important bugs hide.
-    - Thus when defining test code structure, it's important to structure tests in a way that documents behaviors, workflows, and connections between modules. 
+    - Thus when defining test code structure, it's important to structure tests in a way that documents behaviors, workflows, and connections between modules.
 
 2. **Write the plan** using this template:
 
@@ -229,7 +229,7 @@ Each step must contain enough detail for review before execution. Present change
    - Is the plan overscoped (more than 8 goals)?
    - Is there a narrative flow that explains the "why" behind the changes and how they fit together?
    - Does the plan include explicit details for each change in the implementation and verification sections, such that a reviewer can understand the intent and verify the changes against the definition of done?
-   - Is code documentation included in the code blocks and is it concise? 
+   - Is code documentation included in the code blocks and is it concise?
    - Are there any edge cases that should be considered for the implementation or verification steps?
 
 2. **Iterate based on feedback** - be ready to:
