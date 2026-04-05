@@ -1,385 +1,309 @@
 ---
-description: Create detailed implementation plans through interactive research and iteration
+description: Create detailed implementation plans through codebase research and evidence-backed synthesis
 ---
 
 # Implementation Plan
 
-You are tasked with creating detailed implementation plans through an interactive, iterative process. You should be skeptical, thorough, and work collaboratively with the user to produce high-quality technical specifications.
+You are tasked with creating detailed implementation plans that are grounded in the actual codebase and ready for execution.
+
+Your default behavior is:
+
+1. Read all provided context fully.
+2. Research the relevant code, tests, config, and docs.
+3. Resolve uncertainty through investigation whenever possible.
+4. Produce the full implementation plan in one response.
+
+Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. The skill owns the structure.
 
 ## Initial Response
 
 When this command is invoked:
 
-1. **Check if parameters were provided**:
-   - If a file path or ticket reference was provided as a parameter, skip the default message
-   - Immediately read any provided files FULLY
-   - Begin the research process
+1. **If parameters were provided**:
+   - If a file path, ticket reference, or document path was provided, read it fully.
+   - Begin research immediately.
 
-2. **If no parameters provided**, respond with:
-```
-I'll help you create a detailed implementation plan. Let me start by understanding what we're building.
+2. **If no parameters were provided**, respond with:
+```text
+I'll help you create a detailed implementation plan.
 
 Please provide:
-1. The task/ticket description (or reference to a ticket file)
-2. Any relevant context, constraints, or specific requirements
-3. Links to related research or previous implementations
+1. The task or ticket description, or a path to the design doc / issue
+2. Any constraints or requirements that materially affect implementation
+3. Links or paths to related docs, previous plans, or prior implementations
 
-I'll analyze this information and work with you to create a comprehensive plan.
+I'll research the relevant code and produce a concrete implementation plan.
 
-Tip: You can also invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
-For deeper analysis, try: `/create_plan think deeply about docs/design-feature-name.md`
+Tip: You can invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
 ```
 
 Then wait for the user's input.
 
-## Process Steps
+## Non-Negotiable Rules
 
-### Step 1: Context Gathering & Initial Analysis
+- Read every mentioned file fully before drafting the plan.
+- Research the relevant code, tests, config, and documentation before drafting the plan.
+- Do not draft the final plan until research is complete.
+- If blocking questions remain after research, ask only those questions and stop.
+- If no blocking questions remain, produce the final implementation plan immediately.
+- Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
+- Do not add extra sections unless the user explicitly asks for them.
+- Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
+- Prefer `make` commands in verification when suitable targets exist. If no suitable `make` target exists, say so and use the direct command.
 
-1. **Read all mentioned files immediately and FULLY**:
-   - Design documents (e.g., `DESIGN-feature-name.md`)
-   - Research documents (e.g., `RESEARCH-2025-01-15-topic.md`)
-   - Related implementation plans
-   - Any JSON/data files mentioned
-   - **IMPORTANT**: Use the Read tool WITHOUT limit/offset parameters to read entire files
-   - **CRITICAL**: DO NOT spawn sub-tasks before reading these files yourself in the main context
-   - **NEVER** read files partially - if a file is mentioned, read it completely
+## Workflow
 
-2. **Spawn initial research tasks to gather context**:
-   Before asking the user any questions, use specialized agents to research in parallel:
+### Step 1: Read and Gather Context
 
-   - Use the **codebase-locator** agent to find all files related to the task
-   - Use the **codebase-analyzer** agent to understand how the current implementation works
-   - If relevant, use the **docs-locator** agent to find any existing documents about this feature
+1. Read all files mentioned by the user fully.
+2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
+3. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
 
-   These agents will:
-   - Find relevant source files, configs, and tests
-   - Identify the specific directories to focus on based on the task
-   - Trace data flow and key functions
-   - Return detailed explanations with file:line references
+### Step 2: Research the Codebase
 
-3. **Read all files identified by research tasks**:
-   - After research tasks complete, read ALL files they identified as relevant
-   - Read them FULLY into the main context
-   - This ensures you have complete understanding before proceeding
+Research the codebase before planning. Use available read-only tools to inspect:
 
-4. **Analyze and verify understanding**:
-   - Cross-reference the ticket requirements with actual code
-   - Identify any discrepancies or misunderstandings
-   - Note assumptions that need verification
-   - Determine true scope based on codebase reality
+- implementation files
+- tests
+- configuration
+- interfaces and contracts
+- similar features or patterns
+- related docs or notes if they affect execution
 
-5. **Present informed understanding and focused questions**:
-   ```
-   Based on the ticket and my research of the codebase, I understand we need to [accurate summary].
+When available, parallelize independent research tasks. After research, read the most relevant discovered files fully before drafting.
 
-   I've found that:
-   - [Current implementation detail with file:line reference]
-   - [Relevant pattern or constraint discovered]
-   - [Potential complexity or edge case identified]
+Focus on:
 
-   Questions that my research couldn't answer:
-   - [Specific technical question that requires human judgment]
-   - [Business logic clarification]
-   - [Design preference that affects implementation]
-   ```
+- current behavior
+- integration points
+- invariants and constraints
+- similar patterns to follow
+- likely edge cases
+- verification entry points
 
-   Only ask questions that you genuinely cannot answer through code investigation.
+### Step 3: Determine Whether Clarification Is Required
 
-### Step 2: Research & Discovery
+After research, choose exactly one of these paths:
 
-After getting initial clarifications:
+1. **If blocking questions remain**:
+   Respond with:
 
-1. **If the user corrects any misunderstanding**:
-   - DO NOT just accept the correction
-   - Spawn new research tasks to verify the correct information
-   - Read the specific files/directories they mention
-   - Only proceed once you've verified the facts yourself
+   ```text
+   Based on the task and my code research, I understand we need to [accurate summary].
 
-2. **Create a research todo list** using TodoWrite to track exploration tasks
+   I've verified:
+   - [finding]
+   - [finding]
+   - [constraint or edge case]
 
-3. **Spawn parallel sub-tasks for comprehensive research**:
-   - Create multiple Task agents to research different aspects concurrently
-   - Use the right agent for each type of research:
-
-   **For deeper investigation:**
-   - **codebase-locator** - To find more specific files (e.g., "find all files that handle [specific component]")
-   - **codebase-analyzer** - To understand implementation details (e.g., "analyze how [system] works")
-   - **codebase-pattern-finder** - To find similar features we can model after
-
-   **For historical context:**
-   - **docs-locator** - To find any research, plans, or decisions about this area
-   - **docs-analyzer** - To extract key insights from the most relevant documents
-
-   Each agent knows how to:
-   - Find the right files and code patterns
-   - Identify conventions and patterns to follow
-   - Look for integration points and dependencies
-   - Return specific file:line references
-   - Find tests and examples
-
-3. **Wait for ALL sub-tasks to complete** before proceeding
-
-4. **Present findings and design options**:
-   ```
-   Based on my research, here's what I found:
-
-   **Current State:**
-   - [Key discovery about existing code]
-   - [Pattern or convention to follow]
-
-   **Design Options:**
-   1. [Option A] - [pros/cons]
-   2. [Option B] - [pros/cons]
-
-   **Open Questions:**
-   - [Technical uncertainty]
-   - [Design decision needed]
-
-   Which approach aligns best with your vision?
+   Blocking questions:
+   - [question whose answer would materially change implementation]
+   - [question whose answer would materially change verification]
    ```
 
-### Step 3: Plan Structure Development
+   Ask only questions that research could not resolve. Then stop and wait.
 
-Once aligned on approach:
+2. **If no blocking questions remain**:
+   Produce the final implementation plan immediately.
 
-1. **Create initial plan outline**:
-   ```
-   Here's my proposed plan structure:
+## Final Plan Requirements
 
-   ## Overview
-   [1-2 sentence summary]
+The final plan must be complete, actionable, and ready for execution.
 
-   ## Implementation Phases:
-   1. [Phase name] - [what it accomplishes]
-   2. [Phase name] - [what it accomplishes]
-   3. [Phase name] - [what it accomplishes]
+Use exactly these headings, in this order:
 
-   Does this phasing make sense? Should I adjust the order or granularity?
-   ```
+1. `# [Title]`
+2. `## Overview`
+3. `## Definition of Done`
+4. `### Goals`
+5. `## Current State`
+6. `## Module Shape`
+7. `## Implementation`
+8. `## Verification`
+9. `## Evidence`
 
-2. **Get feedback on structure** before writing details
+Do not add sections such as:
 
-### Step 4: Detailed Plan Writing
+- Git workflow
+- branch name
+- PR instructions
+- files to create
+- files to modify
+- commit sequence
 
-After structure approval:
+Include those details only if the user explicitly requests them.
 
-1. Follow these guidelines:
-    - Keep prose optimized for human understanding. Humans understand writing best when it's presented as a story, narrative, or history.
-    - The plan prose should flow like a narrative, not a taxonomy. It should tell the story of why the changes are needed, how they fit together, and what the expected outcome is.
-    - Code is not just implementation code. It's also configuration and test code. Any reference to code also references configurations, test automation, and business logic.
-    - Keep code documentation concise and focused on the "why" behind the code, not just the "what". The code blocks should include comments that explain the intent of the code in relation to the overall plan.
-    - Verification steps should map to the goals. View goals as acceptance criteria, and verification steps as the specific checks to confirm those criteria are met.
-    - Design for test. This means code implementation must be structured in a way that allows for unit and integration testing.
-    - Tests and documentation are critical parts that are two sides of the same system. Both express intent in their structure and content. They both document behaviors and important workflows in the system. They also connect different parts of the system together.
-    - Thus when writing test code, it's important to consider these leverage points: state, interfaces, and data models / contracts. These things extend across modules, sit on critical paths, and are often where the most important bugs hide.
-    - Thus when defining test code structure, it's important to structure tests in a way that documents behaviors, workflows, and connections between modules.
+## Evidence Rules
 
-2. **Write the plan** using this template:
+Keep the plan prose readable. Do not attach full `path:line` citations directly to every sentence.
+
+Instead:
+
+- Support each distinct codebase claim with evidence labels such as `[E1]`, `[E2]`.
+- Reuse evidence labels when multiple claims rely on the same source.
+- Add a final `## Evidence` section that maps each label to one or more `path:line` references.
+- If a claim cannot be supported by code or doc evidence, omit it from the final plan or resolve it during research. Do not present unsupported claims as fact.
+
+## Brevity Rules
+
+Keep the plan dense and reviewable.
+
+- `Overview` must be 2 sentences max.
+- `Definition of Done` intro must be 1-3 sentences max. Put specifics in `Goals`.
+- `Current State` must use 3-6 bullets, not paragraphs.
+- Each `Implementation` step may use at most 3 prose sentences before switching to bullets or a representative snippet.
+- Any prose immediately above or below a representative code block must be 1 sentence max.
+- Prefer bullets over prose whenever the content is factual, enumerative, or checkable.
+- Do not repeat the same rationale across sections.
+
+## Writing Guidelines
+
+- Optimize for human review. The plan should be easy to scan and easy to execute.
+- Use short connective prose in `Overview` and `Current State`.
+- Keep the rest structured and concrete.
+- Make the plan coherent and compact.
+- Code includes implementation code, tests, config, contracts, and documentation when relevant.
+- Be concise by default. Explain why changes exist, not just what they are.
+- Present implementation steps in execution order.
+- Each implementation step must be specific enough that a reviewer can evaluate it before any code is written.
+- Prefer representative code snippets over full file dumps unless a very small module is being defined.
+- Design for test. Tests should document the intended behavior and the important module boundaries.
+- Do not leave open questions in the final plan.
+
+## Final Plan Template
 
 ````markdown
 # [Title]
 
 ## Overview
 
-[1-2 sentences: what and why]
+[2 sentences max describing what is changing and why.]
 
 ## Definition of Done
 
-[Inlcude a top level summary describing the narrative intent of the changes.]
+[1-3 sentences max describing what will be true when this issue is complete.]
 
 ### Goals
 
-- [ ] [Concrete, verifiable outcome describing change intent]
-- [ ] [Another outcome, no more than 8 outcomes total. If you need more than 8, tell the user the change is too big.]
+- [ ] [Concrete, verifiable outcome]
+- [ ] [Concrete, verifiable outcome]
+- [ ] [Concrete, verifiable outcome]
 
-### Current State
+## Current State
 
-[What exists now, key constraints, relevant file:line references,]
+[3-6 bullets describing the relevant current behavior and constraints.]
+[Support each distinct factual claim with evidence labels such as `[E1]`, `[E2]`.]
 
-### Module Shape
+Examples:
+- [Current behavior] [E1]
+- [Constraint or invariant] [E2]
+- [Existing pattern to follow] [E3]
 
-[list the files or directories involved]
+## Module Shape
+
+```text
+path/to/module_a.py        # purpose
+path/to/module_b.py        # purpose
+path/to/test_module.py     # purpose
+```
 
 ## Implementation
 
-### 1. [Change description]
+### 1. [First change]
 
-[Explicit details: code to write, config to change, commands to run, accompanying documentation, etc.
-Each step must contain enough detail for review before execution. Present changes like a PR, with code blocks of actual changes and a comment explaining why the code exists in relation to the definition of done.]
+[Describe the code, config, tests, and docs to update.]
+[Explain why this change exists and how it supports the Definition of Done.]
 
-### 2. [Change description]
+```python
+# Representative snippet if useful.
+# Keep snippets concise and intent-focused.
+```
 
-[...]
+### 2. [Second change]
+
+[Describe the next change in execution order.]
+[Explain dependencies, integration points, and important edge cases.]
+
+```python
+# Representative snippet if useful.
+```
+
+### 3. [Third change]
+
+[Describe final wiring, cleanup, follow-through, or verification-supporting changes.]
 
 ## Verification
 
-[Test automation code or manual testing steps]
+### Automated Verification
 
-[Explicit details: code to write, config to change, commands to run, accompanying documentation, etc.
-Each step must contain enough detail for review before execution. Present changes like a PR, with code blocks of actual changes and a comment explaining why the code exists in relation to the definition of done.]
+- [ ] [Runnable command and expected result]
+- [ ] [Runnable command and expected result]
+- [ ] [Runnable command and expected result]
 
-### Step 5: Review
+### Manual Verification
 
-1. **Present the draft plan** and ask:
-   - Are the steps properly scoped?
-   - Are the success criteria specific enough?
-   - Any technical details that need adjustment?
-   - Missing edge cases or considerations?
-   - Is the plan overscoped (more than 8 goals)?
-   - Is there a narrative flow that explains the "why" behind the changes and how they fit together?
-   - Does the plan include explicit details for each change in the implementation and verification sections, such that a reviewer can understand the intent and verify the changes against the definition of done?
-   - Is code documentation included in the code blocks and is it concise?
-   - Are there any edge cases that should be considered for the implementation or verification steps?
+- [ ] [Human check tied to a goal]
+- [ ] [Human check tied to a goal]
+- [ ] [Human check tied to a goal]
 
-2. **Iterate based on feedback** - be ready to:
-   - Add missing phases
-   - Adjust technical approach
-   - Clarify success criteria (both automated and manual)
-   - Add/remove scope items
+## Evidence
 
-3. **Continue refining** until the user is satisfied
-
-## Important Guidelines
-
-1. **Be Skeptical**:
-   - Question vague requirements
-   - Identify potential issues early
-   - Ask "why" and "what about"
-   - Don't assume - verify with code
-
-2. **Be Interactive**:
-   - Don't write the full plan in one shot
-   - Get buy-in at each major step
-   - Allow course corrections
-   - Work collaboratively
-
-3. **Be Thorough**:
-   - Read all context files COMPLETELY before planning
-   - Research actual code patterns using parallel sub-tasks
-   - Include specific file paths and line numbers
-   - Write measurable success criteria with clear automated vs manual distinction
-   - automated steps should use `make` whenever possible - for example `make -C myapp check` instead of `cd myapp && npm run fmt`
-
-4. **Be Practical**:
-   - Focus on incremental, testable changes
-   - Consider migration and rollback
-   - Think about edge cases
-   - Include "what we're NOT doing"
-
-5. **Track Progress**:
-   - Use TodoWrite to track planning tasks
-   - Update todos as you complete research
-   - Mark planning tasks complete when done
-
-6. **No Open Questions in Final Plan**:
-   - If you encounter open questions during planning, STOP
-   - Research or ask for clarification immediately
-   - Do NOT write the plan with unresolved questions
-   - The implementation plan must be complete and actionable
-   - Every decision must be made before finalizing the plan
-
-## Success Criteria Guidelines
-
-**Always separate success criteria into two categories:**
-
-1. **Automated Verification** (can be run by execution agents):
-   - Commands that can be run: `make test`, `npm run lint`, etc.
-   - Specific files that should exist
-   - Code compilation/type checking
-   - Automated test suites
-
-2. **Manual Verification** (requires human testing):
-   - UI/UX functionality
-   - Performance under real conditions
-   - Edge cases that are hard to automate
-   - User acceptance criteria
-
-**Format example:**
-```markdown
-### Success Criteria:
-
-#### Automated Verification:
-- [ ] Database migration runs successfully: `make migrate`
-- [ ] All unit tests pass: `go test ./...`
-- [ ] No linting errors: `golangci-lint run`
-- [ ] API endpoint returns 200: `curl localhost:8080/api/new-endpoint`
-
-#### Manual Verification:
-- [ ] New feature appears correctly in the UI
-- [ ] Performance is acceptable with 1000+ items
-- [ ] Error messages are user-friendly
-- [ ] Feature works correctly on mobile devices
+- [E1] `path/to/file.py:10-25`
+- [E2] `path/to/other_file.py:40-68`
+- [E3] `path/to/test_file.py:12-30`
 ````
+
+## Verification Standards
+
+- Every goal must map to at least one verification item.
+- Separate automated and manual verification.
+- Prefer `make` targets when available.
+- If no suitable `make` target exists, say so and provide the direct command.
+- Use real working directories and runnable commands.
+- Manual verification should check user-visible behavior, workflow behavior, or contract-level expectations.
+- Avoid vague verification such as "review the code" or "confirm it looks right."
 
 ## Common Patterns
 
-### For Database Changes:
-- Start with schema/migration
-- Add store methods
-- Update business logic
-- Expose via API
-- Update clients
+### For Database Changes
 
-### For New Features:
-- Research existing patterns first
-- Start with data model
-- Build backend logic
-- Add API endpoints
-- Implement UI last
+- start with schema or migration
+- update storage interfaces
+- update business logic
+- expose through APIs or services
+- update tests and fixtures
+- verify forward execution and compatibility expectations
 
-### For Refactoring:
-- Document current behavior
-- Plan incremental changes
-- Maintain backwards compatibility
-- Include migration strategy
+### For New Features
 
-## Sub-task Spawning Best Practices
+- research existing patterns first
+- start with contracts or data model
+- add backend or service logic
+- expose interfaces or APIs
+- add UI or adapter wiring last
+- verify both happy path and edge cases
 
-When spawning research sub-tasks:
+### For Refactoring
 
-1. **Spawn multiple tasks in parallel** for efficiency
-2. **Each task should be focused** on a specific area
-3. **Provide detailed instructions** including:
-   - Exactly what to search for
-   - Which directories to focus on
-   - What information to extract
-   - Expected output format
-4. **Be EXTREMELY specific about directories**:
-   - Specify exact directory paths based on the project structure
-   - Never use generic terms when specific paths are needed
-   - Include the full path context in your prompts
-5. **Specify read-only tools** to use
-6. **Request specific file:line references** in responses
-7. **Wait for all tasks to complete** before synthesizing
-8. **Verify sub-task results**:
-   - If a sub-task returns unexpected results, spawn follow-up tasks
-   - Cross-check findings against the actual codebase
-   - Don't accept results that seem incorrect
+- document current behavior with evidence labels
+- preserve behavior unless the issue explicitly changes it
+- prefer incremental steps
+- include tests that freeze important behavior before or during the refactor
+- note compatibility constraints directly in the implementation steps
 
-Example of spawning multiple tasks:
-```python
-# Spawn these tasks concurrently:
-tasks = [
-    Task("Research database schema", db_research_prompt),
-    Task("Find API patterns", api_research_prompt),
-    Task("Investigate UI components", ui_research_prompt),
-    Task("Check test patterns", test_research_prompt)
-]
-```
+## Final Self-Check
 
-## Example Interaction Flow
+Before sending the final plan, verify all of the following:
 
-```
-User: /create_plan
-Assistant: I'll help you create a detailed implementation plan...
+- all required headings are present
+- no extra headings were added
+- `Goals` has 8 items or fewer
+- every distinct claim in `Current State` is supported by an evidence label
+- no blocking questions remain
+- implementation steps are ordered and actionable
+- automated and manual verification are both present
+- verification items map back to the goals
+- `make` is used when suitable targets exist
+- prose sections follow the brevity rules
 
-User: We need to add parent-child tracking for Claude sub-tasks. See docs/research-2025-01-08-parent-child-tracking.md
-Assistant: Let me read that document completely first...
-
-[Reads file fully]
-
-Based on the document, I understand we need to track parent-child relationships for Claude sub-task events. Before I start planning, I have some questions...
-
-[Interactive process continues...]
-```
+If any item fails, revise the plan before responding.
