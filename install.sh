@@ -49,8 +49,10 @@ if [[ "$(uname)" == "Linux" ]]; then
     echo ""
     echo "Installing Linux dependencies..."
 
-    # Detect package manager and install
-    if command -v apt-get &>/dev/null; then
+    # Avoid touching the package manager when jq is already present.
+    if command -v jq &>/dev/null; then
+        echo "jq already installed, skipping"
+    elif command -v apt-get &>/dev/null; then
         sudo apt-get install -y jq
     elif command -v dnf &>/dev/null; then
         sudo dnf install -y jq
