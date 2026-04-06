@@ -1,0 +1,61 @@
+# {{ .Title }}
+---
+
+## Overview
+---
+
+{{ .Overview }}
+
+## Definition of Done
+---
+
+{{ .DefinitionOfDone.Narrative }}
+
+### Goals
+{{- range .DefinitionOfDone.Goals }}
+- [ ] {{ . }}
+{{- end }}
+
+### Current State
+
+{{ .DefinitionOfDone.CurrentState }}
+
+### Module Shape
+
+{{ .DefinitionOfDone.ModuleShape }}
+
+## Implementation
+---
+
+{{- range $i, $step := .Implementation }}
+
+### {{ inc $i }}. {{ $step.Title }}
+
+{{ $step.Summary }}
+{{- range $step.FileChanges }}
+
+`{{ .Filename }}`
+> {{ .Explanation }}
+
+```{{ .Language }}
+{{ .Code }}
+```
+{{- end }}
+{{- end }}
+
+## Verification
+---
+
+{{- if .Verification.Summary }}
+{{ .Verification.Summary }}
+
+{{- end }}
+### Automated Verification
+{{- range .Verification.Automated }}
+- [ ] {{ . }}
+{{- end }}
+
+### Manual Verification
+{{- range .Verification.Manual }}
+- [ ] {{ . }}
+{{- end }}
