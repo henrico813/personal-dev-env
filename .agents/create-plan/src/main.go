@@ -2,89 +2,169 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	_ "embed"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 )
 
-const templateRelativePath = "../plan_template.md.tmpl"
+//go:embed plan_template.md.tmpl
+var planTemplate string
+
+const helpText = `planner generates implementation-plan markdown from canonical JSON.
+
+Usage:
+  planner
+  planner help
+  planner show-schema
+  planner validate <plan.json>
+  planner create-plan <plan.json> <output.md>
+
+Scratch flow:
+  1. Research the task.
+  2. Run planner show-schema.
+  3. Write plan JSON that matches planner show-schema.
+  4. Run planner validate <plan.json>.
+  5. Run planner create-plan <plan.json> <output.md>.
+
+Rewrite flow:
+  1. Read the existing markdown issue.
+  2. Map its content into canonical JSON matching planner show-schema.
+  3. Run planner validate <plan.json>.
+  4. Run planner create-plan <plan.json> <output.md>.
+  5. Compare the rendered issue with the source issue for dropped content.
+
+show-schema contract:
+  - Includes the nested JSON shape the current validator recognizes.
+  - Includes the required fields and constraints the current validator enforces.
+  - Includes command semantics for help, validate, and create-plan.
+`
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: create-plan-engine <input.json> <output.md>")
-		os.Exit(1)
-	}
-
-	tmpl := readTemplate()
-	plan := readInput(os.Args[1])
-	validatePlan(plan)
-	rendered := writeText(tmpl, plan)
-	verifyText(rendered, plan)
-	writeOutput(os.Args[2], rendered)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func readTemplate() *template.Template {
-	exePath, err := os.Executable()
+func run(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 0 {
+		printHelp(stdout)
+		return 0
+	}
+
+	switch args[0] {
+	case "help", "--help", "-h":
+		printHelp(stdout)
+		return 0
+	case "show-schema":
+		return runShowSchema(stdout, stderr)
+	case "validate":
+		return runValidate(args[1:], stdout, stderr)
+	case "create-plan":
+		return runCreatePlan(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
+		printHelp(stderr)
+		return 2
+	}
+}
+
+func printHelp(w io.Writer) {
+	_, _ = io.WriteString(w, helpText)
+}
+
+func runShowSchema(stdout io.Writer, stderr io.Writer) int {
+	schemaJSON, err := buildSchemaJSON()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(stderr, "build schema: %v\n", err)
+		return 1
 	}
-
-	candidates := []string{
-		filepath.Clean(filepath.Join(filepath.Dir(exePath), templateRelativePath)),
-		filepath.Clean(filepath.Join("..", "plan_template.md.tmpl")),
+	if _, err := io.WriteString(stdout, schemaJSON+"\n"); err != nil {
+		fmt.Fprintf(stderr, "write schema: %v\n", err)
+		return 1
 	}
-
-	var tmplPath string
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			tmplPath = candidate
-			break
-		}
-	}
-
-	if tmplPath == "" {
-		panic("plan template not found")
-	}
-
-	funcs := template.FuncMap{
-		"inc": func(i int) int { return i + 1 },
-	}
-
-	return template.Must(
-		template.New(filepath.Base(tmplPath)).
-			Funcs(funcs).
-			ParseFiles(tmplPath),
-	)
+	return 0
 }
 
-func readInput(path string) Plan {
+func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, "usage: planner validate <plan.json>")
+		return 2
+	}
+	plan, err := readPlanFile(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "validate %s: %v\n", args[0], err)
+		return 1
+	}
+	if err := validatePlan(plan); err != nil {
+		fmt.Fprintf(stderr, "validate %s: %v\n", args[0], err)
+		return 1
+	}
+	_, _ = io.WriteString(stdout, "OK\n")
+	return 0
+}
+
+func runCreatePlan(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: planner create-plan <plan.json> <output.md>")
+		return 2
+	}
+	if err := createPlan(args[0], args[1]); err != nil {
+		fmt.Fprintf(stderr, "create-plan: %v\n", err)
+		return 1
+	}
+	_, _ = io.WriteString(stdout, args[1]+"\n")
+	return 0
+}
+
+func createPlan(inputPath string, outputPath string) error {
+	plan, err := readPlanFile(inputPath)
+	if err != nil {
+		return fmt.Errorf("%s: %w", inputPath, err)
+	}
+	if err := validatePlan(plan); err != nil {
+		return fmt.Errorf("%s: %w", inputPath, err)
+	}
+
+	rendered, err := renderPlan(plan)
+	if err != nil {
+		return fmt.Errorf("%s: %w", inputPath, err)
+	}
+	if err := verifyRenderedText(rendered, plan); err != nil {
+		return fmt.Errorf("%s: %w", inputPath, err)
+	}
+	if err := writeOutput(outputPath, rendered); err != nil {
+		return fmt.Errorf("%s: %w", outputPath, err)
+	}
+	return nil
+}
+
+func readPlanFile(path string) (Plan, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		panic(err)
+		return Plan{}, err
 	}
-
-	var plan Plan
-	if err := json.Unmarshal(data, &plan); err != nil {
-		panic(err)
-	}
-
-	return plan
+	return decodePlan(data)
 }
 
-func writeText(tmpl *template.Template, plan Plan) string {
+func renderPlan(plan Plan) (string, error) {
+	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
+		"inc": func(i int) int { return i + 1 },
+	}).Parse(planTemplate)
+	if err != nil {
+		return "", err
+	}
+
 	var buf bytes.Buffer
-
 	if err := tmpl.Execute(&buf, plan); err != nil {
-		panic(err)
+		return "", err
 	}
-
-	return buf.String()
+	return buf.String(), nil
 }
 
-func verifyText(rendered string, plan Plan) {
+func verifyRenderedText(rendered string, plan Plan) error {
 	requiredSections := []string{
 		"## Overview",
 		"## Definition of Done",
@@ -96,30 +176,36 @@ func verifyText(rendered string, plan Plan) {
 
 	for _, section := range requiredSections {
 		if !strings.Contains(rendered, section) {
-			panic(fmt.Sprintf("missing section: %s", section))
+			return fmt.Errorf("missing section: %s", section)
 		}
 	}
 
 	if !strings.Contains(rendered, "### 1.") {
-		panic("missing numbered implementation step")
+		return errors.New("missing numbered implementation step")
 	}
 
-	for _, step := range plan.Implementation {
-		if !strings.Contains(rendered, "### "+step.Title) && !strings.Contains(rendered, ". "+step.Title) {
-			panic(fmt.Sprintf("missing rendered implementation step: %s", step.Title))
+	for i, step := range plan.Implementation {
+		heading := fmt.Sprintf("### %d. %s", i+1, step.Title)
+		if !strings.Contains(rendered, heading) {
+			return fmt.Errorf("missing rendered implementation step: %s", heading)
 		}
-
 		for _, change := range step.FileChanges {
 			fence := "```" + change.Language + "\n" + change.Code + "\n```"
 			if !strings.Contains(rendered, fence) {
-				panic(fmt.Sprintf("missing rendered code block for %s", change.Filename))
+				return fmt.Errorf("missing rendered code block for %s", change.Filename)
 			}
 		}
 	}
+
+	return nil
 }
 
-func writeOutput(path, rendered string) {
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-		panic(err)
+func writeOutput(path, rendered string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
 	}
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		return err
+	}
+	return nil
 }
