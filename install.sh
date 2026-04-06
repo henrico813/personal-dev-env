@@ -4,6 +4,63 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/.claude"
 TARGET_DIR="$HOME/.claude"
+ENGINE_SOURCE_DIR="$SCRIPT_DIR/.agents/create-plan/src"
+ENGINE_TEMPLATE_SOURCE="$SCRIPT_DIR/.agents/create-plan/plan_template.md.tmpl"
+ENGINE_BUILD_DIR=""
+
+build_create_plan_engine() {
+    if ! command -v go >/dev/null 2>&1; then
+        echo "install.sh: Go is required to build create-plan-engine" >&2
+        exit 1
+    fi
+
+    ENGINE_BUILD_DIR="$(mktemp -d)"
+    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/create-plan-engine" .); then
+        echo "install.sh: failed to build create-plan-engine" >&2
+        exit 1
+    fi
+}
+
+cleanup_engine_build() {
+    if [ -n "$ENGINE_BUILD_DIR" ] && [ -d "$ENGINE_BUILD_DIR" ]; then
+        rm -rf "$ENGINE_BUILD_DIR"
+    fi
+}
+
+install_create_plan_runtime() {
+    local engine_output="$ENGINE_BUILD_DIR/create-plan-engine"
+
+    echo "Installing shared create-plan engine..."
+
+    install -d "$HOME/.claude/bin"
+    install -Dm755 "$engine_output" "$HOME/.claude/bin/create-plan-engine"
+    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.claude/plan_template.md.tmpl"
+    cat > "$HOME/.claude/bin/create_plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/create-plan-engine" "$@"
+EOF
+    chmod +x "$HOME/.claude/bin/create_plan"
+
+    install -d "$HOME/.config/opencode/bin"
+    install -Dm755 "$engine_output" "$HOME/.config/opencode/bin/create-plan-engine"
+    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.config/opencode/plan_template.md.tmpl"
+    cat > "$HOME/.config/opencode/bin/create_plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/create-plan-engine" "$@"
+EOF
+    chmod +x "$HOME/.config/opencode/bin/create_plan"
+
+    install -d "$HOME/.codex/skills/create-plan/bin"
+    install -Dm755 "$engine_output" "$HOME/.codex/skills/create-plan/bin/create-plan-engine"
+    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.codex/skills/create-plan/plan_template.md.tmpl"
+    cat > "$HOME/.codex/skills/create-plan/bin/create-plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/create-plan-engine" "$@"
+EOF
+    chmod +x "$HOME/.codex/skills/create-plan/bin/create-plan"
+}
+
+trap cleanup_engine_build EXIT
 
 echo "Installing Claude Code configuration..."
 
@@ -119,6 +176,11 @@ if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
 
         cp -r "$skill_path" "$CODEX_SKILLS_DIR/"
     done
+fi
+
+if [ -d "$SCRIPT_DIR/.agents/create-plan" ]; then
+    build_create_plan_engine
+    install_create_plan_runtime
 fi
 
 # Codex compatibility: point global instructions at the installed Claude config
