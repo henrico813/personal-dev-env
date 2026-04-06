@@ -5,18 +5,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/.claude"
 TARGET_DIR="$HOME/.claude"
 ENGINE_SOURCE_DIR="$SCRIPT_DIR/.agents/create-plan/src"
-ENGINE_TEMPLATE_SOURCE="$SCRIPT_DIR/.agents/create-plan/plan_template.md.tmpl"
 ENGINE_BUILD_DIR=""
 
-build_create_plan_engine() {
+build_planner() {
     if ! command -v go >/dev/null 2>&1; then
-        echo "install.sh: Go is required to build create-plan-engine" >&2
+        echo "install.sh: Go is required to build planner" >&2
         exit 1
     fi
 
     ENGINE_BUILD_DIR="$(mktemp -d)"
-    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/create-plan-engine" .); then
-        echo "install.sh: failed to build create-plan-engine" >&2
+    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/planner" .); then
+        echo "install.sh: failed to build planner" >&2
         exit 1
     fi
 }
@@ -27,35 +26,32 @@ cleanup_engine_build() {
     fi
 }
 
-install_create_plan_runtime() {
-    local engine_output="$ENGINE_BUILD_DIR/create-plan-engine"
+install_planner_runtime() {
+    local planner_output="$ENGINE_BUILD_DIR/planner"
 
-    echo "Installing shared create-plan engine..."
+    echo "Installing shared planner runtime..."
 
     install -d "$HOME/.claude/bin"
-    install -Dm755 "$engine_output" "$HOME/.claude/bin/create-plan-engine"
-    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.claude/plan_template.md.tmpl"
+    install -Dm755 "$planner_output" "$HOME/.claude/bin/planner"
     cat > "$HOME/.claude/bin/create_plan" <<'EOF'
 #!/usr/bin/env bash
-exec "$(dirname "$0")/create-plan-engine" "$@"
+exec "$(dirname "$0")/planner" create-plan "$@"
 EOF
     chmod +x "$HOME/.claude/bin/create_plan"
 
     install -d "$HOME/.config/opencode/bin"
-    install -Dm755 "$engine_output" "$HOME/.config/opencode/bin/create-plan-engine"
-    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.config/opencode/plan_template.md.tmpl"
+    install -Dm755 "$planner_output" "$HOME/.config/opencode/bin/planner"
     cat > "$HOME/.config/opencode/bin/create_plan" <<'EOF'
 #!/usr/bin/env bash
-exec "$(dirname "$0")/create-plan-engine" "$@"
+exec "$(dirname "$0")/planner" create-plan "$@"
 EOF
     chmod +x "$HOME/.config/opencode/bin/create_plan"
 
     install -d "$HOME/.codex/skills/create-plan/bin"
-    install -Dm755 "$engine_output" "$HOME/.codex/skills/create-plan/bin/create-plan-engine"
-    install -Dm644 "$ENGINE_TEMPLATE_SOURCE" "$HOME/.codex/skills/create-plan/plan_template.md.tmpl"
+    install -Dm755 "$planner_output" "$HOME/.codex/skills/create-plan/bin/planner"
     cat > "$HOME/.codex/skills/create-plan/bin/create-plan" <<'EOF'
 #!/usr/bin/env bash
-exec "$(dirname "$0")/create-plan-engine" "$@"
+exec "$(dirname "$0")/planner" create-plan "$@"
 EOF
     chmod +x "$HOME/.codex/skills/create-plan/bin/create-plan"
 }
@@ -179,8 +175,8 @@ if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
 fi
 
 if [ -d "$SCRIPT_DIR/.agents/create-plan" ]; then
-    build_create_plan_engine
-    install_create_plan_runtime
+    build_planner
+    install_planner_runtime
 fi
 
 # Codex compatibility: point global instructions at the installed Claude config
