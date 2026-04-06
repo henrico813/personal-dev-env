@@ -1,11 +1,11 @@
 ---
 name: create-plan
-description: Use when the user asks to create a research-backed implementation plan and render it through the shared Go create-plan engine.
+description: Use when the user asks to create a research-backed implementation plan and render it through the shared Go planner CLI.
 ---
 
-# Create Plan Engine
+# Planner CLI
 
-This package is the canonical source for the shared `create_plan` workflow.
+This package is the canonical source for the shared `planner create-plan` workflow.
 
 ## Workflow
 
@@ -58,12 +58,13 @@ Produce a JSON object matching this shape:
 
 ## Validation Rules
 
-The engine rejects plans that do not satisfy this contract:
+The planner rejects plans that do not satisfy this contract:
 
 - non-empty `title`, `overview`, and `definition_of_done.narrative`
 - at least one `definition_of_done.goals` item
 - non-empty `definition_of_done.current_state` and `definition_of_done.module_shape`
 - at least one implementation step
+- a top-level `verification` object
 - every implementation step has non-empty `title`, `summary`, and at least one `file_change`
 - every `file_change` has non-empty `filename`, `explanation`, `language`, and `code`
 - rendered output must contain `Overview`, `Definition of Done`, `Current State`, `Module Shape`, `Implementation`, and `Verification`
@@ -73,8 +74,8 @@ The engine rejects plans that do not satisfy this contract:
 
 Use the installed helper for the active tool:
 
-- Claude: `~/.claude/bin/create_plan <plan.json> <output.md>`
-- OpenCode: `~/.config/opencode/bin/create_plan <plan.json> <output.md>`
-- Codex: `bin/create-plan <plan.json> <output.md>`
+- Claude: `~/.claude/bin/planner create-plan <plan.json> <output.md>`
+- OpenCode: `~/.config/opencode/bin/planner create-plan <plan.json> <output.md>`
+- Codex: `bin/planner create-plan <plan.json> <output.md>`
 
 Do not emit freeform markdown directly when the installed helper is available.

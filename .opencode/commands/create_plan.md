@@ -1,8 +1,8 @@
 ---
-description: Create detailed implementation plans through the shared Go create-plan engine
+description: Create detailed implementation plans through the shared Go planner CLI
 ---
 
-Research the task, produce the expected plan JSON, run `~/.config/opencode/bin/create_plan`, and write the rendered issue to the vault.
+Research the task, produce the expected plan JSON, run `~/.config/opencode/bin/planner create-plan`, and write the rendered issue to the vault.
 
 Use the shared create-plan engine contract and validation rules.
 
