@@ -37,9 +37,9 @@
 `{{ .Filename }}`
 > {{ .Explanation }}
 
-```{{ .Language }}
+{{ codeFence .Code }}{{ .Language }}
 {{ .Code }}
-```
+{{ codeFence .Code }}
 {{- end }}
 {{- end }}
 
