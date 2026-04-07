@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -104,10 +105,106 @@ func decodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
+const planSourceBegin = "<!-- planner:source-begin -->"
+const planSourceEnd = "<!-- planner:source-end -->"
+const appendixHeader = "\n\n# Appendix\n\n## Plan JSON\n\n"
+
+// appendPlanSource encodes the plan as indented JSON with SetEscapeHTML(true)
+// so that '<' in any string value (including FileChange.Code) is escaped as
+// \u003c. This makes it structurally impossible for the HTML-comment sentinels
+// to appear inside any JSON string, preventing sentinel-collision bugs.
+func appendPlanSource(rendered string, plan Plan) (string, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(true)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(plan); err != nil {
+		return "", fmt.Errorf("marshal plan source: %w", err)
+	}
+	// enc.Encode appends a trailing newline; trim it so our sentinel framing is exact.
+	raw := strings.TrimRight(buf.String(), "\n")
+	return rendered + appendixHeader + planSourceBegin + "\n" + raw + "\n" + planSourceEnd + "\n", nil
+}
+
+// extractPlanSource scans from the END of mdContent via LastIndex to locate
+// the sentinel pair and unmarshals the JSON between them. Using LastIndex
+// plus HTML-escaped JSON guarantees no internal collision with the sentinels.
+func extractPlanSource(mdContent string) (Plan, error) {
+	beginIdx := strings.LastIndex(mdContent, planSourceBegin)
+	if beginIdx == -1 {
+		return Plan{}, errors.New("no Plan JSON appendix found in file")
+	}
+	start := beginIdx + len(planSourceBegin) + 1 // skip trailing newline
+	endIdx := strings.LastIndex(mdContent, planSourceEnd)
+	if endIdx == -1 || endIdx < start {
+		return Plan{}, errors.New("Plan JSON appendix is not properly closed")
+	}
+	// trim trailing newline before end sentinel
+	jsonBytes := []byte(strings.TrimRight(mdContent[start:endIdx], "\n"))
+	return decodePlan(jsonBytes)
+}
+
+// decodeSteps unmarshals a JSON array of Steps from data.
+func decodeSteps(data []byte) ([]Step, error) {
+	var steps []Step
+	if err := json.Unmarshal(data, &steps); err != nil {
+		return nil, err
+	}
+	return steps, nil
+}
+
+// createPlanFromStruct validates, renders, appends the JSON appendix, and
+// atomically writes the output. It is the single path used by both create
+// and the step mutation commands so the appendix is always present.
+func createPlanFromStruct(plan Plan, outputPath string) error {
+	if err := validatePlan(plan); err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	rendered, err := renderPlan(plan)
+	if err != nil {
+		return fmt.Errorf("render: %w", err)
+	}
+	if err := verifyRenderedText(rendered, plan); err != nil {
+		return fmt.Errorf("verify: %w", err)
+	}
+	withAppendix, err := appendPlanSource(rendered, plan)
+	if err != nil {
+		return fmt.Errorf("append source: %w", err)
+	}
+	if err := writeOutput(outputPath, withAppendix); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	return nil
+}
+
+// codeFence returns the shortest backtick fence that can safely wrap code,
+// always at least three backticks long. A run of N backticks inside code
+// requires a fence of at least N+1 backticks to prevent premature closure
+// in markdown renderers.
+func codeFence(code string) string {
+	longest := 0
+	cur := 0
+	for _, r := range code {
+		if r == '`' {
+			cur++
+			if cur > longest {
+				longest = cur
+			}
+		} else {
+			cur = 0
+		}
+	}
+	n := longest + 1
+	if n < 3 {
+		n = 3
+	}
+	return strings.Repeat("`", n)
+}
+
 func buildSchemaJSON() (string, error) {
 	schema := map[string]any{
 		"type":        "object",
-		"title":       "planner create-plan input contract",
+		"title":       "planner create input contract",
 		"description": "Built-in documentation for the planner contract, based on PDEV-008 and requiring a top-level verification field.",
 		"required":    []string{"title", "overview", "definition_of_done", "implementation", "verification"},
 		"properties": map[string]any{
@@ -119,15 +216,17 @@ func buildSchemaJSON() (string, error) {
 		},
 		"contract": map[string]any{
 			"commands": map[string]any{
-				"help":        "Print built-in usage and workflow guidance.",
-				"show-schema": "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
-				"validate":    "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
-				"create-plan": "Render canonical markdown from valid planner JSON. Usage: planner create-plan <plan.json> <output.md>.",
+				"help":                 "Print built-in usage and workflow guidance.",
+				"show-schema":          "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
+				"validate":             "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
+				"create":               "Render canonical markdown from valid planner JSON. Usage: planner create <plan.json> <output.md>.",
+				"create step add":      "Append steps to an existing plan file. Usage: planner create step add <steps.json> <plan.md>.",
+				"create step replace":  "Replace all implementation steps in an existing plan file. Usage: planner create step replace <steps.json> <plan.md>.",
 			},
 			"guarantees": []string{
-				"validate and create-plan use the same structural validation rules",
+				"validate and create use the same structural validation rules",
 				"planner preserves the current PDEV-008 JSON decode behavior",
-				"create-plan rejects invalid JSON input before rendering",
+				"create rejects invalid JSON input before rendering",
 				"current validator requires non-empty title, overview, definition_of_done.narrative, current_state, and module_shape",
 				"current validator requires at least one goal and at least one implementation step",
 				"current validator requires each implementation step to include title, summary, and at least one file change",

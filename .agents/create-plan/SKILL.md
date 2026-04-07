@@ -5,7 +5,7 @@ description: Use when the user asks to create a research-backed implementation p
 
 # Planner CLI
 
-This package is the canonical source for the shared `planner create-plan` workflow.
+This package is the canonical source for the shared `planner create` workflow.
 
 ## Workflow
 
@@ -74,8 +74,8 @@ The planner rejects plans that do not satisfy this contract:
 
 Use the installed helper for the active tool:
 
-- Claude: `~/.claude/bin/planner create-plan <plan.json> <output.md>`
-- OpenCode: `~/.config/opencode/bin/planner create-plan <plan.json> <output.md>`
-- Codex: `bin/planner create-plan <plan.json> <output.md>`
+- Claude: `~/.claude/bin/planner create <plan.json> <output.md>`
+- OpenCode: `~/.config/opencode/bin/planner create <plan.json> <output.md>`
+- Codex: `bin/planner create <plan.json> <output.md>`
 
 Do not emit freeform markdown directly when the installed helper is available.
