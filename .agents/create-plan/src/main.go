@@ -22,26 +22,35 @@ Usage:
   planner help
   planner show-schema
   planner validate <plan.json>
-  planner create-plan <plan.json> <output.md>
+  planner create <input.json> <output.md>
+  planner create step add <steps.json> <plan.md>
+  planner create step replace <steps.json> <plan.md>
 
 Scratch flow:
   1. Research the task.
   2. Run planner show-schema.
   3. Write plan JSON that matches planner show-schema.
   4. Run planner validate <plan.json>.
-  5. Run planner create-plan <plan.json> <output.md>.
+  5. Run planner create <plan.json> <output.md>.
 
-Rewrite flow:
+Rewrite flow (partial edit):
+  1. Read the existing rendered plan file.
+  2. Write a JSON array of new steps matching the implementation step schema.
+  3. Run planner create step add <steps.json> <plan.md>   (append steps).
+     Or: planner create step replace <steps.json> <plan.md> (replace all steps).
+  4. Verify the rewritten plan file.
+
+Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
   2. Map its content into canonical JSON matching planner show-schema.
   3. Run planner validate <plan.json>.
-  4. Run planner create-plan <plan.json> <output.md>.
+  4. Run planner create <plan.json> <output.md>.
   5. Compare the rendered issue with the source issue for dropped content.
 
 show-schema contract:
   - Includes the nested JSON shape the current validator recognizes.
   - Includes the required fields and constraints the current validator enforces.
-  - Includes command semantics for help, validate, and create-plan.
+  - Includes command semantics for help, validate, and create.
 `
 
 func main() {
@@ -62,8 +71,8 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runShowSchema(stdout, stderr)
 	case "validate":
 		return runValidate(args[1:], stdout, stderr)
-	case "create-plan":
-		return runCreatePlan(args[1:], stdout, stderr)
+	case "create":
+		return runCreate(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 		printHelp(stderr)
@@ -106,13 +115,95 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runCreatePlan(args []string, stdout io.Writer, stderr io.Writer) int {
+func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) >= 1 && args[0] == "step" {
+		return runStep(args[1:], stdout, stderr)
+	}
 	if len(args) != 2 {
-		fmt.Fprintln(stderr, "usage: planner create-plan <plan.json> <output.md>")
+		fmt.Fprintln(stderr, "usage: planner create <plan.json> <output.md>")
 		return 2
 	}
 	if err := createPlan(args[0], args[1]); err != nil {
-		fmt.Fprintf(stderr, "create-plan: %v\n", err)
+		fmt.Fprintf(stderr, "create: %v\n", err)
+		return 1
+	}
+	_, _ = io.WriteString(stdout, args[1]+"\n")
+	return 0
+}
+
+func runStep(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "usage: planner create step <add|replace> <steps.json> <plan.md>")
+		return 2
+	}
+	switch args[0] {
+	case "add":
+		return runStepAdd(args[1:], stdout, stderr)
+	case "replace":
+		return runStepReplace(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "unknown step command: %s\n", args[0])
+		return 2
+	}
+}
+
+// mutatePlan loads a plan from planPath, decodes a []Step from stepsPath,
+// applies fn to merge them, re-validates and re-renders via
+// createPlanFromStruct, and atomically rewrites planPath. The verb label is
+// used as the error prefix so call sites stay one-liners.
+func mutatePlan(verb, stepsPath, planPath string, fn func(plan Plan, newSteps []Step) Plan) error {
+	mdData, err := os.ReadFile(planPath)
+	if err != nil {
+		return fmt.Errorf("%s: read %s: %w", verb, planPath, err)
+	}
+	plan, err := extractPlanSource(string(mdData))
+	if err != nil {
+		return fmt.Errorf("%s: extract plan JSON from %s: %w", verb, planPath, err)
+	}
+	stepsData, err := os.ReadFile(stepsPath)
+	if err != nil {
+		return fmt.Errorf("%s: read %s: %w", verb, stepsPath, err)
+	}
+	newSteps, err := decodeSteps(stepsData)
+	if err != nil {
+		return fmt.Errorf("%s: decode steps from %s: %w", verb, stepsPath, err)
+	}
+	if len(newSteps) == 0 {
+		return fmt.Errorf("%s: steps.json must contain at least one step", verb)
+	}
+	mutated := fn(plan, newSteps)
+	if err := createPlanFromStruct(mutated, planPath); err != nil {
+		return fmt.Errorf("%s: %w", verb, err)
+	}
+	return nil
+}
+
+func runStepAdd(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: planner create step add <steps.json> <plan.md>")
+		return 2
+	}
+	if err := mutatePlan("step add", args[0], args[1], func(plan Plan, newSteps []Step) Plan {
+		plan.Implementation = append(plan.Implementation, newSteps...)
+		return plan
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	_, _ = io.WriteString(stdout, args[1]+"\n")
+	return 0
+}
+
+func runStepReplace(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: planner create step replace <steps.json> <plan.md>")
+		return 2
+	}
+	if err := mutatePlan("step replace", args[0], args[1], func(plan Plan, newSteps []Step) Plan {
+		plan.Implementation = newSteps
+		return plan
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
 		return 1
 	}
 	_, _ = io.WriteString(stdout, args[1]+"\n")
@@ -124,19 +215,8 @@ func createPlan(inputPath string, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", inputPath, err)
 	}
-	if err := validatePlan(plan); err != nil {
+	if err := createPlanFromStruct(plan, outputPath); err != nil {
 		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-
-	rendered, err := renderPlan(plan)
-	if err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	if err := verifyRenderedText(rendered, plan); err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	if err := writeOutput(outputPath, rendered); err != nil {
-		return fmt.Errorf("%s: %w", outputPath, err)
 	}
 	return nil
 }
@@ -151,7 +231,8 @@ func readPlanFile(path string) (Plan, error) {
 
 func renderPlan(plan Plan) (string, error) {
 	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
-		"inc": func(i int) int { return i + 1 },
+		"inc":       func(i int) int { return i + 1 },
+		"codeFence": codeFence,
 	}).Parse(planTemplate)
 	if err != nil {
 		return "", err
@@ -190,8 +271,9 @@ func verifyRenderedText(rendered string, plan Plan) error {
 			return fmt.Errorf("missing rendered implementation step: %s", heading)
 		}
 		for _, change := range step.FileChanges {
-			fence := "```" + change.Language + "\n" + change.Code + "\n```"
-			if !strings.Contains(rendered, fence) {
+			fence := codeFence(change.Code)
+			block := fence + change.Language + "\n" + change.Code + "\n" + fence
+			if !strings.Contains(rendered, block) {
 				return fmt.Errorf("missing rendered code block for %s", change.Filename)
 			}
 		}
@@ -200,11 +282,35 @@ func verifyRenderedText(rendered string, plan Plan) error {
 	return nil
 }
 
+// writeOutput atomically writes rendered content to path via a temp file and
+// os.Rename so a failed or interrupted write cannot corrupt the existing plan
+// file. This is essential for step add/replace, which overwrite the only copy.
 func writeOutput(path, rendered string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".planner-*.md.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpPath) }
+	if _, err := tmp.WriteString(rendered); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
 		return err
 	}
 	return nil
