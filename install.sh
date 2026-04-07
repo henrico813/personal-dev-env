@@ -32,28 +32,16 @@ install_planner_runtime() {
     echo "Installing shared planner runtime..."
 
     install -d "$HOME/.claude/bin"
+    rm -f "$HOME/.claude/bin/create_plan" "$HOME/.claude/bin/create-plan"
     install -Dm755 "$planner_output" "$HOME/.claude/bin/planner"
-    cat > "$HOME/.claude/bin/create_plan" <<'EOF'
-#!/usr/bin/env bash
-exec "$(dirname "$0")/planner" create-plan "$@"
-EOF
-    chmod +x "$HOME/.claude/bin/create_plan"
 
     install -d "$HOME/.config/opencode/bin"
+    rm -f "$HOME/.config/opencode/bin/create_plan" "$HOME/.config/opencode/bin/create-plan"
     install -Dm755 "$planner_output" "$HOME/.config/opencode/bin/planner"
-    cat > "$HOME/.config/opencode/bin/create_plan" <<'EOF'
-#!/usr/bin/env bash
-exec "$(dirname "$0")/planner" create-plan "$@"
-EOF
-    chmod +x "$HOME/.config/opencode/bin/create_plan"
 
     install -d "$HOME/.codex/skills/create-plan/bin"
+    rm -f "$HOME/.codex/skills/create-plan/bin/create_plan" "$HOME/.codex/skills/create-plan/bin/create-plan"
     install -Dm755 "$planner_output" "$HOME/.codex/skills/create-plan/bin/planner"
-    cat > "$HOME/.codex/skills/create-plan/bin/create-plan" <<'EOF'
-#!/usr/bin/env bash
-exec "$(dirname "$0")/planner" create-plan "$@"
-EOF
-    chmod +x "$HOME/.codex/skills/create-plan/bin/create-plan"
 }
 
 trap cleanup_engine_build EXIT
