@@ -4,6 +4,59 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/.claude"
 TARGET_DIR="$HOME/.claude"
+ENGINE_SOURCE_DIR="$SCRIPT_DIR/.agents/create-plan/src"
+ENGINE_BUILD_DIR=""
+
+build_planner() {
+    if ! command -v go >/dev/null 2>&1; then
+        echo "install.sh: Go is required to build planner" >&2
+        exit 1
+    fi
+
+    ENGINE_BUILD_DIR="$(mktemp -d)"
+    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/planner" .); then
+        echo "install.sh: failed to build planner" >&2
+        exit 1
+    fi
+}
+
+cleanup_engine_build() {
+    if [ -n "$ENGINE_BUILD_DIR" ] && [ -d "$ENGINE_BUILD_DIR" ]; then
+        rm -rf "$ENGINE_BUILD_DIR"
+    fi
+}
+
+install_planner_runtime() {
+    local planner_output="$ENGINE_BUILD_DIR/planner"
+
+    echo "Installing shared planner runtime..."
+
+    install -d "$HOME/.claude/bin"
+    install -Dm755 "$planner_output" "$HOME/.claude/bin/planner"
+    cat > "$HOME/.claude/bin/create_plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/planner" create-plan "$@"
+EOF
+    chmod +x "$HOME/.claude/bin/create_plan"
+
+    install -d "$HOME/.config/opencode/bin"
+    install -Dm755 "$planner_output" "$HOME/.config/opencode/bin/planner"
+    cat > "$HOME/.config/opencode/bin/create_plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/planner" create-plan "$@"
+EOF
+    chmod +x "$HOME/.config/opencode/bin/create_plan"
+
+    install -d "$HOME/.codex/skills/create-plan/bin"
+    install -Dm755 "$planner_output" "$HOME/.codex/skills/create-plan/bin/planner"
+    cat > "$HOME/.codex/skills/create-plan/bin/create-plan" <<'EOF'
+#!/usr/bin/env bash
+exec "$(dirname "$0")/planner" create-plan "$@"
+EOF
+    chmod +x "$HOME/.codex/skills/create-plan/bin/create-plan"
+}
+
+trap cleanup_engine_build EXIT
 
 echo "Installing Claude Code configuration..."
 
@@ -49,8 +102,10 @@ if [[ "$(uname)" == "Linux" ]]; then
     echo ""
     echo "Installing Linux dependencies..."
 
-    # Detect package manager and install
-    if command -v apt-get &>/dev/null; then
+    # Avoid touching the package manager when jq is already present.
+    if command -v jq &>/dev/null; then
+        echo "jq already installed, skipping"
+    elif command -v apt-get &>/dev/null; then
         sudo apt-get install -y jq
     elif command -v dnf &>/dev/null; then
         sudo dnf install -y jq
@@ -117,6 +172,11 @@ if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
 
         cp -r "$skill_path" "$CODEX_SKILLS_DIR/"
     done
+fi
+
+if [ -d "$SCRIPT_DIR/.agents/create-plan" ]; then
+    build_planner
+    install_planner_runtime
 fi
 
 # Codex compatibility: point global instructions at the installed Claude config
