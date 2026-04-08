@@ -147,33 +147,38 @@ func runStep(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-// mutatePlan loads a plan from planPath, decodes a []Step from stepsPath,
-// applies fn to merge them, re-validates and re-renders via
-// createPlanFromStruct, and atomically rewrites planPath. The verb label is
-// used as the error prefix so call sites stay one-liners.
-func mutatePlan(verb, stepsPath, planPath string, fn func(plan Plan, newSteps []Step) Plan) error {
-	mdData, err := os.ReadFile(planPath)
+// mutatePlan parses the ## Implementation section of planPath into []Step,
+// applies fn to produce the mutated slice, validates it, re-renders only the
+// implementation section via renderImplementationSection, splices it back into
+// the file, and writes atomically. The verb label prefixes error messages.
+func mutatePlan(verb, stepsPath, planPath string, fn func(existing, incoming []Step) []Step) error {
+	mdBytes, err := os.ReadFile(planPath)
 	if err != nil {
 		return fmt.Errorf("%s: read %s: %w", verb, planPath, err)
 	}
-	plan, err := extractPlanSource(string(mdData))
+	md := string(mdBytes)
+	existing, start, end, err := parseImplementationSection(md)
 	if err != nil {
-		return fmt.Errorf("%s: extract plan JSON from %s: %w", verb, planPath, err)
+		return fmt.Errorf("%s: parse implementation section from %s: %w", verb, planPath, err)
 	}
 	stepsData, err := os.ReadFile(stepsPath)
 	if err != nil {
 		return fmt.Errorf("%s: read %s: %w", verb, stepsPath, err)
 	}
-	newSteps, err := decodeSteps(stepsData)
+	incoming, err := decodeSteps(stepsData)
 	if err != nil {
 		return fmt.Errorf("%s: decode steps from %s: %w", verb, stepsPath, err)
 	}
-	if len(newSteps) == 0 {
+	if len(incoming) == 0 {
 		return fmt.Errorf("%s: steps.json must contain at least one step", verb)
 	}
-	mutated := fn(plan, newSteps)
-	if err := createPlanFromStruct(mutated, planPath); err != nil {
-		return fmt.Errorf("%s: %w", verb, err)
+	mutated := fn(existing, incoming)
+	if err := validateSteps(mutated); err != nil {
+		return fmt.Errorf("%s: validate: %w", verb, err)
+	}
+	newSection := renderImplementationSection(mutated)
+	if err := writeOutput(planPath, md[:start]+newSection+md[end:]); err != nil {
+		return fmt.Errorf("%s: write: %w", verb, err)
 	}
 	return nil
 }
@@ -183,9 +188,8 @@ func runStepAdd(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: planner create step add <steps.json> <plan.md>")
 		return 2
 	}
-	if err := mutatePlan("step add", args[0], args[1], func(plan Plan, newSteps []Step) Plan {
-		plan.Implementation = append(plan.Implementation, newSteps...)
-		return plan
+	if err := mutatePlan("step add", args[0], args[1], func(existing, incoming []Step) []Step {
+		return append(existing, incoming...)
 	}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -199,9 +203,8 @@ func runStepReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: planner create step replace <steps.json> <plan.md>")
 		return 2
 	}
-	if err := mutatePlan("step replace", args[0], args[1], func(plan Plan, newSteps []Step) Plan {
-		plan.Implementation = newSteps
-		return plan
+	if err := mutatePlan("step replace", args[0], args[1], func(_, incoming []Step) []Step {
+		return incoming
 	}); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

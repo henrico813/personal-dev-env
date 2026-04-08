@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -67,8 +67,16 @@ func validatePlan(plan Plan) error {
 	if plan.Verification == nil {
 		return errors.New("verification is required")
 	}
+	return validateSteps(plan.Implementation)
+}
 
-	for _, step := range plan.Implementation {
+// validateSteps checks the per-step invariants so mutation paths can validate
+// a []Step slice without constructing a full Plan.
+func validateSteps(steps []Step) error {
+	if len(steps) == 0 {
+		return errors.New("at least one implementation step is required")
+	}
+	for _, step := range steps {
 		if strings.TrimSpace(step.Title) == "" {
 			return errors.New("each implementation step needs a title")
 		}
@@ -93,7 +101,6 @@ func validatePlan(plan Plan) error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -105,46 +112,7 @@ func decodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
-const planSourceBegin = "<!-- planner:source-begin -->"
-const planSourceEnd = "<!-- planner:source-end -->"
-const appendixHeader = "\n\n# Appendix\n\n## Plan JSON\n\n"
-
-// appendPlanSource encodes the plan as indented JSON with SetEscapeHTML(true)
-// so that '<' in any string value (including FileChange.Code) is escaped as
-// \u003c. This makes it structurally impossible for the HTML-comment sentinels
-// to appear inside any JSON string, preventing sentinel-collision bugs.
-func appendPlanSource(rendered string, plan Plan) (string, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(true)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(plan); err != nil {
-		return "", fmt.Errorf("marshal plan source: %w", err)
-	}
-	// enc.Encode appends a trailing newline; trim it so our sentinel framing is exact.
-	raw := strings.TrimRight(buf.String(), "\n")
-	return rendered + appendixHeader + planSourceBegin + "\n" + raw + "\n" + planSourceEnd + "\n", nil
-}
-
-// extractPlanSource scans from the END of mdContent via LastIndex to locate
-// the sentinel pair and unmarshals the JSON between them. Using LastIndex
-// plus HTML-escaped JSON guarantees no internal collision with the sentinels.
-func extractPlanSource(mdContent string) (Plan, error) {
-	beginIdx := strings.LastIndex(mdContent, planSourceBegin)
-	if beginIdx == -1 {
-		return Plan{}, errors.New("no Plan JSON appendix found in file")
-	}
-	start := beginIdx + len(planSourceBegin) + 1 // skip trailing newline
-	endIdx := strings.LastIndex(mdContent, planSourceEnd)
-	if endIdx == -1 || endIdx < start {
-		return Plan{}, errors.New("Plan JSON appendix is not properly closed")
-	}
-	// trim trailing newline before end sentinel
-	jsonBytes := []byte(strings.TrimRight(mdContent[start:endIdx], "\n"))
-	return decodePlan(jsonBytes)
-}
-
-// decodeSteps unmarshals a JSON array of Steps from data.
+// decodeSteps unmarshals a JSON array of Steps from the incoming steps.json file.
 func decodeSteps(data []byte) ([]Step, error) {
 	var steps []Step
 	if err := json.Unmarshal(data, &steps); err != nil {
@@ -153,9 +121,141 @@ func decodeSteps(data []byte) ([]Step, error) {
 	return steps, nil
 }
 
-// createPlanFromStruct validates, renders, appends the JSON appendix, and
-// atomically writes the output. It is the single path used by both create
-// and the step mutation commands so the appendix is always present.
+// parseImplementationSection locates the ## Implementation section in md,
+// delegates to parseSteps, and returns the byte range [start, end) so the
+// caller can splice in a replacement section. start is the index of '##' in
+// "## Implementation"; end is the index of the next "\n\n## " heading or
+// len(md) if this is the last section.
+func parseImplementationSection(md string) (steps []Step, start, end int, err error) {
+	const heading = "## Implementation"
+	if strings.HasPrefix(md, heading) {
+		start = 0
+	} else {
+		idx := strings.Index(md, "\n"+heading)
+		if idx == -1 {
+			return nil, 0, 0, errors.New("## Implementation section not found")
+		}
+		start = idx + 1
+	}
+	afterHeading := start + len(heading)
+	end = len(md)
+	if idx := strings.Index(md[afterHeading:], "\n\n## "); idx != -1 {
+		end = afterHeading + idx
+	}
+	steps, err = parseSteps(md[start:end])
+	return steps, start, end, err
+}
+
+// parseSteps is the inverse of renderImplementationSection. It walks the
+// section line by line using five token types emitted by the template:
+//   - "### N. Title"    — step heading
+//   - "`filename`"      — file change filename
+//   - "> explanation"   — file change explanation
+//   - fence+lang line   — opening code fence (3+ backticks + language)
+//   - exact fence line  — closing code fence
+//
+// Lines before the first filename accumulate as the step summary. Lines
+// between fence-open and fence-close accumulate as FileChange.Code. Blank
+// lines between explanation and fence, and between file changes, are skipped.
+func parseSteps(section string) ([]Step, error) {
+	stepRE     := regexp.MustCompile(`^### \d+\. (.+)$`)
+	filenameRE := regexp.MustCompile("^`([^`]+)`$")
+	explRE     := regexp.MustCompile(`^> (.+)$`)
+	fenceRE    := regexp.MustCompile("^(`{3,})(\\w*)$")
+
+	var steps []Step
+	var step *Step
+	var fc *FileChange
+	var summaryLines, codeLines []string
+	var fence string
+	inCode := false
+
+	flushFC := func() {
+		if fc != nil && step != nil {
+			fc.Code = strings.Join(codeLines, "\n")
+			step.FileChanges = append(step.FileChanges, *fc)
+			fc = nil
+			codeLines = nil
+		}
+	}
+	flushStep := func() {
+		if step != nil {
+			step.Summary = strings.Trim(strings.Join(summaryLines, "\n"), "\n")
+			steps = append(steps, *step)
+			step = nil
+			summaryLines = nil
+		}
+	}
+
+	for _, line := range strings.Split(section, "\n") {
+		if inCode {
+			if line == fence {
+				inCode = false
+				fence = ""
+				flushFC()
+			} else {
+				codeLines = append(codeLines, line)
+			}
+			continue
+		}
+		if m := stepRE.FindStringSubmatch(line); m != nil {
+			flushStep()
+			step = &Step{Title: m[1]}
+			continue
+		}
+		if step == nil {
+			continue
+		}
+		if fc != nil {
+			if fc.Explanation == "" {
+				if m := explRE.FindStringSubmatch(line); m != nil {
+					fc.Explanation = m[1]
+				}
+			} else if m := fenceRE.FindStringSubmatch(line); m != nil {
+				fence = m[1]
+				fc.Language = m[2]
+				inCode = true
+				codeLines = nil
+			}
+			// blank lines between explanation and fence are skipped
+			continue
+		}
+		if m := filenameRE.FindStringSubmatch(line); m != nil {
+			fc = &FileChange{Filename: m[1]}
+			continue
+		}
+		// only accumulate summary before the first file change
+		if len(step.FileChanges) == 0 {
+			summaryLines = append(summaryLines, line)
+		}
+		// blank lines between file changes are skipped
+	}
+	flushStep()
+	return steps, nil
+}
+
+// renderImplementationSection produces the same bytes the main template emits
+// for the ## Implementation section. It uses codeFence so multi-backtick Code
+// values render with a fence long enough to prevent premature closure.
+// The output is paired with parseSteps via TestRenderParseRoundTrip — any
+// drift between the two is caught at test time.
+func renderImplementationSection(steps []Step) string {
+	var sb strings.Builder
+	sb.WriteString("## Implementation\n---")
+	for i, step := range steps {
+		fmt.Fprintf(&sb, "\n\n### %d. %s\n\n%s", i+1, step.Title, step.Summary)
+		for _, fc := range step.FileChanges {
+			fence := codeFence(fc.Code)
+			fmt.Fprintf(&sb, "\n\n`%s`\n> %s\n\n%s%s\n%s\n%s",
+				fc.Filename, fc.Explanation, fence, fc.Language, fc.Code, fence)
+		}
+	}
+	return sb.String()
+}
+
+// createPlanFromStruct validates, renders, and atomically writes a plan.
+// Used by both planner create and the step mutation commands to ensure
+// the same validation and render path is always exercised.
 func createPlanFromStruct(plan Plan, outputPath string) error {
 	if err := validatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -167,11 +267,7 @@ func createPlanFromStruct(plan Plan, outputPath string) error {
 	if err := verifyRenderedText(rendered, plan); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
-	withAppendix, err := appendPlanSource(rendered, plan)
-	if err != nil {
-		return fmt.Errorf("append source: %w", err)
-	}
-	if err := writeOutput(outputPath, withAppendix); err != nil {
+	if err := writeOutput(outputPath, rendered); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
@@ -216,12 +312,12 @@ func buildSchemaJSON() (string, error) {
 		},
 		"contract": map[string]any{
 			"commands": map[string]any{
-				"help":                 "Print built-in usage and workflow guidance.",
-				"show-schema":          "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
-				"validate":             "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
-				"create":               "Render canonical markdown from valid planner JSON. Usage: planner create <plan.json> <output.md>.",
-				"create step add":      "Append steps to an existing plan file. Usage: planner create step add <steps.json> <plan.md>.",
-				"create step replace":  "Replace all implementation steps in an existing plan file. Usage: planner create step replace <steps.json> <plan.md>.",
+				"help":                "Print built-in usage and workflow guidance.",
+				"show-schema":         "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
+				"validate":            "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
+				"create":              "Render canonical markdown from valid planner JSON. Usage: planner create <plan.json> <output.md>.",
+				"create step add":     "Append steps to an existing plan file. Usage: planner create step add <steps.json> <plan.md>.",
+				"create step replace": "Replace all implementation steps in an existing plan file. Usage: planner create step replace <steps.json> <plan.md>.",
 			},
 			"guarantees": []string{
 				"validate and create use the same structural validation rules",
