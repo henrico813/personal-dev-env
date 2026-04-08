@@ -148,6 +148,9 @@ func TestCreatePlan_RendersKnownGoodPlan(t *testing.T) {
 			t.Fatalf("rendered plan missing %q", section)
 		}
 	}
+	if strings.Contains(rendered, "# Appendix") {
+		t.Error("rendered plan must not contain a JSON appendix section")
+	}
 }
 
 func TestValidate_PreservesUnknownFieldBehavior(t *testing.T) {
@@ -262,29 +265,100 @@ This step should also render code.
 	}
 }
 
-// TestRoundTrip verifies that a plan round-trips cleanly through
-// appendPlanSource → extractPlanSource with no data loss.
-func TestRoundTrip(t *testing.T) {
+// TestRenderParseRoundTrip verifies that renderImplementationSection and
+// parseImplementationSection are inverses of each other. Any drift between
+// the renderer and the parser — e.g. a whitespace change in one but not the
+// other — will cause this test to fail.
+func TestRenderParseRoundTrip(t *testing.T) {
+	steps := validPlan().Implementation
+	rendered := renderImplementationSection(steps)
+	got, _, _, err := parseImplementationSection(rendered)
+	if err != nil {
+		t.Fatalf("parseImplementationSection: %v", err)
+	}
+	if !reflect.DeepEqual(got, steps) {
+		t.Errorf("round-trip mismatch:\n got=%#v\nwant=%#v", got, steps)
+	}
+}
+
+// TestParseImplementationSection_Basic verifies parsing a full rendered plan
+// (not just the isolated section) extracts the correct step.
+func TestParseImplementationSection_Basic(t *testing.T) {
 	plan := validPlan()
 	rendered, err := renderPlan(plan)
 	if err != nil {
-		t.Fatalf("render: %v", err)
+		t.Fatalf("renderPlan: %v", err)
 	}
-	withAppendix, err := appendPlanSource(rendered, plan)
+	steps, _, _, err := parseImplementationSection(rendered)
 	if err != nil {
-		t.Fatalf("appendPlanSource: %v", err)
+		t.Fatalf("parseImplementationSection: %v", err)
 	}
-	got, err := extractPlanSource(withAppendix)
+	if len(steps) != 1 || steps[0].Title != "Render sample" {
+		t.Errorf("unexpected steps: %#v", steps)
+	}
+	if steps[0].FileChanges[0].Code != "func main() {}" {
+		t.Errorf("unexpected code: %q", steps[0].FileChanges[0].Code)
+	}
+}
+
+func TestParseImplementationSection_MissingSection(t *testing.T) {
+	_, _, _, err := parseImplementationSection("# Some Plan\n\nNo implementation here.")
+	if err == nil {
+		t.Error("expected error for missing section, got nil")
+	}
+}
+
+// TestParseImplementationSection_MultipleFileChanges ensures the parser
+// correctly handles multiple FileChange blocks within a single step.
+func TestParseImplementationSection_MultipleFileChanges(t *testing.T) {
+	steps := []Step{{
+		Title:   "Multi FC Step",
+		Summary: "Has two file changes.",
+		FileChanges: []FileChange{
+			{Filename: "a.go", Explanation: "first", Language: "go", Code: "package a"},
+			{Filename: "b.go", Explanation: "second", Language: "go", Code: "package b"},
+		},
+	}}
+	rendered := renderImplementationSection(steps)
+	got, _, _, err := parseImplementationSection(rendered)
 	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
+		t.Fatalf("parseImplementationSection: %v", err)
 	}
-	if !reflect.DeepEqual(got, plan) {
-		t.Errorf("round-trip mismatch:\n got=%#v\nwant=%#v", got, plan)
+	if !reflect.DeepEqual(got, steps) {
+		t.Errorf("round-trip mismatch for multiple file changes:\n got=%#v\nwant=%#v", got, steps)
+	}
+}
+
+// TestRenderParseRoundTrip_WithCodeFence verifies that a step whose
+// FileChange.Code contains triple backticks round-trips correctly. The
+// renderer emits a 4-backtick fence; the parser must match it.
+func TestRenderParseRoundTrip_WithCodeFence(t *testing.T) {
+	steps := []Step{{
+		Title:   "Fence Step",
+		Summary: "Code contains a triple-backtick fence.",
+		FileChanges: []FileChange{{
+			Filename:    "example.md",
+			Explanation: "Contains embedded fence.",
+			Language:    "markdown",
+			Code:        "example:\n```go\nfunc x() {}\n```\n",
+		}},
+	}}
+	rendered := renderImplementationSection(steps)
+	if !strings.Contains(rendered, "````markdown\n") {
+		t.Error("renderer should use a 4-backtick fence when Code contains triple backticks")
+	}
+	got, _, _, err := parseImplementationSection(rendered)
+	if err != nil {
+		t.Fatalf("parseImplementationSection: %v", err)
+	}
+	if !reflect.DeepEqual(got, steps) {
+		t.Errorf("round-trip mismatch with embedded fence:\n got=%#v\nwant=%#v", got, steps)
 	}
 }
 
 // TestStepAdd exercises the full CLI path for step add: create a plan file,
-// run step add, then extract and assert the step was appended.
+// run step add, then re-parse the implementation section and assert the step
+// was appended.
 func TestStepAdd(t *testing.T) {
 	plan := validPlan()
 	dir := t.TempDir()
@@ -326,20 +400,20 @@ func TestStepAdd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read plan file: %v", err)
 	}
-	got, err := extractPlanSource(string(mdData))
+	got, _, _, err := parseImplementationSection(string(mdData))
 	if err != nil {
-		t.Fatalf("extractPlanSource after add: %v", err)
+		t.Fatalf("parseImplementationSection after add: %v", err)
 	}
-	if len(got.Implementation) != len(plan.Implementation)+1 {
-		t.Errorf("expected %d steps after add, got %d", len(plan.Implementation)+1, len(got.Implementation))
+	if len(got) != len(plan.Implementation)+1 {
+		t.Errorf("expected %d steps after add, got %d", len(plan.Implementation)+1, len(got))
 	}
-	if got.Implementation[len(plan.Implementation)].Title != newStep.Title {
-		t.Errorf("appended step title mismatch: got %q want %q", got.Implementation[len(plan.Implementation)].Title, newStep.Title)
+	if got[len(plan.Implementation)].Title != newStep.Title {
+		t.Errorf("appended step title mismatch: got %q want %q", got[len(plan.Implementation)].Title, newStep.Title)
 	}
 }
 
-// TestStepReplace exercises the full CLI path for step replace: create a plan
-// file, run step replace, then extract and assert the step list was replaced.
+// TestStepReplace exercises the full CLI path for step replace and verifies
+// via parseImplementationSection that only the replacement steps remain.
 func TestStepReplace(t *testing.T) {
 	plan := validPlan()
 	dir := t.TempDir()
@@ -381,15 +455,15 @@ func TestStepReplace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read plan file: %v", err)
 	}
-	got, err := extractPlanSource(string(mdData))
+	got, _, _, err := parseImplementationSection(string(mdData))
 	if err != nil {
-		t.Fatalf("extractPlanSource after replace: %v", err)
+		t.Fatalf("parseImplementationSection after replace: %v", err)
 	}
-	if len(got.Implementation) != 1 {
-		t.Errorf("expected 1 step after replace, got %d", len(got.Implementation))
+	if len(got) != 1 {
+		t.Errorf("expected 1 step after replace, got %d", len(got))
 	}
-	if got.Implementation[0].Title != replacement[0].Title {
-		t.Errorf("replaced step title mismatch: got %q want %q", got.Implementation[0].Title, replacement[0].Title)
+	if got[0].Title != replacement[0].Title {
+		t.Errorf("replaced step title mismatch: got %q want %q", got[0].Title, replacement[0].Title)
 	}
 }
 
@@ -428,88 +502,6 @@ func TestRunStep_BadUsage_ReturnsExitTwo(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage: planner create step <add|replace> <steps.json> <plan.md>") {
 		t.Fatalf("stderr = %q, want step usage text", stderr.String())
-	}
-}
-
-func TestExtractPlanSourceMissingAppendix(t *testing.T) {
-	_, err := extractPlanSource("# Some Plan\n\nNo appendix here.")
-	if err == nil {
-		t.Error("expected error for missing appendix, got nil")
-	}
-}
-
-func TestCreatePlanFromStructOutputContainsAppendix(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	if !strings.Contains(string(data), "# Appendix") {
-		t.Error("rendered plan missing # Appendix section")
-	}
-	if !strings.Contains(string(data), "## Plan JSON") {
-		t.Error("rendered plan missing ## Plan JSON section")
-	}
-	if strings.Count(string(data), "<!-- planner:source-begin -->") != 1 {
-		t.Error("expected exactly one planner:source-begin sentinel")
-	}
-}
-
-// Regression: a plan whose FileChange.Code contains a triple-backtick fence
-// must (a) round-trip cleanly via the appendix and (b) render with a fence
-// long enough that the inner run does not close the outer block.
-func TestRoundTripWithCodeFenceInFileChange(t *testing.T) {
-	plan := validPlan()
-	plan.Implementation[0].FileChanges[0].Code = "example:\n```go\nfunc x() {}\n```\n"
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-
-	got, err := extractPlanSource(string(data))
-	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
-	}
-	if got.Implementation[0].FileChanges[0].Code != plan.Implementation[0].FileChanges[0].Code {
-		t.Error("FileChange.Code mismatch after round-trip with embedded fence")
-	}
-
-	if !strings.Contains(string(data), "````go\n") {
-		t.Error("rendered body should use a 4-backtick fence when Code contains a 3-backtick run")
-	}
-}
-
-// Regression: a plan whose FileChange.Code literally contains the begin/end
-// sentinel strings must still round-trip. SetEscapeHTML(true) escapes '<' as
-// \u003c so the sentinel cannot appear inside any JSON string value.
-func TestRoundTripWithSentinelInFileChangeCode(t *testing.T) {
-	plan := validPlan()
-	plan.Implementation[0].FileChanges[0].Code = "// <!-- planner:source-begin -->\n// <!-- planner:source-end -->\n"
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(data))
-	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
-	}
-	if got.Implementation[0].FileChanges[0].Code != plan.Implementation[0].FileChanges[0].Code {
-		t.Error("FileChange.Code mismatch after round-trip with embedded sentinel")
 	}
 }
 
