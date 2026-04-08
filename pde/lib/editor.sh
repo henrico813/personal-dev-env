@@ -73,7 +73,7 @@ install_lazyvim() {
     fi
 
     # Always sync custom plugins from pde config
-    local pde_nvim_plugins="$SCRIPT_DIR/../config/nvim/lua/plugins"
+    local pde_nvim_plugins="$SCRIPT_DIR/config/nvim/lua/plugins"
     if [[ -d "$pde_nvim_plugins" ]]; then
         log "Syncing custom nvim plugins..."
         cp -r "$pde_nvim_plugins"/* "$nvim_config/lua/plugins/"
