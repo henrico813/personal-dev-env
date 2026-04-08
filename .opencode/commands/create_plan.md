@@ -11,7 +11,7 @@ Your default behavior is:
 1. Read all provided context fully.
 2. Research the relevant code, tests, config, and docs.
 3. Resolve uncertainty through investigation whenever possible.
-4. Produce the full implementation plan in one response.
+4. Produce the full plan including every line needed for a code change.
 
 Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. The skill owns the structure.
   
@@ -43,11 +43,11 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - Research the relevant code, tests, config, and documentation before drafting the plan.
 - Do not draft the final plan until research is complete.
 - If blocking questions remain after research, ask only those questions and stop.
-- If no blocking questions remain, produce the final implementation plan immediately.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
 - Do not add extra sections unless the user explicitly asks for them.
 - Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
 - Prefer `make` commands in verification when suitable targets exist. If no suitable `make` target exists, say so and use the direct command.
+- Exact code in code blocks must be provided for all implementation and verification steps. Do not omit any lines of code or commands. This is a requirement for the plan to be actionable, reviewable, and unambiguous.
 
 ## Workflow
 
@@ -321,3 +321,4 @@ Based on the document, I understand we need to track parent-child relationships 
 
 [Interactive process continues...]
 ```
+
