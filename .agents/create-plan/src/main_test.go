@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -94,9 +93,19 @@ func TestRunShowSchema_MatchesValidatorContract(t *testing.T) {
 	}
 
 	contract := schema["contract"].(map[string]any)
+	commands := contract["commands"].(map[string]any)
+	if _, ok := commands["create step add"]; ok {
+		t.Fatalf("schema unexpectedly advertises create step add: %v", commands)
+	}
+	if _, ok := commands["create step replace"]; ok {
+		t.Fatalf("schema unexpectedly advertises create step replace: %v", commands)
+	}
 	guarantees := contract["guarantees"].([]any)
 	if !containsAny(guarantees, "current validator requires the top-level verification field to be present") {
 		t.Fatalf("guarantees missing verification rule: %v", guarantees)
+	}
+	if !containsAny(guarantees, "create renders markdown-only output and does not embed planner source JSON appendices") {
+		t.Fatalf("guarantees missing no-appendix rule: %v", guarantees)
 	}
 }
 
@@ -110,13 +119,22 @@ func TestDecodePlan_PreservesUnknownFieldBehavior(t *testing.T) {
 func TestHelpText_CoversScratchAndRewriteFlows(t *testing.T) {
 	for _, needle := range []string{
 		"Scratch flow:",
-		"Rewrite flow",
+		"Rewrite flow (full rewrite):",
 		"planner show-schema",
 		"planner validate <plan.json>",
 		"planner create <input.json> <output.md>",
 	} {
 		if !strings.Contains(helpText, needle) {
 			t.Fatalf("helpText missing %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"planner create step add",
+		"planner create step replace",
+		"Rewrite flow (partial edit):",
+	} {
+		if strings.Contains(helpText, needle) {
+			t.Fatalf("helpText unexpectedly contains %q", needle)
 		}
 	}
 }
@@ -147,6 +165,12 @@ func TestCreatePlan_RendersKnownGoodPlan(t *testing.T) {
 		if !strings.Contains(rendered, section) {
 			t.Fatalf("rendered plan missing %q", section)
 		}
+	}
+	if strings.Contains(rendered, "# Appendix") {
+		t.Fatalf("rendered plan unexpectedly contains appendix: %q", rendered)
+	}
+	if strings.Contains(rendered, "<!-- planner:source-begin -->") {
+		t.Fatalf("rendered plan unexpectedly contains planner source sentinel: %q", rendered)
 	}
 }
 
@@ -196,6 +220,40 @@ func TestCreatePlan_BadUsage_ReturnsExitTwo(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage: planner create <plan.json> <output.md>") {
 		t.Fatalf("stderr = %q, want usage text", stderr.String())
+	}
+}
+
+func TestCreateStepAdd_IsExplicitlyUnsupported(t *testing.T) {
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+
+	code := run([]string{"create", "step", "add", "steps.json", "plan.md"}, stdout, stderr)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "planner create step is no longer supported") {
+		t.Fatalf("stderr = %q, want unsupported-command error", stderr.String())
+	}
+}
+
+func TestCreateStepReplace_IsExplicitlyUnsupported(t *testing.T) {
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+
+	code := run([]string{"create", "step", "replace", "steps.json", "plan.md"}, stdout, stderr)
+
+	if code != 2 {
+		t.Fatalf("run() code = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "planner create step is no longer supported") {
+		t.Fatalf("stderr = %q, want unsupported-command error", stderr.String())
 	}
 }
 
@@ -262,183 +320,7 @@ This step should also render code.
 	}
 }
 
-// TestRoundTrip verifies that a plan round-trips cleanly through
-// appendPlanSource → extractPlanSource with no data loss.
-func TestRoundTrip(t *testing.T) {
-	plan := validPlan()
-	rendered, err := renderPlan(plan)
-	if err != nil {
-		t.Fatalf("render: %v", err)
-	}
-	withAppendix, err := appendPlanSource(rendered, plan)
-	if err != nil {
-		t.Fatalf("appendPlanSource: %v", err)
-	}
-	got, err := extractPlanSource(withAppendix)
-	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
-	}
-	if !reflect.DeepEqual(got, plan) {
-		t.Errorf("round-trip mismatch:\n got=%#v\nwant=%#v", got, plan)
-	}
-}
-
-// TestStepAdd exercises the full CLI path for step add: create a plan file,
-// run step add, then extract and assert the step was appended.
-func TestStepAdd(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-
-	newStep := Step{
-		Title:   "Extra Step",
-		Summary: "An extra step added via step add.",
-		FileChanges: []FileChange{
-			{Filename: "extra.go", Explanation: "extra", Language: "go", Code: "package main"},
-		},
-	}
-	stepsData, err := json.Marshal([]Step{newStep})
-	if err != nil {
-		t.Fatalf("marshal steps: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, stepsData, 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "add", stepsPath, planPath}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-	if stdout.String() != planPath+"\n" {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), planPath+"\n")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-
-	mdData, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(mdData))
-	if err != nil {
-		t.Fatalf("extractPlanSource after add: %v", err)
-	}
-	if len(got.Implementation) != len(plan.Implementation)+1 {
-		t.Errorf("expected %d steps after add, got %d", len(plan.Implementation)+1, len(got.Implementation))
-	}
-	if got.Implementation[len(plan.Implementation)].Title != newStep.Title {
-		t.Errorf("appended step title mismatch: got %q want %q", got.Implementation[len(plan.Implementation)].Title, newStep.Title)
-	}
-}
-
-// TestStepReplace exercises the full CLI path for step replace: create a plan
-// file, run step replace, then extract and assert the step list was replaced.
-func TestStepReplace(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-
-	replacement := []Step{{
-		Title:   "Replacement Step",
-		Summary: "Replaces all steps.",
-		FileChanges: []FileChange{
-			{Filename: "rep.go", Explanation: "rep", Language: "go", Code: "package main"},
-		},
-	}}
-	stepsData, err := json.Marshal(replacement)
-	if err != nil {
-		t.Fatalf("marshal steps: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, stepsData, 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "replace", stepsPath, planPath}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-	if stdout.String() != planPath+"\n" {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), planPath+"\n")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-
-	mdData, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(mdData))
-	if err != nil {
-		t.Fatalf("extractPlanSource after replace: %v", err)
-	}
-	if len(got.Implementation) != 1 {
-		t.Errorf("expected 1 step after replace, got %d", len(got.Implementation))
-	}
-	if got.Implementation[0].Title != replacement[0].Title {
-		t.Errorf("replaced step title mismatch: got %q want %q", got.Implementation[0].Title, replacement[0].Title)
-	}
-}
-
-func TestStepAdd_RejectsEmptySteps(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, []byte("[]"), 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "add", stepsPath, planPath}, stdout, stderr)
-	if code != 1 {
-		t.Fatalf("run() code = %d, want 1", code)
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "step add: steps.json must contain at least one step") {
-		t.Fatalf("stderr = %q, want empty-step error", stderr.String())
-	}
-}
-
-func TestRunStep_BadUsage_ReturnsExitTwo(t *testing.T) {
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step"}, stdout, stderr)
-	if code != 2 {
-		t.Fatalf("run() code = %d, want 2", code)
-	}
-	if !strings.Contains(stderr.String(), "usage: planner create step <add|replace> <steps.json> <plan.md>") {
-		t.Fatalf("stderr = %q, want step usage text", stderr.String())
-	}
-}
-
-func TestExtractPlanSourceMissingAppendix(t *testing.T) {
-	_, err := extractPlanSource("# Some Plan\n\nNo appendix here.")
-	if err == nil {
-		t.Error("expected error for missing appendix, got nil")
-	}
-}
-
-func TestCreatePlanFromStructOutputContainsAppendix(t *testing.T) {
+func TestCreatePlanFromStructOutputOmitsAppendix(t *testing.T) {
 	plan := validPlan()
 	dir := t.TempDir()
 	planPath := filepath.Join(dir, "plan.md")
@@ -449,21 +331,21 @@ func TestCreatePlanFromStructOutputContainsAppendix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read plan file: %v", err)
 	}
-	if !strings.Contains(string(data), "# Appendix") {
-		t.Error("rendered plan missing # Appendix section")
+	if strings.Contains(string(data), "# Appendix") {
+		t.Error("rendered plan unexpectedly contains # Appendix section")
 	}
-	if !strings.Contains(string(data), "## Plan JSON") {
-		t.Error("rendered plan missing ## Plan JSON section")
+	if strings.Contains(string(data), "## Plan JSON") {
+		t.Error("rendered plan unexpectedly contains ## Plan JSON section")
 	}
-	if strings.Count(string(data), "<!-- planner:source-begin -->") != 1 {
-		t.Error("expected exactly one planner:source-begin sentinel")
+	if strings.Contains(string(data), "<!-- planner:source-begin -->") {
+		t.Error("rendered plan unexpectedly contains planner:source-begin sentinel")
 	}
 }
 
 // Regression: a plan whose FileChange.Code contains a triple-backtick fence
-// must (a) round-trip cleanly via the appendix and (b) render with a fence
-// long enough that the inner run does not close the outer block.
-func TestRoundTripWithCodeFenceInFileChange(t *testing.T) {
+// must still render with a fence long enough that the inner run does not
+// close the outer block.
+func TestRenderWithCodeFenceInFileChange(t *testing.T) {
 	plan := validPlan()
 	plan.Implementation[0].FileChanges[0].Code = "example:\n```go\nfunc x() {}\n```\n"
 	dir := t.TempDir()
@@ -476,40 +358,8 @@ func TestRoundTripWithCodeFenceInFileChange(t *testing.T) {
 		t.Fatalf("read plan file: %v", err)
 	}
 
-	got, err := extractPlanSource(string(data))
-	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
-	}
-	if got.Implementation[0].FileChanges[0].Code != plan.Implementation[0].FileChanges[0].Code {
-		t.Error("FileChange.Code mismatch after round-trip with embedded fence")
-	}
-
 	if !strings.Contains(string(data), "````go\n") {
 		t.Error("rendered body should use a 4-backtick fence when Code contains a 3-backtick run")
-	}
-}
-
-// Regression: a plan whose FileChange.Code literally contains the begin/end
-// sentinel strings must still round-trip. SetEscapeHTML(true) escapes '<' as
-// \u003c so the sentinel cannot appear inside any JSON string value.
-func TestRoundTripWithSentinelInFileChangeCode(t *testing.T) {
-	plan := validPlan()
-	plan.Implementation[0].FileChanges[0].Code = "// <!-- planner:source-begin -->\n// <!-- planner:source-end -->\n"
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	data, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(data))
-	if err != nil {
-		t.Fatalf("extractPlanSource: %v", err)
-	}
-	if got.Implementation[0].FileChanges[0].Code != plan.Implementation[0].FileChanges[0].Code {
-		t.Error("FileChange.Code mismatch after round-trip with embedded sentinel")
 	}
 }
 
