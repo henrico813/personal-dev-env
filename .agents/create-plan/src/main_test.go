@@ -94,6 +94,13 @@ func TestRunShowSchema_MatchesValidatorContract(t *testing.T) {
 	}
 
 	contract := schema["contract"].(map[string]any)
+	commands := contract["commands"].(map[string]any)
+	if _, ok := commands["create step add"]; ok {
+		t.Fatalf("schema still advertises removed command: %v", commands)
+	}
+	if _, ok := commands["create step replace"]; ok {
+		t.Fatalf("schema still advertises removed command: %v", commands)
+	}
 	guarantees := contract["guarantees"].([]any)
 	if !containsAny(guarantees, "current validator requires the top-level verification field to be present") {
 		t.Fatalf("guarantees missing verification rule: %v", guarantees)
@@ -110,13 +117,22 @@ func TestDecodePlan_PreservesUnknownFieldBehavior(t *testing.T) {
 func TestHelpText_CoversScratchAndRewriteFlows(t *testing.T) {
 	for _, needle := range []string{
 		"Scratch flow:",
-		"Rewrite flow",
+		"Rewrite flow (full rewrite):",
 		"planner show-schema",
 		"planner validate <plan.json>",
 		"planner create <input.json> <output.md>",
 	} {
 		if !strings.Contains(helpText, needle) {
 			t.Fatalf("helpText missing %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"planner create step add",
+		"planner create step replace",
+		"Rewrite flow (partial edit):",
+	} {
+		if strings.Contains(helpText, needle) {
+			t.Fatalf("helpText still contains removed text %q", needle)
 		}
 	}
 }
@@ -283,151 +299,37 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestStepAdd exercises the full CLI path for step add: create a plan file,
-// run step add, then extract and assert the step was appended.
-func TestStepAdd(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-
-	newStep := Step{
-		Title:   "Extra Step",
-		Summary: "An extra step added via step add.",
-		FileChanges: []FileChange{
-			{Filename: "extra.go", Explanation: "extra", Language: "go", Code: "package main"},
-		},
-	}
-	stepsData, err := json.Marshal([]Step{newStep})
-	if err != nil {
-		t.Fatalf("marshal steps: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, stepsData, 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
+func TestCreateStepAdd_RemovedCommand_FallsThroughCreate(t *testing.T) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "add", stepsPath, planPath}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-	if stdout.String() != planPath+"\n" {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), planPath+"\n")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
 
-	mdData, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(mdData))
-	if err != nil {
-		t.Fatalf("extractPlanSource after add: %v", err)
-	}
-	if len(got.Implementation) != len(plan.Implementation)+1 {
-		t.Errorf("expected %d steps after add, got %d", len(plan.Implementation)+1, len(got.Implementation))
-	}
-	if got.Implementation[len(plan.Implementation)].Title != newStep.Title {
-		t.Errorf("appended step title mismatch: got %q want %q", got.Implementation[len(plan.Implementation)].Title, newStep.Title)
-	}
-}
+	code := run([]string{"create", "step", "add"}, stdout, stderr)
 
-// TestStepReplace exercises the full CLI path for step replace: create a plan
-// file, run step replace, then extract and assert the step list was replaced.
-func TestStepReplace(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-
-	replacement := []Step{{
-		Title:   "Replacement Step",
-		Summary: "Replaces all steps.",
-		FileChanges: []FileChange{
-			{Filename: "rep.go", Explanation: "rep", Language: "go", Code: "package main"},
-		},
-	}}
-	stepsData, err := json.Marshal(replacement)
-	if err != nil {
-		t.Fatalf("marshal steps: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, stepsData, 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "replace", stepsPath, planPath}, stdout, stderr)
-	if code != 0 {
-		t.Fatalf("run() code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-	if stdout.String() != planPath+"\n" {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), planPath+"\n")
-	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr = %q, want empty", stderr.String())
-	}
-
-	mdData, err := os.ReadFile(planPath)
-	if err != nil {
-		t.Fatalf("read plan file: %v", err)
-	}
-	got, err := extractPlanSource(string(mdData))
-	if err != nil {
-		t.Fatalf("extractPlanSource after replace: %v", err)
-	}
-	if len(got.Implementation) != 1 {
-		t.Errorf("expected 1 step after replace, got %d", len(got.Implementation))
-	}
-	if got.Implementation[0].Title != replacement[0].Title {
-		t.Errorf("replaced step title mismatch: got %q want %q", got.Implementation[0].Title, replacement[0].Title)
-	}
-}
-
-func TestStepAdd_RejectsEmptySteps(t *testing.T) {
-	plan := validPlan()
-	dir := t.TempDir()
-	planPath := filepath.Join(dir, "plan.md")
-	if err := createPlanFromStruct(plan, planPath); err != nil {
-		t.Fatalf("createPlanFromStruct: %v", err)
-	}
-	stepsPath := filepath.Join(dir, "steps.json")
-	if err := os.WriteFile(stepsPath, []byte("[]"), 0o644); err != nil {
-		t.Fatalf("write steps file: %v", err)
-	}
-
-	stdout := new(bytes.Buffer)
-	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step", "add", stepsPath, planPath}, stdout, stderr)
 	if code != 1 {
 		t.Fatalf("run() code = %d, want 1", code)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "step add: steps.json must contain at least one step") {
-		t.Fatalf("stderr = %q, want empty-step error", stderr.String())
+	if !strings.Contains(stderr.String(), "create: step:") {
+		t.Fatalf("stderr = %q, want create read error", stderr.String())
 	}
 }
 
-func TestRunStep_BadUsage_ReturnsExitTwo(t *testing.T) {
+func TestCreateStepReplace_RemovedCommand_FallsThroughCreate(t *testing.T) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	code := run([]string{"create", "step"}, stdout, stderr)
-	if code != 2 {
-		t.Fatalf("run() code = %d, want 2", code)
+
+	code := run([]string{"create", "step", "replace"}, stdout, stderr)
+
+	if code != 1 {
+		t.Fatalf("run() code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "usage: planner create step <add|replace> <steps.json> <plan.md>") {
-		t.Fatalf("stderr = %q, want step usage text", stderr.String())
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "create: step:") {
+		t.Fatalf("stderr = %q, want create read error", stderr.String())
 	}
 }
 

@@ -144,18 +144,8 @@ func extractPlanSource(mdContent string) (Plan, error) {
 	return decodePlan(jsonBytes)
 }
 
-// decodeSteps unmarshals a JSON array of Steps from data.
-func decodeSteps(data []byte) ([]Step, error) {
-	var steps []Step
-	if err := json.Unmarshal(data, &steps); err != nil {
-		return nil, err
-	}
-	return steps, nil
-}
-
 // createPlanFromStruct validates, renders, appends the JSON appendix, and
-// atomically writes the output. It is the single path used by both create
-// and the step mutation commands so the appendix is always present.
+// atomically writes the output for the canonical full-plan workflow.
 func createPlanFromStruct(plan Plan, outputPath string) error {
 	if err := validatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -216,12 +206,10 @@ func buildSchemaJSON() (string, error) {
 		},
 		"contract": map[string]any{
 			"commands": map[string]any{
-				"help":                 "Print built-in usage and workflow guidance.",
-				"show-schema":          "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
-				"validate":             "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
-				"create":               "Render canonical markdown from valid planner JSON. Usage: planner create <plan.json> <output.md>.",
-				"create step add":      "Append steps to an existing plan file. Usage: planner create step add <steps.json> <plan.md>.",
-				"create step replace":  "Replace all implementation steps in an existing plan file. Usage: planner create step replace <steps.json> <plan.md>.",
+				"help":        "Print built-in usage and workflow guidance.",
+				"show-schema": "Print this full contract, including nested JSON shape, current validator rules, and command semantics.",
+				"validate":    "Validate planner JSON input without rendering markdown. Usage: planner validate <plan.json>.",
+				"create":      "Render canonical markdown from valid planner JSON. Usage: planner create <plan.json> <output.md>.",
 			},
 			"guarantees": []string{
 				"validate and create use the same structural validation rules",
