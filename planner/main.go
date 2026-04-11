@@ -75,9 +75,6 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-func printHelp(w io.Writer) {
-	_, _ = io.WriteString(w, helpText)
-}
 
 func runShowSchema(stdout io.Writer, stderr io.Writer) int {
 	schemaJSON, err := buildSchemaJSON()
@@ -230,4 +227,9 @@ func writeOutput(path, rendered string) error {
 		return err
 	}
 	return nil
+}
+
+
+func printHelp(w io.Writer) {
+	io.WriteString(w, helpText)
 }
