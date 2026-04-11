@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/.claude"
 TARGET_DIR="$HOME/.claude"
-ENGINE_SOURCE_DIR="$SCRIPT_DIR/.agents/create-plan/src"
+ENGINE_SOURCE_DIR="$SCRIPT_DIR/planner"
 ENGINE_BUILD_DIR=""
 
 build_planner() {
@@ -162,7 +162,7 @@ if [ -d "$SCRIPT_DIR/.codex/skills" ]; then
     done
 fi
 
-if [ -d "$SCRIPT_DIR/.agents/create-plan" ]; then
+if [ -d "$SCRIPT_DIR/planner" ]; then
     build_planner
     install_planner_runtime
 fi
