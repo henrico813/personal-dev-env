@@ -1,19 +1,10 @@
 package main
 
 import (
-	"bytes"
-	_ "embed"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
-	"text/template"
 )
-
-//go:embed plan_template.md.tmpl
-var planTemplate string
 
 const helpText = `planner generates implementation-plan markdown from canonical JSON.
 
@@ -75,7 +66,6 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-
 func runShowSchema(stdout io.Writer, stderr io.Writer) int {
 	schemaJSON, err := buildSchemaJSON()
 	if err != nil {
@@ -123,112 +113,6 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	_, _ = io.WriteString(stdout, args[1]+"\n")
 	return 0
 }
-
-func createPlan(inputPath string, outputPath string) error {
-	plan, err := readPlanFile(inputPath)
-	if err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	if err := createPlanFromStruct(plan, outputPath); err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	return nil
-}
-
-func readPlanFile(path string) (Plan, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Plan{}, err
-	}
-	return decodePlan(data)
-}
-
-func renderPlan(plan Plan) (string, error) {
-	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
-		"inc":       func(i int) int { return i + 1 },
-		"codeFence": codeFence,
-	}).Parse(planTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, plan); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func verifyRenderedText(rendered string, plan Plan) error {
-	requiredSections := []string{
-		"## Overview",
-		"## Definition of Done",
-		"### Current State",
-		"### Module Shape",
-		"## Implementation",
-		"## Verification",
-	}
-
-	for _, section := range requiredSections {
-		if !strings.Contains(rendered, section) {
-			return fmt.Errorf("missing section: %s", section)
-		}
-	}
-
-	if !strings.Contains(rendered, "### 1.") {
-		return errors.New("missing numbered implementation step")
-	}
-
-	for i, step := range plan.Implementation {
-		heading := fmt.Sprintf("### %d. %s", i+1, step.Title)
-		if !strings.Contains(rendered, heading) {
-			return fmt.Errorf("missing rendered implementation step: %s", heading)
-		}
-		for _, change := range step.FileChanges {
-			fence := codeFence(change.Code)
-			block := fence + change.Language + "\n" + change.Code + "\n" + fence
-			if !strings.Contains(rendered, block) {
-				return fmt.Errorf("missing rendered code block for %s", change.Filename)
-			}
-		}
-	}
-
-	return nil
-}
-
-// writeOutput atomically writes rendered content to path via a temp file and
-// os.Rename so a failed or interrupted write cannot corrupt the destination.
-func writeOutput(path, rendered string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".planner-*.md.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
-	if _, err := tmp.WriteString(rendered); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		cleanup()
-		return err
-	}
-	return nil
-}
-
 
 func printHelp(w io.Writer) {
 	io.WriteString(w, helpText)
