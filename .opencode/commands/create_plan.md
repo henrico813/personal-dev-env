@@ -102,10 +102,10 @@ Once aligned on approach:
 
 After structure approval:
 
-1. Run `~/.cluade/bin/planner show-schema` to see the expected JSON
+1. Run `~/.claude/bin/planner show-schema` to see the expected JSON
 2. Read the **Example Template** below
 3. Produce the expected plan JSON
-4. Run `~/.cluade/bin/planner create` to output the rendered issue to the vault
+4. Run `~/.claude/bin/planner create` to output the rendered issue to the vault
 
 Do not emit freeform markdown directly when the installed helper is available.
 
