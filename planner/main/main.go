@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"planner/schema"
+	"planner/validate"
+	"planner/render"
 )
 
 const helpText = `planner generates implementation-plan markdown from canonical JSON.
@@ -67,7 +70,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runShowSchema(stdout io.Writer, stderr io.Writer) int {
-	schemaJSON, err := buildSchemaJSON()
+	schemaJSON, err := schema.BuildSchemaJSON()
 	if err != nil {
 		fmt.Fprintf(stderr, "build schema: %v\n", err)
 		return 1
@@ -84,12 +87,12 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: planner validate <plan.json>")
 		return 2
 	}
-	plan, err := readPlanFile(args[0])
+	plan, err := validate.ReadPlanFile(args[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "validate %s: %v\n", args[0], err)
 		return 1
 	}
-	if err := validatePlan(plan); err != nil {
+	if err := validate.ValidatePlan(plan); err != nil {
 		fmt.Fprintf(stderr, "validate %s: %v\n", args[0], err)
 		return 1
 	}
@@ -106,7 +109,7 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: planner create <plan.json> <output.md>")
 		return 2
 	}
-	if err := createPlan(args[0], args[1]); err != nil {
+	if err := render.CreatePlan(args[0], args[1]); err != nil {
 		fmt.Fprintf(stderr, "create: %v\n", err)
 		return 1
 	}

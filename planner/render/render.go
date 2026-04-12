@@ -1,4 +1,4 @@
-package main
+package render
 
 import (
 	"bytes"
@@ -9,17 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"planner/validate"
+	"planner/schema"
 )
 
 //go:embed plan_template.md.tmpl
 var planTemplate string
 
-func createPlan(inputPath string, outputPath string) error {
-	plan, err := readPlanFile(inputPath)
+func CreatePlan(inputPath string, outputPath string) error {
+	plan, err := validate.ReadPlanFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("%s: %w", inputPath, err)
 	}
-	if err := createPlanFromStruct(plan, outputPath); err != nil {
+	if err := CreatePlanFromStruct(plan, outputPath); err != nil {
 		return fmt.Errorf("%s: %w", inputPath, err)
 	}
 	return nil
@@ -28,15 +30,15 @@ func createPlan(inputPath string, outputPath string) error {
 // createPlanFromStruct validates, renders, and atomically writes canonical
 // markdown. Rendered plans are markdown-only outputs and do not embed JSON
 // appendices.
-func createPlanFromStruct(plan Plan, outputPath string) error {
-	if err := validatePlan(plan); err != nil {
+func CreatePlanFromStruct(plan schema.Plan, outputPath string) error {
+	if err := validate.ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 	rendered, err := renderPlan(plan)
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
-	if err := verifyRenderedText(rendered, plan); err != nil {
+	if err := VerifyRenderedText(rendered, plan); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
 	if err := writeOutput(outputPath, rendered); err != nil {
@@ -45,23 +47,7 @@ func createPlanFromStruct(plan Plan, outputPath string) error {
 	return nil
 }
 
-func renderPlan(plan Plan) (string, error) {
-	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
-		"inc":       func(i int) int { return i + 1 },
-		"codeFence": codeFence,
-	}).Parse(planTemplate)
-	if err != nil {
-		return "", err
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, plan); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
-}
-
-func verifyRenderedText(rendered string, plan Plan) error {
+func VerifyRenderedText(rendered string, plan schema.Plan) error {
 	requiredSections := []string{
 		"## Overview",
 		"## Definition of Done",
@@ -87,7 +73,7 @@ func verifyRenderedText(rendered string, plan Plan) error {
 			return fmt.Errorf("missing rendered implementation step: %s", heading)
 		}
 		for _, change := range step.FileChanges {
-			fence := codeFence(change.Code)
+			fence := CodeFence(change.Code)
 			block := fence + change.Language + "\n" + change.Code + "\n" + fence
 			if !strings.Contains(rendered, block) {
 				return fmt.Errorf("missing rendered code block for %s", change.Filename)
@@ -96,6 +82,46 @@ func verifyRenderedText(rendered string, plan Plan) error {
 	}
 
 	return nil
+}
+
+// codeFence returns the shortest backtick fence that can safely wrap code,
+// always at least three backticks long. A run of N backticks inside code
+// requires a fence of at least N+1 backticks to prevent premature closure
+// in markdown renderers.
+func CodeFence(code string) string {
+	longest := 0
+	cur := 0
+	for _, r := range code {
+		if r == '`' {
+			cur++
+			if cur > longest {
+				longest = cur
+			}
+		} else {
+			cur = 0
+		}
+	}
+	n := longest + 1
+	if n < 3 {
+		n = 3
+	}
+	return strings.Repeat("`", n)
+}
+
+func renderPlan(plan schema.Plan) (string, error) {
+	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
+		"inc":       func(i int) int { return i + 1 },
+		"codeFence": CodeFence,
+	}).Parse(planTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, plan); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 // writeOutput atomically writes rendered content to path via a temp file and
@@ -131,26 +157,3 @@ func writeOutput(path, rendered string) error {
 	return nil
 }
 
-// codeFence returns the shortest backtick fence that can safely wrap code,
-// always at least three backticks long. A run of N backticks inside code
-// requires a fence of at least N+1 backticks to prevent premature closure
-// in markdown renderers.
-func codeFence(code string) string {
-	longest := 0
-	cur := 0
-	for _, r := range code {
-		if r == '`' {
-			cur++
-			if cur > longest {
-				longest = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	n := longest + 1
-	if n < 3 {
-		n = 3
-	}
-	return strings.Repeat("`", n)
-}
