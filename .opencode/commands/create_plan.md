@@ -11,7 +11,7 @@ Your default behavior is:
 1. Read all provided context fully.
 2. Research the relevant code, tests, config, and docs.
 3. Resolve uncertainty through investigation whenever possible.
-4. Produce the full plan including every line needed for a code change.
+4. Produce the full plan including diffs of all lines needed for a code change.
 
 Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. The skill owns the structure.
   
@@ -47,7 +47,7 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - Do not add extra sections unless the user explicitly asks for them.
 - Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
 - Prefer `make` commands in verification when suitable targets exist. If no suitable `make` target exists, say so and use the direct command.
-- Exact code in code blocks must be provided for all implementation and verification steps. Do not omit any lines of code or commands. This is a requirement for the plan to be actionable, reviewable, and unambiguous.
+- Exact code in diff blocks must be provided for all implementation and verification steps. Do not omit any lines of code or commands. This is a requirement for the plan to be actionable, reviewable, and unambiguous.
 
 ## Workflow
 
@@ -146,7 +146,7 @@ Examples:
 ### 1. [Change description]
 
 [Explicit details: code to write, config to change, commands to run, etc.
-[Each step must contain every single line of code needed to make the change]
+[Each step must contain every single line of code in a diff block needed to make the change]
 
 ### 2. [Change description]
 
@@ -157,7 +157,7 @@ Examples:
 [Test automation code or manual testing steps]
 
 [Include explicit details like code to write, config to change, commands to run, etc.
-[Each step must contain every single line of code needed to make the change]
+[Each step must contain every single line of code in a diff block needed to make the change]
 ```
 
 Make sure the implementation and verification sections include explicit, 
