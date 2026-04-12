@@ -2,7 +2,6 @@ package schema
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 type Plan struct {
@@ -47,7 +46,7 @@ func DecodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
-func BuildSchemaJSON() (string, error) {
+func BuildSchemaJSON() string {
 	schema := map[string]any{
 		"type":        "object",
 		"title":       "planner create input contract",
@@ -82,11 +81,8 @@ func BuildSchemaJSON() (string, error) {
 		},
 	}
 
-	raw, err := json.MarshalIndent(schema, "", "  ")
-	if err != nil {
-		return "", fmt.Errorf("marshal schema: %w", err)
-	}
-	return string(raw), nil
+	raw, _ := json.MarshalIndent(schema, "", "  ")
+	return string(raw)
 }
 
 func requiredString() map[string]any {
