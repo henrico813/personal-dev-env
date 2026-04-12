@@ -1,3 +1,3 @@
-module github.com/hco/personal-dev-env/planner
+module planner
 
 go 1.21.0

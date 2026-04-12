@@ -1,12 +1,13 @@
-package main
+package validate
 
 import (
 	"errors"
 	"os"
 	"strings"
+	"planner/schema"
 )
 
-func validatePlan(plan Plan) error {
+func ValidatePlan(plan schema.Plan) error {
 	if strings.TrimSpace(plan.Title) == "" {
 		return errors.New("title is required")
 	}
@@ -61,10 +62,10 @@ func validatePlan(plan Plan) error {
 	return nil
 }
 
-func readPlanFile(path string) (Plan, error) {
+func ReadPlanFile(path string) (schema.Plan, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Plan{}, err
+		return schema.Plan{}, err
 	}
-	return decodePlan(data)
+	return schema.DecodePlan(data)
 }
