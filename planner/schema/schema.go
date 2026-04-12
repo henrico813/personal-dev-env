@@ -1,4 +1,4 @@
-package main
+package schema
 
 import (
 	"encoding/json"
@@ -39,7 +39,7 @@ type Verification struct {
 	Manual    []string `json:"manual"`
 }
 
-func decodePlan(data []byte) (Plan, error) {
+func DecodePlan(data []byte) (Plan, error) {
 	var plan Plan
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return Plan{}, err
@@ -47,7 +47,7 @@ func decodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
-func buildSchemaJSON() (string, error) {
+func BuildSchemaJSON() (string, error) {
 	schema := map[string]any{
 		"type":        "object",
 		"title":       "planner create input contract",
