@@ -70,11 +70,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runShowSchema(stdout io.Writer, stderr io.Writer) int {
-	schemaJSON, err := schema.BuildSchemaJSON()
-	if err != nil {
-		fmt.Fprintf(stderr, "build schema: %v\n", err)
-		return 1
-	}
+	schemaJSON := schema.BuildSchemaJSON()
 	if _, err := io.WriteString(stdout, schemaJSON+"\n"); err != nil {
 		fmt.Fprintf(stderr, "write schema: %v\n", err)
 		return 1
