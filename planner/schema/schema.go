@@ -28,8 +28,7 @@ type Step struct {
 type FileChange struct {
 	Filename    string `json:"filename"`
 	Explanation string `json:"explanation"`
-	Language    string `json:"language"`
-	Code        string `json:"code"`
+	Diff        string `json:"diff"`
 }
 
 type Verification struct {
@@ -64,8 +63,7 @@ func BuildSchemaJSON() string {
 					{
 						Filename:    "path/to/file.ext",
 						Explanation: "One sentence explaining why this code exists.",
-						Language:    "text",
-						Code:        "representative changed code",
+						Diff:    		 "Unified diff of the change to this file, with context lines.",
 					},
 				},
 			},
