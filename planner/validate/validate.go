@@ -2,6 +2,7 @@ package validate
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"planner/schema"
@@ -50,11 +51,67 @@ func ValidatePlan(plan schema.Plan) error {
 			if strings.TrimSpace(change.Explanation) == "" {
 				return errors.New("each file change needs an explanation")
 			}
-			if strings.TrimSpace(change.Language) == "" {
-				return errors.New("each file change needs a language")
+			if strings.TrimSpace(change.Diff) == "" {
+				return errors.New("each file change needs a diff")
 			}
-			if strings.TrimSpace(change.Code) == "" {
-				return errors.New("each file change needs code")
+		}
+	}
+
+	return nil
+}
+
+// GetCodeFence returns the shortest backtick fence that safely wraps content.
+// Always at least three backticks; longer if content contains backtick runs.
+func GetCodeFence(code string) string {
+	longest := 0
+	cur := 0
+	for _, r := range code {
+		if r == '`' {
+			cur++
+			if cur > longest {
+				longest = cur
+			}
+		} else {
+			cur = 0
+		}
+	}
+	n := longest + 1
+	if n < 3 {
+		n = 3
+	}
+	return strings.Repeat("`", n)
+}
+
+func VerifyRenderedText(rendered string, plan schema.Plan) error {
+	requiredSections := []string{
+		"## Overview",
+		"## Definition of Done",
+		"### Current State",
+		"### Module Shape",
+		"## Implementation",
+		"## Verification",
+	}
+
+	for _, section := range requiredSections {
+		if !strings.Contains(rendered, section) {
+			return fmt.Errorf("missing section: %s", section)
+		}
+	}
+
+	if !strings.Contains(rendered, "### 1.") {
+		return errors.New("missing numbered implementation step")
+	}
+
+	for i, step := range plan.Implementation {
+		heading := fmt.Sprintf("### %d. %s", i+1, step.Title)
+		if !strings.Contains(rendered, heading) {
+			return fmt.Errorf("missing rendered implementation step: %s", heading)
+		}
+		for _, change := range step.FileChanges {
+			fence := GetCodeFence(change.Diff)
+			block := fence + "diff\n" + change.Diff + "\n" + fence
+			if !strings.Contains(rendered, block) {
+				return fmt.Errorf("missing rendered code block for %s", change.Filename)
 			}
 		}
 	}

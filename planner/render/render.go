@@ -3,11 +3,9 @@ package render
 import (
 	"bytes"
 	_ "embed"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"text/template"
 	"planner/validate"
 	"planner/schema"
@@ -38,7 +36,7 @@ func CreatePlanFromStruct(plan schema.Plan, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
-	if err := VerifyRenderedText(rendered, plan); err != nil {
+	if err := validate.VerifyRenderedText(rendered, plan); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
 	if err := writeOutput(outputPath, rendered); err != nil {
@@ -47,71 +45,10 @@ func CreatePlanFromStruct(plan schema.Plan, outputPath string) error {
 	return nil
 }
 
-func VerifyRenderedText(rendered string, plan schema.Plan) error {
-	requiredSections := []string{
-		"## Overview",
-		"## Definition of Done",
-		"### Current State",
-		"### Module Shape",
-		"## Implementation",
-		"## Verification",
-	}
-
-	for _, section := range requiredSections {
-		if !strings.Contains(rendered, section) {
-			return fmt.Errorf("missing section: %s", section)
-		}
-	}
-
-	if !strings.Contains(rendered, "### 1.") {
-		return errors.New("missing numbered implementation step")
-	}
-
-	for i, step := range plan.Implementation {
-		heading := fmt.Sprintf("### %d. %s", i+1, step.Title)
-		if !strings.Contains(rendered, heading) {
-			return fmt.Errorf("missing rendered implementation step: %s", heading)
-		}
-		for _, change := range step.FileChanges {
-			fence := CodeFence(change.Code)
-			block := fence + change.Language + "\n" + change.Code + "\n" + fence
-			if !strings.Contains(rendered, block) {
-				return fmt.Errorf("missing rendered code block for %s", change.Filename)
-			}
-		}
-	}
-
-	return nil
-}
-
-// codeFence returns the shortest backtick fence that can safely wrap code,
-// always at least three backticks long. A run of N backticks inside code
-// requires a fence of at least N+1 backticks to prevent premature closure
-// in markdown renderers.
-func CodeFence(code string) string {
-	longest := 0
-	cur := 0
-	for _, r := range code {
-		if r == '`' {
-			cur++
-			if cur > longest {
-				longest = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	n := longest + 1
-	if n < 3 {
-		n = 3
-	}
-	return strings.Repeat("`", n)
-}
-
 func renderPlan(plan schema.Plan) (string, error) {
 	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
-		"inc":       func(i int) int { return i + 1 },
-		"codeFence": CodeFence,
+		"inc":          func(i int) int { return i + 1 },
+		"getCodeFence": validate.GetCodeFence,
 	}).Parse(planTemplate)
 	if err != nil {
 		return "", err

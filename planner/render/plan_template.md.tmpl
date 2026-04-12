@@ -37,9 +37,9 @@
 `{{ .Filename }}`
 > {{ .Explanation }}
 
-{{ codeFence .Code }}{{ .Language }}
-{{ .Code }}
-{{ codeFence .Code }}
+{{ getCodeFence .Diff }}diff
+{{ .Diff }}
+{{ getCodeFence .Diff }}
 {{- end }}
 {{- end }}
 
