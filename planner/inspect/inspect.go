@@ -27,22 +27,29 @@ type SectionSpans struct {
 // ParseMarkdown parses canonical planner-rendered markdown and returns the
 // reconstructed Plan, typed section spans, and per-step spans for the
 // implementation section. Returns an error if the input does not match
-// canonical format (fail closed on drift).
+// canonical format (fail closed on drift). Optional YAML frontmatter (---
+// fenced block before the title) is stripped before parsing; returned spans
+// are absolute into the original input so splice-based replace still works.
 func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, error) {
 	if strings.Contains(input, "\r") {
 		return schema.Plan{}, SectionSpans{}, nil, fmt.Errorf("CRLF line endings not supported; convert to LF")
 	}
-	if !strings.HasPrefix(input, "# ") {
-		return schema.Plan{}, SectionSpans{}, nil, fmt.Errorf("missing title heading")
-	}
-
-	sectionSpans, err := findTopLevelSections(input)
+	prefixLen, body, err := splitFrontmatter(input)
 	if err != nil {
 		return schema.Plan{}, SectionSpans{}, nil, err
 	}
+	if !strings.HasPrefix(body, "# ") {
+		return schema.Plan{}, SectionSpans{}, nil, fmt.Errorf("missing title heading")
+	}
+
+	sectionSpans, err := findTopLevelSections(body)
+	if err != nil {
+		return schema.Plan{}, SectionSpans{}, nil, err
+	}
+	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
 	plan := schema.Plan{}
-	titleLine := strings.SplitN(input, "\n", 2)[0]
+	titleLine := strings.SplitN(body, "\n", 2)[0]
 	plan.Title = strings.TrimSpace(strings.TrimPrefix(titleLine, "# "))
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
@@ -82,6 +89,35 @@ func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, error) {
 	plan.Verification = parsedVerification
 
 	return plan, toSectionSpans(sectionSpans), stepSpans, nil
+}
+
+// splitFrontmatter strips an optional YAML frontmatter block (--- ... ---) from
+// the start of input and returns the byte length of the stripped prefix and the
+// remaining body. If no frontmatter is present, prefixLen is 0 and body is input.
+func splitFrontmatter(input string) (int, string, error) {
+	const fence = "---\n"
+	if !strings.HasPrefix(input, fence) {
+		return 0, input, nil
+	}
+	end := strings.Index(input[len(fence):], "\n---\n")
+	if end < 0 {
+		return 0, "", fmt.Errorf("unterminated frontmatter")
+	}
+	prefixLen := len(fence) + end + len("\n---\n")
+	if prefixLen < len(input) && input[prefixLen] == '\n' {
+		prefixLen++
+	}
+	return prefixLen, input[prefixLen:], nil
+}
+
+// offsetSpans shifts all span values in a section map by offset bytes, making
+// spans relative to body into spans absolute within the full source document.
+func offsetSpans(spans map[string]Span, offset int) map[string]Span {
+	out := make(map[string]Span, len(spans))
+	for key, span := range spans {
+		out[key] = Span{Start: span.Start + offset, End: span.End + offset}
+	}
+	return out
 }
 
 func findTopLevelSections(input string) (map[string]Span, error) {
@@ -216,9 +252,6 @@ func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
 }
 
 func parseImplementation(body string, base int) ([]schema.Step, []Span, error) {
-	steps := []schema.Step{}
-	spans := []Span{}
-
 	rawHeadings := scanHeadings(body, "### ")
 	headings := []headingMatch{}
 	for _, h := range rawHeadings {
@@ -228,9 +261,15 @@ func parseImplementation(body string, base int) ([]schema.Step, []Span, error) {
 	}
 
 	if len(headings) == 0 {
+		// Allow empty implementation body so append can bootstrap from scratch.
+		if strings.TrimSpace(body) == "" {
+			return nil, nil, nil
+		}
 		return nil, nil, fmt.Errorf("implementation section has no steps")
 	}
 
+	steps := []schema.Step{}
+	spans := []Span{}
 	for i, h := range headings {
 		end := len(body)
 		if i+1 < len(headings) {
