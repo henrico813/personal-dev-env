@@ -46,6 +46,9 @@ func TestBuildHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
 	requiredSnippets := []string{
 		"Prints a JSON object with plan_example and validation_rules.",
 		"Use only plan_example as input to planner validate and planner create.",
+		"planner inspect <plan.md>",
+		"planner replace <plan.md> <section> <patch.json> <output.md>",
+		"replace supports implementation and implementation.N only in v1.",
 		"definition_of_done.goals must contain between 1 and 8 items",
 		"each definition_of_done.goals item must be at most 88 characters",
 	}
@@ -53,6 +56,30 @@ func TestBuildHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
 		if !strings.Contains(help, snippet) {
 			t.Fatalf("buildHelpText() missing %q", snippet)
 		}
+	}
+}
+
+func TestRunInspectUsage(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := run([]string{"inspect"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("run(inspect) exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "usage: planner inspect <plan.md>") {
+		t.Fatalf("missing inspect usage in stderr = %q", stderr.String())
+	}
+}
+
+func TestRunReplaceUsage(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := run([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("run(replace) exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> <section> <patch.json> <output.md>") {
+		t.Fatalf("missing replace usage in stderr = %q", stderr.String())
 	}
 }
 
