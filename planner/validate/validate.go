@@ -4,8 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"planner/schema"
+	"strings"
+	"unicode/utf8"
+)
+
+const (
+	maxDefinitionOfDoneGoals      = 8
+	maxDefinitionOfDoneGoalLength = 88
 )
 
 func ValidatePlan(plan schema.Plan) error {
@@ -20,6 +26,18 @@ func ValidatePlan(plan schema.Plan) error {
 	}
 	if len(plan.DefinitionOfDone.Goals) == 0 {
 		return errors.New("at least one definition_of_done goal is required")
+	}
+	if len(plan.DefinitionOfDone.Goals) > maxDefinitionOfDoneGoals {
+		return fmt.Errorf("definition_of_done.goals must have no more than %d goals", maxDefinitionOfDoneGoals)
+	}
+	for i, goal := range plan.DefinitionOfDone.Goals {
+		if utf8.RuneCountInString(goal) > maxDefinitionOfDoneGoalLength {
+			return fmt.Errorf(
+				"definition_of_done.goals[%d] must be no more than %d characters",
+				i,
+				maxDefinitionOfDoneGoalLength,
+			)
+		}
 	}
 	if strings.TrimSpace(plan.DefinitionOfDone.CurrentState) == "" {
 		return errors.New("definition_of_done.current_state is required")
