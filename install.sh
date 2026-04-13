@@ -14,7 +14,7 @@ build_planner() {
     fi
 
     ENGINE_BUILD_DIR="$(mktemp -d)"
-    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/planner" .); then
+    if ! (cd "$ENGINE_SOURCE_DIR" && go build -o "$ENGINE_BUILD_DIR/planner" ./main); then
         echo "install.sh: failed to build planner" >&2
         exit 1
     fi
