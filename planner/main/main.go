@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"planner/inspect"
@@ -23,7 +24,7 @@ Usage:
   planner validate <plan.json>
   planner create <input.json> <output.md>
   planner inspect <plan.md>
-  planner replace <plan.md> <section> <patch.json> <output.md>
+  planner replace <plan.md> <patch.json> <output.md> --section <section> [--subsection <name-or-index>] [--append]
 
 Scratch flow:
   1. Research the task.
@@ -39,15 +40,16 @@ Rewrite flow (full rewrite):
   4. Run planner create <plan.json> <output.md>.
   5. Compare the rendered issue with the source issue for dropped content.
 
-Partial update flow (implementation-only):
+Partial update flow:
   1. Run planner inspect <plan.md> to get section and step spans.
-  2. Write patch JSON for the target scope (implementation or implementation.N).
-  3. Run planner replace <plan.md> <section> <patch.json> <output.md>.
+  2. Write patch JSON for the target scope.
+  3. Run planner replace <plan.md> <patch.json> <output.md> --section <section>.
   4. Non-targeted sections remain byte-for-byte unchanged.
 
-Current limitations:
-  - planner renders markdown only and does not embed JSON appendices in rendered plans.
-  - replace supports implementation and implementation.N only in v1.
+replace flags:
+  --section/-s <section>        Required. One of: overview, definition_of_done, implementation, verification
+  --subsection/-i <name-or-index>  Optional. Field name for definition_of_done; 1-based step index for implementation
+  --append                      Optional. Append a new step to implementation
 
 show-schema contract:
   - Prints a JSON object with plan_example and validation_rules.
@@ -59,10 +61,11 @@ Validation rules:
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout io.Writer, stderr io.Writer) int {
+// Execute is the production command entrypoint used by main() and CLI tests.
+func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 0 {
 		printHelp(stdout)
 		return 0
@@ -193,11 +196,22 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
-	if len(args) != 4 {
-		fmt.Fprintln(stderr, "usage: planner replace <plan.md> <section> <patch.json> <output.md>")
+	if len(args) < 3 {
+		fmt.Fprintln(stderr, "usage: planner replace <plan.md> <patch.json> <output.md> --section <section> [--subsection <name-or-index>] [--append]")
 		return 2
 	}
-	contract, err := replace.Run(args[0], args[1], args[2], args[3])
+	sourcePath := args[0]
+	patchPath := args[1]
+	outputPath := args[2]
+	flags := args[3:]
+
+	opts, err := parseReplaceOptions(flags)
+	if err != nil {
+		fmt.Fprintf(stderr, "replace: %v\n", err)
+		return 2
+	}
+
+	contract, err := replace.Run(sourcePath, opts, patchPath, outputPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "replace: %v\n", err)
 		return 1
@@ -210,4 +224,37 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
+	opts := replace.ReplaceOptions{}
+	for i := 0; i < len(flags); i++ {
+		switch flags[i] {
+		case "--section", "-s":
+			i++
+			if i >= len(flags) {
+				return opts, fmt.Errorf("missing value for --section")
+			}
+			opts.Section = flags[i]
+		case "--subsection", "-i":
+			i++
+			if i >= len(flags) {
+				return opts, fmt.Errorf("missing value for --subsection")
+			}
+			opts.Subsection = flags[i]
+		case "--append":
+			opts.Append = true
+		default:
+			return opts, fmt.Errorf("unknown flag %q", flags[i])
+		}
+	}
+	if opts.Section == "" {
+		return opts, fmt.Errorf("--section is required")
+	}
+	if opts.Section == "implementation" && opts.Subsection != "" && !opts.Append {
+		if _, err := strconv.Atoi(opts.Subsection); err != nil {
+			return opts, fmt.Errorf("--subsection for implementation must be a 1-based integer index")
+		}
+	}
+	return opts, nil
 }
