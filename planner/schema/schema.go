@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 )
 
+type SchemaDocument struct {
+	PlanExample     Plan     `json:"plan_example"`
+	ValidationRules []string `json:"validation_rules"`
+}
+
 type Plan struct {
 	Title            string           `json:"title"`
 	Overview         string           `json:"overview"`
@@ -45,8 +50,8 @@ func DecodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
-func BuildSchemaJSON() string {
-	schema := Plan{
+func BuildPlanExample() Plan {
+	return Plan{
 		Title:    "Short title for the plan",
 		Overview: "2-4 sentence summary of what the plan changes and why.",
 		DefinitionOfDone: DefinitionOfDone{
@@ -63,7 +68,7 @@ func BuildSchemaJSON() string {
 					{
 						Filename:    "path/to/file.ext",
 						Explanation: "One sentence explaining why this code exists.",
-						Diff:    		 "Unified diff of the change to this file, with context lines.",
+						Diff:        "Unified diff of the change to this file, with context lines.",
 					},
 				},
 			},
@@ -74,7 +79,26 @@ func BuildSchemaJSON() string {
 			Manual:    []string{"Manual verification step"},
 		},
 	}
+}
 
-	raw, _ := json.MarshalIndent(schema, "", "  ")
+func ValidationRules() []string {
+	return []string{
+		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
+		"definition_of_done.goals must contain between 1 and 8 items",
+		"each definition_of_done.goals item must be at most 88 characters",
+		"implementation must contain at least one step",
+		"each implementation step must include a title, summary, and at least one file change",
+		"each file change must include a filename, explanation, and diff",
+		"verification must be present",
+	}
+}
+
+func BuildSchemaJSON() string {
+	doc := SchemaDocument{
+		PlanExample:     BuildPlanExample(),
+		ValidationRules: ValidationRules(),
+	}
+
+	raw, _ := json.MarshalIndent(doc, "", "  ")
 	return string(raw)
 }

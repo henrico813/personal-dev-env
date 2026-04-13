@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+
+	"planner/render"
 	"planner/schema"
 	"planner/validate"
-	"planner/render"
 )
 
 const helpText = `planner generates implementation-plan markdown from canonical JSON.
@@ -37,9 +39,12 @@ Current limitations:
   - planner does not yet parse rendered markdown back into a Plan or provide planner check <plan.md>.
 
 show-schema contract:
-  - Includes the nested JSON shape the current validator recognizes.
-  - Includes the required fields and constraints the current validator enforces.
+  - Prints a JSON object with plan_example and validation_rules.
+  - Use only plan_example as input to planner validate and planner create.
+  - validation_rules lists the semantic rules the current validator enforces.
   - Includes command semantics for help, show-schema, validate, and create.
+
+Validation rules:
 `
 
 func main() {
@@ -114,5 +119,14 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func printHelp(w io.Writer) {
-	io.WriteString(w, helpText)
+	io.WriteString(w, buildHelpText())
+}
+
+func buildHelpText() string {
+	var b strings.Builder
+	b.WriteString(helpText)
+	for _, rule := range schema.ValidationRules() {
+		b.WriteString("  - " + rule + "\n")
+	}
+	return b.String()
 }
