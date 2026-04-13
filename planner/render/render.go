@@ -14,6 +14,12 @@ import (
 //go:embed plan_template.md.tmpl
 var planTemplate string
 
+//go:embed implementation_section.md.tmpl
+var implementationSectionTemplate string
+
+//go:embed implementation_step.md.tmpl
+var implementationStepTemplate string
+
 func CreatePlan(inputPath string, outputPath string) error {
 	plan, err := validate.ReadPlanFile(inputPath)
 	if err != nil {
@@ -25,14 +31,14 @@ func CreatePlan(inputPath string, outputPath string) error {
 	return nil
 }
 
-// createPlanFromStruct validates, renders, and atomically writes canonical
+// CreatePlanFromStruct validates, renders, and atomically writes canonical
 // markdown. Rendered plans are markdown-only outputs and do not embed JSON
 // appendices.
 func CreatePlanFromStruct(plan schema.Plan, outputPath string) error {
 	if err := validate.ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
-	rendered, err := renderPlan(plan)
+	rendered, err := RenderPlan(plan)
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
@@ -45,7 +51,8 @@ func CreatePlanFromStruct(plan schema.Plan, outputPath string) error {
 	return nil
 }
 
-func renderPlan(plan schema.Plan) (string, error) {
+// RenderPlan renders a validated Plan to canonical markdown format.
+func RenderPlan(plan schema.Plan) (string, error) {
 	tmpl, err := template.New("plan_template.md.tmpl").Funcs(template.FuncMap{
 		"inc":          func(i int) int { return i + 1 },
 		"getCodeFence": validate.GetCodeFence,
@@ -94,3 +101,38 @@ func writeOutput(path, rendered string) error {
 	return nil
 }
 
+// RenderImplementationSection renders the full Implementation section for a plan.
+func RenderImplementationSection(steps []schema.Step) (string, error) {
+	wrapped := schema.Plan{Implementation: steps}
+	tmpl, err := template.New("implementation_section").Funcs(template.FuncMap{
+		"inc":          func(i int) int { return i + 1 },
+		"getCodeFence": validate.GetCodeFence,
+	}).Parse(implementationSectionTemplate)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, wrapped); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// RenderImplementationStep renders a single implementation step at the given index.
+func RenderImplementationStep(index int, step schema.Step) (string, error) {
+	tmpl, err := template.New("implementation_step").Funcs(template.FuncMap{
+		"getCodeFence": validate.GetCodeFence,
+	}).Parse(implementationStepTemplate)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	data := struct {
+		Index int
+		Step  schema.Step
+	}{Index: index, Step: step}
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}

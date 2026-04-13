@@ -1,0 +1,13 @@
+### {{ .Index }}. {{ .Step.Title }}
+
+{{ .Step.Summary }}
+{{- range .Step.FileChanges }}
+
+`{{ .Filename }}`
+> {{ .Explanation }}
+
+{{ getCodeFence .Diff }}diff
+{{ .Diff }}
+{{ getCodeFence .Diff }}
+{{- end }}
+
