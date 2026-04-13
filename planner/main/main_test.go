@@ -13,8 +13,8 @@ func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"show-schema"}, &stdout, &stderr); exitCode != 0 {
-		t.Fatalf("run(show-schema) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
+	if exitCode := Execute([]string{"show-schema"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Execute(show-schema) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
 
 	var doc schema.SchemaDocument
@@ -40,15 +40,16 @@ func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
 	}
 }
 
-func TestBuildHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
+func TestHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
 	help := buildHelpText()
 
 	requiredSnippets := []string{
 		"Prints a JSON object with plan_example and validation_rules.",
 		"Use only plan_example as input to planner validate and planner create.",
 		"planner inspect <plan.md>",
-		"planner replace <plan.md> <section> <patch.json> <output.md>",
-		"replace supports implementation and implementation.N only in v1.",
+		"planner replace <plan.md> <patch.json> <output.md> --section <section>",
+		"--subsection <name-or-index>",
+		"--append",
 		"definition_of_done.goals must contain between 1 and 8 items",
 		"each definition_of_done.goals item must be at most 88 characters",
 	}
@@ -63,8 +64,8 @@ func TestRunInspectUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"inspect"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("run(inspect) exit code = %d, want 2", exitCode)
+	if exitCode := Execute([]string{"inspect"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("Execute(inspect) exit code = %d, want 2", exitCode)
 	}
 	if !strings.Contains(stderr.String(), "usage: planner inspect <plan.md>") {
 		t.Fatalf("missing inspect usage in stderr = %q", stderr.String())
@@ -75,11 +76,33 @@ func TestRunReplaceUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := run([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("run(replace) exit code = %d, want 2", exitCode)
+	if exitCode := Execute([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("Execute(replace) exit code = %d, want 2", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> <section> <patch.json> <output.md>") {
+	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> <patch.json> <output.md> --section <section>") {
 		t.Fatalf("missing replace usage in stderr = %q", stderr.String())
+	}
+}
+
+func TestExecuteReplaceRejectsUnknownFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := Execute([]string{"replace", "a.md", "b.json", "c.md", "--unknown"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "unknown flag") {
+		t.Fatalf("expected unknown flag error, got %q", stderr.String())
+	}
+}
+
+func TestExecuteReplaceRequiresSection(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exitCode := Execute([]string{"replace", "a.md", "b.json", "c.md"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "--section is required") {
+		t.Fatalf("expected required section error, got %q", stderr.String())
 	}
 }
 
