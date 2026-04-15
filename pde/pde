@@ -53,6 +53,11 @@ install_configs_ai() {
     mkdir -p "$HOME/.config/alacritty"
     link_config "$SCRIPT_DIR/config/alacritty/alacritty.toml" \
                 "$HOME/.config/alacritty/alacritty.toml"
+
+    # WezTerm
+    mkdir -p "$HOME/.config/wezterm"
+    link_config "$SCRIPT_DIR/config/wezterm/wezterm.lua" \
+                "$HOME/.config/wezterm/wezterm.lua"
 }
 
 main() {
