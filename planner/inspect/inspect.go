@@ -235,13 +235,7 @@ func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
 		return schema.DefinitionOfDone{}, fmt.Errorf("definition of done missing module shape")
 	}
 
-	goals := []string{}
-	for _, line := range strings.Split(goalsAndRest[0], "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ] ") {
-			goals = append(goals, strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")))
-		}
-	}
+	goals := parseChecklistItems(goalsAndRest[0])
 
 	return schema.DefinitionOfDone{
 		Narrative:    narrative,
@@ -361,17 +355,33 @@ func parseVerification(body string) (*schema.Verification, error) {
 
 	return &schema.Verification{
 		Summary:   strings.TrimSpace(parts[0]),
-		Automated: parseChecklist(manual[0]),
-		Manual:    parseChecklist(manual[1]),
+		Automated: parseChecklistItems(manual[0]),
+		Manual:    parseChecklistItems(manual[1]),
 	}, nil
 }
 
-func parseChecklist(raw string) []string {
-	items := []string{}
+// parseChecklistItems reads "- [ ] text", "- [x] text", and "- [X] text" lines
+// into typed ChecklistItem values so render -> inspect -> render preserves
+// completion state. Uppercase [X] is produced by Obsidian on macOS.
+func parseChecklistItems(raw string) []schema.ChecklistItem {
+	items := []schema.ChecklistItem{}
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ] ") {
-			items = append(items, strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")))
+		switch {
+		case strings.HasPrefix(trimmed, "- [ ] "):
+			items = append(items, schema.ChecklistItem{
+				Text: strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")),
+			})
+		case strings.HasPrefix(trimmed, "- [x] "):
+			items = append(items, schema.ChecklistItem{
+				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [x] ")),
+				Status: schema.StatusDone,
+			})
+		case strings.HasPrefix(trimmed, "- [X] "):
+			items = append(items, schema.ChecklistItem{
+				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [X] ")),
+				Status: schema.StatusDone,
+			})
 		}
 	}
 	return items

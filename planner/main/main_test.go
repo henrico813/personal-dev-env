@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
 		"Prints a JSON object with plan_example and validation_rules.",
 		"Use only plan_example as input to planner validate and planner create.",
 		"planner inspect <plan.md>",
-		"planner replace <plan.md> <patch.json> <output.md> --section <section>",
+		"planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--write]",
 		"--subsection <name-or-index>",
 		"--append",
 		"definition_of_done.goals must contain between 1 and 8 items",
@@ -79,7 +80,7 @@ func TestRunReplaceUsage(t *testing.T) {
 	if exitCode := Execute([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
 		t.Fatalf("Execute(replace) exit code = %d, want 2", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> <patch.json> <output.md> --section <section>") {
+	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section>") {
 		t.Fatalf("missing replace usage in stderr = %q", stderr.String())
 	}
 }
@@ -113,4 +114,132 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestCreateReadsStdinWhenFlagSet(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("expected output: %v", err)
+	}
+}
+
+func TestCreateAutoDetectsPipedStdin(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("expected output: %v", err)
+	}
+}
+
+func TestDiffAloneExitsOneOnChange(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	if err := os.WriteFile(out, []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin", "--diff"}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+		}
+		if stdout.Len() == 0 {
+			t.Fatal("want non-empty diff on stdout")
+		}
+	})
+	data, _ := os.ReadFile(out)
+	if string(data) != "stale\n" {
+		t.Fatalf("file must be unchanged: %q", string(data))
+	}
+}
+
+func TestDiffAndWriteExitsZero(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin", "--diff", "--write"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("expected output: %v", err)
+	}
+}
+
+func TestWriteOnlyPrintsOutputPath(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin", "--write"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), out) {
+			t.Fatalf("stdout missing output path; got %q", stdout.String())
+		}
+	})
+}
+
+// withStdin routes data through os.Stdin for the duration of fn via a real
+// os.Pipe (no mock). Tests exercise the production Execute path end-to-end.
+func withStdin(t *testing.T, data []byte, fn func()) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	original := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = original }()
+	go func() { defer w.Close(); _, _ = w.Write(data) }()
+	fn()
+}
+
+func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
+	dir := t.TempDir()
+	// Write source plan to disk.
+	planPath := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", planPath, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("create exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	// Write patch to disk.
+	patchPath := dir + "/patch.json"
+	if err := os.WriteFile(patchPath, []byte(`"Updated overview"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Make output directory read-only so WriteAtomic fails.
+	roDir := dir + "/readonly"
+	if err := os.Mkdir(roDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	outputPath := roDir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"replace", planPath, patchPath, outputPath, "--section", "overview", "--write"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit on write failure, got 0")
+	}
+	if strings.Contains(stdout.String(), "{") {
+		t.Fatalf("contract JSON must not be emitted on write failure; stdout = %q", stdout.String())
+	}
+}
+
+func validPlanJSON() []byte {
+	return []byte(`{"title":"T","overview":"O","definition_of_done":{"narrative":"N","goals":["g"],"current_state":"C","module_shape":"M"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"@@ -1 +1 @@\n-a\n+b"}]}],"verification":{"summary":"","automated":["A"],"manual":["M"]}}`)
 }
