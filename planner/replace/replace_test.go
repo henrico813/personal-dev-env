@@ -225,8 +225,8 @@ func TestRunReplacesVerification(t *testing.T) {
 	sourcePath := writeRenderedPlan(t, plan)
 	patchPath := writePatchJSON(t, schema.Verification{
 		Summary:   "Updated verification",
-		Automated: []string{"go test ./... -run TestRunReplacesVerification"},
-		Manual:    []string{"smoke"},
+		Automated: []schema.ChecklistItem{{Text: "go test ./... -run TestRunReplacesVerification"}},
+		Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
@@ -344,7 +344,7 @@ func twoStepPlan() schema.Plan {
 		Overview: "Overview",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Narrative",
-			Goals:        []string{"Goal"},
+			Goals:        []schema.ChecklistItem{{Text: "Goal"}},
 			CurrentState: "Current",
 			ModuleShape:  "Shape",
 		},
@@ -370,8 +370,8 @@ func twoStepPlan() schema.Plan {
 		},
 		Verification: &schema.Verification{
 			Summary:   "Summary",
-			Automated: []string{"go test ./..."},
-			Manual:    []string{"smoke"},
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
 	}
 }

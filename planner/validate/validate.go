@@ -31,7 +31,13 @@ func ValidatePlan(plan schema.Plan) error {
 		return fmt.Errorf("definition_of_done.goals must have no more than %d goals", maxDefinitionOfDoneGoals)
 	}
 	for i, goal := range plan.DefinitionOfDone.Goals {
-		if utf8.RuneCountInString(goal) > maxDefinitionOfDoneGoalLength {
+		if strings.TrimSpace(goal.Text) == "" {
+			return fmt.Errorf("definition_of_done.goals[%d].text is required", i)
+		}
+		if !validStatus(goal.Status) {
+			return fmt.Errorf("definition_of_done.goals[%d].status %q is invalid", i, goal.Status)
+		}
+		if utf8.RuneCountInString(goal.Text) > maxDefinitionOfDoneGoalLength {
 			return fmt.Errorf(
 				"definition_of_done.goals[%d] must be no more than %d characters",
 				i,
@@ -50,6 +56,22 @@ func ValidatePlan(plan schema.Plan) error {
 	}
 	if plan.Verification == nil {
 		return errors.New("verification is required")
+	}
+	for i, item := range plan.Verification.Automated {
+		if strings.TrimSpace(item.Text) == "" {
+			return fmt.Errorf("verification.automated[%d].text is required", i)
+		}
+		if !validStatus(item.Status) {
+			return fmt.Errorf("verification.automated[%d].status %q is invalid", i, item.Status)
+		}
+	}
+	for i, item := range plan.Verification.Manual {
+		if strings.TrimSpace(item.Text) == "" {
+			return fmt.Errorf("verification.manual[%d].text is required", i)
+		}
+		if !validStatus(item.Status) {
+			return fmt.Errorf("verification.manual[%d].status %q is invalid", i, item.Status)
+		}
 	}
 
 	for _, step := range plan.Implementation {
@@ -143,4 +165,14 @@ func ReadPlanFile(path string) (schema.Plan, error) {
 		return schema.Plan{}, err
 	}
 	return schema.DecodePlan(data)
+}
+
+// validStatus is the single source of truth for the ChecklistStatus enum. The
+// empty string is allowed for backward compatibility (plain-string goals).
+func validStatus(s schema.ChecklistStatus) bool {
+	switch s {
+	case "", schema.StatusPending, schema.StatusDone:
+		return true
+	}
+	return false
 }
