@@ -13,7 +13,7 @@ func TestChecklistItemDecodesStringAndObject(t *testing.T) {
 	}{
 		{"plain_string", `"goal"`, ChecklistItem{Text: "goal"}},
 		{"object_empty_status", `{"text":"goal"}`, ChecklistItem{Text: "goal"}},
-		{"object_pending", `{"text":"g","status":"pending"}`, ChecklistItem{Text: "g", Status: StatusPending}},
+		{"object_pending_normalizes_to_empty", `{"text":"g","status":"pending"}`, ChecklistItem{Text: "g"}},
 		{"object_done", `{"text":"g","status":"done"}`, ChecklistItem{Text: "g", Status: StatusDone}},
 	}
 	for _, tc := range tests {
@@ -62,5 +62,23 @@ func TestDecodePlanAcceptsPlainStringGoals(t *testing.T) {
 	}
 	if plan.Verification.Automated[0].Text != "x" || plan.Verification.Manual[0].Text != "y" {
 		t.Fatalf("verification: %+v", plan.Verification)
+	}
+}
+
+func TestDecodePlanPlainStringGoalsRenderUnchecked(t *testing.T) {
+	input := `{
+		"title":"T","overview":"O",
+		"definition_of_done":{"narrative":"N","goals":[{"text":"a","status":"pending"},"b"],"current_state":"C","module_shape":"M"},
+		"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"@@ -1 +1 @@\n-x\n+y"}]}],
+		"verification":{"summary":"","automated":["x"],"manual":["y"]}
+	}`
+	plan, err := DecodePlan([]byte(input))
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	for i, g := range plan.DefinitionOfDone.Goals {
+		if g.Status != "" {
+			t.Fatalf("goal[%d] must have empty status after normalization, got %q", i, g.Status)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"planner/inspect"
@@ -373,5 +374,25 @@ func twoStepPlan() schema.Plan {
 			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
 			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
+	}
+}
+
+func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
+	plan := twoStepPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+		{Text: "pending goal"},
+		{Text: "done goal", Status: schema.StatusDone},
+	}
+	sourcePath := writeRenderedPlan(t, plan)
+
+	out, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"New overview."`))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	if !strings.Contains(out, "- [ ] pending goal") {
+		t.Fatalf("lost pending checkbox state:\n%s", out)
+	}
+	if !strings.Contains(out, "- [x] done goal") {
+		t.Fatalf("lost done checkbox state:\n%s", out)
 	}
 }
