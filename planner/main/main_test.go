@@ -244,6 +244,70 @@ func validPlanJSON() []byte {
 	return []byte(`{"title":"T","overview":"O","definition_of_done":{"narrative":"N","goals":["g"],"current_state":"C","module_shape":"M"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"@@ -1 +1 @@\n-a\n+b"}]}],"verification":{"summary":"","automated":["A"],"manual":["M"]}}`)
 }
 
+func TestGenerateWritesValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/draft.json"
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"generate", out}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit %d stderr %q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), out) {
+		t.Fatalf("stdout missing output path: %q", stdout.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !json.Valid(data) {
+		t.Fatalf("generate output is not valid JSON")
+	}
+}
+
+func TestGenerateExitsUsageWithNoArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"generate"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit %d want 2", exit)
+	}
+	if !strings.Contains(stderr.String(), "usage: planner generate") {
+		t.Fatalf("missing usage in stderr: %q", stderr.String())
+	}
+}
+
+func TestRepairFixesUnescapedNewlineInDiffField(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, brokenDiffJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "repaired") {
+			t.Fatalf("expected repair notice on stderr, got %q", stderr.String())
+		}
+	})
+}
+
+func TestRepairIsNoopOnValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "repaired") {
+			t.Fatalf("unexpected repair notice for valid JSON: %q", stderr.String())
+		}
+	})
+}
+
+// brokenDiffJSON takes validPlanJSON and replaces the \n escape sequences in
+// the diff field value with literal newline bytes, producing invalid JSON that
+// mirrors the primary LLM output failure mode.
+func brokenDiffJSON() []byte {
+	return []byte(strings.ReplaceAll(string(validPlanJSON()), `\n`, "\n"))
+}
+
 func TestReplaceReadsStdinPatch(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"

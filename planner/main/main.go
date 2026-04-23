@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kaptinlin/jsonrepair"
+
 	"planner/inspect"
 	"planner/render"
 	"planner/replace"
@@ -22,6 +24,7 @@ Usage:
   planner
   planner help
   planner show-schema
+  planner generate <output.json>
   planner validate [<plan.json>] [--stdin]
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--write]
   planner inspect <plan.md>
@@ -89,6 +92,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runInspect(args[1:], stdout, stderr)
 	case "replace":
 		return runReplace(args[1:], stdout, stderr)
+	case "generate":
+		return runGenerate(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 		printHelp(stderr)
@@ -287,6 +292,29 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
+// runGenerate writes a ready-to-edit draft plan JSON in ChecklistItem object
+// form, enabling the edit-then-create workflow without relying on show-schema's
+// SchemaDocument envelope.
+func runGenerate(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, "usage: planner generate <output.json>")
+		return 2
+	}
+	outputPath := args[0]
+	plan := schema.BuildPlanExample()
+	data, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		fmt.Fprintf(stderr, "generate: %v\n", err)
+		return 1
+	}
+	if err := replace.WriteAtomic(outputPath, append(data, '\n')); err != nil {
+		fmt.Fprintf(stderr, "generate: %v\n", err)
+		return 1
+	}
+	_, _ = io.WriteString(stdout, outputPath+"\n")
+	return 0
+}
+
 func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 	opts := replace.ReplaceOptions{}
 	for i := 0; i < len(flags); i++ {
@@ -357,20 +385,39 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 // readJSONSource returns JSON bytes for a subcommand's input. When --stdin is
 // set, reads stdin. When allowAutoDetect is true (validate/create only) and no
 // path is supplied and stdin is piped, reads stdin. Otherwise reads the path.
+// After reading, any bytes that fail json.Valid are passed through
+// jsonrepair.Repair — silently fixing common LLM output artifacts (unescaped
+// newlines in diff fields, trailing commas, JS comments). A notice is emitted
+// to stderr when repair fires; already-valid input is untouched.
 func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Writer) ([]byte, error) {
-	if useStdin || (allowAutoDetect && path == "" && stdinPiped()) {
+	var data []byte
+	var err error
+	switch {
+	case useStdin || (allowAutoDetect && path == "" && stdinPiped()):
 		if !stdinPiped() {
 			fmt.Fprintln(stderr, "planner: reading JSON from stdin (Ctrl-D to end)")
 		}
-		return io.ReadAll(os.Stdin)
-	}
-	if path == "" {
+		data, err = io.ReadAll(os.Stdin)
+	case path == "":
 		return nil, fmt.Errorf("no JSON source: pass a path, pipe stdin, or use --stdin")
+	default:
+		data, err = os.ReadFile(path)
 	}
-	return os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid(data) {
+		if repaired, repErr := jsonrepair.Repair(string(data)); repErr == nil {
+			fmt.Fprintln(stderr, "planner: repaired JSON input")
+			data = []byte(repaired)
+		}
+	}
+	return data, nil
 }
 
 // readPlanFrom is the plan-decoding wrapper for runValidate/runCreate.
+// Decode errors are annotated with line/col context via lintJSON so
+// cryptic byte-offset messages become actionable diagnostics.
 func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (schema.Plan, error) {
 	path := ""
 	if len(positional) > 0 {
@@ -380,7 +427,11 @@ func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (schema.
 	if err != nil {
 		return schema.Plan{}, err
 	}
-	return schema.DecodePlan(data)
+	plan, err := schema.DecodePlan(data)
+	if err != nil {
+		return schema.Plan{}, errors.New(lintJSON(data, err))
+	}
+	return plan, nil
 }
 
 // stdinPiped reports whether os.Stdin has piped data (not a terminal).
