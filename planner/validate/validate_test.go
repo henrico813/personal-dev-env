@@ -90,3 +90,25 @@ func TestValidatePlanRejectsEmptyGoalText(t *testing.T) {
 		t.Fatal("expected error for empty goal text")
 	}
 }
+
+func TestValidatePlanRejectsEmptyVerificationItemText(t *testing.T) {
+	plan := validPlan()
+	plan.Verification = &schema.Verification{
+		Automated: []schema.ChecklistItem{{Text: ""}},
+		Manual:    []schema.ChecklistItem{{Text: "m"}},
+	}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for empty automated text")
+	}
+}
+
+func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
+	plan := validPlan()
+	plan.Verification = &schema.Verification{
+		Automated: []schema.ChecklistItem{{Text: "a", Status: "invalid"}},
+		Manual:    []schema.ChecklistItem{{Text: "m"}},
+	}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for invalid automated status")
+	}
+}

@@ -288,6 +288,9 @@ func decodeStrictJSON(raw []byte, target any) error {
 	if err := dec.Decode(target); err != nil {
 		return fmt.Errorf("decode patch: %w", err)
 	}
+	if dec.More() {
+		return fmt.Errorf("decode patch: unexpected trailing data")
+	}
 	return nil
 }
 

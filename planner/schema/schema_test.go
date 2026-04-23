@@ -65,6 +65,20 @@ func TestDecodePlanAcceptsPlainStringGoals(t *testing.T) {
 	}
 }
 
+func TestDecodePlanRejectsTopLevelUnknownField(t *testing.T) {
+	input := `{"title":"t","overview":"o","definition_of_done":{"narrative":"n","goals":["g"],"current_state":"s","module_shape":"m"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"d"}]}],"verification":{"summary":"","automated":["x"],"manual":["y"]},"extra_field":"boom"}`
+	if _, err := DecodePlan([]byte(input)); err == nil {
+		t.Fatal("expected error for unknown top-level field")
+	}
+}
+
+func TestDecodePlanRejectsTrailingData(t *testing.T) {
+	valid := `{"title":"t","overview":"o","definition_of_done":{"narrative":"n","goals":["g"],"current_state":"s","module_shape":"m"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"d"}]}],"verification":{"summary":"","automated":["x"],"manual":["y"]}}`
+	if _, err := DecodePlan([]byte(valid + " trailing")); err == nil {
+		t.Fatal("expected error for trailing data")
+	}
+}
+
 func TestDecodePlanPlainStringGoalsRenderUnchecked(t *testing.T) {
 	input := `{
 		"title":"T","overview":"O",
