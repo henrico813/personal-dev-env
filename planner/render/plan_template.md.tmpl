@@ -13,7 +13,7 @@
 
 ### Goals
 {{- range .DefinitionOfDone.Goals }}
-- [{{ if eq (printf "%s" .Status) "done" }}x{{ else }} {{ end }}] {{ .Text }}
+- [{{ if .IsDone }}x{{ else }} {{ end }}] {{ .Text }}
 {{- end }}
 
 ### Current State
@@ -52,10 +52,10 @@
 {{- end }}
 ### Automated Verification
 {{- range .Verification.Automated }}
-- [{{ if eq (printf "%s" .Status) "done" }}x{{ else }} {{ end }}] {{ .Text }}
+- [{{ if .IsDone }}x{{ else }} {{ end }}] {{ .Text }}
 {{- end }}
 
 ### Manual Verification
 {{- range .Verification.Manual }}
-- [{{ if eq (printf "%s" .Status) "done" }}x{{ else }} {{ end }}] {{ .Text }}
+- [{{ if .IsDone }}x{{ else }} {{ end }}] {{ .Text }}
 {{- end }}

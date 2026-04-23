@@ -377,6 +377,81 @@ func twoStepPlan() schema.Plan {
 	}
 }
 
+// TestRunPreservesCheckboxesInUntouchedSectionByteIdentical verifies that
+// replacing only the overview section leaves the DoD section byte-identical,
+// including Obsidian-style "- [X]" markers that must not be rewritten to
+// "- [x]". This guards the untouched-section byte-identity invariant.
+func TestRunPreservesCheckboxesInUntouchedSectionByteIdentical(t *testing.T) {
+	plan := twoStepPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+		{Text: "pending goal"},
+		{Text: "done goal", Status: schema.StatusDone},
+	}
+	md, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	// Simulate Obsidian macOS capitalizing [x] to [X] on check.
+	mdWithCapX := strings.ReplaceAll(md, "- [x] done goal", "- [X] done goal")
+	if mdWithCapX == md {
+		t.Fatal("expected to find - [x] done goal in rendered output")
+	}
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	if err := os.WriteFile(src, []byte(mdWithCapX), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patchPath := writePatchJSON(t, "New overview.")
+	outputPath := dir + "/out.md"
+	if _, err := Run(src, ReplaceOptions{Section: "overview"}, patchPath, outputPath); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "- [ ] pending goal") {
+		t.Fatalf("pending goal lost in output:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "- [X] done goal") {
+		t.Fatalf("- [X] rewritten or lost in output (must be byte-identical):\n%s", outStr)
+	}
+	if strings.Contains(outStr, "- [x] done goal") {
+		t.Fatalf("- [x] found: untouched section was re-rendered instead of preserved:\n%s", outStr)
+	}
+}
+
+func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		patch any
+	}{
+		{"plain_strings", []string{"updated goal"}},
+		{"objects", []map[string]string{{"text": "updated goal"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := writeRenderedPlan(t, twoStepPlan())
+			patchPath := writePatchJSON(t, tc.patch)
+			outputPath := t.TempDir() + "/out.md"
+			if _, err := Run(src, ReplaceOptions{Section: "definition_of_done", Subsection: "goals"}, patchPath, outputPath); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			parsed := parseOutputPlan(t, outputPath)
+			if len(parsed.DefinitionOfDone.Goals) != 1 || parsed.DefinitionOfDone.Goals[0].Text != "updated goal" {
+				t.Fatalf("goals mismatch: %+v", parsed.DefinitionOfDone.Goals)
+			}
+		})
+	}
+}
+
+func TestDecodeStrictJSONRejectsTrailingData(t *testing.T) {
+	var s string
+	if err := decodeStrictJSON([]byte(`"valid" trailing`), &s); err == nil {
+		t.Fatal("expected error for trailing data after JSON value")
+	}
+}
+
 func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
 	plan := twoStepPlan()
 	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
