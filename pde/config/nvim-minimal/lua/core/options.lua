@@ -72,6 +72,12 @@ vim.api.nvim_create_autocmd("FileType", {
       vim.b[ev.buf].completion = false
     end
 
+    -- render history as markdown via built-in treesitter
+    if ev.match == "pi-chat-history" then
+      vim.treesitter.language.register("markdown", "pi-chat-history")
+      pcall(vim.treesitter.start, ev.buf, "markdown")
+    end
+
     -- file picker in the prompt — inserts selected path at cursor
     if ev.match == "pi-chat-prompt" then
       vim.keymap.set({ "n", "i" }, "<C-f>", function()
