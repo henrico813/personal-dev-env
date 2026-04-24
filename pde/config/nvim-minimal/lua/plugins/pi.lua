@@ -169,59 +169,50 @@ local function most_recent_session()
   return files[1]
 end
 
-local function restore_pi_from_cache()
-  pi_log("callback fired")
-  local client = require("pi.state").get("rpc_client")
-  if not client then
-    pi_log("no client — fallback PiChat")
-    pcall(vim.cmd, "PiChat")
-    return
-  end
-
+local function resolve_target_session()
   local path
   local f = io.open(pi_session_cache, "r")
   if f then
     path = f:read("*l")
     f:close()
   end
-  pi_log("cached path: " .. (path or "nil"))
-
   if not path or path == "" or vim.fn.filereadable(path) == 0 then
     path = most_recent_session()
-    pi_log("cache stale, fallback to: " .. (path or "nil"))
   end
-
-  if path and vim.fn.filereadable(path) == 1 then
-    pi_log("calling switch on: " .. path)
-    require("pi.rpc.session").switch(client, path, function(result)
-      pi_log("switch result: " .. vim.inspect(result):sub(1, 300):gsub("\n", " "))
-      vim.schedule(function()
-        pi_log("opening PiChat")
-        pcall(vim.cmd, "PiChat")
-      end)
-    end)
-  else
-    pi_log("no valid path — fallback PiChat")
-    pcall(vim.cmd, "PiChat")
-  end
+  if path and vim.fn.filereadable(path) == 1 then return path end
+  return nil
 end
 
--- Restore pi chat after persistence.nvim finishes loading a session
+-- Restore pi chat after persistence.nvim finishes loading a session.
+-- Launch pi with --session <path> instead of connecting then switching —
+-- switch_session triggers pi's rebindSession() which crashes on FFF.
 vim.api.nvim_create_autocmd("User", {
   pattern = "PersistenceLoadPost",
   callback = function()
+    pi_log("PersistenceLoadPost fired")
     wipe_pi_buffers()
 
+    local path = resolve_target_session()
+    pi_log("target session: " .. (path or "none"))
+
+    -- disconnect any existing pi so we can relaunch with --session flag
     local client = require("pi.state").get("rpc_client")
     if client and client.connected then
-      restore_pi_from_cache()
-    else
-      require("pi").connect(function(success)
-        if not success then return end
-        -- give pi a moment to finish extension init (FFF, etc.) before switching
-        vim.defer_fn(restore_pi_from_cache, 1000)
-      end)
+      pi_log("disconnecting existing pi to relaunch with session")
+      require("pi").disconnect()
     end
+
+    vim.g.pi_launch_session = path
+
+    require("pi").connect(function(success)
+      pi_log("connect result: " .. tostring(success))
+      if success then
+        vim.schedule(function()
+          pi_log("opening PiChat")
+          pcall(vim.cmd, "PiChat")
+        end)
+      end
+    end)
   end,
 })
 
