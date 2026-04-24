@@ -114,3 +114,62 @@ require("pi").setup({
   },
 })
 
+local pi_session_cache = vim.fn.stdpath("data") .. "/pi-last-session.txt"
+
+-- Save current pi session path on exit
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  callback = function()
+    local ok, data = pcall(function() return require("pi.state").get("sessions.current") end)
+    if ok and data and data.sessionFile then
+      local f = io.open(pi_session_cache, "w")
+      if f then f:write(data.sessionFile); f:close() end
+    end
+  end,
+})
+
+local function wipe_pi_buffers()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+    if tail:match("^Pi") then
+      pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end
+  end
+end
+
+local function restore_pi_from_cache()
+  local f = io.open(pi_session_cache, "r")
+  if not f then
+    pcall(vim.cmd, "PiChat")
+    return
+  end
+  local path = f:read("*l")
+  f:close()
+
+  local client = require("pi.state").get("rpc_client")
+  if path and path ~= "" and vim.fn.filereadable(path) == 1 and client then
+    require("pi.rpc.session").switch(client, path, function()
+      vim.schedule(function() pcall(vim.cmd, "PiChat") end)
+    end)
+  else
+    pcall(vim.cmd, "PiChat")
+  end
+end
+
+-- Restore pi chat after persistence.nvim finishes loading a session
+vim.api.nvim_create_autocmd("User", {
+  pattern = "PersistenceLoadPost",
+  callback = function()
+    wipe_pi_buffers()
+
+    local client = require("pi.state").get("rpc_client")
+    if client and client.connected then
+      restore_pi_from_cache()
+    else
+      require("pi").connect(function(success)
+        if not success then return end
+        vim.schedule(restore_pi_from_cache)
+      end)
+    end
+  end,
+})
+
