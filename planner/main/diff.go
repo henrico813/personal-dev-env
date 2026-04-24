@@ -1,0 +1,56 @@
+package main
+
+import "strings"
+
+// diffLines produces a minimal per-line diff between a and b. Identical lines
+// are shown with a leading "  ", lines only in a with "- ", lines only in b
+// with "+ ". Callers use this to preview planner output before --write; the
+// output is readable by humans and easy to assert against in tests.
+func diffLines(a, b string) string {
+	if a == b || strings.TrimRight(a, "\n") == strings.TrimRight(b, "\n") {
+		return ""
+	}
+	aLines := splitLines(a)
+	bLines := splitLines(b)
+
+	head := 0
+	for head < len(aLines) && head < len(bLines) && aLines[head] == bLines[head] {
+		head++
+	}
+	aTail := len(aLines)
+	bTail := len(bLines)
+	for aTail > head && bTail > head && aLines[aTail-1] == bLines[bTail-1] {
+		aTail--
+		bTail--
+	}
+
+	var out strings.Builder
+	for i := 0; i < head; i++ {
+		out.WriteString("  ")
+		out.WriteString(aLines[i])
+		out.WriteByte('\n')
+	}
+	for i := head; i < aTail; i++ {
+		out.WriteString("- ")
+		out.WriteString(aLines[i])
+		out.WriteByte('\n')
+	}
+	for i := head; i < bTail; i++ {
+		out.WriteString("+ ")
+		out.WriteString(bLines[i])
+		out.WriteByte('\n')
+	}
+	for i := aTail; i < len(aLines); i++ {
+		out.WriteString("  ")
+		out.WriteString(aLines[i])
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
+}
