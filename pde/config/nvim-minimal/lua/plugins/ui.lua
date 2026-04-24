@@ -12,17 +12,16 @@ require("lualine").setup({
     lualine_x = {
       {
         function()
-          local ok, data = pcall(function() return require("pi.state").get("sessions.current") end)
-          if ok and data and data.sessionName then
-            local name = data.sessionName
+          local ok, name = pcall(function() return require("pi.state").get("agent.session_name") end)
+          if ok and name and name ~= "" then
             if #name > 30 then name = name:sub(1, 27) .. "..." end
             return "󰑴 " .. name
           end
           return ""
         end,
         cond = function()
-          local ok, client = pcall(function() return require("pi.state").get("rpc_client") end)
-          return ok and client ~= nil
+          local ok, name = pcall(function() return require("pi.state").get("agent.session_name") end)
+          return ok and name ~= nil and name ~= ""
         end,
       },
       "encoding", "fileformat", "filetype",
