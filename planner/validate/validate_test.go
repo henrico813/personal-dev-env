@@ -13,7 +13,7 @@ func validPlan() schema.Plan {
 		Overview: "Add goal-count and goal-length validation for rendered plans.",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Goals should stay short and capped so the rendered markdown stays scannable.",
-			Goals:        []string{"Rendered plan goals follow the configured limits."},
+			Goals:        []schema.ChecklistItem{{Text: "Rendered plan goals follow the configured limits."}},
 			CurrentState: "The planner currently requires at least one goal but does not cap count or length.",
 			ModuleShape:  "Validation remains centralized in planner/validate.",
 		},
@@ -36,9 +36,9 @@ func validPlan() schema.Plan {
 
 func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = make([]string, maxDefinitionOfDoneGoals)
+	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, maxDefinitionOfDoneGoals)
 	for i := range plan.DefinitionOfDone.Goals {
-		plan.DefinitionOfDone.Goals[i] = strings.Repeat("a", maxDefinitionOfDoneGoalLength)
+		plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: strings.Repeat("a", maxDefinitionOfDoneGoalLength)}
 	}
 
 	if err := ValidatePlan(plan); err != nil {
@@ -48,9 +48,9 @@ func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
 
 func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = make([]string, maxDefinitionOfDoneGoals+1)
+	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, maxDefinitionOfDoneGoals+1)
 	for i := range plan.DefinitionOfDone.Goals {
-		plan.DefinitionOfDone.Goals[i] = "short goal"
+		plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: "short goal"}
 	}
 
 	err := ValidatePlan(plan)
@@ -64,7 +64,7 @@ func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 
 func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = []string{strings.Repeat("a", maxDefinitionOfDoneGoalLength+1)}
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: strings.Repeat("a", maxDefinitionOfDoneGoalLength+1)}}
 
 	err := ValidatePlan(plan)
 	if err == nil {
@@ -72,5 +72,43 @@ func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 	}
 	if got, want := err.Error(), "definition_of_done.goals[0] must be no more than 88 characters"; got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
+	}
+}
+
+func TestValidatePlanRejectsInvalidGoalStatus(t *testing.T) {
+	plan := validPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: "goal", Status: "started"}}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for invalid goal status")
+	}
+}
+
+func TestValidatePlanRejectsEmptyGoalText(t *testing.T) {
+	plan := validPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: "  "}}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for empty goal text")
+	}
+}
+
+func TestValidatePlanRejectsEmptyVerificationItemText(t *testing.T) {
+	plan := validPlan()
+	plan.Verification = &schema.Verification{
+		Automated: []schema.ChecklistItem{{Text: ""}},
+		Manual:    []schema.ChecklistItem{{Text: "m"}},
+	}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for empty automated text")
+	}
+}
+
+func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
+	plan := validPlan()
+	plan.Verification = &schema.Verification{
+		Automated: []schema.ChecklistItem{{Text: "a", Status: "invalid"}},
+		Manual:    []schema.ChecklistItem{{Text: "m"}},
+	}
+	if err := ValidatePlan(plan); err == nil {
+		t.Fatal("expected error for invalid automated status")
 	}
 }
