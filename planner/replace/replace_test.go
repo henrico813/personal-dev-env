@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"planner/inspect"
@@ -118,12 +119,12 @@ func TestRunReplacesOnlyRequestedStep(t *testing.T) {
 	patchPath := writePatchJSON(t, patch)
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected steps replaced: %+v", contract.StepsReplaced)
+	if len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected steps replaced: %+v", result.StepsReplaced)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -182,12 +183,12 @@ func TestRunReplacesOverview(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated overview")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if contract.Section != "overview" || contract.Appended {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if result.Section != "overview" || result.Appended {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -205,12 +206,12 @@ func TestRunReplacesDefinitionOfDoneSubsection(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated shape")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if contract.Subsection != "module_shape" {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if result.Subsection != "module_shape" {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -225,8 +226,8 @@ func TestRunReplacesVerification(t *testing.T) {
 	sourcePath := writeRenderedPlan(t, plan)
 	patchPath := writePatchJSON(t, schema.Verification{
 		Summary:   "Updated verification",
-		Automated: []string{"go test ./... -run TestRunReplacesVerification"},
-		Manual:    []string{"smoke"},
+		Automated: []schema.ChecklistItem{{Text: "go test ./... -run TestRunReplacesVerification"}},
+		Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
@@ -257,12 +258,12 @@ func TestRunAppendsStep(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !contract.Appended || len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 3 {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if !result.Appended || len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 3 {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -287,12 +288,12 @@ func TestRunAppendsStepToEmptyImplementation(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !contract.Appended || contract.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if !result.Appended || result.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -344,7 +345,7 @@ func twoStepPlan() schema.Plan {
 		Overview: "Overview",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Narrative",
-			Goals:        []string{"Goal"},
+			Goals:        []schema.ChecklistItem{{Text: "Goal"}},
 			CurrentState: "Current",
 			ModuleShape:  "Shape",
 		},
@@ -370,8 +371,99 @@ func twoStepPlan() schema.Plan {
 		},
 		Verification: &schema.Verification{
 			Summary:   "Summary",
-			Automated: []string{"go test ./..."},
-			Manual:    []string{"smoke"},
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
+	}
+}
+
+func TestReplacePreservesUntouchedSections(t *testing.T) {
+	plan := twoStepPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+		{Text: "pending goal"},
+		{Text: "done goal", Status: schema.StatusDone},
+	}
+	md, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	// Simulate Obsidian macOS capitalizing [x] to [X] on check.
+	mdWithCapX := strings.ReplaceAll(md, "- [x] done goal", "- [X] done goal")
+	if mdWithCapX == md {
+		t.Fatal("expected to find - [x] done goal in rendered output")
+	}
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	if err := os.WriteFile(src, []byte(mdWithCapX), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patchPath := writePatchJSON(t, "New overview.")
+	outputPath := dir + "/out.md"
+	if _, err := Run(src, ReplaceOptions{Section: "overview"}, patchPath, outputPath); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	out, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "- [ ] pending goal") {
+		t.Fatalf("pending goal lost in output:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "- [X] done goal") {
+		t.Fatalf("- [X] rewritten or lost in output (must be byte-identical):\n%s", outStr)
+	}
+	if strings.Contains(outStr, "- [x] done goal") {
+		t.Fatalf("- [x] found: untouched section was re-rendered instead of preserved:\n%s", outStr)
+	}
+}
+
+func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		patch any
+	}{
+		{"plain_strings", []string{"updated goal"}},
+		{"objects", []map[string]string{{"text": "updated goal"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := writeRenderedPlan(t, twoStepPlan())
+			patchPath := writePatchJSON(t, tc.patch)
+			outputPath := t.TempDir() + "/out.md"
+			if _, err := Run(src, ReplaceOptions{Section: "definition_of_done", Subsection: "goals"}, patchPath, outputPath); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			parsed := parseOutputPlan(t, outputPath)
+			if len(parsed.DefinitionOfDone.Goals) != 1 || parsed.DefinitionOfDone.Goals[0].Text != "updated goal" {
+				t.Fatalf("goals mismatch: %+v", parsed.DefinitionOfDone.Goals)
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsTrailingData(t *testing.T) {
+	var s string
+	if err := decodeStrictJSON([]byte(`"valid" trailing`), &s); err == nil {
+		t.Fatal("expected error for trailing data after JSON value")
+	}
+}
+
+func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
+	plan := twoStepPlan()
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+		{Text: "pending goal"},
+		{Text: "done goal", Status: schema.StatusDone},
+	}
+	sourcePath := writeRenderedPlan(t, plan)
+
+	out, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"New overview."`))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	if !strings.Contains(out, "- [ ] pending goal") {
+		t.Fatalf("lost pending checkbox state:\n%s", out)
+	}
+	if !strings.Contains(out, "- [x] done goal") {
+		t.Fatalf("lost done checkbox state:\n%s", out)
 	}
 }
