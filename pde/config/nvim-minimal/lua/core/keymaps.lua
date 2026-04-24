@@ -22,6 +22,8 @@ map("n", "<leader>/", "<cmd>FzfLua blines<cr>", { desc = "Search buffer" })
 
 -- terminal
 map("t", "<C-q>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
+map("n", "<C-/>", "<cmd>split | terminal<cr><cmd>startinsert<cr>", { desc = "Open terminal" })
+map("n", "<C-_>", "<cmd>split | terminal<cr><cmd>startinsert<cr>", { desc = "Open terminal" })
 
 -- misc
 map("n", "<Esc>", "<cmd>nohlsearch<cr>")
