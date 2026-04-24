@@ -89,6 +89,12 @@ install_nvim_minimal() {
         fi
     done
 
+    # Install pi-nvim wrapper (launches pi without the buggy pi-pretty extension)
+    local user_bin="$HOME/.local/bin"
+    mkdir -p "$user_bin"
+    link_config "$src_dir/bin/pi-nvim" "$user_bin/pi-nvim"
+    chmod +x "$src_dir/bin/pi-nvim"
+
     # Build blink.cmp native fuzzy library
     if command -v cargo &>/dev/null && [[ -d "$pack_dir/blink.cmp" ]]; then
         log "Building blink.cmp..."

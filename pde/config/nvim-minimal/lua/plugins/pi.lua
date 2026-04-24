@@ -1,4 +1,5 @@
 require("pi").setup({
+  bin = "pi-nvim",
   layout = {
     default = "side",
     side = { position = "right", width = 80 },
