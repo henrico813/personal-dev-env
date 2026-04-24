@@ -49,14 +49,21 @@ require("bufferline").setup({
       vim.api.nvim_set_current_buf(bufnum)
     end,
     name_formatter = function(buf)
+      -- tab-level entries (right indicators)
       if buf.tabnr then
         local named = vim.t[buf.tabnr].name
         if named and named ~= "" then return named end
         for _, win in ipairs(vim.api.nvim_tabpage_list_wins(buf.tabnr)) do
           local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype or ""
-          if ft:match("^Diffview") or ft == "DiffviewFiles" then return "Diff" end
+          if ft:match("^Diffview") then return "Diff" end
           if ft:match("^pi%-chat") then return "Pi" end
         end
+      end
+      -- buffer-level entries (main strip)
+      if buf.bufnr then
+        local ft = vim.bo[buf.bufnr].filetype or ""
+        if ft:match("^Diffview") then return "Diff" end
+        if ft:match("^pi%-chat") then return "Pi" end
       end
       return buf.name
     end,
