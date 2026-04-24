@@ -27,10 +27,26 @@ require("lualine").setup({
   },
 })
 
+-- jump to the first non-winfixbuf window in the current tab so a
+-- subsequent buffer switch doesn't hit pi's locked panels
+local function ensure_editable_win()
+  if not vim.wo.winfixbuf then return end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if not vim.wo[win].winfixbuf then
+      vim.api.nvim_set_current_win(win)
+      return
+    end
+  end
+end
+
 require("bufferline").setup({
   options = {
     diagnostics = "nvim_lsp",
     separator_style = "thin",
     always_show_bufferline = false,
+    left_mouse_command = function(bufnum)
+      ensure_editable_win()
+      vim.api.nvim_set_current_buf(bufnum)
+    end,
   },
 })
