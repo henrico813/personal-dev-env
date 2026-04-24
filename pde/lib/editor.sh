@@ -75,6 +75,7 @@ install_nvim_minimal() {
         "https://github.com/linrongbin16/gitlinker.nvim"
         "https://github.com/folke/persistence.nvim"
         "https://github.com/goolord/alpha-nvim"
+        "https://github.com/alex35mil/pi.nvim"
     )
 
     for url in "${plugins[@]}"; do
