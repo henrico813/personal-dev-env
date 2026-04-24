@@ -68,7 +68,8 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 | `grugfar.lua` | grug-far | search & replace across files |
 | `whichkey.lua` | which-key | leader discovery popup |
 | `session.lua` | persistence | per-cwd session save / restore |
-| `alpha.lua` | alpha | start dashboard |
+| `alpha.lua` | alpha | side-by-side dashboard (image + session list) |
+| `header.ansi` | — | chafa-generated colored image used by the dashboard |
 | `render-markdown.lua` | render-markdown | markdown + pi chat rendering |
 | `pi.lua` | alex35mil/pi.nvim | pi coding agent |
 
@@ -179,6 +180,27 @@ Pi.nvim (alex35mil's version) spawns one `pi --mode rpc` subprocess per tab. We 
 The wrapper avoids it without uninstalling pi-pretty globally. It reads `~/.pi/agent/settings.json`, and launches pi with `--no-extensions` plus explicit `-e <path>` for every configured extension *except* pi-pretty. Extensions added later via `pi install` are picked up automatically — no wrapper edit needed.
 
 Source lives at `pde/config/nvim-minimal/bin/pi-nvim` and gets symlinked to `~/.local/bin/pi-nvim` by `install_nvim_minimal()` in `pde/lib/editor.sh`.
+
+---
+
+## Dashboard (alpha)
+
+Custom side-by-side layout: colored ASCII image on the left, menu + session list on the right, centered in the window (recomputes top padding on resize).
+
+The image comes from `header.ansi`, a pre-rendered file produced by **chafa**. Neovim parses the ANSI escape sequences at startup, creates one highlight group per distinct color, and applies them per-row in alpha. chafa is only needed to *regenerate* the file.
+
+### Regenerate the header image
+
+```bash
+chafa --format=symbols --symbols="ascii,-space" --size=45x22 --fg-only \
+  /path/to/image.png > ~/.config/nvim-minimal/header.ansi
+```
+
+The `-space` option prevents blank cells (dark pixels become dots instead of spaces). Width/height scale both dimensions. If you change the image size, `lua/plugins/alpha.lua` auto-adapts — it measures rows at load time.
+
+### Session list
+
+The right column lists the 5 most recent persistence.nvim sessions (mtime-sorted). Pressing `1`–`5` `cd`s into that project and runs `:lua require('persistence').load()`. Core menu entries (`f`, `r`, `g`, `q`) stay above the sessions separator.
 
 ---
 
