@@ -1,5 +1,5 @@
 require("which-key").setup({
-  delay = 300,
+  delay = 0,
   preset = "helix",
   spec = {
     {
@@ -12,6 +12,7 @@ require("which-key").setup({
       { "<leader>s",  group = "search" },
       { "<leader>u",  group = "ui" },
       { "<leader>x",  group = "diagnostics/quickfix" },
+      { "<leader>p",  group = "pi agent" },
       { "<leader>w",  group = "windows", proxy = "<c-w>" },
       { "[",          group = "prev" },
       { "]",          group = "next" },
