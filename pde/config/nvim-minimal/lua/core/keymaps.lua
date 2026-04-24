@@ -53,6 +53,12 @@ map("n", "<leader><Tab>h",     "<cmd>tabprevious<cr>",  { desc = "Prev tab" })
 map("n", "<leader><Tab>f",     "<cmd>tabfirst<cr>",     { desc = "First tab" })
 map("n", "<leader><Tab>L",     "<cmd>tablast<cr>",      { desc = "Last tab" })
 map("n", "<leader><Tab>T",     "<C-w>T",                { desc = "Move window to new tab" })
+map("n", "<leader><Tab>j", function()
+  vim.ui.input({ prompt = "Tab #: " }, function(input)
+    local n = tonumber(input)
+    if n then pcall(vim.cmd, n .. "tabnext") end
+  end)
+end, { desc = "Jump to tab #" })
 
 -- terminal
 map("t", "<C-q>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
