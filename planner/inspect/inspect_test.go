@@ -15,7 +15,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		Overview: "Overview text.",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []string{"One goal"},
+			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
@@ -41,8 +41,8 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		},
 		Verification: &schema.Verification{
 			Summary:   "Verification summary.",
-			Automated: []string{"go test ./..."},
-			Manual:    []string{"smoke"},
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 		Overview: "Overview text.",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []string{"One goal"},
+			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
@@ -97,8 +97,8 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 		}},
 		Verification: &schema.Verification{
 			Summary:   "Verification summary.",
-			Automated: []string{"go test ./..."},
-			Manual:    []string{"smoke"},
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
@@ -133,15 +133,15 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		Overview: "Overview text.",
 		DefinitionOfDone: schema.DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []string{"One goal"},
+			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
 		Implementation: nil,
 		Verification: &schema.Verification{
 			Summary:   "Verification summary.",
-			Automated: []string{"go test ./..."},
-			Manual:    []string{"smoke"},
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
@@ -185,5 +185,52 @@ func TestSectionBodyAllowsThematicBreakInContent(t *testing.T) {
 	}
 	if !strings.Contains(body, "thematic break") {
 		t.Fatal("body should include content after thematic break")
+	}
+}
+
+// TestRoundTripPreservesCheckboxStatus verifies that render -> inspect -> render
+// produces byte-identical output and preserves mixed StatusPending/StatusDone
+// states across the full cycle.
+func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
+	plan := schema.Plan{
+		Title:    "Round-trip",
+		Overview: "Overview.",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    "Narrative.",
+			Goals:        []schema.ChecklistItem{{Text: "Pending goal"}, {Text: "Done goal", Status: schema.StatusDone}},
+			CurrentState: "Current.",
+			ModuleShape:  "Shape.",
+		},
+		Implementation: []schema.Step{{
+			Title:   "Step",
+			Summary: "summary",
+			FileChanges: []schema.FileChange{{Filename: "f.go", Explanation: "why", Diff: "@@ -1 +1 @@\n-a\n+b"}},
+		}},
+		Verification: &schema.Verification{
+			Summary:   "",
+			Automated: []schema.ChecklistItem{{Text: "auto"}, {Text: "done auto", Status: schema.StatusDone}},
+			Manual:    []schema.ChecklistItem{{Text: "manual"}},
+		},
+	}
+
+	md, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+
+	parsed, _, _, err := ParseMarkdown(md)
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	if !reflect.DeepEqual(parsed, plan) {
+		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
+	}
+
+	rerendered, err := render.RenderPlan(parsed)
+	if err != nil {
+		t.Fatalf("RenderPlan (re-render): %v", err)
+	}
+	if md != rerendered {
+		t.Fatalf("re-render not byte-identical:\nfirst=%q\nsecond=%q", md, rerendered)
 	}
 }

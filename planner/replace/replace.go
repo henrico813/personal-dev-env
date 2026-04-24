@@ -36,23 +36,46 @@ type ReplaceOptions struct {
 // Run replaces the targeted section or subsection in sourcePath with the patch
 // from patchPath, writing the result atomically to outputPath.
 func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath string) (Contract, error) {
-	if err := validateOpts(opts); err != nil {
+	patchRaw, err := os.ReadFile(patchPath)
+	if err != nil {
 		return Contract{}, err
+	}
+	return RunFromData(sourcePath, opts, patchRaw, outputPath)
+}
+
+// RunFromData is Run but with pre-read patch bytes, so the CLI can stream the
+// patch from stdin without staging a temp file. Behavior is otherwise
+// identical: source read from sourcePath, output written atomically to
+// outputPath, non-targeted sections preserved byte-for-byte.
+func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (Contract, error) {
+	out, contract, err := PreviewFromData(sourcePath, opts, patchRaw)
+	if err != nil {
+		return Contract{}, err
+	}
+	if err := WriteAtomic(outputPath, []byte(out)); err != nil {
+		return Contract{}, err
+	}
+	return contract, nil
+}
+
+// PreviewFromData runs the replace logic in memory and returns the post-splice
+// string plus the Contract. It performs no writes, so --diff can render an
+// accurate preview with no filesystem side effects. All existing error shapes
+// (invalid section, parse, validation, preservation) surface here; writes no
+// longer gate them.
+func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (string, Contract, error) {
+	if err := validateOpts(opts); err != nil {
+		return "", Contract{}, err
 	}
 
 	sourceRaw, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
 	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(sourceRaw))
 	if err != nil {
-		return Contract{}, err
-	}
-
-	patchRaw, err := os.ReadFile(patchPath)
-	if err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
 	updated := plan
@@ -62,49 +85,46 @@ func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath st
 	case "overview":
 		var text string
 		if err := decodeStrictJSON(patchRaw, &text); err != nil {
-			return Contract{}, err
+			return "", Contract{}, err
 		}
 		updated.Overview = text
 	case "definition_of_done":
 		if err := applyDoDPatch(&updated, opts.Subsection, patchRaw); err != nil {
-			return Contract{}, err
+			return "", Contract{}, err
 		}
 	case "implementation":
 		var err error
 		stepsReplaced, appended, err = applyImplementationPatch(&updated, opts, patchRaw)
 		if err != nil {
-			return Contract{}, err
+			return "", Contract{}, err
 		}
 	case "verification":
 		var v schema.Verification
 		if err := decodeStrictJSON(patchRaw, &v); err != nil {
-			return Contract{}, err
+			return "", Contract{}, err
 		}
 		updated.Verification = &v
 	}
 
 	if err := validate.ValidatePlan(updated); err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
 	out, err := applySplice(string(sourceRaw), updated, opts, sectionSpans, stepSpans)
 	if err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
 	_, newSectionSpans, newStepSpans, err := inspect.ParseMarkdown(out)
 	if err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
 	if err := assertPreserved(string(sourceRaw), out, opts, sectionSpans, newSectionSpans, stepSpans, newStepSpans); err != nil {
-		return Contract{}, err
-	}
-	if err := writeAtomic(outputPath, []byte(out)); err != nil {
-		return Contract{}, err
+		return "", Contract{}, err
 	}
 
-	return Contract{
+	return out, Contract{
 		Section:       opts.Section,
 		Subsection:    opts.Subsection,
 		StepsReplaced: stepsReplaced,
@@ -147,7 +167,7 @@ func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error 
 		}
 		plan.DefinitionOfDone.Narrative = s
 	case "goals":
-		var goals []string
+		var goals []schema.ChecklistItem
 		if err := decodeStrictJSON(patchRaw, &goals); err != nil {
 			return err
 		}
@@ -318,7 +338,10 @@ func rawAt(raw string, span inspect.Span) string {
 	return raw[span.Start:span.End]
 }
 
-func writeAtomic(path string, data []byte) error {
+// WriteAtomic writes data to path via a temp file + rename. Exported so the
+// CLI preview path can commit after PreviewFromData without re-running the
+// full replace pipeline.
+func WriteAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
