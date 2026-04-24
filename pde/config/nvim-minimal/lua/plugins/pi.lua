@@ -1,5 +1,6 @@
 require("pi").setup({
   auto_connect = false,
+  auto_open_panel = false,
   approval_mode = true,
   keymaps = {
     toggle_panel = "<leader>pt",
@@ -8,4 +9,23 @@ require("pi").setup({
     approve      = "<leader>pa",
     reject       = "<leader>pr",
   },
+})
+
+vim.api.nvim_create_autocmd("SessionLoadPost", {
+  callback = function()
+    -- wipe stale pi buffers from session before reconnecting
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+      if tail:match("^Pi") then
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+      end
+    end
+
+    -- reconnect and open chat if pi agent is running
+    require("pi").connect(function(success)
+      if success then
+        vim.cmd("PiChat")
+      end
+    end)
+  end,
 })

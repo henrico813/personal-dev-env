@@ -48,6 +48,21 @@ local function clamp_pi_windows()
   end
 end
 
+vim.api.nvim_create_autocmd("SessionLoadPost", {
+  callback = function()
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+      if tail:match("^Pi") then
+        vim.wo[win].number = false
+        vim.wo[win].relativenumber = false
+        vim.wo[win].linebreak = true
+      end
+    end
+    clamp_pi_windows()
+  end,
+})
+
 vim.api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
   callback = clamp_pi_windows,
 })
