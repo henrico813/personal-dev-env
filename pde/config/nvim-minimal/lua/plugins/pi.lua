@@ -210,6 +210,9 @@ vim.api.nvim_create_autocmd("User", {
         vim.schedule(function()
           pi_log("opening PiChat")
           pcall(vim.cmd, "PiChat")
+          -- populate agent state immediately for lualine
+          local c = require("pi.state").get("rpc_client")
+          if c then pcall(function() require("pi.rpc.agent").status(c, function() end) end) end
         end)
       end
     end)
