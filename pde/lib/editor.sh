@@ -76,6 +76,7 @@ install_nvim_minimal() {
         "https://github.com/folke/persistence.nvim"
         "https://github.com/goolord/alpha-nvim"
         "https://github.com/alex35mil/pi.nvim"
+        "https://github.com/sindrets/diffview.nvim"
     )
 
     for url in "${plugins[@]}"; do
