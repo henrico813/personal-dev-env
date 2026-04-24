@@ -32,5 +32,3 @@ end
 map("n", "<leader>gl", "<cmd>FzfLua git_commits<cr>", { desc = "Git log" })
 map("n", "<leader>gL", "<cmd>FzfLua git_commits cwd=" .. vim.fn.getcwd() .. "<cr>", { desc = "Git log (cwd)" })
 map("n", "<leader>gf", "<cmd>FzfLua git_bcommits<cr>", { desc = "Git file history" })
-map("n", "<leader>gs", "<cmd>FzfLua git_status<cr>", { desc = "Git status" })
-map("n", "<leader>gS", "<cmd>FzfLua git_stash<cr>", { desc = "Git stash" })
