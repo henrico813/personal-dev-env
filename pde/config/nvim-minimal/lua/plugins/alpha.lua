@@ -220,3 +220,13 @@ dashboard.config.layout = {
 }
 
 alpha.setup(dashboard.config)
+
+-- Dynamic vertical centering — recompute top padding on enter/resize.
+local content_rows = math.max(#image, #menu) + 2
+local function recenter()
+  if vim.bo.filetype ~= "alpha" then return end
+  local pad = math.max(1, math.floor((vim.o.lines - content_rows) / 2))
+  dashboard.config.layout[1].val = pad
+  pcall(require("alpha").redraw)
+end
+vim.api.nvim_create_autocmd({ "VimEnter", "VimResized" }, { callback = recenter })
