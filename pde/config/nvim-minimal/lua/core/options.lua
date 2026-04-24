@@ -17,6 +17,7 @@ opt.clipboard = "unnamedplus"
 opt.undofile = true
 opt.updatetime = 200
 opt.cursorline = true
+opt.linebreak = true
 opt.mouse = "a"
 opt.fillchars = { vert = "│", eob = " " }
 opt.winbar = "%=%t %m"
@@ -31,13 +32,17 @@ vim.api.nvim_set_hl(0, "PiStatusBar",    { fg = "#c0caf5", bg = "#16161e", bold 
 vim.api.nvim_set_hl(0, "PiStatusBarNC",  { fg = "#3b4261", bg = "#16161e" })
 
 local function clamp_pi_windows()
-  local max_width = math.floor(vim.o.columns * 0.33)
+  local max_width = math.floor(vim.o.columns * 0.40)
+  local min_width = math.floor(vim.o.columns * 0.25)
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     local buf = vim.api.nvim_win_get_buf(win)
     local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
     if name:match("^Pi") then
-      if vim.api.nvim_win_get_width(win) > max_width then
+      local width = vim.api.nvim_win_get_width(win)
+      if width > max_width then
         vim.api.nvim_win_set_width(win, max_width)
+      elseif width < min_width then
+        vim.api.nvim_win_set_width(win, min_width)
       end
     end
   end
