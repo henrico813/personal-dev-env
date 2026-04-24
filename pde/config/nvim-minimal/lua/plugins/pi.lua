@@ -31,12 +31,18 @@ map("n", "<leader>pK", "<cmd>PiCompact<cr>",         { desc = "Compact context" 
 map("n", "<leader>pN", "<cmd>PiSessionName<cr>",     { desc = "Set session name" })
 map("n", "<leader>pd", "<cmd>PiToggleDebug<cr>",     { desc = "Toggle debug logging" })
 
--- Auto-continue last pi session after persistence restore
+-- Auto-continue last pi session after persistence restore.
+-- Wipe zombie pi-chat-* buffers restored from the session file before
+-- calling PiContinue so we don't end up with duplicates.
 vim.api.nvim_create_autocmd("User", {
   pattern = "PersistenceLoadPost",
   callback = function()
-    vim.schedule(function()
-      pcall(vim.cmd, "PiContinue")
-    end)
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      local ft = vim.bo[buf].filetype or ""
+      if ft:match("^pi%-chat") then
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+      end
+    end
+    vim.schedule(function() pcall(vim.cmd, "PiContinue") end)
   end,
 })
