@@ -1,25 +1,19 @@
 local alpha = require("alpha")
-local theta = require("alpha.themes.theta")
+local dashboard = require("alpha.themes.dashboard")
 
--- Parse a chafa --fg-only ANSI file into alpha header lines with per-run colors.
--- Returns a list of { text, hl = {{ "HL", start, stop }, ... } } per line.
-local function load_ansi_header(path)
+-- Parse a chafa --fg-only ANSI file into { { text, hl = {{"HL", s, e}, ...} }, ... }
+local function load_ansi(path)
   local f = io.open(path, "r")
   if not f then return nil end
   local raw = f:read("*a")
   f:close()
-
-  -- strip chafa's cursor show/hide sequences that can appear anywhere
   raw = raw:gsub("\27%[%?25[lh]", "")
 
-  local out = {}
+  local lines = {}
   for line in raw:gmatch("([^\r\n]+)") do
     if line ~= "" then
-      local text_buf = {}
-      local col = 0
-      local hl = {}
-      local run_hex, run_start = nil, 0
-      local cur_hex = nil
+      local text_buf, col, hl = {}, 0, {}
+      local cur_hex, run_hex, run_start = nil, nil, 0
       local i = 1
       while i <= #line do
         local r, g, b, e = line:match("^\27%[38;2;(%d+);(%d+);(%d+)m()", i)
@@ -51,10 +45,10 @@ local function load_ansi_header(path)
       if run_hex then
         table.insert(hl, { "NeuroHL_" .. run_hex, run_start, col })
       end
-      table.insert(out, { text = table.concat(text_buf), hl = hl })
+      table.insert(lines, { text = table.concat(text_buf), width = col, hl = hl })
     end
   end
-  return out
+  return lines
 end
 
 local function register_highlights(parsed)
@@ -71,34 +65,158 @@ local function register_highlights(parsed)
   end
 end
 
-local function build_header(parsed)
+-- Build side-by-side layout: image on the left, menu entries on the right.
+-- Returns an alpha "group" element containing one composed text element per row.
+local function build_side_by_side(image, menu, gap)
+  gap = gap or 4
+  local image_w, menu_w = 0, 0
+  for _, l in ipairs(image) do if l.width > image_w then image_w = l.width end end
+  for _, m in ipairs(menu) do if #m.text > menu_w then menu_w = #m.text end end
+  local total_w = image_w + gap + menu_w
+
+  local rows = math.max(#image, #menu)
+  -- vertically center the menu against the image
+  local menu_offset = math.floor((#image - #menu) / 2)
+  if menu_offset < 0 then menu_offset = 0 end
+
   local elements = {}
-  for _, line in ipairs(parsed) do
+  for i = 1, rows do
+    local img = image[i]
+    local menu_idx = i - menu_offset
+    local m = menu[menu_idx]
+
+    local text, hl
+    if img then
+      text = img.text .. string.rep(" ", image_w - img.width + gap)
+      hl = {}
+      for _, spec in ipairs(img.hl) do
+        table.insert(hl, { spec[1], spec[2], spec[3] })
+      end
+    else
+      text = string.rep(" ", image_w + gap)
+      hl = {}
+    end
+    if m then
+      local menu_col = #text
+      text = text .. m.text
+      if m.hl then
+        table.insert(hl, { m.hl, menu_col, #text })
+      end
+      if m.shortcut_hl then
+        local sc_start = text:find(m.shortcut, menu_col + 1, true)
+        if sc_start then
+          table.insert(hl, { m.shortcut_hl, sc_start - 1, sc_start - 1 + #m.shortcut })
+        end
+      end
+    end
+    -- pad every row to the same width so alpha centers them identically
+    if #text < total_w then
+      text = text .. string.rep(" ", total_w - #text)
+    end
+
     table.insert(elements, {
       type = "text",
-      val = line.text,
-      opts = { position = "center", hl = line.hl },
+      val = text,
+      opts = { position = "center", hl = hl, shortcut = m and m.shortcut or nil },
     })
   end
-  return { type = "group", val = elements, opts = { position = "center" } }
+
+  -- Attach keymaps for each menu row so the shortcut still works
+  for i, entry in ipairs(menu) do
+    if entry.shortcut and entry.command then
+      local row_idx = i + menu_offset
+      local element = elements[row_idx]
+      if element then
+        element.on_press = function()
+          if type(entry.command) == "function" then entry.command()
+          else vim.cmd(entry.command) end
+        end
+      end
+    end
+  end
+
+  return { type = "group", val = elements }
 end
 
-local parsed = load_ansi_header(vim.fn.stdpath("config") .. "/header.ansi")
-if parsed then
-  register_highlights(parsed)
-  theta.config.layout[2] = build_header(parsed)
+local image = load_ansi(vim.fn.stdpath("config") .. "/header.ansi") or {}
+register_highlights(image)
+
+-- List the top N persistence.nvim sessions, most recent first, each mapped to a
+-- chdir + load function.
+local function session_entries(n)
+  n = n or 5
+  local dir = vim.fn.stdpath("state") .. "/sessions"
+  local files = vim.fn.globpath(dir, "*.vim", false, true)
+  local entries = {}
+  for _, f in ipairs(files) do
+    local stat = vim.loop.fs_stat(f)
+    if stat then table.insert(entries, { path = f, mtime = stat.mtime.sec }) end
+  end
+  table.sort(entries, function(a, b) return a.mtime > b.mtime end)
+
+  local out = {}
+  for i, e in ipairs(entries) do
+    if i > n then break end
+    -- persistence encodes cwd as %-separated path with %% for the branch suffix
+    local name = vim.fn.fnamemodify(e.path, ":t:r")
+    local cwd_part, branch = name:match("(.-)%%%%(.*)$")
+    if not cwd_part then cwd_part = name end
+    local cwd = cwd_part:gsub("%%", "/")
+    local label = vim.fn.fnamemodify(cwd, ":t") .. (branch and (" (" .. branch .. ")") or "")
+    local shortcut = tostring(i)
+    table.insert(out, {
+      text = shortcut .. "  " .. label,
+      shortcut = shortcut,
+      shortcut_hl = "Keyword",
+      hl = "Type",
+      command = function()
+        vim.cmd("cd " .. vim.fn.fnameescape(cwd))
+        require("persistence").load()
+      end,
+    })
+  end
+  return out
 end
 
--- push the header down toward the middle of the screen
-theta.config.layout[1].val = 6
-
-local buttons = require("alpha.themes.dashboard").button
-theta.config.layout[6].val = {
-  buttons("s", "  restore session",  function() require("persistence").load() end),
-  buttons("f", "  find file",        "<cmd>FzfLua files<cr>"),
-  buttons("r", "  recent files",     "<cmd>FzfLua oldfiles<cr>"),
-  buttons("g", "  live grep",        "<cmd>FzfLua live_grep<cr>"),
-  buttons("q", "  quit",             "<cmd>qa<cr>"),
+local menu = {
+  { text = "f  find file",       shortcut = "f", shortcut_hl = "Keyword",
+    hl = "Type", command = "FzfLua files" },
+  { text = "r  recent files",    shortcut = "r", shortcut_hl = "Keyword",
+    hl = "Type", command = "FzfLua oldfiles" },
+  { text = "g  live grep",       shortcut = "g", shortcut_hl = "Keyword",
+    hl = "Type", command = "FzfLua live_grep" },
+  { text = "q  quit",            shortcut = "q", shortcut_hl = "Keyword",
+    hl = "Type", command = "qa" },
 }
 
-alpha.setup(theta.config)
+-- Append session entries with a separator
+local sessions = session_entries(5)
+if #sessions > 0 then
+  table.insert(menu, { text = "── sessions ──", hl = "Comment" })
+  for _, s in ipairs(sessions) do table.insert(menu, s) end
+end
+
+-- Bind hotkeys globally so they trigger inside alpha regardless of row
+local alpha_bufnr
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "alpha",
+  callback = function(ev)
+    alpha_bufnr = ev.buf
+    for _, entry in ipairs(menu) do
+      if entry.shortcut and entry.command then
+        vim.keymap.set("n", entry.shortcut, function()
+          if type(entry.command) == "function" then entry.command()
+          else vim.cmd(entry.command) end
+        end, { buffer = ev.buf, nowait = true, silent = true })
+      end
+    end
+  end,
+})
+
+dashboard.config.layout = {
+  { type = "padding", val = 4 },
+  build_side_by_side(image, menu, 6),
+  { type = "padding", val = 2 },
+}
+
+alpha.setup(dashboard.config)
