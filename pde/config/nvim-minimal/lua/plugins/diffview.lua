@@ -39,15 +39,6 @@ map("n", "<leader>gr", function()
   end)
 end, { desc = "Diff arbitrary range" })
 
--- Run git or gh synchronously, return (stdout|nil, stderr)
-local function run(cmd, cwd)
-  local res = vim.system(cmd, { cwd = cwd, text = true }):wait()
-  local out = (res.stdout or ""):gsub("\n$", "")
-  local err = (res.stderr or ""):gsub("\n$", "")
-  if res.code ~= 0 then return nil, err end
-  return out, err
-end
-
 -- Pick a directory with fzf-lua, open diffview there
 map("n", "<leader>gD", function()
   local cmd
