@@ -92,6 +92,7 @@ main() {
             install_tools
             install_tools_full   # adds trash-cli
             install_editor
+            install_nvim_minimal
             install_ai           # nvm, node, claude
             install_fonts
             install_configs
