@@ -136,21 +136,54 @@ local function wipe_pi_buffers()
   end
 end
 
+-- Pi stores sessions at ~/.pi/agent/sessions/--<cwd-with-slashes-replaced>--/
+local function pi_session_dir()
+  local cwd = vim.fn.getcwd():gsub("^/", ""):gsub("/", "-")
+  return vim.fn.expand("~/.pi/agent/sessions/--" .. cwd .. "--")
+end
+
+local function most_recent_session()
+  local dir = pi_session_dir()
+  if vim.fn.isdirectory(dir) == 0 then return nil end
+  local files = vim.fn.globpath(dir, "*.jsonl", false, true)
+  if #files == 0 then return nil end
+  table.sort(files, function(a, b) return a > b end)  -- newest first (timestamp prefix)
+  return files[1]
+end
+
 local function restore_pi_from_cache()
-  local f = io.open(pi_session_cache, "r")
-  if not f then
+  vim.notify("[pi restore] callback fired", vim.log.levels.INFO)
+  local client = require("pi.state").get("rpc_client")
+  if not client then
+    vim.notify("[pi restore] no client", vim.log.levels.WARN)
     pcall(vim.cmd, "PiChat")
     return
   end
-  local path = f:read("*l")
-  f:close()
 
-  local client = require("pi.state").get("rpc_client")
-  if path and path ~= "" and vim.fn.filereadable(path) == 1 and client then
-    require("pi.rpc.session").switch(client, path, function()
-      vim.schedule(function() pcall(vim.cmd, "PiChat") end)
+  local path
+  local f = io.open(pi_session_cache, "r")
+  if f then
+    path = f:read("*l")
+    f:close()
+  end
+  vim.notify("[pi restore] cached path: " .. (path or "nil"), vim.log.levels.INFO)
+
+  if not path or path == "" or vim.fn.filereadable(path) == 0 then
+    path = most_recent_session()
+    vim.notify("[pi restore] falling back to: " .. (path or "nil"), vim.log.levels.WARN)
+  end
+
+  if path and vim.fn.filereadable(path) == 1 then
+    vim.notify("[pi restore] calling switch", vim.log.levels.INFO)
+    require("pi.rpc.session").switch(client, path, function(result)
+      vim.notify("[pi restore] switch result: " .. vim.inspect(result):sub(1, 200), vim.log.levels.INFO)
+      vim.schedule(function()
+        vim.notify("[pi restore] opening PiChat", vim.log.levels.INFO)
+        pcall(vim.cmd, "PiChat")
+      end)
     end)
   else
+    vim.notify("[pi restore] no valid path — fallback PiChat", vim.log.levels.WARN)
     pcall(vim.cmd, "PiChat")
   end
 end
@@ -167,7 +200,8 @@ vim.api.nvim_create_autocmd("User", {
     else
       require("pi").connect(function(success)
         if not success then return end
-        vim.schedule(restore_pi_from_cache)
+        -- give pi a moment to finish extension init (FFF, etc.) before switching
+        vim.defer_fn(restore_pi_from_cache, 1000)
       end)
     end
   end,
