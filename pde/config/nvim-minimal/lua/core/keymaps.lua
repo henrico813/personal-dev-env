@@ -6,9 +6,25 @@ map("n", "<C-j>", "<C-w>j")
 map("n", "<C-k>", "<C-w>k")
 map("n", "<C-l>", "<C-w>l")
 
+-- jump to the first non-winfixbuf window in the current tab before
+-- triggering a buffer switch (pi panels set winfixbuf and refuse loads)
+local function in_editable_win()
+  if not vim.wo.winfixbuf then return end
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if not vim.wo[win].winfixbuf then
+      vim.api.nvim_set_current_win(win)
+      return
+    end
+  end
+end
+
+local function safe(cmd)
+  return function() in_editable_win(); vim.cmd(cmd) end
+end
+
 -- buffers
-map("n", "<S-h>",       "<cmd>BufferLineCyclePrev<cr>",  { desc = "Prev buffer" })
-map("n", "<S-l>",       "<cmd>BufferLineCycleNext<cr>",  { desc = "Next buffer" })
+map("n", "<S-h>",       safe("BufferLineCyclePrev"),     { desc = "Prev buffer" })
+map("n", "<S-l>",       safe("BufferLineCycleNext"),     { desc = "Next buffer" })
 map("n", "<leader>bb",  "<cmd>FzfLua buffers<cr>",       { desc = "Pick buffer" })
 map("n", "<leader>bd",  "<cmd>bdelete<cr>",              { desc = "Delete buffer" })
 map("n", "<leader>bD",  "<cmd>bdelete!<cr>",             { desc = "Delete buffer (force)" })
