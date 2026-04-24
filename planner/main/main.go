@@ -274,7 +274,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	exit := runPreviewAgainstSource(stdout, stderr, pf, out, sourcePath, outputPath, "replace", func() error {
 		return replace.WriteAtomic(outputPath, []byte(out))
 	})
-	if exit != 0 || !pf.write {
+	if exit != 0 || !pf.write || pf.diff {
 		return exit
 	}
 
