@@ -13,6 +13,8 @@ require("which-key").setup({
       { "<leader>u",  group = "ui" },
       { "<leader>x",  group = "diagnostics/quickfix" },
       { "<leader>p",  group = "pi agent" },
+      { "<leader>q",  group = "session" },
+      { "<leader>m",  group = "mason" },
       { "<leader>w",  group = "windows", proxy = "<c-w>" },
       { "[",          group = "prev" },
       { "]",          group = "next" },
