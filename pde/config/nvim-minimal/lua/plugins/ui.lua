@@ -12,16 +12,12 @@ require("lualine").setup({
     lualine_x = {
       {
         function()
-          local ok, name = pcall(function() return require("pi.state").get("agent.session_name") end)
-          if ok and name and name ~= "" then
-            if #name > 30 then name = name:sub(1, 27) .. "..." end
-            return "󰑴 " .. name
-          end
-          return ""
+          local ok, count = pcall(function() return require("pi").attention_count() end)
+          return (ok and count and count > 0) and ("󱆅 " .. count) or ""
         end,
         cond = function()
-          local ok, name = pcall(function() return require("pi.state").get("agent.session_name") end)
-          return ok and name ~= nil and name ~= ""
+          local ok, visible = pcall(function() return require("pi").is_visible() end)
+          return ok and visible
         end,
       },
       "encoding", "fileformat", "filetype",
