@@ -235,12 +235,9 @@ func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
 		return schema.DefinitionOfDone{}, fmt.Errorf("definition of done missing module shape")
 	}
 
-	goals := []string{}
-	for _, line := range strings.Split(goalsAndRest[0], "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ] ") {
-			goals = append(goals, strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")))
-		}
+	goals, err := parseChecklistItems(goalsAndRest[0])
+	if err != nil {
+		return schema.DefinitionOfDone{}, err
 	}
 
 	return schema.DefinitionOfDone{
@@ -359,22 +356,53 @@ func parseVerification(body string) (*schema.Verification, error) {
 		return nil, fmt.Errorf("missing manual verification section")
 	}
 
+	automated, err := parseChecklistItems(manual[0])
+	if err != nil {
+		return nil, err
+	}
+	manualItems, err := parseChecklistItems(manual[1])
+	if err != nil {
+		return nil, err
+	}
 	return &schema.Verification{
 		Summary:   strings.TrimSpace(parts[0]),
-		Automated: parseChecklist(manual[0]),
-		Manual:    parseChecklist(manual[1]),
+		Automated: automated,
+		Manual:    manualItems,
 	}, nil
 }
 
-func parseChecklist(raw string) []string {
-	items := []string{}
+// parseChecklistItems reads "- [ ] text", "- [x] text", and "- [X] text"
+// lines into typed ChecklistItem values. Uppercase [X] is produced by
+// Obsidian on macOS when a task is checked via cmd-enter. Returns an error
+// for lines that start with "- [" but use an unrecognized marker, so data
+// loss from silently dropped lines is caught at parse time.
+func parseChecklistItems(raw string) ([]schema.ChecklistItem, error) {
+	items := []schema.ChecklistItem{}
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ] ") {
-			items = append(items, strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")))
+		if !strings.HasPrefix(trimmed, "- [") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(trimmed, "- [ ] "):
+			items = append(items, schema.ChecklistItem{
+				Text: strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")),
+			})
+		case strings.HasPrefix(trimmed, "- [x] "):
+			items = append(items, schema.ChecklistItem{
+				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [x] ")),
+				Status: schema.StatusDone,
+			})
+		case strings.HasPrefix(trimmed, "- [X] "):
+			items = append(items, schema.ChecklistItem{
+				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [X] ")),
+				Status: schema.StatusDone,
+			})
+		default:
+			return nil, fmt.Errorf("malformed checklist line: %q", trimmed)
 		}
 	}
-	return items
+	return items, nil
 }
 
 func parseFence(line string) (string, bool) {
