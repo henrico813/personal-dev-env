@@ -48,5 +48,26 @@ require("bufferline").setup({
       ensure_editable_win()
       vim.api.nvim_set_current_buf(bufnum)
     end,
+    name_formatter = function(buf)
+      if buf.tabnr then
+        local named = vim.t[buf.tabnr].name
+        if named and named ~= "" then return named end
+        for _, win in ipairs(vim.api.nvim_tabpage_list_wins(buf.tabnr)) do
+          local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype or ""
+          if ft:match("^Diffview") or ft == "DiffviewFiles" then return "Diff" end
+          if ft:match("^pi%-chat") then return "Pi" end
+        end
+      end
+      return buf.name
+    end,
   },
 })
+
+-- name the current tab
+vim.keymap.set("n", "<leader><Tab>r", function()
+  vim.ui.input({ prompt = "Tab name: ", default = vim.t.name or "" }, function(input)
+    if input == nil then return end
+    vim.t.name = input
+    vim.cmd("redrawtabline")
+  end)
+end, { desc = "Rename tab" })
