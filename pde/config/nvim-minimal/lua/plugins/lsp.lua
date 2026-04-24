@@ -22,6 +22,13 @@ vim.api.nvim_create_autocmd("LspAttach", {
     map("n", "<leader>ca", vim.lsp.buf.code_action, "Code action")
     map("n", "<leader>cr", vim.lsp.buf.rename, "Rename")
     map("n", "<leader>cf", function() vim.lsp.buf.format({ async = true }) end, "Format")
+    map("n", "<leader>cd", vim.diagnostic.open_float,                              "Line diagnostics")
+    map("n", "<leader>ci", function()
+      local buf = ev.buf
+      vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = buf }), { bufnr = buf })
+    end,                                                                           "Toggle inlay hints")
+    map("n", "<leader>cw", function() require("fzf-lua").lsp_live_workspace_symbols() end, "Workspace symbols")
+    map("n", "<leader>cD", function() require("fzf-lua").lsp_document_symbols() end,       "Document symbols")
     map("n", "[d", vim.diagnostic.goto_prev, "Prev diagnostic")
     map("n", "]d", vim.diagnostic.goto_next, "Next diagnostic")
   end,
