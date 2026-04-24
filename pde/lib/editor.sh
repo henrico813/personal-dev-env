@@ -77,6 +77,10 @@ install_nvim_minimal() {
         "https://github.com/goolord/alpha-nvim"
         "https://github.com/alex35mil/pi.nvim"
         "https://github.com/sindrets/diffview.nvim"
+        "https://github.com/mason-org/mason.nvim"
+        "https://github.com/mason-org/mason-lspconfig.nvim"
+        "https://github.com/neovim/nvim-lspconfig"
+        "https://github.com/MeanderingProgrammer/render-markdown.nvim"
     )
 
     for url in "${plugins[@]}"; do
