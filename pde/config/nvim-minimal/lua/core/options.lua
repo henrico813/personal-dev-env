@@ -75,9 +75,27 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
       vim.wo.number = false
       vim.wo.relativenumber = false
       vim.wo.linebreak = true
+      if tail ~= "PiChatInput" then
+        vim.b.completion = false
+      end
     end
     if tail == "PiChatInput" then
       vim.wo.winhighlight = "Normal:PiNormal,WinBar:PiInputBar,WinBarNC:PiInputBarNC"
+      local buf = vim.api.nvim_get_current_buf()
+      vim.keymap.set({ "n", "i" }, "<C-f>", function()
+        require("fzf-lua").files({
+          actions = {
+            ["default"] = function(selected)
+              if selected and selected[1] then
+                local path = selected[1]:gsub("^%s*[^%s]+%s+", "")
+                vim.api.nvim_buf_call(buf, function()
+                  vim.api.nvim_put({ path }, "c", true, true)
+                end)
+              end
+            end,
+          },
+        })
+      end, { buffer = buf, desc = "Insert file path" })
     elseif tail == "PiChatStatus" then
       vim.wo.winhighlight = "Normal:PiNormal,WinBar:PiStatusBar,WinBarNC:PiStatusBarNC"
     elseif tail:match("^Pi") then
