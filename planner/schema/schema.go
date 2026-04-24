@@ -37,6 +37,9 @@ type ChecklistItem struct {
 	Status ChecklistStatus `json:"status,omitempty"`
 }
 
+// IsDone reports whether the item is in the done state.
+func (c ChecklistItem) IsDone() bool { return c.Status == StatusDone }
+
 type DefinitionOfDone struct {
 	Narrative    string          `json:"narrative"`
 	Goals        []ChecklistItem `json:"goals"`
@@ -63,9 +66,14 @@ type Verification struct {
 }
 
 func DecodePlan(data []byte) (Plan, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
 	var plan Plan
-	if err := json.Unmarshal(data, &plan); err != nil {
+	if err := dec.Decode(&plan); err != nil {
 		return Plan{}, err
+	}
+	if dec.More() {
+		return Plan{}, fmt.Errorf("trailing data after plan JSON")
 	}
 	return plan, nil
 }

@@ -156,6 +156,35 @@ func VerifyRenderedText(rendered string, plan schema.Plan) error {
 		}
 	}
 
+	for _, goal := range plan.DefinitionOfDone.Goals {
+		marker := "- [ ] "
+		if goal.IsDone() {
+			marker = "- [x] "
+		}
+		if !strings.Contains(rendered, marker+goal.Text) {
+			return fmt.Errorf("missing rendered goal: %q", goal.Text)
+		}
+	}
+	if plan.Verification != nil {
+		for _, item := range plan.Verification.Automated {
+			marker := "- [ ] "
+			if item.IsDone() {
+				marker = "- [x] "
+			}
+			if !strings.Contains(rendered, marker+item.Text) {
+				return fmt.Errorf("missing rendered automated check: %q", item.Text)
+			}
+		}
+		for _, item := range plan.Verification.Manual {
+			marker := "- [ ] "
+			if item.IsDone() {
+				marker = "- [x] "
+			}
+			if !strings.Contains(rendered, marker+item.Text) {
+				return fmt.Errorf("missing rendered manual check: %q", item.Text)
+			}
+		}
+	}
 	return nil
 }
 
@@ -167,12 +196,10 @@ func ReadPlanFile(path string) (schema.Plan, error) {
 	return schema.DecodePlan(data)
 }
 
-// validStatus is the single source of truth for the ChecklistStatus enum. The
-// empty string is allowed for backward compatibility (plain-string goals).
+// validStatus is the single source of truth for allowed runtime statuses.
+// StatusPending is not accepted here because UnmarshalJSON normalizes it
+// to "" at the decode boundary; any "pending" value reaching ValidatePlan
+// came from code that bypassed the decoder and is therefore invalid.
 func validStatus(s schema.ChecklistStatus) bool {
-	switch s {
-	case "", schema.StatusPending, schema.StatusDone:
-		return true
-	}
-	return false
+	return s == "" || s == schema.StatusDone
 }

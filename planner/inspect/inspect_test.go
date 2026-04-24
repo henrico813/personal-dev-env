@@ -162,6 +162,13 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 	}
 }
 
+func TestParseChecklistItemsRejectsMalformedMarker(t *testing.T) {
+	_, err := parseChecklistItems("- [?] bad marker")
+	if err == nil {
+		t.Fatal("expected error for unrecognized marker")
+	}
+}
+
 func TestParseMarkdownRejectsCRLF(t *testing.T) {
 	_, _, _, err := ParseMarkdown("# Title\r\n## Overview\r\n")
 	if err == nil || !strings.Contains(err.Error(), "CRLF") {
