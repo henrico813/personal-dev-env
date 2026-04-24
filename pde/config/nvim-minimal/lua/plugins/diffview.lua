@@ -27,7 +27,7 @@ end
 local map = vim.keymap.set
 
 -- PR review: current branch vs default base (what this branch changed)
-map("n", "<leader>gp", function()
+map("n", "<leader>gd", function()
   local base = default_branch()
   vim.cmd("tabnew | DiffviewOpen " .. base .. "...HEAD")
 end, { desc = "Diff current branch (PR view)" })
@@ -49,7 +49,7 @@ local function run(cmd, cwd)
 end
 
 -- Pick a directory with fzf-lua, open diffview there
-map("n", "<leader>gP", function()
+map("n", "<leader>gD", function()
   local cmd
   if vim.fn.executable("fd") == 1 then
     cmd = "fd --type d --hidden --exclude .git"
