@@ -243,3 +243,51 @@ func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
 func validPlanJSON() []byte {
 	return []byte(`{"title":"T","overview":"O","definition_of_done":{"narrative":"N","goals":["g"],"current_state":"C","module_shape":"M"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"@@ -1 +1 @@\n-a\n+b"}]}],"verification":{"summary":"","automated":["A"],"manual":["M"]}}`)
 }
+
+func TestReplaceReadsStdinPatch(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", src, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	patch := []byte(`"Updated overview text."`)
+	withStdin(t, patch, func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin", "--write"}, &stdout, &stderr)
+		if exit != 0 {
+			t.Fatalf("replace exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), "Updated overview text.") {
+		t.Fatalf("replaced overview not present:\n%s", string(data))
+	}
+}
+
+func TestDiffAndWriteDoesNotEmitContract(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", src, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+	patch := []byte(`"Fresh overview text."`)
+	withStdin(t, patch, func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin", "--diff", "--write"}, &stdout, &stderr)
+		if exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if strings.Contains(stdout.String(), `"section"`) {
+			t.Fatalf("contract JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
+		}
+	})
+}

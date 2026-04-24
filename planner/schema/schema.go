@@ -93,7 +93,11 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch r.Status {
-	case "", StatusPending, StatusDone:
+	case "", StatusPending:
+		*c = ChecklistItem(r)
+		c.Status = ""
+		return nil
+	case StatusDone:
 		*c = ChecklistItem(r)
 		return nil
 	default:
