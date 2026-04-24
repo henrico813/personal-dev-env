@@ -22,7 +22,7 @@ opt.fillchars = { vert = "│", eob = " " }
 opt.winbar = "%=%t %m"
 
 vim.api.nvim_set_hl(0, "VertSplit",   { fg = "#7aa2f7", bg = "NONE" })
-vim.api.nvim_set_hl(0, "PiNormal",        { bg = "#292e42" })
+vim.api.nvim_set_hl(0, "PiNormal",        { bg = "#16161e" })
 vim.api.nvim_set_hl(0, "PiChatBar",      { fg = "#7aa2f7", bg = "#16161e", bold = true })
 vim.api.nvim_set_hl(0, "PiChatBarNC",    { fg = "#3b4261", bg = "#16161e" })
 vim.api.nvim_set_hl(0, "PiInputBar",     { fg = "#9ece6a", bg = "#16161e", bold = true })
@@ -30,21 +30,37 @@ vim.api.nvim_set_hl(0, "PiInputBarNC",   { fg = "#3b4261", bg = "#16161e" })
 vim.api.nvim_set_hl(0, "PiStatusBar",    { fg = "#c0caf5", bg = "#16161e", bold = true })
 vim.api.nvim_set_hl(0, "PiStatusBarNC",  { fg = "#3b4261", bg = "#16161e" })
 
+local function clamp_pi_windows()
+  local max_width = math.floor(vim.o.columns * 0.33)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+    if name:match("^Pi") then
+      if vim.api.nvim_win_get_width(win) > max_width then
+        vim.api.nvim_win_set_width(win, max_width)
+      end
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd({ "WinResized", "VimResized" }, {
+  callback = clamp_pi_windows,
+})
+
 vim.api.nvim_create_autocmd("BufWinEnter", {
   callback = function()
     local name = vim.api.nvim_buf_get_name(0)
     local tail = vim.fn.fnamemodify(name, ":t")
-    if tail == "PiChatInput" then
+    if tail:match("^Pi") then
       vim.wo.number = false
       vim.wo.relativenumber = false
+      vim.wo.linebreak = true
+    end
+    if tail == "PiChatInput" then
       vim.wo.winhighlight = "Normal:PiNormal,WinBar:PiInputBar,WinBarNC:PiInputBarNC"
     elseif tail == "PiChatStatus" then
-      vim.wo.number = false
-      vim.wo.relativenumber = false
       vim.wo.winhighlight = "Normal:PiNormal,WinBar:PiStatusBar,WinBarNC:PiStatusBarNC"
     elseif tail:match("^Pi") then
-      vim.wo.number = false
-      vim.wo.relativenumber = false
       vim.wo.winhighlight = "Normal:PiNormal,WinBar:PiChatBar,WinBarNC:PiChatBarNC"
     end
   end,
