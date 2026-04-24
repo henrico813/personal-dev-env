@@ -13,19 +13,18 @@ require("pi").setup({
 
 vim.api.nvim_create_autocmd("SessionLoadPost", {
   callback = function()
-    -- wipe stale pi buffers from session before reconnecting
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
-      if tail:match("^Pi") then
-        pcall(vim.api.nvim_buf_delete, buf, { force = true })
-      end
-    end
-
-    -- reconnect and open chat if pi agent is running
     require("pi").connect(function(success)
-      if success then
-        vim.cmd("PiChat")
+      if not success then return end
+
+      -- pi is running: wipe stale session buffers so the new chat is the only one
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":t")
+        if tail:match("^Pi") then
+          pcall(vim.api.nvim_buf_delete, buf, { force = true })
+        end
       end
+
+      vim.cmd("PiChat")
     end)
   end,
 })
