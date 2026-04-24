@@ -1,6 +1,12 @@
 require("which-key").setup({
   delay = 0,
   preset = "helix",
+  icons = {
+    mappings = false,
+  },
+  filter = function(mapping)
+    return mapping.desc and mapping.desc ~= ""
+  end,
   spec = {
     {
       mode = { "n", "x" },
