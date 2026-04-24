@@ -11,6 +11,7 @@ map("n", "<leader>ps", "<cmd>PiSession<cr>",       { desc = "Session info" })
 map("n", "<leader>pn", "<cmd>PiSessionNew<cr>",    { desc = "New session" })
 map("n", "<leader>pf", "<cmd>PiSessionFork<cr>",   { desc = "Fork session (picker)" })
 map("n", "<leader>pS", "<cmd>PiSessionStats<cr>",  { desc = "Session stats" })
+map("n", "<leader>pL", "<cmd>PiRestoreLogs<cr>",   { desc = "Pi restore log" })
 
 -- commands that need args — prompt the user
 map("n", "<leader>pN", function()
@@ -116,6 +117,23 @@ require("pi").setup({
 
 local pi_session_cache = vim.fn.stdpath("data") .. "/pi-last-session.txt"
 
+-- in-memory ring buffer of recent pi restore events
+local pi_logs = {}
+local PI_LOG_MAX = 100
+
+local function pi_log(msg)
+  table.insert(pi_logs, os.date("%H:%M:%S") .. " " .. msg)
+  if #pi_logs > PI_LOG_MAX then table.remove(pi_logs, 1) end
+end
+
+vim.api.nvim_create_user_command("PiRestoreLogs", function()
+  local lines = #pi_logs > 0 and pi_logs or { "(no events yet)" }
+  vim.api.nvim_echo(
+    vim.tbl_map(function(l) return { l .. "\n" } end, lines),
+    true, {}
+  )
+end, { desc = "Show pi restore log" })
+
 -- Save current pi session path on exit
 vim.api.nvim_create_autocmd("VimLeavePre", {
   callback = function()
@@ -152,10 +170,10 @@ local function most_recent_session()
 end
 
 local function restore_pi_from_cache()
-  vim.notify("[pi restore] callback fired", vim.log.levels.INFO)
+  pi_log("callback fired")
   local client = require("pi.state").get("rpc_client")
   if not client then
-    vim.notify("[pi restore] no client", vim.log.levels.WARN)
+    pi_log("no client — fallback PiChat")
     pcall(vim.cmd, "PiChat")
     return
   end
@@ -166,24 +184,24 @@ local function restore_pi_from_cache()
     path = f:read("*l")
     f:close()
   end
-  vim.notify("[pi restore] cached path: " .. (path or "nil"), vim.log.levels.INFO)
+  pi_log("cached path: " .. (path or "nil"))
 
   if not path or path == "" or vim.fn.filereadable(path) == 0 then
     path = most_recent_session()
-    vim.notify("[pi restore] falling back to: " .. (path or "nil"), vim.log.levels.WARN)
+    pi_log("cache stale, fallback to: " .. (path or "nil"))
   end
 
   if path and vim.fn.filereadable(path) == 1 then
-    vim.notify("[pi restore] calling switch", vim.log.levels.INFO)
+    pi_log("calling switch on: " .. path)
     require("pi.rpc.session").switch(client, path, function(result)
-      vim.notify("[pi restore] switch result: " .. vim.inspect(result):sub(1, 200), vim.log.levels.INFO)
+      pi_log("switch result: " .. vim.inspect(result):sub(1, 300):gsub("\n", " "))
       vim.schedule(function()
-        vim.notify("[pi restore] opening PiChat", vim.log.levels.INFO)
+        pi_log("opening PiChat")
         pcall(vim.cmd, "PiChat")
       end)
     end)
   else
-    vim.notify("[pi restore] no valid path — fallback PiChat", vim.log.levels.WARN)
+    pi_log("no valid path — fallback PiChat")
     pcall(vim.cmd, "PiChat")
   end
 end
