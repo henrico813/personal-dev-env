@@ -148,6 +148,8 @@ func ValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
 		"definition_of_done.goals must contain between 1 and 8 items",
+		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
+		"verification checklist items must have non-empty text; object status may be pending or done",
 		"each definition_of_done.goals item must be at most 88 characters",
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",

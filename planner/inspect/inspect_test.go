@@ -209,8 +209,8 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 			ModuleShape:  "Shape.",
 		},
 		Implementation: []schema.Step{{
-			Title:   "Step",
-			Summary: "summary",
+			Title:       "Step",
+			Summary:     "summary",
 			FileChanges: []schema.FileChange{{Filename: "f.go", Explanation: "why", Diff: "@@ -1 +1 @@\n-a\n+b"}},
 		}},
 		Verification: &schema.Verification{
