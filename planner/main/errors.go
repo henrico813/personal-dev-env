@@ -1,9 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 )
+
+type jsonErrResponse struct {
+	Error string `json:"error"`
+}
 
 type PlannerErrorCode int
 
@@ -58,6 +64,15 @@ func newPlannerCLIError(code PlannerErrorCode, err error, subject string) *Plann
 		Code:    code,
 		Message: msg,
 		Err:     err,
+	}
+}
+
+func writeErr(w io.Writer, jsonErrors bool, msg string) {
+	if jsonErrors {
+		b, _ := json.Marshal(jsonErrResponse{Error: msg})
+		fmt.Fprintf(w, "%s\n", b)
+	} else {
+		fmt.Fprintln(w, msg)
 	}
 }
 
