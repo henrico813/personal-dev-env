@@ -197,9 +197,8 @@ func ReadPlanFile(path string) (schema.Plan, error) {
 }
 
 // validStatus is the single source of truth for allowed runtime statuses.
-// StatusPending is not accepted here because UnmarshalJSON normalizes it
-// to "" at the decode boundary; any "pending" value reaching ValidatePlan
-// came from code that bypassed the decoder and is therefore invalid.
+// Unchecked items are represented as empty status; pending is normalized away
+// at the JSON boundary.
 func validStatus(s schema.ChecklistStatus) bool {
 	return s == "" || s == schema.StatusDone
 }

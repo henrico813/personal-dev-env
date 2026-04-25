@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"planner/schema"
+	"planner/validate"
 )
 
 func TestShowSchemaIncludesRules(t *testing.T) {
@@ -49,6 +51,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	requiredSnippets := []string{
 		"Prints a JSON object with plan_example and validation_rules.",
 		"Use only plan_example as input to planner validate and planner create.",
+		"planner generate <output.json>",
 		"planner inspect <plan.md>",
 		"planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--write]",
 		"--subsection <name-or-index>",
@@ -197,6 +200,8 @@ func TestWriteOnlyPrintsOutputPath(t *testing.T) {
 	})
 }
 
+// withStdin routes data through os.Stdin for the duration of fn via a real
+// os.Pipe (no mock). Tests exercise the production Execute path end-to-end.
 func withStdin(t *testing.T, data []byte, fn func()) {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -239,91 +244,6 @@ func TestReplaceWriteFailureEmitsNoResult(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "{") {
 		t.Fatalf("replace result JSON must not be emitted on write failure; stdout = %q", stdout.String())
-	}
-}
-
-func TestValidateSurfacesSchemaErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   func(t *testing.T) []byte
-		wantErr string
-	}{
-		{
-			name:    "trailing_data",
-			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
-			wantErr: "trailing data after plan JSON",
-		},
-		{
-			name: "unknown_field",
-			input: func(t *testing.T) []byte {
-				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
-			},
-			wantErr: "unknown field",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := dir + "/plan.json"
-			if err := os.WriteFile(path, tc.input(t), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			assertCommandError(t, []string{"validate", path}, "validate:", tc.wantErr, 1)
-		})
-	}
-}
-
-func TestCreateSurfacesSchemaErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   func(t *testing.T) []byte
-		wantErr string
-	}{
-		{
-			name:    "trailing_data",
-			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
-			wantErr: "trailing data after plan JSON",
-		},
-		{
-			name: "unknown_field",
-			input: func(t *testing.T) []byte {
-				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
-			},
-			wantErr: "unknown field",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			inputPath := dir + "/plan.json"
-			outputPath := dir + "/out.md"
-			if err := os.WriteFile(inputPath, tc.input(t), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			assertCommandError(t, []string{"create", inputPath, outputPath}, "create:", tc.wantErr, 1)
-			if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
-				t.Fatalf("output should not be written on validation error, stat err = %v", err)
-			}
-		})
-	}
-}
-
-func assertCommandError(t *testing.T, args []string, wantPrefix, wantErr string, wantExit int) {
-	t.Helper()
-	var stdout, stderr bytes.Buffer
-	exit := Execute(args, &stdout, &stderr)
-	if exit != wantExit {
-		t.Fatalf("exit = %d, want %d; stderr = %q", exit, wantExit, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), wantPrefix) {
-		t.Fatalf("stderr missing command prefix %q: %q", wantPrefix, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), wantErr) {
-		t.Fatalf("stderr missing schema error %q: %q", wantErr, stderr.String())
 	}
 }
 
@@ -374,6 +294,193 @@ func mustJSON(v any) []byte {
 	return raw
 }
 
+func TestGenerateWritesValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/draft.json"
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"generate", out}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit %d stderr %q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), out) {
+		t.Fatalf("stdout missing output path: %q", stdout.String())
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	plan, err := schema.DecodePlan(data)
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	if err := validate.ValidatePlan(plan); err != nil {
+		t.Fatalf("ValidatePlan: %v", err)
+	}
+}
+
+func TestGenerateExitsUsageWithNoArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"generate"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit %d want 2", exit)
+	}
+	if !strings.Contains(stderr.String(), "usage: planner generate") {
+		t.Fatalf("missing usage in stderr: %q", stderr.String())
+	}
+}
+
+func TestGenerateRejectsDashOutputPath(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"generate", "-"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit %d want 2", exit)
+	}
+	if strings.Contains(stdout.String(), "-\n") {
+		t.Fatalf("unexpected stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "usage: planner generate <output.json>") {
+		t.Fatalf("missing usage in stderr: %q", stderr.String())
+	}
+}
+
+func TestRepairFixesUnescapedNewlineInDiffField(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, brokenDiffJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "repaired") {
+			t.Fatalf("expected repair notice on stderr, got %q", stderr.String())
+		}
+	})
+	rendered, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read rendered output: %v", err)
+	}
+	for _, want := range []string{"@@ -1 +1 @@", "-a", "+b"} {
+		if !strings.Contains(string(rendered), want) {
+			t.Fatalf("rendered output missing %q:\n%s", want, string(rendered))
+		}
+	}
+}
+
+func TestValidateSurfacesSchemaErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   func(t *testing.T) []byte
+		wantErr string
+	}{
+		{
+			name:    "trailing_data",
+			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr: "trailing data after plan JSON",
+		},
+		{
+			name: "unknown_field",
+			input: func(t *testing.T) []byte {
+				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
+			},
+			wantErr: "unknown field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := dir + "/plan.json"
+			if err := os.WriteFile(path, tc.input(t), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			assertCommandError(t, []string{"validate", path}, "validate:", tc.wantErr, 1)
+		})
+	}
+}
+
+func TestCreateSurfacesSchemaErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   func(t *testing.T) []byte
+		wantErr string
+	}{
+		{
+			name:    "trailing_data",
+			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr: "trailing data after plan JSON",
+		},
+		{
+			name: "unknown_field",
+			input: func(t *testing.T) []byte {
+				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
+			},
+			wantErr: "unknown field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			inputPath := dir + "/plan.json"
+			outputPath := dir + "/out.md"
+			if err := os.WriteFile(inputPath, tc.input(t), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			assertCommandError(t, []string{"create", inputPath, outputPath}, "create:", tc.wantErr, 1)
+			if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+				t.Fatalf("output should not be written on validation error, stat err = %v", err)
+			}
+		})
+	}
+}
+
+func assertCommandError(t *testing.T, args []string, wantPrefix, wantErr string, wantExit int) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	exit := Execute(args, &stdout, &stderr)
+	if exit != wantExit {
+		t.Fatalf("exit = %d, want %d; stderr = %q", exit, wantExit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), wantPrefix) {
+		t.Fatalf("stderr missing command prefix %q: %q", wantPrefix, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), wantErr) {
+		t.Fatalf("stderr missing schema error %q: %q", wantErr, stderr.String())
+	}
+}
+
+func TestRepairIsNoopOnValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/out.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit %d stderr %q", exit, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "repaired") {
+			t.Fatalf("unexpected repair notice for valid JSON: %q", stderr.String())
+		}
+	})
+}
+
+func TestRepairDoesNotClaimSuccessWhenRepairFails(t *testing.T) {
+	input := []byte("{bad}")
+	withStdin(t, input, func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"validate", "--stdin"}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit %d want 1, stderr %q", exit, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "repaired JSON input") {
+			t.Fatalf("unexpected repair notice: %q", stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "decode plan JSON") {
+			t.Fatalf("expected decode failure, got %q", stderr.String())
+		}
+	})
+}
+
+// brokenDiffJSON takes validPlanJSON and replaces the \n escape sequences in
+// the diff field value with literal newline bytes, producing invalid JSON that
+// mirrors the primary LLM output failure mode.
+func brokenDiffJSON() []byte {
+	return []byte(strings.ReplaceAll(string(validPlanJSON()), `\n`, "\n"))
+}
+
 func TestReplaceReadsStdinPatch(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
@@ -400,6 +507,26 @@ func TestReplaceReadsStdinPatch(t *testing.T) {
 	}
 }
 
+func TestReadPlanFromReturnsTypedDecodeError(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/bad.json"
+	if err := os.WriteFile(path, []byte(`{"title":123}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	_, err := readPlanFrom([]string{path}, false, &stderr)
+	if err == nil {
+		t.Fatal("expected typed decode error")
+	}
+	var cliErr *PlannerCLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("expected PlannerCLIError, got %T", err)
+	}
+	if cliErr.Code != PlannerDecodeInputError {
+		t.Fatalf("got code %v, want %v", cliErr.Code, PlannerDecodeInputError)
+	}
+}
+
 func TestDiffAndWriteDoesNotEmitResult(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
@@ -418,6 +545,39 @@ func TestDiffAndWriteDoesNotEmitResult(t *testing.T) {
 		}
 		if strings.Contains(stdout.String(), `"section"`) {
 			t.Fatalf("replace result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
+		}
+	})
+}
+
+func TestReplaceInvalidSourceMarkdownReturnsDecodePlanMarkdownError(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/not-a-plan.md"
+	if err := os.WriteFile(src, []byte("# not a planner doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patch := []byte(`"Fresh overview text."`)
+	withStdin(t, patch, func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin", "--write"}, &stdout, &stderr)
+		if exit != 1 {
+			t.Fatalf("exit %d want 1 stderr %q", exit, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "decode replace patch") {
+			t.Fatalf("misclassified replace error: %q", stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "decode plan markdown") {
+			t.Fatalf("expected plan markdown decode error, got %q", stderr.String())
+		}
+	})
+}
+
+func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
+	dir := t.TempDir()
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"create", dir, "--stdin", "--diff"}, &stdout, &stderr)
+		if exit != 1 {
+			t.Fatalf("exit %d want 1 stderr %q", exit, stderr.String())
 		}
 	})
 }

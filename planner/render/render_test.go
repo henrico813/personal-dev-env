@@ -7,7 +7,7 @@ import (
 	"planner/schema"
 )
 
-func TestRenderPlanEmitsUnchecked(t *testing.T) {
+func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
 	plan := minimalPlan()
 	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: "pending goal"}}
 	out, err := RenderPlan(plan)
