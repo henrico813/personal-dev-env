@@ -196,7 +196,7 @@ func TestSectionBodyAllowsThematicBreakInContent(t *testing.T) {
 }
 
 // TestRoundTripPreservesCheckboxStatus verifies that render -> inspect -> render
-// produces byte-identical output and preserves mixed StatusPending/StatusDone
+// produces byte-identical output and preserves mixed unchecked/done checkbox
 // states across the full cycle.
 func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 	plan := schema.Plan{

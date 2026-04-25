@@ -2,6 +2,7 @@ package replace
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"planner/inspect"
+	"planner/internal/jsoninput"
 	"planner/render"
 	"planner/schema"
 )
@@ -377,6 +379,10 @@ func twoStepPlan() schema.Plan {
 	}
 }
 
+// TestRunPreservesCheckboxesInUntouchedSectionByteIdentical verifies that
+// replacing only the overview section leaves the DoD section byte-identical,
+// including Obsidian-style "- [X]" markers that must not be rewritten to
+// "- [x]". This guards the untouched-section byte-identity invariant.
 func TestReplacePreservesUntouchedSections(t *testing.T) {
 	plan := twoStepPlan()
 	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
@@ -443,8 +449,42 @@ func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
 
 func TestDecodeRejectsTrailingData(t *testing.T) {
 	var s string
-	if err := decodeStrictJSON([]byte(`"valid" trailing`), &s); err == nil {
+	if err := jsoninput.DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
 		t.Fatal("expected error for trailing data after JSON value")
+	}
+}
+
+func TestPreviewFromDataReturnsDecodePatchError(t *testing.T) {
+	sourcePath := writeRenderedPlan(t, twoStepPlan())
+	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`{"not":"a string"}`))
+	if err == nil {
+		t.Fatal("expected decode patch error")
+	}
+	var replaceErr *ReplaceError
+	if !errors.As(err, &replaceErr) {
+		t.Fatalf("expected ReplaceError, got %T", err)
+	}
+	if replaceErr.Code != ReplaceDecodePatchError {
+		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceDecodePatchError)
+	}
+}
+
+func TestPreviewFromDataReturnsParseSourceError(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := dir + "/broken.md"
+	if err := os.WriteFile(sourcePath, []byte("# not a planner doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"new overview"`))
+	if err == nil {
+		t.Fatal("expected parse source error")
+	}
+	var replaceErr *ReplaceError
+	if !errors.As(err, &replaceErr) {
+		t.Fatalf("expected ReplaceError, got %T", err)
+	}
+	if replaceErr.Code != ReplaceParseSourceError {
+		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceParseSourceError)
 	}
 }
 

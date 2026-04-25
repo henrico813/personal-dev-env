@@ -103,10 +103,10 @@ Once aligned on approach:
 
 After structure approval:
 
-1. Run `~/.claude/bin/planner show-schema` to see the expected JSON
-2. Read the **Example Template** below
-3. Produce the expected plan JSON
-4. Run `~/.claude/bin/planner create` to output the rendered issue to the vault
+1. Run `~/.claude/bin/planner generate <draft.json>` to create a valid draft
+2. Edit the draft JSON fields in place
+3. Run `~/.claude/bin/planner validate <draft.json>` to confirm before writing
+4. Run `~/.claude/bin/planner create <draft.json> <output.md>` to render to the vault
 
 Do not emit freeform markdown directly when the installed helper is available.
 
