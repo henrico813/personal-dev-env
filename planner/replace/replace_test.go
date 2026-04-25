@@ -2,6 +2,7 @@ package replace
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"planner/inspect"
+	"planner/internal/jsoninput"
 	"planner/render"
 	"planner/schema"
 )
@@ -119,12 +121,12 @@ func TestRunReplacesOnlyRequestedStep(t *testing.T) {
 	patchPath := writePatchJSON(t, patch)
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
+	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected steps replaced: %+v", result.StepsReplaced)
+	if len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected steps replaced: %+v", contract.StepsReplaced)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -183,12 +185,12 @@ func TestRunReplacesOverview(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated overview")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
+	contract, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if result.Section != "overview" || result.Appended {
-		t.Fatalf("unexpected replace result: %#v", result)
+	if contract.Section != "overview" || contract.Appended {
+		t.Fatalf("unexpected contract: %#v", contract)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -206,12 +208,12 @@ func TestRunReplacesDefinitionOfDoneSubsection(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated shape")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
+	contract, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if result.Subsection != "module_shape" {
-		t.Fatalf("unexpected replace result: %#v", result)
+	if contract.Subsection != "module_shape" {
+		t.Fatalf("unexpected contract: %#v", contract)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -258,12 +260,12 @@ func TestRunAppendsStep(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !result.Appended || len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 3 {
-		t.Fatalf("unexpected replace result: %#v", result)
+	if !contract.Appended || len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 3 {
+		t.Fatalf("unexpected contract: %#v", contract)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -288,12 +290,12 @@ func TestRunAppendsStepToEmptyImplementation(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !result.Appended || result.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected replace result: %#v", result)
+	if !contract.Appended || contract.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected contract: %#v", contract)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -377,7 +379,11 @@ func twoStepPlan() schema.Plan {
 	}
 }
 
-func TestReplacePreservesUntouchedSections(t *testing.T) {
+// TestRunPreservesCheckboxesInUntouchedSectionByteIdentical verifies that
+// replacing only the overview section leaves the DoD section byte-identical,
+// including Obsidian-style "- [X]" markers that must not be rewritten to
+// "- [x]". This guards the untouched-section byte-identity invariant.
+func TestRunPreservesCheckboxesInUntouchedSectionByteIdentical(t *testing.T) {
 	plan := twoStepPlan()
 	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
 		{Text: "pending goal"},
@@ -441,10 +447,44 @@ func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
 	}
 }
 
-func TestDecodeRejectsTrailingData(t *testing.T) {
+func TestDecodeStrictRejectsTrailingData(t *testing.T) {
 	var s string
-	if err := decodeStrictJSON([]byte(`"valid" trailing`), &s); err == nil {
+	if err := jsoninput.DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
 		t.Fatal("expected error for trailing data after JSON value")
+	}
+}
+
+func TestPreviewFromDataReturnsDecodePatchError(t *testing.T) {
+	sourcePath := writeRenderedPlan(t, twoStepPlan())
+	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`{"not":"a string"}`))
+	if err == nil {
+		t.Fatal("expected decode patch error")
+	}
+	var replaceErr *ReplaceError
+	if !errors.As(err, &replaceErr) {
+		t.Fatalf("expected ReplaceError, got %T", err)
+	}
+	if replaceErr.Code != ReplaceDecodePatchError {
+		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceDecodePatchError)
+	}
+}
+
+func TestPreviewFromDataReturnsParseSourceError(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := dir + "/broken.md"
+	if err := os.WriteFile(sourcePath, []byte("# not a planner doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"new overview"`))
+	if err == nil {
+		t.Fatal("expected parse source error")
+	}
+	var replaceErr *ReplaceError
+	if !errors.As(err, &replaceErr) {
+		t.Fatalf("expected ReplaceError, got %T", err)
+	}
+	if replaceErr.Code != ReplaceParseSourceError {
+		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceParseSourceError)
 	}
 }
 

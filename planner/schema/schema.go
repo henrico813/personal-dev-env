@@ -1,9 +1,10 @@
 package schema
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"planner/internal/jsoninput"
 )
 
 type SchemaDocument struct {
@@ -20,18 +21,20 @@ type Plan struct {
 }
 
 // ChecklistStatus is a closed enum of completion states for a ChecklistItem.
-// The empty string and StatusPending render as "- [ ]"; StatusDone renders as
-// "- [x]". Any other value is rejected at decode and by ValidatePlan.
+// The empty string renders as "- [ ]"; StatusDone renders as "- [x]". Any
+// other value is rejected at decode and by ValidatePlan. "pending" is accepted
+// only at the JSON boundary and normalized to empty.
 type ChecklistStatus string
 
 const (
-	StatusPending ChecklistStatus = "pending"
-	StatusDone    ChecklistStatus = "done"
+	StatusDone ChecklistStatus = "done"
 )
 
 // ChecklistItem is one entry in a rendered checklist (goal or verification
 // step). A plain-string JSON value decodes as ChecklistItem{Text: s} so
-// existing callers keep working; object form must use {text, status}.
+// existing callers keep working; object form must use {text, status}. The
+// runtime state is empty or done; pending is accepted only as a decode-time
+// alias.
 type ChecklistItem struct {
 	Text   string          `json:"text"`
 	Status ChecklistStatus `json:"status,omitempty"`
@@ -66,23 +69,15 @@ type Verification struct {
 }
 
 func DecodePlan(data []byte) (Plan, error) {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
 	var plan Plan
-	if err := dec.Decode(&plan); err != nil {
-		return Plan{}, err
-	}
-	if dec.More() {
-		return Plan{}, fmt.Errorf("trailing data after plan JSON")
-	}
-	return plan, nil
+	return plan, jsoninput.DecodeStrict(data, &plan)
 }
 
 // UnmarshalJSON accepts either a plain string (legacy payloads) or a strict
 // {"text":...,"status":...} object. Plain strings decode with empty Status,
-// rendered unchecked. Object form uses a strict decoder so typos in field
-// names (e.g. "stats" instead of "status") fail loudly rather than silently
-// round-tripping as unchecked, matching decodeStrictJSON in replace.go.
+// rendered unchecked. Object form uses the shared strict decoder so typos in
+// field names (e.g. "stats" instead of "status") fail loudly rather than
+// silently round-tripping as unchecked.
 func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 	if len(data) > 0 && data[0] == '"' {
 		var s string
@@ -95,13 +90,11 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 	}
 	type raw ChecklistItem
 	var r raw
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&r); err != nil {
+	if err := jsoninput.DecodeStrict(data, &r); err != nil {
 		return err
 	}
 	switch r.Status {
-	case "", StatusPending:
+	case "", "pending":
 		*c = ChecklistItem(r)
 		c.Status = ""
 		return nil
@@ -109,7 +102,7 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 		*c = ChecklistItem(r)
 		return nil
 	default:
-		return fmt.Errorf("invalid checklist item status %q: want pending or done", r.Status)
+		return fmt.Errorf("invalid checklist item status %q: want done", r.Status)
 	}
 }
 
@@ -148,8 +141,6 @@ func ValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
 		"definition_of_done.goals must contain between 1 and 8 items",
-		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
-		"verification checklist items must have non-empty text; object status may be pending or done",
 		"each definition_of_done.goals item must be at most 88 characters",
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",

@@ -4,21 +4,20 @@
 package replace
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 
 	"planner/inspect"
+	"planner/internal/jsoninput"
 	"planner/render"
 	"planner/schema"
 	"planner/validate"
 )
 
-// ReplaceResult describes what was replaced in a successful Run call.
-type ReplaceResult struct {
+// Contract describes what was replaced in a successful Run call.
+type Contract struct {
 	Section       string `json:"section"`
 	Subsection    string `json:"subsection,omitempty"`
 	StepsReplaced []int  `json:"steps_replaced,omitempty"`
@@ -35,10 +34,10 @@ type ReplaceOptions struct {
 
 // Run replaces the targeted section or subsection in sourcePath with the patch
 // from patchPath, writing the result atomically to outputPath.
-func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath string) (ReplaceResult, error) {
+func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath string) (Contract, error) {
 	patchRaw, err := os.ReadFile(patchPath)
 	if err != nil {
-		return ReplaceResult{}, err
+		return Contract{}, err
 	}
 	return RunFromData(sourcePath, opts, patchRaw, outputPath)
 }
@@ -47,35 +46,35 @@ func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath st
 // patch from stdin without staging a temp file. Behavior is otherwise
 // identical: source read from sourcePath, output written atomically to
 // outputPath, non-targeted sections preserved byte-for-byte.
-func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (ReplaceResult, error) {
-	out, result, err := PreviewFromData(sourcePath, opts, patchRaw)
+func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (Contract, error) {
+	out, contract, err := PreviewFromData(sourcePath, opts, patchRaw)
 	if err != nil {
-		return ReplaceResult{}, err
+		return Contract{}, err
 	}
 	if err := WriteAtomic(outputPath, []byte(out)); err != nil {
-		return ReplaceResult{}, err
+		return Contract{}, err
 	}
-	return result, nil
+	return contract, nil
 }
 
 // PreviewFromData runs the replace logic in memory and returns the post-splice
-// string plus the ReplaceResult. It performs no writes, so --diff can render an
+// string plus the Contract. It performs no writes, so --diff can render an
 // accurate preview with no filesystem side effects. All existing error shapes
 // (invalid section, parse, validation, preservation) surface here; writes no
 // longer gate them.
-func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (string, ReplaceResult, error) {
+func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (string, Contract, error) {
 	if err := validateOpts(opts); err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceInvalidOptionsError, err)
 	}
 
 	sourceRaw, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceReadSourceError, err)
 	}
 
 	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(sourceRaw))
 	if err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceParseSourceError, err)
 	}
 
 	updated := plan
@@ -84,47 +83,47 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 	switch opts.Section {
 	case "overview":
 		var text string
-		if err := decodeStrictJSON(patchRaw, &text); err != nil {
-			return "", ReplaceResult{}, err
+		if err := decodePatch(patchRaw, &text); err != nil {
+			return "", Contract{}, err
 		}
 		updated.Overview = text
 	case "definition_of_done":
 		if err := applyDoDPatch(&updated, opts.Subsection, patchRaw); err != nil {
-			return "", ReplaceResult{}, err
+			return "", Contract{}, err
 		}
 	case "implementation":
 		var err error
 		stepsReplaced, appended, err = applyImplementationPatch(&updated, opts, patchRaw)
 		if err != nil {
-			return "", ReplaceResult{}, err
+			return "", Contract{}, err
 		}
 	case "verification":
 		var v schema.Verification
-		if err := decodeStrictJSON(patchRaw, &v); err != nil {
-			return "", ReplaceResult{}, err
+		if err := decodePatch(patchRaw, &v); err != nil {
+			return "", Contract{}, err
 		}
 		updated.Verification = &v
 	}
 
 	if err := validate.ValidatePlan(updated); err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
 	out, err := applySplice(string(sourceRaw), updated, opts, sectionSpans, stepSpans)
 	if err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
 	_, newSectionSpans, newStepSpans, err := inspect.ParseMarkdown(out)
 	if err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
 	if err := assertPreserved(string(sourceRaw), out, opts, sectionSpans, newSectionSpans, stepSpans, newStepSpans); err != nil {
-		return "", ReplaceResult{}, err
+		return "", Contract{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
-	return out, ReplaceResult{
+	return out, Contract{
 		Section:       opts.Section,
 		Subsection:    opts.Subsection,
 		StepsReplaced: stepsReplaced,
@@ -153,7 +152,7 @@ func validateOpts(opts ReplaceOptions) error {
 func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error {
 	if subsection == "" {
 		var dod schema.DefinitionOfDone
-		if err := decodeStrictJSON(patchRaw, &dod); err != nil {
+		if err := decodePatch(patchRaw, &dod); err != nil {
 			return err
 		}
 		plan.DefinitionOfDone = dod
@@ -162,25 +161,25 @@ func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error 
 	switch subsection {
 	case "narrative":
 		var s string
-		if err := decodeStrictJSON(patchRaw, &s); err != nil {
+		if err := decodePatch(patchRaw, &s); err != nil {
 			return err
 		}
 		plan.DefinitionOfDone.Narrative = s
 	case "goals":
 		var goals []schema.ChecklistItem
-		if err := decodeStrictJSON(patchRaw, &goals); err != nil {
+		if err := decodePatch(patchRaw, &goals); err != nil {
 			return err
 		}
 		plan.DefinitionOfDone.Goals = goals
 	case "current_state":
 		var s string
-		if err := decodeStrictJSON(patchRaw, &s); err != nil {
+		if err := decodePatch(patchRaw, &s); err != nil {
 			return err
 		}
 		plan.DefinitionOfDone.CurrentState = s
 	case "module_shape":
 		var s string
-		if err := decodeStrictJSON(patchRaw, &s); err != nil {
+		if err := decodePatch(patchRaw, &s); err != nil {
 			return err
 		}
 		plan.DefinitionOfDone.ModuleShape = s
@@ -193,7 +192,7 @@ func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error 
 func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw []byte) ([]int, bool, error) {
 	if opts.Append {
 		var step schema.Step
-		if err := decodeStrictJSON(patchRaw, &step); err != nil {
+		if err := decodePatch(patchRaw, &step); err != nil {
 			return nil, false, err
 		}
 		plan.Implementation = append(plan.Implementation, step)
@@ -205,14 +204,14 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 			return nil, false, fmt.Errorf("invalid implementation step index %q: valid range is 1-%d", opts.Subsection, len(plan.Implementation))
 		}
 		var step schema.Step
-		if err := decodeStrictJSON(patchRaw, &step); err != nil {
+		if err := decodePatch(patchRaw, &step); err != nil {
 			return nil, false, err
 		}
 		plan.Implementation[idx-1] = step
 		return []int{idx}, false, nil
 	}
 	var steps []schema.Step
-	if err := decodeStrictJSON(patchRaw, &steps); err != nil {
+	if err := decodePatch(patchRaw, &steps); err != nil {
 		return nil, false, err
 	}
 	plan.Implementation = steps
@@ -221,6 +220,10 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 		stepsReplaced[i] = i + 1
 	}
 	return stepsReplaced, false, nil
+}
+
+func decodePatch(patchRaw []byte, target any) error {
+	return newReplaceError(ReplaceDecodePatchError, jsoninput.DecodeStrict(patchRaw, target))
 }
 
 func applySplice(source string, updated schema.Plan, opts ReplaceOptions, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span) (string, error) {
@@ -280,18 +283,6 @@ func renderSection(plan schema.Plan, section string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown section %q", section)
 	}
-}
-
-func decodeStrictJSON(raw []byte, target any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(target); err != nil {
-		return fmt.Errorf("decode patch: %w", err)
-	}
-	if dec.More() {
-		return fmt.Errorf("decode patch: unexpected trailing data")
-	}
-	return nil
 }
 
 func splice(raw string, span inspect.Span, replacement string) string {
