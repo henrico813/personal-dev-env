@@ -12,7 +12,7 @@ import (
 	"planner/validate"
 )
 
-func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
+func TestShowSchemaIncludesRules(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -34,6 +34,8 @@ func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
 
 	wantRules := []string{
 		"definition_of_done.goals must contain between 1 and 8 items",
+		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
+		"verification checklist items must have non-empty text; object status may be pending or done",
 		"each definition_of_done.goals item must be at most 88 characters",
 	}
 	for _, want := range wantRules {
@@ -43,7 +45,7 @@ func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
 	}
 }
 
-func TestHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
+func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
 	requiredSnippets := []string{
@@ -55,6 +57,8 @@ func TestHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
 		"--subsection <name-or-index>",
 		"--append",
 		"definition_of_done.goals must contain between 1 and 8 items",
+		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
+		"verification checklist items must have non-empty text; object status may be pending or done",
 		"each definition_of_done.goals item must be at most 88 characters",
 	}
 	for _, snippet := range requiredSnippets {
@@ -211,7 +215,7 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	fn()
 }
 
-func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
+func TestReplaceWriteFailureEmitsNoResult(t *testing.T) {
 	dir := t.TempDir()
 	// Write source plan to disk.
 	planPath := dir + "/plan.md"
@@ -239,12 +243,55 @@ func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
 		t.Fatalf("expected non-zero exit on write failure, got 0")
 	}
 	if strings.Contains(stdout.String(), "{") {
-		t.Fatalf("contract JSON must not be emitted on write failure; stdout = %q", stdout.String())
+		t.Fatalf("replace result JSON must not be emitted on write failure; stdout = %q", stdout.String())
 	}
 }
 
 func validPlanJSON() []byte {
-	return []byte(`{"title":"T","overview":"O","definition_of_done":{"narrative":"N","goals":["g"],"current_state":"C","module_shape":"M"},"implementation":[{"title":"T","summary":"S","file_changes":[{"filename":"f","explanation":"e","diff":"@@ -1 +1 @@\n-a\n+b"}]}],"verification":{"summary":"","automated":["A"],"manual":["M"]}}`)
+	return mustJSON(schema.Plan{
+		Title:    "T",
+		Overview: "O",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    "N",
+			Goals:        []schema.ChecklistItem{{Text: "g"}},
+			CurrentState: "C",
+			ModuleShape:  "M",
+		},
+		Implementation: []schema.Step{{
+			Title:   "T",
+			Summary: "S",
+			FileChanges: []schema.FileChange{{
+				Filename:    "f",
+				Explanation: "e",
+				Diff:        "@@ -1 +1 @@\n-a\n+b",
+			}},
+		}},
+		Verification: &schema.Verification{
+			Summary:   "",
+			Automated: []schema.ChecklistItem{{Text: "A"}},
+			Manual:    []schema.ChecklistItem{{Text: "M"}},
+		},
+	})
+}
+
+func validPlanJSONMap(t *testing.T, kv map[string]any) []byte {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(validPlanJSON(), &doc); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	for key, value := range kv {
+		doc[key] = value
+	}
+	return mustJSON(doc)
+}
+
+func mustJSON(v any) []byte {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return raw
 }
 
 func TestGenerateWritesValidJSON(t *testing.T) {
@@ -313,6 +360,87 @@ func TestRepairFixesUnescapedNewlineInDiffField(t *testing.T) {
 		if !strings.Contains(string(rendered), want) {
 			t.Fatalf("rendered output missing %q:\n%s", want, string(rendered))
 		}
+	}
+}
+
+func TestValidateSurfacesSchemaErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   func(t *testing.T) []byte
+		wantErr string
+	}{
+		{
+			name:    "trailing_data",
+			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr: "trailing data after plan JSON",
+		},
+		{
+			name: "unknown_field",
+			input: func(t *testing.T) []byte {
+				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
+			},
+			wantErr: "unknown field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := dir + "/plan.json"
+			if err := os.WriteFile(path, tc.input(t), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			assertCommandError(t, []string{"validate", path}, "validate:", tc.wantErr, 1)
+		})
+	}
+}
+
+func TestCreateSurfacesSchemaErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   func(t *testing.T) []byte
+		wantErr string
+	}{
+		{
+			name:    "trailing_data",
+			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr: "trailing data after plan JSON",
+		},
+		{
+			name: "unknown_field",
+			input: func(t *testing.T) []byte {
+				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
+			},
+			wantErr: "unknown field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			inputPath := dir + "/plan.json"
+			outputPath := dir + "/out.md"
+			if err := os.WriteFile(inputPath, tc.input(t), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			assertCommandError(t, []string{"create", inputPath, outputPath}, "create:", tc.wantErr, 1)
+			if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+				t.Fatalf("output should not be written on validation error, stat err = %v", err)
+			}
+		})
+	}
+}
+
+func assertCommandError(t *testing.T, args []string, wantPrefix, wantErr string, wantExit int) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	exit := Execute(args, &stdout, &stderr)
+	if exit != wantExit {
+		t.Fatalf("exit = %d, want %d; stderr = %q", exit, wantExit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), wantPrefix) {
+		t.Fatalf("stderr missing command prefix %q: %q", wantPrefix, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), wantErr) {
+		t.Fatalf("stderr missing schema error %q: %q", wantErr, stderr.String())
 	}
 }
 
@@ -399,7 +527,7 @@ func TestReadPlanFromReturnsTypedDecodeError(t *testing.T) {
 	}
 }
 
-func TestDiffAndWriteDoesNotEmitContract(t *testing.T) {
+func TestDiffAndWriteDoesNotEmitResult(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -416,7 +544,7 @@ func TestDiffAndWriteDoesNotEmitContract(t *testing.T) {
 			t.Fatalf("exit %d stderr %q", exit, stderr.String())
 		}
 		if strings.Contains(stdout.String(), `"section"`) {
-			t.Fatalf("contract JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
+			t.Fatalf("replace result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
 		}
 	})
 }

@@ -16,8 +16,8 @@ import (
 	"planner/validate"
 )
 
-// Contract describes what was replaced in a successful Run call.
-type Contract struct {
+// ReplaceResult describes what was replaced in a successful Run call.
+type ReplaceResult struct {
 	Section       string `json:"section"`
 	Subsection    string `json:"subsection,omitempty"`
 	StepsReplaced []int  `json:"steps_replaced,omitempty"`
@@ -34,10 +34,10 @@ type ReplaceOptions struct {
 
 // Run replaces the targeted section or subsection in sourcePath with the patch
 // from patchPath, writing the result atomically to outputPath.
-func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath string) (Contract, error) {
+func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath string) (ReplaceResult, error) {
 	patchRaw, err := os.ReadFile(patchPath)
 	if err != nil {
-		return Contract{}, err
+		return ReplaceResult{}, err
 	}
 	return RunFromData(sourcePath, opts, patchRaw, outputPath)
 }
@@ -46,35 +46,35 @@ func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath st
 // patch from stdin without staging a temp file. Behavior is otherwise
 // identical: source read from sourcePath, output written atomically to
 // outputPath, non-targeted sections preserved byte-for-byte.
-func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (Contract, error) {
-	out, contract, err := PreviewFromData(sourcePath, opts, patchRaw)
+func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (ReplaceResult, error) {
+	out, result, err := PreviewFromData(sourcePath, opts, patchRaw)
 	if err != nil {
-		return Contract{}, err
+		return ReplaceResult{}, err
 	}
 	if err := WriteAtomic(outputPath, []byte(out)); err != nil {
-		return Contract{}, err
+		return ReplaceResult{}, err
 	}
-	return contract, nil
+	return result, nil
 }
 
 // PreviewFromData runs the replace logic in memory and returns the post-splice
-// string plus the Contract. It performs no writes, so --diff can render an
+// string plus the ReplaceResult. It performs no writes, so --diff can render an
 // accurate preview with no filesystem side effects. All existing error shapes
 // (invalid section, parse, validation, preservation) surface here; writes no
 // longer gate them.
-func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (string, Contract, error) {
+func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (string, ReplaceResult, error) {
 	if err := validateOpts(opts); err != nil {
-		return "", Contract{}, newReplaceError(ReplaceInvalidOptionsError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, err)
 	}
 
 	sourceRaw, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return "", Contract{}, newReplaceError(ReplaceReadSourceError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceReadSourceError, err)
 	}
 
 	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(sourceRaw))
 	if err != nil {
-		return "", Contract{}, newReplaceError(ReplaceParseSourceError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceParseSourceError, err)
 	}
 
 	updated := plan
@@ -84,46 +84,46 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 	case "overview":
 		var text string
 		if err := decodePatch(patchRaw, &text); err != nil {
-			return "", Contract{}, err
+			return "", ReplaceResult{}, err
 		}
 		updated.Overview = text
 	case "definition_of_done":
 		if err := applyDoDPatch(&updated, opts.Subsection, patchRaw); err != nil {
-			return "", Contract{}, err
+			return "", ReplaceResult{}, err
 		}
 	case "implementation":
 		var err error
 		stepsReplaced, appended, err = applyImplementationPatch(&updated, opts, patchRaw)
 		if err != nil {
-			return "", Contract{}, err
+			return "", ReplaceResult{}, err
 		}
 	case "verification":
 		var v schema.Verification
 		if err := decodePatch(patchRaw, &v); err != nil {
-			return "", Contract{}, err
+			return "", ReplaceResult{}, err
 		}
 		updated.Verification = &v
 	}
 
 	if err := validate.ValidatePlan(updated); err != nil {
-		return "", Contract{}, newReplaceError(ReplaceValidateResultError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
 	out, err := applySplice(string(sourceRaw), updated, opts, sectionSpans, stepSpans)
 	if err != nil {
-		return "", Contract{}, newReplaceError(ReplaceRenderResultError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
 	_, newSectionSpans, newStepSpans, err := inspect.ParseMarkdown(out)
 	if err != nil {
-		return "", Contract{}, newReplaceError(ReplaceRenderResultError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
 	if err := assertPreserved(string(sourceRaw), out, opts, sectionSpans, newSectionSpans, stepSpans, newStepSpans); err != nil {
-		return "", Contract{}, newReplaceError(ReplaceValidateResultError, err)
+		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
-	return out, Contract{
+	return out, ReplaceResult{
 		Section:       opts.Section,
 		Subsection:    opts.Subsection,
 		StepsReplaced: stepsReplaced,

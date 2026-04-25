@@ -272,7 +272,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	out, contract, err := replace.PreviewFromData(sourcePath, opts, patchData)
+	out, result, err := replace.PreviewFromData(sourcePath, opts, patchData)
 	if err != nil {
 		cliErr := mapReplaceCLIError(err, sourcePath)
 		fmt.Fprintf(stderr, "replace: %v\n", cliErr)
@@ -291,8 +291,8 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(contract); err != nil {
-		fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, "replace contract JSON"))
+	if err := enc.Encode(result); err != nil {
+		fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, "replace result JSON"))
 		return 1
 	}
 	return 0

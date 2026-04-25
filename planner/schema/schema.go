@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -69,8 +70,16 @@ type Verification struct {
 }
 
 func DecodePlan(data []byte) (Plan, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
 	var plan Plan
-	return plan, jsoninput.DecodeStrict(data, &plan)
+	if err := dec.Decode(&plan); err != nil {
+		return Plan{}, fmt.Errorf("%s: %w", jsoninput.Lint(data, err), err)
+	}
+	if dec.More() {
+		return Plan{}, fmt.Errorf("trailing data after plan JSON")
+	}
+	return plan, nil
 }
 
 // UnmarshalJSON accepts either a plain string (legacy payloads) or a strict
@@ -102,7 +111,7 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 		*c = ChecklistItem(r)
 		return nil
 	default:
-		return fmt.Errorf("invalid checklist item status %q: want done", r.Status)
+		return fmt.Errorf("invalid checklist item status %q: want pending or done", r.Status)
 	}
 }
 
@@ -141,6 +150,8 @@ func ValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
 		"definition_of_done.goals must contain between 1 and 8 items",
+		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
+		"verification checklist items must have non-empty text; object status may be pending or done",
 		"each definition_of_done.goals item must be at most 88 characters",
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",
