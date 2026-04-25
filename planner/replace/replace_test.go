@@ -377,11 +377,7 @@ func twoStepPlan() schema.Plan {
 	}
 }
 
-// TestRunPreservesCheckboxesInUntouchedSectionByteIdentical verifies that
-// replacing only the overview section leaves the DoD section byte-identical,
-// including Obsidian-style "- [X]" markers that must not be rewritten to
-// "- [x]". This guards the untouched-section byte-identity invariant.
-func TestRunPreservesCheckboxesInUntouchedSectionByteIdentical(t *testing.T) {
+func TestReplacePreservesUntouchedSections(t *testing.T) {
 	plan := twoStepPlan()
 	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
 		{Text: "pending goal"},
@@ -445,7 +441,7 @@ func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
 	}
 }
 
-func TestDecodeStrictJSONRejectsTrailingData(t *testing.T) {
+func TestDecodeRejectsTrailingData(t *testing.T) {
 	var s string
 	if err := decodeStrictJSON([]byte(`"valid" trailing`), &s); err == nil {
 		t.Fatal("expected error for trailing data after JSON value")

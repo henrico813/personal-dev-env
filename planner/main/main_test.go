@@ -10,7 +10,7 @@ import (
 	"planner/schema"
 )
 
-func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
+func TestShowSchemaIncludesRules(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -43,7 +43,7 @@ func TestRunShowSchemaPrintsPlanExampleAndValidationRules(t *testing.T) {
 	}
 }
 
-func TestHelpTextExplainsPlanExampleInputAndRules(t *testing.T) {
+func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
 	requiredSnippets := []string{
