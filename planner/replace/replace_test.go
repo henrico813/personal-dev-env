@@ -119,12 +119,12 @@ func TestRunReplacesOnlyRequestedStep(t *testing.T) {
 	patchPath := writePatchJSON(t, patch)
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Subsection: "1"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected steps replaced: %+v", contract.StepsReplaced)
+	if len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected steps replaced: %+v", result.StepsReplaced)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -183,12 +183,12 @@ func TestRunReplacesOverview(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated overview")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if contract.Section != "overview" || contract.Appended {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if result.Section != "overview" || result.Appended {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -206,12 +206,12 @@ func TestRunReplacesDefinitionOfDoneSubsection(t *testing.T) {
 	patchPath := writePatchJSON(t, "Updated shape")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if contract.Subsection != "module_shape" {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if result.Subsection != "module_shape" {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -258,12 +258,12 @@ func TestRunAppendsStep(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !contract.Appended || len(contract.StepsReplaced) != 1 || contract.StepsReplaced[0] != 3 {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if !result.Appended || len(result.StepsReplaced) != 1 || result.StepsReplaced[0] != 3 {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)
@@ -288,12 +288,12 @@ func TestRunAppendsStepToEmptyImplementation(t *testing.T) {
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
-	contract, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "implementation", Append: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if !contract.Appended || contract.StepsReplaced[0] != 1 {
-		t.Fatalf("unexpected contract: %#v", contract)
+	if !result.Appended || result.StepsReplaced[0] != 1 {
+		t.Fatalf("unexpected replace result: %#v", result)
 	}
 
 	parsed := parseOutputPlan(t, outputPath)

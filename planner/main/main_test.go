@@ -210,7 +210,7 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	fn()
 }
 
-func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
+func TestReplaceWriteFailureEmitsNoResult(t *testing.T) {
 	dir := t.TempDir()
 	// Write source plan to disk.
 	planPath := dir + "/plan.md"
@@ -238,7 +238,7 @@ func TestReplaceWriteFailureEmitsNoContract(t *testing.T) {
 		t.Fatalf("expected non-zero exit on write failure, got 0")
 	}
 	if strings.Contains(stdout.String(), "{") {
-		t.Fatalf("contract JSON must not be emitted on write failure; stdout = %q", stdout.String())
+		t.Fatalf("replace result JSON must not be emitted on write failure; stdout = %q", stdout.String())
 	}
 }
 
@@ -400,7 +400,7 @@ func TestReplaceReadsStdinPatch(t *testing.T) {
 	}
 }
 
-func TestDiffAndWriteDoesNotEmitContract(t *testing.T) {
+func TestDiffAndWriteDoesNotEmitResult(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -417,7 +417,7 @@ func TestDiffAndWriteDoesNotEmitContract(t *testing.T) {
 			t.Fatalf("exit %d stderr %q", exit, stderr.String())
 		}
 		if strings.Contains(stdout.String(), `"section"`) {
-			t.Fatalf("contract JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
+			t.Fatalf("replace result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
 		}
 	})
 }
