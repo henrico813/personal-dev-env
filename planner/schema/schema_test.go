@@ -2,57 +2,73 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
 
-func basePlan() Plan {
-	return Plan{
-		Title:    "t",
-		Overview: "o",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "n",
-			Goals:        []ChecklistItem{{Text: "g"}},
-			CurrentState: "s",
-			ModuleShape:  "m",
+func planJSON(overrides map[string]string, trailing string) []byte {
+	values := map[string]string{
+		"title":                `"t"`,
+		"overview":             `"o"`,
+		"narrative":            `"n"`,
+		"goals":                `["g"]`,
+		"current_state":        `"s"`,
+		"module_shape":         `"m"`,
+		"step_title":           `"T"`,
+		"step_summary":         `"S"`,
+		"filename":             `"f"`,
+		"explanation":          `"e"`,
+		"diff":                 `"d"`,
+		"verification_summary": `""`,
+		"automated":            `["x"]`,
+		"manual":               `["y"]`,
+		"extra_field":          ``,
+	}
+	for key, value := range overrides {
+		values[key] = value
+	}
+	return []byte(fmt.Sprintf(`{
+		"title": %s,
+		"overview": %s,
+		"definition_of_done": {
+			"narrative": %s,
+			"goals": %s,
+			"current_state": %s,
+			"module_shape": %s
 		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "d",
-			}},
-		}},
-		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "x"}},
-			Manual:    []ChecklistItem{{Text: "y"}},
-		},
-	}
-}
-
-func mustJSON(t *testing.T, v any) []byte {
-	t.Helper()
-	raw, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("json.Marshal: %v", err)
-	}
-	return raw
-}
-
-func mustJSONMap(t *testing.T, plan Plan, kv map[string]any) []byte {
-	t.Helper()
-	var doc map[string]any
-	raw := mustJSON(t, plan)
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-	for key, value := range kv {
-		doc[key] = value
-	}
-	return mustJSON(t, doc)
+		"implementation": [{
+			"title": %s,
+			"summary": %s,
+			"file_changes": [{
+				"filename": %s,
+				"explanation": %s,
+				"diff": %s
+			}]
+		}],
+		"verification": {
+			"summary": %s,
+			"automated": %s,
+			"manual": %s
+		}%s
+	}%s`,
+		values["title"],
+		values["overview"],
+		values["narrative"],
+		values["goals"],
+		values["current_state"],
+		values["module_shape"],
+		values["step_title"],
+		values["step_summary"],
+		values["filename"],
+		values["explanation"],
+		values["diff"],
+		values["verification_summary"],
+		values["automated"],
+		values["manual"],
+		values["extra_field"],
+		trailing,
+	))
 }
 
 func TestChecklistItemDecodes(t *testing.T) {
@@ -103,10 +119,11 @@ func TestChecklistItemRejectsInput(t *testing.T) {
 }
 
 func TestDecodePlanAcceptsGoals(t *testing.T) {
-	input := basePlan()
-	input.DefinitionOfDone.Goals = []ChecklistItem{{Text: "a"}, {Text: "b"}}
-	input.Verification.Summary = "v"
-	plan, err := DecodePlan(mustJSON(t, input))
+	input := planJSON(map[string]string{
+		"goals":                `["a","b"]`,
+		"verification_summary": `"v"`,
+	}, "")
+	plan, err := DecodePlan(input)
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
 	}
@@ -123,26 +140,28 @@ func TestDecodePlanAcceptsGoals(t *testing.T) {
 
 func TestDecodePlanRejectsInput(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   func(t *testing.T) []byte
-		wantErr string
+		name      string
+		overrides map[string]string
+		trailing  string
+		wantErr   string
 	}{
 		{
 			name: "top_level_unknown_field",
-			input: func(t *testing.T) []byte {
-				return mustJSONMap(t, basePlan(), map[string]any{"extra_field": "boom"})
+			overrides: map[string]string{
+				"extra_field": `, "extra_field": "boom"`,
 			},
 			wantErr: "unknown field",
 		},
 		{
-			name:    "trailing_data",
-			input:   func(t *testing.T) []byte { return append(mustJSON(t, basePlan()), []byte(" trailing")...) },
-			wantErr: "trailing data after plan JSON",
+			name:      "trailing_data",
+			overrides: nil,
+			trailing:  " trailing",
+			wantErr:   "trailing data after plan JSON",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := DecodePlan(tc.input(t))
+			_, err := DecodePlan(planJSON(tc.overrides, tc.trailing))
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -154,35 +173,10 @@ func TestDecodePlanRejectsInput(t *testing.T) {
 }
 
 func TestDecodePlanNormalizesStatus(t *testing.T) {
-	input := map[string]any{
-		"title":    "T",
-		"overview": "O",
-		"definition_of_done": map[string]any{
-			"narrative":     "N",
-			"goals":         []any{map[string]any{"text": "a", "status": "pending"}, "b"},
-			"current_state": "C",
-			"module_shape":  "M",
-		},
-		"implementation": []any{
-			map[string]any{
-				"title":   "T",
-				"summary": "S",
-				"file_changes": []any{
-					map[string]any{
-						"filename":    "f",
-						"explanation": "e",
-						"diff":        "@@ -1 +1 @@\n-x\n+y",
-					},
-				},
-			},
-		},
-		"verification": map[string]any{
-			"summary":   "",
-			"automated": []any{"x"},
-			"manual":    []any{"y"},
-		},
-	}
-	plan, err := DecodePlan(mustJSON(t, input))
+	input := planJSON(map[string]string{
+		"goals": `[{"text":"a","status":"pending"},"b"]`,
+	}, "")
+	plan, err := DecodePlan(input)
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
 	}
