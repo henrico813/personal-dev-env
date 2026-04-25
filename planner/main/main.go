@@ -72,6 +72,17 @@ func main() {
 
 // Execute is the production command entrypoint used by main() and CLI tests.
 func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
+	useJsonErrors := false
+	cleaned := make([]string , 0, len(args))
+	for _, a := range args {
+		if a == "--json-errors" {
+			useJsonErrors = true
+		} else {
+			cleaned = append(cleaned, a)
+		}
+	}
+	args = cleaned
+
 	if len(args) == 0 {
 		printHelp(stdout)
 		return 0
@@ -84,18 +95,20 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "show-schema":
 		return runShowSchema(stdout, stderr)
 	case "validate":
-		return runValidate(args[1:], stdout, stderr)
+		return runValidate(args[1:], stdout, stderr, useJsonErrors)
 	case "create":
-		return runCreate(args[1:], stdout, stderr)
+		return runCreate(args[1:], stdout, stderr, useJsonErrors)
 	case "inspect":
-		return runInspect(args[1:], stdout, stderr)
+		return runInspect(args[1:], stdout, stderr, useJsonErrors)
 	case "replace":
-		return runReplace(args[1:], stdout, stderr)
+		return runReplace(args[1:], stdout, stderr, useJsonErrors)
 	case "generate":
-		return runGenerate(args[1:], stdout, stderr)
+		return runGenerate(args[1:], stdout, stderr, useJsonErrors)
 	default:
-		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
-		printHelp(stderr)
+		writeErr(stderr, useJsonErrors, fmt.Sprintf("unknown command: %s", args[0]))
+		if !useJsonErrors {
+			printHelp(stderr)
+		}
 		return 2
 	}
 }
@@ -109,7 +122,7 @@ func runShowSchema(stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
+func runValidate(args []string, stdout io.Writer, stderr io.Writer, useJsonErrors bool) int {
 	positional, pf, err := splitPreviewArgs(args, false, true)
 	if err != nil || (len(positional) == 0 && !pf.stdin && !stdinPiped()) || len(positional) > 1 {
 		fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner validate [<plan.json>] [--stdin]").Error())
@@ -128,7 +141,7 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
+func runCreate(args []string, stdout io.Writer, stderr io.Writer, useJsonErrors bool) int {
 	if len(args) >= 1 && args[0] == "step" {
 		fmt.Fprintln(stderr, "planner create step is no longer supported; rewrite the full plan JSON and run planner create <plan.json> <output.md>")
 		return 2
@@ -187,7 +200,7 @@ func buildHelpText() string {
 	return b.String()
 }
 
-func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
+func runInspect(args []string, stdout io.Writer, stderr io.Writer, useJsonErrors bool) int {
 	if len(args) != 1 {
 		fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner inspect <plan.md>").Error())
 		return 2
@@ -233,7 +246,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
+func runReplace(args []string, stdout io.Writer, stderr io.Writer, useJsonErrors bool) int {
 	positional, pf, err := splitPreviewArgs(args, true, true)
 	if err != nil {
 		fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -301,7 +314,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 // runGenerate writes a ready-to-edit draft plan JSON in ChecklistItem object
 // form, enabling the edit-then-create workflow without relying on show-schema's
 // SchemaDocument envelope.
-func runGenerate(args []string, stdout io.Writer, stderr io.Writer) int {
+func runGenerate(args []string, stdout io.Writer, stderr io.Writer, useJsonErrors bool) int {
 	if len(args) != 1 {
 		fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>").Error())
 		return 2
