@@ -117,7 +117,7 @@ For updating only the implementation section of an existing plan:
 
 1. Run `~/.claude/bin/planner inspect <plan.md>` to get section and step spans
 2. Write patch JSON for the target scope (`implementation` or `implementation.N`)
-3. Run `~/.claude/bin/planner replace <plan.md> <section> <patch.json> <output.md>`
+3. Run `~/.claude/bin/planner patch <plan.md> <patch.json> <output.md> --section <section>`
 
 This preserves overview, definition of done, and verification sections byte-for-byte.
 

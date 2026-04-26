@@ -22,7 +22,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner validate",
 		"planner create",
 		"planner inspect",
-		"planner replace",
+		"planner patch",
 	} {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
@@ -30,7 +30,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "--write"} {
+	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
@@ -282,22 +282,22 @@ func TestRunInspectUsage(t *testing.T) {
 	}
 }
 
-func TestRunReplaceUsage(t *testing.T) {
+func TestRunPatchUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	if exitCode := Execute([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("Execute(replace) exit code = %d, want 2", exitCode)
+	if exitCode := Execute([]string{"patch"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("Execute(patch) exit code = %d, want 2", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section>") {
-		t.Fatalf("missing replace usage in stderr = %q", stderr.String())
+	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<patch.json>] <output.md> --section <section>") {
+		t.Fatalf("missing patch usage in stderr = %q", stderr.String())
 	}
 }
 
-func TestExecuteReplaceRejectsUnknownFlag(t *testing.T) {
+func TestPatchRejectsUnknownFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if exitCode := Execute([]string{"replace", "a.md", "b.json", "c.md", "--unknown"}, &stdout, &stderr); exitCode != 2 {
+	if exitCode := Execute([]string{"patch", "a.md", "b.json", "c.md", "--unknown"}, &stdout, &stderr); exitCode != 2 {
 		t.Fatalf("exit code = %d, want 2", exitCode)
 	}
 	if !strings.Contains(stderr.String(), "unknown flag") {
@@ -305,10 +305,10 @@ func TestExecuteReplaceRejectsUnknownFlag(t *testing.T) {
 	}
 }
 
-func TestExecuteReplaceRequiresSection(t *testing.T) {
+func TestPatchRequiresSection(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if exitCode := Execute([]string{"replace", "a.md", "b.json", "c.md"}, &stdout, &stderr); exitCode != 2 {
+	if exitCode := Execute([]string{"patch", "a.md", "b.json", "c.md"}, &stdout, &stderr); exitCode != 2 {
 		t.Fatalf("exit code = %d, want 2", exitCode)
 	}
 	if !strings.Contains(stderr.String(), "--section is required") {
@@ -447,7 +447,7 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	fn()
 }
 
-func TestReplaceWriteFailureEmitsNoResult(t *testing.T) {
+func TestWriteFailureSuppressesResultJSON(t *testing.T) {
 	dir := t.TempDir()
 	// Write source plan to disk.
 	planPath := dir + "/plan.md"
@@ -470,12 +470,12 @@ func TestReplaceWriteFailureEmitsNoResult(t *testing.T) {
 	outputPath := roDir + "/out.md"
 
 	var stdout, stderr bytes.Buffer
-	exit := Execute([]string{"replace", planPath, patchPath, outputPath, "--section", "overview"}, &stdout, &stderr)
+	exit := Execute([]string{"patch", planPath, patchPath, outputPath, "--section", "overview"}, &stdout, &stderr)
 	if exit == 0 {
 		t.Fatalf("expected non-zero exit on write failure, got 0")
 	}
 	if strings.Contains(stdout.String(), "{") {
-		t.Fatalf("replace result JSON must not be emitted on write failure; stdout = %q", stdout.String())
+		t.Fatalf("patch result JSON must not be emitted on write failure; stdout = %q", stdout.String())
 	}
 }
 
@@ -681,7 +681,7 @@ func brokenDiffJSON() []byte {
 	return []byte(strings.ReplaceAll(string(validPlanJSON()), `\n`, "\n"))
 }
 
-func TestReplaceReadsStdinPatch(t *testing.T) {
+func TestStdinPatchInput(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -693,9 +693,9 @@ func TestReplaceReadsStdinPatch(t *testing.T) {
 	patch := []byte(`"Updated overview text."`)
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
 		if exit != 0 {
-			t.Fatalf("replace exit %d stderr %q", exit, stderr.String())
+			t.Fatalf("patch exit %d stderr %q", exit, stderr.String())
 		}
 	})
 	data, err := os.ReadFile(src)
@@ -739,17 +739,17 @@ func TestDiffWritesButDoesNotEmitResult(t *testing.T) {
 	patch := []byte(`"Fresh overview text."`)
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin", "--diff"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--diff"}, &stdout, &stderr)
 		if exit != 0 {
 			t.Fatalf("exit %d stderr %q", exit, stderr.String())
 		}
 		if strings.Contains(stdout.String(), `"section"`) {
-			t.Fatalf("replace result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
+			t.Fatalf("patch result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
 		}
 	})
 }
 
-func TestReplaceInvalidSourceMarkdownReturnsDecodePlanMarkdownError(t *testing.T) {
+func TestInvalidSourceMarkdownReturnsDecodeError(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/not-a-plan.md"
 	if err := os.WriteFile(src, []byte("# not a planner doc\n"), 0o644); err != nil {
@@ -758,17 +758,70 @@ func TestReplaceInvalidSourceMarkdownReturnsDecodePlanMarkdownError(t *testing.T
 	patch := []byte(`"Fresh overview text."`)
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"replace", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
 		if exit != 1 {
 			t.Fatalf("exit %d want 1 stderr %q", exit, stderr.String())
 		}
-		if strings.Contains(stderr.String(), "decode replace patch") {
-			t.Fatalf("misclassified replace error: %q", stderr.String())
+		if strings.Contains(stderr.String(), "decode patch JSON") {
+			t.Fatalf("misclassified patch error: %q", stderr.String())
 		}
 		if !strings.Contains(stderr.String(), "decode plan markdown") {
 			t.Fatalf("expected plan markdown decode error, got %q", stderr.String())
 		}
 	})
+}
+
+func TestInspectOutputIsValidPlan(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", src, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"inspect", src}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
+	}
+
+	plan, err := schema.DecodePlan(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("inspect output not valid plan JSON: %v", err)
+	}
+	if err := validate.ValidatePlan(plan); err != nil {
+		t.Fatalf("inspect output does not validate: %v", err)
+	}
+	if plan.Title == "" || len(plan.Implementation) == 0 || plan.Verification == nil {
+		t.Fatalf("inspect output missing plan content: %#v", plan)
+	}
+}
+
+func TestPatchHelpPrintsWorkflow(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := Execute([]string{"patch", "--help"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Execute(patch --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
+	}
+	for _, want := range []string{"planner patch -- apply a JSON patch", "--section/-s <section>", "--append"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patch --help missing %q anchor: %q", want, stdout.String())
+		}
+	}
+}
+
+func TestReplaceCommandRemoved(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := Execute([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
+		t.Fatalf("Execute(replace) exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "unknown command: replace") {
+		t.Fatalf("replace stderr missing unknown-command message: %q", stderr.String())
+	}
 }
 
 func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
