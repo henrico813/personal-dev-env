@@ -24,10 +24,13 @@ Usage:
   planner help
   planner show-schema
   planner generate <output.json>
-  planner validate [<plan.json>] [--stdin]
-  planner create [<plan.json>] <output.md> [--stdin] [--diff] [--write]
+  planner validate [<plan.json>] [--stdin] [--json-errors]
+  planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--write]
+  planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+
+Global flags:
+  --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
 Scratch flow:
   1. Research the task.
@@ -54,8 +57,8 @@ replace flags:
   --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation
   --append                         Optional. Append a new step to implementation
   --stdin                          Optional. Read patch JSON from stdin instead of a file
-  --diff                           Optional. Print diff of would-be change; exit 1 if non-empty, 0 if unchanged
-  --write                          Optional. Write the output (default when neither --diff nor --write is set)
+  --diff                           Optional. Print diff to stdout; additive (does not suppress write)
+  --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift
 
 show-schema contract:
   - Prints a JSON object with plan_example and validation_rules.
@@ -70,8 +73,13 @@ func main() {
 	os.Exit(Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+var jsonErrorOutput bool
+
 // Execute is the production command entrypoint used by main() and CLI tests.
 func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
+	args, jsonErrorOutput = extractJSONErrorsFlag(args)
+	defer func() { jsonErrorOutput = false }()
+
 	if len(args) == 0 {
 		printHelp(stdout)
 		return 0
@@ -100,10 +108,43 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
+func extractJSONErrorsFlag(args []string) ([]string, bool) {
+	kept := make([]string, 0, len(args))
+	found := false
+	for _, arg := range args {
+		if arg == "--json-errors" {
+			found = true
+			continue
+		}
+		kept = append(kept, arg)
+	}
+	return kept, found
+}
+
+func reportError(stderr io.Writer, cmd string, err error) {
+	if err == nil {
+		return
+	}
+	var cliErr *PlannerCLIError
+	if !errors.As(err, &cliErr) {
+		cliErr = newPlannerCLIError(PlannerValidateInputError, err, err.Error())
+	}
+	if jsonErrorOutput {
+		raw, marshalErr := json.Marshal(cliErr)
+		if marshalErr != nil {
+			_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmd, marshalErr)
+			return
+		}
+		_, _ = fmt.Fprintln(stderr, string(raw))
+		return
+	}
+	_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmd, cliErr)
+}
+
 func runShowSchema(stdout io.Writer, stderr io.Writer) int {
 	schemaJSON := schema.BuildSchemaJSON()
 	if _, err := io.WriteString(stdout, schemaJSON+"\n"); err != nil {
-		_, _ = fmt.Fprintf(stderr, "show-schema: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, "schema JSON"))
+		reportError(stderr, "show-schema", newPlannerCLIError(PlannerWriteOutputError, err, "schema JSON"))
 		return 1
 	}
 	return 0
@@ -111,17 +152,21 @@ func runShowSchema(stdout io.Writer, stderr io.Writer) int {
 
 func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 	positional, pf, err := splitPreviewArgs(args, false, true)
-	if err != nil || (len(positional) == 0 && !pf.stdin && !stdinPiped()) || len(positional) > 1 {
+	if err != nil {
+		reportError(stderr, "validate", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if (len(positional) == 0 && !pf.stdin && !stdinPiped()) || len(positional) > 1 {
 		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner validate [<plan.json>] [--stdin]").Error())
 		return 2
 	}
 	plan, err := readPlanFrom(positional, pf.stdin, stderr)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "validate: %v\n", err)
+		reportError(stderr, "validate", err)
 		return plannerExitCode(err)
 	}
 	if err := validate.ValidatePlan(plan); err != nil {
-		_, _ = fmt.Fprintf(stderr, "validate: %v\n", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
+		reportError(stderr, "validate", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
 		return 1
 	}
 	_, _ = io.WriteString(stdout, "OK\n")
@@ -135,7 +180,7 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	positional, pf, err := splitPreviewArgs(args, true, true)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "create: %v\n", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	var inputPath, outputPath string
@@ -145,25 +190,25 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	case 1:
 		outputPath = positional[0]
 	default:
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner create [<plan.json>] <output.md> [--stdin] [--diff] [--write]").Error())
+		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run]").Error())
 		return 2
 	}
 	plan, err := readPlanFrom(filterNonEmpty([]string{inputPath}), pf.stdin, stderr)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "create: %v\n", err)
+		reportError(stderr, "create", err)
 		return plannerExitCode(err)
 	}
 	rendered, err := render.RenderPlan(plan)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "create: %v\n", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
+		reportError(stderr, "create", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 		return 1
 	}
 	if err := validate.ValidatePlan(plan); err != nil {
-		_, _ = fmt.Fprintf(stderr, "create: %v\n", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
+		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
 		return 1
 	}
 	if err := validate.VerifyRenderedText(rendered, plan); err != nil {
-		_, _ = fmt.Fprintf(stderr, "create: %v\n", newPlannerCLIError(PlannerValidateInputError, err, "rendered plan"))
+		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "rendered plan"))
 		return 1
 	}
 	return runPreview(stdout, stderr, pf, rendered, outputPath, "create", func() error {
@@ -194,13 +239,13 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	raw, err := os.ReadFile(args[0])
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "inspect: %v\n", newPlannerCLIError(PlannerReadInputError, err, args[0]))
+		reportError(stderr, "inspect", newPlannerCLIError(PlannerReadInputError, err, args[0]))
 		return 1
 	}
 
 	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "inspect: %v\n", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
+		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
 	}
 
@@ -227,7 +272,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(resp); err != nil {
-		_, _ = fmt.Fprintf(stderr, "inspect: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, "inspect JSON"))
+		reportError(stderr, "inspect", newPlannerCLIError(PlannerWriteOutputError, err, "inspect JSON"))
 		return 1
 	}
 	return 0
@@ -236,19 +281,19 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	positional, pf, err := splitPreviewArgs(args, true, true)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	var sourcePath, patchPath, outputPath string
 	var flags []string
 	// positional still contains --section / --subsection / --append after splitPreviewArgs
-	// strips only --stdin/--diff/--write. Count path args (2 with --stdin, 3 otherwise).
+	// strips only --stdin/--diff/--dry-run. Count path args (2 with --stdin, 3 otherwise).
 	pathCount := 3
 	if pf.stdin {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--write]").Error())
+		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]").Error())
 		return 2
 	}
 	switch pathCount {
@@ -262,20 +307,20 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	opts, err := parseReplaceOptions(flags)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "replace: %v\n", err)
+		reportError(stderr, "replace", err)
 		return 2
 	}
 
 	patchData, _, err := readJSONSource(patchPath, pf.stdin, false, stderr)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
+		reportError(stderr, "replace", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
 		return 1
 	}
 
 	out, result, err := replace.PreviewFromData(sourcePath, opts, patchData)
 	if err != nil {
 		cliErr := mapReplaceCLIError(err, sourcePath)
-		_, _ = fmt.Fprintf(stderr, "replace: %v\n", cliErr)
+		reportError(stderr, "replace", cliErr)
 		return plannerExitCode(cliErr)
 	}
 
@@ -285,14 +330,14 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		return nil
 	})
-	if exit != 0 || !pf.write || pf.diff {
+	if exit != 0 || pf.dryRun || pf.diff {
 		return exit
 	}
 
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(result); err != nil {
-		_, _ = fmt.Fprintf(stderr, "replace: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, "replace result JSON"))
+		reportError(stderr, "replace", newPlannerCLIError(PlannerWriteOutputError, err, "replace result JSON"))
 		return 1
 	}
 	return 0
@@ -314,11 +359,11 @@ func runGenerate(args []string, stdout io.Writer, stderr io.Writer) int {
 	plan := schema.BuildPlanExample()
 	data, err := json.MarshalIndent(plan, "", "  ")
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "generate: %v\n", newPlannerCLIError(PlannerRenderOutputError, err, "draft plan JSON"))
+		reportError(stderr, "generate", newPlannerCLIError(PlannerRenderOutputError, err, "draft plan JSON"))
 		return 1
 	}
 	if err := replace.WriteAtomic(outputPath, append(data, '\n')); err != nil {
-		_, _ = fmt.Fprintf(stderr, "generate: %v\n", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
+		reportError(stderr, "generate", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
 		return 1
 	}
 	_, _ = io.WriteString(stdout, outputPath+"\n")
@@ -358,17 +403,16 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 	return opts, nil
 }
 
-// previewFlags carries --stdin, --diff, --write. splitPreviewArgs extracts
-// them from the flag tail before the subcommand-specific parser runs, so the
-// existing strict parsers never see an unknown flag.
+// previewFlags carries the preview-state flags stripped before subcommand
+// parsing. Write is the default; --dry-run opts out of it.
 type previewFlags struct {
-	stdin bool
-	diff  bool
-	write bool
+	stdin  bool
+	diff   bool
+	dryRun bool
 }
 
-// splitPreviewArgs separates --stdin/--diff/--write from positional and
-// subcommand flags. When allowPreview is false, --diff/--write are passed
+// splitPreviewArgs separates --stdin/--diff/--dry-run from positional and
+// subcommand flags. When allowPreview is false, --diff/--dry-run are passed
 // through unchanged (reject at the subcommand layer). When allowStdin is
 // false, --stdin is also passed through.
 func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, previewFlags, error) {
@@ -380,14 +424,13 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 			pf.stdin = true
 		case a == "--diff" && allowPreview:
 			pf.diff = true
-		case a == "--write" && allowPreview:
-			pf.write = true
+		case a == "--dry-run" && allowPreview:
+			pf.dryRun = true
+		case a == "--write":
+			return nil, pf, fmt.Errorf("unknown flag %q", a)
 		default:
 			kept = append(kept, a)
 		}
-	}
-	if allowPreview && !pf.diff && !pf.write {
-		pf.write = true
 	}
 	return kept, pf, nil
 }
@@ -397,14 +440,14 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 // When allowAutoDetect is true (validate/create only) and no path is supplied
 // and stdin is piped, reads stdin. Otherwise reads the path.
 func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Writer) ([]byte, bool, error) {
-	if useStdin && !stdinPiped() {
+	if useStdin && !stdinPiped() && !jsonErrorOutput {
 		_, _ = fmt.Fprintln(stderr, "planner: reading JSON from stdin (Ctrl-D to end)")
 	}
 	data, repaired, err := jsoninput.Read(path, useStdin, allowAutoDetect, os.Stdin, stdinPiped)
 	if err != nil {
 		return nil, false, err
 	}
-	if repaired {
+	if repaired && !jsonErrorOutput {
 		_, _ = fmt.Fprintln(stderr, "planner: repaired JSON input")
 	}
 	return data, repaired, nil
@@ -468,24 +511,24 @@ func stdinPiped() bool {
 	return err == nil && (fi.Mode()&os.ModeCharDevice) == 0
 }
 
-// runPreview orchestrates --diff / --write for create. baseline is outputPath.
-// Exit 0 means success or no diff; 1 means diff produced or a runtime failure.
-// stdoutPathOnWrite is
-// printed on successful --write when --diff is not set, preserving the legacy
-// "create prints the output path on success" stdout contract.
+// runPreview orchestrates the create preview flow. Write is the default;
+// --dry-run suppresses it. --diff is additive and still writes unless dry-run
+// is set. stdoutPathOnWrite is printed on successful writes when --diff is not
+// set, preserving the legacy "create prints the output path on success" stdout
+// contract.
 func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
 	baseline, err := readBaseline(basePath)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)
+		reportError(stderr, cmdName, err)
 		return 1
 	}
 	d := diffLines(baseline, rendered)
 	if pf.diff && d != "" {
 		_, _ = io.WriteString(stdout, d)
 	}
-	if pf.write {
+	if !pf.dryRun {
 		if err := doWrite(); err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmdName, err)
+			reportError(stderr, cmdName, err)
 			return 1
 		}
 		if !pf.diff && stdoutPathOnWrite != "" {
@@ -493,7 +536,7 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 		}
 		return 0
 	}
-	if d != "" {
+	if pf.diff && d != "" {
 		return 1
 	}
 	return 0

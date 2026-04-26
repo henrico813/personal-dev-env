@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -16,15 +17,41 @@ const (
 	PlannerWriteOutputError
 )
 
+var plannerErrorCodeNames = map[PlannerErrorCode]string{
+	PlannerUsageError:         "USAGE",
+	PlannerReadInputError:     "READ_INPUT",
+	PlannerDecodeInputError:   "DECODE_INPUT",
+	PlannerValidateInputError: "VALIDATE_INPUT",
+	PlannerRenderOutputError:  "RENDER_OUTPUT",
+	PlannerWriteOutputError:   "WRITE_OUTPUT",
+}
+
 type PlannerCLIError struct {
-	Code    PlannerErrorCode
-	Message string
-	Err     error
+	Code         PlannerErrorCode
+	Message      string
+	Err          error
+	RecoveryHint string
 }
 
 func (e *PlannerCLIError) Error() string { return e.Message }
 
 func (e *PlannerCLIError) Unwrap() error { return e.Err }
+
+func (e *PlannerCLIError) MarshalJSON() ([]byte, error) {
+	codeName := plannerErrorCodeNames[e.Code]
+	if codeName == "" {
+		codeName = "UNKNOWN"
+	}
+	return json.Marshal(struct {
+		Code         string `json:"code"`
+		Message      string `json:"message"`
+		RecoveryHint string `json:"recovery_hint,omitempty"`
+	}{
+		Code:         codeName,
+		Message:      e.Message,
+		RecoveryHint: e.RecoveryHint,
+	})
+}
 
 var plannerErrorTemplates = map[PlannerErrorCode]string{
 	PlannerReadInputError:     "read %s: %s",
