@@ -28,7 +28,7 @@ Usage:
   planner validate [<plan.json>] [--stdin] [--json-errors]
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -48,12 +48,13 @@ Rewrite flow (full rewrite):
   5. Compare the rendered issue with the source issue for dropped content.
 
 Partial update flow:
-  1. Run planner inspect <plan.md> to get section and step spans.
-  2. Write patch JSON for the target scope.
-  3. Run planner replace <plan.md> <patch.json> <output.md> --section <section>.
-  4. Non-targeted sections remain byte-for-byte unchanged.
+  1. Run planner inspect <plan.md> to see the parsed plan JSON.
+  2. Run planner template --json --section <s> to learn the patch shape.
+  3. Write patch JSON for the target scope.
+  4. Run planner patch <plan.md> <patch.json> <output.md> --section <section>.
+  5. Non-targeted sections remain byte-for-byte unchanged.
 
-replace flags:
+patch flags:
   --section/-s <section>           Required. One of: overview, definition_of_done, implementation, verification
   --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation
   --append                         Optional. Append a new step to implementation
@@ -92,6 +93,27 @@ Create workflow:
   3. planner validate draft.json && planner create draft.json out.md
 `
 
+const patchHelpText = `planner patch -- apply a JSON patch to a section of an existing plan.
+
+Usage:
+  planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]
+
+Flags:
+  --section/-s <section>           Required. One of: overview, definition_of_done, implementation, verification.
+  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation.
+  --append                         Optional. Append a new step to implementation.
+  --stdin                          Optional. Read patch JSON from stdin instead of a file.
+  --diff                           Optional. Print diff to stdout; additive (does not suppress write).
+  --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift.
+
+Workflow:
+  1. planner inspect <plan.md>
+  2. planner template --json --section <s>
+  3. Compose the patch JSON for the target scope.
+  4. planner patch <plan.md> <patch.json> <output.md> --section <section>
+  5. Non-targeted sections remain byte-for-byte unchanged.
+`
+
 func main() {
 	os.Exit(Execute(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -120,7 +142,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
-	case "replace":
+	case "patch":
 		return runReplace(args[1:], stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
@@ -352,45 +374,31 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(raw))
+	plan, _, _, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
 	}
 
-	resp := struct {
-		Title              string         `json:"title"`
-		Sections           []string       `json:"sections"`
-		ImplementationSize int            `json:"implementation_size"`
-		OverviewSpan       inspect.Span   `json:"overview_span"`
-		DoDSpan            inspect.Span   `json:"definition_of_done_span"`
-		ImplSectionSpan    inspect.Span   `json:"implementation_section_span"`
-		ImplStepSpans      []inspect.Span `json:"implementation_step_spans"`
-		VerificationSpan   inspect.Span   `json:"verification_span"`
-	}{
-		Title:              plan.Title,
-		Sections:           []string{"overview", "definition_of_done", "implementation", "verification"},
-		ImplementationSize: len(plan.Implementation),
-		OverviewSpan:       sectionSpans.Overview,
-		DoDSpan:            sectionSpans.DefinitionOfDone,
-		ImplSectionSpan:    sectionSpans.Implementation,
-		ImplStepSpans:      stepSpans,
-		VerificationSpan:   sectionSpans.Verification,
-	}
-
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(resp); err != nil {
+	out, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerWriteOutputError, err, "inspect JSON"))
 		return 1
 	}
+	_, _ = stdout.Write(append(out, '\n'))
 	return 0
 }
 
 func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			_, _ = io.WriteString(stdout, patchHelpText)
+			return 0
+		}
+	}
 	positional, pf, err := splitPreviewArgs(args, true, true)
 	if err != nil {
-		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	var sourcePath, patchPath, outputPath string
@@ -402,7 +410,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, nil, "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	switch pathCount {
@@ -416,24 +424,24 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	opts, err := parseReplaceOptions(flags)
 	if err != nil {
-		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 
 	patchData, _, err := readJSONSource(patchPath, pf.stdin, false, stderr)
 	if err != nil {
-		reportError(stderr, "replace", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
 		return 1
 	}
 
 	out, result, err := replace.PreviewFromData(sourcePath, opts, patchData)
 	if err != nil {
 		cliErr := mapReplaceCLIError(err, sourcePath)
-		reportError(stderr, "replace", cliErr)
+		reportError(stderr, "patch", cliErr)
 		return plannerExitCode(cliErr)
 	}
 
-	exit := runPreviewAgainstSource(stdout, stderr, pf, out, sourcePath, outputPath, "replace", func() error {
+	exit := runPreviewAgainstSource(stdout, stderr, pf, out, sourcePath, outputPath, "patch", func() error {
 		if err := replace.WriteAtomic(outputPath, []byte(out)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
@@ -446,7 +454,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(result); err != nil {
-		reportError(stderr, "replace", newPlannerCLIError(PlannerWriteOutputError, err, "replace result JSON"))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerWriteOutputError, err, "result JSON"))
 		return 1
 	}
 	return 0
@@ -564,10 +572,13 @@ func patchSourceLabel(path string, useStdin bool) string {
 	return path
 }
 
+// mapReplaceCLIError translates internal replace package failures into CLI
+// envelopes. Subject strings describe data ("result", "patch JSON"), not the
+// command name; the cmd argument to reportError owns the CLI label.
 func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 	var replaceErr *replace.ReplaceError
 	if !errors.As(err, &replaceErr) {
-		return newPlannerCLIError(PlannerValidateInputError, err, "replace result")
+		return newPlannerCLIError(PlannerValidateInputError, err, "result")
 	}
 	switch replaceErr.Code {
 	case replace.ReplaceInvalidOptionsError:
@@ -577,13 +588,13 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 	case replace.ReplaceParseSourceError:
 		return newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown")
 	case replace.ReplaceDecodePatchError:
-		return newPlannerCLIError(PlannerDecodeInputError, err, "replace patch")
+		return newPlannerCLIError(PlannerDecodeInputError, err, "patch JSON")
 	case replace.ReplaceRenderResultError:
 		return newPlannerCLIError(PlannerRenderOutputError, err, "updated plan markdown")
 	case replace.ReplaceValidateResultError:
 		return newPlannerCLIError(PlannerValidateInputError, err, "updated plan")
 	default:
-		return newPlannerCLIError(PlannerValidateInputError, err, "replace result")
+		return newPlannerCLIError(PlannerValidateInputError, err, "result")
 	}
 }
 
@@ -625,7 +636,7 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 }
 
 // runPreviewAgainstSource is runPreview with sourcePath as the baseline,
-// used by replace so the diff shows what the patch changes in the source,
+// used by patch so the diff shows what the patch changes in the source,
 // not the difference from some unrelated output file.
 func runPreviewAgainstSource(stdout, stderr io.Writer, pf previewFlags, rendered, sourcePath, outputPath, cmdName string, doWrite func() error) int {
 	return runPreview(stdout, stderr, pf, rendered, sourcePath, cmdName, doWrite, "")
