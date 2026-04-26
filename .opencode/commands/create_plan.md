@@ -102,7 +102,8 @@ Once aligned on approach:
 
 After structure approval:
 
-1. Run `~/.claude/bin/planner generate <draft.json>` to create a valid draft
+1. Run `~/.claude/bin/planner help` first; do not guess command shapes from memory.
+2. Run `~/.claude/bin/planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
 3. Run `~/.claude/bin/planner validate <draft.json>` to confirm before writing
 4. Run `~/.claude/bin/planner create <draft.json> <output.md>` to render to the vault
@@ -331,4 +332,3 @@ Based on the document, I understand we need to track parent-child relationships 
 
 [Interactive process continues...]
 ```
-
