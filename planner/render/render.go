@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"text/template"
-	"planner/validate"
 	"planner/schema"
+	"planner/validate"
+	"text/template"
 )
 
 //go:embed plan_template.md.tmpl

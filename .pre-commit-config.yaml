@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: go-check
+        name: make check
+        entry: bash -c 'cd planner && make check'
+        language: system
+        files: ^planner/.*\.go$
+        pass_filenames: false
