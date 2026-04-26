@@ -16,11 +16,7 @@ jobs:
         with:
           go-version-file: planner/go.mod
           cache-dependency-path: planner/go.sum
-      - name: gofmt
-        run: test -z "$(gofmt -l .)"
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: v2.11.4
-          working-directory: planner
-      - name: test
-        run: go test ./...
+      - name: install golangci-lint
+        run: make init
+      - name: check
+        run: make check
