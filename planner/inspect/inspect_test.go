@@ -51,7 +51,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, sectionSpans, stepSpans, err := ParseMarkdown(md)
+	parsed, sectionSpans, stepSpans, _, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	frontmatter := "---\ntags:\n  - \"#Ticket\"\n---\n\n"
 	withFrontmatter := frontmatter + md
 
-	parsed, sectionSpans, _, err := ParseMarkdown(withFrontmatter)
+	parsed, sectionSpans, _, _, err := ParseMarkdown(withFrontmatter)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, _, stepSpans, err := ParseMarkdown(md)
+	parsed, _, stepSpans, _, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestParseChecklistItemsRejectsMalformedMarker(t *testing.T) {
 }
 
 func TestParseMarkdownRejectsCRLF(t *testing.T) {
-	_, _, _, err := ParseMarkdown("# Title\r\n## Overview\r\n")
+	_, _, _, _, err := ParseMarkdown("# Title\r\n## Overview\r\n")
 	if err == nil || !strings.Contains(err.Error(), "CRLF") {
 		t.Fatalf("expected CRLF error, got: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, _, _, err := ParseMarkdown(md)
+	parsed, _, _, _, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -239,5 +239,67 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 	}
 	if md != rerendered {
 		t.Fatalf("re-render not byte-identical:\nfirst=%q\nsecond=%q", md, rerendered)
+	}
+}
+
+func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
+	plan := schema.Plan{
+		Title:    "Plan",
+		Overview: "Overview text.",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    "Narrative.",
+			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			CurrentState: "Current state.",
+			ModuleShape:  "module shape",
+		},
+		Implementation: []schema.Step{
+			{
+				Title:   "First",
+				Summary: "summary one",
+				FileChanges: []schema.FileChange{
+					{
+						Filename:    "a.txt",
+						Explanation: "explain",
+						Diff:        "@@ -1 +1 @@\n-old\n+new",
+					},
+					{
+						Filename:    "b.txt",
+						Explanation: "explain",
+						Diff:        "@@ -1 +1 @@\n-old\n+newer",
+					},
+				},
+			},
+		},
+		Verification: &schema.Verification{
+			Summary:   "Verification summary.",
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+		},
+	}
+
+	md, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+
+	_, _, _, diffSpans, err := ParseMarkdown(md)
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	if len(diffSpans) != len(plan.Implementation) {
+		t.Fatalf("expected %d step span rows, got %d", len(plan.Implementation), len(diffSpans))
+	}
+	if len(diffSpans[0]) != len(plan.Implementation[0].FileChanges) {
+		t.Fatalf("expected %d file-change spans, got %d", len(plan.Implementation[0].FileChanges), len(diffSpans[0]))
+	}
+	for i, span := range diffSpans[0] {
+		if span.Start < 0 || span.End <= span.Start {
+			t.Fatalf("span %d malformed: %+v", i, span)
+		}
+		got := md[span.Start:span.End]
+		want := plan.Implementation[0].FileChanges[i].Diff
+		if !strings.Contains(got, want) {
+			t.Fatalf("span %d missing diff content: got=%q want=%q", i, got, want)
+		}
 	}
 }

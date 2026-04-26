@@ -28,7 +28,7 @@ Usage:
   planner validate [<plan.json>] [--stdin] [--json-errors]
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -93,25 +93,31 @@ Create workflow:
   3. planner validate draft.json && planner create draft.json out.md
 `
 
-const patchHelpText = `planner patch -- apply a JSON patch to a section of an existing plan.
+const patchHelpText = `planner patch -- apply a patch to a section of an existing plan.
 
 Usage:
-  planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]
 
 Flags:
   --section/-s <section>           Required. One of: overview, definition_of_done, implementation, verification.
   --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation.
+  --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step.
+  --field diff                     Optional. Replace one FileChange's diff via raw text input.
   --append                         Optional. Append a new step to implementation.
-  --stdin                          Optional. Read patch JSON from stdin instead of a file.
+  --stdin                          Optional. Read patch input from stdin instead of a file.
   --diff                           Optional. Print diff to stdout; additive (does not suppress write).
   --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift.
 
-Workflow:
+Diff-edit workflow:
   1. planner inspect <plan.md>
-  2. planner template --json --section <s>
-  3. Compose the patch JSON for the target scope.
-  4. planner patch <plan.md> <patch.json> <output.md> --section <section>
+  2. Find the implementation step number and FileChange filename.
+  3. Write the new diff body as raw text.
+  4. planner patch <plan.md> <diff.txt> <output.md> --section implementation --subsection N --file F --field diff
   5. Non-targeted sections remain byte-for-byte unchanged.
+
+Trap:
+  Full-step replacement re-escapes every diff in that step, even if only one FileChange needed a change.
+  Prefer --field diff for diff edits; full-FileChange replacement is deferred to PDEV-028.
 `
 
 func main() {
@@ -374,7 +380,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	plan, _, _, err := inspect.ParseMarkdown(string(raw))
+	plan, _, _, _, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
@@ -410,7 +416,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	switch pathCount {
@@ -428,7 +434,12 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 
-	patchData, _, err := readJSONSource(patchPath, pf.stdin, false, stderr)
+	var patchData []byte
+	if opts.Field != "" {
+		patchData, err = readRawSource(patchPath, pf.stdin)
+	} else {
+		patchData, _, err = readJSONSource(patchPath, pf.stdin, false, stderr)
+	}
 	if err != nil {
 		reportError(stderr, "patch", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
 		return 1
@@ -476,6 +487,18 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 				return opts, fmt.Errorf("missing value for --subsection")
 			}
 			opts.Subsection = flags[i]
+		case "--file":
+			i++
+			if i >= len(flags) {
+				return opts, fmt.Errorf("missing value for --file")
+			}
+			opts.File = flags[i]
+		case "--field":
+			i++
+			if i >= len(flags) {
+				return opts, fmt.Errorf("missing value for --field")
+			}
+			opts.Field = flags[i]
 		case "--append":
 			opts.Append = true
 		default:
@@ -489,6 +512,26 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 		if _, err := strconv.Atoi(opts.Subsection); err != nil {
 			return opts, fmt.Errorf("--subsection for implementation must be a 1-based integer index")
 		}
+	}
+	if opts.Field != "" {
+		if opts.Section != "implementation" {
+			return opts, fmt.Errorf("--field requires --section implementation")
+		}
+		if opts.Subsection == "" {
+			return opts, fmt.Errorf("--field requires --subsection N")
+		}
+		if opts.File == "" {
+			return opts, fmt.Errorf("--field requires --file F")
+		}
+		if opts.Field != "diff" {
+			return opts, fmt.Errorf("--field %q not supported (PDEV-028 adds non-diff fields); valid: diff", opts.Field)
+		}
+	}
+	if opts.File != "" && opts.Field == "" {
+		return opts, fmt.Errorf("--file requires --field")
+	}
+	if opts.Append && opts.Field != "" {
+		return opts, fmt.Errorf("--append cannot be used with --field")
 	}
 	return opts, nil
 }
@@ -543,6 +586,18 @@ func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Write
 	return data, repaired, nil
 }
 
+// readRawSource reads patch input as raw bytes without JSON repair. It mirrors
+// readJSONSource's stdin/path selection but preserves the byte stream exactly.
+func readRawSource(path string, useStdin bool) ([]byte, error) {
+	if useStdin {
+		return io.ReadAll(os.Stdin)
+	}
+	if path == "" {
+		return nil, fmt.Errorf("no patch path and --stdin not set")
+	}
+	return os.ReadFile(path)
+}
+
 // readPlanFrom is the plan-decoding wrapper for runValidate/runCreate.
 // Decode errors are wrapped in typed planner CLI errors so tests can assert on
 // stable failure categories instead of raw strings.
@@ -593,6 +648,18 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 		return newPlannerCLIError(PlannerRenderOutputError, err, "updated plan markdown")
 	case replace.ReplaceValidateResultError:
 		return newPlannerCLIError(PlannerValidateInputError, err, "updated plan")
+	case replace.ReplaceFileNotFoundError:
+		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
+		e.RecoveryHint = "run planner inspect <plan.md> to list valid filenames in the targeted step"
+		return e
+	case replace.ReplaceFileAmbiguousError:
+		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
+		e.RecoveryHint = "rename or consolidate duplicate FileChange filenames before patching"
+		return e
+	case replace.ReplaceParseSplicedSourceError:
+		e := newPlannerCLIError(PlannerValidateInputError, err, "spliced plan markdown")
+		e.RecoveryHint = "remove or escape triple-backtick fences in the diff body, then patch again"
+		return e
 	default:
 		return newPlannerCLIError(PlannerValidateInputError, err, "result")
 	}

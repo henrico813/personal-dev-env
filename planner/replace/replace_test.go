@@ -50,7 +50,7 @@ func parseOutputPlan(t *testing.T, outputPath string) schema.Plan {
 	if err != nil {
 		t.Fatalf("ReadFile(output): %v", err)
 	}
-	parsed, _, _, err := inspect.ParseMarkdown(string(raw))
+	parsed, _, _, _, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -304,6 +304,82 @@ func TestRunAppendsStepToEmptyImplementation(t *testing.T) {
 	}
 }
 
+func TestSpliceDiffFieldHappyPath(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	opts := ReplaceOptions{
+		Section:    "implementation",
+		Subsection: "1",
+		File:       "a.go",
+		Field:      "diff",
+	}
+
+	out, result, err := PreviewFromData(src, opts, []byte("NEW DIFF FOR A"))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	if !strings.Contains(out, "NEW DIFF FOR A") {
+		t.Fatalf("new diff missing from output")
+	}
+	if strings.Contains(out, "OLD A") {
+		t.Fatalf("old diff still present")
+	}
+	if !strings.Contains(out, "OLD B") {
+		t.Fatalf("untargeted diff was disturbed")
+	}
+	if result.File != "a.go" || result.Field != "diff" {
+		t.Fatalf("ReplaceResult missing File/Field: %+v", result)
+	}
+}
+
+func TestSpliceDiffFieldFileNotFound(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	opts := ReplaceOptions{
+		Section:    "implementation",
+		Subsection: "1",
+		File:       "missing.go",
+		Field:      "diff",
+	}
+
+	_, _, err := PreviewFromData(src, opts, []byte("X"))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceFileNotFoundError {
+		t.Fatalf("got %v, want ReplaceFileNotFoundError", err)
+	}
+}
+
+func TestSpliceDiffFieldFileAmbiguous(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD ONE", "a.go", "OLD TWO"))
+	opts := ReplaceOptions{
+		Section:    "implementation",
+		Subsection: "1",
+		File:       "a.go",
+		Field:      "diff",
+	}
+
+	_, _, err := PreviewFromData(src, opts, []byte("X"))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceFileAmbiguousError {
+		t.Fatalf("got %v, want ReplaceFileAmbiguousError", err)
+	}
+}
+
+func TestSpliceDiffFieldRejectsUnparseableDiff(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	opts := ReplaceOptions{
+		Section:    "implementation",
+		Subsection: "1",
+		File:       "a.go",
+		Field:      "diff",
+	}
+	unparseable := []byte("some prefix\n```\nfake fence inside diff\n```\nrest")
+
+	_, _, err := PreviewFromData(src, opts, unparseable)
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceParseSplicedSourceError {
+		t.Fatalf("got %v, want ReplaceParseSplicedSourceError", err)
+	}
+}
+
 // TestSpliceOutputMatchesRerender verifies splice produces byte-identical
 // output to re-rendering the parsed result. Catches formatting drift like
 // dropped blank lines between sections.
@@ -327,7 +403,7 @@ func TestSpliceOutputMatchesRerender(t *testing.T) {
 	}
 
 	spliced, _ := os.ReadFile(outputPath)
-	parsed, _, _, err := inspect.ParseMarkdown(string(spliced))
+	parsed, _, _, _, err := inspect.ParseMarkdown(string(spliced))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
@@ -377,6 +453,28 @@ func twoStepPlan() schema.Plan {
 			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
 		},
 	}
+}
+
+func writeFixturePlan(t *testing.T, plan schema.Plan) string {
+	t.Helper()
+	return writeRenderedPlan(t, plan)
+}
+
+func twoNamedFileChanges(name1, diff1, name2, diff2 string) schema.Plan {
+	plan := twoStepPlan()
+	plan.Implementation[0].FileChanges = []schema.FileChange{
+		{
+			Filename:    name1,
+			Explanation: "why",
+			Diff:        diff1,
+		},
+		{
+			Filename:    name2,
+			Explanation: "why",
+			Diff:        diff2,
+		},
+	}
+	return plan
 }
 
 // TestRunPreservesCheckboxesInUntouchedSectionByteIdentical verifies that

@@ -289,7 +289,7 @@ func TestRunPatchUsage(t *testing.T) {
 	if exitCode := Execute([]string{"patch"}, &stdout, &stderr); exitCode != 2 {
 		t.Fatalf("Execute(patch) exit code = %d, want 2", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<patch.json>] <output.md> --section <section>") {
+	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section>") {
 		t.Fatalf("missing patch usage in stderr = %q", stderr.String())
 	}
 }
@@ -313,6 +313,137 @@ func TestPatchRequiresSection(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "--section is required") {
 		t.Fatalf("expected required section error, got %q", stderr.String())
+	}
+}
+
+func TestPatchFieldDiffHappyPath(t *testing.T) {
+	dir := t.TempDir()
+	planPath := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", planPath, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+
+	diffPath := dir + "/diff.txt"
+	if err := os.WriteFile(diffPath, []byte("NEW DIFF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := dir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"patch", planPath, diffPath, outPath, "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("exit %d stderr %q", exit, stderr.String())
+	}
+
+	rendered, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rendered), "NEW DIFF") {
+		t.Fatalf("diff not spliced; body=%q", string(rendered))
+	}
+
+	var got struct {
+		File  string `json:"file"`
+		Field string `json:"field"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not result JSON: %v; raw=%q", err, stdout.String())
+	}
+	if got.File != "f" || got.Field != "diff" {
+		t.Fatalf("unexpected result JSON: %+v", got)
+	}
+}
+
+func TestPatchFieldDiffFileNotFoundEmitsRecoveryHint(t *testing.T) {
+	dir := t.TempDir()
+	planPath := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", planPath, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+
+	diffPath := dir + "/diff.txt"
+	if err := os.WriteFile(diffPath, []byte("X"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := dir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"--json-errors", "patch", planPath, diffPath, outPath, "--section", "implementation", "--subsection", "1", "--file", "missing.go", "--field", "diff"}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("exit %d want 2; stderr %q", exit, stderr.String())
+	}
+
+	var got struct {
+		Code         string `json:"code"`
+		Message      string `json:"message"`
+		RecoveryHint string `json:"recovery_hint"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &got); err != nil {
+		t.Fatalf("stderr is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	if got.Code != "USAGE" {
+		t.Fatalf("code=%q want USAGE", got.Code)
+	}
+	if !strings.Contains(got.RecoveryHint, "planner inspect") {
+		t.Fatalf("recovery hint %q does not mention planner inspect", got.RecoveryHint)
+	}
+}
+
+func TestPatchFieldFlagValidationMatrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "file_without_field",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f"},
+			wantErr: "--file requires --field",
+		},
+		{
+			name:    "field_without_file",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
+			wantErr: "--field requires --file",
+		},
+		{
+			name:    "field_without_subsection",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--file", "f", "--field", "diff"},
+			wantErr: "--field requires --subsection",
+		},
+		{
+			name:    "field_outside_implementation",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "overview", "--field", "diff"},
+			wantErr: "--field requires --section implementation",
+		},
+		{
+			name:    "field_not_diff",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "title"},
+			wantErr: "not supported",
+		},
+		{
+			name:    "append_with_field",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff", "--append"},
+			wantErr: "--append cannot be used with --field",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if exitCode := Execute(tc.args, &stdout, &stderr); exitCode != 2 {
+				t.Fatalf("exit %d want 2; stderr %q", exitCode, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.wantErr) {
+				t.Fatalf("stderr %q missing %q", stderr.String(), tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -806,6 +937,20 @@ func TestPatchHelpPrintsWorkflow(t *testing.T) {
 		t.Fatalf("Execute(patch --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
 	for _, want := range []string{"--section", "--append"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patch --help missing %q anchor: %q", want, stdout.String())
+		}
+	}
+}
+
+func TestPatchHelpListsFieldFlagsAndDiffWorkflow(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := Execute([]string{"patch", "--help"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Execute(patch --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
+	}
+	for _, want := range []string{"--file", "--field diff", "Diff-edit workflow:", "Trap:"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("patch --help missing %q anchor: %q", want, stdout.String())
 		}

@@ -20,16 +20,21 @@ import (
 type ReplaceResult struct {
 	Section       string `json:"section"`
 	Subsection    string `json:"subsection,omitempty"`
+	File          string `json:"file,omitempty"`
+	Field         string `json:"field,omitempty"`
 	StepsReplaced []int  `json:"steps_replaced,omitempty"`
 	Appended      bool   `json:"appended,omitempty"`
 }
 
 // ReplaceOptions selects the target scope for a replace operation.
-// Section is required; Subsection and Append are mutually exclusive.
+// Section is required; Subsection and Append are mutually exclusive; File and
+// Field address a leaf selector inside implementation.
 type ReplaceOptions struct {
 	Section    string // required: overview|definition_of_done|implementation|verification
 	Subsection string // field name for definition_of_done; 1-based step index for implementation
 	Append     bool   // append a new step to implementation
+	File       string // filename selector for implementation diff-field splices
+	Field      string // field selector for implementation leaf updates
 }
 
 // Run replaces the targeted section or subsection in sourcePath with the patch
@@ -72,9 +77,13 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		return "", ReplaceResult{}, newReplaceError(ReplaceReadSourceError, err)
 	}
 
-	plan, sectionSpans, stepSpans, err := inspect.ParseMarkdown(string(sourceRaw))
+	plan, sectionSpans, stepSpans, diffSpans, err := inspect.ParseMarkdown(string(sourceRaw))
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSourceError, err)
+	}
+
+	if opts.Field != "" {
+		return applyFieldPatch(string(sourceRaw), opts, patchRaw, plan, diffSpans)
 	}
 
 	updated := plan
@@ -114,7 +123,7 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
-	_, newSectionSpans, newStepSpans, err := inspect.ParseMarkdown(out)
+	_, newSectionSpans, newStepSpans, _, err := inspect.ParseMarkdown(out)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
@@ -143,8 +152,25 @@ func validateOpts(opts ReplaceOptions) error {
 	if opts.Append && opts.Subsection != "" {
 		return fmt.Errorf("--append and --subsection cannot be used together")
 	}
+	if opts.Append && opts.Field != "" {
+		return fmt.Errorf("--append cannot be used with --field")
+	}
 	if (opts.Section == "overview" || opts.Section == "verification") && opts.Subsection != "" {
 		return fmt.Errorf("--subsection is not supported for section %q", opts.Section)
+	}
+	if opts.Field != "" {
+		if opts.Section != "implementation" {
+			return fmt.Errorf("--field requires --section implementation")
+		}
+		if opts.Subsection == "" {
+			return fmt.Errorf("--field requires --subsection N")
+		}
+		if opts.File == "" {
+			return fmt.Errorf("--field requires --file F")
+		}
+	}
+	if opts.File != "" && opts.Field == "" {
+		return fmt.Errorf("--file requires --field")
 	}
 	return nil
 }
@@ -222,6 +248,55 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 	return stepsReplaced, false, nil
 }
 
+// applyFieldPatch dispatches a field-level patch. Phase 4 ships --field diff
+// only; PDEV-028 will add new cases by extending this switch.
+func applyFieldPatch(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, diffSpans [][]inspect.Span) (string, ReplaceResult, error) {
+	switch opts.Field {
+	case "diff":
+		return spliceDiffField(source, opts, patchRaw, plan, diffSpans)
+	default:
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("unknown --field %q (valid: diff)", opts.Field))
+	}
+}
+
+// spliceDiffField replaces one FileChange diff body with raw bytes and then
+// re-parses the spliced markdown before returning. No JSON decode or schema
+// validation runs on the field body itself.
+func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, diffSpans [][]inspect.Span) (string, ReplaceResult, error) {
+	stepIdx, err := strconv.Atoi(opts.Subsection)
+	if err != nil || stepIdx < 1 || stepIdx > len(plan.Implementation) {
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("--subsection %q invalid for implementation (have %d steps)", opts.Subsection, len(plan.Implementation)))
+	}
+
+	matches := []int{}
+	for i, fc := range plan.Implementation[stepIdx-1].FileChanges {
+		if fc.Filename == opts.File {
+			matches = append(matches, i)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", ReplaceResult{}, newReplaceError(ReplaceFileNotFoundError, fmt.Errorf("--file %q not found in step %d", opts.File, stepIdx))
+	case 1:
+	default:
+		return "", ReplaceResult{}, newReplaceError(ReplaceFileAmbiguousError, fmt.Errorf("--file %q matched %d FileChanges in step %d; consolidate or rename before patching", opts.File, len(matches), stepIdx))
+	}
+
+	span := diffSpans[stepIdx-1][matches[0]]
+	out := splice(source, span, string(patchRaw))
+	if _, _, _, _, err := inspect.ParseMarkdown(out); err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceParseSplicedSourceError, fmt.Errorf("spliced diff body breaks plan parsing (likely contains a fence-like line): %w", err))
+	}
+
+	return out, ReplaceResult{
+		Section:    opts.Section,
+		Subsection: opts.Subsection,
+		File:       opts.File,
+		Field:      opts.Field,
+	}, nil
+}
+
 func decodePatch(patchRaw []byte, target any) error {
 	return newReplaceError(ReplaceDecodePatchError, jsoninput.DecodeStrict(patchRaw, target))
 }
@@ -267,7 +342,7 @@ func renderSection(plan schema.Plan, section string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, spans, _, err := inspect.ParseMarkdown(full)
+	_, spans, _, _, err := inspect.ParseMarkdown(full)
 	if err != nil {
 		return "", err
 	}
