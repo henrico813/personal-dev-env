@@ -17,13 +17,14 @@ import (
 	"planner/validate"
 )
 
-const helpText = `planner generates implementation-plan markdown from canonical JSON.
+const helpText = `planner provides implementation-plan workflows from canonical JSON.
 
 Usage:
   planner
   planner help
-  planner show-schema
-  planner generate <output.json>
+  planner template --md
+  planner template --json [--section <s> [--subsection <x>]]
+  planner template --help
   planner validate [<plan.json>] [--stdin] [--json-errors]
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
@@ -32,16 +33,16 @@ Usage:
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
-Scratch flow:
+Create flow:
   1. Research the task.
-  2. Run planner generate <output.json>.
-  3. Edit the generated JSON draft.
+  2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
+  3. Edit the draft JSON. Diff stays "PLACEHOLDER" until raw diff patching lands in PDEV-027.
   4. Run planner validate <plan.json>.
   5. Run planner create <plan.json> <output.md>.
 
 Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
-  2. Map its content into canonical JSON matching planner show-schema.
+  2. Map its content into canonical JSON matching planner template --json.
   3. Run planner validate <plan.json>.
   4. Run planner create <plan.json> <output.md>.
   5. Compare the rendered issue with the source issue for dropped content.
@@ -60,13 +61,35 @@ replace flags:
   --diff                           Optional. Print diff to stdout; additive (does not suppress write)
   --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift
 
-show-schema contract:
-  - Prints a JSON object with plan_example and validation_rules.
-  - Use only plan_example as input to planner validate and planner create.
-  - validation_rules lists the semantic rules the current validator enforces.
-  - Includes command semantics for help, show-schema, generate, validate, create, inspect, and replace.
+template selectors:
+  --md                             Print the canonical markdown plan with PLACEHOLDER text.
+  --json                           Print the full JSON skeleton.
+  --json --section <s>             Print a section-level JSON shape.
+  --json --section <s> --subsection <x>  Print a subsection-level JSON shape.
+  --help                           Walk through the create workflow and PLACEHOLDER convention.
+  Note: --section without --json is rejected with a USAGE error.
 
 Validation rules:
+`
+
+const templateHelpText = `planner template -- print plan-shape references for AI authoring.
+
+Usage:
+  planner template --md
+  planner template --json
+  planner template --json --section <s> [--subsection <x>]
+
+Selectors:
+  --md                  Canonical markdown plan with PLACEHOLDER text and validation hints.
+  --json                Full plan JSON skeleton; FileChange.Diff is the literal string "PLACEHOLDER".
+  --section/-s <s>      Section-level JSON shape: overview, definition_of_done, implementation, verification.
+  --subsection <x>      Field name for definition_of_done; 1-based step index for implementation.
+
+Create workflow:
+  1. planner template --json > draft.json
+  2. Edit fields. Leave Diff as "PLACEHOLDER" until you have the unified diff text;
+     raw diff patching lands in PDEV-027.
+  3. planner validate draft.json && planner create draft.json out.md
 `
 
 func main() {
@@ -89,8 +112,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "help", "--help", "-h":
 		printHelp(stdout)
 		return 0
-	case "show-schema":
-		return runShowSchema(stdout, stderr)
+	case "template":
+		return runTemplate(args[1:], stdout, stderr)
 	case "validate":
 		return runValidate(args[1:], stdout, stderr)
 	case "create":
@@ -99,8 +122,6 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runInspect(args[1:], stdout, stderr)
 	case "replace":
 		return runReplace(args[1:], stdout, stderr)
-	case "generate":
-		return runGenerate(args[1:], stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
 		// Help text is verbose human-oriented prose; under --json-errors the
@@ -149,13 +170,93 @@ func reportError(stderr io.Writer, cmd string, err error) {
 	_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmd, cliErr)
 }
 
-func runShowSchema(stdout io.Writer, stderr io.Writer) int {
-	schemaJSON := schema.BuildSchemaJSON()
-	if _, err := io.WriteString(stdout, schemaJSON+"\n"); err != nil {
-		reportError(stderr, "show-schema", newPlannerCLIError(PlannerWriteOutputError, err, "schema JSON"))
-		return 1
+type templateOptions struct {
+	md         bool
+	jsonMode   bool
+	section    string
+	subsection string
+}
+
+func parseTemplateOptions(args []string) (templateOptions, error) {
+	opts := templateOptions{}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--md":
+			opts.md = true
+		case "--json":
+			opts.jsonMode = true
+		case "--section", "-s":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing value for --section")
+			}
+			opts.section = args[i]
+		case "--subsection":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing value for --subsection")
+			}
+			opts.subsection = args[i]
+		default:
+			return opts, fmt.Errorf("unknown flag %q", args[i])
+		}
 	}
-	return 0
+	if opts.md && opts.jsonMode {
+		return opts, fmt.Errorf("--md and --json are mutually exclusive")
+	}
+	if opts.subsection != "" && opts.section == "" {
+		return opts, fmt.Errorf("--subsection requires --section")
+	}
+	if opts.section != "" && !opts.jsonMode {
+		return opts, fmt.Errorf("--section requires --json")
+	}
+	if !opts.md && !opts.jsonMode {
+		return opts, fmt.Errorf("either --md or --json is required")
+	}
+	return opts, nil
+}
+
+func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			_, _ = io.WriteString(stdout, templateHelpText)
+			return 0
+		}
+	}
+
+	opts, err := parseTemplateOptions(args)
+	if err != nil {
+		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+
+	plan := schema.BuildPlanTemplate()
+	switch {
+	case opts.md:
+		rendered, err := render.RenderPlan(plan)
+		if err != nil {
+			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
+			return 1
+		}
+		_, _ = io.WriteString(stdout, rendered)
+		return 0
+	case opts.section == "":
+		raw, err := json.MarshalIndent(plan, "", "  ")
+		if err != nil {
+			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "template JSON"))
+			return 1
+		}
+		_, _ = stdout.Write(append(raw, '\n'))
+		return 0
+	default:
+		raw, err := schema.MarshalSection(plan, opts.section, opts.subsection)
+		if err != nil {
+			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		_, _ = stdout.Write(raw)
+		return 0
+	}
 }
 
 func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -348,33 +449,6 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "replace", newPlannerCLIError(PlannerWriteOutputError, err, "replace result JSON"))
 		return 1
 	}
-	return 0
-}
-
-// runGenerate writes a ready-to-edit draft plan JSON in ChecklistItem object
-// form, enabling the edit-then-create workflow without relying on show-schema's
-// SchemaDocument envelope.
-func runGenerate(args []string, stdout io.Writer, stderr io.Writer) int {
-	if len(args) != 1 {
-		reportError(stderr, "generate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>"))
-		return 2
-	}
-	outputPath := args[0]
-	if outputPath == "-" {
-		reportError(stderr, "generate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>"))
-		return 2
-	}
-	plan := schema.BuildPlanExample()
-	data, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		reportError(stderr, "generate", newPlannerCLIError(PlannerRenderOutputError, err, "draft plan JSON"))
-		return 1
-	}
-	if err := replace.WriteAtomic(outputPath, append(data, '\n')); err != nil {
-		reportError(stderr, "generate", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
-		return 1
-	}
-	_, _ = io.WriteString(stdout, outputPath+"\n")
 	return 0
 }
 
