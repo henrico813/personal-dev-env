@@ -4,14 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"planner/internal/jsoninput"
 )
-
-type SchemaDocument struct {
-	PlanExample     Plan     `json:"plan_example"`
-	ValidationRules []string `json:"validation_rules"`
-}
 
 type Plan struct {
 	Title            string           `json:"title"`
@@ -146,6 +142,92 @@ func BuildPlanExample() Plan {
 	}
 }
 
+// BuildPlanTemplate returns the canonical AI-authored plan skeleton.
+func BuildPlanTemplate() Plan {
+	return Plan{
+		Title:    "<short title -- required, non-empty>",
+		Overview: "<2-4 sentence summary -- required, non-empty>",
+		DefinitionOfDone: DefinitionOfDone{
+			Narrative:    "<paragraph -- required, non-empty>",
+			Goals:        []ChecklistItem{{Text: "<concrete goal -- 1 to 8 items, each <= 88 chars>"}},
+			CurrentState: "<current behavior with file:line refs -- required, non-empty>",
+			ModuleShape:  "<final layout -- required, non-empty>",
+		},
+		Implementation: []Step{
+			{
+				Title:   "<step title -- required>",
+				Summary: "<what changes and why -- required>",
+				FileChanges: []FileChange{
+					{
+						Filename:    "<path/to/file>",
+						Explanation: "<one sentence>",
+						Diff:        "PLACEHOLDER",
+					},
+				},
+			},
+		},
+		Verification: &Verification{
+			Summary:   "<optional summary>",
+			Automated: []ChecklistItem{{Text: "<runnable check>"}},
+			Manual:    []ChecklistItem{{Text: "<manual step>"}},
+		},
+	}
+}
+
+// MarshalSection returns the JSON shape accepted by replace for the requested
+// section or subsection.
+func MarshalSection(plan Plan, section, subsection string) ([]byte, error) {
+	var value any
+	switch section {
+	case "overview":
+		if subsection != "" {
+			return nil, fmt.Errorf("overview does not support subsections")
+		}
+		value = plan.Overview
+	case "definition_of_done":
+		switch subsection {
+		case "":
+			value = plan.DefinitionOfDone
+		case "narrative":
+			value = plan.DefinitionOfDone.Narrative
+		case "goals":
+			value = plan.DefinitionOfDone.Goals
+		case "current_state":
+			value = plan.DefinitionOfDone.CurrentState
+		case "module_shape":
+			value = plan.DefinitionOfDone.ModuleShape
+		default:
+			return nil, fmt.Errorf("unknown definition_of_done subsection %q", subsection)
+		}
+	case "implementation":
+		if subsection == "" {
+			value = plan.Implementation
+			break
+		}
+		idx, err := strconv.Atoi(subsection)
+		if err != nil {
+			return nil, fmt.Errorf("--subsection for implementation must be a 1-based integer index, got %q", subsection)
+		}
+		if idx < 1 || idx > len(plan.Implementation) {
+			return nil, fmt.Errorf("implementation subsection %d out of range (have %d steps)", idx, len(plan.Implementation))
+		}
+		value = plan.Implementation[idx-1]
+	case "verification":
+		if subsection != "" {
+			return nil, fmt.Errorf("verification subsections are deferred to PDEV-028; today only --section verification is supported")
+		}
+		value = plan.Verification
+	default:
+		return nil, fmt.Errorf("unknown section %q (valid: overview, definition_of_done, implementation, verification)", section)
+	}
+
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(raw, '\n'), nil
+}
+
 func ValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
@@ -158,14 +240,4 @@ func ValidationRules() []string {
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
 	}
-}
-
-func BuildSchemaJSON() string {
-	doc := SchemaDocument{
-		PlanExample:     BuildPlanExample(),
-		ValidationRules: ValidationRules(),
-	}
-
-	raw, _ := json.MarshalIndent(doc, "", "  ")
-	return string(raw)
 }
