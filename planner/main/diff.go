@@ -4,8 +4,8 @@ import "strings"
 
 // diffLines produces a minimal per-line diff between a and b. Identical lines
 // are shown with a leading "  ", lines only in a with "- ", lines only in b
-// with "+ ". Callers use this to preview planner output before --write; the
-// output is readable by humans and easy to assert against in tests.
+// with "+ ". Callers use this to preview planner output before write/dry-run;
+// the output is readable by humans and easy to assert against in tests.
 func diffLines(a, b string) string {
 	if a == b || strings.TrimRight(a, "\n") == strings.TrimRight(b, "\n") {
 		return ""
