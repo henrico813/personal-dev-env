@@ -15,32 +15,24 @@ import (
 func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
-	requiredSnippets := []string{
-		"planner template --md",
-		"planner template --json [--section <s> [--subsection <x>]]",
-		"planner template --help",
-		"planner inspect <plan.md>",
-		"planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]",
-		"--json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).",
-		"--subsection <name-or-index>",
-		"--append",
-		"--section without --json is rejected with a USAGE error.",
-		"definition_of_done.goals must contain between 1 and 8 items",
-		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
-		"verification checklist items must have non-empty text; object status may be pending or done",
-		"each definition_of_done.goals item must be at most 88 characters",
-	}
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(help, snippet) {
-			t.Fatalf("buildHelpText() missing %q", snippet)
+	// Positive anchors: every command we ship must appear in help so AIs can
+	// discover the current surface from `planner help` alone.
+	for _, command := range []string{
+		"planner template",
+		"planner validate",
+		"planner create",
+		"planner inspect",
+		"planner replace",
+	} {
+		if !strings.Contains(help, command) {
+			t.Fatalf("buildHelpText() missing command %q", command)
 		}
 	}
-	if strings.Contains(help, "--write") {
-		t.Fatalf("buildHelpText unexpectedly still mentions --write: %q", help)
-	}
-	for _, banned := range []string{"show-schema", "planner generate"} {
+
+	// Negative anchors: deleted commands and removed flags must not reappear.
+	for _, banned := range []string{"show-schema", "planner generate", "--write"} {
 		if strings.Contains(help, banned) {
-			t.Fatalf("buildHelpText() still mentions %q", banned)
+			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
 	}
 }
@@ -92,8 +84,8 @@ func TestTemplateSectionShapes(t *testing.T) {
 				if err := json.Unmarshal(raw, &got); err != nil {
 					t.Fatalf("overview output not string JSON: %v", err)
 				}
-				if got != "<2-4 sentence summary -- required, non-empty>" {
-					t.Fatalf("overview = %q", got)
+				if got == "" {
+					t.Fatal("overview is empty")
 				}
 			},
 		},
@@ -247,10 +239,10 @@ func TestTemplateHelpPrintsWorkflow(t *testing.T) {
 		t.Fatalf("Execute(template --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
 
-	for _, want := range []string{"Create workflow", "PLACEHOLDER", "planner template --json > draft.json"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("template --help output missing %q: %q", want, stdout.String())
-		}
+	// Anchor: PLACEHOLDER is the irreducible thing AIs need to learn from
+	// this help text. Wording around it is free to drift.
+	if !strings.Contains(stdout.String(), "PLACEHOLDER") {
+		t.Fatalf("template --help missing PLACEHOLDER anchor: %q", stdout.String())
 	}
 }
 

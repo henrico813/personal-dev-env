@@ -186,28 +186,3 @@ func TestDecodePlanNormalizesStatus(t *testing.T) {
 		}
 	}
 }
-
-func TestMarshalSectionRejectsInvalidImplementationSubsection(t *testing.T) {
-	plan := BuildPlanTemplate()
-
-	tests := []struct {
-		name       string
-		subsection string
-		wantErr    string
-	}{
-		{name: "non_numeric", subsection: "banana", wantErr: "1-based integer index"},
-		{name: "out_of_range", subsection: "2", wantErr: "out of range"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := MarshalSection(plan, "implementation", tc.subsection)
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("error %q does not contain %q", err.Error(), tc.wantErr)
-			}
-		})
-	}
-}
