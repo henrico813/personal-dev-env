@@ -10,7 +10,6 @@ linters:
     - unused
     - errorlint
     - misspell
-    - revive
   exclusions:
     rules:
       - path: _test\.go
