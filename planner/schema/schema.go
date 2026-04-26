@@ -145,18 +145,18 @@ func BuildPlanExample() Plan {
 // BuildPlanTemplate returns the canonical AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
-		Title:    "<short title>",
-		Overview: "<2-4 sentence summary>",
+		Title:    "<short title -- required, non-empty>",
+		Overview: "<2-4 sentence summary -- required, non-empty>",
 		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "<why this change matters>",
-			Goals:        []ChecklistItem{{Text: "<1-8 goals, <=88 chars>"}},
-			CurrentState: "<current behavior with file:line refs>",
-			ModuleShape:  "<final file layout>",
+			Narrative:    "<paragraph -- required, non-empty>",
+			Goals:        []ChecklistItem{{Text: "<concrete goal -- 1 to 8 items, each <= 88 chars>"}},
+			CurrentState: "<current behavior with file:line refs -- required, non-empty>",
+			ModuleShape:  "<final layout -- required, non-empty>",
 		},
 		Implementation: []Step{
 			{
-				Title:   "<step title>",
-				Summary: "<what changes and why>",
+				Title:   "<step title -- required>",
+				Summary: "<what changes and why -- required>",
 				FileChanges: []FileChange{
 					{
 						Filename:    "<path/to/file>",

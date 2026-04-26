@@ -92,7 +92,7 @@ func TestTemplateSectionShapes(t *testing.T) {
 				if err := json.Unmarshal(raw, &got); err != nil {
 					t.Fatalf("overview output not string JSON: %v", err)
 				}
-				if got != "<2-4 sentence summary>" {
+				if got != "<2-4 sentence summary -- required, non-empty>" {
 					t.Fatalf("overview = %q", got)
 				}
 			},
