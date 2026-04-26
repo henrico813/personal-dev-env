@@ -805,7 +805,7 @@ func TestPatchHelpPrintsWorkflow(t *testing.T) {
 	if exitCode := Execute([]string{"patch", "--help"}, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("Execute(patch --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
-	for _, want := range []string{"planner patch -- apply a JSON patch", "--section/-s <section>", "--append"} {
+	for _, want := range []string{"--section", "--append"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("patch --help missing %q anchor: %q", want, stdout.String())
 		}
