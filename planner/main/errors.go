@@ -15,6 +15,11 @@ const (
 	PlannerValidateInputError
 	PlannerRenderOutputError
 	PlannerWriteOutputError
+	// PlannerRuntimeError is the fallback for non-CLI errors surfacing through
+	// reportError. Prefer constructing a typed error at the call site; this
+	// exists so the JSON shape never silently misclassifies a runtime failure
+	// as a validation failure.
+	PlannerRuntimeError
 )
 
 var plannerErrorCodeNames = map[PlannerErrorCode]string{
@@ -24,6 +29,7 @@ var plannerErrorCodeNames = map[PlannerErrorCode]string{
 	PlannerValidateInputError: "VALIDATE_INPUT",
 	PlannerRenderOutputError:  "RENDER_OUTPUT",
 	PlannerWriteOutputError:   "WRITE_OUTPUT",
+	PlannerRuntimeError:       "RUNTIME",
 }
 
 type PlannerCLIError struct {
@@ -59,6 +65,7 @@ var plannerErrorTemplates = map[PlannerErrorCode]string{
 	PlannerValidateInputError: "validate %s: %s",
 	PlannerRenderOutputError:  "render %s: %s",
 	PlannerWriteOutputError:   "write %s: %s",
+	PlannerRuntimeError:       "%s: %s",
 }
 
 func newPlannerCLIError(code PlannerErrorCode, err error, subject string) *PlannerCLIError {

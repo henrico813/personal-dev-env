@@ -102,8 +102,12 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "generate":
 		return runGenerate(args[1:], stdout, stderr)
 	default:
-		_, _ = fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
-		printHelp(stderr)
+		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
+		// Help text is verbose human-oriented prose; under --json-errors the
+		// stderr stream must stay machine-parseable, so suppress the dump.
+		if !jsonErrorOutput {
+			printHelp(stderr)
+		}
 		return 2
 	}
 }
@@ -127,7 +131,11 @@ func reportError(stderr io.Writer, cmd string, err error) {
 	}
 	var cliErr *PlannerCLIError
 	if !errors.As(err, &cliErr) {
-		cliErr = newPlannerCLIError(PlannerValidateInputError, err, err.Error())
+		// Untyped errors are runtime failures. Misclassifying them as
+		// validation errors would lie to AIs branching on the JSON code, so
+		// the fallback is RUNTIME and call sites are expected to construct
+		// typed errors directly when origin is known.
+		cliErr = newPlannerCLIError(PlannerRuntimeError, err, err.Error())
 	}
 	if jsonErrorOutput {
 		raw, marshalErr := json.Marshal(cliErr)
@@ -157,7 +165,7 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	if (len(positional) == 0 && !pf.stdin && !stdinPiped()) || len(positional) > 1 {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner validate [<plan.json>] [--stdin]").Error())
+		reportError(stderr, "validate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner validate [<plan.json>] [--stdin]"))
 		return 2
 	}
 	plan, err := readPlanFrom(positional, pf.stdin, stderr)
@@ -175,7 +183,7 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) >= 1 && args[0] == "step" {
-		_, _ = fmt.Fprintln(stderr, "planner create step is no longer supported; rewrite the full plan JSON and run planner create <plan.json> <output.md>")
+		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, nil, "planner create step is no longer supported; rewrite the full plan JSON and run planner create <plan.json> <output.md>"))
 		return 2
 	}
 	positional, pf, err := splitPreviewArgs(args, true, true)
@@ -190,7 +198,7 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	case 1:
 		outputPath = positional[0]
 	default:
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run]").Error())
+		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, nil, "usage: planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	plan, err := readPlanFrom(filterNonEmpty([]string{inputPath}), pf.stdin, stderr)
@@ -234,7 +242,7 @@ func buildHelpText() string {
 
 func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) != 1 {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner inspect <plan.md>").Error())
+		reportError(stderr, "inspect", newPlannerCLIError(PlannerUsageError, nil, "usage: planner inspect <plan.md>"))
 		return 2
 	}
 	raw, err := os.ReadFile(args[0])
@@ -293,7 +301,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]").Error())
+		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, nil, "usage: planner replace <plan.md> [<patch.json>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	switch pathCount {
@@ -307,7 +315,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	opts, err := parseReplaceOptions(flags)
 	if err != nil {
-		reportError(stderr, "replace", err)
+		reportError(stderr, "replace", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 
@@ -348,12 +356,12 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 // SchemaDocument envelope.
 func runGenerate(args []string, stdout io.Writer, stderr io.Writer) int {
 	if len(args) != 1 {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>").Error())
+		reportError(stderr, "generate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>"))
 		return 2
 	}
 	outputPath := args[0]
 	if outputPath == "-" {
-		_, _ = fmt.Fprintln(stderr, newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>"))
+		reportError(stderr, "generate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner generate <output.json>"))
 		return 2
 	}
 	plan := schema.BuildPlanExample()
@@ -519,7 +527,7 @@ func stdinPiped() bool {
 func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
 	baseline, err := readBaseline(basePath)
 	if err != nil {
-		reportError(stderr, cmdName, err)
+		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, basePath))
 		return 1
 	}
 	d := diffLines(baseline, rendered)

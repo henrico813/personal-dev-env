@@ -638,3 +638,68 @@ func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
 		}
 	})
 }
+
+// firstStderrJSON unmarshals the first non-empty stderr line as the planner
+// error envelope. Tests use it to assert the --json-errors contract: every
+// failure path emits one parseable JSON object with a stable code.
+func firstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) {
+	t.Helper()
+	line := bytes.TrimSpace(stderr.Bytes())
+	if len(line) == 0 {
+		t.Fatal("stderr is empty")
+	}
+	if nl := bytes.IndexByte(line, '\n'); nl >= 0 {
+		line = line[:nl]
+	}
+	var got struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(line, &got); err != nil {
+		t.Fatalf("first stderr line is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	return got.Code, got.Message
+}
+
+func TestJSONErrorsCoversUnknownCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"--json-errors", "bogus"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit %d want 2; stderr %q", exit, stderr.String())
+	}
+	code, _ := firstStderrJSON(t, &stderr)
+	if code != "USAGE" {
+		t.Fatalf("code=%q want USAGE", code)
+	}
+}
+
+func TestJSONErrorsCoversUsageFailure(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"create", "--json-errors"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit %d want 2; stderr %q", exit, stderr.String())
+	}
+	code, msg := firstStderrJSON(t, &stderr)
+	if code != "USAGE" {
+		t.Fatalf("code=%q want USAGE", code)
+	}
+	if !strings.Contains(msg, "usage: planner create") {
+		t.Fatalf("message %q missing usage banner", msg)
+	}
+}
+
+func TestJSONErrorsCoversRuntimeFailure(t *testing.T) {
+	// Pass a directory as outputPath so runPreview's baseline read fails.
+	// The error must be coded READ_INPUT, not the RUNTIME or VALIDATE_INPUT
+	// fallback, proving runPreview constructs a typed error at the call site.
+	dir := t.TempDir()
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"create", dir, "--stdin", "--diff", "--json-errors"}, &stdout, &stderr)
+		if exit != 1 {
+			t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+		}
+		code, _ := firstStderrJSON(t, &stderr)
+		if code != "READ_INPUT" {
+			t.Fatalf("code=%q want READ_INPUT", code)
+		}
+	})
+}
