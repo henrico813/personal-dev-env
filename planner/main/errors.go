@@ -76,6 +76,10 @@ func writeErr(w io.Writer, jsonErrors bool, msg string) {
 	}
 }
 
+func cliErr(cmd string, code PlannerErrorCode, err error, subject string) string {
+	return fmt.Sprintf("%s: %v", cmd, newPlannerCLIError(code, err, subject))
+}
+
 func plannerExitCode(err error) int {
 	var cliErr *PlannerCLIError
 	if errors.As(err, &cliErr) && cliErr.Code == PlannerUsageError {

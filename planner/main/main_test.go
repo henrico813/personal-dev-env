@@ -571,6 +571,21 @@ func TestReplaceInvalidSourceMarkdownReturnsDecodePlanMarkdownError(t *testing.T
 	})
 }
 
+func TestJSONErrorsFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"--json-errors", "validate", "/nonexistent.json"}, &stdout, &stderr)
+	if exit == 0 {
+		t.Fatal("expected non-zero exit")
+	}
+	var envelope struct{ Error string }
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("stderr is not valid JSON: %v\ngot: %q", err, stderr.String())
+	}
+	if envelope.Error == "" {
+		t.Fatal("expected non-empty error field")
+	}
+}
+
 func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
 	dir := t.TempDir()
 	withStdin(t, validPlanJSON(), func() {
