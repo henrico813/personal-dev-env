@@ -18,6 +18,7 @@ type Span struct {
 
 // SectionSpans holds the byte ranges for each top-level plan section.
 type SectionSpans struct {
+	Title            Span `json:"title"`
 	Overview         Span `json:"overview"`
 	DefinitionOfDone Span `json:"definition_of_done"`
 	Implementation   Span `json:"implementation"`
@@ -52,6 +53,8 @@ func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, [][]Span, e
 	plan := schema.Plan{}
 	titleLine := strings.SplitN(body, "\n", 2)[0]
 	plan.Title = strings.TrimSpace(strings.TrimPrefix(titleLine, "# "))
+	spansTyped := toSectionSpans(sectionSpans)
+	spansTyped.Title = Span{Start: prefixLen + len("# "), End: prefixLen + len(titleLine)}
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
@@ -89,7 +92,7 @@ func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, [][]Span, e
 	}
 	plan.Verification = parsedVerification
 
-	return plan, toSectionSpans(sectionSpans), stepSpans, diffSpans, nil
+	return plan, spansTyped, stepSpans, diffSpans, nil
 }
 
 // splitFrontmatter strips an optional YAML frontmatter block (--- ... ---) from
@@ -155,6 +158,7 @@ func findTopLevelSections(input string) (map[string]Span, error) {
 
 func toSectionSpans(spans map[string]Span) SectionSpans {
 	return SectionSpans{
+		Title:            Span{},
 		Overview:         spans["Overview"],
 		DefinitionOfDone: spans["Definition of Done"],
 		Implementation:   spans["Implementation"],
