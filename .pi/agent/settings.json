@@ -1,0 +1,11 @@
+{
+  "defaultProvider": "claude-bridge",
+  "defaultModel": "claude-sonnet-4-6",
+  "defaultThinkingLevel": "medium",
+  "packages": [
+    "npm:pi-claude-bridge",
+    "npm:@heyhuynhgiabuu/pi-diff",
+    "npm:pi-powerline-footer",
+    "npm:@heyhuynhgiabuu/pi-pretty"
+  ]
+}
