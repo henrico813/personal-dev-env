@@ -11,6 +11,9 @@ const (
 	ReplaceDecodePatchError
 	ReplaceValidateResultError
 	ReplaceRenderResultError
+	ReplaceFileNotFoundError
+	ReplaceFileAmbiguousError
+	ReplaceParseSplicedSourceError
 )
 
 // ReplaceError wraps the underlying failure with a stable category.
