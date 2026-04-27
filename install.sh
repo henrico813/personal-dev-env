@@ -187,6 +187,15 @@ if [ -f "$CLAUDE_GLOBAL_INSTRUCTIONS" ]; then
     fi
 fi
 
+# Pi agent
+if [ -d "$SCRIPT_DIR/.pi/agent" ]; then
+    echo "Installing Pi agent configuration..."
+    mkdir -p "$HOME/.pi/agent"
+    cp "$SCRIPT_DIR/.pi/agent/settings.json" "$HOME/.pi/agent/settings.json"
+    ln -sfn "$HOME/.claude/CLAUDE.md" "$HOME/.pi/agent/AGENTS.md"
+    ln -sfn "$HOME/.claude/commands"  "$HOME/.pi/agent/prompts"
+fi
+
 echo ""
 echo "Done! Configuration installed to $TARGET_DIR"
 
