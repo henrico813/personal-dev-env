@@ -322,5 +322,15 @@ func ValidationRules() []string {
 		"each file change filename must be non-empty, whitespace-free, at most 200 bytes, and path-shaped",
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
+		"title must be at most 88 characters",
+		"overview must be at most 500 characters",
+		"definition_of_done.narrative must be at most 500 characters",
+		"definition_of_done.current_state must be at most 500 characters",
+		"each line of definition_of_done.module_shape must be at most 88 characters",
+		"each implementation step title must be at most 88 characters",
+		"each implementation step summary must be at most 500 characters",
+		"each file change explanation must be at most 250 characters",
+		"each verification.automated[i].text must be at most 88 characters",
+		"each verification.manual[i].text must be at most 88 characters",
 	}
 }

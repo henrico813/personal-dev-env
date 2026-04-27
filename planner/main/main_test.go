@@ -817,6 +817,60 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestRunValidateAggregatesViolations(t *testing.T) {
+	plan := schema.Plan{
+		Title:    "",
+		Overview: "",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    strings.Repeat("n", 501),
+			Goals:        []schema.ChecklistItem{{Text: "goal"}},
+			CurrentState: "current state",
+			ModuleShape:  "planner/validate",
+		},
+		Implementation: []schema.Step{
+			{
+				Title:   "step title",
+				Summary: "step summary",
+				FileChanges: []schema.FileChange{
+					{
+						Filename:    "planner/validate/validate.go",
+						Explanation: "explanation",
+						Diff:        "@@ -1 +1 @@\n- old\n+ new",
+					},
+				},
+			},
+		},
+		Verification: &schema.Verification{
+			Automated: []schema.ChecklistItem{{Text: "automation"}},
+			Manual:    []schema.ChecklistItem{{Text: "manual"}},
+		},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	dir := t.TempDir()
+	path := dir + "/plan.json"
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"validate", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("Execute(validate) exit = %d, want 1; stderr = %q", exit, stderr.String())
+	}
+	for _, want := range []string{
+		"title is required",
+		"overview is required",
+		"definition_of_done.narrative must be no more than 500 characters",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
+		}
+	}
+}
+
 func TestCreateRejectsWriteFlag(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/out.md"
