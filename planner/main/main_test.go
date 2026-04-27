@@ -400,6 +400,18 @@ func TestPatchHelpListsFullFieldGrammar(t *testing.T) {
 			t.Fatalf("patch --help missing %q: %q", want, stdout.String())
 		}
 	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "planner patch ") {
+			continue
+		}
+		if strings.Contains(trimmed, "[<patch.json>|<diff.txt>]") {
+			continue
+		}
+		if strings.Contains(trimmed, "--stdin") && (strings.Contains(trimmed, ".json>") || strings.Contains(trimmed, ".txt>")) {
+			t.Fatalf("help example combines positional patch path with --stdin: %q", trimmed)
+		}
+	}
 }
 
 func TestShowSchemaRemoved(t *testing.T) {
