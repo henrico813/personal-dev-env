@@ -111,6 +111,21 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 	}
 }
 
+// MarshalJSONNoEscape renders JSON with indentation while preserving literal
+// angle brackets in placeholder text. The planner template help surfaces use
+// human-facing placeholders, so escaping them to \u003c and \u003e only makes
+// the output harder to read.
+func MarshalJSONNoEscape(value any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(value); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte{'\n'}), nil
+}
+
 func BuildPlanExample() Plan {
 	return Plan{
 		Title:    "Short title for the plan",
@@ -175,10 +190,44 @@ func BuildPlanTemplate() Plan {
 }
 
 // MarshalSection returns the JSON shape accepted by replace for the requested
-// section or subsection.
-func MarshalSection(plan Plan, section, subsection string) ([]byte, error) {
+// section, subsection, or field-level selector.
+func MarshalSection(plan Plan, section, subsection, file, field string) ([]byte, error) {
+	if field != "" {
+		if section != "implementation" {
+			return nil, fmt.Errorf("--field requires --section implementation")
+		}
+		if subsection == "" {
+			return nil, fmt.Errorf("--field requires --subsection N")
+		}
+		idx, err := strconv.Atoi(subsection)
+		if err != nil {
+			return nil, fmt.Errorf("--subsection for implementation must be a 1-based integer index, got %q", subsection)
+		}
+		if idx < 1 || idx > len(plan.Implementation) {
+			return nil, fmt.Errorf("implementation subsection %d out of range (have %d steps)", idx, len(plan.Implementation))
+		}
+		step := plan.Implementation[idx-1]
+		switch field {
+		case "title":
+			return MarshalJSONNoEscape(step.Title)
+		case "summary":
+			return MarshalJSONNoEscape(step.Summary)
+		case "filename":
+			return MarshalJSONNoEscape("<filename>")
+		case "explanation":
+			return MarshalJSONNoEscape("<explanation>")
+		default:
+			return nil, fmt.Errorf("unknown --field %q", field)
+		}
+	}
+
 	var value any
 	switch section {
+	case "title":
+		if subsection != "" || file != "" {
+			return nil, fmt.Errorf("--section title accepts no other selectors")
+		}
+		value = plan.Title
 	case "overview":
 		if subsection != "" {
 			return nil, fmt.Errorf("overview does not support subsections")
@@ -213,15 +262,23 @@ func MarshalSection(plan Plan, section, subsection string) ([]byte, error) {
 		}
 		value = plan.Implementation[idx-1]
 	case "verification":
-		if subsection != "" {
-			return nil, fmt.Errorf("verification subsections are deferred to PDEV-028; today only --section verification is supported")
+		switch subsection {
+		case "":
+			value = plan.Verification
+		case "summary":
+			value = plan.Verification.Summary
+		case "automated":
+			value = plan.Verification.Automated
+		case "manual":
+			value = plan.Verification.Manual
+		default:
+			return nil, fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", subsection)
 		}
-		value = plan.Verification
 	default:
-		return nil, fmt.Errorf("unknown section %q (valid: overview, definition_of_done, implementation, verification)", section)
+		return nil, fmt.Errorf("unknown section %q (valid: title, overview, definition_of_done, implementation, verification)", section)
 	}
 
-	raw, err := json.MarshalIndent(value, "", "  ")
+	raw, err := MarshalJSONNoEscape(value)
 	if err != nil {
 		return nil, err
 	}
