@@ -130,22 +130,22 @@ Diff-edit workflow:
 Field-edit workflow (Title):
   1. planner inspect <plan.md>
   2. Write a JSON string for the new title.
-  3. planner patch <plan.md> <title.json> <output.md> --section title --stdin
+  3. planner patch <plan.md> <title.json> <output.md> --section title
 
 Field-edit workflow (Step title or summary):
   1. planner inspect <plan.md>
   2. Write a JSON string for the new leaf.
-  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --field {title|summary} --stdin
+  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --field {title|summary}
 
 Field-edit workflow (FileChange filename or explanation):
   1. planner inspect <plan.md>
   2. Write a JSON string for the new leaf.
-  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --file F --field {filename|explanation} --stdin
+  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --file F --field {filename|explanation}
 
 Field-edit workflow (Verification subsection):
   1. planner inspect <plan.md>
   2. Write a JSON string or checklist array.
-  3. planner patch <plan.md> <patch.json> <output.md> --section verification --subsection {summary|automated|manual} --stdin
+  3. planner patch <plan.md> <patch.json> <output.md> --section verification --subsection {summary|automated|manual}
 
 Trap:
   Full-step replacement re-escapes every diff in that step, even if only one FileChange needed a change.
