@@ -104,6 +104,7 @@ Once aligned on approach:
 After structure approval:
 
 1. Run `~/.claude/bin/planner help` first; do not guess command shapes from memory.
+   For in-place edits, prefer `planner patch --field ...` over re-providing surrounding containers.
 2. Run `~/.claude/bin/planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
 3. Run `~/.claude/bin/planner validate <draft.json>` to confirm before writing

@@ -215,6 +215,16 @@ func TestTemplateUsageErrors(t *testing.T) {
 			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "2"},
 			wantErr: "out of range",
 		},
+		{
+			name:    "verification_bad_subsection",
+			args:    []string{"template", "--json", "--section", "verification", "--subsection", "bogus"},
+			wantErr: "invalid verification subsection",
+		},
+		{
+			name:    "md_does_not_accept_selectors",
+			args:    []string{"template", "--md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
+			wantErr: "--md does not accept selectors",
+		},
 	}
 
 	for _, tc := range tests {
@@ -223,6 +233,113 @@ func TestTemplateUsageErrors(t *testing.T) {
 			var stderr bytes.Buffer
 			if exitCode := Execute(tc.args, &stdout, &stderr); exitCode != 2 {
 				t.Fatalf("Execute(%v) exit code = %d, want 2; stderr = %q", tc.args, exitCode, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.wantErr) {
+				t.Fatalf("stderr %q does not contain %q", stderr.String(), tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantSubstr string
+	}{
+		{
+			name:       "title",
+			args:       []string{"template", "--json", "--section", "title"},
+			wantSubstr: "\"<short title -- required, non-empty>\"",
+		},
+		{
+			name:       "verification summary",
+			args:       []string{"template", "--json", "--section", "verification", "--subsection", "summary"},
+			wantSubstr: "\"<optional summary>\"",
+		},
+		{
+			name:       "verification automated",
+			args:       []string{"template", "--json", "--section", "verification", "--subsection", "automated"},
+			wantSubstr: "[",
+		},
+		{
+			name:       "verification manual",
+			args:       []string{"template", "--json", "--section", "verification", "--subsection", "manual"},
+			wantSubstr: "[",
+		},
+		{
+			name:       "step title field",
+			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
+			wantSubstr: "\"<step title -- required>\"",
+		},
+		{
+			name:       "step summary field",
+			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
+			wantSubstr: "\"<what changes and why -- required>\"",
+		},
+		{
+			name:       "filename field",
+			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "filename"},
+			wantSubstr: "\"<filename>\"",
+		},
+		{
+			name:       "explanation field",
+			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "explanation"},
+			wantSubstr: "\"<explanation>\"",
+		},
+		{
+			name:       "diff field raw",
+			args:       []string{"template", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"},
+			wantSubstr: "--- a/<path>",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if exitCode := Execute(tc.args, &stdout, &stderr); exitCode != 0 {
+				t.Fatalf("Execute(%v) exit code = %d, stderr = %q", tc.args, exitCode, stderr.String())
+			}
+			if !strings.Contains(stdout.String(), tc.wantSubstr) {
+				t.Fatalf("stdout %q does not contain %q", stdout.String(), tc.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestTemplateRejectsInvalidGrammar(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "title_with_subsection",
+			args:    []string{"template", "--json", "--section", "title", "--subsection", "1"},
+			wantErr: "--section title accepts no other selectors",
+		},
+		{
+			name:    "title_field_with_file",
+			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "title"},
+			wantErr: "--field title does not take --file",
+		},
+		{
+			name:    "filename_without_file",
+			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "filename"},
+			wantErr: "--field filename requires --file F",
+		},
+		{
+			name:    "file_without_field",
+			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f"},
+			wantErr: "--file requires --field",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if exitCode := Execute(tc.args, &stdout, &stderr); exitCode != 2 {
+				t.Fatalf("Execute(%v) exit code = %d, stderr = %q", tc.args, exitCode, stderr.String())
 			}
 			if !strings.Contains(stderr.String(), tc.wantErr) {
 				t.Fatalf("stderr %q does not contain %q", stderr.String(), tc.wantErr)
@@ -243,6 +360,45 @@ func TestTemplateHelpPrintsWorkflow(t *testing.T) {
 	// this help text. Wording around it is free to drift.
 	if !strings.Contains(stdout.String(), "PLACEHOLDER") {
 		t.Fatalf("template --help missing PLACEHOLDER anchor: %q", stdout.String())
+	}
+}
+
+func TestTemplateHelpListsFieldGrammar(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := Execute([]string{"template", "--help"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Execute(template --help) exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	for _, want := range []string{
+		"--field diff",
+		"--file <filename>",
+		"one selector that emits raw bytes",
+		"Section-level JSON shape: title",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("template --help missing %q: %q", want, stdout.String())
+		}
+	}
+}
+
+func TestPatchHelpListsFullFieldGrammar(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exitCode := Execute([]string{"patch", "--help"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("Execute(patch --help) exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	for _, want := range []string{
+		"Field-edit workflow (Title)",
+		"Field-edit workflow (Step title or summary)",
+		"Field-edit workflow (FileChange filename or explanation)",
+		"Field-edit workflow (Verification subsection)",
+		"Whole-FileChange replacement",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("patch --help missing %q: %q", want, stdout.String())
+		}
 	}
 }
 
@@ -489,14 +645,14 @@ func TestPatchFieldFlagValidationMatrix(t *testing.T) {
 			wantErr: "--file requires --field",
 		},
 		{
-			name:    "field_without_file",
-			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
-			wantErr: "--field requires --file",
-		},
-		{
 			name:    "field_without_subsection",
 			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--file", "f", "--field", "diff"},
-			wantErr: "--field requires --subsection",
+			wantErr: "--field requires --subsection N",
+		},
+		{
+			name:    "field_without_file",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
+			wantErr: "--field diff requires --file F",
 		},
 		{
 			name:    "field_outside_implementation",
@@ -504,13 +660,33 @@ func TestPatchFieldFlagValidationMatrix(t *testing.T) {
 			wantErr: "--field requires --section implementation",
 		},
 		{
-			name:    "field_not_diff",
+			name:    "step_title_with_file",
 			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "title"},
-			wantErr: "not supported",
+			wantErr: "--field title does not take --file",
+		},
+		{
+			name:    "filename_without_file",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--field", "filename"},
+			wantErr: "--field filename requires --file F",
+		},
+		{
+			name:    "title_section_with_subsection",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "title", "--subsection", "1"},
+			wantErr: "--section title accepts no other selectors",
+		},
+		{
+			name:    "verification_bad_subsection",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "verification", "--subsection", "bogus"},
+			wantErr: "invalid verification subsection",
+		},
+		{
+			name:    "unknown_field_value",
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "bogus"},
+			wantErr: "--field \"bogus\" not valid",
 		},
 		{
 			name:    "append_with_field",
-			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff", "--append"},
+			args:    []string{"patch", "a.md", "b.json", "c.md", "--section", "implementation", "--field", "diff", "--append"},
 			wantErr: "--append cannot be used with --field",
 		},
 	}

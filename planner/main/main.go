@@ -23,12 +23,12 @@ Usage:
   planner
   planner help
   planner template --md
-  planner template --json [--section <s> [--subsection <x>]]
+  planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --help
   planner validate [<plan.json>] [--stdin] [--json-errors]
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -36,7 +36,7 @@ Global flags:
 Create flow:
   1. Research the task.
   2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  3. Edit the draft JSON. Diff stays "PLACEHOLDER" until raw diff patching lands in PDEV-027.
+  3. Edit the draft JSON. Use planner patch --field diff for raw diff bodies.
   4. Run planner validate <plan.json>.
   5. Run planner create <plan.json> <output.md>.
 
@@ -55,8 +55,10 @@ Partial update flow:
   5. Non-targeted sections remain byte-for-byte unchanged.
 
 patch flags:
-  --section/-s <section>           Required. One of: overview, definition_of_done, implementation, verification
-  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation
+  --section/-s <section>           Required. One of: title, overview, definition_of_done, implementation, verification
+  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification
+  --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step
+  --field <field>                  Optional. One of: diff, title, summary, filename, explanation
   --append                         Optional. Append a new step to implementation
   --stdin                          Optional. Read patch JSON from stdin instead of a file
   --diff                           Optional. Print diff to stdout; additive (does not suppress write)
@@ -67,6 +69,7 @@ template selectors:
   --json                           Print the full JSON skeleton.
   --json --section <s>             Print a section-level JSON shape.
   --json --section <s> --subsection <x>  Print a subsection-level JSON shape.
+  --json --section implementation --subsection N --field <field>  Print a leaf shape.
   --help                           Walk through the create workflow and PLACEHOLDER convention.
   Note: --section without --json is rejected with a USAGE error.
 
@@ -78,31 +81,33 @@ const templateHelpText = `planner template -- print plan-shape references for AI
 Usage:
   planner template --md
   planner template --json
-  planner template --json --section <s> [--subsection <x>]
+  planner template --json --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
 
 Selectors:
   --md                  Canonical markdown plan with PLACEHOLDER text and validation hints.
   --json                Full plan JSON skeleton; FileChange.Diff is the literal string "PLACEHOLDER".
-  --section/-s <s>      Section-level JSON shape: overview, definition_of_done, implementation, verification.
-  --subsection <x>      Field name for definition_of_done; 1-based step index for implementation.
+  --section/-s <s>      Section-level JSON shape: title, overview, definition_of_done, implementation, verification.
+  --subsection <x>      Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
+  --file <filename>     FileChange address helper for field-level selectors.
+  --field <field>       Leaf selector: diff, title, summary, filename, explanation.
+                        --field diff is the one selector that emits raw bytes and does not require --json.
 
 Create workflow:
   1. planner template --json > draft.json
-  2. Edit fields. Leave Diff as "PLACEHOLDER" until you have the unified diff text;
-     raw diff patching lands in PDEV-027.
+  2. Edit fields. Use planner patch --field diff for raw unified diffs.
   3. planner validate draft.json && planner create draft.json out.md
 `
 
 const patchHelpText = `planner patch -- apply a patch to a section of an existing plan.
 
 Usage:
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run]
 
 Flags:
-  --section/-s <section>           Required. One of: overview, definition_of_done, implementation, verification.
-  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation.
+  --section/-s <section>           Required. One of: title, overview, definition_of_done, implementation, verification.
+  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
   --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step.
-  --field diff                     Optional. Replace one FileChange's diff via raw text input.
+  --field <field>                  Optional. One of: diff, title, summary, filename, explanation.
   --append                         Optional. Append a new step to implementation.
   --stdin                          Optional. Read patch input from stdin instead of a file.
   --diff                           Optional. Print diff to stdout; additive (does not suppress write).
@@ -122,9 +127,29 @@ Diff-edit workflow:
   4. planner patch <plan.md> <diff.txt> <output.md> --section implementation --subsection N --file F --field diff
   5. Non-targeted sections remain byte-for-byte unchanged.
 
+Field-edit workflow (Title):
+  1. planner inspect <plan.md>
+  2. Write a JSON string for the new title.
+  3. planner patch <plan.md> <title.json> <output.md> --section title --stdin
+
+Field-edit workflow (Step title or summary):
+  1. planner inspect <plan.md>
+  2. Write a JSON string for the new leaf.
+  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --field {title|summary} --stdin
+
+Field-edit workflow (FileChange filename or explanation):
+  1. planner inspect <plan.md>
+  2. Write a JSON string for the new leaf.
+  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --file F --field {filename|explanation} --stdin
+
+Field-edit workflow (Verification subsection):
+  1. planner inspect <plan.md>
+  2. Write a JSON string or checklist array.
+  3. planner patch <plan.md> <patch.json> <output.md> --section verification --subsection {summary|automated|manual} --stdin
+
 Trap:
   Full-step replacement re-escapes every diff in that step, even if only one FileChange needed a change.
-  Prefer --field diff for diff edits; full-FileChange replacement is deferred to PDEV-028.
+  Prefer --field <leaf> for in-place edits. Whole-FileChange replacement (--subsection N --file F without --field) is rejected with --file requires --field.
 `
 
 func main() {
@@ -210,6 +235,8 @@ type templateOptions struct {
 	jsonMode   bool
 	section    string
 	subsection string
+	file       string
+	field      string
 }
 
 func parseTemplateOptions(args []string) (templateOptions, error) {
@@ -232,6 +259,18 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 				return opts, fmt.Errorf("missing value for --subsection")
 			}
 			opts.subsection = args[i]
+		case "--file":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing value for --file")
+			}
+			opts.file = args[i]
+		case "--field":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing value for --field")
+			}
+			opts.field = args[i]
 		default:
 			return opts, fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -239,16 +278,71 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 	if opts.md && opts.jsonMode {
 		return opts, fmt.Errorf("--md and --json are mutually exclusive")
 	}
+	if opts.md && (opts.section != "" || opts.subsection != "" || opts.file != "" || opts.field != "") {
+		return opts, fmt.Errorf("--md does not accept selectors")
+	}
 	if opts.subsection != "" && opts.section == "" {
 		return opts, fmt.Errorf("--subsection requires --section")
 	}
-	if opts.section != "" && !opts.jsonMode {
+	if opts.section != "" && !opts.jsonMode && opts.field != "diff" {
 		return opts, fmt.Errorf("--section requires --json")
 	}
-	if !opts.md && !opts.jsonMode {
+	if !opts.md && !opts.jsonMode && opts.field != "diff" {
 		return opts, fmt.Errorf("either --md or --json is required")
 	}
 	return opts, nil
+}
+
+// validateFieldGrammar is the shared leaf-selector validator for patch and
+// template. It keeps both commands aligned on the same section/subsection/file
+// and field combinations.
+func validateFieldGrammar(opts replace.ReplaceOptions) error {
+	if opts.Append && opts.Section != "implementation" {
+		return fmt.Errorf("--append is only valid with --section implementation")
+	}
+	if opts.Append && opts.Subsection != "" {
+		return fmt.Errorf("--append and --subsection cannot be used together")
+	}
+	if opts.Append && opts.Field != "" {
+		return fmt.Errorf("--append cannot be used with --field")
+	}
+	if opts.Section == "title" {
+		if opts.Subsection != "" || opts.File != "" || opts.Field != "" || opts.Append {
+			return fmt.Errorf("--section title accepts no other selectors")
+		}
+		return nil
+	}
+	if opts.Section == "verification" && opts.Subsection != "" {
+		switch opts.Subsection {
+		case "summary", "automated", "manual":
+		default:
+			return fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", opts.Subsection)
+		}
+	}
+	if opts.Field != "" {
+		if opts.Section != "implementation" {
+			return fmt.Errorf("--field requires --section implementation")
+		}
+		if opts.Subsection == "" {
+			return fmt.Errorf("--field requires --subsection N")
+		}
+		switch opts.Field {
+		case "diff", "filename", "explanation":
+			if opts.File == "" {
+				return fmt.Errorf("--field %s requires --file F", opts.Field)
+			}
+		case "title", "summary":
+			if opts.File != "" {
+				return fmt.Errorf("--field %s does not take --file", opts.Field)
+			}
+		default:
+			return fmt.Errorf("--field %q not valid (allowed: diff, title, summary, filename, explanation)", opts.Field)
+		}
+	}
+	if opts.File != "" && opts.Field == "" {
+		return fmt.Errorf("--file requires --field")
+	}
+	return nil
 }
 
 func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -264,6 +358,15 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	if err := validateFieldGrammar(replace.ReplaceOptions{
+		Section:    opts.section,
+		Subsection: opts.subsection,
+		File:       opts.file,
+		Field:      opts.field,
+	}); err != nil {
+		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 
 	plan := schema.BuildPlanTemplate()
 	switch {
@@ -276,15 +379,18 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		_, _ = io.WriteString(stdout, rendered)
 		return 0
 	case opts.section == "":
-		raw, err := json.MarshalIndent(plan, "", "  ")
+		raw, err := schema.MarshalJSONNoEscape(plan)
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "template JSON"))
 			return 1
 		}
 		_, _ = stdout.Write(append(raw, '\n'))
 		return 0
+	case opts.field == "diff":
+		_, _ = stdout.Write([]byte("--- a/<path>\n+++ b/<path>\n@@ -1 +1 @@\n-old\n+new\n"))
+		return 0
 	default:
-		raw, err := schema.MarshalSection(plan, opts.section, opts.subsection)
+		raw, err := schema.MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 			return 2
@@ -423,7 +529,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--append] [--stdin] [--diff] [--dry-run]"))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	switch pathCount {
@@ -520,25 +626,8 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 			return opts, fmt.Errorf("--subsection for implementation must be a 1-based integer index")
 		}
 	}
-	if opts.Field != "" {
-		if opts.Section != "implementation" {
-			return opts, fmt.Errorf("--field requires --section implementation")
-		}
-		if opts.Subsection == "" {
-			return opts, fmt.Errorf("--field requires --subsection N")
-		}
-		if opts.File == "" {
-			return opts, fmt.Errorf("--field requires --file F")
-		}
-		if opts.Field != "diff" {
-			return opts, fmt.Errorf("--field %q not supported (PDEV-028 adds non-diff fields); valid: diff", opts.Field)
-		}
-	}
-	if opts.File != "" && opts.Field == "" {
-		return opts, fmt.Errorf("--file requires --field")
-	}
-	if opts.Append && opts.Field != "" {
-		return opts, fmt.Errorf("--append cannot be used with --field")
+	if err := validateFieldGrammar(opts); err != nil {
+		return opts, err
 	}
 	return opts, nil
 }

@@ -57,6 +57,19 @@ func parseOutputPlan(t *testing.T, outputPath string) schema.Plan {
 	return parsed
 }
 
+func loadAuditFixture(t *testing.T, name string) schema.Plan {
+	t.Helper()
+	switch name {
+	case "twoStepPlan":
+		return twoStepPlan()
+	case "twoNamedFileChanges":
+		return twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B")
+	default:
+		t.Fatalf("unknown audit fixture %q", name)
+		return schema.Plan{}
+	}
+}
+
 func TestRunRejectsInvalidSection(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
@@ -406,6 +419,179 @@ func TestSpliceDiffFieldRejectsEmptyDiff(t *testing.T) {
 				t.Fatalf("got %v, want ReplaceValidateResultError", err)
 			}
 		})
+	}
+}
+
+func TestRendererFaithfulnessAudit(t *testing.T) {
+	for _, name := range []string{"twoStepPlan", "twoNamedFileChanges"} {
+		t.Run(name, func(t *testing.T) {
+			plan := loadAuditFixture(t, name)
+			once, err := render.RenderPlan(plan)
+			if err != nil {
+				t.Fatalf("RenderPlan: %v", err)
+			}
+			parsed, _, _, _, err := inspect.ParseMarkdown(once)
+			if err != nil {
+				t.Fatalf("ParseMarkdown: %v", err)
+			}
+			twice, err := render.RenderPlan(parsed)
+			if err != nil {
+				t.Fatalf("RenderPlan(reparse): %v", err)
+			}
+			if once != twice {
+				t.Fatalf("renderer drift:\nfirst=%q\nsecond=%q", once, twice)
+			}
+		})
+	}
+}
+
+func TestSpliceTitlePatch(t *testing.T) {
+	src := writeFixturePlan(t, twoStepPlan())
+	opts := ReplaceOptions{Section: "title"}
+
+	out, result, err := PreviewFromData(src, opts, []byte(`"Renamed Plan"`))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	if result.Section != "title" {
+		t.Fatalf("unexpected replace result: %+v", result)
+	}
+	if !strings.Contains(out, "# Renamed Plan\n---") {
+		t.Fatalf("title not spliced: %q", out)
+	}
+}
+
+func TestSpliceTitlePatchRejectsEmptyTitle(t *testing.T) {
+	src := writeFixturePlan(t, twoStepPlan())
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "title"}, []byte(`""`))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceValidateResultError {
+		t.Fatalf("got %v, want ReplaceValidateResultError", err)
+	}
+}
+
+func TestSpliceStepFieldPatches(t *testing.T) {
+	t.Run("title", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "title"}, []byte(`"Updated First"`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if result.Field != "title" || result.Subsection != "1" {
+			t.Fatalf("unexpected replace result: %+v", result)
+		}
+		if !strings.Contains(out, "### 1. Updated First") {
+			t.Fatalf("step title not spliced: %q", out)
+		}
+	})
+
+	t.Run("summary", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary"}, []byte(`"Updated summary"`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if result.Field != "summary" {
+			t.Fatalf("unexpected replace result: %+v", result)
+		}
+		if !strings.Contains(out, "Updated summary") {
+			t.Fatalf("step summary not spliced: %q", out)
+		}
+	})
+}
+
+func TestSpliceStepFieldRejectsEmptyValue(t *testing.T) {
+	src := writeFixturePlan(t, twoStepPlan())
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary"}, []byte(`""`))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceValidateResultError {
+		t.Fatalf("got %v, want ReplaceValidateResultError", err)
+	}
+}
+
+func TestSpliceFileChangeFieldPatches(t *testing.T) {
+	t.Run("filename", func(t *testing.T) {
+		src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "filename"}, []byte(`"renamed.go"`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if result.File != "a.go" || result.Field != "filename" {
+			t.Fatalf("unexpected replace result: %+v", result)
+		}
+		if !strings.Contains(out, "renamed.go") {
+			t.Fatalf("filename not spliced: %q", out)
+		}
+	})
+
+	t.Run("explanation", func(t *testing.T) {
+		src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "explanation"}, []byte(`"new explanation"`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if result.Field != "explanation" {
+			t.Fatalf("unexpected replace result: %+v", result)
+		}
+		if !strings.Contains(out, "new explanation") {
+			t.Fatalf("explanation not spliced: %q", out)
+		}
+	})
+}
+
+func TestSpliceFileChangeFieldRejectsMissingFile(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "missing.go", Field: "filename"}, []byte(`"renamed.go"`))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceFileNotFoundError {
+		t.Fatalf("got %v, want ReplaceFileNotFoundError", err)
+	}
+}
+
+func TestSpliceVerificationSubsections(t *testing.T) {
+	t.Run("summary", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "summary"}, []byte(`"Updated verification"`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if result.Section != "verification" || result.Subsection != "summary" {
+			t.Fatalf("unexpected replace result: %+v", result)
+		}
+		if !strings.Contains(out, "Updated verification") {
+			t.Fatalf("verification summary not spliced: %q", out)
+		}
+	})
+
+	t.Run("automated", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		out, _, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "automated"}, []byte(`[{"text":"new automated check"}]`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if !strings.Contains(out, "new automated check") {
+			t.Fatalf("verification automated not spliced: %q", out)
+		}
+	})
+
+	t.Run("manual", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		out, _, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "manual"}, []byte(`[{"text":"new manual check"}]`))
+		if err != nil {
+			t.Fatalf("PreviewFromData: %v", err)
+		}
+		if !strings.Contains(out, "new manual check") {
+			t.Fatalf("verification manual not spliced: %q", out)
+		}
+	})
+}
+
+func TestSpliceVerificationRejectsInvalidSubsection(t *testing.T) {
+	src := writeFixturePlan(t, twoStepPlan())
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "bogus"}, []byte(`"x"`))
+	var re *ReplaceError
+	if !errors.As(err, &re) || re.Code != ReplaceInvalidOptionsError {
+		t.Fatalf("got %v, want ReplaceInvalidOptionsError", err)
 	}
 }
 
