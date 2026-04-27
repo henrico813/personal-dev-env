@@ -1,6 +1,6 @@
 // Package inspect provides markdown parsing for canonical planner-rendered plans.
-// It reconstructs schema.Plan from markdown and returns typed section/step spans
-// for splice-based partial replacement.
+// It reconstructs schema.Plan from markdown and returns a ParseResult with typed
+// section/step spans for splice-based partial replacement.
 package inspect
 
 import (
@@ -25,28 +25,36 @@ type SectionSpans struct {
 	Verification     Span `json:"verification"`
 }
 
+// ParseResult bundles the parsed plan with the byte spans needed by splice
+// operations.
+type ParseResult struct {
+	Plan         schema.Plan
+	Sections     SectionSpans
+	Steps        []Span
+	DiffContents [][]Span
+}
+
 // ParseMarkdown parses canonical planner-rendered markdown and returns the
-// reconstructed Plan, typed section spans, per-step spans, and per-FileChange
-// diff-content spans for the implementation section. Returns an error if the
-// input does not match canonical format (fail closed on drift). Optional YAML
-// frontmatter (--- fenced block before the title) is stripped before parsing;
-// returned spans are absolute into the original input so splice-based replace
-// still works.
-func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, [][]Span, error) {
+// reconstructed plan plus byte spans for sections, steps, and FileChange diff
+// bodies. Returns an error if the input does not match canonical format (fail
+// closed on drift). Optional YAML frontmatter (--- fenced block before the
+// title) is stripped before parsing; returned spans are absolute into the
+// original input so splice-based replace still works.
+func ParseMarkdown(input string) (ParseResult, error) {
 	if strings.Contains(input, "\r") {
-		return schema.Plan{}, SectionSpans{}, nil, nil, fmt.Errorf("CRLF line endings not supported; convert to LF")
+		return ParseResult{}, fmt.Errorf("CRLF line endings not supported; convert to LF")
 	}
 	prefixLen, body, err := splitFrontmatter(input)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	if !strings.HasPrefix(body, "# ") {
-		return schema.Plan{}, SectionSpans{}, nil, nil, fmt.Errorf("missing title heading")
+		return ParseResult{}, fmt.Errorf("missing title heading")
 	}
 
 	sectionSpans, err := findTopLevelSections(body)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
@@ -58,41 +66,41 @@ func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, [][]Span, e
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	plan.Overview = strings.TrimSpace(overviewBody)
 
 	dodBody, _, err := sectionBody(input, sectionSpans["Definition of Done"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	parsedDoD, err := parseDefinitionOfDone(dodBody)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	plan.DefinitionOfDone = parsedDoD
 
 	implBody, implBodyStart, err := sectionBody(input, sectionSpans["Implementation"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	plan.Implementation = steps
 
 	verificationBody, _, err := sectionBody(input, sectionSpans["Verification"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	parsedVerification, err := parseVerification(verificationBody)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, nil, err
+		return ParseResult{}, err
 	}
 	plan.Verification = parsedVerification
 
-	return plan, spansTyped, stepSpans, diffSpans, nil
+	return ParseResult{Plan: plan, Sections: spansTyped, Steps: stepSpans, DiffContents: diffSpans}, nil
 }
 
 // splitFrontmatter strips an optional YAML frontmatter block (--- ... ---) from
@@ -325,8 +333,8 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 			continue
 		}
 		filename := strings.Trim(line, "`")
-		if strings.TrimSpace(filename) == "" {
-			return schema.Step{}, nil, fmt.Errorf("invalid file change filename")
+		if err := schema.ValidateFilenameShape(filename); err != nil {
+			return schema.Step{}, nil, err
 		}
 		i++
 		explanation := ""

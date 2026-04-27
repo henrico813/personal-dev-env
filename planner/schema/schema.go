@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
+	"unicode"
 
 	"planner/internal/jsoninput"
 )
@@ -157,6 +160,28 @@ func BuildPlanExample() Plan {
 	}
 }
 
+var filenameShape = regexp.MustCompile(`^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$`)
+
+const MaxFilenameLength = 200
+
+// ValidateFilenameShape is the shared filename rule for rendered plans.
+func ValidateFilenameShape(name string) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("invalid file change filename %q: empty after trim", name)
+	}
+	if strings.IndexFunc(name, unicode.IsSpace) >= 0 {
+		return fmt.Errorf("invalid file change filename %q: contains whitespace", name)
+	}
+	if len(trimmed) > MaxFilenameLength {
+		return fmt.Errorf("invalid file change filename %q: %d bytes exceeds %d-byte limit", name, len(trimmed), MaxFilenameLength)
+	}
+	if !filenameShape.MatchString(trimmed) {
+		return fmt.Errorf("invalid file change filename %q: not a path-shape (expected components matching [A-Za-z0-9._-]+ joined by /)", name)
+	}
+	return nil
+}
+
 // BuildPlanTemplate returns the canonical AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
@@ -174,7 +199,7 @@ func BuildPlanTemplate() Plan {
 				Summary: "<what changes and why -- required>",
 				FileChanges: []FileChange{
 					{
-						Filename:    "<path/to/file>",
+						Filename:    "path/to/file",
 						Explanation: "<one sentence>",
 						Diff:        "PLACEHOLDER",
 					},
@@ -294,6 +319,7 @@ func ValidationRules() []string {
 		"each definition_of_done.goals item must be at most 88 characters",
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",
+		"each file change filename must be non-empty, whitespace-free, at most 200 bytes, and path-shaped",
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
 	}

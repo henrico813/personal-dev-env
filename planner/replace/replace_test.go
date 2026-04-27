@@ -50,11 +50,11 @@ func parseOutputPlan(t *testing.T, outputPath string) schema.Plan {
 	if err != nil {
 		t.Fatalf("ReadFile(output): %v", err)
 	}
-	parsed, _, _, _, err := inspect.ParseMarkdown(string(raw))
+	parsed, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	return parsed
+	return parsed.Plan
 }
 
 func loadAuditFixture(t *testing.T, name string) schema.Plan {
@@ -430,11 +430,11 @@ func TestRendererFaithfulnessAudit(t *testing.T) {
 			if err != nil {
 				t.Fatalf("RenderPlan: %v", err)
 			}
-			parsed, _, _, _, err := inspect.ParseMarkdown(once)
+			parsed, err := inspect.ParseMarkdown(once)
 			if err != nil {
 				t.Fatalf("ParseMarkdown: %v", err)
 			}
-			twice, err := render.RenderPlan(parsed)
+			twice, err := render.RenderPlan(parsed.Plan)
 			if err != nil {
 				t.Fatalf("RenderPlan(reparse): %v", err)
 			}
@@ -618,11 +618,11 @@ func TestSpliceOutputMatchesRerender(t *testing.T) {
 	}
 
 	spliced, _ := os.ReadFile(outputPath)
-	parsed, _, _, _, err := inspect.ParseMarkdown(string(spliced))
+	parsed, err := inspect.ParseMarkdown(string(spliced))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	rerendered, err := render.RenderPlan(parsed)
+	rerendered, err := render.RenderPlan(parsed.Plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
