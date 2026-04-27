@@ -493,13 +493,13 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	plan, _, _, _, err := inspect.ParseMarkdown(string(raw))
+	parsed, err := inspect.ParseMarkdown(string(raw))
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
 	}
 
-	out, err := json.MarshalIndent(plan, "", "  ")
+	out, err := json.MarshalIndent(parsed.Plan, "", "  ")
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerWriteOutputError, err, "inspect JSON"))
 		return 1

@@ -112,3 +112,63 @@ func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
 		t.Fatal("expected error for invalid automated status")
 	}
 }
+
+func TestValidatePlanFilenameShapeMatrix(t *testing.T) {
+	tests := []struct {
+		name       string
+		filename   string
+		wantSubstr string
+		wantErr    bool
+	}{
+		{
+			name:     "accepts path shape",
+			filename: "planner/validate/validate.go",
+			wantErr:  false,
+		},
+		{
+			name:       "rejects whitespace",
+			filename:   "path/with space.go",
+			wantSubstr: "contains whitespace",
+			wantErr:    true,
+		},
+		{
+			name:       "rejects angle-bracket placeholder",
+			filename:   "<path/to/file>",
+			wantSubstr: "not a path-shape",
+			wantErr:    true,
+		},
+		{
+			name:       "rejects empty after trim",
+			filename:   "   ",
+			wantSubstr: "empty after trim",
+			wantErr:    true,
+		},
+		{
+			name:       "rejects long filename",
+			filename:   strings.Repeat("a", 201),
+			wantSubstr: "200-byte limit",
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := validPlan()
+			plan.Implementation[0].FileChanges[0].Filename = tc.filename
+
+			err := ValidatePlan(plan)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("ValidatePlan() error = nil, want error")
+				}
+				if !strings.Contains(err.Error(), tc.wantSubstr) {
+					t.Fatalf("ValidatePlan() error = %q, want substring %q", err.Error(), tc.wantSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ValidatePlan() error = %v, want nil", err)
+			}
+		})
+	}
+}

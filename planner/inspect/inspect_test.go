@@ -51,10 +51,13 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, sectionSpans, stepSpans, _, err := ParseMarkdown(md)
+	result, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
+	parsed := result.Plan
+	sectionSpans := result.Sections
+	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
 	}
@@ -109,10 +112,12 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	frontmatter := "---\ntags:\n  - \"#Ticket\"\n---\n\n"
 	withFrontmatter := frontmatter + md
 
-	parsed, sectionSpans, _, _, err := ParseMarkdown(withFrontmatter)
+	result, err := ParseMarkdown(withFrontmatter)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
+	parsed := result.Plan
+	sectionSpans := result.Sections
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
 	}
@@ -150,10 +155,12 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, _, stepSpans, _, err := ParseMarkdown(md)
+	result, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
+	parsed := result.Plan
+	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
 	}
@@ -170,7 +177,7 @@ func TestParseChecklistItemsRejectsMalformedMarker(t *testing.T) {
 }
 
 func TestParseMarkdownRejectsCRLF(t *testing.T) {
-	_, _, _, _, err := ParseMarkdown("# Title\r\n## Overview\r\n")
+	_, err := ParseMarkdown("# Title\r\n## Overview\r\n")
 	if err == nil || !strings.Contains(err.Error(), "CRLF") {
 		t.Fatalf("expected CRLF error, got: %v", err)
 	}
@@ -225,15 +232,15 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	parsed, _, _, _, err := ParseMarkdown(md)
+	result, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	if !reflect.DeepEqual(parsed, plan) {
-		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
+	if !reflect.DeepEqual(result.Plan, plan) {
+		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", result.Plan, plan)
 	}
 
-	rerendered, err := render.RenderPlan(parsed)
+	rerendered, err := render.RenderPlan(result.Plan)
 	if err != nil {
 		t.Fatalf("RenderPlan (re-render): %v", err)
 	}
@@ -282,10 +289,11 @@ func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
 		t.Fatalf("RenderPlan: %v", err)
 	}
 
-	_, _, _, diffSpans, err := ParseMarkdown(md)
+	result, err := ParseMarkdown(md)
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
+	diffSpans := result.DiffContents
 	if len(diffSpans) != len(plan.Implementation) {
 		t.Fatalf("expected %d step span rows, got %d", len(plan.Implementation), len(diffSpans))
 	}
@@ -314,13 +322,76 @@ func TestParseMarkdownReturnsTitleSpan(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := tc.build(t)
-			plan, spans, _, _, err := ParseMarkdown(input)
+			result, err := ParseMarkdown(input)
 			if err != nil {
 				t.Fatalf("ParseMarkdown: %v", err)
 			}
-			got := input[spans.Title.Start:spans.Title.End]
-			if got != plan.Title {
-				t.Fatalf("title span = %q, want %q", got, plan.Title)
+			got := input[result.Sections.Title.Start:result.Sections.Title.End]
+			if got != result.Plan.Title {
+				t.Fatalf("title span = %q, want %q", got, result.Plan.Title)
+			}
+		})
+	}
+}
+
+func TestParseMarkdownRejectsBadFilenameShapes(t *testing.T) {
+	md, err := render.RenderPlan(schema.Plan{
+		Title:    "Plan",
+		Overview: "Overview text.",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    "Narrative.",
+			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			CurrentState: "Current state.",
+			ModuleShape:  "module shape",
+		},
+		Implementation: []schema.Step{{
+			Title:   "First",
+			Summary: "summary one",
+			FileChanges: []schema.FileChange{{
+				Filename:    "a.txt",
+				Explanation: "explain",
+				Diff:        "@@ -1 +1 @@\n-old\n+new",
+			}},
+		}},
+		Verification: &schema.Verification{
+			Summary:   "Verification summary.",
+			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name        string
+		replacement string
+		wantSubstr  string
+	}{
+		{
+			name:        "contains whitespace",
+			replacement: "`not a file`",
+			wantSubstr:  "contains whitespace",
+		},
+		{
+			name:        "not path shaped",
+			replacement: "`<path/to/file>`",
+			wantSubstr:  "not a path-shape",
+		},
+		{
+			name:        "empty after trim",
+			replacement: "`   `",
+			wantSubstr:  "empty after trim",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := strings.Replace(md, "`a.txt`", tc.replacement, 1)
+			_, err := ParseMarkdown(bad)
+			if err == nil {
+				t.Fatal("expected parse error")
+			}
+			if !strings.Contains(err.Error(), tc.wantSubstr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tc.wantSubstr)
 			}
 		})
 	}

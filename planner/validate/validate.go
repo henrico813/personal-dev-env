@@ -85,8 +85,8 @@ func ValidatePlan(plan schema.Plan) error {
 			return errors.New("each implementation step needs file changes")
 		}
 		for _, change := range step.FileChanges {
-			if strings.TrimSpace(change.Filename) == "" {
-				return errors.New("each file change needs a filename")
+			if err := schema.ValidateFilenameShape(change.Filename); err != nil {
+				return err
 			}
 			if strings.TrimSpace(change.Explanation) == "" {
 				return errors.New("each file change needs an explanation")
