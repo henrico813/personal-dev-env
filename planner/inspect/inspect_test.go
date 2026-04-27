@@ -303,3 +303,63 @@ func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
 		}
 	}
 }
+
+func TestParseMarkdownReturnsTitleSpan(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func(*testing.T) string
+	}{
+		{name: "no frontmatter", build: buildPlanNoFrontmatter},
+		{name: "with frontmatter", build: buildPlanWithFrontmatter},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			input := tc.build(t)
+			plan, spans, _, _, err := ParseMarkdown(input)
+			if err != nil {
+				t.Fatalf("ParseMarkdown: %v", err)
+			}
+			got := input[spans.Title.Start:spans.Title.End]
+			if got != plan.Title {
+				t.Fatalf("title span = %q, want %q", got, plan.Title)
+			}
+		})
+	}
+}
+
+func buildPlanNoFrontmatter(t *testing.T) string {
+	t.Helper()
+	plan := schema.Plan{
+		Title:    "Sample",
+		Overview: "o",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    "n",
+			Goals:        []schema.ChecklistItem{{Text: "g"}},
+			CurrentState: "c",
+			ModuleShape:  "m",
+		},
+		Implementation: []schema.Step{{
+			Title:   "t",
+			Summary: "s",
+			FileChanges: []schema.FileChange{{
+				Filename:    "a.go",
+				Explanation: "e",
+				Diff:        "@@ -1 +1 @@\n-x\n+y",
+			}},
+		}},
+		Verification: &schema.Verification{
+			Summary:   "vs",
+			Automated: []schema.ChecklistItem{{Text: "a"}},
+			Manual:    []schema.ChecklistItem{{Text: "m"}},
+		},
+	}
+	out, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func buildPlanWithFrontmatter(t *testing.T) string {
+	t.Helper()
+	return "---\nproject: DevEnv\ndate_created: 2026-04-26\n---\n" + buildPlanNoFrontmatter(t)
+}
