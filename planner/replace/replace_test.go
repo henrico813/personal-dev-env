@@ -380,6 +380,35 @@ func TestSpliceDiffFieldRejectsUnparseableDiff(t *testing.T) {
 	}
 }
 
+// TestSpliceDiffFieldRejectsEmptyDiff guards the integrity invariant that
+// successful patch output is still a valid plan. Empty diff bodies parse but
+// fail validate.ValidatePlan; the path must reject before write.
+func TestSpliceDiffFieldRejectsEmptyDiff(t *testing.T) {
+	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	opts := ReplaceOptions{
+		Section:    "implementation",
+		Subsection: "1",
+		File:       "a.go",
+		Field:      "diff",
+	}
+
+	for _, tc := range []struct {
+		name string
+		body []byte
+	}{
+		{"empty", []byte("")},
+		{"whitespace_only", []byte("   \n\t\n")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := PreviewFromData(src, opts, tc.body)
+			var re *ReplaceError
+			if !errors.As(err, &re) || re.Code != ReplaceValidateResultError {
+				t.Fatalf("got %v, want ReplaceValidateResultError", err)
+			}
+		})
+	}
+}
+
 // TestSpliceOutputMatchesRerender verifies splice produces byte-identical
 // output to re-rendering the parsed result. Catches formatting drift like
 // dropped blank lines between sections.

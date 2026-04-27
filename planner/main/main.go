@@ -108,6 +108,13 @@ Flags:
   --diff                           Optional. Print diff to stdout; additive (does not suppress write).
   --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift.
 
+JSON-patch workflow:
+  1. planner inspect <plan.md>
+  2. planner template --json --section <s>
+  3. Compose the patch JSON for the target scope.
+  4. planner patch <plan.md> <patch.json> <output.md> --section <s>
+  5. Non-targeted sections remain byte-for-byte unchanged.
+
 Diff-edit workflow:
   1. planner inspect <plan.md>
   2. Find the implementation step number and FileChange filename.

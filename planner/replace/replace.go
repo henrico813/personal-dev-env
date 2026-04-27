@@ -285,8 +285,12 @@ func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan s
 
 	span := diffSpans[stepIdx-1][matches[0]]
 	out := splice(source, span, string(patchRaw))
-	if _, _, _, _, err := inspect.ParseMarkdown(out); err != nil {
+	parsed, _, _, _, err := inspect.ParseMarkdown(out)
+	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSplicedSourceError, fmt.Errorf("spliced diff body breaks plan parsing (likely contains a fence-like line): %w", err))
+	}
+	if err := validate.ValidatePlan(parsed); err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
 	return out, ReplaceResult{

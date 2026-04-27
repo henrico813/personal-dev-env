@@ -396,6 +396,87 @@ func TestPatchFieldDiffFileNotFoundEmitsRecoveryHint(t *testing.T) {
 	}
 }
 
+func TestPatchFieldDiffEmptyEmitsRecoveryHint(t *testing.T) {
+	dir := t.TempDir()
+	planPath := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", planPath, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+
+	diffPath := dir + "/diff.txt"
+	if err := os.WriteFile(diffPath, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := dir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"--json-errors", "patch", planPath, diffPath, outPath, "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+	}
+	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
+		t.Fatalf("output file should not exist on validate failure; got err=%v", err)
+	}
+
+	var got struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &got); err != nil {
+		t.Fatalf("stderr is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	if got.Code != "VALIDATE_INPUT" {
+		t.Fatalf("code=%q want VALIDATE_INPUT", got.Code)
+	}
+	if !strings.Contains(got.Message, "diff") {
+		t.Fatalf("message %q does not mention diff", got.Message)
+	}
+}
+
+func TestPatchFieldDiffUnparseableEmitsRecoveryHint(t *testing.T) {
+	dir := t.TempDir()
+	planPath := dir + "/plan.md"
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", planPath, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
+		}
+	})
+
+	diffPath := dir + "/diff.txt"
+	if err := os.WriteFile(diffPath, []byte("ctx\n```\nfake fence\n```\nrest\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outPath := dir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"--json-errors", "patch", planPath, diffPath, outPath, "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+	}
+	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
+		t.Fatalf("output file should not exist on parse failure; got err=%v", err)
+	}
+
+	var got struct {
+		Code         string `json:"code"`
+		Message      string `json:"message"`
+		RecoveryHint string `json:"recovery_hint"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &got); err != nil {
+		t.Fatalf("stderr is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	if got.Code != "VALIDATE_INPUT" {
+		t.Fatalf("code=%q want VALIDATE_INPUT", got.Code)
+	}
+	if !strings.Contains(got.RecoveryHint, "fence") {
+		t.Fatalf("recovery hint %q does not mention fences", got.RecoveryHint)
+	}
+}
+
 func TestPatchFieldFlagValidationMatrix(t *testing.T) {
 	tests := []struct {
 		name    string
