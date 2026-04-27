@@ -250,7 +250,7 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "title",
 			args:       []string{"template", "--json", "--section", "title"},
-			wantSubstr: "\"<short title -- required, non-empty>\"",
+			wantSubstr: "max 88 chars",
 		},
 		{
 			name:       "verification summary",
@@ -270,12 +270,12 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "step title field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
-			wantSubstr: "\"<step title -- required>\"",
+			wantSubstr: "max 88 chars",
 		},
 		{
 			name:       "step summary field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
-			wantSubstr: "\"<what changes and why -- required>\"",
+			wantSubstr: "max 500 chars",
 		},
 		{
 			name:       "filename field",
@@ -814,6 +814,60 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 	if got.Message == "" {
 		t.Fatal("empty message")
+	}
+}
+
+func TestRunValidateAggregatesViolations(t *testing.T) {
+	plan := schema.Plan{
+		Title:    "",
+		Overview: "",
+		DefinitionOfDone: schema.DefinitionOfDone{
+			Narrative:    strings.Repeat("n", 501),
+			Goals:        []schema.ChecklistItem{{Text: "goal"}},
+			CurrentState: "current state",
+			ModuleShape:  "planner/validate",
+		},
+		Implementation: []schema.Step{
+			{
+				Title:   "step title",
+				Summary: "step summary",
+				FileChanges: []schema.FileChange{
+					{
+						Filename:    "planner/validate/validate.go",
+						Explanation: "explanation",
+						Diff:        "@@ -1 +1 @@\n- old\n+ new",
+					},
+				},
+			},
+		},
+		Verification: &schema.Verification{
+			Automated: []schema.ChecklistItem{{Text: "automation"}},
+			Manual:    []schema.ChecklistItem{{Text: "manual"}},
+		},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	dir := t.TempDir()
+	path := dir + "/plan.json"
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"validate", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("Execute(validate) exit = %d, want 1; stderr = %q", exit, stderr.String())
+	}
+	for _, want := range []string{
+		"title is required",
+		"overview is required",
+		"definition_of_done.narrative must be no more than 500 characters",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
+		}
 	}
 }
 
