@@ -77,10 +77,14 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		return "", ReplaceResult{}, newReplaceError(ReplaceReadSourceError, err)
 	}
 
-	plan, sectionSpans, stepSpans, diffSpans, err := inspect.ParseMarkdown(string(sourceRaw))
+	parsed, err := inspect.ParseMarkdown(string(sourceRaw))
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSourceError, err)
 	}
+	plan := parsed.Plan
+	sectionSpans := parsed.Sections
+	stepSpans := parsed.Steps
+	diffSpans := parsed.DiffContents
 
 	if opts.Field != "" {
 		return applyFieldPatch(string(sourceRaw), opts, patchRaw, plan, stepSpans, diffSpans)
@@ -123,10 +127,12 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
-	_, newSectionSpans, newStepSpans, _, err := inspect.ParseMarkdown(out)
+	reparsed, err := inspect.ParseMarkdown(out)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
+	newSectionSpans := reparsed.Sections
+	newStepSpans := reparsed.Steps
 
 	if err := assertPreserved(string(sourceRaw), out, opts, sectionSpans, newSectionSpans, stepSpans, newStepSpans); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
@@ -274,11 +280,11 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 // patch paths: parse the spliced markdown, then validate the reconstructed
 // plan before returning success.
 func finalizeFieldPatch(out string, opts ReplaceOptions) (string, ReplaceResult, error) {
-	parsed, _, _, _, err := inspect.ParseMarkdown(out)
+	parsed, err := inspect.ParseMarkdown(out)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSplicedSourceError, err)
 	}
-	if err := validate.ValidatePlan(parsed); err != nil {
+	if err := validate.ValidatePlan(parsed.Plan); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 	return out, ReplaceResult{
@@ -496,10 +502,11 @@ func renderSection(plan schema.Plan, section string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, spans, _, _, err := inspect.ParseMarkdown(full)
+	preserved, err := inspect.ParseMarkdown(full)
 	if err != nil {
 		return "", err
 	}
+	spans := preserved.Sections
 	switch section {
 	case "overview":
 		return full[spans.Overview.Start:spans.Overview.End], nil
