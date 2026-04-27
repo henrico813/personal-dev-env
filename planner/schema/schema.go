@@ -185,22 +185,22 @@ func ValidateFilenameShape(name string) error {
 // BuildPlanTemplate returns the canonical AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
-		Title:    "<short title -- required, non-empty>",
-		Overview: "<2-4 sentence summary -- required, non-empty>",
+		Title:    "<short title -- required, non-empty, max 88 chars>",
+		Overview: "<2-4 sentence summary -- required, non-empty, max 500 chars>",
 		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "<paragraph -- required, non-empty>",
+			Narrative:    "<paragraph -- required, non-empty, max 500 chars>",
 			Goals:        []ChecklistItem{{Text: "<concrete goal -- 1 to 8 items, each <= 88 chars>"}},
-			CurrentState: "<current behavior with file:line refs -- required, non-empty>",
-			ModuleShape:  "<final layout -- required, non-empty>",
+			CurrentState: "<current behavior with file:line refs -- required, non-empty, max 500 chars>",
+			ModuleShape:  "<final layout -- required, non-empty, each line <= 88 chars>",
 		},
 		Implementation: []Step{
 			{
-				Title:   "<step title -- required>",
-				Summary: "<what changes and why -- required>",
+				Title:   "<step title -- required, max 88 chars>",
+				Summary: "<what changes and why -- required, max 500 chars>",
 				FileChanges: []FileChange{
 					{
 						Filename:    "path/to/file",
-						Explanation: "<one sentence>",
+						Explanation: "<one sentence, max 250 chars>",
 						Diff:        "PLACEHOLDER",
 					},
 				},
@@ -208,8 +208,8 @@ func BuildPlanTemplate() Plan {
 		},
 		Verification: &Verification{
 			Summary:   "<optional summary>",
-			Automated: []ChecklistItem{{Text: "<runnable check>"}},
-			Manual:    []ChecklistItem{{Text: "<manual step>"}},
+			Automated: []ChecklistItem{{Text: "<runnable check, max 88 chars>"}},
+			Manual:    []ChecklistItem{{Text: "<manual step, max 88 chars>"}},
 		},
 	}
 }

@@ -250,7 +250,7 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "title",
 			args:       []string{"template", "--json", "--section", "title"},
-			wantSubstr: "\"<short title -- required, non-empty>\"",
+			wantSubstr: "max 88 chars",
 		},
 		{
 			name:       "verification summary",
@@ -270,12 +270,12 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "step title field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
-			wantSubstr: "\"<step title -- required>\"",
+			wantSubstr: "max 88 chars",
 		},
 		{
 			name:       "step summary field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
-			wantSubstr: "\"<what changes and why -- required>\"",
+			wantSubstr: "max 500 chars",
 		},
 		{
 			name:       "filename field",
