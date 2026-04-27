@@ -25,7 +25,7 @@ Usage:
   planner template --md
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --help
-  planner validate [<plan.json>] [--stdin] [--json-errors]
+  planner validate [<plan.json>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
   planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -415,8 +415,12 @@ func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "validate", err)
 		return plannerExitCode(err)
 	}
-	if err := validate.ValidatePlan(plan); err != nil {
-		reportError(stderr, "validate", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
+	if errs := validate.ValidatePlanAll(plan); len(errs) > 0 {
+		messages := make([]string, len(errs))
+		for i, e := range errs {
+			messages[i] = e.Message
+		}
+		reportError(stderr, "validate", newPlannerCLIError(PlannerValidateInputError, errors.New(strings.Join(messages, "\n")), "plan"))
 		return 1
 	}
 	_, _ = io.WriteString(stdout, "OK\n")

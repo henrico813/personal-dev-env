@@ -9,95 +9,157 @@ import (
 	"unicode/utf8"
 )
 
+// ValidationError records one violation from the aggregate walker.
+type ValidationError struct {
+	Field   string
+	Message string
+	Actual  int
+}
+
+func (e ValidationError) Error() string { return e.Message }
+
 const (
-	maxDefinitionOfDoneGoals      = 8
-	maxDefinitionOfDoneGoalLength = 88
+	maxDefinitionOfDoneGoals       = 8
+	maxDefinitionOfDoneGoalLength  = 88
+	maxTitleLength                 = 88
+	maxOverviewLength              = 500
+	maxDoDNarrativeLength          = 500
+	maxCurrentStateLength          = 500
+	maxModuleShapeLineLength       = 88
+	maxStepTitleLength             = 88
+	maxStepSummaryLength           = 500
+	maxFileChangeExplanationLength = 250
+	maxVerificationItemTextLength  = 88
 )
 
 func ValidatePlan(plan schema.Plan) error {
+	if errs := walkValidationRules(plan); len(errs) > 0 {
+		return errors.New(errs[0].Message)
+	}
+	return nil
+}
+
+// ValidatePlanAll walks every rule and returns every violation.
+func ValidatePlanAll(plan schema.Plan) []ValidationError {
+	return walkValidationRules(plan)
+}
+
+func walkValidationRules(plan schema.Plan) []ValidationError {
+	var errs []ValidationError
+	add := func(field, message string, actual int) {
+		errs = append(errs, ValidationError{Field: field, Message: message, Actual: actual})
+	}
+
 	if strings.TrimSpace(plan.Title) == "" {
-		return errors.New("title is required")
+		add("title", "title is required", 0)
+	} else if got := utf8.RuneCountInString(plan.Title); got > maxTitleLength {
+		add("title", fmt.Sprintf("title must be no more than %d characters (got %d)", maxTitleLength, got), got)
 	}
 	if strings.TrimSpace(plan.Overview) == "" {
-		return errors.New("overview is required")
+		add("overview", "overview is required", 0)
+	} else if got := utf8.RuneCountInString(plan.Overview); got > maxOverviewLength {
+		add("overview", fmt.Sprintf("overview must be no more than %d characters (got %d)", maxOverviewLength, got), got)
 	}
-	if strings.TrimSpace(plan.DefinitionOfDone.Narrative) == "" {
-		return errors.New("definition_of_done.narrative is required")
+
+	dod := plan.DefinitionOfDone
+	if strings.TrimSpace(dod.Narrative) == "" {
+		add("definition_of_done.narrative", "definition_of_done.narrative is required", 0)
+	} else if got := utf8.RuneCountInString(dod.Narrative); got > maxDoDNarrativeLength {
+		add("definition_of_done.narrative", fmt.Sprintf("definition_of_done.narrative must be no more than %d characters (got %d)", maxDoDNarrativeLength, got), got)
 	}
-	if len(plan.DefinitionOfDone.Goals) == 0 {
-		return errors.New("at least one definition_of_done goal is required")
+	if len(dod.Goals) == 0 {
+		add("definition_of_done.goals", "at least one definition_of_done goal is required", 0)
+	} else if got := len(dod.Goals); got > maxDefinitionOfDoneGoals {
+		add("definition_of_done.goals", fmt.Sprintf("definition_of_done.goals must have no more than %d goals (got %d)", maxDefinitionOfDoneGoals, got), got)
 	}
-	if len(plan.DefinitionOfDone.Goals) > maxDefinitionOfDoneGoals {
-		return fmt.Errorf("definition_of_done.goals must have no more than %d goals", maxDefinitionOfDoneGoals)
-	}
-	for i, goal := range plan.DefinitionOfDone.Goals {
+	for i, goal := range dod.Goals {
+		field := fmt.Sprintf("definition_of_done.goals[%d]", i)
 		if strings.TrimSpace(goal.Text) == "" {
-			return fmt.Errorf("definition_of_done.goals[%d].text is required", i)
+			add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
 		}
 		if !validStatus(goal.Status) {
-			return fmt.Errorf("definition_of_done.goals[%d].status %q is invalid", i, goal.Status)
+			add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, goal.Status), 0)
 		}
-		if utf8.RuneCountInString(goal.Text) > maxDefinitionOfDoneGoalLength {
-			return fmt.Errorf(
-				"definition_of_done.goals[%d] must be no more than %d characters",
-				i,
-				maxDefinitionOfDoneGoalLength,
-			)
+		if got := utf8.RuneCountInString(goal.Text); got > maxDefinitionOfDoneGoalLength {
+			add(field, fmt.Sprintf("%s must be no more than %d characters (got %d)", field, maxDefinitionOfDoneGoalLength, got), got)
 		}
 	}
-	if strings.TrimSpace(plan.DefinitionOfDone.CurrentState) == "" {
-		return errors.New("definition_of_done.current_state is required")
+	if strings.TrimSpace(dod.CurrentState) == "" {
+		add("definition_of_done.current_state", "definition_of_done.current_state is required", 0)
+	} else if got := utf8.RuneCountInString(dod.CurrentState); got > maxCurrentStateLength {
+		add("definition_of_done.current_state", fmt.Sprintf("definition_of_done.current_state must be no more than %d characters (got %d)", maxCurrentStateLength, got), got)
 	}
-	if strings.TrimSpace(plan.DefinitionOfDone.ModuleShape) == "" {
-		return errors.New("definition_of_done.module_shape is required")
+	if strings.TrimSpace(dod.ModuleShape) == "" {
+		add("definition_of_done.module_shape", "definition_of_done.module_shape is required", 0)
+	} else {
+		for i, line := range strings.Split(dod.ModuleShape, "\n") {
+			if got := utf8.RuneCountInString(line); got > maxModuleShapeLineLength {
+				add(fmt.Sprintf("definition_of_done.module_shape[line %d]", i+1), fmt.Sprintf("definition_of_done.module_shape line %d must be no more than %d characters (got %d)", i+1, maxModuleShapeLineLength, got), got)
+			}
+		}
 	}
 	if len(plan.Implementation) == 0 {
-		return errors.New("at least one implementation step is required")
+		add("implementation", "at least one implementation step is required", 0)
 	}
 	if plan.Verification == nil {
-		return errors.New("verification is required")
-	}
-	for i, item := range plan.Verification.Automated {
-		if strings.TrimSpace(item.Text) == "" {
-			return fmt.Errorf("verification.automated[%d].text is required", i)
+		add("verification", "verification is required", 0)
+	} else {
+		for i, item := range plan.Verification.Automated {
+			field := fmt.Sprintf("verification.automated[%d]", i)
+			if strings.TrimSpace(item.Text) == "" {
+				add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
+			} else if got := utf8.RuneCountInString(item.Text); got > maxVerificationItemTextLength {
+				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, maxVerificationItemTextLength, got), got)
+			}
+			if !validStatus(item.Status) {
+				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
+			}
 		}
-		if !validStatus(item.Status) {
-			return fmt.Errorf("verification.automated[%d].status %q is invalid", i, item.Status)
-		}
-	}
-	for i, item := range plan.Verification.Manual {
-		if strings.TrimSpace(item.Text) == "" {
-			return fmt.Errorf("verification.manual[%d].text is required", i)
-		}
-		if !validStatus(item.Status) {
-			return fmt.Errorf("verification.manual[%d].status %q is invalid", i, item.Status)
+		for i, item := range plan.Verification.Manual {
+			field := fmt.Sprintf("verification.manual[%d]", i)
+			if strings.TrimSpace(item.Text) == "" {
+				add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
+			} else if got := utf8.RuneCountInString(item.Text); got > maxVerificationItemTextLength {
+				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, maxVerificationItemTextLength, got), got)
+			}
+			if !validStatus(item.Status) {
+				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
+			}
 		}
 	}
 
-	for _, step := range plan.Implementation {
+	for i, step := range plan.Implementation {
+		field := fmt.Sprintf("implementation[%d]", i)
 		if strings.TrimSpace(step.Title) == "" {
-			return errors.New("each implementation step needs a title")
+			add(field+".title", "each implementation step needs a title", 0)
+		} else if got := utf8.RuneCountInString(step.Title); got > maxStepTitleLength {
+			add(field+".title", fmt.Sprintf("%s.title must be no more than %d characters (got %d)", field, maxStepTitleLength, got), got)
 		}
 		if strings.TrimSpace(step.Summary) == "" {
-			return errors.New("each implementation step needs a summary")
+			add(field+".summary", "each implementation step needs a summary", 0)
+		} else if got := utf8.RuneCountInString(step.Summary); got > maxStepSummaryLength {
+			add(field+".summary", fmt.Sprintf("%s.summary must be no more than %d characters (got %d)", field, maxStepSummaryLength, got), got)
 		}
 		if len(step.FileChanges) == 0 {
-			return errors.New("each implementation step needs file changes")
+			add(field+".file_changes", "each implementation step needs file changes", 0)
 		}
-		for _, change := range step.FileChanges {
+		for j, change := range step.FileChanges {
+			changeField := fmt.Sprintf("%s.file_changes[%d]", field, j)
 			if err := schema.ValidateFilenameShape(change.Filename); err != nil {
-				return err
+				add(changeField+".filename", err.Error(), 0)
 			}
 			if strings.TrimSpace(change.Explanation) == "" {
-				return errors.New("each file change needs an explanation")
+				add(changeField+".explanation", "each file change needs an explanation", 0)
+			} else if got := utf8.RuneCountInString(change.Explanation); got > maxFileChangeExplanationLength {
+				add(changeField+".explanation", fmt.Sprintf("%s.explanation must be no more than %d characters (got %d)", changeField, maxFileChangeExplanationLength, got), got)
 			}
 			if strings.TrimSpace(change.Diff) == "" {
-				return errors.New("each file change needs a diff")
+				add(changeField+".diff", "each file change needs a diff", 0)
 			}
 		}
 	}
 
-	return nil
+	return errs
 }
 
 // GetCodeFence returns the shortest backtick fence that safely wraps content.
