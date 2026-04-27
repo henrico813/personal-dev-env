@@ -25,26 +25,27 @@ type SectionSpans struct {
 }
 
 // ParseMarkdown parses canonical planner-rendered markdown and returns the
-// reconstructed Plan, typed section spans, and per-step spans for the
-// implementation section. Returns an error if the input does not match
-// canonical format (fail closed on drift). Optional YAML frontmatter (---
-// fenced block before the title) is stripped before parsing; returned spans
-// are absolute into the original input so splice-based replace still works.
-func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, error) {
+// reconstructed Plan, typed section spans, per-step spans, and per-FileChange
+// diff-content spans for the implementation section. Returns an error if the
+// input does not match canonical format (fail closed on drift). Optional YAML
+// frontmatter (--- fenced block before the title) is stripped before parsing;
+// returned spans are absolute into the original input so splice-based replace
+// still works.
+func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, [][]Span, error) {
 	if strings.Contains(input, "\r") {
-		return schema.Plan{}, SectionSpans{}, nil, fmt.Errorf("CRLF line endings not supported; convert to LF")
+		return schema.Plan{}, SectionSpans{}, nil, nil, fmt.Errorf("CRLF line endings not supported; convert to LF")
 	}
 	prefixLen, body, err := splitFrontmatter(input)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	if !strings.HasPrefix(body, "# ") {
-		return schema.Plan{}, SectionSpans{}, nil, fmt.Errorf("missing title heading")
+		return schema.Plan{}, SectionSpans{}, nil, nil, fmt.Errorf("missing title heading")
 	}
 
 	sectionSpans, err := findTopLevelSections(body)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
@@ -54,41 +55,41 @@ func ParseMarkdown(input string) (schema.Plan, SectionSpans, []Span, error) {
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	plan.Overview = strings.TrimSpace(overviewBody)
 
 	dodBody, _, err := sectionBody(input, sectionSpans["Definition of Done"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	parsedDoD, err := parseDefinitionOfDone(dodBody)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	plan.DefinitionOfDone = parsedDoD
 
 	implBody, implBodyStart, err := sectionBody(input, sectionSpans["Implementation"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
-	steps, stepSpans, err := parseImplementation(implBody, implBodyStart)
+	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	plan.Implementation = steps
 
 	verificationBody, _, err := sectionBody(input, sectionSpans["Verification"])
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	parsedVerification, err := parseVerification(verificationBody)
 	if err != nil {
-		return schema.Plan{}, SectionSpans{}, nil, err
+		return schema.Plan{}, SectionSpans{}, nil, nil, err
 	}
 	plan.Verification = parsedVerification
 
-	return plan, toSectionSpans(sectionSpans), stepSpans, nil
+	return plan, toSectionSpans(sectionSpans), stepSpans, diffSpans, nil
 }
 
 // splitFrontmatter strips an optional YAML frontmatter block (--- ... ---) from
@@ -248,7 +249,7 @@ func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
 	}, nil
 }
 
-func parseImplementation(body string, base int) ([]schema.Step, []Span, error) {
+func parseImplementation(body string, base int) ([]schema.Step, []Span, [][]Span, error) {
 	rawHeadings := scanHeadings(body, "### ")
 	headings := []headingMatch{}
 	for _, h := range rawHeadings {
@@ -260,80 +261,105 @@ func parseImplementation(body string, base int) ([]schema.Step, []Span, error) {
 	if len(headings) == 0 {
 		// Allow empty implementation body so append can bootstrap from scratch.
 		if strings.TrimSpace(body) == "" {
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
-		return nil, nil, fmt.Errorf("implementation section has no steps")
+		return nil, nil, nil, fmt.Errorf("implementation section has no steps")
 	}
 
 	steps := []schema.Step{}
 	spans := []Span{}
+	diffSpans := [][]Span{}
 	for i, h := range headings {
 		end := len(body)
 		if i+1 < len(headings) {
 			end = headings[i+1].Start
 		}
-		chunk := strings.TrimSpace(body[h.Start:end])
-		step, err := parseStepChunk(chunk, h.Text)
+		chunkStart := base + h.Start
+		chunk := body[h.Start:end]
+		step, fcSpans, err := parseStepChunk(chunk, h.Text, chunkStart)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		steps = append(steps, step)
 		spans = append(spans, Span{Start: base + h.Start, End: base + end})
+		diffSpans = append(diffSpans, fcSpans)
 	}
 
-	return steps, spans, nil
+	return steps, spans, diffSpans, nil
 }
 
-func parseStepChunk(chunk string, title string) (schema.Step, error) {
-	lines := strings.Split(chunk, "\n")
+func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []Span, error) {
+	lines := strings.SplitAfter(chunk, "\n")
 	if len(lines) < 2 {
-		return schema.Step{}, fmt.Errorf("invalid implementation step block")
+		return schema.Step{}, nil, fmt.Errorf("invalid implementation step block")
+	}
+
+	lineStarts := make([]int, len(lines))
+	offset := 0
+	for i, line := range lines {
+		lineStarts[i] = offset
+		offset += len(line)
 	}
 
 	summaryLines := []string{}
 	changes := []schema.FileChange{}
+	var fcSpans []Span
 	i := 1
 	for i < len(lines) {
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "`") {
+		line := strings.TrimSuffix(lines[i], "\n")
+		if strings.HasPrefix(strings.TrimSpace(line), "`") {
 			break
 		}
-		summaryLines = append(summaryLines, lines[i])
+		summaryLines = append(summaryLines, line)
 		i++
 	}
 
 	for i < len(lines) {
-		line := strings.TrimSpace(lines[i])
+		line := strings.TrimSpace(strings.TrimSuffix(lines[i], "\n"))
 		if !strings.HasPrefix(line, "`") {
 			i++
 			continue
 		}
 		filename := strings.Trim(line, "`")
+		if strings.TrimSpace(filename) == "" {
+			return schema.Step{}, nil, fmt.Errorf("invalid file change filename")
+		}
 		i++
 		explanation := ""
-		if i < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[i]), "> ") {
-			explanation = strings.TrimPrefix(strings.TrimSpace(lines[i]), "> ")
-			i++
+		if i < len(lines) {
+			nextLine := strings.TrimSpace(strings.TrimSuffix(lines[i], "\n"))
+			if strings.HasPrefix(nextLine, "> ") {
+				explanation = strings.TrimPrefix(nextLine, "> ")
+				i++
+			}
 		}
 
-		for i < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[i]), "```") {
+		for i < len(lines) && !strings.HasPrefix(strings.TrimSpace(strings.TrimSuffix(lines[i], "\n")), "```") {
 			i++
 		}
 		if i >= len(lines) {
-			return schema.Step{}, fmt.Errorf("missing diff fence for file %q", filename)
+			return schema.Step{}, nil, fmt.Errorf("missing diff fence for file %q", filename)
 		}
-		fence, ok := parseFence(strings.TrimSpace(lines[i]))
+		openIdx := i
+		fence, ok := parseFence(strings.TrimSpace(strings.TrimSuffix(lines[openIdx], "\n")))
 		if !ok {
-			return schema.Step{}, fmt.Errorf("invalid fence line %q", lines[i])
+			return schema.Step{}, nil, fmt.Errorf("invalid fence line %q", strings.TrimSpace(strings.TrimSuffix(lines[openIdx], "\n")))
 		}
+		contentStart := chunkStart + lineStarts[openIdx] + len(lines[openIdx])
 		i++
-		diffLines := []string{}
-		for i < len(lines) && strings.TrimSpace(lines[i]) != fence {
-			diffLines = append(diffLines, lines[i])
+		for i < len(lines) && strings.TrimSpace(strings.TrimSuffix(lines[i], "\n")) != fence {
 			i++
 		}
 		if i >= len(lines) {
-			return schema.Step{}, fmt.Errorf("unterminated diff fence for file %q", filename)
+			return schema.Step{}, nil, fmt.Errorf("unterminated diff fence for file %q", filename)
 		}
+		closeIdx := i
+		contentEnd := chunkStart + lineStarts[closeIdx] - 1
+		diffLines := []string{}
+		for j := openIdx + 1; j < closeIdx; j++ {
+			diffLines = append(diffLines, strings.TrimSuffix(lines[j], "\n"))
+		}
+		fcSpans = append(fcSpans, Span{Start: contentStart, End: contentEnd})
 		i++
 
 		changes = append(changes, schema.FileChange{
@@ -343,7 +369,7 @@ func parseStepChunk(chunk string, title string) (schema.Step, error) {
 		})
 	}
 
-	return schema.Step{Title: title, Summary: strings.TrimSpace(strings.Join(summaryLines, "\n")), FileChanges: changes}, nil
+	return schema.Step{Title: title, Summary: strings.TrimSpace(strings.Join(summaryLines, "\n")), FileChanges: changes}, fcSpans, nil
 }
 
 func parseVerification(body string) (*schema.Verification, error) {
