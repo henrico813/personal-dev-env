@@ -58,7 +58,7 @@ func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-	if got, want := err.Error(), "definition_of_done.goals must have no more than 8 goals (got 9)"; got != want {
+	if got, want := err.Error(), "definition_of_done.goals must have no more than 6 goals (got 7)"; got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
 }
@@ -71,7 +71,7 @@ func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-	if got, want := err.Error(), "definition_of_done.goals[0] must be no more than 88 characters (got 89)"; got != want {
+	if got, want := err.Error(), "definition_of_done.goals[0] must be no more than 66 characters (got 67)"; got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
 }
@@ -125,7 +125,7 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "(got 10)") {
+		if !strings.Contains(err.Error(), "(got 8)") {
 			t.Fatalf("error %q does not contain actual count", err.Error())
 		}
 	})
@@ -137,7 +137,7 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "(got 89)") {
+		if !strings.Contains(err.Error(), "(got 67)") {
 			t.Fatalf("error %q does not contain actual length", err.Error())
 		}
 	})
@@ -154,70 +154,70 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Title = strings.Repeat("t", maxTitleLength+1)
 			},
-			wantSubstr: "title must be no more than 88 characters",
+			wantSubstr: "title must be no more than 66 characters",
 		},
 		{
 			name: "overview",
 			mutate: func(p *schema.Plan) {
 				p.Overview = strings.Repeat("o", maxOverviewLength+1)
 			},
-			wantSubstr: "overview must be no more than 500 characters",
+			wantSubstr: "overview must be no more than 250 characters",
 		},
 		{
 			name: "narrative",
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.Narrative = strings.Repeat("n", maxDoDNarrativeLength+1)
 			},
-			wantSubstr: "definition_of_done.narrative must be no more than 500 characters",
+			wantSubstr: "definition_of_done.narrative must be no more than 250 characters",
 		},
 		{
 			name: "current_state",
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.CurrentState = strings.Repeat("c", maxCurrentStateLength+1)
 			},
-			wantSubstr: "definition_of_done.current_state must be no more than 500 characters",
+			wantSubstr: "definition_of_done.current_state must be no more than 250 characters",
 		},
 		{
 			name: "module_shape_line",
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.ModuleShape = strings.Repeat("m", maxModuleShapeLineLength+1)
 			},
-			wantSubstr: "definition_of_done.module_shape line 1 must be no more than 88 characters",
+			wantSubstr: "definition_of_done.module_shape line 1 must be no more than 66 characters",
 		},
 		{
 			name: "step_title",
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].Title = strings.Repeat("s", maxStepTitleLength+1)
 			},
-			wantSubstr: "implementation[0].title must be no more than 88 characters",
+			wantSubstr: "implementation[0].title must be no more than 66 characters",
 		},
 		{
 			name: "step_summary",
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].Summary = strings.Repeat("s", maxStepSummaryLength+1)
 			},
-			wantSubstr: "implementation[0].summary must be no more than 500 characters",
+			wantSubstr: "implementation[0].summary must be no more than 250 characters",
 		},
 		{
 			name: "file_change_explanation",
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].FileChanges[0].Explanation = strings.Repeat("e", maxFileChangeExplanationLength+1)
 			},
-			wantSubstr: "file_changes[0].explanation must be no more than 250 characters",
+			wantSubstr: "file_changes[0].explanation must be no more than 175 characters",
 		},
 		{
 			name: "verification_automated_text",
 			mutate: func(p *schema.Plan) {
 				p.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", maxVerificationItemTextLength+1)}}
 			},
-			wantSubstr: "verification.automated[0].text must be no more than 88 characters",
+			wantSubstr: "verification.automated[0].text must be no more than 66 characters",
 		},
 		{
 			name: "verification_manual_text",
 			mutate: func(p *schema.Plan) {
 				p.Verification.Manual = []schema.ChecklistItem{{Text: strings.Repeat("m", maxVerificationItemTextLength+1)}}
 			},
-			wantSubstr: "verification.manual[0].text must be no more than 88 characters",
+			wantSubstr: "verification.manual[0].text must be no more than 66 characters",
 		},
 	}
 
@@ -252,11 +252,11 @@ func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 
 	want := []string{
 		"title is required",
-		"overview must be no more than 500 characters",
-		"definition_of_done.narrative must be no more than 500 characters",
-		"definition_of_done.current_state must be no more than 500 characters",
-		"definition_of_done.module_shape line 1 must be no more than 88 characters",
-		"verification.automated[0].text must be no more than 88 characters",
+		"overview must be no more than 250 characters",
+		"definition_of_done.narrative must be no more than 250 characters",
+		"definition_of_done.current_state must be no more than 250 characters",
+		"definition_of_done.module_shape line 1 must be no more than 66 characters",
+		"verification.automated[0].text must be no more than 66 characters",
 	}
 	for _, substr := range want {
 		found := false
