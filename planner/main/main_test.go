@@ -863,7 +863,7 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 	for _, want := range []string{
 		"title is required",
 		"overview is required",
-		"definition_of_done.narrative must be no more than 500 characters",
+		"definition_of_done.narrative must be no more than 250 characters",
 	} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())

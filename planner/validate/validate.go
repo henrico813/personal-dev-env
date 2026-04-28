@@ -19,17 +19,17 @@ type ValidationError struct {
 func (e ValidationError) Error() string { return e.Message }
 
 const (
-	maxDefinitionOfDoneGoals       = 8
-	maxDefinitionOfDoneGoalLength  = 88
-	maxTitleLength                 = 88
-	maxOverviewLength              = 500
-	maxDoDNarrativeLength          = 500
-	maxCurrentStateLength          = 500
-	maxModuleShapeLineLength       = 88
-	maxStepTitleLength             = 88
-	maxStepSummaryLength           = 500
-	maxFileChangeExplanationLength = 250
-	maxVerificationItemTextLength  = 88
+	maxDefinitionOfDoneGoals       = 6
+	maxDefinitionOfDoneGoalLength  = 66
+	maxTitleLength                 = 66
+	maxOverviewLength              = 250
+	maxDoDNarrativeLength          = 250
+	maxCurrentStateLength          = 250
+	maxModuleShapeLineLength       = 66
+	maxStepTitleLength             = 66
+	maxStepSummaryLength           = 250
+	maxFileChangeExplanationLength = 175
+	maxVerificationItemTextLength  = 66
 )
 
 func ValidatePlan(plan schema.Plan) error {
