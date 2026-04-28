@@ -5,8 +5,6 @@ require("fzf-lua").setup({
       ["ctrl-u"] = "half-page-up",
       ["ctrl-f"] = "page-down",
       ["ctrl-b"] = "page-up",
-      ["ctrl-g"] = "first",
-      ["ctrl-e"] = "last",
     },
   },
   defaults = {
