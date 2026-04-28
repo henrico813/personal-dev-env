@@ -1,4 +1,14 @@
 require("fzf-lua").setup({
+  keymap = {
+    fzf = {
+      ["ctrl-d"] = "half-page-down",
+      ["ctrl-u"] = "half-page-up",
+      ["ctrl-f"] = "page-down",
+      ["ctrl-b"] = "page-up",
+      ["ctrl-g"] = "first",
+      ["ctrl-e"] = "last",
+    },
+  },
   defaults = {
     file_icons = false,
   },
