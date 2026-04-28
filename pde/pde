@@ -74,7 +74,7 @@ main() {
 
             install_shell      # zsh, tmux from source, plugins
             install_tools      # apt + cargo tools, yazi
-            install_editor     # neovim + lazyvim
+            install_editor     # neovim + PDE nvim config
             install_configs    # all configs except ai
             ;;
 
@@ -92,7 +92,6 @@ main() {
             install_tools
             install_tools_full   # adds trash-cli
             install_editor
-            install_nvim_minimal
             install_ai           # nvm, node, claude
             install_fonts
             install_configs
