@@ -194,6 +194,7 @@ if [ -d "$SCRIPT_DIR/.pi/agent" ]; then
     cp "$SCRIPT_DIR/.pi/agent/settings.json" "$HOME/.pi/agent/settings.json"
     ln -sfn "$HOME/.claude/CLAUDE.md" "$HOME/.pi/agent/AGENTS.md"
     ln -sfn "$HOME/.claude/commands"  "$HOME/.pi/agent/prompts"
+    ln -sfn "$HOME/.codex/skills"     "$HOME/.pi/agent/skills"
 fi
 
 echo ""
