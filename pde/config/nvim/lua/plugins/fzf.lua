@@ -9,3 +9,8 @@ require("fzf-lua").setup({
     rg_opts = "--column --line-number --no-heading --color=always --smart-case --hidden --glob '!.git'",
   },
 })
+require("fzf-lua").register_ui_select(function(ui_opts)
+  if ui_opts.prompt == "Select model" then
+    return { prompt = "Select model, " }
+  end
+end)
