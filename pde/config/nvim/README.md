@@ -1,14 +1,14 @@
-# nvim-minimal
+# nvim
 
-A hand-rolled Neovim config using the native `pack/` loader instead of a plugin manager. Roughly feature-parity with LazyVim but explicit — every plugin and keymap lives in a file you wrote.
+A hand-rolled Neovim config using the native `pack/` loader instead of a plugin manager. Explicit by design — every plugin and keymap lives in a file you wrote.
 
 Launch it with:
 
 ```bash
-NVIM_APPNAME=nvim-minimal nvim
+nvim
 ```
 
-The installer (`pde full`) clones all plugins into `~/.config/nvim-minimal/pack/plugins/start/` and symlinks this directory into place. The live config is a symlink back here, so edits take effect immediately — no copying, no sync step.
+The installer (`pde minimal` and `pde full`) clones all plugins into `~/.config/nvim/pack/plugins/start/` and symlinks this directory into place. The live config is a symlink back here, so edits take effect immediately — no copying, no sync step.
 
 ---
 
@@ -30,7 +30,7 @@ Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim
 
 **Filetypes.** Nvim sniffs each buffer and sets `&filetype` (`lua`, `python`, `markdown`, etc.). Many features — syntax, LSP, our styling — key off this. Pi panels have custom filetypes like `pi-chat-history`, which is how we match them in `lua/core/options.lua` without hard-coding buffer names.
 
-**Pack directories.** Neovim's built-in plugin loader. Anything under `~/.config/nvim-minimal/pack/plugins/start/<name>/` is added to `runtimepath` automatically on startup. No `packer.nvim`, no `lazy.nvim` — just clone a repo into that directory and it's installed. We deliberately chose this to keep the config simple and auditable.
+**Pack directories.** Neovim's built-in plugin loader. Anything under `~/.config/nvim/pack/plugins/start/<name>/` is added to `runtimepath` automatically on startup. No `packer.nvim`, no `lazy.nvim` — just clone a repo into that directory and it's installed. We deliberately chose this to keep the config simple and auditable.
 
 **`require()`.** When your config calls `require("plugins.pi")`, Lua searches `runtimepath` for `lua/plugins/pi.lua` or `lua/plugins/pi/init.lua`. Both forms work. Our `lua/` tree mirrors the require paths: `require("core.options")` → `lua/core/options.lua`.
 
@@ -103,7 +103,7 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 ### Add a plugin
 
 ```bash
-git clone --depth=1 <url> ~/.config/nvim-minimal/pack/plugins/start/<name>
+git clone --depth=1 <url> ~/.config/nvim/pack/plugins/start/<name>
 ```
 
 Then write `lua/plugins/<name>.lua`:
@@ -116,7 +116,7 @@ vim.keymap.set("n", "<leader>xx", "<cmd>SomeCommand<cr>", { desc = "..." })
 
 Add `require("plugins.<name>")` to `init.lua`. Restart nvim.
 
-To make this reproducible on a fresh machine, append the git URL to the `plugins=()` array in `pde/lib/editor.sh` inside `install_nvim_minimal()`.
+To make this reproducible on a fresh machine, append the git URL to the `plugins=()` array in `pde/lib/editor.sh` inside `install_editor()`.
 
 ### Add a keymap
 
@@ -154,7 +154,7 @@ Common server names: `pyright`, `ts_ls` (TypeScript), `gopls`, `rust-analyzer`, 
 
 ## Session restore
 
-`persistence.nvim` saves one session per `cwd` to `~/.local/state/nvim-minimal/sessions/`. `<leader>qs` loads the one for your current directory; `<leader>ql` loads the most recent across all directories.
+`persistence.nvim` saves one session per `cwd` to `~/.local/state/nvim/sessions/`. `<leader>qs` loads the one for your current directory; `<leader>ql` loads the most recent across all directories.
 
 What `lua/plugins/session.lua` customizes:
 
@@ -179,7 +179,7 @@ Pi.nvim (alex35mil's version) spawns one `pi --mode rpc` subprocess per tab. We 
 
 The wrapper avoids it without uninstalling pi-pretty globally. It reads `~/.pi/agent/settings.json`, and launches pi with `--no-extensions` plus explicit `-e <path>` for every configured extension *except* pi-pretty. Extensions added later via `pi install` are picked up automatically — no wrapper edit needed.
 
-Source lives at `pde/config/nvim-minimal/bin/pi-nvim` and gets symlinked to `~/.local/bin/pi-nvim` by `install_nvim_minimal()` in `pde/lib/editor.sh`.
+Source lives at `pde/config/nvim/bin/pi-nvim` and gets symlinked to `~/.local/bin/pi-nvim` by `install_editor()` in `pde/lib/editor.sh`.
 
 ---
 
@@ -193,7 +193,7 @@ The image comes from `header.ansi`, a pre-rendered file produced by **chafa**. N
 
 ```bash
 chafa --format=symbols --symbols="ascii,-space" --size=45x22 --fg-only \
-  /path/to/image.png > ~/.config/nvim-minimal/header.ansi
+  /path/to/image.png > ~/.config/nvim/header.ansi
 ```
 
 The `-space` option prevents blank cells (dark pixels become dots instead of spaces). Width/height scale both dimensions. If you change the image size, `lua/plugins/alpha.lua` auto-adapts — it measures rows at load time.
