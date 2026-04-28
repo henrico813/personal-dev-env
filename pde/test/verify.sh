@@ -98,8 +98,10 @@ pass "nvim"
 check_dir ~/.local/share/antidote "antidote plugin manager"
 check_dir ~/.local/share/powerlevel10k "powerlevel10k theme"
 check_dir ~/.tmux/plugins/tpm "tmux plugin manager"
-# LazyVim starter has init.lua (lazy-lock.json only created on first run)
-check_file ~/.config/nvim/init.lua "LazyVim config"
+# PDE nvim config is linked into the default Neovim app dir
+check_file ~/.config/nvim/init.lua "PDE nvim config"
+check_dir ~/.config/nvim/pack/plugins/start "PDE nvim plugin pack"
+check_link ~/.config/nvim "pde/config/nvim"
 
 # PDE config
 check_file ~/.config/pde/paths.env "PDE paths.env"
