@@ -12,6 +12,20 @@ import (
 	"planner/internal/jsoninput"
 )
 
+const (
+	MaxTitleLength                 = 66
+	MaxOverviewLength              = 250
+	MaxDoDNarrativeLength          = 250
+	MaxDoDGoals                    = 6
+	MaxDoDGoalLength               = 66
+	MaxCurrentStateLength          = 250
+	MaxModuleShapeLineLength       = 66
+	MaxStepTitleLength             = 66
+	MaxStepSummaryLength           = 250
+	MaxFileChangeExplanationLength = 175
+	MaxVerificationItemTextLength  = 66
+)
+
 type Plan struct {
 	Title            string           `json:"title"`
 	Overview         string           `json:"overview"`
@@ -185,22 +199,22 @@ func ValidateFilenameShape(name string) error {
 // BuildPlanTemplate returns the canonical AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
-		Title:    "<short title -- required, non-empty, max 88 chars>",
-		Overview: "<2-4 sentence summary -- required, non-empty, max 500 chars>",
+		Title:    fmt.Sprintf("<short title -- required, non-empty, max %d chars>", MaxTitleLength),
+		Overview: fmt.Sprintf("<2-4 sentence summary -- required, non-empty, max %d chars>", MaxOverviewLength),
 		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "<paragraph -- required, non-empty, max 500 chars>",
-			Goals:        []ChecklistItem{{Text: "<concrete goal -- 1 to 8 items, each <= 88 chars>"}},
-			CurrentState: "<current behavior with file:line refs -- required, non-empty, max 500 chars>",
-			ModuleShape:  "<final layout -- required, non-empty, each line <= 88 chars>",
+			Narrative:    fmt.Sprintf("<paragraph -- required, non-empty, max %d chars>", MaxDoDNarrativeLength),
+			Goals:        []ChecklistItem{{Text: fmt.Sprintf("<concrete goal -- 1 to %d items, each <= %d chars>", MaxDoDGoals, MaxDoDGoalLength)}},
+			CurrentState: fmt.Sprintf("<current behavior with file:line refs -- required, non-empty, max %d chars>", MaxCurrentStateLength),
+			ModuleShape:  fmt.Sprintf("<final layout -- required, non-empty, each line <= %d chars>", MaxModuleShapeLineLength),
 		},
 		Implementation: []Step{
 			{
-				Title:   "<step title -- required, max 88 chars>",
-				Summary: "<what changes and why -- required, max 500 chars>",
+				Title:   fmt.Sprintf("<step title -- required, max %d chars>", MaxStepTitleLength),
+				Summary: fmt.Sprintf("<what changes and why -- required, max %d chars>", MaxStepSummaryLength),
 				FileChanges: []FileChange{
 					{
 						Filename:    "path/to/file",
-						Explanation: "<one sentence, max 250 chars>",
+						Explanation: fmt.Sprintf("<one sentence, max %d chars>", MaxFileChangeExplanationLength),
 						Diff:        "PLACEHOLDER",
 					},
 				},
@@ -208,8 +222,8 @@ func BuildPlanTemplate() Plan {
 		},
 		Verification: &Verification{
 			Summary:   "<optional summary>",
-			Automated: []ChecklistItem{{Text: "<runnable check, max 88 chars>"}},
-			Manual:    []ChecklistItem{{Text: "<manual step, max 88 chars>"}},
+			Automated: []ChecklistItem{{Text: fmt.Sprintf("<runnable check, max %d chars>", MaxVerificationItemTextLength)}},
+			Manual:    []ChecklistItem{{Text: fmt.Sprintf("<manual step, max %d chars>", MaxVerificationItemTextLength)}},
 		},
 	}
 }
@@ -313,24 +327,24 @@ func MarshalSection(plan Plan, section, subsection, file, field string) ([]byte,
 func ValidationRules() []string {
 	return []string{
 		"title, overview, definition_of_done.narrative, definition_of_done.current_state, and definition_of_done.module_shape must be non-empty",
-		"definition_of_done.goals must contain between 1 and 8 items",
+		fmt.Sprintf("definition_of_done.goals must contain between 1 and %d items", MaxDoDGoals),
 		"definition_of_done checklist items must have non-empty text; object status may be pending or done",
 		"verification checklist items must have non-empty text; object status may be pending or done",
-		"each definition_of_done.goals item must be at most 88 characters",
+		fmt.Sprintf("each definition_of_done.goals item must be at most %d characters", MaxDoDGoalLength),
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",
 		"each file change filename must be non-empty, whitespace-free, at most 200 bytes, and path-shaped",
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
-		"title must be at most 88 characters",
-		"overview must be at most 500 characters",
-		"definition_of_done.narrative must be at most 500 characters",
-		"definition_of_done.current_state must be at most 500 characters",
-		"each line of definition_of_done.module_shape must be at most 88 characters",
-		"each implementation step title must be at most 88 characters",
-		"each implementation step summary must be at most 500 characters",
-		"each file change explanation must be at most 250 characters",
-		"each verification.automated[i].text must be at most 88 characters",
-		"each verification.manual[i].text must be at most 88 characters",
+		fmt.Sprintf("title must be at most %d characters", MaxTitleLength),
+		fmt.Sprintf("overview must be at most %d characters", MaxOverviewLength),
+		fmt.Sprintf("definition_of_done.narrative must be at most %d characters", MaxDoDNarrativeLength),
+		fmt.Sprintf("definition_of_done.current_state must be at most %d characters", MaxCurrentStateLength),
+		fmt.Sprintf("each line of definition_of_done.module_shape must be at most %d characters", MaxModuleShapeLineLength),
+		fmt.Sprintf("each implementation step title must be at most %d characters", MaxStepTitleLength),
+		fmt.Sprintf("each implementation step summary must be at most %d characters", MaxStepSummaryLength),
+		fmt.Sprintf("each file change explanation must be at most %d characters", MaxFileChangeExplanationLength),
+		fmt.Sprintf("each verification.automated[i].text must be at most %d characters", MaxVerificationItemTextLength),
+		fmt.Sprintf("each verification.manual[i].text must be at most %d characters", MaxVerificationItemTextLength),
 	}
 }

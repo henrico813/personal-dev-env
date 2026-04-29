@@ -37,9 +37,9 @@ func validPlan() schema.Plan {
 
 func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, maxDefinitionOfDoneGoals)
+	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, schema.MaxDoDGoals)
 	for i := range plan.DefinitionOfDone.Goals {
-		plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: strings.Repeat("a", maxDefinitionOfDoneGoalLength)}
+		plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: strings.Repeat("a", schema.MaxDoDGoalLength)}
 	}
 
 	if err := ValidatePlan(plan); err != nil {
@@ -49,7 +49,7 @@ func TestValidatePlanAcceptsGoalLimits(t *testing.T) {
 
 func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, maxDefinitionOfDoneGoals+1)
+	plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, schema.MaxDoDGoals+1)
 	for i := range plan.DefinitionOfDone.Goals {
 		plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: "short goal"}
 	}
@@ -58,20 +58,20 @@ func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-	if got, want := err.Error(), "definition_of_done.goals must have no more than 6 goals (got 7)"; got != want {
+	if got, want := err.Error(), fmt.Sprintf("definition_of_done.goals must have no more than %d goals (got %d)", schema.MaxDoDGoals, schema.MaxDoDGoals+1); got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
 }
 
 func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 	plan := validPlan()
-	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: strings.Repeat("a", maxDefinitionOfDoneGoalLength+1)}}
+	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: strings.Repeat("a", schema.MaxDoDGoalLength+1)}}
 
 	err := ValidatePlan(plan)
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-	if got, want := err.Error(), "definition_of_done.goals[0] must be no more than 66 characters (got 67)"; got != want {
+	if got, want := err.Error(), fmt.Sprintf("definition_of_done.goals[0] must be no more than %d characters (got %d)", schema.MaxDoDGoalLength, schema.MaxDoDGoalLength+1); got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
 }
@@ -117,7 +117,7 @@ func TestValidatePlanRejectsInvalidVerificationItemStatus(t *testing.T) {
 func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 	t.Run("goals_count", func(t *testing.T) {
 		plan := validPlan()
-		plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, maxDefinitionOfDoneGoals+2)
+		plan.DefinitionOfDone.Goals = make([]schema.ChecklistItem, schema.MaxDoDGoals+2)
 		for i := range plan.DefinitionOfDone.Goals {
 			plan.DefinitionOfDone.Goals[i] = schema.ChecklistItem{Text: fmt.Sprintf("goal-%d", i)}
 		}
@@ -125,19 +125,19 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "(got 8)") {
+		if !strings.Contains(err.Error(), fmt.Sprintf("(got %d)", schema.MaxDoDGoals+2)) {
 			t.Fatalf("error %q does not contain actual count", err.Error())
 		}
 	})
 
 	t.Run("goal_length", func(t *testing.T) {
 		plan := validPlan()
-		plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: strings.Repeat("a", maxDefinitionOfDoneGoalLength+1)}}
+		plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: strings.Repeat("a", schema.MaxDoDGoalLength+1)}}
 		err := ValidatePlan(plan)
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if !strings.Contains(err.Error(), "(got 67)") {
+		if !strings.Contains(err.Error(), fmt.Sprintf("(got %d)", schema.MaxDoDGoalLength+1)) {
 			t.Fatalf("error %q does not contain actual length", err.Error())
 		}
 	})
@@ -152,72 +152,72 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 		{
 			name: "title",
 			mutate: func(p *schema.Plan) {
-				p.Title = strings.Repeat("t", maxTitleLength+1)
+				p.Title = strings.Repeat("t", schema.MaxTitleLength+1)
 			},
-			wantSubstr: "title must be no more than 66 characters",
+			wantSubstr: fmt.Sprintf("title must be no more than %d characters", schema.MaxTitleLength),
 		},
 		{
 			name: "overview",
 			mutate: func(p *schema.Plan) {
-				p.Overview = strings.Repeat("o", maxOverviewLength+1)
+				p.Overview = strings.Repeat("o", schema.MaxOverviewLength+1)
 			},
-			wantSubstr: "overview must be no more than 250 characters",
+			wantSubstr: fmt.Sprintf("overview must be no more than %d characters", schema.MaxOverviewLength),
 		},
 		{
 			name: "narrative",
 			mutate: func(p *schema.Plan) {
-				p.DefinitionOfDone.Narrative = strings.Repeat("n", maxDoDNarrativeLength+1)
+				p.DefinitionOfDone.Narrative = strings.Repeat("n", schema.MaxDoDNarrativeLength+1)
 			},
-			wantSubstr: "definition_of_done.narrative must be no more than 250 characters",
+			wantSubstr: fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
 		},
 		{
 			name: "current_state",
 			mutate: func(p *schema.Plan) {
-				p.DefinitionOfDone.CurrentState = strings.Repeat("c", maxCurrentStateLength+1)
+				p.DefinitionOfDone.CurrentState = strings.Repeat("c", schema.MaxCurrentStateLength+1)
 			},
-			wantSubstr: "definition_of_done.current_state must be no more than 250 characters",
+			wantSubstr: fmt.Sprintf("definition_of_done.current_state must be no more than %d characters", schema.MaxCurrentStateLength),
 		},
 		{
 			name: "module_shape_line",
 			mutate: func(p *schema.Plan) {
-				p.DefinitionOfDone.ModuleShape = strings.Repeat("m", maxModuleShapeLineLength+1)
+				p.DefinitionOfDone.ModuleShape = strings.Repeat("m", schema.MaxModuleShapeLineLength+1)
 			},
-			wantSubstr: "definition_of_done.module_shape line 1 must be no more than 66 characters",
+			wantSubstr: fmt.Sprintf("definition_of_done.module_shape line 1 must be no more than %d characters", schema.MaxModuleShapeLineLength),
 		},
 		{
 			name: "step_title",
 			mutate: func(p *schema.Plan) {
-				p.Implementation[0].Title = strings.Repeat("s", maxStepTitleLength+1)
+				p.Implementation[0].Title = strings.Repeat("s", schema.MaxStepTitleLength+1)
 			},
-			wantSubstr: "implementation[0].title must be no more than 66 characters",
+			wantSubstr: fmt.Sprintf("implementation[0].title must be no more than %d characters", schema.MaxStepTitleLength),
 		},
 		{
 			name: "step_summary",
 			mutate: func(p *schema.Plan) {
-				p.Implementation[0].Summary = strings.Repeat("s", maxStepSummaryLength+1)
+				p.Implementation[0].Summary = strings.Repeat("s", schema.MaxStepSummaryLength+1)
 			},
-			wantSubstr: "implementation[0].summary must be no more than 250 characters",
+			wantSubstr: fmt.Sprintf("implementation[0].summary must be no more than %d characters", schema.MaxStepSummaryLength),
 		},
 		{
 			name: "file_change_explanation",
 			mutate: func(p *schema.Plan) {
-				p.Implementation[0].FileChanges[0].Explanation = strings.Repeat("e", maxFileChangeExplanationLength+1)
+				p.Implementation[0].FileChanges[0].Explanation = strings.Repeat("e", schema.MaxFileChangeExplanationLength+1)
 			},
-			wantSubstr: "file_changes[0].explanation must be no more than 175 characters",
+			wantSubstr: fmt.Sprintf("file_changes[0].explanation must be no more than %d characters", schema.MaxFileChangeExplanationLength),
 		},
 		{
 			name: "verification_automated_text",
 			mutate: func(p *schema.Plan) {
-				p.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", maxVerificationItemTextLength+1)}}
+				p.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", schema.MaxVerificationItemTextLength+1)}}
 			},
-			wantSubstr: "verification.automated[0].text must be no more than 66 characters",
+			wantSubstr: fmt.Sprintf("verification.automated[0].text must be no more than %d characters", schema.MaxVerificationItemTextLength),
 		},
 		{
 			name: "verification_manual_text",
 			mutate: func(p *schema.Plan) {
-				p.Verification.Manual = []schema.ChecklistItem{{Text: strings.Repeat("m", maxVerificationItemTextLength+1)}}
+				p.Verification.Manual = []schema.ChecklistItem{{Text: strings.Repeat("m", schema.MaxVerificationItemTextLength+1)}}
 			},
-			wantSubstr: "verification.manual[0].text must be no more than 66 characters",
+			wantSubstr: fmt.Sprintf("verification.manual[0].text must be no more than %d characters", schema.MaxVerificationItemTextLength),
 		},
 	}
 
@@ -239,11 +239,11 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 	plan := validPlan()
 	plan.Title = ""
-	plan.Overview = strings.Repeat("o", maxOverviewLength+1)
-	plan.DefinitionOfDone.Narrative = strings.Repeat("n", maxDoDNarrativeLength+1)
-	plan.DefinitionOfDone.CurrentState = strings.Repeat("c", maxCurrentStateLength+1)
-	plan.DefinitionOfDone.ModuleShape = strings.Repeat("m", maxModuleShapeLineLength+1)
-	plan.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", maxVerificationItemTextLength+1)}}
+	plan.Overview = strings.Repeat("o", schema.MaxOverviewLength+1)
+	plan.DefinitionOfDone.Narrative = strings.Repeat("n", schema.MaxDoDNarrativeLength+1)
+	plan.DefinitionOfDone.CurrentState = strings.Repeat("c", schema.MaxCurrentStateLength+1)
+	plan.DefinitionOfDone.ModuleShape = strings.Repeat("m", schema.MaxModuleShapeLineLength+1)
+	plan.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", schema.MaxVerificationItemTextLength+1)}}
 
 	errs := ValidatePlanAll(plan)
 	if len(errs) < 5 {
@@ -252,11 +252,11 @@ func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 
 	want := []string{
 		"title is required",
-		"overview must be no more than 250 characters",
-		"definition_of_done.narrative must be no more than 250 characters",
-		"definition_of_done.current_state must be no more than 250 characters",
-		"definition_of_done.module_shape line 1 must be no more than 66 characters",
-		"verification.automated[0].text must be no more than 66 characters",
+		fmt.Sprintf("overview must be no more than %d characters", schema.MaxOverviewLength),
+		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
+		fmt.Sprintf("definition_of_done.current_state must be no more than %d characters", schema.MaxCurrentStateLength),
+		fmt.Sprintf("definition_of_done.module_shape line 1 must be no more than %d characters", schema.MaxModuleShapeLineLength),
+		fmt.Sprintf("verification.automated[0].text must be no more than %d characters", schema.MaxVerificationItemTextLength),
 	}
 	for _, substr := range want {
 		found := false
