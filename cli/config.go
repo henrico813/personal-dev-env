@@ -11,6 +11,7 @@ type Config struct {
 	HomeDir       string
 	NvimConfigDir string
 	RuntimeDir    string
+	LocalBinDir   string
 }
 
 func detectConfig(flagRepoRoot string) (*Config, error) {
@@ -35,6 +36,7 @@ func detectConfig(flagRepoRoot string) (*Config, error) {
 				HomeDir:       homeDir,
 				NvimConfigDir: filepath.Join(homeDir, ".config", "nvim"),
 				RuntimeDir:    filepath.Join(homeDir, ".local", "share", "pde", "obsidian-headless"),
+				LocalBinDir:   filepath.Join(homeDir, ".local", "bin"),
 			}, nil
 		}
 	}

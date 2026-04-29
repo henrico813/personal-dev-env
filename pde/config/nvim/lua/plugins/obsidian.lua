@@ -1,5 +1,3 @@
-local headless_dir = vim.fn.expand("~/.local/share/pde/obsidian-headless")
-
 local function workspace(name, path)
   return {
     name = name,
@@ -47,7 +45,6 @@ obsidian.setup({
   sync = {
     enabled = true,
     device_name = vim.fn.hostname(),
-    binary = headless_dir .. "/bin/ob",
   },
 })
 
