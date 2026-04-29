@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"encoding/json"
 	"errors"
 	"os"
@@ -250,7 +251,7 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "title",
 			args:       []string{"template", "--json", "--section", "title"},
-			wantSubstr: "max 88 chars",
+			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxTitleLength),
 		},
 		{
 			name:       "verification summary",
@@ -270,12 +271,12 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "step title field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
-			wantSubstr: "max 88 chars",
+			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxTitleLength),
 		},
 		{
 			name:       "step summary field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
-			wantSubstr: "max 500 chars",
+			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxStepSummaryLength),
 		},
 		{
 			name:       "filename field",
@@ -863,7 +864,8 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 	for _, want := range []string{
 		"title is required",
 		"overview is required",
-		"definition_of_done.narrative must be no more than 250 characters",
+<<<<<<< HEAD
+		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
 	} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())

@@ -18,20 +18,6 @@ type ValidationError struct {
 
 func (e ValidationError) Error() string { return e.Message }
 
-const (
-	maxDefinitionOfDoneGoals       = 6
-	maxDefinitionOfDoneGoalLength  = 66
-	maxTitleLength                 = 66
-	maxOverviewLength              = 250
-	maxDoDNarrativeLength          = 250
-	maxCurrentStateLength          = 250
-	maxModuleShapeLineLength       = 66
-	maxStepTitleLength             = 66
-	maxStepSummaryLength           = 250
-	maxFileChangeExplanationLength = 175
-	maxVerificationItemTextLength  = 66
-)
-
 func ValidatePlan(plan schema.Plan) error {
 	if errs := walkValidationRules(plan); len(errs) > 0 {
 		return errors.New(errs[0].Message)
@@ -52,25 +38,25 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 
 	if strings.TrimSpace(plan.Title) == "" {
 		add("title", "title is required", 0)
-	} else if got := utf8.RuneCountInString(plan.Title); got > maxTitleLength {
-		add("title", fmt.Sprintf("title must be no more than %d characters (got %d)", maxTitleLength, got), got)
+	} else if got := utf8.RuneCountInString(plan.Title); got > schema.MaxTitleLength {
+		add("title", fmt.Sprintf("title must be no more than %d characters (got %d)", schema.MaxTitleLength, got), got)
 	}
 	if strings.TrimSpace(plan.Overview) == "" {
 		add("overview", "overview is required", 0)
-	} else if got := utf8.RuneCountInString(plan.Overview); got > maxOverviewLength {
-		add("overview", fmt.Sprintf("overview must be no more than %d characters (got %d)", maxOverviewLength, got), got)
+	} else if got := utf8.RuneCountInString(plan.Overview); got > schema.MaxOverviewLength {
+		add("overview", fmt.Sprintf("overview must be no more than %d characters (got %d)", schema.MaxOverviewLength, got), got)
 	}
 
 	dod := plan.DefinitionOfDone
 	if strings.TrimSpace(dod.Narrative) == "" {
 		add("definition_of_done.narrative", "definition_of_done.narrative is required", 0)
-	} else if got := utf8.RuneCountInString(dod.Narrative); got > maxDoDNarrativeLength {
-		add("definition_of_done.narrative", fmt.Sprintf("definition_of_done.narrative must be no more than %d characters (got %d)", maxDoDNarrativeLength, got), got)
+	} else if got := utf8.RuneCountInString(dod.Narrative); got > schema.MaxDoDNarrativeLength {
+		add("definition_of_done.narrative", fmt.Sprintf("definition_of_done.narrative must be no more than %d characters (got %d)", schema.MaxDoDNarrativeLength, got), got)
 	}
 	if len(dod.Goals) == 0 {
 		add("definition_of_done.goals", "at least one definition_of_done goal is required", 0)
-	} else if got := len(dod.Goals); got > maxDefinitionOfDoneGoals {
-		add("definition_of_done.goals", fmt.Sprintf("definition_of_done.goals must have no more than %d goals (got %d)", maxDefinitionOfDoneGoals, got), got)
+	} else if got := len(dod.Goals); got > schema.MaxDoDGoals {
+		add("definition_of_done.goals", fmt.Sprintf("definition_of_done.goals must have no more than %d goals (got %d)", schema.MaxDoDGoals, got), got)
 	}
 	for i, goal := range dod.Goals {
 		field := fmt.Sprintf("definition_of_done.goals[%d]", i)
@@ -80,21 +66,21 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 		if !validStatus(goal.Status) {
 			add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, goal.Status), 0)
 		}
-		if got := utf8.RuneCountInString(goal.Text); got > maxDefinitionOfDoneGoalLength {
-			add(field, fmt.Sprintf("%s must be no more than %d characters (got %d)", field, maxDefinitionOfDoneGoalLength, got), got)
+		if got := utf8.RuneCountInString(goal.Text); got > schema.MaxDoDGoalLength {
+			add(field, fmt.Sprintf("%s must be no more than %d characters (got %d)", field, schema.MaxDoDGoalLength, got), got)
 		}
 	}
 	if strings.TrimSpace(dod.CurrentState) == "" {
 		add("definition_of_done.current_state", "definition_of_done.current_state is required", 0)
-	} else if got := utf8.RuneCountInString(dod.CurrentState); got > maxCurrentStateLength {
-		add("definition_of_done.current_state", fmt.Sprintf("definition_of_done.current_state must be no more than %d characters (got %d)", maxCurrentStateLength, got), got)
+	} else if got := utf8.RuneCountInString(dod.CurrentState); got > schema.MaxCurrentStateLength {
+		add("definition_of_done.current_state", fmt.Sprintf("definition_of_done.current_state must be no more than %d characters (got %d)", schema.MaxCurrentStateLength, got), got)
 	}
 	if strings.TrimSpace(dod.ModuleShape) == "" {
 		add("definition_of_done.module_shape", "definition_of_done.module_shape is required", 0)
 	} else {
 		for i, line := range strings.Split(dod.ModuleShape, "\n") {
-			if got := utf8.RuneCountInString(line); got > maxModuleShapeLineLength {
-				add(fmt.Sprintf("definition_of_done.module_shape[line %d]", i+1), fmt.Sprintf("definition_of_done.module_shape line %d must be no more than %d characters (got %d)", i+1, maxModuleShapeLineLength, got), got)
+			if got := utf8.RuneCountInString(line); got > schema.MaxModuleShapeLineLength {
+				add(fmt.Sprintf("definition_of_done.module_shape[line %d]", i+1), fmt.Sprintf("definition_of_done.module_shape line %d must be no more than %d characters (got %d)", i+1, schema.MaxModuleShapeLineLength, got), got)
 			}
 		}
 	}
@@ -108,8 +94,8 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 			field := fmt.Sprintf("verification.automated[%d]", i)
 			if strings.TrimSpace(item.Text) == "" {
 				add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
-			} else if got := utf8.RuneCountInString(item.Text); got > maxVerificationItemTextLength {
-				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, maxVerificationItemTextLength, got), got)
+			} else if got := utf8.RuneCountInString(item.Text); got > schema.MaxVerificationItemTextLength {
+				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, schema.MaxVerificationItemTextLength, got), got)
 			}
 			if !validStatus(item.Status) {
 				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
@@ -119,8 +105,8 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 			field := fmt.Sprintf("verification.manual[%d]", i)
 			if strings.TrimSpace(item.Text) == "" {
 				add(field+".text", fmt.Sprintf("%s.text is required", field), 0)
-			} else if got := utf8.RuneCountInString(item.Text); got > maxVerificationItemTextLength {
-				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, maxVerificationItemTextLength, got), got)
+			} else if got := utf8.RuneCountInString(item.Text); got > schema.MaxVerificationItemTextLength {
+				add(field+".text", fmt.Sprintf("%s.text must be no more than %d characters (got %d)", field, schema.MaxVerificationItemTextLength, got), got)
 			}
 			if !validStatus(item.Status) {
 				add(field+".status", fmt.Sprintf("%s.status %q is invalid", field, item.Status), 0)
@@ -132,13 +118,13 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 		field := fmt.Sprintf("implementation[%d]", i)
 		if strings.TrimSpace(step.Title) == "" {
 			add(field+".title", "each implementation step needs a title", 0)
-		} else if got := utf8.RuneCountInString(step.Title); got > maxStepTitleLength {
-			add(field+".title", fmt.Sprintf("%s.title must be no more than %d characters (got %d)", field, maxStepTitleLength, got), got)
+		} else if got := utf8.RuneCountInString(step.Title); got > schema.MaxStepTitleLength {
+			add(field+".title", fmt.Sprintf("%s.title must be no more than %d characters (got %d)", field, schema.MaxStepTitleLength, got), got)
 		}
 		if strings.TrimSpace(step.Summary) == "" {
 			add(field+".summary", "each implementation step needs a summary", 0)
-		} else if got := utf8.RuneCountInString(step.Summary); got > maxStepSummaryLength {
-			add(field+".summary", fmt.Sprintf("%s.summary must be no more than %d characters (got %d)", field, maxStepSummaryLength, got), got)
+		} else if got := utf8.RuneCountInString(step.Summary); got > schema.MaxStepSummaryLength {
+			add(field+".summary", fmt.Sprintf("%s.summary must be no more than %d characters (got %d)", field, schema.MaxStepSummaryLength, got), got)
 		}
 		if len(step.FileChanges) == 0 {
 			add(field+".file_changes", "each implementation step needs file changes", 0)
@@ -150,8 +136,8 @@ func walkValidationRules(plan schema.Plan) []ValidationError {
 			}
 			if strings.TrimSpace(change.Explanation) == "" {
 				add(changeField+".explanation", "each file change needs an explanation", 0)
-			} else if got := utf8.RuneCountInString(change.Explanation); got > maxFileChangeExplanationLength {
-				add(changeField+".explanation", fmt.Sprintf("%s.explanation must be no more than %d characters (got %d)", changeField, maxFileChangeExplanationLength, got), got)
+			} else if got := utf8.RuneCountInString(change.Explanation); got > schema.MaxFileChangeExplanationLength {
+				add(changeField+".explanation", fmt.Sprintf("%s.explanation must be no more than %d characters (got %d)", changeField, schema.MaxFileChangeExplanationLength, got), got)
 			}
 			if strings.TrimSpace(change.Diff) == "" {
 				add(changeField+".diff", "each file change needs a diff", 0)
