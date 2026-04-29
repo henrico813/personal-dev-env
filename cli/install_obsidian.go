@@ -108,7 +108,22 @@ func installHeadlessRuntime(cfg *Config, runner Runner) error {
 			return err
 		}
 
-		return installRuntimeWrapper(cfg.RuntimeDir, runner)
+		if err := installRuntimeWrapper(cfg.RuntimeDir, runner); err != nil {
+			return err
+		}
+		return linkObBinary(cfg, runner)
+	})
+}
+
+func linkObBinary(cfg *Config, runner Runner) error {
+	src := filepath.Join(cfg.RuntimeDir, "bin", "ob")
+	dst := filepath.Join(cfg.LocalBinDir, "ob")
+	return runner.Do("link ob to ~/.local/bin", func() error {
+		if err := runner.MkdirAll("create ~/.local/bin", cfg.LocalBinDir, 0o755); err != nil {
+			return err
+		}
+		_ = os.Remove(dst)
+		return os.Symlink(src, dst)
 	})
 }
 
