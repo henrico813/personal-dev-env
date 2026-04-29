@@ -16,6 +16,14 @@ require("plugins.trouble")
 require("plugins.grugfar")
 require("plugins.session")
 require("plugins.render-markdown")
+do
+  local ok, err = pcall(require, "plugins.obsidian")
+  if not ok and not tostring(err):match("module 'plugins%.obsidian' not found") then
+    vim.schedule(function()
+      vim.notify(err, vim.log.levels.ERROR)
+    end)
+  end
+end
 require("plugins.pi")
 require("plugins.alpha")
 require("plugins.lazygit")
