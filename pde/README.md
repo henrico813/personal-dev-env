@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 ## What It Installs
 
 - Shell: `zsh`, antidote, powerlevel10k, tmux.
-- Tools: `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`.
+- Tools: `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`, `btm`.
 - Editor: Neovim with the tracked PDE nvim config and plugins.
 - Full profile extras: Node via `nvm`, Claude Code, fonts, and Alacritty config.
 
