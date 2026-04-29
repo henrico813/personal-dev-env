@@ -30,6 +30,17 @@ end
 
 local fzf = require("fzf-lua")
 
+map("<leader>oo", function()
+  local dirs = {}
+  if main_vault and main_vault ~= "" then table.insert(dirs, main_vault) end
+  if work_vault and work_vault ~= "" then table.insert(dirs, work_vault) end
+  if #dirs == 1 then
+    fzf.files({ cwd = dirs[1] })
+  elseif #dirs > 1 then
+    fzf.files({ cwd = dirs[1], search_paths = dirs })
+  end
+end, "open note")
+
 if main_vault and main_vault ~= "" then
   map("<leader>om", function() fzf.files({ cwd = main_vault }) end, "main vault")
 end
