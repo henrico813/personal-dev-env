@@ -22,8 +22,7 @@ local function add_workspace(name, env_name)
   end
 end
 
-add_workspace("main", "PDE_OBSIDIAN_MAIN_VAULT")
-add_workspace("work", "PDE_OBSIDIAN_WORK_VAULT")
+add_workspace("main", "VAULT")
 
 if #workspaces == 0 then
   return
