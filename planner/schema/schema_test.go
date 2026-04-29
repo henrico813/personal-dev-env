@@ -187,10 +187,9 @@ func TestDecodePlanNormalizesStatus(t *testing.T) {
 	}
 }
 
-
 func TestValidationRulesUseExportedLimits(t *testing.T) {
 	rules := ValidationRules()
-	
+
 	tests := []struct {
 		desc     string
 		limit    int
@@ -208,12 +207,12 @@ func TestValidationRulesUseExportedLimits(t *testing.T) {
 		{"file_explanation", MaxFileChangeExplanationLength, fmt.Sprintf("each file change explanation must be at most %d characters", MaxFileChangeExplanationLength)},
 		{"verification_item", MaxVerificationItemTextLength, fmt.Sprintf("each verification.automated[i].text must be at most %d characters", MaxVerificationItemTextLength)},
 	}
-	
+
 	ruleStrings := make(map[string]bool)
 	for _, r := range rules {
 		ruleStrings[r] = true
 	}
-	
+
 	for _, tc := range tests {
 		if !ruleStrings[tc.wantRule] {
 			t.Fatalf("ValidationRules() missing %q (testing %s)", tc.wantRule, tc.desc)
@@ -223,7 +222,7 @@ func TestValidationRulesUseExportedLimits(t *testing.T) {
 
 func TestBuildPlanTemplateUsesExportedLimits(t *testing.T) {
 	tmpl := BuildPlanTemplate()
-	
+
 	tests := []struct {
 		desc       string
 		gotString  string
@@ -242,7 +241,7 @@ func TestBuildPlanTemplateUsesExportedLimits(t *testing.T) {
 		{"verification_automated", tmpl.Verification.Automated[0].Text, fmt.Sprintf("max %d chars", MaxVerificationItemTextLength)},
 		{"verification_manual", tmpl.Verification.Manual[0].Text, fmt.Sprintf("max %d chars", MaxVerificationItemTextLength)},
 	}
-	
+
 	for _, tc := range tests {
 		if !strings.Contains(tc.gotString, tc.wantSubstr) {
 			t.Fatalf("BuildPlanTemplate() %s = %q does not contain %q", tc.desc, tc.gotString, tc.wantSubstr)
