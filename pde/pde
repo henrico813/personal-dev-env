@@ -40,6 +40,8 @@ install_configs() {
     link_config "$SCRIPT_DIR/config/zsh/zsh_plugins.txt" "$HOME/.zsh_plugins.txt"
     link_config "$SCRIPT_DIR/config/tmux/tmux.conf" "$HOME/.tmux.conf"
     link_config "$SCRIPT_DIR/config/p10k/p10k.zsh" "$HOME/.p10k.zsh"
+    link_config "$SCRIPT_DIR/config/bottom/bottom.toml" \
+                "$HOME/.config/bottom/bottom.toml"
 }
 
 install_configs_ai() {
