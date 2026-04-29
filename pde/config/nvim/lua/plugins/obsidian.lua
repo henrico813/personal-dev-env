@@ -1,31 +1,14 @@
-local function workspace(name, path)
-  return {
-    name = name,
-    path = path,
-    overrides = {
-      daily_notes = {
-        folder = "100 Work Notes/101 Daily Notes",
-      },
-      notes_subdir = "800 Staging",
-      new_notes_location = "notes_subdir",
-    },
-  }
-end
+local main_vault = vim.env.PDE_MAIN_VAULT
+local work_vault = vim.env.PDE_WORK_VAULT
 
 local workspaces = {}
-
--- Configure vault roots locally so the tracked config stays portable.
-local function add_workspace(name, env_name)
-  local path = vim.env[env_name]
-  if path and path ~= "" and vim.fn.isdirectory(path) == 1 then
-    table.insert(workspaces, workspace(name, path))
+for _, w in ipairs({
+  { name = "main", path = main_vault },
+  { name = "work", path = work_vault },
+}) do
+  if w.path and w.path ~= "" and vim.fn.isdirectory(w.path) == 1 then
+    table.insert(workspaces, w)
   end
-end
-
-add_workspace("main", "VAULT")
-
-if #workspaces == 0 then
-  return
 end
 
 local ok, obsidian = pcall(require, "obsidian")
@@ -33,28 +16,33 @@ if not ok then
   return
 end
 
-obsidian.setup({
-  workspaces = workspaces,
-  legacy_commands = false,
-  picker = {
-    name = "fzf-lua",
-  },
-  ui = {
-    enable = false,
-  },
-  sync = {
-    enabled = true,
-    device_name = vim.fn.hostname(),
-  },
-})
+if #workspaces > 0 then
+  obsidian.setup({
+    workspaces = workspaces,
+    legacy_commands = false,
+    ui = { enable = false },
+  })
+end
 
 local map = function(lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { desc = desc, silent = true })
 end
 
-map("<leader>on", "<cmd>Obsidian new<cr>",          "new note")
-map("<leader>oo", "<cmd>Obsidian quick_switch<cr>", "open note")
-map("<leader>ob", "<cmd>Obsidian backlinks<cr>",    "backlinks")
-map("<leader>ot", "<cmd>Obsidian tags<cr>",         "tags")
-map("<leader>os", "<cmd>Obsidian sync<cr>",         "sync")
-map("<leader>ol", "<cmd>Obsidian links<cr>",        "links")
+local fzf = require("fzf-lua")
+
+if main_vault and main_vault ~= "" then
+  map("<leader>om", function() fzf.files({ cwd = main_vault }) end, "main vault")
+end
+
+if work_vault and work_vault ~= "" then
+  map("<leader>ow", function() fzf.files({ cwd = work_vault }) end, "work vault")
+end
+
+map("<leader>os", function()
+  local vaults = {}
+  if main_vault and main_vault ~= "" then table.insert(vaults, main_vault) end
+  if work_vault and work_vault ~= "" then table.insert(vaults, work_vault) end
+  for _, path in ipairs(vaults) do
+    vim.fn.jobstart({ "ob", "sync" }, { cwd = path })
+  end
+end, "sync vaults")
