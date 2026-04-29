@@ -12,6 +12,13 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 ./pde/pde full      # everything above + Node, Claude Code, fonts
 ```
 
+Optional PDE targets live in the Go CLI:
+
+```bash
+go build -o ~/.local/bin/pde ./cli
+pde install obsidian
+```
+
 See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 
 ## AI Config Quick Start

@@ -22,6 +22,16 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 - `minimal`: shell, tmux, Rust tooling, Neovim, and shared config files.
 - `full`: everything in `minimal`, plus Node, Claude Code, fonts, and GUI-oriented extras.
 
+## Optional Targets
+
+Some setups belong beside the base profiles, not inside them.
+`obsidian` is installed through the Go CLI after `minimal` provides the PDE Neovim config:
+
+```bash
+go build -o ~/.local/bin/pde ./cli
+pde install obsidian
+```
+
 ## Repository Layout
 
 - `pde/pde`: profile entrypoint.
