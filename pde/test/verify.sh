@@ -67,6 +67,7 @@ check_cmd rustc ~/.cargo/bin/rustc
 check_cmd cargo-binstall ~/.cargo/bin/cargo-binstall
 check_cmd eza ~/.cargo/bin/eza
 check_cmd zoxide ~/.cargo/bin/zoxide
+check_cmd btm ~/.cargo/bin/btm
 check_cmd fzf
 check_cmd rg
 check_cmd bat /usr/bin/batcat
@@ -110,6 +111,7 @@ check_file ~/.config/pde/paths.env "PDE paths.env"
 check_link ~/.zshrc "pde/config/zsh/zshrc"
 check_link ~/.tmux.conf "pde/config/tmux/tmux.conf"
 check_link ~/.p10k.zsh "pde/config/p10k/p10k.zsh"
+check_link ~/.config/bottom/bottom.toml "pde/config/bottom/bottom.toml"
 
 # Runtime verification - actually run the tools
 echo "--- Runtime checks ---"
@@ -133,6 +135,13 @@ if /usr/local/bin/nvim --version &>/dev/null; then
     pass "nvim runs"
 else
     fail "nvim fails to run"
+fi
+
+# Test btm launches with tracked config
+if btm --version &>/dev/null; then
+    pass "btm runs"
+else
+    fail "btm fails to run"
 fi
 
 # Full profile extras

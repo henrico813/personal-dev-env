@@ -12,6 +12,7 @@ install_tools() {
     install_cargo eza zoxide
 
     # Binary downloads (not available via apt or cargo)
+    install_btm
     install_yq
     install_yazi
 }
@@ -19,6 +20,21 @@ install_tools() {
 install_tools_full() {
     section "CLI Tools (full additions)"
     install_apt trash-cli
+}
+
+install_btm() {
+    if has btm; then
+        log "btm already installed"
+        return 0
+    fi
+
+    has cargo-binstall || die "cargo-binstall not found - run install_rust first"
+
+    log "Installing btm..."
+    "$HOME/.cargo/bin/cargo-binstall" -y bottom \
+        || die "cargo-binstall bottom failed"
+
+    [[ -x "$HOME/.cargo/bin/btm" ]] || die "btm installation verification failed"
 }
 
 install_yq() {
