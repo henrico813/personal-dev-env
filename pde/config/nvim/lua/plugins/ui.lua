@@ -12,6 +12,12 @@ require("lualine").setup({
     lualine_x = {
       {
         function()
+          local ok, status = pcall(function() return require("plugins.obsidian").sync_status() end)
+          return ok and status or ""
+        end,
+      },
+      {
+        function()
           local ok, count = pcall(function() return require("pi").attention_count() end)
           return (ok and count and count > 0) and ("󱆅 " .. count) or ""
         end,
