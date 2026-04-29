@@ -58,7 +58,6 @@ func TestValidatePlanRejectsTooManyGoals(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-<<<<<<< HEAD
 	if got, want := err.Error(), fmt.Sprintf("definition_of_done.goals must have no more than %d goals (got %d)", schema.MaxDoDGoals, schema.MaxDoDGoals+1); got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
@@ -72,7 +71,6 @@ func TestValidatePlanRejectsGoalLongerThanLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("ValidatePlan() error = nil, want error")
 	}
-<<<<<<< HEAD
 	if got, want := err.Error(), fmt.Sprintf("definition_of_done.goals[0] must be no more than %d characters (got %d)", schema.MaxDoDGoalLength, schema.MaxDoDGoalLength+1); got != want {
 		t.Fatalf("ValidatePlan() error = %q, want %q", got, want)
 	}
@@ -127,7 +125,6 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-<<<<<<< HEAD
 		if !strings.Contains(err.Error(), fmt.Sprintf("(got %d)", schema.MaxDoDGoals+2)) {
 			t.Fatalf("error %q does not contain actual count", err.Error())
 		}
@@ -140,7 +137,6 @@ func TestValidatePlanLengthMessagesIncludeActual(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-<<<<<<< HEAD
 		if !strings.Contains(err.Error(), fmt.Sprintf("(got %d)", schema.MaxDoDGoalLength+1)) {
 			t.Fatalf("error %q does not contain actual length", err.Error())
 		}
@@ -158,7 +154,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Title = strings.Repeat("t", schema.MaxTitleLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("title must be no more than %d characters", schema.MaxTitleLength),
 		},
 		{
@@ -166,7 +161,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Overview = strings.Repeat("o", schema.MaxOverviewLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("overview must be no more than %d characters", schema.MaxOverviewLength),
 		},
 		{
@@ -174,7 +168,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.Narrative = strings.Repeat("n", schema.MaxDoDNarrativeLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
 		},
 		{
@@ -182,7 +175,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.CurrentState = strings.Repeat("c", schema.MaxCurrentStateLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("definition_of_done.current_state must be no more than %d characters", schema.MaxCurrentStateLength),
 		},
 		{
@@ -190,7 +182,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.DefinitionOfDone.ModuleShape = strings.Repeat("m", schema.MaxModuleShapeLineLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("definition_of_done.module_shape line 1 must be no more than %d characters", schema.MaxModuleShapeLineLength),
 		},
 		{
@@ -198,7 +189,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].Title = strings.Repeat("s", schema.MaxStepTitleLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("implementation[0].title must be no more than %d characters", schema.MaxStepTitleLength),
 		},
 		{
@@ -206,7 +196,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].Summary = strings.Repeat("s", schema.MaxStepSummaryLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("implementation[0].summary must be no more than %d characters", schema.MaxStepSummaryLength),
 		},
 		{
@@ -214,7 +203,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Implementation[0].FileChanges[0].Explanation = strings.Repeat("e", schema.MaxFileChangeExplanationLength+1)
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("file_changes[0].explanation must be no more than %d characters", schema.MaxFileChangeExplanationLength),
 		},
 		{
@@ -222,7 +210,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Verification.Automated = []schema.ChecklistItem{{Text: strings.Repeat("a", schema.MaxVerificationItemTextLength+1)}}
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("verification.automated[0].text must be no more than %d characters", schema.MaxVerificationItemTextLength),
 		},
 		{
@@ -230,7 +217,6 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 			mutate: func(p *schema.Plan) {
 				p.Verification.Manual = []schema.ChecklistItem{{Text: strings.Repeat("m", schema.MaxVerificationItemTextLength+1)}}
 			},
-<<<<<<< HEAD
 			wantSubstr: fmt.Sprintf("verification.manual[0].text must be no more than %d characters", schema.MaxVerificationItemTextLength),
 		},
 	}
@@ -266,7 +252,6 @@ func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 
 	want := []string{
 		"title is required",
-<<<<<<< HEAD
 		fmt.Sprintf("overview must be no more than %d characters", schema.MaxOverviewLength),
 		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
 		fmt.Sprintf("definition_of_done.current_state must be no more than %d characters", schema.MaxCurrentStateLength),

@@ -864,7 +864,6 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 	for _, want := range []string{
 		"title is required",
 		"overview is required",
-<<<<<<< HEAD
 		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
 	} {
 		if !strings.Contains(stderr.String(), want) {
