@@ -15,20 +15,26 @@ local function workspace(name, path)
 end
 
 local workspaces = {}
-for _, ws in ipairs({
-  workspace("main", "/mnt/nas_hco/Main Vault"),
-  workspace("work", "/mnt/nas_hco/Work Notes"),
-}) do
-  if vim.fn.isdirectory(ws.path) == 1 then
-    table.insert(workspaces, ws)
+
+-- Configure vault roots locally so the tracked config stays portable.
+local function add_workspace(name, env_name)
+  local path = vim.env[env_name]
+  if path and path ~= "" and vim.fn.isdirectory(path) == 1 then
+    table.insert(workspaces, workspace(name, path))
   end
 end
+
+add_workspace("main", "PDE_OBSIDIAN_MAIN_VAULT")
+add_workspace("work", "PDE_OBSIDIAN_WORK_VAULT")
 
 if #workspaces == 0 then
   return
 end
 
-local obsidian = require("obsidian")
+local ok, obsidian = pcall(require, "obsidian")
+if not ok then
+  return
+end
 
 obsidian.setup({
   workspaces = workspaces,

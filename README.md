@@ -15,7 +15,7 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 Optional PDE targets live in the Go CLI:
 
 ```bash
-go build -o ~/.local/bin/pde ./cli
+cd cli && go build -o ~/.local/bin/pde .
 pde install obsidian
 ```
 

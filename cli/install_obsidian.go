@@ -14,7 +14,9 @@ const (
 )
 
 func installObsidian(cfg *Config, runner Runner) error {
-	if _, err := os.Stat(filepath.Join(cfg.NvimConfigDir, "init.lua")); err != nil {
+	managedConfigDir := filepath.Join(cfg.RepoRoot, "pde", "config", "nvim")
+	resolvedConfigDir, err := filepath.EvalSymlinks(cfg.NvimConfigDir)
+	if err != nil || resolvedConfigDir != managedConfigDir {
 		return fmt.Errorf("PDE Neovim config is not installed at %s; run ./pde/pde minimal first", cfg.NvimConfigDir)
 	}
 

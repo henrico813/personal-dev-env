@@ -28,7 +28,7 @@ Some setups belong beside the base profiles, not inside them.
 `obsidian` is installed through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
-go build -o ~/.local/bin/pde ./cli
+cd cli && go build -o ~/.local/bin/pde .
 pde install obsidian
 ```
 
