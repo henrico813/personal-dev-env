@@ -35,6 +35,7 @@ end
 
 obsidian.setup({
   workspaces = workspaces,
+  legacy_commands = false,
   picker = {
     name = "fzf-lua",
   },
@@ -51,9 +52,9 @@ local map = function(lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { desc = desc, silent = true })
 end
 
-map("<leader>on", "<cmd>Obsidian new<cr>", "new note")
+map("<leader>on", "<cmd>Obsidian new<cr>",          "new note")
 map("<leader>oo", "<cmd>Obsidian quick_switch<cr>", "open note")
-map("<leader>ob", "<cmd>Obsidian backlinks<cr>", "backlinks")
-map("<leader>ot", "<cmd>Obsidian tags<cr>", "tags")
-map("<leader>os", "<cmd>Obsidian sync<cr>", "sync")
-map("<leader>ol", "<cmd>Obsidian links<cr>", "links")
+map("<leader>ob", "<cmd>Obsidian backlinks<cr>",    "backlinks")
+map("<leader>ot", "<cmd>Obsidian tags<cr>",         "tags")
+map("<leader>os", "<cmd>Obsidian sync<cr>",         "sync")
+map("<leader>ol", "<cmd>Obsidian links<cr>",        "links")
