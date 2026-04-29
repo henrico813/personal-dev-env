@@ -53,7 +53,6 @@ end
 
 map("<leader>on", "<cmd>Obsidian new<cr>", "new note")
 map("<leader>oo", "<cmd>Obsidian quick_switch<cr>", "open note")
-map("<leader>od", "<cmd>Obsidian today<cr>", "daily note")
 map("<leader>ob", "<cmd>Obsidian backlinks<cr>", "backlinks")
 map("<leader>ot", "<cmd>Obsidian tags<cr>", "tags")
 map("<leader>os", "<cmd>Obsidian sync<cr>", "sync")
