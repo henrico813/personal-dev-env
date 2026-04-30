@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"planner/render"
 	"planner/schema"
 	"planner/validate"
 )
@@ -20,7 +21,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	// discover the current surface from `planner help` alone.
 	for _, command := range []string{
 		"planner template",
-		"planner validate",
+		"planner check",
 		"planner create",
 		"planner inspect",
 		"planner patch",
@@ -28,6 +29,9 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
 		}
+	}
+	if strings.Contains(help, "planner validate") {
+		t.Fatal("buildHelpText() must not mention planner validate")
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
@@ -796,7 +800,7 @@ func TestDefaultWritePrintsOutputPath(t *testing.T) {
 
 func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", "--json-errors", "/no/such/path"}, &stdout, &stderr); exit != 1 {
+	if exit := Execute([]string{"check", "--json-errors", "/no/such/path.json"}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("exit %d want 1", exit)
 	}
 	if strings.Contains(stderr.String(), "planner: reading JSON from stdin") || strings.Contains(stderr.String(), "repaired JSON input") {
@@ -818,7 +822,114 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
-func TestRunValidateAggregatesViolations(t *testing.T) {
+func TestRunCheckMarkdown(t *testing.T) {
+	plan, err := schema.DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	dir := t.TempDir()
+	path := dir + "/plan.md"
+	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "OK") {
+		t.Fatalf("expected OK in stdout, got %q", stdout.String())
+	}
+}
+
+func TestRunCheckJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/plan.json"
+	if err := os.WriteFile(path, validPlanJSON(), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "OK") {
+		t.Fatalf("expected OK in stdout, got %q", stdout.String())
+	}
+}
+
+func TestRunCheckStdinFormatMd(t *testing.T) {
+	plan, err := schema.DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := render.RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	withStdin(t, []byte(rendered), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"check", "--format", "md", "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "OK") {
+			t.Fatalf("expected OK in stdout, got %q", stdout.String())
+		}
+	})
+}
+
+func TestRunCheckStdinFormatJson(t *testing.T) {
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"check", "--format", "json", "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "OK") {
+			t.Fatalf("expected OK in stdout, got %q", stdout.String())
+		}
+	})
+}
+
+func TestRunCheckStdinRequiresFormat(t *testing.T) {
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"check", "--stdin"}, &stdout, &stderr); exit != 2 {
+			t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "--format") {
+			t.Fatalf("expected --format mention, got %q", stderr.String())
+		}
+	})
+}
+
+func TestRunCheckUnknownExtensionRequiresFormat(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/plan.txt"
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--format") {
+		t.Fatalf("expected --format mention, got %q", stderr.String())
+	}
+}
+
+func TestRunCheckUnknownFormat(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", "--format", "xml", "/dev/null"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "not valid; use md or json") {
+		t.Fatalf("expected invalid format error, got %q", stderr.String())
+	}
+}
+
+func TestRunCheckAggregatesViolations(t *testing.T) {
 	plan := schema.Plan{
 		Title:    "",
 		Overview: "",
@@ -826,19 +937,17 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 			Narrative:    strings.Repeat("n", 501),
 			Goals:        []schema.ChecklistItem{{Text: "goal"}},
 			CurrentState: "current state",
-			ModuleShape:  "planner/validate",
+			ModuleShape:  "planner/check",
 		},
 		Implementation: []schema.Step{
 			{
 				Title:   "step title",
 				Summary: "step summary",
-				FileChanges: []schema.FileChange{
-					{
-						Filename:    "planner/validate/validate.go",
-						Explanation: "explanation",
-						Diff:        "@@ -1 +1 @@\n- old\n+ new",
-					},
-				},
+				FileChanges: []schema.FileChange{{
+					Filename:    "planner/check/check.go",
+					Explanation: "explanation",
+					Diff:        "@@ -1 +1 @@\n- old\n+ new",
+				}},
 			},
 		},
 		Verification: &schema.Verification{
@@ -858,8 +967,8 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", path}, &stdout, &stderr); exit != 1 {
-		t.Fatalf("Execute(validate) exit = %d, want 1; stderr = %q", exit, stderr.String())
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("Execute(check) exit = %d, want 1; stderr = %q", exit, stderr.String())
 	}
 	for _, want := range []string{
 		"title is required",
@@ -869,6 +978,16 @@ func TestRunValidateAggregatesViolations(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
 		}
+	}
+}
+
+func TestValidateCommandRemoved(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"validate"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown command: validate") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
 
@@ -1018,7 +1137,7 @@ func TestRepairNoticeIsSuppressedInJSONMode(t *testing.T) {
 	})
 }
 
-func TestValidateSurfacesSchemaErrors(t *testing.T) {
+func TestCheckSurfacesSchemaErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   func(t *testing.T) []byte
@@ -1044,7 +1163,7 @@ func TestValidateSurfacesSchemaErrors(t *testing.T) {
 			if err := os.WriteFile(path, tc.input(t), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			assertCommandError(t, []string{"validate", path}, "validate:", tc.wantErr, 1)
+			assertCommandError(t, []string{"check", path}, "check:", tc.wantErr, 1)
 		})
 	}
 }
@@ -1117,7 +1236,7 @@ func TestRepairDoesNotClaimSuccessWhenRepairFails(t *testing.T) {
 	input := []byte("{bad}")
 	withStdin(t, input, func() {
 		var stdout, stderr bytes.Buffer
-		if exit := Execute([]string{"validate", "--stdin"}, &stdout, &stderr); exit != 1 {
+		if exit := Execute([]string{"check", "--format", "json", "--stdin"}, &stdout, &stderr); exit != 1 {
 			t.Fatalf("exit %d want 1, stderr %q", exit, stderr.String())
 		}
 		if strings.Contains(stderr.String(), "repaired JSON input") {
