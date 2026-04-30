@@ -43,6 +43,16 @@ func writePatchJSON(t *testing.T, value any) string {
 	return path
 }
 
+// writePatchText writes raw patch text to a temp file and returns its path.
+func writePatchText(t *testing.T, value string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "patch.txt")
+	if err := os.WriteFile(path, []byte(value), 0o644); err != nil {
+		t.Fatalf("WriteFile(patch): %v", err)
+	}
+	return path
+}
+
 // parseOutputPlan reads outputPath and parses it via inspect.ParseMarkdown.
 func parseOutputPlan(t *testing.T, outputPath string) schema.Plan {
 	t.Helper()
@@ -195,10 +205,10 @@ func TestRunReplacesOverview(t *testing.T) {
 	tmp := t.TempDir()
 	plan := twoStepPlan()
 	sourcePath := writeRenderedPlan(t, plan)
-	patchPath := writePatchJSON(t, "Updated overview")
+	patchPath := writePatchText(t, "Updated overview")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "overview"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "overview", Raw: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -218,10 +228,10 @@ func TestRunReplacesOverview(t *testing.T) {
 func TestRunReplacesDefinitionOfDoneSubsection(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patchPath := writePatchJSON(t, "Updated shape")
+	patchPath := writePatchText(t, "Updated shape")
 	outputPath := filepath.Join(tmp, "out.md")
 
-	result, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape"}, patchPath, outputPath)
+	result, err := Run(sourcePath, ReplaceOptions{Section: "definition_of_done", Subsection: "module_shape", Raw: true}, patchPath, outputPath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -447,9 +457,9 @@ func TestRendererFaithfulnessAudit(t *testing.T) {
 
 func TestSpliceTitlePatch(t *testing.T) {
 	src := writeFixturePlan(t, twoStepPlan())
-	opts := ReplaceOptions{Section: "title"}
+	opts := ReplaceOptions{Section: "title", Raw: true}
 
-	out, result, err := PreviewFromData(src, opts, []byte(`"Renamed Plan"`))
+	out, result, err := PreviewFromData(src, opts, []byte("Renamed Plan"))
 	if err != nil {
 		t.Fatalf("PreviewFromData: %v", err)
 	}
@@ -463,7 +473,7 @@ func TestSpliceTitlePatch(t *testing.T) {
 
 func TestSpliceTitlePatchRejectsEmptyTitle(t *testing.T) {
 	src := writeFixturePlan(t, twoStepPlan())
-	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "title"}, []byte(`""`))
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "title", Raw: true}, []byte(""))
 	var re *ReplaceError
 	if !errors.As(err, &re) || re.Code != ReplaceValidateResultError {
 		t.Fatalf("got %v, want ReplaceValidateResultError", err)
@@ -473,7 +483,7 @@ func TestSpliceTitlePatchRejectsEmptyTitle(t *testing.T) {
 func TestSpliceStepFieldPatches(t *testing.T) {
 	t.Run("title", func(t *testing.T) {
 		src := writeFixturePlan(t, twoStepPlan())
-		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "title"}, []byte(`"Updated First"`))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "title", Raw: true}, []byte("Updated First"))
 		if err != nil {
 			t.Fatalf("PreviewFromData: %v", err)
 		}
@@ -487,7 +497,7 @@ func TestSpliceStepFieldPatches(t *testing.T) {
 
 	t.Run("summary", func(t *testing.T) {
 		src := writeFixturePlan(t, twoStepPlan())
-		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary"}, []byte(`"Updated summary"`))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary", Raw: true}, []byte("Updated summary"))
 		if err != nil {
 			t.Fatalf("PreviewFromData: %v", err)
 		}
@@ -502,7 +512,7 @@ func TestSpliceStepFieldPatches(t *testing.T) {
 
 func TestSpliceStepFieldRejectsEmptyValue(t *testing.T) {
 	src := writeFixturePlan(t, twoStepPlan())
-	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary"}, []byte(`""`))
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary", Raw: true}, []byte(""))
 	var re *ReplaceError
 	if !errors.As(err, &re) || re.Code != ReplaceValidateResultError {
 		t.Fatalf("got %v, want ReplaceValidateResultError", err)
@@ -512,7 +522,7 @@ func TestSpliceStepFieldRejectsEmptyValue(t *testing.T) {
 func TestSpliceFileChangeFieldPatches(t *testing.T) {
 	t.Run("filename", func(t *testing.T) {
 		src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
-		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "filename"}, []byte(`"renamed.go"`))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "filename", Raw: true}, []byte("renamed.go"))
 		if err != nil {
 			t.Fatalf("PreviewFromData: %v", err)
 		}
@@ -526,7 +536,7 @@ func TestSpliceFileChangeFieldPatches(t *testing.T) {
 
 	t.Run("explanation", func(t *testing.T) {
 		src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
-		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "explanation"}, []byte(`"new explanation"`))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "explanation", Raw: true}, []byte("new explanation"))
 		if err != nil {
 			t.Fatalf("PreviewFromData: %v", err)
 		}
@@ -541,7 +551,7 @@ func TestSpliceFileChangeFieldPatches(t *testing.T) {
 
 func TestSpliceFileChangeFieldRejectsMissingFile(t *testing.T) {
 	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
-	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "missing.go", Field: "filename"}, []byte(`"renamed.go"`))
+	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", File: "missing.go", Field: "filename", Raw: true}, []byte("renamed.go"))
 	var re *ReplaceError
 	if !errors.As(err, &re) || re.Code != ReplaceFileNotFoundError {
 		t.Fatalf("got %v, want ReplaceFileNotFoundError", err)
@@ -551,7 +561,7 @@ func TestSpliceFileChangeFieldRejectsMissingFile(t *testing.T) {
 func TestSpliceVerificationSubsections(t *testing.T) {
 	t.Run("summary", func(t *testing.T) {
 		src := writeFixturePlan(t, twoStepPlan())
-		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "summary"}, []byte(`"Updated verification"`))
+		out, result, err := PreviewFromData(src, ReplaceOptions{Section: "verification", Subsection: "summary", Raw: true}, []byte("Updated verification"))
 		if err != nil {
 			t.Fatalf("PreviewFromData: %v", err)
 		}
@@ -716,9 +726,9 @@ func TestReplacePreservesUntouchedSections(t *testing.T) {
 	if err := os.WriteFile(src, []byte(mdWithCapX), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	patchPath := writePatchJSON(t, "New overview.")
+	patchPath := writePatchText(t, "New overview.")
 	outputPath := dir + "/out.md"
-	if _, err := Run(src, ReplaceOptions{Section: "overview"}, patchPath, outputPath); err != nil {
+	if _, err := Run(src, ReplaceOptions{Section: "overview", Raw: true}, patchPath, outputPath); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	out, err := os.ReadFile(outputPath)
@@ -767,18 +777,18 @@ func TestDecodeRejectsTrailingData(t *testing.T) {
 	}
 }
 
-func TestPreviewFromDataReturnsDecodePatchError(t *testing.T) {
+func TestPreviewFromDataRejectsScalarWithoutRaw(t *testing.T) {
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
 	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`{"not":"a string"}`))
 	if err == nil {
-		t.Fatal("expected decode patch error")
+		t.Fatal("expected invalid options error")
 	}
 	var replaceErr *ReplaceError
 	if !errors.As(err, &replaceErr) {
 		t.Fatalf("expected ReplaceError, got %T", err)
 	}
-	if replaceErr.Code != ReplaceDecodePatchError {
-		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceDecodePatchError)
+	if replaceErr.Code != ReplaceInvalidOptionsError {
+		t.Fatalf("got code %v, want %v", replaceErr.Code, ReplaceInvalidOptionsError)
 	}
 }
 
@@ -788,7 +798,7 @@ func TestPreviewFromDataReturnsParseSourceError(t *testing.T) {
 	if err := os.WriteFile(sourcePath, []byte("# not a planner doc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"new overview"`))
+	_, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview", Raw: true}, []byte("new overview"))
 	if err == nil {
 		t.Fatal("expected parse source error")
 	}
@@ -809,7 +819,7 @@ func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
 	}
 	sourcePath := writeRenderedPlan(t, plan)
 
-	out, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview"}, []byte(`"New overview."`))
+	out, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview", Raw: true}, []byte("New overview."))
 	if err != nil {
 		t.Fatalf("PreviewFromData: %v", err)
 	}
