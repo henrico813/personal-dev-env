@@ -35,6 +35,7 @@ type ReplaceOptions struct {
 	Append     bool   // append a new step to implementation
 	File       string // filename selector for implementation diff-field splices
 	Field      string // field selector for implementation leaf updates
+	Raw        bool   // raw scalar input for string targets; required for scalar string patch paths
 }
 
 // Run replaces the targeted section or subsection in sourcePath with the patch
@@ -86,6 +87,9 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 	stepSpans := parsed.Steps
 	diffSpans := parsed.DiffContents
 
+	if opts.Raw {
+		return rawScalarPatch(string(sourceRaw), opts, string(patchRaw), plan, sectionSpans, stepSpans)
+	}
 	if opts.Field != "" {
 		return applyFieldPatch(string(sourceRaw), opts, patchRaw, plan, stepSpans, diffSpans)
 	}
@@ -118,32 +122,24 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		}
 	}
 
-	if err := validate.ValidatePlan(updated); err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
-	}
+	return finalizeUpdatedPlan(string(sourceRaw), updated, opts, sectionSpans, stepSpans, stepsReplaced, appended)
+}
 
-	out, err := applySplice(string(sourceRaw), updated, opts, sectionSpans, stepSpans)
-	if err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
+func isScalarOpts(opts ReplaceOptions) bool {
+	switch opts.Section {
+	case "title", "overview":
+		return true
+	case "definition_of_done":
+		return opts.Subsection == "narrative" || opts.Subsection == "current_state" || opts.Subsection == "module_shape"
+	case "implementation":
+		switch opts.Field {
+		case "title", "summary", "filename", "explanation":
+			return true
+		}
+	case "verification":
+		return opts.Subsection == "summary"
 	}
-
-	reparsed, err := inspect.ParseMarkdown(out)
-	if err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
-	}
-	newSectionSpans := reparsed.Sections
-	newStepSpans := reparsed.Steps
-
-	if err := assertPreserved(string(sourceRaw), out, opts, sectionSpans, newSectionSpans, stepSpans, newStepSpans); err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
-	}
-
-	return out, ReplaceResult{
-		Section:       opts.Section,
-		Subsection:    opts.Subsection,
-		StepsReplaced: stepsReplaced,
-		Appended:      appended,
-	}, nil
+	return false
 }
 
 func validateOpts(opts ReplaceOptions) error {
@@ -155,6 +151,9 @@ func validateOpts(opts ReplaceOptions) error {
 	if opts.Section == "title" {
 		if opts.Subsection != "" || opts.File != "" || opts.Field != "" || opts.Append {
 			return fmt.Errorf("--section title accepts no other selectors")
+		}
+		if !opts.Raw {
+			return fmt.Errorf("scalar string targets require --raw (JSON string input is no longer accepted on this path)")
 		}
 		return nil
 	}
@@ -199,6 +198,12 @@ func validateOpts(opts ReplaceOptions) error {
 	}
 	if opts.File != "" && opts.Field == "" {
 		return fmt.Errorf("--file requires --field")
+	}
+	if opts.Raw && !isScalarOpts(opts) {
+		return fmt.Errorf("--raw is only valid with scalar string targets")
+	}
+	if !opts.Raw && isScalarOpts(opts) {
+		return fmt.Errorf("scalar string targets require --raw (JSON string input is no longer accepted on this path)")
 	}
 	return nil
 }
@@ -423,6 +428,106 @@ func applyVerificationPatch(plan *schema.Plan, subsection string, patchRaw []byt
 		return fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", subsection)
 	}
 	return nil
+}
+
+func finalizeUpdatedPlan(source string, updated schema.Plan, opts ReplaceOptions, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span, stepsReplaced []int, appended bool) (string, ReplaceResult, error) {
+	if err := validate.ValidatePlan(updated); err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
+	}
+
+	out, err := applySplice(source, updated, opts, sectionSpans, stepSpans)
+	if err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
+	}
+
+	reparsed, err := inspect.ParseMarkdown(out)
+	if err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
+	}
+	if err := assertPreserved(source, out, opts, sectionSpans, reparsed.Sections, stepSpans, reparsed.Steps); err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
+	}
+
+	return out, ReplaceResult{
+		Section:       opts.Section,
+		Subsection:    opts.Subsection,
+		StepsReplaced: stepsReplaced,
+		Appended:      appended,
+	}, nil
+}
+
+// rawScalarPatch assigns raw text to scalar string targets after the caller
+// strips the trailing newline. It keeps the same post-splice validation path
+// as the JSON-backed patch flow.
+func rawScalarPatch(source string, opts ReplaceOptions, value string, plan schema.Plan, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span) (string, ReplaceResult, error) {
+	switch opts.Section {
+	case "title":
+		return finalizeFieldPatch(splice(source, sectionSpans.Title, value), opts)
+	case "overview":
+		updated := plan
+		updated.Overview = value
+		return finalizeUpdatedPlan(source, updated, opts, sectionSpans, stepSpans, nil, false)
+	case "definition_of_done":
+		updated := plan
+		switch opts.Subsection {
+		case "narrative":
+			updated.DefinitionOfDone.Narrative = value
+		case "current_state":
+			updated.DefinitionOfDone.CurrentState = value
+		case "module_shape":
+			updated.DefinitionOfDone.ModuleShape = value
+		default:
+			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid definition_of_done subsection %q: valid values are narrative, goals, current_state, module_shape", opts.Subsection))
+		}
+		return finalizeUpdatedPlan(source, updated, opts, sectionSpans, stepSpans, nil, false)
+	case "implementation":
+		stepIdx, err := requireStepIndex(opts, plan)
+		if err != nil {
+			return "", ReplaceResult{}, err
+		}
+		updated := plan.Implementation[stepIdx-1]
+		switch opts.Field {
+		case "title":
+			updated.Title = value
+		case "summary":
+			updated.Summary = value
+		case "filename":
+			fcIdx, err := lookupFileChange(plan, opts, stepIdx)
+			if err != nil {
+				return "", ReplaceResult{}, err
+			}
+			fc := updated.FileChanges[fcIdx]
+			fc.Filename = value
+			updated.FileChanges[fcIdx] = fc
+		case "explanation":
+			fcIdx, err := lookupFileChange(plan, opts, stepIdx)
+			if err != nil {
+				return "", ReplaceResult{}, err
+			}
+			fc := updated.FileChanges[fcIdx]
+			fc.Explanation = value
+			updated.FileChanges[fcIdx] = fc
+		default:
+			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid raw scalar field %q", opts.Field))
+		}
+		rendered, err := render.RenderImplementationStep(stepIdx, updated)
+		if err != nil {
+			return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
+		}
+		return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
+	case "verification":
+		updated := plan
+		if updated.Verification == nil {
+			updated.Verification = &schema.Verification{}
+		}
+		if opts.Subsection != "summary" {
+			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", opts.Subsection))
+		}
+		updated.Verification.Summary = value
+		return finalizeUpdatedPlan(source, updated, opts, sectionSpans, stepSpans, nil, false)
+	default:
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid raw scalar patch target for section %q", opts.Section))
+	}
 }
 
 // applyFieldPatch dispatches a field-level patch across diff, step leaves, and

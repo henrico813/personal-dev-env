@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,11 +25,12 @@ Usage:
   planner help
   planner template --md
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
+  planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
   planner template --help
   planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -36,7 +38,7 @@ Global flags:
 Create flow:
   1. Research the task.
   2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  3. Edit the draft JSON. Use planner patch --field diff for raw diff bodies.
+  3. Edit the draft JSON. Use planner patch --field diff for raw diff bodies and planner patch --raw for scalar strings.
   4. Run planner check <plan.json>.
   5. Run planner create <plan.json> <output.md>.
 
@@ -59,6 +61,7 @@ patch flags:
   --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification
   --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step
   --field <field>                  Optional. One of: diff, title, summary, filename, explanation
+  --raw                            Optional. Required for scalar string targets; read input as raw text.
   --append                         Optional. Append a new step to implementation
   --stdin                          Optional. Read patch JSON from stdin instead of a file
   --diff                           Optional. Print diff to stdout; additive (does not suppress write)
@@ -71,7 +74,7 @@ template selectors:
   --json --section <s> --subsection <x>  Print a subsection-level JSON shape.
   --json --section implementation --subsection N --field <field>  Print a leaf shape.
   --help                           Walk through the create workflow and PLACEHOLDER convention.
-  Note: --section without --json is rejected with a USAGE error.
+  Note: --section without --json or --raw is rejected with a USAGE error.
 
 Validation rules:
 `
@@ -81,6 +84,7 @@ const templateHelpText = `planner template -- print plan-shape references for AI
 Usage:
   planner template --md
   planner template --json
+  planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
   planner template --json --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
 
 Selectors:
@@ -90,24 +94,26 @@ Selectors:
   --subsection <x>      Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
   --file <filename>     FileChange address helper for field-level selectors.
   --field <field>       Leaf selector: diff, title, summary, filename, explanation.
+  --raw                 Emit raw text for scalar string selectors (no JSON quoting).
                         --field diff is the one selector that emits raw bytes and does not require --json.
 
 Create workflow:
   1. planner template --json > draft.json
-  2. Edit fields. Use planner patch --field diff for raw unified diffs.
+  2. Edit fields. Use planner patch --field diff for raw unified diffs and planner patch --raw for scalar strings.
   3. planner check draft.json && planner create draft.json out.md
 `
 
 const patchHelpText = `planner patch -- apply a patch to a section of an existing plan.
 
 Usage:
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run]
+  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run]
 
 Flags:
   --section/-s <section>           Required. One of: title, overview, definition_of_done, implementation, verification.
   --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
   --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step.
   --field <field>                  Optional. One of: diff, title, summary, filename, explanation.
+  --raw                            Optional. Required for scalar string targets; read input as raw text.
   --append                         Optional. Append a new step to implementation.
   --stdin                          Optional. Read patch input from stdin instead of a file.
   --diff                           Optional. Print diff to stdout; additive (does not suppress write).
@@ -129,23 +135,26 @@ Diff-edit workflow:
 
 Field-edit workflow (Title):
   1. planner inspect <plan.md>
-  2. Write a JSON string for the new title.
-  3. planner patch <plan.md> <title.json> <output.md> --section title
+  2. Write the new title as plain text.
+  3. echo 'New plan title' | planner patch <plan.md> <output.md> --section title --raw --stdin
 
 Field-edit workflow (Step title or summary):
   1. planner inspect <plan.md>
-  2. Write a JSON string for the new leaf.
-  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --field {title|summary}
+  2. Write the new value as plain text.
+  3. echo 'New step title' | planner patch <plan.md> <output.md> --section implementation --subsection N --field title --raw --stdin
+     echo 'New step summary' | planner patch <plan.md> <output.md> --section implementation --subsection N --field summary --raw --stdin
 
 Field-edit workflow (FileChange filename or explanation):
   1. planner inspect <plan.md>
-  2. Write a JSON string for the new leaf.
-  3. planner patch <plan.md> <leaf.json> <output.md> --section implementation --subsection N --file F --field {filename|explanation}
+  2. Write the new value as plain text.
+  3. echo 'new/path.go' | planner patch <plan.md> <output.md> --section implementation --subsection N --file F --field filename --raw --stdin
+     echo 'Why this file changes.' | planner patch <plan.md> <output.md> --section implementation --subsection N --file F --field explanation --raw --stdin
 
 Field-edit workflow (Verification subsection):
   1. planner inspect <plan.md>
-  2. Write a JSON string or checklist array.
-  3. planner patch <plan.md> <patch.json> <output.md> --section verification --subsection {summary|automated|manual}
+  2. For summary: plain text with --raw. For automated/manual: JSON array (no --raw).
+  3. echo 'Verification summary.' | planner patch <plan.md> <output.md> --section verification --subsection summary --raw --stdin
+     planner patch <plan.md> checklist.json <output.md> --section verification --subsection automated
 
 Trap:
   Full-step replacement re-escapes every diff in that step, even if only one FileChange needed a change.
@@ -233,6 +242,7 @@ func reportError(stderr io.Writer, cmd string, err error) {
 type templateOptions struct {
 	md         bool
 	jsonMode   bool
+	rawMode    bool
 	section    string
 	subsection string
 	file       string
@@ -271,6 +281,8 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 				return opts, fmt.Errorf("missing value for --field")
 			}
 			opts.field = args[i]
+		case "--raw":
+			opts.rawMode = true
 		default:
 			return opts, fmt.Errorf("unknown flag %q", args[i])
 		}
@@ -278,19 +290,55 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 	if opts.md && opts.jsonMode {
 		return opts, fmt.Errorf("--md and --json are mutually exclusive")
 	}
+	if opts.rawMode && (opts.md || opts.jsonMode) {
+		return opts, fmt.Errorf("--raw is mutually exclusive with --md and --json")
+	}
 	if opts.md && (opts.section != "" || opts.subsection != "" || opts.file != "" || opts.field != "") {
 		return opts, fmt.Errorf("--md does not accept selectors")
+	}
+	if opts.rawMode && opts.section == "" {
+		return opts, fmt.Errorf("--raw requires --section")
 	}
 	if opts.subsection != "" && opts.section == "" {
 		return opts, fmt.Errorf("--subsection requires --section")
 	}
-	if opts.section != "" && !opts.jsonMode && opts.field != "diff" {
+	if opts.section != "" && !opts.jsonMode && !opts.rawMode && opts.field != "diff" {
 		return opts, fmt.Errorf("--section requires --json")
 	}
-	if !opts.md && !opts.jsonMode && opts.field != "diff" {
+	if !opts.md && !opts.jsonMode && !opts.rawMode && opts.field != "diff" {
 		return opts, fmt.Errorf("either --md or --json is required")
 	}
 	return opts, nil
+}
+
+func isScalarPatch(opts replace.ReplaceOptions) bool {
+	switch opts.Section {
+	case "title", "overview":
+		return true
+	case "definition_of_done":
+		return opts.Subsection == "narrative" || opts.Subsection == "current_state" || opts.Subsection == "module_shape"
+	case "implementation":
+		switch opts.Field {
+		case "title", "summary", "filename", "explanation":
+			return true
+		}
+	case "verification":
+		return opts.Subsection == "summary"
+	}
+	return false
+}
+
+func validateRawPatchTarget(opts replace.ReplaceOptions) error {
+	if opts.Raw {
+		if !isScalarPatch(opts) {
+			return fmt.Errorf("--raw is only valid with scalar string targets")
+		}
+		return nil
+	}
+	if isScalarPatch(opts) {
+		return fmt.Errorf("scalar string targets require --raw (JSON string input is no longer accepted on this path)")
+	}
+	return nil
 }
 
 // validateFieldGrammar is the shared leaf-selector validator for patch and
@@ -367,6 +415,12 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	if opts.rawMode {
+		if err := validateTemplateRawMode(opts); err != nil {
+			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+	}
 
 	plan := schema.BuildPlanTemplate()
 	switch {
@@ -386,6 +440,14 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		_, _ = stdout.Write(append(raw, '\n'))
 		return 0
+	case opts.rawMode:
+		raw, err := scalarTemplateValue(plan, opts)
+		if err != nil {
+			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		_, _ = io.WriteString(stdout, raw+"\n")
+		return 0
 	case opts.field == "diff":
 		_, _ = stdout.Write([]byte("--- a/<path>\n+++ b/<path>\n@@ -1 +1 @@\n-old\n+new\n"))
 		return 0
@@ -398,6 +460,42 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		_, _ = stdout.Write(raw)
 		return 0
 	}
+}
+
+func validateTemplateRawMode(opts templateOptions) error {
+	if !isScalarTemplate(opts) {
+		return fmt.Errorf("--raw is only valid for scalar string selectors")
+	}
+	return nil
+}
+
+func isScalarTemplate(opts templateOptions) bool {
+	switch opts.section {
+	case "title", "overview":
+		return true
+	case "definition_of_done":
+		return opts.subsection == "narrative" || opts.subsection == "current_state" || opts.subsection == "module_shape"
+	case "implementation":
+		switch opts.field {
+		case "title", "summary", "filename", "explanation":
+			return true
+		}
+	case "verification":
+		return opts.subsection == "summary"
+	}
+	return false
+}
+
+func scalarTemplateValue(plan schema.Plan, opts templateOptions) (string, error) {
+	raw, err := schema.MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
+	if err != nil {
+		return "", err
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 // detectFormat infers the plan format from a filename extension.
@@ -600,7 +698,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		pathCount = 2
 	}
 	if len(positional) < pathCount {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run]"))
+		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run]"))
 		return 2
 	}
 	switch pathCount {
@@ -619,9 +717,12 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	var patchData []byte
-	if opts.Field != "" {
+	switch {
+	case opts.Raw:
+		patchData, err = readRawScalar(patchPath, pf.stdin)
+	case opts.Field == "diff":
 		patchData, err = readRawSource(patchPath, pf.stdin)
-	} else {
+	default:
 		patchData, _, err = readJSONSource(patchPath, pf.stdin, false, stderr)
 	}
 	if err != nil {
@@ -685,6 +786,8 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 			opts.Field = flags[i]
 		case "--append":
 			opts.Append = true
+		case "--raw":
+			opts.Raw = true
 		default:
 			return opts, fmt.Errorf("unknown flag %q", flags[i])
 		}
@@ -698,6 +801,9 @@ func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
 		}
 	}
 	if err := validateFieldGrammar(opts); err != nil {
+		return opts, err
+	}
+	if err := validateRawPatchTarget(opts); err != nil {
 		return opts, err
 	}
 	return opts, nil
@@ -763,6 +869,22 @@ func readRawSource(path string, useStdin bool) ([]byte, error) {
 		return nil, fmt.Errorf("no patch path and --stdin not set")
 	}
 	return os.ReadFile(path)
+}
+
+// readRawScalar reads raw patch input and strips exactly one trailing line
+// ending before the value is handed to scalar string patch targets.
+func readRawScalar(path string, useStdin bool) ([]byte, error) {
+	data, err := readRawSource(path, useStdin)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.HasSuffix(data, []byte("\r\n")) {
+		return data[:len(data)-2], nil
+	}
+	if bytes.HasSuffix(data, []byte("\n")) {
+		return data[:len(data)-1], nil
+	}
+	return data, nil
 }
 
 // readPlanFrom is the plan-decoding wrapper for runCheck/runCreate.
