@@ -105,6 +105,8 @@ After structure approval:
 
 1. Run `~/.claude/bin/planner help` first; do not guess command shapes from memory.
    For in-place edits, prefer `planner patch --field ...` over re-providing surrounding containers.
+   For scalar string edits (title, overview, step summary, etc.), use `--raw --stdin`:
+   `echo 'New value' | planner patch plan.md plan.md --section <s> --raw --stdin`
 2. Run `~/.claude/bin/planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
 3. Run `~/.claude/bin/planner check <draft.json>` to confirm before writing
