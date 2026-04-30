@@ -211,6 +211,16 @@ func TestTemplateUsageErrors(t *testing.T) {
 			wantErr: "--md and --json are mutually exclusive",
 		},
 		{
+			name:    "raw_and_json_are_mutually_exclusive",
+			args:    []string{"template", "--raw", "--json", "--section", "title"},
+			wantErr: "--raw is mutually exclusive with --md and --json",
+		},
+		{
+			name:    "raw_requires_section",
+			args:    []string{"template", "--raw"},
+			wantErr: "--raw requires --section",
+		},
+		{
 			name:    "implementation_subsection_must_be_numeric",
 			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "banana"},
 			wantErr: "1-based integer index",
@@ -353,6 +363,170 @@ func TestTemplateRejectsInvalidGrammar(t *testing.T) {
 	}
 }
 
+func TestTemplateRawScalar(t *testing.T) {
+	plan := schema.BuildPlanTemplate()
+	decode := func(section, subsection, file, field string) string {
+		t.Helper()
+		raw, err := schema.MarshalSection(plan, section, subsection, file, field)
+		if err != nil {
+			t.Fatalf("MarshalSection(%s,%s,%s,%s): %v", section, subsection, file, field, err)
+		}
+		var got string
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("json.Unmarshal scalar: %v", err)
+		}
+		return got
+	}
+	cases := []struct {
+		name       string
+		args       []string
+		section    string
+		subsection string
+		file       string
+		field      string
+	}{
+		{name: "title", args: []string{"template", "--raw", "--section", "title"}, section: "title"},
+		{name: "overview", args: []string{"template", "--raw", "--section", "overview"}, section: "overview"},
+		{name: "narrative", args: []string{"template", "--raw", "--section", "definition_of_done", "--subsection", "narrative"}, section: "definition_of_done", subsection: "narrative"},
+		{name: "current_state", args: []string{"template", "--raw", "--section", "definition_of_done", "--subsection", "current_state"}, section: "definition_of_done", subsection: "current_state"},
+		{name: "module_shape", args: []string{"template", "--raw", "--section", "definition_of_done", "--subsection", "module_shape"}, section: "definition_of_done", subsection: "module_shape"},
+		{name: "step_title", args: []string{"template", "--raw", "--section", "implementation", "--subsection", "1", "--field", "title"}, section: "implementation", subsection: "1", field: "title"},
+		{name: "step_summary", args: []string{"template", "--raw", "--section", "implementation", "--subsection", "1", "--field", "summary"}, section: "implementation", subsection: "1", field: "summary"},
+		{name: "filename", args: []string{"template", "--raw", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "filename"}, section: "implementation", subsection: "1", file: "f", field: "filename"},
+		{name: "explanation", args: []string{"template", "--raw", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "explanation"}, section: "implementation", subsection: "1", file: "f", field: "explanation"},
+		{name: "verification_summary", args: []string{"template", "--raw", "--section", "verification", "--subsection", "summary"}, section: "verification", subsection: "summary"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if exitCode := Execute(tc.args, &stdout, &stderr); exitCode != 0 {
+				t.Fatalf("Execute(%v) exit code = %d, stderr = %q", tc.args, exitCode, stderr.String())
+			}
+			expected := decode(tc.section, tc.subsection, tc.file, tc.field)
+			if got := stdout.String(); got != expected+"\n" {
+				t.Fatalf("stdout %q does not equal raw scalar %q", got, expected+"\n")
+			}
+		})
+	}
+}
+
+func TestTemplateRawRejectsStructured(t *testing.T) {
+	cases := [][]string{
+		{"template", "--json-errors", "--raw", "--section", "definition_of_done", "--subsection", "goals"},
+		{"template", "--json-errors", "--raw", "--section", "verification", "--subsection", "automated"},
+		{"template", "--json-errors", "--raw", "--section", "verification", "--subsection", "manual"},
+		{"template", "--json-errors", "--raw", "--section", "definition_of_done"},
+		{"template", "--json-errors", "--raw", "--section", "implementation", "--subsection", "1"},
+	}
+	for _, args := range cases {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Execute(args, &stdout, &stderr); exit != 2 {
+			t.Fatalf("args %v: exit %d want 2", args, exit)
+		}
+		code, msg := firstStderrJSON(t, &stderr)
+		if code != "USAGE" {
+			t.Fatalf("args %v: code=%q want USAGE", args, code)
+		}
+		if !strings.Contains(msg, "--raw") {
+			t.Fatalf("args %v: message %q does not mention --raw", args, msg)
+		}
+	}
+}
+
+func TestPatchRequiresRawForScalarTargets(t *testing.T) {
+	cases := [][]string{
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "title"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "overview"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "definition_of_done", "--subsection", "narrative"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "definition_of_done", "--subsection", "module_shape"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--field", "title"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "filename"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "verification", "--subsection", "summary"},
+	}
+	for _, args := range cases {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Execute(args, &stdout, &stderr); exit != 2 {
+			t.Fatalf("args %v: exit %d want 2", args, exit)
+		}
+		code, msg := firstStderrJSON(t, &stderr)
+		if code != "USAGE" {
+			t.Fatalf("args %v: code=%q want USAGE", args, code)
+		}
+		if !strings.Contains(msg, "--raw") {
+			t.Fatalf("args %v: message %q does not mention --raw", args, msg)
+		}
+	}
+}
+
+func TestPatchRawRejectsStructuredTargets(t *testing.T) {
+	cases := [][]string{
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "definition_of_done", "--subsection", "goals", "--raw"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "verification", "--subsection", "automated", "--raw"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "verification", "--subsection", "manual", "--raw"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--raw"},
+		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff", "--raw"},
+	}
+	for _, args := range cases {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Execute(args, &stdout, &stderr); exit != 2 {
+			t.Fatalf("args %v: exit %d want 2", args, exit)
+		}
+		code, msg := firstStderrJSON(t, &stderr)
+		if code != "USAGE" {
+			t.Fatalf("args %v: code=%q want USAGE", args, code)
+		}
+		if !strings.Contains(msg, "--raw") {
+			t.Fatalf("args %v: message %q does not mention --raw", args, msg)
+		}
+	}
+}
+
+func TestReadRawScalarStripsTrailingNewline(t *testing.T) {
+	t.Run("stdin_lf", func(t *testing.T) {
+		withStdin(t, []byte("raw text\n"), func() {
+			got, err := readRawScalar("", true)
+			if err != nil {
+				t.Fatalf("readRawScalar(stdin): %v", err)
+			}
+			if string(got) != "raw text" {
+				t.Fatalf("readRawScalar(stdin) = %q, want %q", got, "raw text")
+			}
+		})
+	})
+	t.Run("file_crlf", func(t *testing.T) {
+		dir := t.TempDir()
+		path := dir + "/raw.txt"
+		if err := os.WriteFile(path, []byte("raw text\r\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := readRawScalar(path, false)
+		if err != nil {
+			t.Fatalf("readRawScalar(file): %v", err)
+		}
+		if string(got) != "raw text" {
+			t.Fatalf("readRawScalar(file) = %q, want %q", got, "raw text")
+		}
+	})
+	t.Run("file_double_lf", func(t *testing.T) {
+		dir := t.TempDir()
+		path := dir + "/raw.txt"
+		if err := os.WriteFile(path, []byte("raw text\n\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := readRawScalar(path, false)
+		if err != nil {
+			t.Fatalf("readRawScalar(file): %v", err)
+		}
+		if string(got) != "raw text\n" {
+			t.Fatalf("readRawScalar(file) = %q, want %q", got, "raw text\n")
+		}
+	})
+}
+
 func TestTemplateHelpPrintsWorkflow(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -378,7 +552,8 @@ func TestTemplateHelpListsFieldGrammar(t *testing.T) {
 	for _, want := range []string{
 		"--field diff",
 		"--file <filename>",
-		"one selector that emits raw bytes",
+		"--raw",
+		"raw text for scalar string selectors",
 		"Section-level JSON shape: title",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -399,6 +574,7 @@ func TestPatchHelpListsFullFieldGrammar(t *testing.T) {
 		"Field-edit workflow (Step title or summary)",
 		"Field-edit workflow (FileChange filename or explanation)",
 		"Field-edit workflow (Verification subsection)",
+		"--raw",
 		"Whole-FileChange replacement",
 	} {
 		if !strings.Contains(stdout.String(), want) {
@@ -1032,8 +1208,8 @@ func TestWriteFailureSuppressesResultJSON(t *testing.T) {
 		}
 	})
 	// Write patch to disk.
-	patchPath := dir + "/patch.json"
-	if err := os.WriteFile(patchPath, []byte(`"Updated overview"`), 0o644); err != nil {
+	patchPath := dir + "/patch.txt"
+	if err := os.WriteFile(patchPath, []byte("Updated overview"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// Make output directory read-only so WriteAtomic fails.
@@ -1044,7 +1220,7 @@ func TestWriteFailureSuppressesResultJSON(t *testing.T) {
 	outputPath := roDir + "/out.md"
 
 	var stdout, stderr bytes.Buffer
-	exit := Execute([]string{"patch", planPath, patchPath, outputPath, "--section", "overview"}, &stdout, &stderr)
+	exit := Execute([]string{"patch", planPath, patchPath, outputPath, "--section", "overview", "--raw"}, &stdout, &stderr)
 	if exit == 0 {
 		t.Fatalf("expected non-zero exit on write failure, got 0")
 	}
@@ -1264,10 +1440,10 @@ func TestStdinPatchInput(t *testing.T) {
 			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
 		}
 	})
-	patch := []byte(`"Updated overview text."`)
+	patch := []byte("Updated overview text.")
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--raw"}, &stdout, &stderr)
 		if exit != 0 {
 			t.Fatalf("patch exit %d stderr %q", exit, stderr.String())
 		}
@@ -1310,10 +1486,10 @@ func TestDiffWritesButDoesNotEmitResult(t *testing.T) {
 			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
 		}
 	})
-	patch := []byte(`"Fresh overview text."`)
+	patch := []byte("Fresh overview text.")
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--diff"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--raw", "--diff"}, &stdout, &stderr)
 		if exit != 0 {
 			t.Fatalf("exit %d stderr %q", exit, stderr.String())
 		}
@@ -1329,10 +1505,10 @@ func TestInvalidSourceMarkdownReturnsDecodeError(t *testing.T) {
 	if err := os.WriteFile(src, []byte("# not a planner doc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	patch := []byte(`"Fresh overview text."`)
+	patch := []byte("Fresh overview text.")
 	withStdin(t, patch, func() {
 		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin"}, &stdout, &stderr)
+		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--raw"}, &stdout, &stderr)
 		if exit != 1 {
 			t.Fatalf("exit %d want 1 stderr %q", exit, stderr.String())
 		}
