@@ -25,7 +25,7 @@ Usage:
   planner template --md
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --help
-  planner validate [<plan.json>] [--stdin] [--json-errors]  Reports every violation in one run.
+  planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
   planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -37,13 +37,13 @@ Create flow:
   1. Research the task.
   2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
   3. Edit the draft JSON. Use planner patch --field diff for raw diff bodies.
-  4. Run planner validate <plan.json>.
+  4. Run planner check <plan.json>.
   5. Run planner create <plan.json> <output.md>.
 
 Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
   2. Map its content into canonical JSON matching planner template --json.
-  3. Run planner validate <plan.json>.
+  3. Run planner check <plan.json>.
   4. Run planner create <plan.json> <output.md>.
   5. Compare the rendered issue with the source issue for dropped content.
 
@@ -95,7 +95,7 @@ Selectors:
 Create workflow:
   1. planner template --json > draft.json
   2. Edit fields. Use planner patch --field diff for raw unified diffs.
-  3. planner validate draft.json && planner create draft.json out.md
+  3. planner check draft.json && planner create draft.json out.md
 `
 
 const patchHelpText = `planner patch -- apply a patch to a section of an existing plan.
@@ -174,8 +174,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	case "template":
 		return runTemplate(args[1:], stdout, stderr)
-	case "validate":
-		return runValidate(args[1:], stdout, stderr)
+	case "check":
+		return runCheck("check", args[1:], stdout, stderr)
 	case "create":
 		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
@@ -400,27 +400,94 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-func runValidate(args []string, stdout io.Writer, stderr io.Writer) int {
-	positional, pf, err := splitPreviewArgs(args, false, true)
+// detectFormat infers the plan format from a filename extension.
+func detectFormat(path string) string {
+	lower := strings.ToLower(path)
+	switch {
+	case strings.HasSuffix(lower, ".md"):
+		return "md"
+	case strings.HasSuffix(lower, ".json"):
+		return "json"
+	default:
+		return ""
+	}
+}
+
+// runCheck validates markdown or JSON plans and reports every violation.
+func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
+	format := ""
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--format" {
+			i++
+			if i >= len(args) {
+				reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "missing value for --format"))
+				return 2
+			}
+			format = args[i]
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+
+	positional, pf, err := splitPreviewArgs(rest, false, true)
 	if err != nil {
-		reportError(stderr, "validate", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	if (len(positional) == 0 && !pf.stdin && !stdinPiped()) || len(positional) > 1 {
-		reportError(stderr, "validate", newPlannerCLIError(PlannerUsageError, nil, "usage: planner validate [<plan.json>] [--stdin]"))
+	if (len(positional) == 0 && !pf.stdin) || len(positional) > 1 {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "usage: planner check [<plan.md|plan.json>] [--format md|json] [--stdin]"))
 		return 2
 	}
-	plan, err := readPlanFrom(positional, pf.stdin, stderr)
-	if err != nil {
-		reportError(stderr, "validate", err)
-		return plannerExitCode(err)
+
+	path := ""
+	if len(positional) == 1 {
+		path = positional[0]
 	}
+	if format == "" && path != "" {
+		format = detectFormat(path)
+	}
+	if format == "" {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "--format md|json is required for stdin or paths with no recognised extension"))
+		return 2
+	}
+	if format != "md" && format != "json" {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--format %q is not valid; use md or json", format)))
+		return 2
+	}
+
+	var plan schema.Plan
+	if format == "md" {
+		var raw []byte
+		if pf.stdin {
+			raw, err = io.ReadAll(os.Stdin)
+		} else {
+			raw, err = os.ReadFile(path)
+		}
+		if err != nil {
+			reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
+			return 1
+		}
+		parsed, parseErr := inspect.ParseMarkdown(string(raw))
+		if parseErr != nil {
+			reportError(stderr, cmd, newPlannerCLIError(PlannerDecodeInputError, parseErr, "plan markdown"))
+			return 1
+		}
+		plan = parsed.Plan
+	} else {
+		plan, err = readPlanFrom(filterNonEmpty([]string{path}), pf.stdin, stderr)
+		if err != nil {
+			reportError(stderr, cmd, err)
+			return plannerExitCode(err)
+		}
+	}
+
 	if errs := validate.ValidatePlanAll(plan); len(errs) > 0 {
 		messages := make([]string, len(errs))
 		for i, e := range errs {
 			messages[i] = e.Message
 		}
-		reportError(stderr, "validate", newPlannerCLIError(PlannerValidateInputError, errors.New(strings.Join(messages, "\n")), "plan"))
+		reportError(stderr, cmd, newPlannerCLIError(PlannerValidateInputError, errors.New(strings.Join(messages, "\n")), "plan"))
 		return 1
 	}
 	_, _ = io.WriteString(stdout, "OK\n")
@@ -698,7 +765,7 @@ func readRawSource(path string, useStdin bool) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// readPlanFrom is the plan-decoding wrapper for runValidate/runCreate.
+// readPlanFrom is the plan-decoding wrapper for runCheck/runCreate.
 // Decode errors are wrapped in typed planner CLI errors so tests can assert on
 // stable failure categories instead of raw strings.
 func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (schema.Plan, error) {
