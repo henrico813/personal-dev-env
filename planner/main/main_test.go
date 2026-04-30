@@ -800,7 +800,7 @@ func TestDefaultWritePrintsOutputPath(t *testing.T) {
 
 func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", "--json-errors", "/no/such/path"}, &stdout, &stderr); exit != 1 {
+	if exit := Execute([]string{"check", "--json-errors", "/no/such/path.json"}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("exit %d want 1", exit)
 	}
 	if strings.Contains(stderr.String(), "planner: reading JSON from stdin") || strings.Contains(stderr.String(), "repaired JSON input") {
@@ -981,76 +981,13 @@ func TestRunCheckAggregatesViolations(t *testing.T) {
 	}
 }
 
-func TestValidateAliasStillWorksJSON(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/plan.json"
-	if err := os.WriteFile(path, validPlanJSON(), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+func TestValidateCommandRemoved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", path}, &stdout, &stderr); exit != 0 {
-		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	if exit := Execute([]string{"validate"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "OK") {
-		t.Fatalf("expected OK, got %q", stdout.String())
-	}
-}
-
-func TestValidateAliasStillWorksWithPipedStdin(t *testing.T) {
-	withStdin(t, validPlanJSON(), func() {
-		var stdout, stderr bytes.Buffer
-		if exit := Execute([]string{"validate"}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-		if !strings.Contains(stdout.String(), "OK") {
-			t.Fatalf("expected OK, got %q", stdout.String())
-		}
-	})
-}
-
-func TestValidateAliasIgnoresUserFormatOverride(t *testing.T) {
-	plan, err := schema.DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := render.RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	dir := t.TempDir()
-	path := dir + "/plan.md"
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", "--format", "md", path}, &stdout, &stderr); exit == 0 {
-		t.Fatalf("expected validate alias to reject markdown; stderr=%q", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "plan JSON") {
-		t.Fatalf("expected JSON decode failure, got %q", stderr.String())
-	}
-}
-
-func TestValidateAliasRejectsMarkdown(t *testing.T) {
-	plan, err := schema.DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := render.RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	dir := t.TempDir()
-	path := dir + "/plan.md"
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate", path}, &stdout, &stderr); exit == 0 {
-		t.Fatalf("expected non-zero exit for markdown via validate alias; stderr=%q", stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "plan JSON") {
-		t.Fatalf("expected JSON decode failure, got %q", stderr.String())
+	if !strings.Contains(stderr.String(), "unknown command: validate") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
 
@@ -1200,7 +1137,7 @@ func TestRepairNoticeIsSuppressedInJSONMode(t *testing.T) {
 	})
 }
 
-func TestValidateSurfacesSchemaErrors(t *testing.T) {
+func TestCheckSurfacesSchemaErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   func(t *testing.T) []byte
@@ -1226,7 +1163,7 @@ func TestValidateSurfacesSchemaErrors(t *testing.T) {
 			if err := os.WriteFile(path, tc.input(t), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			assertCommandError(t, []string{"validate", path}, "validate:", tc.wantErr, 1)
+			assertCommandError(t, []string{"check", path}, "check:", tc.wantErr, 1)
 		})
 	}
 }
@@ -1299,7 +1236,7 @@ func TestRepairDoesNotClaimSuccessWhenRepairFails(t *testing.T) {
 	input := []byte("{bad}")
 	withStdin(t, input, func() {
 		var stdout, stderr bytes.Buffer
-		if exit := Execute([]string{"validate", "--stdin"}, &stdout, &stderr); exit != 1 {
+		if exit := Execute([]string{"check", "--format", "json", "--stdin"}, &stdout, &stderr); exit != 1 {
 			t.Fatalf("exit %d want 1, stderr %q", exit, stderr.String())
 		}
 		if strings.Contains(stderr.String(), "repaired JSON input") {

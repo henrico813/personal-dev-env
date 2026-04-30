@@ -176,10 +176,6 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runTemplate(args[1:], stdout, stderr)
 	case "check":
 		return runCheck("check", args[1:], stdout, stderr)
-	case "validate":
-		// Hidden compatibility alias: preserve legacy piped-stdin JSON behavior,
-		// strip any user-supplied --format, and force json semantics.
-		return runValidateAlias(args[1:], stdout, stderr)
 	case "create":
 		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
@@ -404,20 +400,6 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 }
 
-// stripFormatFlag removes any --format <value> pair from args. The validate
-// alias uses it to guarantee JSON-only semantics.
-func stripFormatFlag(args []string) []string {
-	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--format" {
-			i++
-			continue
-		}
-		out = append(out, args[i])
-	}
-	return out
-}
-
 // detectFormat infers the plan format from a filename extension.
 func detectFormat(path string) string {
 	lower := strings.ToLower(path)
@@ -429,39 +411,6 @@ func detectFormat(path string) string {
 	default:
 		return ""
 	}
-}
-
-// runValidateAlias preserves the legacy validate stdin contract while routing
-// all decoding and validation through runCheck's JSON-only path.
-func runValidateAlias(args []string, stdout io.Writer, stderr io.Writer) int {
-	aliased := append([]string{"--format", "json"}, stripFormatFlag(args)...)
-	if !hasArg(args, "--stdin") && !hasPositionalArg(args) && stdinPiped() {
-		aliased = append(aliased, "--stdin")
-	}
-	return runCheck("validate", aliased, stdout, stderr)
-}
-
-func hasArg(args []string, want string) bool {
-	for _, arg := range args {
-		if arg == want {
-			return true
-		}
-	}
-	return false
-}
-
-func hasPositionalArg(args []string) bool {
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--format" {
-			i++
-			continue
-		}
-		if strings.HasPrefix(args[i], "-") {
-			continue
-		}
-		return true
-	}
-	return false
 }
 
 // runCheck validates markdown or JSON plans and reports every violation.
