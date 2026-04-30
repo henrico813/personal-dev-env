@@ -106,7 +106,7 @@ After structure approval:
    For in-place edits, prefer `planner patch --field ...` over re-providing surrounding containers.
 2. Run `~/.claude/bin/planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
-3. Run `~/.claude/bin/planner validate <draft.json>` to confirm before writing
+3. Run `~/.claude/bin/planner check <draft.json>` to confirm before writing
 4. Run `~/.claude/bin/planner create <draft.json> <output.md>` to render to the vault
 
 Do not emit freeform markdown directly when the installed helper is available.
