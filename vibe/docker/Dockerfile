@@ -10,6 +10,6 @@ COPY vibe/extensions /opt/vibe/extensions
 COPY vibe/hooks /opt/vibe/hooks
 COPY vibe/docker/run-agent.sh /opt/vibe/run-agent.sh
 
-RUN chmod +x /opt/vibe/run-agent.sh /opt/vibe/hooks/post-commit.sh
+RUN chmod +x /opt/vibe/run-agent.sh /opt/vibe/hooks/post-commit
 
 ENTRYPOINT ["/opt/vibe/run-agent.sh"]
