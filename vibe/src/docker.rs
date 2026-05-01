@@ -24,7 +24,7 @@ struct HostUser {
 }
 
 pub fn ensure_image(checkout_root: &Path) -> Result<(), String> {
-    let status = Command::new("docker")
+    let out = Command::new("docker")
         .args([
             "build",
             "-t",
@@ -36,9 +36,15 @@ pub fn ensure_image(checkout_root: &Path) -> Result<(), String> {
                 .unwrap_or(""),
             checkout_root.to_str().unwrap_or(""),
         ])
-        .status()
+        .output()
         .map_err(|e| format!("docker build: {e}"))?;
-    if status.success() {
+    if !out.stdout.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&out.stdout));
+    }
+    if !out.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&out.stderr));
+    }
+    if out.status.success() {
         Ok(())
     } else {
         Err("docker build failed".to_string())
@@ -111,6 +117,8 @@ pub fn run_step(
         "--rm",
         "--user",
         &format!("{}:{}", user.uid, user.gid),
+        "--tmpfs",
+        &format!("/vibe-home:uid={},gid={},mode=700", user.uid, user.gid),
         "-v",
         &format!("{}:{}", worktree.display(), worktree.display()),
         "-v",
@@ -120,7 +128,7 @@ pub fn run_step(
         "-w",
         worktree.to_str().unwrap_or(""),
         "-e",
-        "HOME=/artifacts/home",
+        "HOME=/vibe-home",
         "-e",
         &format!("VIBE_MODEL={model}"),
         "-e",

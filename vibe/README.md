@@ -29,7 +29,9 @@ make -C vibe build
 - the container runs as the host UID/GID and sets git `safe.directory`
 
 Artifacts land under `~/.local/state/vibe/<repo>/<branch>/runs/.../`.
-`stdout` returns one machine-readable JSON result.
+`stdout` returns one machine-readable JSON result. Progress logs stay on `stderr`, `events.jsonl`, and `agent.stderr.log`.
+
+Auth is copied into an ephemeral container home for the run and is not persisted in the artifact directory.
 
 Dogfood by inspecting:
 

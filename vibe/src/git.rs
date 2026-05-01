@@ -117,9 +117,15 @@ pub fn commit_all(
 ) -> Result<String, String> {
     let add = Command::new("git")
         .args(["-C", repo.to_str().unwrap_or("."), "add", "-A"])
-        .status()
+        .output()
         .map_err(|e| format!("git add: {e}"))?;
-    if !add.success() {
+    if !add.stdout.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&add.stdout));
+    }
+    if !add.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&add.stderr));
+    }
+    if !add.status.success() {
         return Err("git add -A failed".to_string());
     }
     let commit = Command::new("git")
@@ -133,9 +139,15 @@ pub fn commit_all(
             "-m",
             message,
         ])
-        .status()
+        .output()
         .map_err(|e| format!("git commit: {e}"))?;
-    if !commit.success() {
+    if !commit.stdout.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&commit.stdout));
+    }
+    if !commit.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&commit.stderr));
+    }
+    if !commit.status.success() {
         return Err("git commit failed".to_string());
     }
     head_sha(repo)
