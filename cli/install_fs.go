@@ -25,14 +25,28 @@ func backupIfExists(path string, runner Runner) error {
 	return runner.Rename("backup existing config", path, backup)
 }
 
-// syncTree copies a repo-managed tree into its runtime destination.
+// syncTree copies a repo-managed tree into a fresh destination subtree.
 func syncTree(src, dst string, runner Runner) error {
 	return runner.Do("sync "+src+" to "+dst, func() error {
 		return copyTree(src, dst)
 	})
 }
 
+// syncTreeInto copies a repo-managed tree into an existing root without removing sibling files.
+func syncTreeInto(src, dst string, runner Runner) error {
+	return runner.Do("sync "+src+" into "+dst, func() error {
+		return copyTreeInto(src, dst)
+	})
+}
+
 func copyTree(src, dst string) error {
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	return copyTreeInto(src, dst)
+}
+
+func copyTreeInto(src, dst string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return err
@@ -41,9 +55,6 @@ func copyTree(src, dst string) error {
 		return fmt.Errorf("%s is not a directory", src)
 	}
 
-	if err := os.RemoveAll(dst); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(dst, srcInfo.Mode().Perm()); err != nil {
 		return err
 	}
@@ -71,6 +82,9 @@ func copyTree(src, dst string) error {
 			return os.MkdirAll(dstPath, info.Mode().Perm())
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
+			if err := os.RemoveAll(dstPath); err != nil {
+				return err
+			}
 			target, err := os.Readlink(path)
 			if err != nil {
 				return err

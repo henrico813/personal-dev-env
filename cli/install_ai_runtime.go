@@ -11,7 +11,7 @@ const (
 	aiNVMVersion  = "v0.40.0"
 )
 
-// ensurePlanner builds the repo planner into a PDE-owned runtime and links it into ~/.local/bin.
+// ensurePlanner builds the repo planner into a PDE-owned runtime and installs stable launchers.
 func ensurePlanner(cfg *Config, runner Runner) error {
 	plannerDir := filepath.Join(cfg.AIRuntimeDir, "planner")
 	plannerBin := filepath.Join(plannerDir, "planner")
@@ -26,7 +26,36 @@ func ensurePlanner(cfg *Config, runner Runner) error {
 	)); err != nil {
 		return err
 	}
-	return linkBinary(plannerBin, filepath.Join(cfg.LocalBinDir, "planner"), runner)
+	if err := backupPlannerLaunchers(cfg, runner); err != nil {
+		return err
+	}
+	return installPlannerLaunchers(cfg, plannerBin, runner)
+}
+
+func backupPlannerLaunchers(cfg *Config, runner Runner) error {
+	for _, path := range []string{
+		filepath.Join(cfg.LocalBinDir, "planner"),
+		filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner"),
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner"),
+	} {
+		if err := backupIfExists(path, runner); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installPlannerLaunchers(cfg *Config, plannerBin string, runner Runner) error {
+	for _, dst := range []string{
+		filepath.Join(cfg.LocalBinDir, "planner"),
+		filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner"),
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner"),
+	} {
+		if err := linkBinary(plannerBin, dst, runner); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ensureNodeToolchain keeps the Node runtime stable across reboots and shell restarts.
@@ -61,12 +90,12 @@ func installNodeTool(cfg *Config, runner Runner, name, pkg string) error {
 		return err
 	}
 	if err := runner.Bash(fmt.Sprintf("install %s", name), fmt.Sprintf(
-		"set -euo pipefail; export NVM_DIR=%s; source %s; nvm use %s >/dev/null; npm install --prefix %s %s@latest",
+		"set -euo pipefail; export NVM_DIR=%s; source %s; nvm use %s >/dev/null; npm install --prefix %s %s",
 		shellQuote(nvmDir),
 		shellQuote(nvmScript),
 		shellQuote(aiNodeVersion),
 		shellQuote(runtimeDir),
-		shellQuote(pkg),
+		shellQuote(pkg+"@latest"),
 	)); err != nil {
 		return err
 	}

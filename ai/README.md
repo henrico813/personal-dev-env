@@ -7,4 +7,4 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `codex/` holds Codex skills.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
-The installer copies the shared `AGENTS.md` into each harness config root and backs up any existing managed config before replacement.
+The installer copies the shared `AGENTS.md` into each harness config and backs up only the managed paths it replaces.

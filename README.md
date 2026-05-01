@@ -42,11 +42,11 @@ Installs Codex and OpenCode binaries plus repo-managed config for OpenCode, Code
 
 | Tool | Config source | Install target | Invocation style |
 |------|--------------|----------------|-----------------|
-| OpenCode | `ai/opencode/` | `~/.config/opencode/` | OpenCode commands and agents |
-| Codex | `ai/codex/skills/` | `~/.codex/` | Prompt-triggered skills |
+| OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
+| Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Pi | `ai/pi/agent/` | `~/.pi/agent/` | Settings and extension resources |
 
-The installer backs up existing OpenCode, Codex, and Pi config before replacement.
+The installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
 
 ## Using OpenCode Commands
 

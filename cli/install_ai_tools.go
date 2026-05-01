@@ -6,6 +6,19 @@ import (
 
 // installAITools owns the whole AI bootstrap so `pde install ai-tools` stays the only public entry point.
 func installAITools(cfg *Config, runner Runner) error {
+	for _, path := range []string{
+		filepath.Join(cfg.OpenCodeConfigDir, "agents"),
+		filepath.Join(cfg.OpenCodeConfigDir, "commands"),
+		filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"),
+		filepath.Join(cfg.CodexConfigDir, "skills"),
+		filepath.Join(cfg.CodexConfigDir, "AGENTS.md"),
+		filepath.Join(cfg.PiAgentDir, "settings.json"),
+	} {
+		if err := backupIfExists(path, runner); err != nil {
+			return err
+		}
+	}
+
 	if err := ensurePlanner(cfg, runner); err != nil {
 		return err
 	}
@@ -19,16 +32,6 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 
-	for _, path := range []string{
-		cfg.OpenCodeConfigDir,
-		cfg.CodexConfigDir,
-		cfg.PiAgentDir,
-	} {
-		if err := backupIfExists(path, runner); err != nil {
-			return err
-		}
-	}
-
 	if err := installOpenCodeConfig(cfg, runner); err != nil {
 		return err
 	}
@@ -39,21 +42,24 @@ func installAITools(cfg *Config, runner Runner) error {
 }
 
 func installOpenCodeConfig(cfg *Config, runner Runner) error {
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode"), cfg.OpenCodeConfigDir, runner); err != nil {
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), filepath.Join(cfg.OpenCodeConfigDir, "agents"), runner); err != nil {
+		return err
+	}
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "commands"), filepath.Join(cfg.OpenCodeConfigDir, "commands"), runner); err != nil {
 		return err
 	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"), runner)
 }
 
 func installCodexConfig(cfg *Config, runner Runner) error {
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex"), cfg.CodexConfigDir, runner); err != nil {
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex", "skills"), filepath.Join(cfg.CodexConfigDir, "skills"), runner); err != nil {
 		return err
 	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.CodexConfigDir, "AGENTS.md"), runner)
 }
 
 func installPiConfig(cfg *Config, runner Runner) error {
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "pi", "agent"), cfg.PiAgentDir, runner); err != nil {
+	if err := syncTreeInto(filepath.Join(cfg.AIRepoDir, "pi", "agent"), cfg.PiAgentDir, runner); err != nil {
 		return err
 	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.PiAgentDir, "AGENTS.md"), runner)
