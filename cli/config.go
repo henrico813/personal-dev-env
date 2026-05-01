@@ -7,11 +7,17 @@ import (
 )
 
 type Config struct {
-	RepoRoot      string
-	HomeDir       string
-	NvimConfigDir string
-	RuntimeDir    string
-	LocalBinDir   string
+	RepoRoot          string
+	HomeDir           string
+	NvimConfigDir     string
+	LocalBinDir       string
+	PDEConfigDir      string
+	PDERuntimeDir     string
+	AIRepoDir         string
+	AIRuntimeDir      string
+	OpenCodeConfigDir string
+	CodexConfigDir    string
+	PiAgentDir        string
 }
 
 func detectConfig(flagRepoRoot string) (*Config, error) {
@@ -32,11 +38,17 @@ func detectConfig(flagRepoRoot string) (*Config, error) {
 	} {
 		if root, ok := normalizeRepoRoot(candidate); ok {
 			return &Config{
-				RepoRoot:      root,
-				HomeDir:       homeDir,
-				NvimConfigDir: filepath.Join(homeDir, ".config", "nvim"),
-				RuntimeDir:    filepath.Join(homeDir, ".local", "share", "pde", "obsidian-headless"),
-				LocalBinDir:   filepath.Join(homeDir, ".local", "bin"),
+				RepoRoot:          root,
+				HomeDir:           homeDir,
+				NvimConfigDir:     filepath.Join(homeDir, ".config", "nvim"),
+				LocalBinDir:       filepath.Join(homeDir, ".local", "bin"),
+				PDEConfigDir:      filepath.Join(homeDir, ".config", "pde"),
+				PDERuntimeDir:     filepath.Join(homeDir, ".local", "share", "pde"),
+				AIRepoDir:         filepath.Join(root, "ai"),
+				AIRuntimeDir:      filepath.Join(homeDir, ".local", "share", "pde", "ai"),
+				OpenCodeConfigDir: filepath.Join(homeDir, ".config", "opencode"),
+				CodexConfigDir:    filepath.Join(homeDir, ".codex"),
+				PiAgentDir:        filepath.Join(homeDir, ".pi", "agent"),
 			}, nil
 		}
 	}
@@ -71,4 +83,8 @@ func normalizeRepoRoot(candidate string) (string, bool) {
 	}
 
 	return root, true
+}
+
+func (c *Config) ObsidianRuntimeDir() string {
+	return filepath.Join(c.PDERuntimeDir, "obsidian-headless")
 }

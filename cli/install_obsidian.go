@@ -88,13 +88,13 @@ func ensureNode22(cfg *Config, runner Runner) error {
 }
 
 func installHeadlessRuntime(cfg *Config, runner Runner) error {
-	runtimeBinary := filepath.Join(cfg.RuntimeDir, "bin", "ob")
-	if runtimeLooksSane(cfg.RuntimeDir) && wrapperLooksSane(runtimeBinary) {
+	runtimeBinary := filepath.Join(cfg.ObsidianRuntimeDir(), "bin", "ob")
+	if runtimeLooksSane(cfg.ObsidianRuntimeDir()) && wrapperLooksSane(runtimeBinary) {
 		return nil
 	}
 
 	return runner.Do("install obsidian-headless runtime", func() error {
-		if err := runner.MkdirAll("create obsidian-headless runtime dir", cfg.RuntimeDir, 0o755); err != nil {
+		if err := runner.MkdirAll("create obsidian-headless runtime dir", cfg.ObsidianRuntimeDir(), 0o755); err != nil {
 			return err
 		}
 
@@ -103,12 +103,12 @@ func installHeadlessRuntime(cfg *Config, runner Runner) error {
 			shellQuote(filepath.Join(cfg.HomeDir, ".nvm")),
 			shellQuote(filepath.Join(cfg.HomeDir, ".nvm", "nvm.sh")),
 			shellQuote(nodeVersion),
-			shellQuote(cfg.RuntimeDir),
+			shellQuote(cfg.ObsidianRuntimeDir()),
 		)); err != nil {
 			return err
 		}
 
-		if err := installRuntimeWrapper(cfg.RuntimeDir, runner); err != nil {
+		if err := installRuntimeWrapper(cfg.ObsidianRuntimeDir(), runner); err != nil {
 			return err
 		}
 		return linkObBinary(cfg, runner)
@@ -116,7 +116,7 @@ func installHeadlessRuntime(cfg *Config, runner Runner) error {
 }
 
 func linkObBinary(cfg *Config, runner Runner) error {
-	src := filepath.Join(cfg.RuntimeDir, "bin", "ob")
+	src := filepath.Join(cfg.ObsidianRuntimeDir(), "bin", "ob")
 	dst := filepath.Join(cfg.LocalBinDir, "ob")
 	return runner.Do("link ob to ~/.local/bin", func() error {
 		if err := runner.MkdirAll("create ~/.local/bin", cfg.LocalBinDir, 0o755); err != nil {
