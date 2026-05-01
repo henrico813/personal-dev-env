@@ -1,0 +1,60 @@
+package main
+
+import (
+	"path/filepath"
+)
+
+// installAITools owns the whole AI bootstrap so `pde install ai-tools` stays the only public entry point.
+func installAITools(cfg *Config, runner Runner) error {
+	if err := ensurePlanner(cfg, runner); err != nil {
+		return err
+	}
+	if err := ensureNodeToolchain(cfg, runner); err != nil {
+		return err
+	}
+	if err := installNodeTool(cfg, runner, "codex", "@openai/codex"); err != nil {
+		return err
+	}
+	if err := installNodeTool(cfg, runner, "opencode", "opencode-ai"); err != nil {
+		return err
+	}
+
+	for _, path := range []string{
+		cfg.OpenCodeConfigDir,
+		cfg.CodexConfigDir,
+		cfg.PiAgentDir,
+	} {
+		if err := backupIfExists(path, runner); err != nil {
+			return err
+		}
+	}
+
+	if err := installOpenCodeConfig(cfg, runner); err != nil {
+		return err
+	}
+	if err := installCodexConfig(cfg, runner); err != nil {
+		return err
+	}
+	return installPiConfig(cfg, runner)
+}
+
+func installOpenCodeConfig(cfg *Config, runner Runner) error {
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode"), cfg.OpenCodeConfigDir, runner); err != nil {
+		return err
+	}
+	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"), runner)
+}
+
+func installCodexConfig(cfg *Config, runner Runner) error {
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex"), cfg.CodexConfigDir, runner); err != nil {
+		return err
+	}
+	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.CodexConfigDir, "AGENTS.md"), runner)
+}
+
+func installPiConfig(cfg *Config, runner Runner) error {
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "pi", "agent"), cfg.PiAgentDir, runner); err != nil {
+		return err
+	}
+	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.PiAgentDir, "AGENTS.md"), runner)
+}
