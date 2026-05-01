@@ -109,7 +109,7 @@ After structure approval:
    `echo 'New value' | planner patch plan.md plan.md --section <s> --raw --stdin`
 2. Run `planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
-3. Run `planner validate <draft.json>` to confirm before writing
+3. Run `planner check <draft.json>` to confirm before writing
 4. Run `planner create <draft.json> <output.md>` to render to the vault
 
 Do not emit freeform markdown directly when the installed helper is available.

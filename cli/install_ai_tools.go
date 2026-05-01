@@ -13,15 +13,13 @@ func installAITools(cfg *Config, runner Runner) error {
 		filepath.Join(cfg.CodexConfigDir, "skills"),
 		filepath.Join(cfg.CodexConfigDir, "AGENTS.md"),
 		filepath.Join(cfg.PiAgentDir, "settings.json"),
+		filepath.Join(cfg.PiAgentDir, "AGENTS.md"),
 	} {
 		if err := backupIfExists(path, runner); err != nil {
 			return err
 		}
 	}
 
-	if err := ensurePlanner(cfg, runner); err != nil {
-		return err
-	}
 	if err := ensureNodeToolchain(cfg, runner); err != nil {
 		return err
 	}
@@ -38,7 +36,10 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installCodexConfig(cfg, runner); err != nil {
 		return err
 	}
-	return installPiConfig(cfg, runner)
+	if err := installPiConfig(cfg, runner); err != nil {
+		return err
+	}
+	return ensurePlanner(cfg, runner)
 }
 
 func installOpenCodeConfig(cfg *Config, runner Runner) error {
