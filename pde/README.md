@@ -25,12 +25,15 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 ## Optional Targets
 
 Some setups belong beside the base profiles, not inside them.
-`obsidian` is installed through the Go CLI after `minimal` provides the PDE Neovim config:
+`obsidian` and `ai-tools` are installed through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
 pde install obsidian
+pde install ai-tools
 ```
+
+`ai-tools` installs the AI binaries and copies the neutral `ai/` config tree into the user’s managed config paths.
 
 ## Repository Layout
 
