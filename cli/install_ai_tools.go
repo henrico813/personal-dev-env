@@ -20,6 +20,11 @@ func installAITools(cfg *Config, runner Runner) error {
 		}
 	}
 
+	plannerBin, err := buildPlannerBinary(cfg, runner)
+	if err != nil {
+		return err
+	}
+
 	if err := ensureNodeToolchain(cfg, runner); err != nil {
 		return err
 	}
@@ -39,7 +44,10 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installPiConfig(cfg, runner); err != nil {
 		return err
 	}
-	return ensurePlanner(cfg, runner)
+	if err := backupPlannerLaunchers(cfg, runner); err != nil {
+		return err
+	}
+	return installPlannerLaunchers(cfg, plannerBin, runner)
 }
 
 func installOpenCodeConfig(cfg *Config, runner Runner) error {

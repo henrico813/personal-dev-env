@@ -11,25 +11,23 @@ const (
 	aiNVMVersion  = "v0.40.0"
 )
 
-// ensurePlanner builds the repo planner into a PDE-owned runtime and installs stable launchers.
-func ensurePlanner(cfg *Config, runner Runner) error {
+// buildPlannerBinary builds the nested planner Go module into a PDE-owned runtime.
+func buildPlannerBinary(cfg *Config, runner Runner) (string, error) {
 	plannerDir := filepath.Join(cfg.AIRuntimeDir, "planner")
 	plannerBin := filepath.Join(plannerDir, "planner")
+	plannerModuleDir := filepath.Join(cfg.RepoRoot, "planner")
 
 	if err := runner.MkdirAll("create planner runtime dir", plannerDir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	if err := runner.Bash("build planner", fmt.Sprintf(
-		"set -euo pipefail; cd %s && go build -o %s ./planner/main",
-		shellQuote(cfg.RepoRoot),
+		"set -euo pipefail; cd %s && go build -o %s ./main",
+		shellQuote(plannerModuleDir),
 		shellQuote(plannerBin),
 	)); err != nil {
-		return err
+		return "", err
 	}
-	if err := backupPlannerLaunchers(cfg, runner); err != nil {
-		return err
-	}
-	return installPlannerLaunchers(cfg, plannerBin, runner)
+	return plannerBin, nil
 }
 
 func backupPlannerLaunchers(cfg *Config, runner Runner) error {
