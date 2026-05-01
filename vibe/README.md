@@ -15,6 +15,14 @@ Day-1 MVP for running one planner step through a Docker-contained Pi runtime.
 make -C vibe build
 ```
 
+## Install
+
+```bash
+make -C vibe install
+```
+
+This installs `vibe` to `~/.local/bin`.
+
 ## Run
 
 ```bash
