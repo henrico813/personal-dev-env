@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub struct RepoLayout {
+    pub checkout_root: PathBuf,
+    pub canonical_repo_root: PathBuf,
+    pub git_common_dir: PathBuf,
+}
+
 fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .args(["-C", cwd.to_str().unwrap_or(".")])
@@ -13,16 +19,27 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-pub fn repo_root() -> Result<PathBuf, String> {
-    Ok(PathBuf::from(git(
-        Path::new("."),
-        &["rev-parse", "--show-toplevel"],
-    )?))
+pub fn repo_layout() -> Result<RepoLayout, String> {
+    let checkout_root = PathBuf::from(git(Path::new("."), &["rev-parse", "--show-toplevel"])?);
+    let git_common_dir = PathBuf::from(git(
+        &checkout_root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?);
+    let canonical_repo_root = git_common_dir
+        .parent()
+        .filter(|_| git_common_dir.file_name().and_then(|name| name.to_str()) == Some(".git"))
+        .ok_or_else(|| format!("unexpected git common dir: {}", git_common_dir.display()))?
+        .to_path_buf();
+    Ok(RepoLayout {
+        checkout_root,
+        canonical_repo_root,
+        git_common_dir,
+    })
 }
 
 pub fn resolve_base(repo_root: &Path) -> Result<(String, String), String> {
     let remotes = git(repo_root, &["remote"])?;
-    for name in ["origin", "goog", "github"] {
+    for name in ["origin", "github", "goog"] {
         if remotes.lines().any(|line| line == name) {
             return Ok((name.to_string(), "main".to_string()));
         }

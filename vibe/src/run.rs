@@ -14,13 +14,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         Some(path) => path,
         None => return RunResult::setup_error("planner not found"),
     };
-    let repo_root = match git::repo_root() {
-        Ok(path) => path,
+    let repo = match git::repo_layout() {
+        Ok(layout) => layout,
         Err(err) => return RunResult::setup_error(err),
     };
     let branch = paths::branch_slug(&args.plan);
-    let worktree = paths::worktree_path(&repo_root, &branch);
-    let run_paths = match paths::create_run_paths(&repo_root, &branch, args.step) {
+    let worktree = paths::worktree_path(&repo.canonical_repo_root, &branch);
+    let run_paths = match paths::create_run_paths(&repo.canonical_repo_root, &branch, args.step) {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
@@ -47,11 +47,17 @@ pub fn execute(args: RunArgs) -> RunResult {
         return RunResult::setup_error(format!("write prompt.txt: {err}"));
     }
 
-    let (remote, base_branch) = match git::resolve_base(&repo_root) {
+    let (remote, base_branch) = match git::resolve_base(&repo.canonical_repo_root) {
         Ok(value) => value,
         Err(err) => return RunResult::setup_error(err),
     };
-    if let Err(err) = git::ensure_worktree(&repo_root, &worktree, &branch, &remote, &base_branch) {
+    if let Err(err) = git::ensure_worktree(
+        &repo.canonical_repo_root,
+        &worktree,
+        &branch,
+        &remote,
+        &base_branch,
+    ) {
         return RunResult::setup_error(err);
     }
     match git::is_dirty(&worktree) {
@@ -81,10 +87,16 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = docker::require_docker() {
         return RunResult::setup_error(err);
     }
-    if let Err(err) = docker::ensure_image(&repo_root) {
+    if let Err(err) = docker::ensure_image(&repo.checkout_root) {
         return RunResult::setup_error(err);
     }
-    let agent_exit = match docker::run_step(&repo_root, &worktree, &run_paths, &args.model) {
+    let agent_exit = match docker::run_step(
+        &repo.canonical_repo_root,
+        &repo.git_common_dir,
+        &worktree,
+        &run_paths,
+        &args.model,
+    ) {
         Ok(code) => code,
         Err(err) => return RunResult::setup_error(err),
     };
@@ -99,12 +111,12 @@ pub fn execute(args: RunArgs) -> RunResult {
     };
     let mut commit = None;
     let mut error_message = None;
-    let changed = dirty_after || !snapshot_commits.is_empty();
+    let changed = dirty_after;
     if changed {
         match git::commit_all(
             &worktree,
             &format!("vibe: step {} {}", args.step, title),
-            &repo_root.join("vibe/hooks"),
+            &repo.checkout_root.join("vibe/hooks"),
             "final",
         ) {
             Ok(sha) => {

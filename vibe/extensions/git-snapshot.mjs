@@ -17,7 +17,7 @@ async function commitSnapshot(pi, toolName, toolCallId) {
 }
 
 export default function (pi) {
-  pi.on("tool_result", async (event) => {
+  pi.on("tool_execution_end", async (event) => {
     if (event.isError) return;
     if (!MUTATING_TOOLS.has(event.toolName)) return;
     await commitSnapshot(pi, event.toolName, event.toolCallId);
