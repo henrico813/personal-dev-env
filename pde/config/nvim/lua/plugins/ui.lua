@@ -4,6 +4,22 @@ require("lualine").setup({
     globalstatus = true,
     component_separators = "|",
     section_separators = "",
+    refresh = {
+      statusline = 1000,
+      tabline = 1000,
+      winbar = 1000,
+      refresh_time = 100,
+      events = {
+        "WinEnter",
+        "BufEnter",
+        "BufWritePost",
+        "SessionLoadPost",
+        "FileChangedShellPost",
+        "VimResized",
+        "Filetype",
+        "ModeChanged",
+      },
+    },
   },
   sections = {
     lualine_a = { "mode" },
