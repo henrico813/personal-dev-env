@@ -22,17 +22,22 @@ make -C vibe install
 ```
 
 This installs `vibe` to `~/.local/bin`.
+It does not require the target repo checkout to contain a local `vibe/`
+directory. On first run, `vibe` extracts its bundled runtime assets to
+`~/.local/share/vibe/<version>/` and builds the Docker image from there.
 
 ## Run
 
 ```bash
-./vibe/target/release/vibe run "/absolute/path/to/PDEV-040 Some Plan.md" --step 1 --model anthropic/claude-sonnet-4-6
+vibe run "/absolute/path/to/PDEV-040 Some Plan.md" --step 1 --model anthropic/claude-sonnet-4-6
 ```
 
 ## Runtime model
 
 - the plan worktree stays the canonical git state
 - Docker is only the execution boundary
+- bundled Docker, hook, and extension assets are extracted under
+  `~/.local/share/vibe/<version>/`
 - Vibe mounts the target worktree, shared git metadata, and `/artifacts`
 - the container runs as the host UID/GID and sets git `safe.directory`
 
