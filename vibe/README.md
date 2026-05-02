@@ -15,6 +15,27 @@ Day-1 MVP for running one planner step through a Docker-contained Pi runtime.
 make -C vibe build
 ```
 
+## Test
+
+```bash
+make -C vibe check
+```
+
+The default suite stays unit-focused.
+
+```bash
+make -C vibe test
+```
+
+- `make -C vibe check` runs fmt, clippy, tests, and build
+- `make -C vibe test` runs the Rust test suite only
+- unit tests cover result models, paths, planner helpers, prompt rendering, and
+  snapshot parsing with production APIs
+- real Docker and provider flows stay in manual smoke coverage, where external
+  process boundaries are easier to debug deliberately
+
+Live Docker or provider smoke checks remain opt-in manual verification.
+
 ## Install
 
 ```bash
