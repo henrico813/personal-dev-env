@@ -15,6 +15,29 @@ Day-1 MVP for running one planner step through a Docker-contained Pi runtime.
 make -C vibe build
 ```
 
+## Test
+
+```bash
+make -C vibe check
+```
+
+The default suite mixes unit tests with command-level integration tests.
+
+```bash
+make -C vibe test
+```
+
+- `make -C vibe check` runs fmt, clippy, tests, and build
+- `make -C vibe test` runs the Rust test suite only
+- unit tests cover result models, paths, planner helpers, prompt rendering, and
+  snapshot parsing with production APIs
+- integration tests run the real `vibe` binary in temp git repositories, assert
+  baseline `RunResult` fields, and cover planner and Docker setup errors
+- only `planner` and `docker` are shimmed, because they are external process
+  boundaries outside the Rust crate
+
+Live Docker or provider smoke checks remain opt-in manual verification.
+
 ## Install
 
 ```bash
