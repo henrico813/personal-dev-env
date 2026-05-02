@@ -48,3 +48,47 @@ pub fn step_title(step_json: &Value, step: u32) -> String {
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("step {step}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_step, step_title};
+    use serde_json::json;
+
+    #[test]
+    fn step_extraction_returns_value() {
+        let plan = json!({
+            "implementation": [
+                { "title": "first" },
+                { "title": "second" }
+            ]
+        });
+
+        let step = extract_step(&plan, 2).expect("extract step");
+        assert_eq!(step.get("title").and_then(|v| v.as_str()), Some("second"));
+    }
+
+    #[test]
+    fn missing_steps_array_errors() {
+        let err = extract_step(&json!({}), 1).expect_err("missing implementation");
+        assert_eq!(err, "planner output missing implementation[]");
+    }
+
+    #[test]
+    fn step_zero_errors() {
+        let plan = json!({ "implementation": [{ "title": "only" }] });
+        let err = extract_step(&plan, 0).expect_err("step zero");
+        assert_eq!(err, "step must be >= 1");
+    }
+
+    #[test]
+    fn step_out_of_range_errors() {
+        let plan = json!({ "implementation": [{ "title": "only" }] });
+        let err = extract_step(&plan, 2).expect_err("out of range");
+        assert_eq!(err, "step 2 out of range");
+    }
+
+    #[test]
+    fn title_falls_back_to_step() {
+        assert_eq!(step_title(&json!({}), 7), "step 7");
+    }
+}
