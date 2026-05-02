@@ -91,6 +91,9 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 | `<leader>pc` | Toggle CodeCompanion chat |
 | `<leader>pn` | Open a new chat buffer |
 | `<leader>pp` | Open the CodeCompanion action palette |
+| `<leader>pm` | Select a model directly |
+| `<leader>po` | Open CodeCompanion options |
+| `<leader>pa…` | Attach context (selection, buffer, file, diff, diagnostics) |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
 | `<C-/>` | Open a terminal split |
