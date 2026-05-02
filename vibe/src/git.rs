@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct RepoLayout {
-    pub checkout_root: PathBuf,
     pub canonical_repo_root: PathBuf,
     pub git_common_dir: PathBuf,
 }
@@ -31,7 +30,6 @@ pub fn repo_layout() -> Result<RepoLayout, String> {
         .ok_or_else(|| format!("unexpected git common dir: {}", git_common_dir.display()))?
         .to_path_buf();
     Ok(RepoLayout {
-        checkout_root,
         canonical_repo_root,
         git_common_dir,
     })

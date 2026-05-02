@@ -5,7 +5,7 @@ use crate::{
     cli::RunArgs,
     docker, git,
     output::{RunResult, Status},
-    paths, planner, prompt,
+    paths, planner, prompt, runtime,
 };
 
 /// Execute one planner step end-to-end and return the stable JSON result.
@@ -20,6 +20,10 @@ pub fn execute(args: RunArgs) -> RunResult {
     };
     let branch = paths::branch_slug(&args.plan);
     let worktree = paths::worktree_path(&repo.canonical_repo_root, &branch);
+    let runtime_root = match runtime::ensure_runtime_assets() {
+        Ok(path) => path,
+        Err(err) => return RunResult::setup_error(format!("vibe runtime setup failed: {err}")),
+    };
     let run_paths = match paths::create_run_paths(&repo.canonical_repo_root, &branch, args.step) {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
@@ -87,7 +91,7 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = docker::require_docker() {
         return RunResult::setup_error(err);
     }
-    if let Err(err) = docker::ensure_image(&repo.checkout_root) {
+    if let Err(err) = docker::ensure_image(&runtime_root) {
         return RunResult::setup_error(err);
     }
     let agent_exit = match docker::run_step(
@@ -116,7 +120,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         match git::commit_all(
             &worktree,
             &format!("vibe: step {} {}", args.step, title),
-            &repo.checkout_root.join("vibe/hooks"),
+            &runtime_root.join("hooks"),
             "final",
         ) {
             Ok(sha) => {

@@ -6,6 +6,7 @@ mod paths;
 mod planner;
 mod prompt;
 mod run;
+mod runtime;
 
 use std::process;
 
