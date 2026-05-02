@@ -33,7 +33,8 @@ pde install obsidian
 pde install ai-tools
 ```
 
-`ai-tools` installs the AI binaries and copies the neutral `ai/` config tree into the user’s managed config paths.
+`ai-tools` installs planner plus the AI binaries and copies the neutral `ai/`
+config tree into the user’s managed config paths.
 
 ## Repository Layout
 
