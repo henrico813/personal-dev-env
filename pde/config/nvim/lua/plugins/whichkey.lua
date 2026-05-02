@@ -17,7 +17,7 @@ require("which-key").setup({
       { "<leader>gh", group = "hunks" },
       { "<leader>s",  group = "search" },
       { "<leader>x",  group = "diagnostics/quickfix" },
-      { "<leader>p",  group = "pi agent" },
+      { "<leader>p",  group = "ai/chat" },
       { "<leader>q",  group = "session" },
       { "<leader>m",  group = "mason" },
       { "<leader>o",  group = "obsidian" },
