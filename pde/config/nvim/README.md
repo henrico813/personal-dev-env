@@ -32,7 +32,7 @@ Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim
 
 **Pack directories.** Neovim's built-in plugin loader. Anything under `~/.config/nvim/pack/plugins/start/<name>/` is added to `runtimepath` automatically on startup. No `packer.nvim`, no `lazy.nvim` — just clone a repo into that directory and it's installed. We deliberately chose this to keep the config simple and auditable.
 
-**`require()`.** When your config calls `require("plugins.pi")`, Lua searches `runtimepath` for `lua/plugins/pi.lua` or `lua/plugins/pi/init.lua`. Both forms work. Our `lua/` tree mirrors the require paths: `require("core.options")` → `lua/core/options.lua`.
+**`require()`.** When your config calls `require("plugins.codecompanion")`, Lua searches `runtimepath` for `lua/plugins/codecompanion.lua` or `lua/plugins/codecompanion/init.lua`. Both forms work. Our `lua/` tree mirrors the require paths: `require("core.options")` → `lua/core/options.lua`.
 
 ---
 
@@ -42,7 +42,7 @@ Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim
 init.lua                  entry point — order of requires
 lua/
   core/
-    options.lua           global vim options, pi-pane styling autocmds, window clamping
+    options.lua           global vim options and CodeCompanion buffer styling autocmds
     keymaps.lua           non-LSP global keymaps (buffers, tabs, terminal)
   plugins/                one file per plugin (setup + keymaps together)
 bin/
@@ -78,7 +78,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 
 Don't memorize a table here. The live source of truth is which-key.
 
-- Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` pi, `q` session, `<Tab>` tabs, and so on).
+- Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` ai/chat, `q` session, `<Tab>` tabs, and so on).
 - Press `<leader>?` to see only the keymaps active for the *current buffer* (useful in LSP-attached files).
 - Inside a specific plugin (e.g. lazygit's floating window or Mason's UI), press `g?` for that plugin's own keybindings.
 
@@ -90,10 +90,13 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 | `<leader>/` | Fuzzy search current buffer |
 | `<leader>pc` | Toggle CodeCompanion chat |
 | `<leader>pn` | Open a new chat buffer |
+| `<leader>ps` | Send the current chat, or add the current selection |
+| `<leader>pk` | Stop the active request |
 | `<leader>pp` | Open the CodeCompanion action palette |
 | `<leader>pm` | Select a model directly |
 | `<leader>po` | Open CodeCompanion options |
-| `<leader>pa…` | Attach context (selection, buffer, file, diff, diagnostics) |
+| `<leader>pe` | Explain the current buffer or visual selection |
+| `<leader>pa…` | Attach context (buffer, file, diff, diagnostics) |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
 | `<C-/>` | Open a terminal split |

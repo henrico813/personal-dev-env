@@ -61,11 +61,43 @@ local function with_chat(callback)
   return callback(chat)
 end
 
+local function send_chat()
+  local chat = current_chat()
+  if not chat then
+    return ensure_chat()
+  end
+
+  chat:submit()
+  return chat
+end
+
 map("n", "<leader>pc", "<cmd>CodeCompanionChat Toggle<cr>", { desc = "Toggle chat" })
 map("n", "<leader>pn", "<cmd>CodeCompanionChat<cr>", { desc = "New chat" })
 map({ "n", "x" }, "<leader>pp", "<cmd>CodeCompanionActions<cr>", { desc = "Actions" })
-map("n", "<leader>pe", function()
-  codecompanion.prompt("explain", { range = 1 })
+map("n", "<leader>ps", send_chat, { desc = "Send" })
+map("x", "<leader>ps", "<cmd>CodeCompanionChat Add<cr>", { desc = "Add selection" })
+map("n", "<leader>pk", function()
+  with_chat(function(chat)
+    chat:stop()
+  end)
+end, { desc = "Stop" })
+map({ "n", "x" }, "<leader>pe", function()
+  if vim.fn.mode():match("^[vV\22]") then
+    return codecompanion.prompt("explain", { range = 1 })
+  end
+
+  local chat = ensure_chat()
+  if not chat then
+    return
+  end
+
+  editor_buffer.new({ Chat = chat }):chat_render()
+  chat:add_message({
+    role = codecompanion_config.constants.USER_ROLE,
+    content = "Please explain this code.",
+  })
+  chat.ui:open()
+  chat:submit()
 end, { desc = "Explain" })
 map("n", "<leader>po", function()
   with_chat(function(chat)
@@ -77,14 +109,7 @@ map("n", "<leader>pm", function()
     change_adapter.select_model(chat)
   end)
 end, { desc = "Select model" })
-map("n", "<leader>pi", "<cmd>CodeCompanion<cr>", { desc = "Inline" })
-map("n", "<leader>ps", function()
-  with_chat(function(chat)
-    chat:stop()
-  end)
-end, { desc = "Stop" })
-map("n", "<leader>p?", "<cmd>help codecompanion.txt<cr>", { desc = "CodeCompanion help" })
-map("x", "<leader>pas", "<cmd>CodeCompanionChat Add<cr>", { desc = "Add selection" })
+map("n", "<leader>p?", "<cmd>help codecompanion-welcome<cr>", { desc = "CodeCompanion help" })
 map("n", "<leader>pab", function()
   local chat = ensure_chat()
   if not chat then
