@@ -56,6 +56,13 @@ func installPlannerLaunchers(cfg *Config, plannerBin string, runner Runner) erro
 	return nil
 }
 
+func verifyPlannerLauncher(cfg *Config, runner Runner) error {
+	return runner.Bash("verify planner", fmt.Sprintf(
+		"set -euo pipefail; export PATH=%s:$PATH; planner help >/dev/null",
+		shellQuote(cfg.LocalBinDir),
+	))
+}
+
 // ensureNodeToolchain keeps the Node runtime stable across reboots and shell restarts.
 func ensureNodeToolchain(cfg *Config, runner Runner) error {
 	nvmDir := filepath.Join(cfg.HomeDir, ".nvm")

@@ -47,7 +47,11 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := backupPlannerLaunchers(cfg, runner); err != nil {
 		return err
 	}
-	return installPlannerLaunchers(cfg, plannerBin, runner)
+	if err := installPlannerLaunchers(cfg, plannerBin, runner); err != nil {
+		return err
+	}
+
+	return verifyPlannerLauncher(cfg, runner)
 }
 
 func installOpenCodeConfig(cfg *Config, runner Runner) error {
