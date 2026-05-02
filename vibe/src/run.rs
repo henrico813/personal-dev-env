@@ -184,9 +184,7 @@ mod tests {
 
     #[test]
     fn snapshot_parser_skips_bad_lines() {
-        let shas = parse_snapshot_shas(
-            "not json\n{\"event\":\"skip\"}\n{\"sha\":\"abc\"}\n",
-        );
+        let shas = parse_snapshot_shas("not json\n{\"event\":\"skip\"}\n{\"sha\":\"abc\"}\n");
 
         assert_eq!(shas, vec!["abc"]);
     }

@@ -94,8 +94,8 @@ mod tests {
 
     #[test]
     fn status_serializes_snake_case() {
-        let value = serde_json::to_value(sample_result(Status::AgentFailed))
-            .expect("serialize result");
+        let value =
+            serde_json::to_value(sample_result(Status::AgentFailed)).expect("serialize result");
 
         assert_eq!(value["status"], "agent_failed");
         assert_eq!(value["worktree"], "/tmp/worktree");
