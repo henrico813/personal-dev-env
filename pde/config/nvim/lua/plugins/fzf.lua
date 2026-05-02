@@ -18,7 +18,8 @@ require("fzf-lua").setup({
   },
 })
 require("fzf-lua").register_ui_select(function(ui_opts)
-  if ui_opts.prompt == "Select model" then
+  if ui_opts and ui_opts.prompt == "Select model" then
     return { prompt = "Select model, " }
   end
+  return {}
 end)
