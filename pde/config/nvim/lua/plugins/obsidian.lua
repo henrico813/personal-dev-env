@@ -50,6 +50,8 @@ if ok and #workspaces > 0 then
     workspaces = workspaces,
     legacy_commands = false,
     ui = { enable = false },
+    statusline = { enabled = false },
+    footer = { enabled = false },
   })
 end
 
