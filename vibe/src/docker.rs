@@ -23,18 +23,22 @@ struct HostUser {
     gid: String,
 }
 
-pub fn ensure_image(checkout_root: &Path) -> Result<(), String> {
+pub fn ensure_image(runtime_root: &Path) -> Result<(), String> {
+    let dockerfile = runtime_root.join("docker/Dockerfile");
+    if !dockerfile.exists() {
+        return Err(format!(
+            "vibe runtime assets unavailable: {}",
+            dockerfile.display()
+        ));
+    }
     let out = Command::new("docker")
         .args([
             "build",
             "-t",
             IMAGE,
             "-f",
-            checkout_root
-                .join("vibe/docker/Dockerfile")
-                .to_str()
-                .unwrap_or(""),
-            checkout_root.to_str().unwrap_or(""),
+            dockerfile.to_str().unwrap_or(""),
+            runtime_root.to_str().unwrap_or(""),
         ])
         .output()
         .map_err(|e| format!("docker build: {e}"))?;
@@ -47,7 +51,7 @@ pub fn ensure_image(checkout_root: &Path) -> Result<(), String> {
     if out.status.success() {
         Ok(())
     } else {
-        Err("docker build failed".to_string())
+        Err("docker build failed from extracted runtime assets".to_string())
     }
 }
 
