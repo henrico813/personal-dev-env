@@ -3,15 +3,46 @@ local M = {}
 local main_vault = vim.env.PDE_MAIN_VAULT
 local work_vault = vim.env.PDE_WORK_VAULT
 
-local workspaces = {}
-for _, w in ipairs({
-  { name = "main", path = main_vault },
-  { name = "work", path = work_vault },
-}) do
-  if w.path and w.path ~= "" and vim.fn.isdirectory(w.path) == 1 then
-    table.insert(workspaces, w)
-  end
+local vaults = {
+  main = { name = "main", path = main_vault, env = "PDE_MAIN_VAULT" },
+  work = { name = "work", path = work_vault, env = "PDE_WORK_VAULT" },
+}
+
+local sync_states = {
+  main = {
+    running = false,
+    job_id = nil,
+    last_ok_at = nil,
+    last_error = nil,
+    last_message = nil,
+  },
+  work = {
+    running = false,
+    job_id = nil,
+    last_ok_at = nil,
+    last_error = nil,
+    last_message = nil,
+  },
+}
+
+local cached_sync_status = ""
+
+local function is_configured(vault)
+  return vault.path and vault.path ~= "" and vim.fn.isdirectory(vault.path) == 1
 end
+
+local function configured_vaults()
+  local out = {}
+  for _, key in ipairs({ "main", "work" }) do
+    local vault = vaults[key]
+    if is_configured(vault) then
+      table.insert(out, { name = vault.name, path = vault.path })
+    end
+  end
+  return out
+end
+
+local workspaces = configured_vaults()
 
 local ok, obsidian = pcall(require, "obsidian")
 if ok and #workspaces > 0 then
@@ -42,8 +73,8 @@ end
 
 map("<leader>oo", function()
   local dirs = {}
-  if main_vault and main_vault ~= "" then table.insert(dirs, main_vault) end
-  if work_vault and work_vault ~= "" then table.insert(dirs, work_vault) end
+  if is_configured(vaults.main) then table.insert(dirs, vaults.main.path) end
+  if is_configured(vaults.work) then table.insert(dirs, vaults.work.path) end
   if #dirs == 0 then
     vim.notify("No vaults configured. Set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env", vim.log.levels.WARN)
   elseif #dirs == 1 then
@@ -53,65 +84,126 @@ map("<leader>oo", function()
   end
 end, "open note")
 
-map("<leader>om", function() vault_files(main_vault, "PDE_MAIN_VAULT") end, "main vault")
-map("<leader>ow", function() vault_files(work_vault, "PDE_WORK_VAULT") end, "work vault")
+map("<leader>om", function() vault_files(vaults.main.path, vaults.main.env) end, "main vault")
+map("<leader>ow", function() vault_files(vaults.work.path, vaults.work.env) end, "work vault")
 
-local active_syncs = {}
-
-function M.sync_status()
-  local names = {}
-  for path in pairs(active_syncs) do
-    table.insert(names, vim.fn.fnamemodify(path, ":t"))
-  end
-  if #names == 0 then return "" end
-  table.sort(names)
-  return "󰓦 syncing " .. table.concat(names, ", ")
+local function format_time(ts)
+  return ts and os.date("%H:%M", ts) or nil
 end
 
-local function sync_vault(path)
-  local name = vim.fn.fnamemodify(path, ":t")
-  if active_syncs[path] then
-    vim.notify("Sync already running: " .. name, vim.log.levels.INFO)
+local function rebuild_sync_status()
+  local parts = {}
+  for _, key in ipairs({ "main", "work" }) do
+    local state = sync_states[key]
+    local label = vaults[key].name
+    if state.running then
+      table.insert(parts, "󰓦 " .. label .. " syncing")
+    elseif state.last_error then
+      table.insert(parts, "󰅚 " .. label .. " failed")
+    elseif state.last_ok_at then
+      table.insert(parts, "󰄬 " .. label .. " " .. format_time(state.last_ok_at))
+    end
+  end
+  cached_sync_status = table.concat(parts, " · ")
+end
+
+local function refresh_sync_status()
+  rebuild_sync_status()
+  vim.schedule(function()
+    vim.cmd("redrawstatus")
+  end)
+end
+
+function M.sync_status()
+  return cached_sync_status
+end
+
+local function first_nonempty(data)
+  if not data then return nil end
+  for _, line in ipairs(data) do
+    if line and line ~= "" then
+      return line
+    end
+  end
+  return nil
+end
+
+local function sync_vault(key)
+  local vault = vaults[key]
+  local state = sync_states[key]
+  if not is_configured(vault) then
+    vim.notify(unset_msg(vault.env), vim.log.levels.WARN)
+    return
+  end
+  if state.running then
+    vim.notify("Sync already running: " .. vault.name, vim.log.levels.INFO)
     return
   end
 
   local stderr_buf = {}
-  vim.notify("Syncing " .. name .. "...", vim.log.levels.INFO)
-  active_syncs[path] = vim.fn.jobstart({ "ob", "sync" }, {
-    cwd = path,
+  state.running = true
+  state.last_error = nil
+  state.last_message = "syncing"
+  refresh_sync_status()
+  vim.notify("Syncing " .. vault.name .. "...", vim.log.levels.INFO)
+
+  local job_id = vim.fn.jobstart({ "ob", "sync" }, {
+    cwd = vault.path,
+    on_stdout = function(_, data)
+      local line = first_nonempty(data)
+      if line then
+        state.last_message = line
+      end
+    end,
     on_stderr = function(_, data)
-      if data then
-        for _, line in ipairs(data) do
-          if line ~= "" then table.insert(stderr_buf, line) end
-        end
+      local line = first_nonempty(data)
+      if line then
+        table.insert(stderr_buf, line)
+        state.last_message = line
       end
     end,
     on_exit = function(_, code)
-      active_syncs[path] = nil
+      state.running = false
+      state.job_id = nil
+      if code == 0 then
+        state.last_ok_at = os.time()
+        state.last_error = nil
+        state.last_message = "synced"
+      else
+        state.last_error = stderr_buf[1] or ("exit " .. code)
+        state.last_message = state.last_error
+      end
       vim.schedule(function()
-        vim.cmd("redrawstatus")
+        refresh_sync_status()
         if code == 0 then
-          vim.notify("Sync complete: " .. name, vim.log.levels.INFO)
+          vim.notify("Sync complete: " .. vault.name, vim.log.levels.INFO)
         else
-          local err = stderr_buf[1] or ("exit " .. code)
-          vim.notify("Sync failed: " .. name .. " - " .. err, vim.log.levels.WARN)
+          vim.notify("Sync failed: " .. vault.name .. " - " .. state.last_error, vim.log.levels.WARN)
         end
       end)
     end,
   })
-  vim.cmd("redrawstatus")
+
+  state.job_id = job_id > 0 and job_id or nil
+  if not state.job_id then
+    state.running = false
+    state.last_error = "failed to start sync job"
+    state.last_message = state.last_error
+    refresh_sync_status()
+    vim.notify("Sync failed: " .. vault.name .. " - " .. state.last_error, vim.log.levels.WARN)
+  end
 end
 
 map("<leader>os", function()
-  local vaults = {}
-  if main_vault and main_vault ~= "" then table.insert(vaults, main_vault) end
-  if work_vault and work_vault ~= "" then table.insert(vaults, work_vault) end
-  if #vaults == 0 then
-    vim.notify("No vaults configured. Set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env", vim.log.levels.WARN)
-    return
+  local any = false
+  for _, key in ipairs({ "main", "work" }) do
+    if is_configured(vaults[key]) then
+      any = true
+      sync_vault(key)
+    end
   end
-  for _, path in ipairs(vaults) do
-    sync_vault(path)
+  if not any then
+    vim.notify("No vaults configured. Set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env", vim.log.levels.WARN)
   end
 end, "sync vaults")
 
