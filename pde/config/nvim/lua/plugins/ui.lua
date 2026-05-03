@@ -32,6 +32,26 @@ require("lualine").setup({
           return ok and status or ""
         end,
       },
+      {
+        function()
+          local ok, cc = pcall(require, "codecompanion")
+          if not ok then
+            return ""
+          end
+
+          local chat = cc.buf_get_chat(0) or cc.last_chat()
+          if not chat or not chat.adapter then
+            return ""
+          end
+
+          local adapter = chat.adapter.name or chat.adapter.formatted_name or "ai"
+          local model = chat.adapter.schema and chat.adapter.schema.model and chat.adapter.schema.model.default or nil
+          if model and model ~= "" then
+            return string.format("󱙺 %s/%s", adapter, model)
+          end
+          return string.format("󱙺 %s", adapter)
+        end,
+      },
 
       "encoding", "fileformat", "filetype",
     },
