@@ -1,4 +1,20 @@
 require("codecompanion").setup({
+  adapters = {
+    http = {
+      openai_responses = function()
+        return require("codecompanion.adapters").extend("openai_responses", {
+          env = {
+            api_key = "OPENAI_API_KEY",
+          },
+          schema = {
+            model = {
+              default = "gpt-5.3-codex",
+            },
+          },
+        })
+      end,
+    },
+  },
   display = {
     chat = {
       window = {
@@ -20,6 +36,9 @@ require("codecompanion").setup({
       opts = {
         completion_provider = "blink",
       },
+    },
+    inline = {
+      adapter = "openai_responses",
     },
   },
 })
@@ -135,3 +154,6 @@ map("n", "<leader>pag", function()
   editor_diff.new({ Chat = chat }):chat_render()
   chat.ui:open()
 end, { desc = "Add git diff" })
+
+-- Inline must stay on an HTTP adapter. ACP Codex, if later added for chat,
+-- should remain chat-only rather than being reused for inline.

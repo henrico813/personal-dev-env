@@ -183,7 +183,9 @@ CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in
 
 The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
-The config intentionally only maps chat workflows. CodeCompanion inline edits still require an HTTP adapter (Copilot, Ollama, OpenAI, etc.), so no `<leader>` binding is shipped for `:CodeCompanion` until a no-key-compatible HTTP backend is chosen.
+Inline editing is configured through the OpenAI Responses HTTP adapter using a Codex model. This requires `OPENAI_API_KEY` to be present in the shell environment that launches Neovim.
+
+CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat, and verify `OPENAI_API_KEY` is available before using inline actions.
 
 ---
 
