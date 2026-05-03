@@ -42,6 +42,14 @@ vibe run "$PLAN" --step "$STEP" --model "$MODEL" > "/tmp/vibe-step-$STEP.json" 2
 
 If no model was provided, ask the user which model to use. Do not create the branch or worktree manually in Vibe mode; Vibe owns that setup.
 
+Do not rerun a Vibe step that already produced a result commit. For review
+feedback or corrections, append a new follow-up implementation step to the
+plan and run that new step.
+
+For the MVP, step identity is the numeric planner step. After Vibe has
+committed a step, do not insert, remove, or reorder implemented steps in
+a way that changes already-run step numbers.
+
 After each run, parse the final JSON and review the result before continuing:
 
 ```bash
@@ -51,6 +59,7 @@ jq . "/tmp/vibe-step-$STEP.json"
 Handle statuses as follows:
 - `completed`: inspect the commit, run verification, update the plan, then continue.
 - `noop`: continue only if the step was already complete or intentionally no-op.
+- `refused_step_already_run`: stop and append a follow-up step if more work is needed.
 - `agent_failed`, `commit_failed`, `refused_dirty`, `setup_error`: stop, inspect the reported logs/worktree, and notify the user.
 
 For completed steps, review correctness and consistency before running the next step:

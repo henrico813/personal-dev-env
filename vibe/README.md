@@ -53,6 +53,15 @@ directory. On first run, `vibe` extracts its bundled runtime assets to
 vibe run "/absolute/path/to/PDEV-040 Some Plan.md" --step 1 --model anthropic/claude-sonnet-4-6
 ```
 
+`vibe run --step N` refuses when step `N` already has a Vibe
+result commit in the plan branch history. To address review feedback,
+append a new follow-up implementation step to the plan and run that new
+step.
+
+For the MVP, step identity is the numeric planner step. After Vibe has
+committed a step, do not insert, remove, or reorder implemented steps in
+a way that changes already-run step numbers.
+
 ## Runtime model
 
 - the plan worktree stays the canonical git state
