@@ -1,14 +1,71 @@
+local shim_job
+local shim_port = vim.env.OPENCODE_INLINE_SHIM_PORT or "4141"
+local shim_url = "http://127.0.0.1:" .. shim_port
+
+local function shim_bin()
+  local bin = vim.fn.exepath("opencode-inline-shim")
+  if bin == "" then
+    return nil
+  end
+  return bin
+end
+
+local function shim_healthcheck(callback)
+  local bin = shim_bin()
+  if not bin then
+    return callback(false)
+  end
+  vim.system({ bin, "--healthcheck" }, { text = true }, function(result)
+    vim.schedule(function()
+      callback(result.code == 0)
+    end)
+  end)
+end
+
+local function start_inline_shim()
+  local bin = shim_bin()
+  if not bin then
+    vim.notify("opencode-inline-shim not found; run pde install ai-tools", vim.log.levels.WARN)
+    return
+  end
+  if shim_job and vim.fn.jobwait({ shim_job }, 0)[1] == -1 then
+    return
+  end
+  shim_job = vim.fn.jobstart({ bin }, { detach = true })
+  if shim_job <= 0 then
+    vim.notify("failed to start opencode-inline-shim", vim.log.levels.ERROR)
+    return
+  end
+  shim_healthcheck(function(ready)
+    if not ready then
+      vim.notify("opencode-inline-shim did not become ready", vim.log.levels.ERROR)
+    end
+  end)
+end
+
+local function ensure_inline_shim()
+  shim_healthcheck(function(ready)
+    if not ready then
+      start_inline_shim()
+    end
+  end)
+end
+
 require("codecompanion").setup({
   adapters = {
     http = {
-      openai_responses = function()
-        return require("codecompanion.adapters").extend("openai_responses", {
+      opencode_inline = function()
+        return require("codecompanion.adapters").extend("openai_compatible", {
           env = {
-            api_key = "OPENAI_API_KEY",
+            api_key = "EMPTY",
+            url = shim_url,
+            chat_url = "/v1/chat/completions",
+            models_endpoint = "/v1/models",
           },
           schema = {
             model = {
-              default = "gpt-5.3-codex",
+              default = "opencode-inline",
+              choices = { "opencode-inline" },
             },
           },
         })
@@ -38,10 +95,13 @@ require("codecompanion").setup({
       },
     },
     inline = {
-      adapter = "openai_responses",
+      adapter = "opencode_inline",
     },
   },
 })
+
+vim.api.nvim_create_user_command("CodeCompanionOpenCodeInlineShim", start_inline_shim, {})
+ensure_inline_shim()
 
 local map = vim.keymap.set
 local codecompanion = require("codecompanion")
@@ -118,6 +178,7 @@ map("n", "<leader>pm", function()
     change_adapter.select_model(chat)
   end)
 end, { desc = "Select model" })
+map("n", "<leader>pi", "<cmd>CodeCompanionOpenCodeInlineShim<cr>", { desc = "Start inline shim" })
 map("n", "<leader>pab", function()
   local chat = ensure_chat()
   if not chat then
@@ -157,3 +218,5 @@ end, { desc = "Add git diff" })
 
 -- Inline must stay on an HTTP adapter. ACP Codex, if later added for chat,
 -- should remain chat-only rather than being reused for inline.
+-- Inline stays on a local HTTP adapter because CodeCompanion inline does not
+-- support ACP adapters directly. The shim keeps OpenCode local to PDE.
