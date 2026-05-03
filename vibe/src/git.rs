@@ -106,7 +106,20 @@ pub fn head_sha(repo: &Path) -> Result<String, String> {
     git(repo, &["rev-parse", "HEAD"])
 }
 
-/// Final commits are the canonical run result; snapshot hooks ignore this kind.
+pub fn find_vibe_step_commit(repo: &Path, step: u32) -> Result<Option<String>, String> {
+    let log = git(repo, &["log", "--format=%H%x00%s"])?;
+    Ok(find_vibe_step_commit_in_log(&log, step))
+}
+
+fn find_vibe_step_commit_in_log(log: &str, step: u32) -> Option<String> {
+    let prefix = format!("vibe: step {step} ");
+    log.lines().find_map(|line| {
+        let (sha, subject) = line.split_once('\0')?;
+        subject.starts_with(&prefix).then(|| sha.to_string())
+    })
+}
+
+/// Result commits are the canonical run result; snapshot hooks ignore this kind.
 pub fn commit_all(
     repo: &Path,
     message: &str,
@@ -149,4 +162,33 @@ pub fn commit_all(
         return Err("git commit failed".to_string());
     }
     head_sha(repo)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::find_vibe_step_commit_in_log;
+
+    #[test]
+    fn finds_matching_step_commit() {
+        let log = "abc123\0vibe: step 5 Add inline config\n";
+
+        assert_eq!(
+            find_vibe_step_commit_in_log(log, 5),
+            Some("abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn does_not_match_step_prefixes() {
+        let log = "abc123\0vibe: step 50 Add later config\n";
+
+        assert_eq!(find_vibe_step_commit_in_log(log, 5), None);
+    }
+
+    #[test]
+    fn ignores_non_vibe_commits() {
+        let log = "abc123\0fix(nvim): restore inline config\n";
+
+        assert_eq!(find_vibe_step_commit_in_log(log, 5), None);
+    }
 }
