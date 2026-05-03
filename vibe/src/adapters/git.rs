@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct RepoLayout {
-    pub canonical_repo_root: PathBuf,
+    pub repo_root: PathBuf,
     pub git_common_dir: PathBuf,
 }
 
@@ -18,19 +18,52 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+pub fn validate_worktree(
+    worktree: &Path,
+    expected_branch: &str,
+    expected_git_common_dir: &Path,
+) -> Result<(), String> {
+    let inside = git(worktree, &["rev-parse", "--is-inside-work-tree"])?;
+    if inside != "true" {
+        return Err(format!("not a git worktree: {}", worktree.display()));
+    }
+
+    let branch = git(worktree, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    if branch != expected_branch {
+        return Err(format!(
+            "worktree {} is on branch {branch}, expected {expected_branch}",
+            worktree.display()
+        ));
+    }
+
+    let actual_common_dir = PathBuf::from(git(
+        worktree,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?);
+    if actual_common_dir != expected_git_common_dir {
+        return Err(format!(
+            "worktree {} belongs to {}, expected {}",
+            worktree.display(),
+            actual_common_dir.display(),
+            expected_git_common_dir.display()
+        ));
+    }
+    Ok(())
+}
+
 pub fn repo_layout() -> Result<RepoLayout, String> {
     let checkout_root = PathBuf::from(git(Path::new("."), &["rev-parse", "--show-toplevel"])?);
     let git_common_dir = PathBuf::from(git(
         &checkout_root,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
     )?);
-    let canonical_repo_root = git_common_dir
+    let repo_root = git_common_dir
         .parent()
         .filter(|_| git_common_dir.file_name().and_then(|name| name.to_str()) == Some(".git"))
         .ok_or_else(|| format!("unexpected git common dir: {}", git_common_dir.display()))?
         .to_path_buf();
     Ok(RepoLayout {
-        canonical_repo_root,
+        repo_root,
         git_common_dir,
     })
 }
@@ -69,11 +102,12 @@ pub fn ensure_worktree(
     repo_root: &Path,
     worktree: &Path,
     branch: &str,
+    git_common_dir: &Path,
     remote: &str,
     base_branch: &str,
 ) -> Result<(), String> {
     if worktree.exists() {
-        return Ok(());
+        return validate_worktree(worktree, branch, git_common_dir);
     }
     let base_ref = format!("{remote}/{base_branch}");
     git(repo_root, &["fetch", remote, base_branch])?;
@@ -95,7 +129,7 @@ pub fn ensure_worktree(
             ],
         )?;
     }
-    Ok(())
+    validate_worktree(worktree, branch, git_common_dir)
 }
 
 pub fn is_dirty(repo: &Path) -> Result<bool, String> {

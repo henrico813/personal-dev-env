@@ -25,14 +25,23 @@ mod tests {
 
     #[test]
     fn snapshot_parser_reads_shas() {
-        let shas = parse_snapshot_shas("{\"sha\":\"abc\"}\n{\"sha\":\"def\"}\n");
+        let shas = parse_snapshot_shas(
+            r#"{"sha":"abc"}
+{"sha":"def"}
+"#,
+        );
 
         assert_eq!(shas, vec!["abc", "def"]);
     }
 
     #[test]
     fn snapshot_parser_skips_bad_lines() {
-        let shas = parse_snapshot_shas("not json\n{\"event\":\"skip\"}\n{\"sha\":\"abc\"}\n");
+        let shas = parse_snapshot_shas(
+            r#"not json
+{"event":"skip"}
+{"sha":"abc"}
+"#,
+        );
 
         assert_eq!(shas, vec!["abc"]);
     }

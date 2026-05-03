@@ -11,7 +11,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
     };
-    let artifacts = match observe::create_artifacts(&session.canonical_repo_root, &session.slug) {
+    let artifacts = match observe::create_artifacts(session.repo_root(), &session.slug) {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
@@ -42,7 +42,8 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(path) => path,
         Err(err) => return RunResult::setup_error(err),
     };
-    let agent_exit = match sandbox::run_agent(&runtime_root, &session, &artifacts, &args.model) {
+    let mounts = session.sandbox_mounts();
+    let agent_exit = match sandbox::run_agent(&runtime_root, &mounts, &artifacts, &args.model) {
         Ok(code) => code,
         Err(err) => return RunResult::setup_error(err),
     };

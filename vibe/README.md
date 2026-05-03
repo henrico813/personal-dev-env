@@ -60,7 +60,8 @@ vibe run \
 - Vibe mounts the target worktree, shared git metadata, and `/artifacts`
 - the container runs as the host UID/GID and sets git `safe.directory`
 
-Artifacts land under `~/.local/state/vibe/<repo>/<key>/runs/.../`.
+Artifacts land under `~/.local/state/vibe/<repo>/<slug>/runs/.../`, where
+`<slug>` is the normalized `--key` value.
 `stdout` returns one machine-readable JSON result. Progress logs stay on
 `stderr`, `events.jsonl`, `extension-events.jsonl`, and
 `agent.stderr.log`.

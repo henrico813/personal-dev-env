@@ -24,10 +24,50 @@ If no plan path provided, ask for one.
 
 ## Detailed Implementation Strategy
 
-If this repository provides a repo-local wrapper around `vibe`, use that
-wrapper rather than invoking `vibe` directly. Vibe is a low-level
-worktree and sandbox harness; it no longer owns planner-step extraction
-or implementation-plan workflow policy by itself.
+When `vibe` is available, prefer Vibe mode for implementation plans. Use the
+`vibe` CLI directly as the execution surface.
+
+Before using Vibe, inspect the installed CLI:
+
+```bash
+which vibe
+vibe --help
+vibe run --help
+```
+
+Read the plan fully, then run one unchecked implementation step at a time.
+If Vibe keeps planner-step extraction in its CLI, invoke it directly with the
+plan and step arguments. If prompt preparation moves outside Vibe, generate the
+prompt file first and then invoke `vibe run --key ... --prompt-file ...`.
+
+Do not create the branch or worktree manually in Vibe mode; Vibe owns that
+setup.
+
+After each run, parse the final JSON and review the result before continuing.
+
+Handle statuses as follows:
+- `completed`: inspect the commit, run verification, update the plan, then continue.
+- `noop`: continue only if the step was already complete or intentionally no-op.
+- `agent_failed`, `commit_failed`, `refused_dirty`, `setup_error`: stop, inspect the reported logs/worktree, and notify the user.
+
+For completed steps, review correctness and consistency before running the next
+step:
+- changes match the plan step
+- no unrelated files changed
+- no secrets or generated artifacts were committed
+- verification passes
+
+Update plan state with the planner CLI, not direct markdown edits. Do not mark
+manual verification complete unless the user confirms it.
+
+When finished, summarize:
+- steps run
+- statuses
+- commits
+- worktree/branch
+- verification results
+- log/artifact paths
+- any remaining manual checks or risks
 
 ## Implementation Philosophy
 

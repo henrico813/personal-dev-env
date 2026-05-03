@@ -92,8 +92,7 @@ fn host_user() -> Result<HostUser, String> {
 }
 
 pub fn run_task(
-    _runtime_root: &Path,
-    canonical_repo_root: &Path,
+    repo_root: &Path,
     git_common_dir: &Path,
     worktree: &Path,
     artifacts: &ArtifactPaths,
@@ -154,7 +153,7 @@ pub fn run_task(
         "-e",
         "VIBE_GIT_HOOKS_DIR=/opt/vibe/hooks",
         "-e",
-        &format!("VIBE_CANONICAL_REPO_ROOT={}", canonical_repo_root.display()),
+        &format!("VIBE_CANONICAL_REPO_ROOT={}", repo_root.display()),
     ]);
     for key in AUTH_VARS {
         if let Ok(value) = std::env::var(key) {

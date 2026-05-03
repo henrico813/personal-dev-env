@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::{
     adapters::{docker, runtime},
     observe::ArtifactPaths,
-    worktree::WorktreeSession,
+    worktree::SandboxMounts,
 };
 
 pub fn prepare() -> Result<PathBuf, String> {
@@ -14,16 +14,15 @@ pub fn prepare() -> Result<PathBuf, String> {
 }
 
 pub fn run_agent(
-    runtime_root: &Path,
-    session: &WorktreeSession,
+    _runtime_root: &Path,
+    mounts: &SandboxMounts,
     artifacts: &ArtifactPaths,
     model: &str,
 ) -> Result<i32, String> {
     docker::run_task(
-        runtime_root,
-        &session.canonical_repo_root,
-        &session.git_common_dir,
-        &session.worktree,
+        &mounts.repo_root,
+        &mounts.git_common_dir,
+        &mounts.worktree,
         artifacts,
         model,
     )
