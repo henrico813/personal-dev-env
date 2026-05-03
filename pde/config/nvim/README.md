@@ -28,11 +28,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim detects a language), `BufWinEnter` (a buffer appears in a window), `VimLeavePre` (just before exit), `User PersistenceLoadPost` (custom event fired by persistence.nvim). Autocmds are the main way plugins and this config extend default behavior.
 
-**Filetypes.** Nvim sniffs each buffer and sets `&filetype` (`lua`, `python`, `markdown`, etc.). Many features — syntax, LSP, our styling — key off this. Pi panels have custom filetypes like `pi-chat-history`, which is how we match them in `lua/core/options.lua` without hard-coding buffer names.
+**Filetypes.** Nvim sniffs each buffer and sets `&filetype` (`lua`, `python`, `markdown`, etc.). Many features — syntax, LSP, our styling — key off this. CodeCompanion chat buffers use `codecompanion` / `codecompanion_input`, which is how we style and resize them in `lua/core/options.lua` without keying off buffer names.
 
 **Pack directories.** Neovim's built-in plugin loader. Anything under `~/.config/nvim/pack/plugins/start/<name>/` is added to `runtimepath` automatically on startup. No `packer.nvim`, no `lazy.nvim` — just clone a repo into that directory and it's installed. We deliberately chose this to keep the config simple and auditable.
 
-**`require()`.** When your config calls `require("plugins.pi")`, Lua searches `runtimepath` for `lua/plugins/pi.lua` or `lua/plugins/pi/init.lua`. Both forms work. Our `lua/` tree mirrors the require paths: `require("core.options")` → `lua/core/options.lua`.
+**`require()`.** When your config calls `require("plugins.codecompanion")`, Lua searches `runtimepath` for `lua/plugins/codecompanion.lua` or `lua/plugins/codecompanion/init.lua`. Both forms work. Our `lua/` tree mirrors the require paths: `require("core.options")` → `lua/core/options.lua`.
 
 ---
 
@@ -42,11 +42,10 @@ Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim
 init.lua                  entry point — order of requires
 lua/
   core/
-    options.lua           global vim options, pi-pane styling autocmds, window clamping
+    options.lua           global vim options and CodeCompanion buffer styling autocmds
     keymaps.lua           non-LSP global keymaps (buffers, tabs, terminal)
   plugins/                one file per plugin (setup + keymaps together)
 bin/
-  pi-nvim                 wrapper that skips the buggy pi-pretty extension
 ```
 
 Each plugin file calls its plugin's `.setup({...})` and registers any keymaps the plugin owns. Keymaps live next to the feature that provides them — git keymaps in the git files, LSP keymaps inside an `LspAttach` autocmd in `lsp.lua`. This is intentional: when you want to change a binding, you know where to look.
@@ -70,8 +69,8 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 | `session.lua` | persistence | per-cwd session save / restore |
 | `alpha.lua` | alpha | side-by-side dashboard (image + session list) |
 | `header.ansi` | — | chafa-generated colored image used by the dashboard |
-| `render-markdown.lua` | render-markdown | markdown + pi chat rendering |
-| `pi.lua` | alex35mil/pi.nvim | pi coding agent |
+| `render-markdown.lua` | render-markdown | markdown + CodeCompanion chat rendering |
+| `codecompanion.lua` | olimorris/codecompanion.nvim | OpenCode-backed chat UI |
 
 ---
 
@@ -79,7 +78,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 
 Don't memorize a table here. The live source of truth is which-key.
 
-- Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` pi, `q` session, `<Tab>` tabs, and so on).
+- Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` ai/chat, `q` session, `<Tab>` tabs, and so on).
 - Press `<leader>?` to see only the keymaps active for the *current buffer* (useful in LSP-attached files).
 - Inside a specific plugin (e.g. lazygit's floating window or Mason's UI), press `g?` for that plugin's own keybindings.
 
@@ -89,8 +88,15 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 |---|---|
 | `<leader><leader>` | Find files (fzf) |
 | `<leader>/` | Fuzzy search current buffer |
-| `<leader>pc` | Toggle pi chat |
-| `<leader>pC` | Continue last pi session |
+| `<leader>pc` | Toggle CodeCompanion chat |
+| `<leader>pn` | Open a new chat buffer |
+| `<leader>ps` | Send the current chat, or add the current selection |
+| `<leader>pk` | Stop the active request |
+| `<leader>pp` | Open the CodeCompanion action palette |
+| `<leader>pm` | Select a model directly |
+| `<leader>po` | Open CodeCompanion options |
+| `<leader>pe` | Explain the current buffer or visual selection |
+| `<leader>pa…` | Attach context (buffer, file, diff, diagnostics) |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
 | `<C-/>` | Open a terminal split |
@@ -146,7 +152,8 @@ Common server names: `pyright`, `ts_ls` (TypeScript), `gopls`, `rust-analyzer`, 
 |---|---|
 | LSP keymap missing | `:lua =vim.lsp.get_clients({ bufnr = 0 })` — empty means no LSP is attached to this filetype. Install a server. |
 | Which-key group not labeled | Check `spec` in `lua/plugins/whichkey.lua`. Each group prefix needs a row. |
-| Pi crashes on session reload | Verify `pi-nvim` is on `$PATH`: `which pi-nvim`. See "Pi setup" below. |
+| CodeCompanion chat won't open | Verify `opencode` is on `$PATH`: `which opencode`. See "CodeCompanion setup" below. |
+| Wrong AI pane width after resizing | Close stray splits and resize again; `lua/core/options.lua` clamps CodeCompanion windows back into the 25%-40% range. |
 | Weird buffers after `<leader>qs` | See "Session restore" below — especially the `sessionoptions` tweaks. |
 | Plugin not loading | Check `runtimepath`: `:lua =vim.opt.runtimepath:get()`. Verify the pack dir exists. |
 
@@ -165,21 +172,20 @@ What `lua/plugins/session.lua` customizes:
 - **Scratch buffers wiped pre-load.** The alpha dashboard (an unnamed buffer) gets deleted before the session file is sourced, so it doesn't stack alongside restored windows.
 - **Active-buffer sanity.** On save, if the active buffer is nameless, we switch to a real file first so mksession records something useful. On load, if we land on an empty buffer, we jump to the newest real file.
 - **Diffview closed pre-save.** Diffview workspaces can't be serialized; we close them so the session file isn't polluted with dangling windows.
-- **Pi auto-continue.** On `PersistenceLoadPost`, any zombie `pi-chat-*` buffers are wiped and `:PiContinue` runs, which reconnects pi and loads the last chat.
 
 **Not restored:** diffview tabs. Reopen them manually after restoring (`<leader>gd`, `<leader>gD`, `<leader>gH`).
 
 ---
 
-## Pi setup
+## CodeCompanion setup
 
-Pi.nvim (alex35mil's version) spawns one `pi --mode rpc` subprocess per tab. We don't launch `pi` directly — we launch our wrapper `~/.local/bin/pi-nvim`, pointed at via the `bin = "pi-nvim"` option in `lua/plugins/pi.lua`.
+CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in `opencode` ACP adapter for chat, so Neovim talks to the already-installed `opencode` CLI directly instead of launching Pi through a wrapper.
 
-**Why the wrapper.** The `@heyhuynhgiabuu/pi-pretty` extension captures a `ctx` reference inside a `setTimeout` callback. When pi's session is replaced (which happens any time you reload or continue a session), the captured ctx becomes stale and the timer fires into a crash. Upstream bug.
+The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
-The wrapper avoids it without uninstalling pi-pretty globally. It reads `~/.pi/agent/settings.json`, and launches pi with `--no-extensions` plus explicit `-e <path>` for every configured extension *except* pi-pretty. Extensions added later via `pi install` are picked up automatically — no wrapper edit needed.
+Inline editing is configured through the OpenAI Responses HTTP adapter using a Codex model. This requires `OPENAI_API_KEY` to be present in the shell environment that launches Neovim.
 
-Source lives at `pde/config/nvim/bin/pi-nvim` and gets symlinked to `~/.local/bin/pi-nvim` by `install_editor()` in `pde/lib/editor.sh`.
+CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat, and verify `OPENAI_API_KEY` is available before using inline actions.
 
 ---
 
@@ -206,8 +212,8 @@ The right column lists the 5 most recent persistence.nvim sessions (mtime-sorted
 
 ## Known quirks
 
-- **Blink completion is manual-trigger.** The menu does not pop on every keystroke — press `<C-Space>` to open it. Exception: the pi prompt buffer has a dedicated pi source registered via `per_filetype`, still triggered manually.
+- **Blink completion is manual-trigger.** The menu does not pop on every keystroke — press `<C-Space>` to open it. CodeCompanion registers its own blink source for `codecompanion` and `codecompanion_input` buffers.
 - **LSP keymaps are buffer-local.** They only exist in buffers where a server has attached (via the `LspAttach` autocmd in `lsp.lua`). If you don't see `<leader>c*` in which-key, no LSP is attached to that filetype.
-- **Pi panels use `winfixbuf`.** Clicking a bufferline tab from inside a pi window would normally error — bufferline's `left_mouse_command` override jumps to the first non-locked window first. Same wrapper protects `<S-h>` / `<S-l>` buffer cycling.
+- **Utility panels use `winfixbuf`.** Clicking a bufferline tab from inside a locked panel would normally error — bufferline's `left_mouse_command` override jumps to the first non-locked window first. Same wrapper protects `<S-h>` / `<S-l>` buffer cycling.
 - **Which-key helix preset is heavy.** We've tuned it with `icons.mappings = false` and a `desc`-only filter. If it's still slow on your machine, change `preset` to `modern` or `classic` in `whichkey.lua`.
-- **Tab labels auto-detect diffview and pi.** `ui.lua`'s `name_formatter` shows "Diff" for Diffview tabs and "Pi" for pi-chat tabs, otherwise uses `vim.t.name` (set via `<leader><Tab>r`) or the filename.
+- **Tab labels auto-detect diffview and CodeCompanion.** `ui.lua`'s `name_formatter` shows "Diff" for Diffview tabs and "AI" for CodeCompanion tabs, otherwise uses `vim.t.name` (set via `<leader><Tab>r`) or the filename.
