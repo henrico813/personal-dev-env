@@ -32,8 +32,10 @@ install_editor() {
         "https://github.com/nvim-lualine/lualine.nvim"
         "https://github.com/akinsho/bufferline.nvim"
         "https://github.com/ibhagwan/fzf-lua"
+        "https://github.com/nvim-lua/plenary.nvim"
         "https://github.com/Saghen/blink.cmp"
         "https://github.com/Saghen/blink.lib"
+        "https://github.com/olimorris/codecompanion.nvim"
         "https://github.com/folke/which-key.nvim"
         "https://github.com/lewis6991/gitsigns.nvim"
         "https://github.com/folke/trouble.nvim"
@@ -41,7 +43,6 @@ install_editor() {
         "https://github.com/linrongbin16/gitlinker.nvim"
         "https://github.com/folke/persistence.nvim"
         "https://github.com/goolord/alpha-nvim"
-        "https://github.com/alex35mil/pi.nvim"
         "https://github.com/sindrets/diffview.nvim"
         "https://github.com/mason-org/mason.nvim"
         "https://github.com/mason-org/mason-lspconfig.nvim"
@@ -60,11 +61,11 @@ install_editor() {
         fi
     done
 
-    # Install pi-nvim wrapper (launches pi without the buggy pi-pretty extension)
+    # Remove deprecated Pi runtime artifacts on re-runs.
     local user_bin="$HOME/.local/bin"
     mkdir -p "$user_bin"
-    link_config "$src_dir/bin/pi-nvim" "$user_bin/pi-nvim"
-    chmod +x "$src_dir/bin/pi-nvim"
+    rm -rf "$pack_dir/pi.nvim"
+    rm -f "$user_bin/pi-nvim"
 
     # Build blink.cmp native fuzzy library.
     if command -v cargo &>/dev/null && [[ -d "$pack_dir/blink.cmp" ]]; then
