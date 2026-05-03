@@ -191,7 +191,7 @@ Start OpenCode before using inline edits:
 opencode serve --hostname 127.0.0.1 --port 4199
 ```
 
-Neovim probes `opencode-inline-shim` on startup and starts it automatically when the binary is available on `$PATH`. Run `:CodeCompanionOpenCodeInlineShim` to restart it manually, and verify `opencode-inline-shim --healthcheck` succeeds if inline requests fail.
+Neovim only probes `opencode-inline-shim` when the binary is already available on `$PATH`, so a plain `minimal` install stays quiet until you install `ai-tools`. Run `:CodeCompanionOpenCodeInlineShim` to start or restart it manually, and verify `opencode-inline-shim --healthcheck` succeeds if inline requests fail.
 
 CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` and `which opencode-inline-shim` both return paths before opening chat or inline.
 

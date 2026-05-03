@@ -22,10 +22,24 @@ local function shim_healthcheck(callback)
   end)
 end
 
-local function start_inline_shim()
+local function wait_for_shim_ready(attempts, callback)
+  shim_healthcheck(function(ready)
+    if ready or attempts <= 1 then
+      return callback(ready)
+    end
+    vim.defer_fn(function()
+      wait_for_shim_ready(attempts - 1, callback)
+    end, 150)
+  end)
+end
+
+local function start_inline_shim(opts)
+  opts = opts or {}
   local bin = shim_bin()
   if not bin then
-    vim.notify("opencode-inline-shim not found; run pde install ai-tools", vim.log.levels.WARN)
+    if opts.notify_missing then
+      vim.notify("opencode-inline-shim not found; run pde install ai-tools", vim.log.levels.WARN)
+    end
     return
   end
   if shim_job and vim.fn.jobwait({ shim_job }, 0)[1] == -1 then
@@ -36,7 +50,7 @@ local function start_inline_shim()
     vim.notify("failed to start opencode-inline-shim", vim.log.levels.ERROR)
     return
   end
-  shim_healthcheck(function(ready)
+  wait_for_shim_ready(10, function(ready)
     if not ready then
       vim.notify("opencode-inline-shim did not become ready", vim.log.levels.ERROR)
     end
@@ -44,6 +58,9 @@ local function start_inline_shim()
 end
 
 local function ensure_inline_shim()
+  if not shim_bin() then
+    return
+  end
   shim_healthcheck(function(ready)
     if not ready then
       start_inline_shim()
@@ -100,7 +117,9 @@ require("codecompanion").setup({
   },
 })
 
-vim.api.nvim_create_user_command("CodeCompanionOpenCodeInlineShim", start_inline_shim, {})
+vim.api.nvim_create_user_command("CodeCompanionOpenCodeInlineShim", function()
+  start_inline_shim({ notify_missing = true })
+end, {})
 ensure_inline_shim()
 
 local map = vim.keymap.set

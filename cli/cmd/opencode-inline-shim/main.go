@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -123,9 +124,33 @@ func runHealthcheck(cfg config) error {
 	return nil
 }
 
+func backendReachable(ctx context.Context, cfg config) error {
+	backendURL, err := url.Parse(cfg.opencodeBaseURL)
+	if err != nil {
+		return fmt.Errorf("parse OpenCode base URL: %w", err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, backendURL.String(), nil)
+	if err != nil {
+		return err
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+	return nil
+}
+
 func runServer(cfg config) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := backendReachable(ctx, cfg); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "backend": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +160,7 @@ func runServer(cfg config) error {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"object": "list",
-			"data": []map[string]string{{"id": cfg.defaultModel, "object": "model"}},
+			"data":   []map[string]string{{"id": cfg.defaultModel, "object": "model"}},
 		})
 	})
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +238,6 @@ func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
 	defer body.Close()
 	var requestBody chatRequest
 	decoder := json.NewDecoder(body)
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&requestBody); err != nil {
 		return chatRequest{}, fmt.Errorf("decode request body: %w", err)
 	}
@@ -251,7 +275,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 				"type":     "object",
 				"required": []string{"placement"},
 				"properties": map[string]any{
-					"code": map[string]string{"type": "string"},
+					"code":     map[string]string{"type": "string"},
 					"language": map[string]string{"type": "string"},
 					"placement": map[string]any{
 						"type": "string",
