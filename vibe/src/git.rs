@@ -106,7 +106,11 @@ pub fn head_sha(repo: &Path) -> Result<String, String> {
     git(repo, &["rev-parse", "HEAD"])
 }
 
-pub fn find_vibe_step_commit(repo: &Path, step: u32, base_ref: &str) -> Result<Option<String>, String> {
+pub fn find_vibe_step_commit(
+    repo: &Path,
+    step: u32,
+    base_ref: &str,
+) -> Result<Option<String>, String> {
     let range = format!("{base_ref}..HEAD");
     let log = git(repo, &["log", "--format=%H%x00%s", &range])?;
     Ok(find_vibe_step_commit_in_log(&log, step))
