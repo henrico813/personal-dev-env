@@ -83,6 +83,19 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => return RunResult::setup_error(err),
         Ok(false) => {}
     }
+    match git::find_vibe_step_commit(&worktree, args.step) {
+        Ok(Some(existing_commit)) => {
+            return refused_step_already_run(
+                &args,
+                &branch,
+                &worktree,
+                &run_paths,
+                &existing_commit,
+            );
+        }
+        Ok(None) => {}
+        Err(err) => return RunResult::setup_error(err),
+    }
 
     let pre_step_commit = match git::head_sha(&worktree) {
         Ok(sha) => sha,
@@ -171,9 +184,37 @@ fn parse_snapshot_shas(text: &str) -> Vec<String> {
         .collect()
 }
 
+fn refused_step_already_run(
+    args: &RunArgs,
+    branch: &str,
+    worktree: &Path,
+    run_paths: &paths::RunPaths,
+    existing_commit: &str,
+) -> RunResult {
+    RunResult {
+        status: Status::RefusedStepAlreadyRun,
+        step: Some(args.step),
+        branch: Some(branch.to_string()),
+        worktree: Some(worktree.display().to_string()),
+        model: Some(args.model.clone()),
+        pre_step_commit: None,
+        commit: None,
+        snapshot_commits: Vec::new(),
+        events_log_path: Some(run_paths.events_jsonl.display().to_string()),
+        stderr_path: Some(run_paths.stderr_log.display().to_string()),
+        error_message: Some(format!(
+            "step {} already has Vibe result commit {}; append a follow-up step and run that instead",
+            args.step, existing_commit
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_snapshot_shas;
+    use super::{parse_snapshot_shas, refused_step_already_run};
+    use crate::{cli::RunArgs, output::Status, paths::RunPaths};
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn snapshot_parser_reads_shas() {
@@ -187,5 +228,43 @@ mod tests {
         let shas = parse_snapshot_shas("not json\n{\"event\":\"skip\"}\n{\"sha\":\"abc\"}\n");
 
         assert_eq!(shas, vec!["abc"]);
+    }
+
+    #[test]
+    fn refused_step_result_has_no_commit_or_snapshots() {
+        let temp = tempdir().expect("tempdir");
+        let dir = temp.path().join("run");
+        std::fs::create_dir_all(&dir).expect("run dir");
+        let paths = RunPaths {
+            dir: dir.clone(),
+            step_json: dir.join("step.json"),
+            prompt_txt: dir.join("prompt.txt"),
+            events_jsonl: dir.join("events.jsonl"),
+            stderr_log: dir.join("agent.stderr.log"),
+            snapshots_jsonl: dir.join("snapshots.jsonl"),
+        };
+        let args = RunArgs {
+            plan: PathBuf::from("plan.md"),
+            step: 7,
+            model: "test/model".to_string(),
+        };
+
+        let result = refused_step_already_run(
+            &args,
+            "branch",
+            &temp.path().join("worktree"),
+            &paths,
+            "abc123",
+        );
+
+        assert!(matches!(result.status, Status::RefusedStepAlreadyRun));
+        assert_eq!(result.pre_step_commit, None);
+        assert_eq!(result.commit, None);
+        assert!(result.snapshot_commits.is_empty());
+        assert!(result
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("append a follow-up step"));
     }
 }

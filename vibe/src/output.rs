@@ -9,6 +9,7 @@ pub enum Status {
     AgentFailed,
     CommitFailed,
     RefusedDirty,
+    RefusedStepAlreadyRun,
     SetupError,
 }
 
@@ -36,6 +37,7 @@ impl RunResult {
             Status::CommitFailed => 3,
             Status::RefusedDirty => 4,
             Status::SetupError => 5,
+            Status::RefusedStepAlreadyRun => 6,
         }
     }
 
@@ -85,6 +87,7 @@ mod tests {
             (Status::CommitFailed, 3),
             (Status::RefusedDirty, 4),
             (Status::SetupError, 5),
+            (Status::RefusedStepAlreadyRun, 6),
         ];
 
         for (status, code) in cases {
@@ -115,5 +118,13 @@ mod tests {
         assert!(value["worktree"].is_null());
         assert!(value["commit"].is_null());
         assert_eq!(value["error_message"], "planner not found");
+    }
+
+    #[test]
+    fn refused_step_status_serializes() {
+        let value = serde_json::to_value(sample_result(Status::RefusedStepAlreadyRun))
+            .expect("serialize result");
+
+        assert_eq!(value["status"], "refused_step_already_run");
     }
 }
