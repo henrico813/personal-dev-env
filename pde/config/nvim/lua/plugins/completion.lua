@@ -3,10 +3,8 @@ require("blink.cmp").setup({
   sources = {
     default = { "lsp", "path", "buffer" },
     per_filetype = {
-      ["pi-chat-prompt"] = { "pi" },
-    },
-    providers = {
-      pi = { name = "Pi", module = "pi.completion.blink" },
+      codecompanion = { "codecompanion" },
+      codecompanion_input = { "codecompanion" },
     },
   },
   completion = {

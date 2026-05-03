@@ -24,7 +24,7 @@ do
     end)
   end
 end
-require("plugins.pi")
+require("plugins.codecompanion")
 require("plugins.alpha")
 require("plugins.lazygit")
 require("plugins.gitlinker")

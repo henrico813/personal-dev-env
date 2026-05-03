@@ -10,6 +10,8 @@ install_ai() {
     install_nvm
     install_node
     install_claude
+    # Keep OPENAI_API_KEY externally sourced; document or load it through the
+    # existing shell or secrets path rather than hardcoding it in PDE.
 }
 
 install_nvm() {
