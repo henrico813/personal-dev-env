@@ -106,7 +106,7 @@ pub fn head_sha(repo: &Path) -> Result<String, String> {
     git(repo, &["rev-parse", "HEAD"])
 }
 
-/// Final commits are the canonical run result; snapshot hooks ignore this kind.
+/// Result commits are the canonical run result; snapshot hooks ignore this kind.
 pub fn commit_all(
     repo: &Path,
     message: &str,

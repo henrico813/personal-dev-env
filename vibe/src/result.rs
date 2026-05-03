@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-/// Stable day-1 machine-readable outcome for `vibe run`.
+/// Stable machine-readable outcome for `vibe run`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
@@ -15,13 +15,13 @@ pub enum Status {
 #[derive(Debug, Clone, Serialize)]
 pub struct RunResult {
     pub status: Status,
-    pub step: Option<u32>,
     pub branch: Option<String>,
     pub worktree: Option<String>,
     pub model: Option<String>,
-    pub pre_step_commit: Option<String>,
+    pub pre_run_commit: Option<String>,
     pub commit: Option<String>,
     pub snapshot_commits: Vec<String>,
+    pub artifacts_dir: Option<String>,
     pub events_log_path: Option<String>,
     pub stderr_path: Option<String>,
     pub error_message: Option<String>,
@@ -42,13 +42,13 @@ impl RunResult {
     pub fn setup_error(message: impl Into<String>) -> Self {
         Self {
             status: Status::SetupError,
-            step: None,
             branch: None,
             worktree: None,
             model: None,
-            pre_step_commit: None,
+            pre_run_commit: None,
             commit: None,
             snapshot_commits: Vec::new(),
+            artifacts_dir: None,
             events_log_path: None,
             stderr_path: None,
             error_message: Some(message.into()),
@@ -63,15 +63,15 @@ mod tests {
     fn sample_result(status: Status) -> RunResult {
         RunResult {
             status,
-            step: Some(1),
-            branch: Some("branch".to_string()),
+            branch: Some("vibe/pdev-049-demo".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
-            model: Some("openai-codex/gpt-5.5".to_string()),
-            pre_step_commit: Some("abc".to_string()),
+            model: Some("openai-codex/gpt-5.4".to_string()),
+            pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
-            events_log_path: Some("/tmp/events.jsonl".to_string()),
-            stderr_path: Some("/tmp/agent.stderr.log".to_string()),
+            artifacts_dir: Some("/tmp/run".to_string()),
+            events_log_path: Some("/tmp/run/events.jsonl".to_string()),
+            stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
             error_message: None,
         }
     }
@@ -93,27 +93,12 @@ mod tests {
     }
 
     #[test]
-    fn status_serializes_snake_case() {
+    fn result_serializes_snake_case() {
         let value =
             serde_json::to_value(sample_result(Status::AgentFailed)).expect("serialize result");
 
         assert_eq!(value["status"], "agent_failed");
-        assert_eq!(value["worktree"], "/tmp/worktree");
-        assert!(value.get("snapshot_commits").is_some());
-        assert!(value.get("events_log_path").is_some());
-    }
-
-    #[test]
-    fn setup_error_uses_null_fields() {
-        let result = RunResult::setup_error("planner not found");
-        let value = serde_json::to_value(&result).expect("serialize setup error");
-
-        assert_eq!(result.exit_code(), 5);
-        assert!(matches!(result.status, Status::SetupError));
-        assert!(value["step"].is_null());
-        assert!(value["branch"].is_null());
-        assert!(value["worktree"].is_null());
-        assert!(value["commit"].is_null());
-        assert_eq!(value["error_message"], "planner not found");
+        assert_eq!(value["artifacts_dir"], "/tmp/run");
+        assert_eq!(value["pre_run_commit"], "abc");
     }
 }

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::paths::RunPaths;
+use crate::observe::ArtifactPaths;
 
 const IMAGE: &str = "vibe-pi:0.1.0";
 const AUTH_VARS: &[&str] = &[
@@ -91,17 +91,18 @@ fn host_user() -> Result<HostUser, String> {
     })
 }
 
-pub fn run_step(
+pub fn run_task(
+    _runtime_root: &Path,
     canonical_repo_root: &Path,
     git_common_dir: &Path,
     worktree: &Path,
-    run_paths: &RunPaths,
+    artifacts: &ArtifactPaths,
     model: &str,
 ) -> Result<i32, String> {
     let stdout =
-        File::create(&run_paths.events_jsonl).map_err(|e| format!("create events log: {e}"))?;
+        File::create(&artifacts.events_jsonl).map_err(|e| format!("create events log: {e}"))?;
     let stderr =
-        File::create(&run_paths.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
+        File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
     let snapshot_ref = format!(
         "refs/vibe/snapshots/{}",
         worktree
@@ -128,7 +129,7 @@ pub fn run_step(
         "-v",
         &format!("{}:{}", git_common_dir.display(), git_common_dir.display()),
         "-v",
-        &format!("{}:/artifacts", run_paths.dir.display()),
+        &format!("{}:/artifacts", artifacts.dir.display()),
         "-w",
         worktree.to_str().unwrap_or(""),
         "-e",
@@ -138,7 +139,14 @@ pub fn run_step(
         "-e",
         "VIBE_PROMPT_FILE=/artifacts/prompt.txt",
         "-e",
-        "VIBE_EXTENSION_LOG=/artifacts/extension-events.jsonl",
+        &format!(
+            "VIBE_EXTENSION_LOG=/artifacts/{}",
+            artifacts
+                .extension_jsonl
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("extension-events.jsonl")
+        ),
         "-e",
         "VIBE_SNAPSHOT_LOG=/artifacts/snapshots.jsonl",
         "-e",

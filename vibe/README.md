@@ -1,12 +1,13 @@
 # Vibe
 
-Day-1 MVP for running one planner step through a Docker-contained Pi runtime.
+Vibe is a safe execution harness that forces agent tasks to run in managed
+worktrees, captures observable run artifacts, records snapshot commits for
+rollback, and sandboxes the agent in Docker.
 
 ## Prereqs
 
 - run from a git checkout of the target repo
 - docker available locally
-- `planner` available in `~/.claude/bin` or `PATH`
 - provider auth available via env vars or `~/.pi/agent/auth.json`
 
 ## Build
@@ -21,20 +22,9 @@ make -C vibe build
 make -C vibe check
 ```
 
-The default suite stays unit-focused.
-
 ```bash
 make -C vibe test
 ```
-
-- `make -C vibe check` runs fmt, clippy, tests, and build
-- `make -C vibe test` runs the Rust test suite only
-- unit tests cover result models, paths, planner helpers, prompt rendering, and
-  snapshot parsing with production APIs
-- real Docker and provider flows stay in manual smoke coverage, where external
-  process boundaries are easier to debug deliberately
-
-Live Docker or provider smoke checks remain opt-in manual verification.
 
 ## Install
 
@@ -50,28 +40,40 @@ directory. On first run, `vibe` extracts its bundled runtime assets to
 ## Run
 
 ```bash
-vibe run "/absolute/path/to/PDEV-040 Some Plan.md" --step 1 --model anthropic/claude-sonnet-4-6
+cat >/tmp/vibe-task.txt <<'EOF'
+Summarize the files under the current worktree and update README.md with one short note.
+EOF
+
+vibe run \
+  --key pdev-049-demo \
+  --prompt-file /tmp/vibe-task.txt \
+  --model openai-codex/gpt-5.4 \
+  --commit-message "docs: update README note"
 ```
 
 ## Runtime model
 
-- the plan worktree stays the canonical git state
+- the managed worktree stays the canonical git state
 - Docker is only the execution boundary
 - bundled Docker, hook, and extension assets are extracted under
   `~/.local/share/vibe/<version>/`
 - Vibe mounts the target worktree, shared git metadata, and `/artifacts`
 - the container runs as the host UID/GID and sets git `safe.directory`
 
-Artifacts land under `~/.local/state/vibe/<repo>/<branch>/runs/.../`.
-`stdout` returns one machine-readable JSON result. Progress logs stay on `stderr`, `events.jsonl`, and `agent.stderr.log`.
+Artifacts land under `~/.local/state/vibe/<repo>/<key>/runs/.../`.
+`stdout` returns one machine-readable JSON result. Progress logs stay on
+`stderr`, `events.jsonl`, `extension-events.jsonl`, and
+`agent.stderr.log`.
 
-Auth is copied into an ephemeral container home for the run and is not persisted in the artifact directory.
+Auth is copied into an ephemeral container home for the run and is not
+persisted in the artifact directory.
 
 Dogfood by inspecting:
 
+- `prompt.txt`
 - `events.jsonl`
 - `agent.stderr.log`
 - `extension-events.jsonl`
 - `snapshots.jsonl`
-- final step commit on the worktree branch
-- snapshot ref and commits under `refs/vibe/snapshots/...`
+- the result commit on the worktree branch
+- snapshot refs and commits under `refs/vibe/snapshots/...`
