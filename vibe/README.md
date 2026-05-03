@@ -82,5 +82,5 @@ Dogfood by inspecting:
 - `agent.stderr.log`
 - `extension-events.jsonl`
 - `snapshots.jsonl`
-- final step commit on the worktree branch
+- result commit on the worktree branch
 - snapshot ref and commits under `refs/vibe/snapshots/...`

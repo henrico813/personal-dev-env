@@ -55,6 +55,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(value) => value,
         Err(err) => return RunResult::setup_error(err),
     };
+    let base_ref = format!("{remote}/{base_branch}");
     if let Err(err) = git::ensure_worktree(
         &repo.canonical_repo_root,
         &worktree,
@@ -83,7 +84,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => return RunResult::setup_error(err),
         Ok(false) => {}
     }
-    match git::find_vibe_step_commit(&worktree, args.step) {
+    match git::find_vibe_step_commit(&worktree, args.step, &base_ref) {
         Ok(Some(existing_commit)) => {
             return refused_step_already_run(
                 &args,
