@@ -183,9 +183,17 @@ CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in
 
 The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
-Inline editing is configured through the OpenAI Responses HTTP adapter using a Codex model. This requires `OPENAI_API_KEY` to be present in the shell environment that launches Neovim.
+Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode` and the managed OpenCode agent config.
 
-CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat, and verify `OPENAI_API_KEY` is available before using inline actions.
+Start OpenCode before using inline edits:
+
+```bash
+opencode serve --hostname 127.0.0.1 --port 4199
+```
+
+Neovim probes `opencode-inline-shim` on startup and starts it automatically when the binary is available on `$PATH`. Run `:CodeCompanionOpenCodeInlineShim` to restart it manually, and verify `opencode-inline-shim --healthcheck` succeeds if inline requests fail.
+
+CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` and `which opencode-inline-shim` both return paths before opening chat or inline.
 
 ---
 
