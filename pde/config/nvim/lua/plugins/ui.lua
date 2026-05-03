@@ -34,14 +34,25 @@ require("lualine").setup({
       },
       {
         function()
-          local ok, count = pcall(function() return require("pi").attention_count() end)
-          return (ok and count and count > 0) and ("󱆅 " .. count) or ""
-        end,
-        cond = function()
-          local ok, visible = pcall(function() return require("pi").is_visible() end)
-          return ok and visible
+          local ok, cc = pcall(require, "codecompanion")
+          if not ok then
+            return ""
+          end
+
+          local chat = cc.buf_get_chat(0) or cc.last_chat()
+          if not chat or not chat.adapter then
+            return ""
+          end
+
+          local adapter = chat.adapter.name or chat.adapter.formatted_name or "ai"
+          local model = chat.adapter.schema and chat.adapter.schema.model and chat.adapter.schema.model.default or nil
+          if model and model ~= "" then
+            return string.format("󱙺 %s/%s", adapter, model)
+          end
+          return string.format("󱙺 %s", adapter)
         end,
       },
+
       "encoding", "fileformat", "filetype",
     },
     lualine_y = { "progress" },
@@ -50,7 +61,7 @@ require("lualine").setup({
 })
 
 -- jump to the first non-winfixbuf window in the current tab so a
--- subsequent buffer switch doesn't hit pi's locked panels
+-- subsequent buffer switch doesn't hit locked utility panels
 local function ensure_editable_win()
   if not vim.wo.winfixbuf then return end
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
@@ -78,14 +89,14 @@ require("bufferline").setup({
         for _, win in ipairs(vim.api.nvim_tabpage_list_wins(buf.tabnr)) do
           local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype or ""
           if ft:match("^Diffview") then return "Diff" end
-          if ft:match("^pi%-chat") then return "Pi" end
+          if ft == "codecompanion" or ft == "codecompanion_input" then return "AI" end
         end
       end
       -- buffer-level entries (main strip)
       if buf.bufnr then
         local ft = vim.bo[buf.bufnr].filetype or ""
         if ft:match("^Diffview") then return "Diff" end
-        if ft:match("^pi%-chat") then return "Pi" end
+        if ft == "codecompanion" or ft == "codecompanion_input" then return "AI" end
       end
       return buf.name
     end,
