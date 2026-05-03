@@ -180,9 +180,9 @@ What `lua/plugins/session.lua` customizes:
 
 CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in `opencode` ACP adapter for chat, so Neovim talks to the already-installed `opencode` CLI directly instead of launching Pi through a wrapper.
 
-The config intentionally only maps chat workflows. CodeCompanion inline edits still require an HTTP adapter (Copilot, Ollama, OpenAI, etc.), so no `<leader>` binding is shipped for `:CodeCompanion` until a no-key-compatible HTTP backend is chosen.
+Inline editing is configured through the OpenAI Responses HTTP adapter using a Codex model. This requires `OPENAI_API_KEY` to be present in the shell environment that launches Neovim.
 
-CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat.
+CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat, and verify `OPENAI_API_KEY` is available before using inline actions.
 
 ---
 
