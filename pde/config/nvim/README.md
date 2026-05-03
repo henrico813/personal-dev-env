@@ -28,7 +28,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 Events you'll see here: `LspAttach` (LSP connects to a buffer), `FileType` (nvim detects a language), `BufWinEnter` (a buffer appears in a window), `VimLeavePre` (just before exit), `User PersistenceLoadPost` (custom event fired by persistence.nvim). Autocmds are the main way plugins and this config extend default behavior.
 
-**Filetypes.** Nvim sniffs each buffer and sets `&filetype` (`lua`, `python`, `markdown`, etc.). Many features — syntax, LSP, our styling — key off this. CodeCompanion chat buffers use `codecompanion` / `codecompanion_input`, which is how we style them in `lua/core/options.lua` without keying off buffer names.
+**Filetypes.** Nvim sniffs each buffer and sets `&filetype` (`lua`, `python`, `markdown`, etc.). Many features — syntax, LSP, our styling — key off this. CodeCompanion chat buffers use `codecompanion` / `codecompanion_input`, which is how we style and resize them in `lua/core/options.lua` without keying off buffer names.
 
 **Pack directories.** Neovim's built-in plugin loader. Anything under `~/.config/nvim/pack/plugins/start/<name>/` is added to `runtimepath` automatically on startup. No `packer.nvim`, no `lazy.nvim` — just clone a repo into that directory and it's installed. We deliberately chose this to keep the config simple and auditable.
 
@@ -153,6 +153,7 @@ Common server names: `pyright`, `ts_ls` (TypeScript), `gopls`, `rust-analyzer`, 
 | LSP keymap missing | `:lua =vim.lsp.get_clients({ bufnr = 0 })` — empty means no LSP is attached to this filetype. Install a server. |
 | Which-key group not labeled | Check `spec` in `lua/plugins/whichkey.lua`. Each group prefix needs a row. |
 | CodeCompanion chat won't open | Verify `opencode` is on `$PATH`: `which opencode`. See "CodeCompanion setup" below. |
+| Wrong AI pane width after resizing | Close stray splits and resize again; `lua/core/options.lua` clamps CodeCompanion windows back into the 25%-40% range. |
 | Weird buffers after `<leader>qs` | See "Session restore" below — especially the `sessionoptions` tweaks. |
 | Plugin not loading | Check `runtimepath`: `:lua =vim.opt.runtimepath:get()`. Verify the pack dir exists. |
 
@@ -180,9 +181,9 @@ What `lua/plugins/session.lua` customizes:
 
 CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in `opencode` ACP adapter for chat, so Neovim talks to the already-installed `opencode` CLI directly instead of launching Pi through a wrapper.
 
-Inline editing is configured through the OpenAI Responses HTTP adapter using a Codex model. This requires `OPENAI_API_KEY` to be present in the shell environment that launches Neovim.
+The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
-CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` returns a path before opening chat, and verify `OPENAI_API_KEY` is available before using inline actions.
+The config intentionally only maps chat workflows. CodeCompanion inline edits still require an HTTP adapter (Copilot, Ollama, OpenAI, etc.), so no `<leader>` binding is shipped for `:CodeCompanion` until a no-key-compatible HTTP backend is chosen.
 
 ---
 
