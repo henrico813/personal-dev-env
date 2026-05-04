@@ -14,27 +14,27 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const ASSETS: &[Asset] = &[
     Asset {
         rel: "docker/Dockerfile",
-        contents: include_bytes!("../docker/Dockerfile"),
+        contents: include_bytes!("../../docker/Dockerfile"),
         executable: false,
     },
     Asset {
         rel: "docker/run-agent.sh",
-        contents: include_bytes!("../docker/run-agent.sh"),
+        contents: include_bytes!("../../docker/run-agent.sh"),
         executable: true,
     },
     Asset {
         rel: "extensions/git-snapshot.mjs",
-        contents: include_bytes!("../extensions/git-snapshot.mjs"),
+        contents: include_bytes!("../../extensions/git-snapshot.mjs"),
         executable: false,
     },
     Asset {
         rel: "extensions/jsonl-observer.mjs",
-        contents: include_bytes!("../extensions/jsonl-observer.mjs"),
+        contents: include_bytes!("../../extensions/jsonl-observer.mjs"),
         executable: false,
     },
     Asset {
         rel: "hooks/post-commit",
-        contents: include_bytes!("../hooks/post-commit"),
+        contents: include_bytes!("../../hooks/post-commit"),
         executable: true,
     },
 ];
