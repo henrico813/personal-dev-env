@@ -20,13 +20,14 @@ func (fn installerFunc) Install(cfg *Config, runner Runner) error {
 
 var installTargets = map[string]Installer{
 	"ai-tools": installerFunc(installAITools),
+	"config":   installerFunc(installConfig),
 	"obsidian": installerFunc(installObsidian),
 }
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pde",
-		Short: "Install PDE optional targets",
+		Short: "Install PDE targets and config sets",
 	}
 	root.AddCommand(newInstallCmd())
 	return root
@@ -38,7 +39,7 @@ func newInstallCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install <target>",
-		Short: "Install a named PDE target",
+		Short: "Install a named PDE target or config set",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := detectConfig(repoRoot)

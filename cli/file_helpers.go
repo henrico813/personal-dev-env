@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,32 @@ func backupIfExists(path string, runner Runner) error {
 		return err
 	}
 	return runner.Rename("backup existing config", path, backup)
+}
+
+var configInstallBackupSeq uint64
+
+func backupConfigInstallPath(path string, runner Runner) error {
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if err := runner.MkdirAll("create config backup parent", filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	for {
+		stamp := time.Now().UTC().Format("20060102_150405.000000000")
+		backup := fmt.Sprintf("%s.bak.%s.%d.%d", path, stamp, os.Getpid(), atomic.AddUint64(&configInstallBackupSeq, 1))
+		if _, err := os.Lstat(backup); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return runner.Rename("backup existing config", path, backup)
+	}
 }
 
 // syncTree copies a repo-managed tree into a fresh destination subtree.
@@ -131,4 +158,72 @@ func linkBinary(src, dst string, runner Runner) error {
 		}
 		return os.Symlink(src, dst)
 	})
+}
+
+func linkConfig(src, dst string, runner Runner) error {
+	if target, ok, err := existingSymlinkTarget(dst); err != nil {
+		return err
+	} else if ok && target == src {
+		return nil
+	}
+
+	return runner.Do("link "+dst, func() error {
+		if err := validateReadableRegularFile(src); err != nil {
+			return fmt.Errorf("validate config source %s: %w", src, err)
+		}
+
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+
+		if info, err := os.Lstat(dst); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				if err := os.Remove(dst); err != nil {
+					return err
+				}
+			} else {
+				if err := backupConfigInstallPath(dst, runner); err != nil {
+					return err
+				}
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+
+		return os.Symlink(src, dst)
+	})
+}
+
+func validateReadableRegularFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+func existingSymlinkTarget(path string) (string, bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return "", false, nil
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", false, err
+	}
+	return target, true, nil
 }
