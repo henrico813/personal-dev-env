@@ -13,14 +13,14 @@ const AUTH_VARS: &[&str] = &[
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_BASE_URL",
 ];
-// Forward provider config into the container, but only treat credential-bearing
-// values as sufficient for the host-side auth preflight.
-const REQUIRED_AUTH_VARS: &[&str] = &[
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-    "GEMINI_API_KEY",
-    "DEEPSEEK_API_KEY",
-    "AZURE_OPENAI_API_KEY",
+// Forward provider config into the container, but only allow complete
+// credential groups to satisfy the host-side auth preflight.
+const REQUIRED_AUTH_GROUPS: &[&[&str]] = &[
+    &["ANTHROPIC_API_KEY"],
+    &["OPENAI_API_KEY"],
+    &["GEMINI_API_KEY"],
+    &["DEEPSEEK_API_KEY"],
+    &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
 ];
 const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
@@ -101,29 +101,36 @@ fn host_user() -> Result<HostUser, String> {
 }
 
 fn auth_file_from_home(home: Option<&str>) -> Option<String> {
-    home.map(|home| format!("{home}/.pi/agent/auth.json"))
-        .filter(|path| Path::new(path).exists())
+    let path = home.map(|home| format!("{home}/.pi/agent/auth.json"))?;
+    let metadata = std::fs::metadata(&path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+    File::open(&path).ok()?;
+    Some(path)
 }
 
-fn has_provider_env(values: &[Option<String>]) -> bool {
-    values
+fn env_var_is_set(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn has_provider_env() -> bool {
+    REQUIRED_AUTH_GROUPS
         .iter()
-        .flatten()
-        .any(|value| !value.trim().is_empty())
+        .any(|keys| keys.iter().all(|key| env_var_is_set(key)))
 }
 
-fn auth_is_configured(home: Option<&str>, auth_env: &[Option<String>]) -> bool {
-    has_provider_env(auth_env) || auth_file_from_home(home).is_some()
+fn auth_is_configured(home: Option<&str>) -> bool {
+    has_provider_env() || auth_file_from_home(home).is_some()
 }
 
 pub fn require_auth() -> Result<(), String> {
-    let auth_env = REQUIRED_AUTH_VARS
-        .iter()
-        .map(|key| std::env::var(key).ok())
-        .collect::<Vec<_>>();
     let home = std::env::var("HOME").ok();
 
-    if auth_is_configured(home.as_deref(), &auth_env) {
+    if auth_is_configured(home.as_deref()) {
         Ok(())
     } else {
         Err("vibe requires provider auth via env vars or ~/.pi/agent/auth.json".to_string())
@@ -223,7 +230,7 @@ pub fn run_task(
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_file_from_home, auth_is_configured, require_auth, REQUIRED_AUTH_VARS};
+    use super::{auth_file_from_home, auth_is_configured, require_auth, AUTH_VARS};
     use std::{
         ffi::OsString,
         fs,
@@ -243,6 +250,12 @@ mod tests {
             .collect()
     }
 
+    fn save_auth_env() -> Vec<(String, Option<OsString>)> {
+        let mut keys = AUTH_VARS.to_vec();
+        keys.push("HOME");
+        save_env(&keys)
+    }
+
     fn restore_env(saved: Vec<(String, Option<OsString>)>) {
         for (key, value) in saved {
             if let Some(value) = value {
@@ -253,29 +266,57 @@ mod tests {
         }
     }
 
+    fn clear_auth_env() {
+        for key in AUTH_VARS {
+            std::env::remove_var(key);
+        }
+    }
+
     #[test]
     fn auth_is_configured_accepts_real_credentials() {
-        let auth_env = vec![None, Some("sk-test".to_string())];
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
 
-        assert!(auth_is_configured(None, &auth_env));
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("OPENAI_API_KEY", "sk-test");
+
+        assert!(auth_is_configured(home.path().to_str()));
+
+        restore_env(saved);
     }
 
     #[test]
     fn auth_is_configured_accepts_auth_file() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_dir = home.path().join(".pi/agent");
         fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
         fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
 
-        assert!(auth_is_configured(home.path().to_str(), &[]));
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+
+        assert!(auth_is_configured(home.path().to_str()));
+
+        restore_env(saved);
     }
 
     #[test]
     fn auth_is_configured_rejects_missing_credentials_and_auth_file() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
-        let auth_env = vec![None, Some(String::new()), Some("   ".to_string())];
+        let saved = save_auth_env();
 
-        assert!(!auth_is_configured(home.path().to_str(), &auth_env));
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+
+        assert!(!auth_is_configured(home.path().to_str()));
+
+        restore_env(saved);
     }
 
     #[test]
@@ -286,16 +327,10 @@ mod tests {
         fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
         fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
 
-        let mut keys = REQUIRED_AUTH_VARS.to_vec();
-        keys.push("AZURE_OPENAI_BASE_URL");
-        keys.push("HOME");
-        let saved = save_env(&keys);
+        let saved = save_auth_env();
 
         std::env::set_var("HOME", home.path());
-        for key in REQUIRED_AUTH_VARS {
-            std::env::remove_var(key);
-        }
-        std::env::remove_var("AZURE_OPENAI_BASE_URL");
+        clear_auth_env();
 
         let result = require_auth();
 
@@ -308,15 +343,10 @@ mod tests {
     fn require_auth_rejects_non_credential_provider_config() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
-        let mut keys = REQUIRED_AUTH_VARS.to_vec();
-        keys.push("AZURE_OPENAI_BASE_URL");
-        keys.push("HOME");
-        let saved = save_env(&keys);
+        let saved = save_auth_env();
 
         std::env::set_var("HOME", home.path());
-        for key in REQUIRED_AUTH_VARS {
-            std::env::remove_var(key);
-        }
+        clear_auth_env();
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
         let result = require_auth();
@@ -327,6 +357,53 @@ mod tests {
             result.expect_err("non-credential config should fail"),
             ERROR_MESSAGE
         );
+    }
+
+    #[test]
+    fn require_auth_accepts_complete_azure_credentials() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
+        std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
+
+        let result = require_auth();
+
+        restore_env(saved);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn require_auth_rejects_incomplete_azure_credentials() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
+
+        let result = require_auth();
+
+        restore_env(saved);
+
+        assert_eq!(
+            result.expect_err("missing Azure base URL should fail"),
+            ERROR_MESSAGE
+        );
+    }
+
+    #[test]
+    fn auth_file_from_home_rejects_directory_auth_json() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let auth_path = home.path().join(".pi/agent/auth.json");
+        fs::create_dir_all(&auth_path).expect("mkdir fake auth dir");
+
+        assert!(auth_file_from_home(home.path().to_str()).is_none());
     }
 
     #[test]

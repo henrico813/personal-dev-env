@@ -48,10 +48,19 @@ func buildOpenCodeInlineShimBinary(cfg *Config, runner Runner) (string, error) {
 	return shimBin, nil
 }
 
+func vibeInstallRoot(cfg *Config) string {
+	return filepath.Dir(cfg.LocalBinDir)
+}
+
+func vibeBinaryPath(cfg *Config) string {
+	return filepath.Join(cfg.LocalBinDir, "vibe")
+}
+
 func ensureCargo(cfg *Config, runner Runner) error {
 	return runner.Bash("verify cargo", fmt.Sprintf(
-		"set -euo pipefail; export PATH=%s:$PATH; command -v cargo >/dev/null",
+		"set -euo pipefail; export PATH=%s:$PATH; command -v cargo >/dev/null || { printf %s >&2; exit 1; }",
 		shellQuote(filepath.Join(cfg.HomeDir, ".cargo", "bin")),
+		shellQuote("cargo is required for `pde install ai-tools`; install Rust/Cargo and re-run\n"),
 	))
 }
 
@@ -60,7 +69,7 @@ func installVibe(cfg *Config, runner Runner) error {
 		"set -euo pipefail; export PATH=%s:$PATH; cargo install --path %s --root %s --force",
 		shellQuote(filepath.Join(cfg.HomeDir, ".cargo", "bin")),
 		shellQuote(filepath.Join(cfg.RepoRoot, "vibe")),
-		shellQuote(filepath.Join(cfg.HomeDir, ".local")),
+		shellQuote(vibeInstallRoot(cfg)),
 	))
 }
 
@@ -115,8 +124,8 @@ func verifyOpenCodeInlineShimLauncher(cfg *Config, runner Runner) error {
 func verifyVibeLauncher(cfg *Config, runner Runner) error {
 	return runner.Bash("verify vibe", fmt.Sprintf(
 		"set -euo pipefail; test -x %s; %s --help >/dev/null",
-		shellQuote(filepath.Join(cfg.LocalBinDir, "vibe")),
-		shellQuote(filepath.Join(cfg.LocalBinDir, "vibe")),
+		shellQuote(vibeBinaryPath(cfg)),
+		shellQuote(vibeBinaryPath(cfg)),
 	))
 }
 

@@ -6,6 +6,10 @@ import (
 
 // installAITools owns the whole AI bootstrap so `pde install ai-tools` stays the only public entry point.
 func installAITools(cfg *Config, runner Runner) error {
+	if err := ensureCargo(cfg, runner); err != nil {
+		return err
+	}
+
 	for _, path := range []string{
 		filepath.Join(cfg.OpenCodeConfigDir, "agents"),
 		filepath.Join(cfg.OpenCodeConfigDir, "commands"),
@@ -29,9 +33,6 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 
-	if err := ensureCargo(cfg, runner); err != nil {
-		return err
-	}
 	if err := installVibe(cfg, runner); err != nil {
 		return err
 	}
