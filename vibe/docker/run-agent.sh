@@ -16,7 +16,9 @@ if [[ -n "${VIBE_GIT_USER_EMAIL:-}" ]]; then
   git config --global user.email "${VIBE_GIT_USER_EMAIL}"
 fi
 
-PROMPT="$(cat "${VIBE_PROMPT_FILE}")"
+TASK_PROMPT="$(cat "${VIBE_PROMPT_FILE}")"
+COMMIT_MESSAGE_INSTRUCTIONS=$'Vibe runtime protocol:\nKeep exactly one unscoped conventional snapshot subject in /artifacts/commit-message.txt.\nIf the task is clear, write an initial subject before editing repository files.\nBefore finishing, update that one-line subject based on the actual changes.\nUse a subject like "feat: add setting", not "feat(vibe): add setting", unless the user explicitly asks for a scope.\nDo not create commit-message.txt in the repository.\nDo not run git commit.'
+PROMPT="${COMMIT_MESSAGE_INSTRUCTIONS}"$'\n\nTask:\n'"${TASK_PROMPT}"
 
 PI_ARGS=(
   --mode json
@@ -32,4 +34,4 @@ else
   PI_ARGS+=(--model "${VIBE_MODEL}")
 fi
 
-exec pi "${PI_ARGS[@]}" "${PROMPT}"
+pi "${PI_ARGS[@]}" "${PROMPT}" | tee /artifacts/events.jsonl >&2
