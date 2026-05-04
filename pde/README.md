@@ -41,6 +41,8 @@ pde install ai-tools
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `vibe` installs through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
+`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL` and `OPENCODE_INLINE_SHIM_PORT`. PDE shells export those variables automatically; Neovim only falls back to reading them from `paths.env` when it starts outside a PDE-managed shell. For the default loopback setup, `opencode-inline-shim` starts `opencode serve` on demand. After changing either value, restart `opencode-inline-shim` so the shim picks up the new environment.
+
 ## Repository Layout
 
 - `pde/pde`: profile entrypoint.
