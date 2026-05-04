@@ -260,6 +260,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 	if err := postJSON(ctx, cfg, "/session", sessionPayload, &session); err != nil {
 		return nil, err
 	}
+	defer cleanupSession(cfg, session.ID)
 
 	payload := map[string]any{
 		"agent": cfg.inlineAgent,
@@ -347,6 +348,25 @@ func contentToText(content any) string {
 	default:
 		return ""
 	}
+}
+
+func cleanupSession(cfg config, sessionID string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, cfg.opencodeBaseURL+"/session/"+sessionID, nil)
+	if err != nil {
+		return
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
 }
 
 func postJSON(ctx context.Context, cfg config, path string, payload any, out any) error {

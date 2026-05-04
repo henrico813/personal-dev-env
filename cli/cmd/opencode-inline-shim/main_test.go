@@ -51,3 +51,23 @@ func TestBackendReachableFailsWhenBackendIsDown(t *testing.T) {
 		t.Fatal("expected backend reachability failure")
 	}
 }
+
+func TestCleanupSessionSendsDelete(t *testing.T) {
+	var method, path string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method = r.Method
+		path = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	cfg := config{opencodeBaseURL: server.URL}
+	cleanupSession(cfg, "session-123")
+
+	if method != http.MethodDelete {
+		t.Fatalf("method = %q", method)
+	}
+	if path != "/session/session-123" {
+		t.Fatalf("path = %q", path)
+	}
+}
