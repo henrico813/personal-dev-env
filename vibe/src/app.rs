@@ -81,7 +81,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     };
     let mounts = session.sandbox_mounts();
-    let agent_exit = match sandbox::run_agent(&runtime_root, &mounts, &artifacts, &args.model) {
+    let agent_exit = match sandbox::run_agent(
+        &runtime_root,
+        &mounts,
+        &artifacts,
+        &args.model,
+        args.stderr_level.as_str(),
+    ) {
         Ok(code) => code,
         Err(err) => {
             return RunResult::setup_error_with_context(
