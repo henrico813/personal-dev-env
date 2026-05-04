@@ -58,6 +58,12 @@ type structuredInline struct {
 	Placement string `json:"placement"`
 }
 
+type inlineModel struct {
+	ProviderID string
+	ModelID    string
+	Thinking   string
+}
+
 type sessionResponse struct {
 	ID string `json:"id"`
 }
@@ -325,7 +331,7 @@ func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
 	return requestBody, nil
 }
 
-func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel string) (*structuredInline, error) {
+func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel *inlineModel) (*structuredInline, error) {
 	prompt, system := buildPrompt(requestBody.Messages)
 	sessionPayload := map[string]any{
 		"title": "CodeCompanion Inline",
@@ -368,7 +374,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 		},
 		"parts": []map[string]string{{"type": "text", "text": prompt}},
 	}
-	if selectedModel != "" {
+	if selectedModel != nil {
 		payload["model"] = openCodeModel(selectedModel)
 	}
 
@@ -498,33 +504,51 @@ func responseModel(requestBody chatRequest) string {
 	return model
 }
 
-func configuredInlineModel(cfg config) (string, error) {
+func configuredInlineModel(cfg config) (*inlineModel, error) {
 	model := strings.TrimSpace(cfg.inlineModel)
 	if model == "" || model == transportModel {
-		return "", nil
+		return nil, nil
 	}
-	return normalizeInlineModel(model)
+	parsed, err := parseInlineModel(model)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
-func selectedInlineModel(requestBody chatRequest, cfg config) (string, error) {
+func selectedInlineModel(requestBody chatRequest, cfg config) (*inlineModel, error) {
 	model := strings.TrimSpace(requestBody.Model)
 	if model == "" || model == transportModel {
 		return configuredInlineModel(cfg)
 	}
-	return normalizeInlineModel(model)
-}
-
-func normalizeInlineModel(model string) (string, error) {
-	parts := strings.SplitN(strings.TrimSpace(model), "/", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("invalid inline model %q; expected provider/model", model)
+	parsed, err := parseInlineModel(model)
+	if err != nil {
+		return nil, err
 	}
-	return strings.TrimSpace(model), nil
+	return &parsed, nil
 }
 
-func openCodeModel(model string) map[string]string {
-	parts := strings.SplitN(strings.TrimSpace(model), "/", 2)
-	return map[string]string{"providerID": parts[0], "modelID": parts[1]}
+func parseInlineModel(model string) (inlineModel, error) {
+	raw := strings.TrimSpace(model)
+	parts := strings.Split(raw, "/")
+	if len(parts) < 2 || len(parts) > 3 {
+		return inlineModel{}, fmt.Errorf("invalid inline model %q; expected provider/model[/thinking]", model)
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return inlineModel{}, fmt.Errorf("invalid inline model %q; provider and model must be non-empty", model)
+	}
+	out := inlineModel{ProviderID: parts[0], ModelID: parts[1]}
+	if len(parts) == 3 {
+		if parts[2] == "" {
+			return inlineModel{}, fmt.Errorf("invalid inline model %q; thinking level must be non-empty", model)
+		}
+		out.Thinking = parts[2]
+	}
+	return out, nil
+}
+
+func openCodeModel(model *inlineModel) map[string]string {
+	return map[string]string{"providerID": model.ProviderID, "modelID": model.ModelID}
 }
 
 func writeInlineCompletion(w http.ResponseWriter, model, content string) {
