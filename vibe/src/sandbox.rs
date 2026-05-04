@@ -19,6 +19,7 @@ pub fn run_agent(
     mounts: &SandboxMounts,
     artifacts: &ArtifactPaths,
     model: &str,
+    stderr_level: &str,
 ) -> Result<i32, String> {
     docker::run_task(
         &mounts.repo_root,
@@ -26,5 +27,6 @@ pub fn run_agent(
         &mounts.worktree,
         artifacts,
         model,
+        stderr_level,
     )
 }

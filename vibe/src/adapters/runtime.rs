@@ -33,6 +33,11 @@ const ASSETS: &[Asset] = &[
         executable: false,
     },
     Asset {
+        rel: "extensions/stderr-progress.mjs",
+        contents: include_bytes!("../../extensions/stderr-progress.mjs"),
+        executable: false,
+    },
+    Asset {
         rel: "hooks/post-commit",
         contents: include_bytes!("../../hooks/post-commit"),
         executable: true,
