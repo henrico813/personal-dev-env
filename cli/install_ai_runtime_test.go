@@ -49,6 +49,21 @@ func TestVerifyOpenCodeInlineShimLauncherRunsHelp(t *testing.T) {
 	}
 }
 
+func TestVerifyVibeLauncherRunsHelp(t *testing.T) {
+	localBin := filepath.Join(t.TempDir(), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir local bin: %v", err)
+	}
+
+	vibePath := filepath.Join(localBin, "vibe")
+	writeStubExecutable(t, vibePath, "--help")
+
+	cfg := &Config{LocalBinDir: localBin}
+	if err := verifyVibeLauncher(cfg, Runner{}); err != nil {
+		t.Fatalf("verify vibe launcher: %v", err)
+	}
+}
+
 func TestVerifyPiLauncherRunsHelp(t *testing.T) {
 	localBin := filepath.Join(t.TempDir(), ".local", "bin")
 	if err := os.MkdirAll(localBin, 0o755); err != nil {

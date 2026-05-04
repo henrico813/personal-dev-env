@@ -8,6 +8,7 @@ use crate::{
 
 pub fn prepare() -> Result<PathBuf, String> {
     docker::require_docker()?;
+    docker::require_auth()?;
     let runtime_root = runtime::ensure_runtime_assets()?;
     docker::ensure_image(&runtime_root)?;
     Ok(runtime_root)
