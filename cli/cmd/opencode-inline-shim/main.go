@@ -8,11 +8,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -23,7 +27,12 @@ const (
 	defaultModel           = "opencode-inline"
 	defaultAgent           = "inline"
 	defaultTimeout         = 60 * time.Second
+	backendPollInterval    = 150 * time.Millisecond
 )
+
+var inlinePlacements = []string{"replace", "add", "before", "new"}
+
+var backendStartMu sync.Mutex
 
 type config struct {
 	port            string
@@ -49,8 +58,6 @@ type structuredInline struct {
 	Placement string `json:"placement"`
 }
 
-var inlinePlacements = []string{"replace", "add", "before", "new"}
-
 type sessionResponse struct {
 	ID string `json:"id"`
 }
@@ -58,7 +65,8 @@ type sessionResponse struct {
 type sessionMessageResponse struct {
 	Info struct {
 		Error *struct {
-			Data struct {
+			Message string `json:"message"`
+			Data    struct {
 				Message string `json:"message"`
 			} `json:"data"`
 		} `json:"error"`
@@ -144,12 +152,87 @@ func backendReachable(ctx context.Context, cfg config) error {
 	return nil
 }
 
+func backendServeArgs(cfg config) ([]string, error) {
+	backendURL, err := url.Parse(cfg.opencodeBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse OpenCode base URL: %w", err)
+	}
+	if backendURL.Path != "" && backendURL.Path != "/" {
+		return nil, fmt.Errorf("cannot auto-start OpenCode for base URL with path %q", backendURL.Path)
+	}
+	host := backendURL.Hostname()
+	if host == "" {
+		return nil, errors.New("cannot auto-start OpenCode without a hostname")
+	}
+	if host != "localhost" {
+		ip := net.ParseIP(host)
+		if ip == nil || !ip.IsLoopback() {
+			return nil, fmt.Errorf("cannot auto-start non-loopback OpenCode host %q", host)
+		}
+	}
+	port := backendURL.Port()
+	if port == "" {
+		return nil, errors.New("cannot auto-start OpenCode without an explicit port")
+	}
+	if _, err := strconv.Atoi(port); err != nil {
+		return nil, fmt.Errorf("parse OpenCode port %q: %w", port, err)
+	}
+	return []string{"serve", "--hostname", host, "--port", port}, nil
+}
+
+func startBackendProcess(cfg config) error {
+	args, err := backendServeArgs(cfg)
+	if err != nil {
+		return err
+	}
+	bin, err := exec.LookPath("opencode")
+	if err != nil {
+		return fmt.Errorf("find opencode: %w", err)
+	}
+	cmd := exec.Command(bin, args...)
+	cmd.Env = os.Environ()
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start opencode serve: %w", err)
+	}
+	return nil
+}
+
+func ensureBackendReachable(ctx context.Context, cfg config) error {
+	if err := backendReachable(ctx, cfg); err == nil {
+		return nil
+	}
+
+	backendStartMu.Lock()
+	defer backendStartMu.Unlock()
+
+	if err := backendReachable(ctx, cfg); err == nil {
+		return nil
+	}
+	if err := startBackendProcess(cfg); err != nil {
+		return err
+	}
+
+	for {
+		if err := backendReachable(ctx, cfg); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backendPollInterval):
+		}
+	}
+}
+
 func runServer(cfg config) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		if err := backendReachable(ctx, cfg); err != nil {
+		if err := ensureBackendReachable(ctx, cfg); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "backend": err.Error()})
 			return
 		}
@@ -206,34 +289,21 @@ func handleChatCompletions(cfg config, w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), cfg.timeout)
 	defer cancel()
+	if err := ensureBackendReachable(ctx, cfg); err != nil {
+		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
+		return
+	}
 	structured, err := requestStructuredInline(ctx, cfg, requestBody)
 	if err != nil {
-		status := http.StatusBadGateway
-		if errors.Is(err, context.DeadlineExceeded) {
-			status = http.StatusGatewayTimeout
-		}
-		writeError(w, status, "opencode_inline_error", err.Error())
+		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
+		return
+	}
+	if err := validateStructuredInline(structured); err != nil {
+		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
 		return
 	}
 
-	model := requestBody.Model
-	if strings.TrimSpace(model) == "" {
-		model = cfg.defaultModel
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id":      fmt.Sprintf("opencode-inline-%d", time.Now().UnixMilli()),
-		"object":  "chat.completion",
-		"created": time.Now().Unix(),
-		"model":   model,
-		"choices": []map[string]any{{
-			"index": 0,
-			"message": map[string]any{
-				"role":    "assistant",
-				"content": mustJSON(structured),
-			},
-			"finish_reason": "stop",
-		}},
-	})
+	writeInlineCompletion(w, responseModel(requestBody, cfg), mustJSON(structured))
 }
 
 func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
@@ -271,6 +341,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 			"Use StructuredOutput exactly once and do not call other tools.",
 			"This endpoint only supports edit responses, never chat or explanation mode.",
 			"Return code suitable for direct insertion into the current buffer.",
+			"Do not answer in chat or explanation mode; return edit-only JSON.",
 		}, system...), "\n"),
 		"format": map[string]any{
 			"type":       "json_schema",
@@ -303,10 +374,14 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 		return nil, err
 	}
 	if response.Info.Error != nil {
-		return nil, errors.New(response.Info.Error.Data.Message)
-	}
-	if response.Info.Structured == nil {
-		return nil, errors.New("OpenCode did not return structured output")
+		message := strings.TrimSpace(response.Info.Error.Message)
+		if message == "" {
+			message = bestErrorMessage([]byte(response.Info.Error.Data.Message))
+		}
+		if message == "" {
+			message = "OpenCode returned an error"
+		}
+		return nil, errors.New(message)
 	}
 	return response.Info.Structured, nil
 }
@@ -392,7 +467,11 @@ func postJSON(ctx context.Context, cfg config, path string, payload any, out any
 		return err
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("OpenCode %s: %s", response.Status, strings.TrimSpace(string(data)))
+		message := bestErrorMessage(data)
+		if message == "" {
+			message = strings.TrimSpace(response.Status)
+		}
+		return fmt.Errorf("OpenCode %s: %s", response.Status, message)
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("decode OpenCode response: %w", err)
@@ -406,6 +485,119 @@ func mustJSON(value any) string {
 		return `{"code":"","placement":"replace"}`
 	}
 	return string(data)
+}
+
+func responseModel(requestBody chatRequest, cfg config) string {
+	model := strings.TrimSpace(requestBody.Model)
+	if model == "" {
+		return cfg.defaultModel
+	}
+	return model
+}
+
+func writeInlineCompletion(w http.ResponseWriter, model, content string) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      fmt.Sprintf("opencode-inline-%d", time.Now().UnixMilli()),
+		"object":  "chat.completion",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []map[string]any{{
+			"index": 0,
+			"message": map[string]any{
+				"role":    "assistant",
+				"content": content,
+			},
+			"finish_reason": "stop",
+		}},
+	})
+}
+
+func writeInlineErrorCompletion(w http.ResponseWriter, model, message string) {
+	if strings.TrimSpace(message) == "" {
+		message = "Inline request failed"
+	}
+	writeInlineCompletion(w, model, mustJSON(map[string]string{"error": message}))
+}
+
+func validateStructuredInline(value *structuredInline) error {
+	if value == nil {
+		return errors.New("OpenCode did not return structured output")
+	}
+	if strings.TrimSpace(value.Code) == "" {
+		return errors.New("OpenCode returned structured output without code")
+	}
+	if !allowedInlinePlacement(strings.TrimSpace(value.Placement)) {
+		return fmt.Errorf("OpenCode returned unsupported placement %q", value.Placement)
+	}
+	return nil
+}
+
+func allowedInlinePlacement(placement string) bool {
+	for _, allowed := range inlinePlacements {
+		if placement == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeInlineError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Inline request timed out"
+	}
+	message := strings.TrimSpace(err.Error())
+	if strings.HasPrefix(message, "OpenCode ") {
+		if idx := strings.Index(message, ": "); idx >= 0 && idx+2 < len(message) {
+			message = strings.TrimSpace(message[idx+2:])
+		}
+	}
+	return message
+}
+
+func bestErrorMessage(data []byte) string {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return ""
+	}
+
+	var payload any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		if strings.HasPrefix(trimmed, "<") {
+			return ""
+		}
+		return trimmed
+	}
+	if message := extractErrorMessage(payload); message != "" {
+		return message
+	}
+	return trimmed
+}
+
+func extractErrorMessage(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		if v, ok := typed["error"]; ok {
+			if message := extractErrorMessage(v); message != "" {
+				return message
+			}
+		}
+		if v, ok := typed["message"]; ok {
+			if message, ok := v.(string); ok && strings.TrimSpace(message) != "" {
+				return strings.TrimSpace(message)
+			}
+		}
+		if v, ok := typed["data"]; ok {
+			if message := extractErrorMessage(v); message != "" {
+				return message
+			}
+		}
+	case string:
+		return strings.TrimSpace(typed)
+	}
+	return ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
