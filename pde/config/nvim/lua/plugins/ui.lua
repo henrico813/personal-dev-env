@@ -28,6 +28,15 @@ require("lualine").setup({
     lualine_x = {
       {
         function()
+          return vim.g.pde_inline_status or ""
+        end,
+        cond = function()
+          return type(vim.g.pde_inline_status) == "string" and vim.g.pde_inline_status ~= ""
+        end,
+        color = { fg = "#e0af68" },
+      },
+      {
+        function()
           local ok, status = pcall(function() return require("plugins.obsidian").sync_status() end)
           return ok and status or ""
         end,

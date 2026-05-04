@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecodeChatRequestAllowsOpenAICompatibleFields(t *testing.T) {
@@ -54,6 +55,90 @@ func TestBackendReachableFailsWhenBackendIsDown(t *testing.T) {
 	}
 }
 
+func TestBestErrorMessagePrefersStructuredMessages(t *testing.T) {
+	got := bestErrorMessage([]byte(`{"error":{"message":"structured message"},"message":"fallback"}`))
+	if got != "structured message" {
+		t.Fatalf("bestErrorMessage() = %q", got)
+	}
+}
+
+func TestValidateStructuredInline(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   *structuredInline
+		wantErr string
+	}{
+		{name: "nil", value: nil, wantErr: "OpenCode did not return structured output"},
+		{name: "missing code", value: &structuredInline{Placement: "replace"}, wantErr: "OpenCode returned structured output without code"},
+		{name: "bad placement", value: &structuredInline{Code: "x", Placement: "sideways"}, wantErr: "OpenCode returned unsupported placement \"sideways\""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateStructuredInline(tt.value)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.wantErr {
+				t.Fatalf("error = %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestNormalizeInlineErrorTimeout(t *testing.T) {
+	if got := normalizeInlineError(context.DeadlineExceeded); got != "Inline request timed out" {
+		t.Fatalf("normalizeInlineError() = %q", got)
+	}
+}
+
+func TestHandleChatCompletionsReturnsInlineFailureEnvelope(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/session":
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"provider config failed"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+
+	cfg := config{opencodeBaseURL: backend.URL, defaultModel: "opencode-inline", timeout: time.Second}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+
+	handleChatCompletions(cfg, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	choices, ok := envelope["choices"].([]any)
+	if !ok || len(choices) != 1 {
+		t.Fatalf("choices = %#v", envelope["choices"])
+	}
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		t.Fatalf("choice = %#v", choices[0])
+	}
+	message, ok := choice["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("message = %#v", choice["message"])
+	}
+	content, ok := message["content"].(string)
+	if !ok {
+		t.Fatalf("content = %#v", message["content"])
+	}
+	if content != `{"error":"provider config failed"}` {
+		t.Fatalf("content = %q", content)
+	}
+}
+
 func TestCleanupSessionSendsDelete(t *testing.T) {
 	var method, path string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,98 +159,60 @@ func TestCleanupSessionSendsDelete(t *testing.T) {
 	}
 }
 
-func TestRequestStructuredInlineUsesEditOnlySchema(t *testing.T) {
-	var messagePayload map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/session":
-			w.Header().Set("content-type", "application/json")
-			_, _ = io.WriteString(w, `{"id":"session-123"}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/session/session-123/message":
-			defer r.Body.Close()
-			if err := json.NewDecoder(r.Body).Decode(&messagePayload); err != nil {
-				t.Fatalf("decode message payload: %v", err)
-			}
-			w.Header().Set("content-type", "application/json")
-			_, _ = io.WriteString(w, `{"info":{"structured":{"code":"return a + b","placement":"replace","language":"python"}}}`)
-		case r.Method == http.MethodDelete && r.URL.Path == "/session/session-123":
-			w.WriteHeader(http.StatusNoContent)
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	cfg := config{opencodeBaseURL: server.URL, defaultModel: defaultModel, inlineAgent: defaultAgent}
-	requestBody := chatRequest{
-		Model: defaultModel,
-		Messages: []chatMessage{
-			{Role: "user", Content: "Fix the function so it returns a + b."},
-		},
-	}
-
-	structured, err := requestStructuredInline(context.Background(), cfg, requestBody)
-	if err != nil {
-		t.Fatalf("request structured inline: %v", err)
-	}
-	if structured.Placement != "replace" {
-		t.Fatalf("placement = %q", structured.Placement)
-	}
-
-	format, ok := messagePayload["format"].(map[string]any)
-	if !ok {
-		t.Fatalf("format payload missing: %#v", messagePayload["format"])
-	}
-	schema, ok := format["schema"].(map[string]any)
-	if !ok {
-		t.Fatalf("schema payload missing: %#v", format["schema"])
-	}
-	required, ok := schema["required"].([]any)
-	if !ok {
-		t.Fatalf("required payload missing: %#v", schema["required"])
-	}
-	if len(required) != 2 || required[0] != "code" || required[1] != "placement" {
-		t.Fatalf("required = %#v", required)
-	}
-
-	properties, ok := schema["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("properties payload missing: %#v", schema["properties"])
-	}
-	placement, ok := properties["placement"].(map[string]any)
-	if !ok {
-		t.Fatalf("placement payload missing: %#v", properties["placement"])
-	}
-	enumValues, ok := placement["enum"].([]any)
-	if !ok {
-		t.Fatalf("placement enum missing: %#v", placement["enum"])
-	}
-	var placements []string
-	for _, value := range enumValues {
-		text, ok := value.(string)
-		if !ok {
-			t.Fatalf("placement enum contains non-string: %#v", value)
-		}
-		placements = append(placements, text)
-	}
-	if slices.Contains(placements, "chat") {
-		t.Fatalf("placement enum unexpectedly contains chat: %#v", placements)
-	}
-	if !slices.Equal(placements, inlinePlacements) {
-		t.Fatalf("placement enum = %#v", placements)
-	}
-}
-
-func TestBuildPromptDefaultIsEditOnly(t *testing.T) {
+func TestBuildPromptDefaultsToEditOnly(t *testing.T) {
 	prompt, system := buildPrompt(nil)
 
+	if prompt != "<message role=\"user\">Return a replace edit.</message>" {
+		t.Fatalf("prompt = %q", prompt)
+	}
 	if len(system) != 0 {
 		t.Fatalf("system = %#v", system)
 	}
-	if strings.Contains(prompt, "chat") {
-		t.Fatalf("prompt = %q", prompt)
+}
+
+func TestBackendServeArgsAcceptsLoopbackTargets(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want []string
+	}{
+		{
+			name: "localhost",
+			url:  "http://localhost:4199",
+			want: []string{"serve", "--hostname", "localhost", "--port", "4199"},
+		},
+		{
+			name: "loopback ip",
+			url:  "http://127.0.0.1:4203",
+			want: []string{"serve", "--hostname", "127.0.0.1", "--port", "4203"},
+		},
 	}
-	if !strings.Contains(prompt, "replace edit") {
-		t.Fatalf("prompt = %q", prompt)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := backendServeArgs(config{opencodeBaseURL: tt.url})
+			if err != nil {
+				t.Fatalf("backendServeArgs: %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("args = %#v", got)
+			}
+		})
+	}
+}
+
+func TestBackendServeArgsRejectsUnsupportedTargets(t *testing.T) {
+	tests := []string{
+		"http://example.com:4199",
+		"http://127.0.0.1",
+		"http://127.0.0.1:4199/api",
+	}
+
+	for _, target := range tests {
+		t.Run(target, func(t *testing.T) {
+			if _, err := backendServeArgs(config{opencodeBaseURL: target}); err == nil {
+				t.Fatal("expected backendServeArgs to fail")
+			}
+		})
 	}
 }

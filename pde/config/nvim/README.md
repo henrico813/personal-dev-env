@@ -96,6 +96,8 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 | `<leader>pm` | Select a model directly |
 | `<leader>po` | Open CodeCompanion options |
 | `<leader>pe` | Explain the current buffer or visual selection |
+| `<leader>pi` | Run the inline prompt |
+| `<leader>pI` | Restart the inline shim |
 | `<leader>pa…` | Attach context (buffer, file, diff, diagnostics) |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
@@ -185,13 +187,11 @@ The chat window opens on the right and is clamped back into the old 25%-40% widt
 
 Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `vibe`, and the managed OpenCode agent config.
 
-Start OpenCode before using inline edits:
+`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL` and `OPENCODE_INLINE_SHIM_PORT`. When Neovim starts from a PDE-managed shell, those variables are already exported; when it starts elsewhere, CodeCompanion best-effort falls back to reading them from `paths.env`.
 
-```bash
-opencode serve --hostname 127.0.0.1 --port 4199
-```
+For the default loopback setup, the shim auto-starts `opencode serve` on demand when inline requests arrive and the backend is missing. If `OPENCODE_BASE_URL` points at a remote host or a non-loopback address, the shim will not try to start it for you.
 
-Neovim only probes `opencode-inline-shim` when the binary is already available on `$PATH`, so a plain `minimal` install stays quiet until you install `ai-tools`. Run `:CodeCompanionOpenCodeInlineShim` to start or restart it manually, and verify `opencode-inline-shim --healthcheck` succeeds if inline requests fail.
+`<leader>pi` runs the inline prompt in normal or visual mode. `:CodeCompanionOpenCodeInlineShim` and `<leader>pI` are the explicit restart path for the shim itself, which is what you want after changing OpenCode env values or if `opencode-inline-shim --healthcheck` fails. Neovim only probes `opencode-inline-shim` when the binary is already available on `$PATH`, so a plain `minimal` install stays quiet until you install `ai-tools`.
 
 CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` and `which opencode-inline-shim` both return paths before opening chat or inline.
 
