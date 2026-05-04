@@ -1,7 +1,7 @@
 ---
 name: inline
 description: Text-only backend for CodeCompanion inline edits.
-mode: primary
+mode: all
 hidden: true
 steps: 1
 permission:
