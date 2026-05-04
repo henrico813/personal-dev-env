@@ -28,7 +28,7 @@ cd cli && go build -o ~/.local/bin/pde .
 pde install ai-tools
 ```
 
-Installs planner, Codex, and OpenCode binaries plus repo-managed config for OpenCode, Codex, and Pi.
+Installs planner, Codex, OpenCode, and Pi binaries plus repo-managed AI config.
 
 ## AI Source Tree
 
@@ -45,7 +45,7 @@ Installs planner, Codex, and OpenCode binaries plus repo-managed config for Open
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
-| Pi | `ai/pi/agent/` | `~/.pi/agent/` | Settings and extension resources |
+| Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
 The installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
 
