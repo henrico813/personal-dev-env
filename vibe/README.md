@@ -72,9 +72,17 @@ vibe run \
 
 Artifacts land under `~/.local/state/vibe/<repo>/<slug>/runs/.../`, where
 `<slug>` is the normalized `--key` value.
-`stdout` returns one machine-readable JSON result. Progress logs stay on
-`stderr`, `events.jsonl`, `extension-events.jsonl`, and
-`agent.stderr.log`.
+`stdout` returns one machine-readable Vibe JSON result. Pi JSONL is
+written to `events.jsonl` and mirrored to `stderr` for Docker log
+watching. `agent.stderr.log` stores the same container stderr stream,
+including mirrored JSONL and real stderr. Progress logs also stay in
+`extension-events.jsonl`.
+
+The runtime prompt instructs the agent to write exactly one conventional
+commit subject to the absolute path `/artifacts/commit-message.txt` and
+not to create `commit-message.txt` in the repository. Snapshot commits
+use the trimmed first line from that file when present, and fall back to
+`chore: snapshot changes` when the file is missing or empty.
 
 Auth is copied into an ephemeral container home for the run and is not
 persisted in the artifact directory.
@@ -82,6 +90,7 @@ persisted in the artifact directory.
 Dogfood by inspecting:
 
 - `prompt.txt`
+- `commit-message.txt`
 - `events.jsonl`
 - `agent.stderr.log`
 - `extension-events.jsonl`

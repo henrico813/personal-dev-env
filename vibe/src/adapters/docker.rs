@@ -1,6 +1,10 @@
-use std::fs::File;
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+    process::{Command, Stdio},
+    thread,
+};
 
 use crate::observe::ArtifactPaths;
 
@@ -144,9 +148,7 @@ pub fn run_task(
     artifacts: &ArtifactPaths,
     model: &str,
 ) -> Result<i32, String> {
-    let stdout =
-        File::create(&artifacts.events_jsonl).map_err(|e| format!("create events log: {e}"))?;
-    let stderr =
+    let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
     let snapshot_ref = format!(
         "refs/vibe/snapshots/{}",
@@ -180,6 +182,8 @@ pub fn run_task(
         &format!("VIBE_MODEL={model}"),
         "-e",
         "VIBE_PROMPT_FILE=/artifacts/prompt.txt",
+        "-e",
+        "VIBE_COMMIT_MESSAGE_FILE=/artifacts/commit-message.txt",
         "-e",
         &format!(
             "VIBE_EXTENSION_LOG=/artifacts/{}",
@@ -219,12 +223,48 @@ pub fn run_task(
         cmd.args(["-v", &format!("{path}:/vibe-auth/auth.json:ro")]);
         cmd.args(["-e", "VIBE_AUTH_FILE=/vibe-auth/auth.json"]);
     }
-    let status = cmd
+    let mut child = cmd
         .arg(IMAGE)
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
-        .status()
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("docker run: {e}"))?;
+
+    let mut child_stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "docker run: missing stderr pipe".to_string())?;
+    let stderr_thread = thread::spawn(move || -> Result<(), String> {
+        let mut host_stderr = std::io::stderr();
+        let mut stderr_log = stderr_log;
+        let mut buf = [0_u8; 8192];
+        loop {
+            let n = child_stderr
+                .read(&mut buf)
+                .map_err(|e| format!("read docker stderr: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            host_stderr
+                .write_all(&buf[..n])
+                .map_err(|e| format!("write host stderr: {e}"))?;
+            stderr_log
+                .write_all(&buf[..n])
+                .map_err(|e| format!("write stderr log: {e}"))?;
+        }
+        host_stderr
+            .flush()
+            .map_err(|e| format!("flush host stderr: {e}"))?;
+        stderr_log
+            .flush()
+            .map_err(|e| format!("flush stderr log: {e}"))?;
+        Ok(())
+    });
+
+    let status = child.wait().map_err(|e| format!("wait for docker run: {e}"))?;
+    stderr_thread
+        .join()
+        .map_err(|_| "join stderr copier thread failed".to_string())??;
     Ok(status.code().unwrap_or(-1))
 }
 
