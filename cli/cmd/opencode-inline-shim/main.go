@@ -24,7 +24,7 @@ import (
 const (
 	defaultPort            = "4141"
 	defaultOpenCodeBaseURL = "http://127.0.0.1:4199"
-	defaultModel           = "opencode-inline"
+	transportModel         = "opencode-inline"
 	defaultAgent           = "inline"
 	defaultTimeout         = 60 * time.Second
 	backendPollInterval    = 150 * time.Millisecond
@@ -37,7 +37,7 @@ var backendStartMu sync.Mutex
 type config struct {
 	port            string
 	opencodeBaseURL string
-	defaultModel    string
+	inlineModel     string
 	inlineAgent     string
 	timeout         time.Duration
 }
@@ -103,7 +103,7 @@ func loadConfig() config {
 	return config{
 		port:            getenv("OPENCODE_INLINE_SHIM_PORT", defaultPort),
 		opencodeBaseURL: strings.TrimRight(getenv("OPENCODE_BASE_URL", defaultOpenCodeBaseURL), "/"),
-		defaultModel:    getenv("OPENCODE_INLINE_MODEL", defaultModel),
+		inlineModel:     getenv("OPENCODE_INLINE_MODEL", ""),
 		inlineAgent:     getenv("OPENCODE_INLINE_AGENT", defaultAgent),
 		timeout:         defaultTimeout,
 	}
@@ -245,7 +245,7 @@ func runServer(cfg config) error {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"object": "list",
-			"data":   []map[string]string{{"id": cfg.defaultModel, "object": "model"}},
+			"data":   []map[string]string{{"id": transportModel, "object": "model"}},
 		})
 	})
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
@@ -287,23 +287,29 @@ func handleChatCompletions(cfg config, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), cfg.timeout)
-	defer cancel()
-	if err := ensureBackendReachable(ctx, cfg); err != nil {
-		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
-		return
-	}
-	structured, err := requestStructuredInline(ctx, cfg, requestBody)
+	selectedModel, err := selectedInlineModel(requestBody, cfg)
 	if err != nil {
-		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
-		return
-	}
-	if err := validateStructuredInline(structured); err != nil {
-		writeInlineErrorCompletion(w, responseModel(requestBody, cfg), normalizeInlineError(err))
+		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
 		return
 	}
 
-	writeInlineCompletion(w, responseModel(requestBody, cfg), mustJSON(structured))
+	ctx, cancel := context.WithTimeout(r.Context(), cfg.timeout)
+	defer cancel()
+	if err := ensureBackendReachable(ctx, cfg); err != nil {
+		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
+		return
+	}
+	structured, err := requestStructuredInline(ctx, cfg, requestBody, selectedModel)
+	if err != nil {
+		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
+		return
+	}
+	if err := validateStructuredInline(structured); err != nil {
+		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
+		return
+	}
+
+	writeInlineCompletion(w, responseModel(requestBody), mustJSON(structured))
 }
 
 func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
@@ -319,7 +325,7 @@ func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
 	return requestBody, nil
 }
 
-func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRequest) (*structuredInline, error) {
+func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel string) (*structuredInline, error) {
 	prompt, system := buildPrompt(requestBody.Messages)
 	sessionPayload := map[string]any{
 		"title": "CodeCompanion Inline",
@@ -362,11 +368,8 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 		},
 		"parts": []map[string]string{{"type": "text", "text": prompt}},
 	}
-	if model := strings.TrimSpace(requestBody.Model); model != "" && model != cfg.defaultModel {
-		parts := strings.SplitN(model, "/", 2)
-		if len(parts) == 2 {
-			payload["model"] = map[string]string{"providerID": parts[0], "modelID": parts[1]}
-		}
+	if selectedModel != "" {
+		payload["model"] = openCodeModel(selectedModel)
 	}
 
 	var response sessionMessageResponse
@@ -487,12 +490,41 @@ func mustJSON(value any) string {
 	return string(data)
 }
 
-func responseModel(requestBody chatRequest, cfg config) string {
+func responseModel(requestBody chatRequest) string {
 	model := strings.TrimSpace(requestBody.Model)
 	if model == "" {
-		return cfg.defaultModel
+		return transportModel
 	}
 	return model
+}
+
+func configuredInlineModel(cfg config) (string, error) {
+	model := strings.TrimSpace(cfg.inlineModel)
+	if model == "" || model == transportModel {
+		return "", nil
+	}
+	return normalizeInlineModel(model)
+}
+
+func selectedInlineModel(requestBody chatRequest, cfg config) (string, error) {
+	model := strings.TrimSpace(requestBody.Model)
+	if model == "" || model == transportModel {
+		return configuredInlineModel(cfg)
+	}
+	return normalizeInlineModel(model)
+}
+
+func normalizeInlineModel(model string) (string, error) {
+	parts := strings.SplitN(strings.TrimSpace(model), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid inline model %q; expected provider/model", model)
+	}
+	return strings.TrimSpace(model), nil
+}
+
+func openCodeModel(model string) map[string]string {
+	parts := strings.SplitN(strings.TrimSpace(model), "/", 2)
+	return map[string]string{"providerID": parts[0], "modelID": parts[1]}
 }
 
 func writeInlineCompletion(w http.ResponseWriter, model, content string) {
