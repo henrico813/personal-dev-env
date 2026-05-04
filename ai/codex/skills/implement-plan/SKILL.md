@@ -35,6 +35,10 @@ vibe --help
 vibe run --help
 ```
 
+Before using `vibe run`, ensure provider auth is configured through one of
+the supported env vars or `~/.pi/agent/auth.json`. Missing auth should fail
+as `setup_error`, not a generic agent failure.
+
 Read the plan fully, then run one unchecked implementation step at a time.
 Extract the current step into a prompt file, then invoke the `vibe` CLI
 directly with the current run contract:

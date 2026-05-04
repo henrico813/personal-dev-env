@@ -49,6 +49,8 @@ type structuredInline struct {
 	Placement string `json:"placement"`
 }
 
+var inlinePlacements = []string{"replace", "add", "before", "new"}
+
 type sessionResponse struct {
 	ID string `json:"id"`
 }
@@ -267,6 +269,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 		"system": strings.Join(append([]string{
 			"You are an inline editing backend for CodeCompanion.",
 			"Use StructuredOutput exactly once and do not call other tools.",
+			"This endpoint only supports edit responses, never chat or explanation mode.",
 			"Return code suitable for direct insertion into the current buffer.",
 		}, system...), "\n"),
 		"format": map[string]any{
@@ -274,13 +277,13 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 			"retryCount": 0,
 			"schema": map[string]any{
 				"type":     "object",
-				"required": []string{"placement"},
+				"required": []string{"code", "placement"},
 				"properties": map[string]any{
 					"code":     map[string]string{"type": "string"},
 					"language": map[string]string{"type": "string"},
 					"placement": map[string]any{
 						"type": "string",
-						"enum": []string{"replace", "add", "before", "new", "chat"},
+						"enum": inlinePlacements,
 					},
 				},
 				"additionalProperties": false,
@@ -323,7 +326,7 @@ func buildPrompt(messages []chatMessage) (string, []string) {
 		prompt = append(prompt, fmt.Sprintf("<message role=\"%s\">\n%s\n</message>", message.Role, text))
 	}
 	if len(prompt) == 0 {
-		prompt = append(prompt, "<message role=\"user\">Return placement chat.</message>")
+		prompt = append(prompt, "<message role=\"user\">Return a replace edit.</message>")
 	}
 	return strings.Join(prompt, "\n\n"), system
 }
@@ -400,7 +403,7 @@ func postJSON(ctx context.Context, cfg config, path string, payload any, out any
 func mustJSON(value any) string {
 	data, err := json.Marshal(value)
 	if err != nil {
-		return `{"placement":"chat"}`
+		return `{"code":"","placement":"replace"}`
 	}
 	return string(data)
 }
