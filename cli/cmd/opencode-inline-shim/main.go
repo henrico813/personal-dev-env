@@ -605,8 +605,11 @@ func normalizeInlineError(err error) string {
 		return "Inline request timed out"
 	}
 	message := strings.TrimSpace(err.Error())
-	message = strings.TrimPrefix(message, "OpenCode 502 Bad Gateway: ")
-	message = strings.TrimPrefix(message, "OpenCode 500 Internal Server Error: ")
+	if strings.HasPrefix(message, "OpenCode ") {
+		if _, rest, ok := strings.Cut(message, ": "); ok {
+			message = strings.TrimSpace(rest)
+		}
+	}
 	return message
 }
 
