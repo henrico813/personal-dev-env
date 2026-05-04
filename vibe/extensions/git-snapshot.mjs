@@ -63,11 +63,13 @@ function enqueueSnapshot(pi, toolName, toolCallId) {
         sha="$(git rev-parse HEAD)"
         git update-ref ${shellSingleQuote(process.env.VIBE_SNAPSHOT_REF)} "$sha"
         git reset --soft "$parent"
+        printf '%s\n' "$sha"
       `;
       const result = await pi.exec("bash", ["-lc", script], { timeout: 30_000 });
       if (result.code !== 0) {
         throw new Error(`snapshot failed for ${toolName} ${toolCallId}: exit ${result.code}`);
       }
+      if (!result.stdout.trim()) return;
       emit(`snapshot: ${commitMessage}`, "info");
       await snapshotDebugDetails(pi);
     });
