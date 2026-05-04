@@ -18,6 +18,18 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+fn command_output(out: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => stdout,
+        (true, false) => stderr,
+        (false, false) => format!("stdout:\n{stdout}\n\nstderr:\n{stderr}"),
+    }
+}
+
 pub fn validate_worktree(
     worktree: &Path,
     expected_branch: &str,
@@ -151,14 +163,13 @@ pub fn commit_all(
         .args(["-C", repo.to_str().unwrap_or("."), "add", "-A"])
         .output()
         .map_err(|e| format!("git add: {e}"))?;
-    if !add.stdout.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&add.stdout));
-    }
-    if !add.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&add.stderr));
-    }
     if !add.status.success() {
-        return Err("git add -A failed".to_string());
+        let output = command_output(&add);
+        return Err(if output.is_empty() {
+            "git add -A failed".to_string()
+        } else {
+            format!("git add -A failed:\n{output}")
+        });
     }
     let commit = Command::new("git")
         .env("VIBE_COMMIT_KIND", kind)
@@ -173,14 +184,13 @@ pub fn commit_all(
         ])
         .output()
         .map_err(|e| format!("git commit: {e}"))?;
-    if !commit.stdout.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&commit.stdout));
-    }
-    if !commit.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&commit.stderr));
-    }
     if !commit.status.success() {
-        return Err("git commit failed".to_string());
+        let output = command_output(&commit);
+        return Err(if output.is_empty() {
+            "git commit failed".to_string()
+        } else {
+            format!("git commit failed:\n{output}")
+        });
     }
     head_sha(repo)
 }
