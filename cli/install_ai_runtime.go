@@ -48,6 +48,22 @@ func buildOpenCodeInlineShimBinary(cfg *Config, runner Runner) (string, error) {
 	return shimBin, nil
 }
 
+func ensureCargo(cfg *Config, runner Runner) error {
+	return runner.Bash("verify cargo", fmt.Sprintf(
+		"set -euo pipefail; export PATH=%s:$PATH; command -v cargo >/dev/null",
+		shellQuote(filepath.Join(cfg.HomeDir, ".cargo", "bin")),
+	))
+}
+
+func installVibe(cfg *Config, runner Runner) error {
+	return runner.Bash("install vibe", fmt.Sprintf(
+		"set -euo pipefail; export PATH=%s:$PATH; cargo install --path %s --root %s --force",
+		shellQuote(filepath.Join(cfg.HomeDir, ".cargo", "bin")),
+		shellQuote(filepath.Join(cfg.RepoRoot, "vibe")),
+		shellQuote(filepath.Join(cfg.HomeDir, ".local")),
+	))
+}
+
 func backupPlannerLaunchers(cfg *Config, runner Runner) error {
 	for _, path := range []string{
 		filepath.Join(cfg.LocalBinDir, "planner"),
@@ -93,6 +109,14 @@ func verifyOpenCodeInlineShimLauncher(cfg *Config, runner Runner) error {
 	return runner.Bash("verify opencode inline shim", fmt.Sprintf(
 		"set -euo pipefail; export PATH=%s:$PATH; opencode-inline-shim --help >/dev/null",
 		shellQuote(cfg.LocalBinDir),
+	))
+}
+
+func verifyVibeLauncher(cfg *Config, runner Runner) error {
+	return runner.Bash("verify vibe", fmt.Sprintf(
+		"set -euo pipefail; test -x %s; %s --help >/dev/null",
+		shellQuote(filepath.Join(cfg.LocalBinDir, "vibe")),
+		shellQuote(filepath.Join(cfg.LocalBinDir, "vibe")),
 	))
 }
 

@@ -29,6 +29,16 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 
+	if err := ensureCargo(cfg, runner); err != nil {
+		return err
+	}
+	if err := installVibe(cfg, runner); err != nil {
+		return err
+	}
+	if err := verifyVibeLauncher(cfg, runner); err != nil {
+		return err
+	}
+
 	if err := ensureNodeToolchain(cfg, runner); err != nil {
 		return err
 	}
