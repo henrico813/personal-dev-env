@@ -63,6 +63,14 @@ func verifyPlannerLauncher(cfg *Config, runner Runner) error {
 	))
 }
 
+func verifyPiLauncher(cfg *Config, runner Runner) error {
+	return runner.Bash("verify pi", fmt.Sprintf(
+		"set -euo pipefail; test -x %s; %s --help >/dev/null",
+		shellQuote(filepath.Join(cfg.LocalBinDir, "pi")),
+		shellQuote(filepath.Join(cfg.LocalBinDir, "pi")),
+	))
+}
+
 // ensureNodeToolchain keeps the Node runtime stable across reboots and shell restarts.
 func ensureNodeToolchain(cfg *Config, runner Runner) error {
 	nvmDir := filepath.Join(cfg.HomeDir, ".nvm")
@@ -107,6 +115,9 @@ func installNodeTool(cfg *Config, runner Runner, name, pkg string) error {
 
 	wrapperPath := filepath.Join(cfg.LocalBinDir, name)
 	if err := runner.MkdirAll("create local bin", cfg.LocalBinDir, 0o755); err != nil {
+		return err
+	}
+	if err := backupIfExists(wrapperPath, runner); err != nil {
 		return err
 	}
 
