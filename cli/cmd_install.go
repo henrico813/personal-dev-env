@@ -20,13 +20,14 @@ func (fn installerFunc) Install(cfg *Config, runner Runner) error {
 
 var installTargets = map[string]Installer{
 	"ai-tools": installerFunc(installAITools),
+	"config":   installerFunc(installConfig),
 	"obsidian": installerFunc(installObsidian),
 }
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pde",
-		Short: "Install PDE optional targets",
+		Short: "Install PDE targets",
 	}
 	root.AddCommand(newInstallCmd())
 	return root

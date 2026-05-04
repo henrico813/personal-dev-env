@@ -132,3 +132,52 @@ func linkBinary(src, dst string, runner Runner) error {
 		return os.Symlink(src, dst)
 	})
 }
+
+func linkConfig(src, dst string, runner Runner) error {
+	if target, ok, err := existingSymlinkTarget(dst); err != nil {
+		return err
+	} else if ok && target == src {
+		return nil
+	}
+
+	return runner.Do("link "+dst, func() error {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+
+		if info, err := os.Lstat(dst); err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				if err := os.Remove(dst); err != nil {
+					return err
+				}
+			} else {
+				backup := fmt.Sprintf("%s.bak.%d", dst, time.Now().UnixNano())
+				if err := os.Rename(dst, backup); err != nil {
+					return err
+				}
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+
+		return os.Symlink(src, dst)
+	})
+}
+
+func existingSymlinkTarget(path string) (string, bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return "", false, nil
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", false, err
+	}
+	return target, true, nil
+}
