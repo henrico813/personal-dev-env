@@ -34,6 +34,21 @@ func TestVerifyPlannerLauncherRunsHelp(t *testing.T) {
 	}
 }
 
+func TestVerifyOpenCodeInlineShimLauncherRunsHelp(t *testing.T) {
+	localBin := filepath.Join(t.TempDir(), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir local bin: %v", err)
+	}
+
+	shimPath := filepath.Join(localBin, "opencode-inline-shim")
+	writeStubExecutable(t, shimPath, "--help")
+
+	cfg := &Config{LocalBinDir: localBin}
+	if err := verifyOpenCodeInlineShimLauncher(cfg, Runner{}); err != nil {
+		t.Fatalf("verify shim launcher: %v", err)
+	}
+}
+
 func TestVerifyPiLauncherRunsHelp(t *testing.T) {
 	localBin := filepath.Join(t.TempDir(), ".local", "bin")
 	if err := os.MkdirAll(localBin, 0o755); err != nil {
