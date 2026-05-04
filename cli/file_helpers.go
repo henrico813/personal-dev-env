@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,32 @@ func backupIfExists(path string, runner Runner) error {
 		return err
 	}
 	return runner.Rename("backup existing config", path, backup)
+}
+
+var configInstallBackupSeq uint64
+
+func backupConfigInstallPath(path string, runner Runner) error {
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if err := runner.MkdirAll("create config backup parent", filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+
+	for {
+		stamp := time.Now().UTC().Format("20060102_150405.000000000")
+		backup := fmt.Sprintf("%s.bak.%s.%d.%d", path, stamp, os.Getpid(), atomic.AddUint64(&configInstallBackupSeq, 1))
+		if _, err := os.Lstat(backup); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return runner.Rename("backup existing config", path, backup)
+	}
 }
 
 // syncTree copies a repo-managed tree into a fresh destination subtree.
@@ -141,6 +168,10 @@ func linkConfig(src, dst string, runner Runner) error {
 	}
 
 	return runner.Do("link "+dst, func() error {
+		if err := validateReadableRegularFile(src); err != nil {
+			return fmt.Errorf("validate config source %s: %w", src, err)
+		}
+
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
@@ -151,8 +182,7 @@ func linkConfig(src, dst string, runner Runner) error {
 					return err
 				}
 			} else {
-				backup := fmt.Sprintf("%s.bak.%d", dst, time.Now().UnixNano())
-				if err := os.Rename(dst, backup); err != nil {
+				if err := backupConfigInstallPath(dst, runner); err != nil {
 					return err
 				}
 			}
@@ -162,6 +192,22 @@ func linkConfig(src, dst string, runner Runner) error {
 
 		return os.Symlink(src, dst)
 	})
+}
+
+func validateReadableRegularFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 func existingSymlinkTarget(path string) (string, bool, error) {
