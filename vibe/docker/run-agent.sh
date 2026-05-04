@@ -17,8 +17,8 @@ if [[ -n "${VIBE_GIT_USER_EMAIL:-}" ]]; then
 fi
 
 TASK_PROMPT="$(cat "${VIBE_PROMPT_FILE}")"
-COMMIT_MESSAGE_INSTRUCTIONS=$'\n\nWrite exactly one conventional commit subject to the absolute path /artifacts/commit-message.txt. Choose the type prefix yourself based on the current step or task title. Write one line only. Do not create commit-message.txt in the repository; only write /artifacts/commit-message.txt.'
-PROMPT="${TASK_PROMPT}${COMMIT_MESSAGE_INSTRUCTIONS}"
+COMMIT_MESSAGE_INSTRUCTIONS=$'Write exactly one conventional commit subject to the absolute path /artifacts/commit-message.txt. Choose the type prefix yourself based on the current step or task title. Write one line only. Do not create commit-message.txt in the repository; only write /artifacts/commit-message.txt.'
+PROMPT="${COMMIT_MESSAGE_INSTRUCTIONS}"$'\n\n'"${TASK_PROMPT}"
 
 PI_ARGS=(
   --mode json
@@ -34,4 +34,4 @@ else
   PI_ARGS+=(--model "${VIBE_MODEL}")
 fi
 
-exec pi "${PI_ARGS[@]}" "${PROMPT}" > >(tee /artifacts/events.jsonl >&2)
+pi "${PI_ARGS[@]}" "${PROMPT}" > >(tee /artifacts/events.jsonl >&2)

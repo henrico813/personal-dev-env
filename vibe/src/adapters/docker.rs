@@ -264,9 +264,13 @@ pub fn run_task(
     let status = child
         .wait()
         .map_err(|e| format!("wait for docker run: {e}"))?;
-    stderr_thread
+    if let Err(err) = stderr_thread
         .join()
-        .map_err(|_| "join stderr copier thread failed".to_string())??;
+        .map_err(|_| "join stderr copier thread failed".to_string())
+        .and_then(|result| result)
+    {
+        eprintln!("warning: stderr copier failed: {err}");
+    }
     Ok(status.code().unwrap_or(-1))
 }
 
