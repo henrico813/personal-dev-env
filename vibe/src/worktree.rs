@@ -87,8 +87,8 @@ pub fn pre_run_commit(worktree: &Path) -> Result<String, String> {
     git::head_sha(worktree)
 }
 
-pub fn is_dirty(worktree: &Path) -> bool {
-    git::is_dirty(worktree).unwrap_or(false)
+pub fn is_dirty(worktree: &Path) -> Result<bool, String> {
+    git::is_dirty(worktree)
 }
 
 pub fn commit_result(worktree: &Path, message: &str, hooks_dir: &Path) -> Result<String, String> {

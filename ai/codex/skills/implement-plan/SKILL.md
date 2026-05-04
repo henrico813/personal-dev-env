@@ -36,9 +36,15 @@ vibe run --help
 ```
 
 Read the plan fully, then run one unchecked implementation step at a time.
-If Vibe keeps planner-step extraction in its CLI, invoke it directly with the
-plan and step arguments. If prompt preparation moves outside Vibe, generate the
-prompt file first and then invoke `vibe run --key ... --prompt-file ...`.
+Extract the current step into a prompt file, then invoke the `vibe` CLI
+directly with the current run contract:
+
+```bash
+vibe run --key "$KEY" --prompt-file "$PROMPT_FILE" --model "$MODEL"
+```
+
+The skill owns step selection and prompt preparation. Vibe owns worktree
+creation, sandboxing, execution, and result reporting.
 
 Do not create the branch or worktree manually in Vibe mode; Vibe owns that
 setup.

@@ -153,7 +153,7 @@ pub fn run_task(
         "-e",
         "VIBE_GIT_HOOKS_DIR=/opt/vibe/hooks",
         "-e",
-        &format!("VIBE_CANONICAL_REPO_ROOT={}", repo_root.display()),
+        &format!("VIBE_REPO_ROOT={}", repo_root.display()),
     ]);
     for key in AUTH_VARS {
         if let Ok(value) = std::env::var(key) {
