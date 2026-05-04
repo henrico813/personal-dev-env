@@ -8,7 +8,7 @@ if [[ -n "${VIBE_AUTH_FILE:-}" && -f "${VIBE_AUTH_FILE}" ]]; then
 fi
 
 git config --global --add safe.directory "$(pwd)"
-git config --global --add safe.directory "${VIBE_CANONICAL_REPO_ROOT}"
+git config --global --add safe.directory "${VIBE_REPO_ROOT}"
 if [[ -n "${VIBE_GIT_USER_NAME:-}" ]]; then
   git config --global user.name "${VIBE_GIT_USER_NAME}"
 fi
