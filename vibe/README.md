@@ -58,6 +58,7 @@ vibe run \
   --key pdev-049-demo \
   --prompt-file /tmp/vibe-task.txt \
   --model openai-codex/gpt-5.4 \
+  --stderr-level info \
   --commit-message "docs: update README note"
 ```
 
@@ -72,11 +73,32 @@ vibe run \
 
 Artifacts land under `~/.local/state/vibe/<repo>/<slug>/runs/.../`, where
 `<slug>` is the normalized `--key` value.
-`stdout` returns one machine-readable Vibe JSON result. Pi JSONL is
-written to `events.jsonl` and mirrored to `stderr` for Docker log
-watching. `agent.stderr.log` stores the same container stderr stream,
-including mirrored JSONL and real stderr. Progress logs also stay in
-`extension-events.jsonl`.
+`stdout` returns one machine-readable Vibe JSON result. `events.jsonl`
+always stores the full raw Pi JSONL stream. `stderr` is a structured
+presentation channel controlled by `--stderr-level` or
+`VIBE_STDERR_LEVEL`, and `agent.stderr.log` stores the same structured
+or raw stream seen by the caller. Docker build logs are always
+suppressed. Other container stderr remains pass-through today and is not
+level-filtered. Progress logs also stay in `extension-events.jsonl`.
+
+Supported stderr levels are `error`, `warn`, `info`, `debug`, and
+`trace`. Use `info` for Codex-supervised runs, because it emits compact
+human-readable progress without replaying the full machine log into the
+supervisor context. Setup failures continue to surface in the final JSON
+result.
+
+| Signal | error | warn | info | debug | trace |
+| --- | --- | --- | --- | --- | --- |
+| structured warnings or fallbacks | no | yes | yes | yes | no |
+| structured lifecycle summaries | no | no | yes | yes | no |
+| failed tool summaries | yes | yes | yes | yes | no |
+| successful tool summaries | no | no | yes | yes | no |
+| snapshot subject | no | no | yes | yes | no |
+| changed filenames | no | no | no | yes | no |
+| diff stat | no | no | no | yes | no |
+| docker build logs | no | no | no | no | no |
+| other container stderr | pass-through | pass-through | pass-through | pass-through | pass-through |
+| raw JSONL | no | no | no | no | yes |
 
 The runtime prompt instructs the agent to keep exactly one conventional
 snapshot subject in the absolute path `/artifacts/commit-message.txt`,

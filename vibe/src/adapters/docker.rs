@@ -55,12 +55,6 @@ pub fn ensure_image(runtime_root: &Path) -> Result<(), String> {
         ])
         .output()
         .map_err(|e| format!("docker build: {e}"))?;
-    if !out.stdout.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&out.stdout));
-    }
-    if !out.stderr.is_empty() {
-        eprint!("{}", String::from_utf8_lossy(&out.stderr));
-    }
     if out.status.success() {
         Ok(())
     } else {
@@ -147,6 +141,7 @@ pub fn run_task(
     worktree: &Path,
     artifacts: &ArtifactPaths,
     model: &str,
+    stderr_level: &str,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -180,6 +175,8 @@ pub fn run_task(
         "HOME=/vibe-home",
         "-e",
         &format!("VIBE_MODEL={model}"),
+        "-e",
+        &format!("VIBE_STDERR_LEVEL={stderr_level}"),
         "-e",
         "VIBE_PROMPT_FILE=/artifacts/prompt.txt",
         "-e",
