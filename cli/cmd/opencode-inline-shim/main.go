@@ -483,7 +483,7 @@ func postJSON(ctx context.Context, cfg config, path string, payload any, out any
 		return fmt.Errorf("OpenCode %s: %s", response.Status, message)
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode OpenCode response: %w", err)
+		return errors.New("OpenCode returned invalid JSON")
 	}
 	return nil
 }
@@ -605,11 +605,8 @@ func normalizeInlineError(err error) string {
 		return "Inline request timed out"
 	}
 	message := strings.TrimSpace(err.Error())
-	if strings.HasPrefix(message, "OpenCode ") {
-		if idx := strings.Index(message, ": "); idx >= 0 && idx+2 < len(message) {
-			message = strings.TrimSpace(message[idx+2:])
-		}
-	}
+	message = strings.TrimPrefix(message, "OpenCode 502 Bad Gateway: ")
+	message = strings.TrimPrefix(message, "OpenCode 500 Internal Server Error: ")
 	return message
 }
 
