@@ -33,8 +33,7 @@ pde install obsidian
 pde install ai-tools
 ```
 
-`ai-tools` installs planner, Codex, OpenCode, and Pi binaries, then copies
-the neutral `ai/` config tree into the user’s managed config paths.
+`ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, and `pi`, then copies the neutral `ai/` config tree into the user’s managed config paths.
 
 ## Repository Layout
 
