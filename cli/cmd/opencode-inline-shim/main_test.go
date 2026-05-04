@@ -36,6 +36,52 @@ func TestDecodeChatRequestAllowsOpenAICompatibleFields(t *testing.T) {
 	}
 }
 
+func TestSelectedInlineModelUsesConfiguredOverrideForAliasRequest(t *testing.T) {
+	cfg := config{inlineModel: "openai-codex/gpt-5.4-mini"}
+
+	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
+	if err != nil {
+		t.Fatalf("selectedInlineModel() error = %v", err)
+	}
+	if got == nil || got.ProviderID != "openai-codex" || got.ModelID != "gpt-5.4-mini" || got.Thinking != "" {
+		t.Fatalf("selectedInlineModel() = %#v", got)
+	}
+}
+
+func TestSelectedInlineModelAcceptsThinkingSuffix(t *testing.T) {
+	cfg := config{}
+
+	got, err := selectedInlineModel(chatRequest{Model: "openai/gpt-5.4-mini/high"}, cfg)
+	if err != nil {
+		t.Fatalf("selectedInlineModel() error = %v", err)
+	}
+	if got == nil || got.ProviderID != "openai" || got.ModelID != "gpt-5.4-mini" || got.Thinking != "high" {
+		t.Fatalf("selectedInlineModel() = %#v", got)
+	}
+}
+
+func TestSelectedInlineModelFallsBackToOpenCodeDefault(t *testing.T) {
+	cfg := config{}
+
+	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
+	if err != nil {
+		t.Fatalf("selectedInlineModel() error = %v", err)
+	}
+	if got != nil {
+		t.Fatalf("selectedInlineModel() = %#v", got)
+	}
+}
+
+func TestParseInlineModelRejectsMalformedVariants(t *testing.T) {
+	for _, model := range []string{"openai", "openai/", "/model", "openai/model/", "openai/model/extra/part"} {
+		t.Run(model, func(t *testing.T) {
+			if _, err := parseInlineModel(model); err == nil {
+				t.Fatal("expected parseInlineModel to fail")
+			}
+		})
+	}
+}
+
 func TestBackendReachableAcceptsAnyHTTPResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing", http.StatusNotFound)
@@ -99,32 +145,8 @@ func TestConfiguredInlineModelTreatsAliasAsNoOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("configuredInlineModel() error = %v", err)
 	}
-	if got != "" {
-		t.Fatalf("configuredInlineModel() = %q", got)
-	}
-}
-
-func TestSelectedInlineModelUsesConfiguredOverrideForAliasRequest(t *testing.T) {
-	cfg := config{inlineModel: "openai-codex/gpt-5.4-mini"}
-
-	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
-	}
-	if got != "openai-codex/gpt-5.4-mini" {
-		t.Fatalf("selectedInlineModel() = %q", got)
-	}
-}
-
-func TestSelectedInlineModelFallsBackToOpenCodeDefault(t *testing.T) {
-	cfg := config{}
-
-	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
-	}
-	if got != "" {
-		t.Fatalf("selectedInlineModel() = %q", got)
+	if got != nil {
+		t.Fatalf("configuredInlineModel() = %#v", got)
 	}
 }
 
@@ -137,8 +159,8 @@ func TestConfiguredInlineModelRejectsMalformedOverride(t *testing.T) {
 }
 
 func TestOpenCodeModelBuildsProviderModelPair(t *testing.T) {
-	override := openCodeModel("openai-codex/gpt-5.4-mini")
-	if override["providerID"] != "openai-codex" || override["modelID"] != "gpt-5.4-mini" {
+	override := openCodeModel(&inlineModel{ProviderID: "openai-codex", ModelID: "gpt-5.4-mini", Thinking: "high"})
+	if override["providerID"] != "openai-codex" || override["modelID"] != "gpt-5.4-mini" || len(override) != 2 {
 		t.Fatalf("override = %#v", override)
 	}
 }
@@ -265,5 +287,47 @@ func TestBackendServeArgsRejectsUnsupportedTargets(t *testing.T) {
 				t.Fatal("expected backendServeArgs to fail")
 			}
 		})
+	}
+}
+
+func TestRequestStructuredInlineStripsThinkingFromModelPayload(t *testing.T) {
+	var received map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/session":
+			w.Header().Set("content-type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"session-123"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/session/session-123/message":
+			if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("content-type", "application/json")
+			_, _ = w.Write([]byte(`{"info":{"structured":{"code":"x","placement":"replace"}}}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/session/session-123":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+
+	got, err := requestStructuredInline(context.Background(), config{opencodeBaseURL: backend.URL, inlineAgent: "inline"}, chatRequest{Messages: []chatMessage{{Role: "user", Content: "hello"}}}, &inlineModel{ProviderID: "openai", ModelID: "gpt-5.4-mini", Thinking: "high"})
+	if err != nil {
+		t.Fatalf("requestStructuredInline() error = %v", err)
+	}
+	if got == nil || got.Code != "x" || got.Placement != "replace" {
+		t.Fatalf("requestStructuredInline() = %#v", got)
+	}
+
+	model, ok := received["model"].(map[string]any)
+	if !ok {
+		t.Fatalf("model = %#v", received["model"])
+	}
+	if len(model) != 2 || model["providerID"] != "openai" || model["modelID"] != "gpt-5.4-mini" {
+		t.Fatalf("model = %#v", model)
+	}
+	if _, ok := model["thinking"]; ok {
+		t.Fatalf("model unexpectedly included thinking: %#v", model)
 	}
 }

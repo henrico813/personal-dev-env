@@ -94,6 +94,131 @@ local function shim_bin()
   return bin
 end
 
+local shim_pidfile = vim.fn.stdpath("state") .. "/opencode-inline-shim.pid"
+
+local function read_shim_pidfile()
+  local file = io.open(shim_pidfile, "r")
+  if not file then
+    return nil
+  end
+
+  local contents = file:read("*a")
+  file:close()
+  return tonumber(vim.trim(contents or ""))
+end
+
+local function write_shim_pidfile(pid)
+  if not pid or pid <= 0 then
+    return
+  end
+
+  local file = io.open(shim_pidfile, "w")
+  if not file then
+    return
+  end
+
+  file:write(tostring(pid), "\n")
+  file:close()
+end
+
+local function clear_shim_pidfile()
+  pcall(vim.fn.delete, shim_pidfile)
+end
+
+local function process_command(pid)
+  if not pid or pid <= 0 then
+    return nil
+  end
+
+  local ok, result = pcall(function()
+    return vim.system({ "ps", "-o", "command=", "-p", tostring(pid) }, { text = true }):wait()
+  end)
+  if not ok or not result or result.code ~= 0 or not result.stdout then
+    return nil
+  end
+
+  local command = vim.trim(result.stdout)
+  if command == "" then
+    return nil
+  end
+  return command
+end
+
+local function inline_shim_pid(pid)
+  local command = process_command(pid)
+  if not command or not command:find("opencode%-inline%-shim", 1, false) then
+    return nil
+  end
+  return pid
+end
+
+local function kill_inline_shim_pid(pid)
+  pid = inline_shim_pid(pid)
+  if not pid then
+    return
+  end
+
+  pcall(function()
+    vim.system({ "kill", tostring(pid) }):wait()
+  end)
+end
+
+local function shim_port_listener_output()
+  local ok, result = pcall(function()
+    return vim.system({ "ss", "-ltnp", "( sport = :" .. shim_port() .. " )" }, { text = true }):wait()
+  end)
+  if not ok or not result or result.code ~= 0 or not result.stdout then
+    return nil
+  end
+
+  return result.stdout
+end
+
+local function listener_exists_on_shim_port()
+  local output = shim_port_listener_output()
+  if not output then
+    return false
+  end
+
+  local lines = 0
+  for line in output:gmatch("[^\n]+") do
+    if vim.trim(line) ~= "" then
+      lines = lines + 1
+    end
+  end
+  return lines > 1
+end
+
+local function listener_pid_on_shim_port()
+  local output = shim_port_listener_output()
+  if not output then
+    return nil
+  end
+
+  return inline_shim_pid(tonumber(output:match("pid=(%d+)")))
+end
+
+local function cleanup_stale_inline_shim(opts)
+  opts = opts or {}
+  local tracked_pid = read_shim_pidfile()
+  if opts.kill_tracked ~= false then
+    kill_inline_shim_pid(tracked_pid)
+  end
+
+  local listener_pid = listener_pid_on_shim_port()
+  if listener_pid and opts.kill_listener ~= false and listener_pid ~= tracked_pid then
+    kill_inline_shim_pid(listener_pid)
+  end
+
+  if opts.wait_for_release then
+    vim.wait(1500, function()
+      return not listener_exists_on_shim_port()
+    end, 50)
+  end
+
+  clear_shim_pidfile()
+end
+
 local function shim_healthcheck(callback)
   refresh_opencode_env()
   local bin = shim_bin()
@@ -123,6 +248,8 @@ local function stop_inline_shim()
     pcall(vim.fn.jobstop, shim_job)
     shim_job = nil
   end
+  cleanup_stale_inline_shim({ wait_for_release = true })
+  clear_shim_pidfile()
 end
 
 local function tracked_shim_running()
@@ -144,6 +271,7 @@ local function start_inline_shim(opts)
   end
 
   local function launch()
+    cleanup_stale_inline_shim({ wait_for_release = true })
     shim_job = vim.fn.jobstart({ bin }, { detach = true })
     if shim_job <= 0 then
       shim_job = nil
@@ -153,6 +281,14 @@ local function start_inline_shim(opts)
       end
       return
     end
+
+    local shim_pid = vim.fn.jobpid(shim_job)
+    if shim_pid and shim_pid > 0 then
+      write_shim_pidfile(shim_pid)
+    else
+      clear_shim_pidfile()
+    end
+
     wait_for_shim_ready(10, function(ready)
       if not ready then
         vim.notify("opencode-inline-shim did not become ready", vim.log.levels.ERROR)
@@ -178,8 +314,17 @@ local function start_inline_shim(opts)
     return
   end
 
-  stop_inline_shim()
-  launch()
+  shim_healthcheck(function(ready)
+    if ready then
+      if opts.on_ready then
+        opts.on_ready(true)
+      end
+      return
+    end
+
+    cleanup_stale_inline_shim({ wait_for_release = true })
+    launch()
+  end)
 end
 
 local function restart_inline_shim(opts)
