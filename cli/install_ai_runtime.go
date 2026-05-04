@@ -117,6 +117,9 @@ func installNodeTool(cfg *Config, runner Runner, name, pkg string) error {
 	if err := runner.MkdirAll("create local bin", cfg.LocalBinDir, 0o755); err != nil {
 		return err
 	}
+	if err := backupIfExists(wrapperPath, runner); err != nil {
+		return err
+	}
 
 	wrapper := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
