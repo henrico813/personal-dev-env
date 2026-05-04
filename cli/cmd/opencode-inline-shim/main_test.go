@@ -92,6 +92,57 @@ func TestNormalizeInlineErrorTimeout(t *testing.T) {
 	}
 }
 
+func TestConfiguredInlineModelTreatsAliasAsNoOverride(t *testing.T) {
+	cfg := config{inlineModel: transportModel}
+
+	got, err := configuredInlineModel(cfg)
+	if err != nil {
+		t.Fatalf("configuredInlineModel() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("configuredInlineModel() = %q", got)
+	}
+}
+
+func TestSelectedInlineModelUsesConfiguredOverrideForAliasRequest(t *testing.T) {
+	cfg := config{inlineModel: "openai-codex/gpt-5.4-mini"}
+
+	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
+	if err != nil {
+		t.Fatalf("selectedInlineModel() error = %v", err)
+	}
+	if got != "openai-codex/gpt-5.4-mini" {
+		t.Fatalf("selectedInlineModel() = %q", got)
+	}
+}
+
+func TestSelectedInlineModelFallsBackToOpenCodeDefault(t *testing.T) {
+	cfg := config{}
+
+	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
+	if err != nil {
+		t.Fatalf("selectedInlineModel() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("selectedInlineModel() = %q", got)
+	}
+}
+
+func TestConfiguredInlineModelRejectsMalformedOverride(t *testing.T) {
+	cfg := config{inlineModel: "gpt-5.4-mini"}
+
+	if _, err := configuredInlineModel(cfg); err == nil {
+		t.Fatal("expected malformed inline override to fail")
+	}
+}
+
+func TestOpenCodeModelBuildsProviderModelPair(t *testing.T) {
+	override := openCodeModel("openai-codex/gpt-5.4-mini")
+	if override["providerID"] != "openai-codex" || override["modelID"] != "gpt-5.4-mini" {
+		t.Fatalf("override = %#v", override)
+	}
+}
+
 func TestHandleChatCompletionsReturnsInlineFailureEnvelope(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -105,7 +156,7 @@ func TestHandleChatCompletionsReturnsInlineFailureEnvelope(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	cfg := config{opencodeBaseURL: backend.URL, defaultModel: "opencode-inline", timeout: time.Second}
+	cfg := config{opencodeBaseURL: backend.URL, timeout: time.Second}
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
 	rec := httptest.NewRecorder()
 

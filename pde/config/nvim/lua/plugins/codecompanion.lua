@@ -1,4 +1,5 @@
 local shim_job
+local inline_model_chat
 local spinner_frames = { "-", "\\", "|", "/" }
 
 local paths_env = vim.fn.expand("~/.config/pde/paths.env")
@@ -31,7 +32,7 @@ local function load_opencode_paths_env()
       if not key then
         key, value = stripped:match("^([A-Z0-9_]+)%s*=%s*(.-)%s*$")
       end
-      if key == "OPENCODE_BASE_URL" or key == "OPENCODE_INLINE_SHIM_PORT" then
+      if key == "OPENCODE_BASE_URL" or key == "OPENCODE_INLINE_SHIM_PORT" or key == "OPENCODE_INLINE_MODEL" then
         values[key] = trim_quoted_env_value(value)
       end
     end
@@ -41,7 +42,7 @@ local function load_opencode_paths_env()
   return values
 end
 
-local opencode_env_keys = { "OPENCODE_BASE_URL", "OPENCODE_INLINE_SHIM_PORT" }
+local opencode_env_keys = { "OPENCODE_BASE_URL", "OPENCODE_INLINE_SHIM_PORT", "OPENCODE_INLINE_MODEL" }
 local inherited_opencode_env = {}
 
 for _, key in ipairs(opencode_env_keys) do
@@ -70,6 +71,19 @@ end
 
 local function shim_url()
   return "http://127.0.0.1:" .. shim_port()
+end
+
+local function configured_inline_model()
+  refresh_opencode_env()
+  local model = vim.env.OPENCODE_INLINE_MODEL
+  if not model or vim.trim(model) == "" or model == "opencode-inline" then
+    return nil
+  end
+  return model
+end
+
+local function inline_request_model()
+  return vim.g.pde_inline_model or configured_inline_model() or "opencode-inline"
 end
 
 local function shim_bin()
@@ -284,8 +298,12 @@ require("codecompanion").setup({
           },
           schema = {
             model = {
-              default = "opencode-inline",
-              choices = { "opencode-inline" },
+              default = function()
+                return inline_request_model()
+              end,
+              choices = function()
+                return { inline_request_model() }
+              end,
             },
           },
         })
@@ -352,6 +370,7 @@ end
 
 local chat_keymaps = require("codecompanion.interactions.chat.keymaps")
 local change_adapter = require("codecompanion.interactions.chat.keymaps.change_adapter")
+local chat_helpers = require("codecompanion.interactions.chat.helpers")
 local codecompanion_config = require("codecompanion.config")
 local editor_buffer = require("codecompanion.interactions.shared.editor_context.buffer")
 local editor_diagnostics = require("codecompanion.interactions.shared.editor_context.diagnostics")
@@ -361,6 +380,10 @@ local slash_commands = require("codecompanion.interactions.chat.slash_commands")
 
 local function current_chat()
   return codecompanion.buf_get_chat(0) or codecompanion.last_chat()
+end
+
+local function is_opencode_chat(chat)
+  return chat and chat.adapter and chat.adapter.name == "opencode"
 end
 
 local function ensure_chat()
@@ -383,6 +406,78 @@ local function with_chat(callback)
   end
 
   return callback(chat)
+end
+
+local function inline_default_model(chat)
+  local configured = configured_inline_model()
+  if configured then
+    return configured
+  end
+
+  local models = chat.acp_connection and chat.acp_connection:get_models()
+  if models then
+    return models.currentModelId
+  end
+  return nil
+end
+
+local function ensure_inline_model_chat(callback)
+  inline_model_chat = inline_model_chat or codecompanion.chat({
+    params = { adapter = "opencode" },
+    auto_submit = false,
+  })
+  if not inline_model_chat then
+    vim.notify("Failed to initialize OpenCode inline selector", vim.log.levels.ERROR)
+    return
+  end
+
+  if inline_model_chat.acp_connection and inline_model_chat.acp_connection:is_ready() then
+    return callback(inline_model_chat)
+  end
+
+  chat_helpers.create_acp_connection(inline_model_chat, function()
+    if inline_model_chat and inline_model_chat.acp_connection and inline_model_chat.acp_connection:is_ready() then
+      callback(inline_model_chat)
+      return
+    end
+    vim.notify("OpenCode inline selector is not ready", vim.log.levels.ERROR)
+  end)
+end
+
+local function inline_selector_target(chat)
+  return {
+    adapter = { type = "acp" },
+    acp_connection = {
+      get_models = function()
+        local models = chat.acp_connection and chat.acp_connection:get_models()
+        if not models then
+          return nil
+        end
+        models = vim.deepcopy(models)
+        models.currentModelId = vim.g.pde_inline_model or inline_default_model(chat) or models.currentModelId
+        return models
+      end,
+    },
+    change_model = function(self, args)
+      local model = args and args.model
+      if not model or vim.trim(model) == "" then
+        return
+      end
+      local default_model = inline_default_model(chat)
+      if default_model and model == default_model then
+        vim.g.pde_inline_model = nil
+      else
+        vim.g.pde_inline_model = model
+      end
+      vim.notify("Inline model: " .. (vim.g.pde_inline_model or default_model or model), vim.log.levels.INFO)
+    end,
+  }
+end
+
+local function select_inline_model()
+  ensure_inline_model_chat(function(chat)
+    change_adapter.select_model(inline_selector_target(chat))
+  end)
 end
 
 local function send_chat()
@@ -423,6 +518,7 @@ map("n", "<leader>pm", function()
     change_adapter.select_model(chat)
   end)
 end, { desc = "Select model" })
+map("n", "<leader>pM", select_inline_model, { desc = "Select inline model" })
 map({ "n", "x" }, "<leader>pi", prompt_inline, { desc = "Inline prompt" })
 map("n", "<leader>pI", "<cmd>CodeCompanionOpenCodeInlineShim<cr>", { desc = "Restart inline shim" })
 map("n", "<leader>pab", function()
@@ -462,7 +558,6 @@ map("n", "<leader>pag", function()
   chat.ui:open()
 end, { desc = "Add git diff" })
 
--- Inline must stay on an HTTP adapter. ACP Codex, if later added for chat,
--- should remain chat-only rather than being reused for inline.
--- Inline stays on a local HTTP adapter because CodeCompanion inline does not
--- support ACP adapters directly. The shim keeps OpenCode local to PDE.
+-- Inline selection is intentionally coupled to OpenCode. We reuse the ACP
+-- model list through change_adapter.select_model(), but inline execution
+-- still stays on the local HTTP shim because CodeCompanion inline is not ACP.
