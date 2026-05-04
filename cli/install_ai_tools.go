@@ -34,6 +34,9 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installNodeTool(cfg, runner, "opencode", "opencode-ai"); err != nil {
 		return err
 	}
+	if err := installNodeTool(cfg, runner, "pi", "@mariozechner/pi-coding-agent"); err != nil {
+		return err
+	}
 
 	if err := installOpenCodeConfig(cfg, runner); err != nil {
 		return err
@@ -50,8 +53,11 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installPlannerLaunchers(cfg, plannerBin, runner); err != nil {
 		return err
 	}
+	if err := verifyPlannerLauncher(cfg, runner); err != nil {
+		return err
+	}
 
-	return verifyPlannerLauncher(cfg, runner)
+	return verifyPiLauncher(cfg, runner)
 }
 
 func installOpenCodeConfig(cfg *Config, runner Runner) error {

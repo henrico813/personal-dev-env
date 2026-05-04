@@ -6,6 +6,19 @@ import (
 	"testing"
 )
 
+func writeStubExecutable(t *testing.T, path, expectedArg string) {
+	t.Helper()
+	script := "#!/usr/bin/env bash\n" +
+		"set -euo pipefail\n" +
+		"if [[ \"${1:-}\" != \"" + expectedArg + "\" ]]; then\n" +
+		"\techo \"unexpected args: $*\" >&2\n" +
+		"\texit 1\n" +
+		"fi\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write stub %s: %v", path, err)
+	}
+}
+
 func TestVerifyPlannerLauncherRunsHelp(t *testing.T) {
 	localBin := filepath.Join(t.TempDir(), ".local", "bin")
 	if err := os.MkdirAll(localBin, 0o755); err != nil {
@@ -13,20 +26,25 @@ func TestVerifyPlannerLauncherRunsHelp(t *testing.T) {
 	}
 
 	plannerPath := filepath.Join(localBin, "planner")
-	script := `#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" != "help" ]]; then
-	echo "unexpected args: $*" >&2
-	exit 1
-fi
-exit 0
-`
-	if err := os.WriteFile(plannerPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write planner stub: %v", err)
-	}
+	writeStubExecutable(t, plannerPath, "help")
 
 	cfg := &Config{LocalBinDir: localBin}
 	if err := verifyPlannerLauncher(cfg, Runner{}); err != nil {
 		t.Fatalf("verify planner launcher: %v", err)
+	}
+}
+
+func TestVerifyPiLauncherRunsHelp(t *testing.T) {
+	localBin := filepath.Join(t.TempDir(), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir local bin: %v", err)
+	}
+
+	piPath := filepath.Join(localBin, "pi")
+	writeStubExecutable(t, piPath, "--help")
+
+	cfg := &Config{LocalBinDir: localBin}
+	if err := verifyPiLauncher(cfg, Runner{}); err != nil {
+		t.Fatalf("verify pi launcher: %v", err)
 	}
 }
