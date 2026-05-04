@@ -78,14 +78,17 @@ watching. `agent.stderr.log` stores the same container stderr stream,
 including mirrored JSONL and real stderr. Progress logs also stay in
 `extension-events.jsonl`.
 
-The runtime prompt instructs the agent to write exactly one conventional
-snapshot subject to the absolute path `/artifacts/commit-message.txt`,
+The runtime prompt instructs the agent to keep exactly one conventional
+snapshot subject in the absolute path `/artifacts/commit-message.txt`,
 not to create `commit-message.txt` in the repository, and not to run
-`git commit`. The subject should omit the optional scope by default,
-such as `feat: add setting`, unless the user explicitly asks for a
-scope. Vibe uses the trimmed first line from that artifact for snapshot
-commits when present, and falls back to `chore: snapshot changes` when
-the file is missing or empty.
+`git commit`. If the task is clear, the agent may write an initial
+single-line subject before editing repository files and should update
+that same one-line artifact before the run finishes based on the actual
+changes. The subject should omit the optional scope by default, such as
+`feat: add setting`, unless the user explicitly asks for a scope. Vibe
+uses the trimmed first line from that artifact for snapshot commits when
+present, and falls back to `chore: snapshot changes` when the file is
+missing or empty.
 
 Auth is copied into an ephemeral container home for the run and is not
 persisted in the artifact directory.
