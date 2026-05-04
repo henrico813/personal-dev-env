@@ -3,6 +3,7 @@
 Shell, editor, and AI tooling configuration. Two independent entry points:
 
 - **`./pde/pde`** -- Install the shell environment (zsh, tmux, neovim, CLI tools).
+- **`pde install config`** -- Migrate the shared config set with no sudo; it does not install runtimes, plugins, or profile extras.
 - **`pde install ai-tools`** -- Install AI tool configuration and binaries.
 
 ## PDE Quick Start
@@ -16,6 +17,7 @@ Optional PDE targets live in the Go CLI:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
+pde install config
 pde install obsidian
 ```
 
@@ -49,7 +51,9 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, and Vibe binaries p
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
-The installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
+The config helper only manages the shared PDE config files under `~/.zshrc`, `~/.zsh_plugins.txt`, `~/.tmux.conf`, `~/.p10k.zsh`, and `~/.config/bottom/bottom.toml`.
+
+The AI installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
 
 ## Using OpenCode Commands
 

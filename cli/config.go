@@ -53,12 +53,12 @@ func detectConfig(flagRepoRoot string) (*Config, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("repo root not found; pass --repo-root, set PDE_REPO_ROOT, or run from the repo checkout")
+	return nil, fmt.Errorf("repo root not found; pass --repo-root, set PDE_REPO_ROOT, or run from the repo checkout containing pde/config")
 }
 
 func findRepoRootFromCwd(cwd string) string {
 	for dir := cwd; dir != "" && dir != string(filepath.Separator); dir = filepath.Dir(dir) {
-		if _, err := os.Stat(filepath.Join(dir, "pde", "pde")); err == nil {
+		if isDir(filepath.Join(dir, "pde", "config")) {
 			return dir
 		}
 	}
@@ -75,14 +75,16 @@ func normalizeRepoRoot(candidate string) (string, bool) {
 		return "", false
 	}
 
-	if _, err := os.Stat(filepath.Join(root, "pde", "pde")); err != nil {
-		return "", false
-	}
-	if _, err := os.Stat(filepath.Join(root, "pde", "config", "nvim", "init.lua")); err != nil {
+	if !isDir(filepath.Join(root, "pde", "config")) {
 		return "", false
 	}
 
 	return root, true
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func (c *Config) ObsidianRuntimeDir() string {
