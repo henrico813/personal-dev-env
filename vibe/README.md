@@ -32,10 +32,20 @@ make -C vibe test
 make -C vibe install
 ```
 
+If you already use the PDE Go CLI, `pde install ai-tools` installs the
+same `vibe` binary to `~/.local/bin`.
+
 This installs `vibe` to `~/.local/bin`.
 It does not require the target repo checkout to contain a local `vibe/`
 directory. On first run, `vibe` extracts its bundled runtime assets to
 `~/.local/share/vibe/<version>/` and builds the Docker image from there.
+
+Before `vibe run` starts Docker, it requires provider auth via supported
+env vars or a readable `~/.pi/agent/auth.json`; missing auth fails early
+as `setup_error`.
+Supported env vars are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or the Azure pair
+`AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL`.
 
 ## Run
 

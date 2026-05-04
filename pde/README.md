@@ -33,7 +33,7 @@ pde install obsidian
 pde install ai-tools
 ```
 
-`ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, and `pi`, then copies the neutral `ai/` config tree into the user’s managed config paths.
+`ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `vibe` installs through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
 ## Repository Layout
 
