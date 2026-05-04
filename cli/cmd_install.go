@@ -27,7 +27,7 @@ var installTargets = map[string]Installer{
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pde",
-		Short: "Install PDE targets",
+		Short: "Install PDE targets and config sets",
 	}
 	root.AddCommand(newInstallCmd())
 	return root
@@ -39,7 +39,7 @@ func newInstallCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install <target>",
-		Short: "Install a named PDE target",
+		Short: "Install a named PDE target or config set",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := detectConfig(repoRoot)
