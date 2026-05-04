@@ -103,6 +103,7 @@ export PDE_INSTALL_PATH="$SCRIPT_DIR"
 export PDE_PROFILE="${PDE_PROFILE:-unknown}"
 # OPENCODE_BASE_URL="http://127.0.0.1:4199"
 # OPENCODE_INLINE_SHIM_PORT="4141"
+# OPENCODE_INLINE_MODEL="openai-codex/gpt-5.4-mini"
 EOF
     log "Created ~/.config/pde/paths.env"
 }

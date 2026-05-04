@@ -41,7 +41,7 @@ pde install ai-tools
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `vibe` installs through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
-`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL` and `OPENCODE_INLINE_SHIM_PORT`. PDE shells export those variables automatically; Neovim only falls back to reading them from `paths.env` when it starts outside a PDE-managed shell. For the default loopback setup, `opencode-inline-shim` starts `opencode serve` on demand. After changing either value, restart `opencode-inline-shim` so the shim picks up the new environment.
+`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, and `OPENCODE_INLINE_MODEL`. PDE shells export those variables automatically; Neovim only falls back to reading them from `paths.env` when it starts outside a PDE-managed shell. `<leader>pm` and `<leader>pM` intentionally share CodeCompanion's selector over OpenCode ACP models: chat applies to the active chat session, while inline stores a separate session override that flows through `opencode-inline-shim`. When there is no inline session override and no `OPENCODE_INLINE_MODEL`, the shim lets OpenCode choose its current default model. After changing any of those env values, restart `opencode-inline-shim` so the shim picks up the new environment.
 
 ## Repository Layout
 
