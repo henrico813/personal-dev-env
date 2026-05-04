@@ -34,4 +34,4 @@ else
   PI_ARGS+=(--model "${VIBE_MODEL}")
 fi
 
-pi "${PI_ARGS[@]}" "${PROMPT}" > >(tee /artifacts/events.jsonl >&2)
+pi "${PI_ARGS[@]}" "${PROMPT}" | tee /artifacts/events.jsonl >&2
