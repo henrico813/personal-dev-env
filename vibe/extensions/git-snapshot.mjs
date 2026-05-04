@@ -2,6 +2,8 @@ import fs from "node:fs";
 
 const MUTATING_TOOLS = new Set(["edit", "write"]);
 const FALLBACK_COMMIT_MESSAGE = "chore: snapshot changes";
+const LEVELS = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
+const currentLevel = LEVELS[(process.env.VIBE_STDERR_LEVEL || "info").toLowerCase()] ?? LEVELS.info;
 
 let snapshotQueue = Promise.resolve();
 
@@ -19,6 +21,29 @@ function snapshotCommitMessage() {
   } catch {
     return FALLBACK_COMMIT_MESSAGE;
   }
+}
+
+function enabled(level) {
+  return currentLevel >= LEVELS[level] && currentLevel !== LEVELS.trace;
+}
+
+function emit(text, level = "info") {
+  if (enabled(level)) process.stderr.write(`${text}\n`);
+}
+
+async function snapshotDebugDetails(pi) {
+  if (!enabled("debug")) return;
+
+  const files = await pi.exec("bash", ["-lc", "git diff --cached --name-only"], {
+    timeout: 30_000,
+  });
+  const stat = await pi.exec("bash", ["-lc", "git diff --cached --shortstat"], {
+    timeout: 30_000,
+  });
+  const fileList = files.stdout.trim().split(/\r?\n/u).filter(Boolean);
+
+  if (fileList.length > 0) emit(`files: ${fileList.join(", ")}`, "debug");
+  if (stat.stdout.trim()) emit(`changes: ${stat.stdout.trim()}`, "debug");
 }
 
 function enqueueSnapshot(pi, toolName, toolCallId) {
@@ -43,6 +68,8 @@ function enqueueSnapshot(pi, toolName, toolCallId) {
       if (result.code !== 0) {
         throw new Error(`snapshot failed for ${toolName} ${toolCallId}: exit ${result.code}`);
       }
+      emit(`snapshot: ${commitMessage}`, "info");
+      await snapshotDebugDetails(pi);
     });
   return snapshotQueue;
 }

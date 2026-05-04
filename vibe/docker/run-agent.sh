@@ -34,4 +34,14 @@ else
   PI_ARGS+=(--model "${VIBE_MODEL}")
 fi
 
-pi "${PI_ARGS[@]}" "${PROMPT}" | tee /artifacts/events.jsonl >&2
+export VIBE_EVENTS_LOG=/artifacts/events.jsonl
+export VIBE_STDERR_LEVEL="${VIBE_STDERR_LEVEL:-info}"
+
+case "${VIBE_STDERR_LEVEL}" in
+  trace)
+    pi "${PI_ARGS[@]}" "${PROMPT}" | tee /artifacts/events.jsonl >&2
+    ;;
+  *)
+    pi "${PI_ARGS[@]}" "${PROMPT}" | node /opt/vibe/extensions/stderr-progress.mjs
+    ;;
+esac

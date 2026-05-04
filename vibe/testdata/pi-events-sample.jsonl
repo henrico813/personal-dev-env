@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"019df4e3-4da5-73ec-895f-32163c1712ff","timestamp":"2026-05-04T21:27:10.502Z","cwd":"/home/justin/Projects/personal-dev-env/worktrees/pdev-059-inline-thinking-fix"}
+{"type":"agent_start"}
+{"type":"tool_execution_end","toolCallId":"call_Q7oAWw1nXPigDEvs7i6OpRNU|fc_0cd709f4f37380540169f90f3216b8819a81e9f1464ba3140e","toolName":"write","result":{"content":[{"type":"text","text":"Successfully wrote 34 bytes to /artifacts/commit-message.txt"}]},"isError":false}
+{"type":"tool_execution_end","toolCallId":"call_8zMPgiG3KjiwsmTnQUEm8Pk5|fc_0cd709f4f37380540169f90f372ed0819a97325ce1f7267d62","toolName":"bash","result":{"content":[{"type":"text","text":"/bin/bash: line 1: rg: command not found\n\n\nCommand exited with code 127"}],"details":{}},"isError":true}
