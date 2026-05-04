@@ -79,12 +79,13 @@ including mirrored JSONL and real stderr. Progress logs also stay in
 `extension-events.jsonl`.
 
 The runtime prompt instructs the agent to write exactly one conventional
-commit subject to the absolute path `/artifacts/commit-message.txt` and
-not to create `commit-message.txt` in the repository. The subject should
-omit the optional scope by default, such as `feat: add setting`, unless
-the user explicitly asks for a scope. Snapshot commits use the trimmed
-first line from that file when present, and fall back to `chore: snapshot
-changes` when the file is missing or empty.
+snapshot subject to the absolute path `/artifacts/commit-message.txt`,
+not to create `commit-message.txt` in the repository, and not to run
+`git commit`. The subject should omit the optional scope by default,
+such as `feat: add setting`, unless the user explicitly asks for a
+scope. Vibe uses the trimmed first line from that artifact for snapshot
+commits when present, and falls back to `chore: snapshot changes` when
+the file is missing or empty.
 
 Auth is copied into an ephemeral container home for the run and is not
 persisted in the artifact directory.

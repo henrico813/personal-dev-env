@@ -17,8 +17,8 @@ if [[ -n "${VIBE_GIT_USER_EMAIL:-}" ]]; then
 fi
 
 TASK_PROMPT="$(cat "${VIBE_PROMPT_FILE}")"
-COMMIT_MESSAGE_INSTRUCTIONS=$'Write exactly one conventional commit subject to the absolute path /artifacts/commit-message.txt. Choose the type prefix yourself based on the current step or task title. Omit the optional scope by default; write subjects like "feat: add setting", not "feat(vibe): add setting", unless the user explicitly asks for a scope. Write one line only. Do not create commit-message.txt in the repository; only write /artifacts/commit-message.txt.'
-PROMPT="${COMMIT_MESSAGE_INSTRUCTIONS}"$'\n\n'"${TASK_PROMPT}"
+COMMIT_MESSAGE_INSTRUCTIONS=$'Vibe runtime protocol:\nBefore editing repository files, write exactly one unscoped conventional snapshot subject to /artifacts/commit-message.txt.\nUse a subject like "feat: add setting", not "feat(vibe): add setting", unless the user explicitly asks for a scope.\nWrite one line only.\nDo not create commit-message.txt in the repository.\nDo not run git commit.'
+PROMPT="${COMMIT_MESSAGE_INSTRUCTIONS}"$'\n\nTask:\n'"${TASK_PROMPT}"
 
 PI_ARGS=(
   --mode json
