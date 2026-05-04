@@ -28,7 +28,7 @@ cd cli && go build -o ~/.local/bin/pde .
 pde install ai-tools
 ```
 
-Installs planner, Codex, OpenCode, and Pi binaries plus repo-managed AI config.
+Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, and Vibe binaries plus repo-managed AI config.
 
 ## AI Source Tree
 
@@ -43,7 +43,9 @@ Installs planner, Codex, OpenCode, and Pi binaries plus repo-managed AI config.
 | Tool | Config source | Install target | Invocation style |
 |------|--------------|----------------|-----------------|
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
+| Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
 | OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
+| OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
@@ -82,4 +84,5 @@ Skills are installed to `~/.codex/skills/`, and the installer copies the shared 
 ## Requirements
 
 - Linux system with `sudo` access for PDE installs.
-- The AI installer expects `go`, `git`, `curl`, and `npm`/`nvm` on Linux.
+- The AI installer expects `go`, `git`, `curl`, `cargo`, and `npm`/`nvm` on Linux.
+- `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
