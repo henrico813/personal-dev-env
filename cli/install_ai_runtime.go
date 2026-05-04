@@ -30,6 +30,24 @@ func buildPlannerBinary(cfg *Config, runner Runner) (string, error) {
 	return plannerBin, nil
 }
 
+func buildOpenCodeInlineShimBinary(cfg *Config, runner Runner) (string, error) {
+	shimDir := filepath.Join(cfg.AIRuntimeDir, "opencode-inline-shim")
+	shimBin := filepath.Join(shimDir, "opencode-inline-shim")
+	shimModuleDir := filepath.Join(cfg.RepoRoot, "cli")
+
+	if err := runner.MkdirAll("create shim runtime dir", shimDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := runner.Bash("build opencode inline shim", fmt.Sprintf(
+		"set -euo pipefail; cd %s && go build -o %s ./cmd/opencode-inline-shim",
+		shellQuote(shimModuleDir),
+		shellQuote(shimBin),
+	)); err != nil {
+		return "", err
+	}
+	return shimBin, nil
+}
+
 func backupPlannerLaunchers(cfg *Config, runner Runner) error {
 	for _, path := range []string{
 		filepath.Join(cfg.LocalBinDir, "planner"),
@@ -41,6 +59,10 @@ func backupPlannerLaunchers(cfg *Config, runner Runner) error {
 		}
 	}
 	return nil
+}
+
+func backupOpenCodeInlineShimLaunchers(cfg *Config, runner Runner) error {
+	return backupIfExists(filepath.Join(cfg.LocalBinDir, "opencode-inline-shim"), runner)
 }
 
 func installPlannerLaunchers(cfg *Config, plannerBin string, runner Runner) error {
@@ -56,9 +78,20 @@ func installPlannerLaunchers(cfg *Config, plannerBin string, runner Runner) erro
 	return nil
 }
 
+func installOpenCodeInlineShimLaunchers(cfg *Config, shimBin string, runner Runner) error {
+	return linkBinary(shimBin, filepath.Join(cfg.LocalBinDir, "opencode-inline-shim"), runner)
+}
+
 func verifyPlannerLauncher(cfg *Config, runner Runner) error {
 	return runner.Bash("verify planner", fmt.Sprintf(
 		"set -euo pipefail; export PATH=%s:$PATH; planner help >/dev/null",
+		shellQuote(cfg.LocalBinDir),
+	))
+}
+
+func verifyOpenCodeInlineShimLauncher(cfg *Config, runner Runner) error {
+	return runner.Bash("verify opencode inline shim", fmt.Sprintf(
+		"set -euo pipefail; export PATH=%s:$PATH; opencode-inline-shim --help >/dev/null",
 		shellQuote(cfg.LocalBinDir),
 	))
 }

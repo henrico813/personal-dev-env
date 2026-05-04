@@ -24,6 +24,10 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err != nil {
 		return err
 	}
+	shimBin, err := buildOpenCodeInlineShimBinary(cfg, runner)
+	if err != nil {
+		return err
+	}
 
 	if err := ensureNodeToolchain(cfg, runner); err != nil {
 		return err
@@ -50,10 +54,19 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := backupPlannerLaunchers(cfg, runner); err != nil {
 		return err
 	}
+	if err := backupOpenCodeInlineShimLaunchers(cfg, runner); err != nil {
+		return err
+	}
 	if err := installPlannerLaunchers(cfg, plannerBin, runner); err != nil {
 		return err
 	}
+	if err := installOpenCodeInlineShimLaunchers(cfg, shimBin, runner); err != nil {
+		return err
+	}
 	if err := verifyPlannerLauncher(cfg, runner); err != nil {
+		return err
+	}
+	if err := verifyOpenCodeInlineShimLauncher(cfg, runner); err != nil {
 		return err
 	}
 
