@@ -1,6 +1,27 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StderrLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl StderrLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StderrLevel::Error => "error",
+            StderrLevel::Warn => "warn",
+            StderrLevel::Info => "info",
+            StderrLevel::Debug => "debug",
+            StderrLevel::Trace => "trace",
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "vibe",
@@ -39,6 +60,10 @@ pub struct RunArgs {
     /// Optional commit message for dirty runs.
     #[arg(long)]
     pub commit_message: Option<String>,
+
+    /// Stderr verbosity for streamed Vibe progress.
+    #[arg(long, env = "VIBE_STDERR_LEVEL", value_enum, default_value_t = StderrLevel::Info)]
+    pub stderr_level: StderrLevel,
 }
 
 pub fn parse() -> RunArgs {
@@ -65,7 +90,28 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::try_parse_from;
+    use super::{try_parse_from, StderrLevel};
+    use std::{
+        ffi::OsString,
+        sync::{Mutex, OnceLock},
+    };
+
+    fn stderr_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn save_stderr_env() -> Option<OsString> {
+        std::env::var_os("VIBE_STDERR_LEVEL")
+    }
+
+    fn restore_stderr_env(saved: Option<OsString>) {
+        if let Some(value) = saved {
+            std::env::set_var("VIBE_STDERR_LEVEL", value);
+        } else {
+            std::env::remove_var("VIBE_STDERR_LEVEL");
+        }
+    }
 
     #[test]
     fn parses_run_arguments() {
@@ -90,6 +136,48 @@ mod tests {
         );
         assert_eq!(args.model, "openai-codex/gpt-5.4-mini");
         assert_eq!(args.commit_message.as_deref(), Some("docs: update note"));
+        assert_eq!(args.stderr_level, StderrLevel::Info);
+    }
+
+    #[test]
+    fn parses_explicit_stderr_level() {
+        let args = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--model",
+            "model",
+            "--stderr-level",
+            "debug",
+        ])
+        .expect("parse args");
+
+        assert_eq!(args.stderr_level, StderrLevel::Debug);
+    }
+
+    #[test]
+    fn reads_stderr_level_from_env() {
+        let _guard = stderr_env_lock().lock().expect("lock stderr env");
+        let saved = save_stderr_env();
+        std::env::set_var("VIBE_STDERR_LEVEL", "warn");
+
+        let args = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--model",
+            "model",
+        ])
+        .expect("parse args");
+
+        restore_stderr_env(saved);
+        assert_eq!(args.stderr_level, StderrLevel::Warn);
     }
 
     #[test]
