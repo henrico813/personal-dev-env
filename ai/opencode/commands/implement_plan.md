@@ -23,7 +23,8 @@ If no plan path provided, ask for one.
 
 ## Detailed Implementation Strategy
 
-When `vibe` is available, prefer Vibe mode for implementation plans. Vibe is the executor; this skill is the supervisor.
+When `vibe` is available, prefer Vibe mode for implementation plans. Use the
+`vibe` CLI directly as the execution surface.
 
 Before using Vibe, inspect the installed CLI:
 
@@ -33,32 +34,36 @@ vibe --help
 vibe run --help
 ```
 
-Read the plan fully, then run one unchecked implementation step at a time:
+Read the plan fully, then run one unchecked implementation step at a time.
+Extract the current step into a prompt file, then invoke the `vibe` CLI
+directly with the current run contract:
 
 ```bash
-vibe run "$PLAN" --step "$STEP" --model "$MODEL" > "/tmp/vibe-step-$STEP.json" 2> "/tmp/vibe-step-$STEP.stderr"
+vibe run --key "$KEY" --prompt-file "$PROMPT_FILE" --model "$MODEL"
 ```
 
-If no model was provided, ask the user which model to use. Do not create the branch or worktree manually in Vibe mode; Vibe owns that setup.
+The skill owns step selection and prompt preparation. Vibe owns worktree
+creation, sandboxing, execution, and result reporting.
 
-After each run, parse the final JSON and review the result before continuing:
+Do not create the branch or worktree manually in Vibe mode; Vibe owns that
+setup.
 
-```bash
-jq . "/tmp/vibe-step-$STEP.json"
-```
+After each run, parse the final JSON and review the result before continuing.
 
 Handle statuses as follows:
 - `completed`: inspect the commit, run verification, update the plan, then continue.
 - `noop`: continue only if the step was already complete or intentionally no-op.
 - `agent_failed`, `commit_failed`, `refused_dirty`, `setup_error`: stop, inspect the reported logs/worktree, and notify the user.
 
-For completed steps, review correctness and consistency before running the next step:
+For completed steps, review correctness and consistency before running the next
+step:
 - changes match the plan step
 - no unrelated files changed
 - no secrets or generated artifacts were committed
 - verification passes
 
-Update plan state with the planner CLI, not direct markdown edits. Do not mark manual verification complete unless the user confirms it.
+Update plan state with the planner CLI, not direct markdown edits. Do not mark
+manual verification complete unless the user confirms it.
 
 When finished, summarize:
 - steps run
