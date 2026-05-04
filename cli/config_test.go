@@ -36,8 +36,8 @@ func TestDetectConfigFindsRepoRootWithConfigDir(t *testing.T) {
 func TestDetectConfigRejectsMissingConfigDir(t *testing.T) {
 	repoRoot := t.TempDir()
 
-	if _, err := detectConfig(repoRoot); err == nil {
-		t.Fatal("expected error for missing pde/config")
+	if _, ok := normalizeRepoRoot(repoRoot); ok {
+		t.Fatal("expected repo root without pde/config to be rejected")
 	}
 }
 
@@ -51,7 +51,7 @@ func TestDetectConfigRejectsConfigFile(t *testing.T) {
 		t.Fatalf("write config file: %v", err)
 	}
 
-	if _, err := detectConfig(repoRoot); err == nil {
-		t.Fatal("expected error for file pde/config")
+	if _, ok := normalizeRepoRoot(repoRoot); ok {
+		t.Fatal("expected repo root with file pde/config to be rejected")
 	}
 }

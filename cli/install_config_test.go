@@ -204,7 +204,9 @@ func TestInstallConfigBacksUpBrokenPathsEnvSymlinkWithoutProfile(t *testing.T) {
 func TestInstallConfigMissingManagedSourceFailsBeforeMutatingPathsEnvOrLinks(t *testing.T) {
 	cfg, pathsEnv := newInstallConfigFixture(t)
 	mustWriteFile(t, pathsEnv, "export PDE_PROFILE=\"shared\"\n", 0o644)
-	createManagedSources(t, cfg.RepoRoot, filepath.Join("pde", "config", "bottom", "bottom.toml"))
+	if err := os.Remove(filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml")); err != nil {
+		t.Fatalf("remove managed source: %v", err)
+	}
 
 	if err := installConfig(cfg, Runner{}); err == nil {
 		t.Fatal("expected error for missing managed source")
@@ -221,6 +223,9 @@ func newInstallConfigFixture(t *testing.T) (*Config, string) {
 	repoRoot := t.TempDir()
 	homeDir := t.TempDir()
 	pdeConfigDir := filepath.Join(homeDir, ".config", "pde")
+	if err := os.MkdirAll(pdeConfigDir, 0o755); err != nil {
+		t.Fatalf("mkdir pde config dir: %v", err)
+	}
 	pathsEnv := filepath.Join(pdeConfigDir, "paths.env")
 	createManagedSources(t, repoRoot, "")
 	return &Config{RepoRoot: repoRoot, HomeDir: homeDir, PDEConfigDir: pdeConfigDir}, pathsEnv
