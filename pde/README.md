@@ -25,13 +25,19 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 ## Optional Targets
 
 Some setups belong beside the base profiles, not inside them.
+
+`config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and preserves an existing `PDE_PROFILE` line when one is already present, but it does not install runtimes, plugins, or profile extras.
+
 `obsidian` and `ai-tools` are installed through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
+pde install config
 pde install obsidian
 pde install ai-tools
 ```
+
+`obsidian` still depends on `minimal` because it uses the PDE Neovim config.
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `vibe` installs through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
