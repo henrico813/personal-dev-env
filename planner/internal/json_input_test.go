@@ -1,4 +1,4 @@
-package jsoninput
+package internal
 
 import (
 	"encoding/json"
