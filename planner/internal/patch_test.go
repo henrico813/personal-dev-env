@@ -1,4 +1,4 @@
-package replace
+package internal
 
 import (
 	"encoding/json"
@@ -8,18 +8,13 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"planner/inspect"
-	"planner/internal/jsoninput"
-	"planner/render"
-	"planner/schema"
 )
 
 // writeRenderedPlan renders plan to a temp file and returns its path.
-func writeRenderedPlan(t *testing.T, plan schema.Plan) string {
+func writeRenderedPlan(t *testing.T, plan Plan) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "source.md")
-	markdown, err := render.RenderPlan(plan)
+	markdown, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -53,21 +48,21 @@ func writePatchText(t *testing.T, value string) string {
 	return path
 }
 
-// parseOutputPlan reads outputPath and parses it via inspect.ParseMarkdown.
-func parseOutputPlan(t *testing.T, outputPath string) schema.Plan {
+// parseOutputPlan reads outputPath and parses it via ParseMarkdown.
+func parseOutputPlan(t *testing.T, outputPath string) Plan {
 	t.Helper()
 	raw, err := os.ReadFile(outputPath)
 	if err != nil {
 		t.Fatalf("ReadFile(output): %v", err)
 	}
-	parsed, err := inspect.ParseMarkdown(string(raw))
+	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	return parsed.Plan
 }
 
-func loadAuditFixture(t *testing.T, name string) schema.Plan {
+func loadAuditFixture(t *testing.T, name string) Plan {
 	t.Helper()
 	switch name {
 	case "twoStepPlan":
@@ -76,7 +71,7 @@ func loadAuditFixture(t *testing.T, name string) schema.Plan {
 		return twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B")
 	default:
 		t.Fatalf("unknown audit fixture %q", name)
-		return schema.Plan{}
+		return Plan{}
 	}
 }
 
@@ -94,10 +89,10 @@ func TestRunRejectsInvalidSection(t *testing.T) {
 func TestRunRejectsInvalidStepIndex(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patchPath := writePatchJSON(t, schema.Step{
+	patchPath := writePatchJSON(t, Step{
 		Title:   "New",
 		Summary: "new",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "x.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -113,10 +108,10 @@ func TestRunRejectsInvalidStepIndex(t *testing.T) {
 func TestRunRejectsAppendWithSubsection(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patchPath := writePatchJSON(t, schema.Step{
+	patchPath := writePatchJSON(t, Step{
 		Title:   "New",
 		Summary: "new",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "x.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -132,10 +127,10 @@ func TestRunRejectsAppendWithSubsection(t *testing.T) {
 func TestRunReplacesOnlyRequestedStep(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patch := schema.Step{
+	patch := Step{
 		Title:   "First Updated",
 		Summary: "Summary1 updated",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "a.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+newer",
@@ -164,11 +159,11 @@ func TestRunReplacesOnlyRequestedStep(t *testing.T) {
 func TestRunReplacesWholeImplementation(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patch := []schema.Step{
+	patch := []Step{
 		{
 			Title:   "Replaced One",
 			Summary: "step one updated",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "a.go",
 				Explanation: "why",
 				Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -177,7 +172,7 @@ func TestRunReplacesWholeImplementation(t *testing.T) {
 		{
 			Title:   "Replaced Two",
 			Summary: "step two updated",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "b.go",
 				Explanation: "why",
 				Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -249,10 +244,10 @@ func TestRunReplacesVerification(t *testing.T) {
 	tmp := t.TempDir()
 	plan := twoStepPlan()
 	sourcePath := writeRenderedPlan(t, plan)
-	patchPath := writePatchJSON(t, schema.Verification{
+	patchPath := writePatchJSON(t, Verification{
 		Summary:   "Updated verification",
-		Automated: []schema.ChecklistItem{{Text: "go test ./... -run TestRunReplacesVerification"}},
-		Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+		Automated: []ChecklistItem{{Text: "go test ./... -run TestRunReplacesVerification"}},
+		Manual:    []ChecklistItem{{Text: "smoke"}},
 	})
 	outputPath := filepath.Join(tmp, "out.md")
 
@@ -272,10 +267,10 @@ func TestRunReplacesVerification(t *testing.T) {
 func TestRunAppendsStep(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patchPath := writePatchJSON(t, schema.Step{
+	patchPath := writePatchJSON(t, Step{
 		Title:   "Third",
 		Summary: "Summary3",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "c.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -302,10 +297,10 @@ func TestRunAppendsStepToEmptyImplementation(t *testing.T) {
 	plan := twoStepPlan()
 	plan.Implementation = nil
 	sourcePath := writeRenderedPlan(t, plan)
-	patchPath := writePatchJSON(t, schema.Step{
+	patchPath := writePatchJSON(t, Step{
 		Title:   "First",
 		Summary: "Summary1",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "a.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -405,7 +400,7 @@ func TestSpliceDiffFieldRejectsUnparseableDiff(t *testing.T) {
 
 // TestSpliceDiffFieldRejectsEmptyDiff guards the integrity invariant that
 // successful patch output is still a valid plan. Empty diff bodies parse but
-// fail validate.ValidatePlan; the path must reject before write.
+// fail ValidatePlan; the path must reject before write.
 func TestSpliceDiffFieldRejectsEmptyDiff(t *testing.T) {
 	src := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
 	opts := ReplaceOptions{
@@ -436,15 +431,15 @@ func TestRendererFaithfulnessAudit(t *testing.T) {
 	for _, name := range []string{"twoStepPlan", "twoNamedFileChanges"} {
 		t.Run(name, func(t *testing.T) {
 			plan := loadAuditFixture(t, name)
-			once, err := render.RenderPlan(plan)
+			once, err := RenderPlan(plan)
 			if err != nil {
 				t.Fatalf("RenderPlan: %v", err)
 			}
-			parsed, err := inspect.ParseMarkdown(once)
+			parsed, err := ParseMarkdown(once)
 			if err != nil {
 				t.Fatalf("ParseMarkdown: %v", err)
 			}
-			twice, err := render.RenderPlan(parsed.Plan)
+			twice, err := RenderPlan(parsed.Plan)
 			if err != nil {
 				t.Fatalf("RenderPlan(reparse): %v", err)
 			}
@@ -611,10 +606,10 @@ func TestSpliceVerificationRejectsInvalidSubsection(t *testing.T) {
 func TestSpliceOutputMatchesRerender(t *testing.T) {
 	tmp := t.TempDir()
 	sourcePath := writeRenderedPlan(t, twoStepPlan())
-	patch := schema.Step{
+	patch := Step{
 		Title:   "Updated First",
 		Summary: "updated summary",
-		FileChanges: []schema.FileChange{{
+		FileChanges: []FileChange{{
 			Filename:    "a.go",
 			Explanation: "why",
 			Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -628,11 +623,11 @@ func TestSpliceOutputMatchesRerender(t *testing.T) {
 	}
 
 	spliced, _ := os.ReadFile(outputPath)
-	parsed, err := inspect.ParseMarkdown(string(spliced))
+	parsed, err := ParseMarkdown(string(spliced))
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	rerendered, err := render.RenderPlan(parsed.Plan)
+	rerendered, err := RenderPlan(parsed.Plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -642,21 +637,21 @@ func TestSpliceOutputMatchesRerender(t *testing.T) {
 	}
 }
 
-func twoStepPlan() schema.Plan {
-	return schema.Plan{
+func twoStepPlan() Plan {
+	return Plan{
 		Title:    "Plan",
 		Overview: "Overview",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative",
-			Goals:        []schema.ChecklistItem{{Text: "Goal"}},
+			Goals:        []ChecklistItem{{Text: "Goal"}},
 			CurrentState: "Current",
 			ModuleShape:  "Shape",
 		},
-		Implementation: []schema.Step{
+		Implementation: []Step{
 			{
 				Title:   "First",
 				Summary: "Summary1",
-				FileChanges: []schema.FileChange{{
+				FileChanges: []FileChange{{
 					Filename:    "a.go",
 					Explanation: "why",
 					Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -665,29 +660,29 @@ func twoStepPlan() schema.Plan {
 			{
 				Title:   "Second",
 				Summary: "Summary2",
-				FileChanges: []schema.FileChange{{
+				FileChanges: []FileChange{{
 					Filename:    "b.go",
 					Explanation: "why",
 					Diff:        "@@ -1 +1 @@\n-old\n+new",
 				}},
 			},
 		},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Summary",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	}
 }
 
-func writeFixturePlan(t *testing.T, plan schema.Plan) string {
+func writeFixturePlan(t *testing.T, plan Plan) string {
 	t.Helper()
 	return writeRenderedPlan(t, plan)
 }
 
-func twoNamedFileChanges(name1, diff1, name2, diff2 string) schema.Plan {
+func twoNamedFileChanges(name1, diff1, name2, diff2 string) Plan {
 	plan := twoStepPlan()
-	plan.Implementation[0].FileChanges = []schema.FileChange{
+	plan.Implementation[0].FileChanges = []FileChange{
 		{
 			Filename:    name1,
 			Explanation: "why",
@@ -708,11 +703,11 @@ func twoNamedFileChanges(name1, diff1, name2, diff2 string) schema.Plan {
 // "- [x]". This guards the untouched-section byte-identity invariant.
 func TestReplacePreservesUntouchedSections(t *testing.T) {
 	plan := twoStepPlan()
-	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+	plan.DefinitionOfDone.Goals = []ChecklistItem{
 		{Text: "pending goal"},
-		{Text: "done goal", Status: schema.StatusDone},
+		{Text: "done goal", Status: StatusDone},
 	}
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -772,7 +767,7 @@ func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
 
 func TestDecodeRejectsTrailingData(t *testing.T) {
 	var s string
-	if err := jsoninput.DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
+	if err := DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
 		t.Fatal("expected error for trailing data after JSON value")
 	}
 }
@@ -813,9 +808,9 @@ func TestPreviewFromDataReturnsParseSourceError(t *testing.T) {
 
 func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
 	plan := twoStepPlan()
-	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{
+	plan.DefinitionOfDone.Goals = []ChecklistItem{
 		{Text: "pending goal"},
-		{Text: "done goal", Status: schema.StatusDone},
+		{Text: "done goal", Status: StatusDone},
 	}
 	sourcePath := writeRenderedPlan(t, plan)
 
