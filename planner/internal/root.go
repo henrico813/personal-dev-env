@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -23,7 +22,14 @@ Usage:
   planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner title set <plan.md> <output.md> --value <text> [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner overview set <plan.md> <output.md> --value <text> [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner dod narrative/current-state/module-shape set <plan.md> <output.md> --value <text>
+  planner dod goal add/set/remove <plan.md> <output.md> [--index N] --text <text>
+  planner implementation step add/remove/title set/summary set <plan.md> <output.md> ...
+  planner implementation step file-change add/remove/filename set/explanation set/diff set <plan.md> <output.md> ...
+  planner verification summary set <plan.md> <output.md> --value <text>
+  planner verification automated/manual add/set/remove <plan.md> <output.md> [--index N] --text <text>
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -31,7 +37,7 @@ Global flags:
 Create flow:
   1. Research the task.
   2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  3. Edit the draft JSON. Use planner patch --field diff for raw diff bodies and planner patch --raw for scalar strings.
+  3. Edit the draft JSON or use behavioral edit commands for targeted updates.
   4. Run planner check <plan.json>.
   5. Run planner create <plan.json> <output.md>.
 
@@ -44,21 +50,23 @@ Rewrite flow (full rewrite):
 
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON.
-  2. Run planner template --json --section <s> to learn the patch shape.
-  3. Write patch JSON for the target scope.
-  4. Run planner patch <plan.md> <patch.json> <output.md> --section <section>.
-  5. Non-targeted sections remain byte-for-byte unchanged.
+  2. Use behavioral commands such as planner title set, planner dod goal set,
+     planner implementation step file-change diff set, and planner verification automated add.
+  3. Non-targeted sections remain byte-for-byte unchanged.
 
-patch flags:
-  --section/-s <section>           Required. One of: title, overview, definition_of_done, implementation, verification
-  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification
-  --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step
-  --field <field>                  Optional. One of: diff, title, summary, filename, explanation
-  --raw                            Optional. Required for scalar string targets; read input as raw text.
-  --append                         Optional. Append a new step to implementation
-  --stdin                          Optional. Read patch JSON from stdin instead of a file
-  --diff                           Optional. Print diff to stdout; additive (does not suppress write)
-  --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift
+behavioral edit flags:
+  --value <text>                   Scalar value for title, overview, summaries, and prose fields.
+  --text <text>                    Checklist item text.
+  --step N                         1-based implementation step selector.
+  --change N                       1-based FileChange selector within --step.
+  --index N                        1-based checklist selector.
+  --filename <path>                FileChange filename for structured add or filename set.
+  --explanation <text>             FileChange explanation for structured add or explanation set.
+  --diff <text>                    Diff body for structured add.
+  --stdin                          Read scalar values or file-change diff set from stdin.
+  --diff-stdin                     Read structured add diff body from stdin.
+  --diff                           Print preview diff to stdout; additive.
+  --dry-run                        Do not write the output; with --diff, exit 1 on drift.
 
 template selectors:
   --md                             Print the canonical markdown plan with PLACEHOLDER text.
@@ -92,67 +100,10 @@ Selectors:
 
 Create workflow:
   1. planner template --json > draft.json
-  2. Edit fields. Use planner patch --field diff for raw unified diffs and planner patch --raw for scalar strings.
+  2. Edit fields directly or use behavioral edit commands for targeted markdown updates.
   3. planner check draft.json && planner create draft.json out.md
 `
 
-const patchHelpText = `planner patch -- apply a patch to a section of an existing plan.
-
-Usage:
-  planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run]
-
-Flags:
-  --section/-s <section>           Required. One of: title, overview, definition_of_done, implementation, verification.
-  --subsection <name-or-index>     Optional. Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
-  --file <filename>                Optional. With --field, addresses one FileChange inside an implementation step.
-  --field <field>                  Optional. One of: diff, title, summary, filename, explanation.
-  --raw                            Optional. Required for scalar string targets; read input as raw text.
-  --append                         Optional. Append a new step to implementation.
-  --stdin                          Optional. Read patch input from stdin instead of a file.
-  --diff                           Optional. Print diff to stdout; additive (does not suppress write).
-  --dry-run                        Optional. Do not write the output; with --diff, exit 1 on drift.
-
-JSON-patch workflow:
-  1. planner inspect <plan.md>
-  2. planner template --json --section <s>
-  3. Compose the patch JSON for the target scope.
-  4. planner patch <plan.md> <patch.json> <output.md> --section <s>
-  5. Non-targeted sections remain byte-for-byte unchanged.
-
-Diff-edit workflow:
-  1. planner inspect <plan.md>
-  2. Find the implementation step number and FileChange filename.
-  3. Write the new diff body as raw text.
-  4. planner patch <plan.md> <diff.txt> <output.md> --section implementation --subsection N --file F --field diff
-  5. Non-targeted sections remain byte-for-byte unchanged.
-
-Field-edit workflow (Title):
-  1. planner inspect <plan.md>
-  2. Write the new title as plain text.
-  3. echo 'New plan title' | planner patch <plan.md> <output.md> --section title --raw --stdin
-
-Field-edit workflow (Step title or summary):
-  1. planner inspect <plan.md>
-  2. Write the new value as plain text.
-  3. echo 'New step title' | planner patch <plan.md> <output.md> --section implementation --subsection N --field title --raw --stdin
-     echo 'New step summary' | planner patch <plan.md> <output.md> --section implementation --subsection N --field summary --raw --stdin
-
-Field-edit workflow (FileChange filename or explanation):
-  1. planner inspect <plan.md>
-  2. Write the new value as plain text.
-  3. echo 'new/path.go' | planner patch <plan.md> <output.md> --section implementation --subsection N --file F --field filename --raw --stdin
-     echo 'Why this file changes.' | planner patch <plan.md> <output.md> --section implementation --subsection N --file F --field explanation --raw --stdin
-
-Field-edit workflow (Verification subsection):
-  1. planner inspect <plan.md>
-  2. For summary: plain text with --raw. For automated/manual: JSON array (no --raw).
-  3. echo 'Verification summary.' | planner patch <plan.md> <output.md> --section verification --subsection summary --raw --stdin
-     planner patch <plan.md> checklist.json <output.md> --section verification --subsection automated
-
-Trap:
-  Full-step replacement re-escapes every diff in that step, even if only one FileChange needed a change.
-  Prefer --field <leaf> for in-place edits. Whole-FileChange replacement (--subsection N --file F without --field) is rejected with --file requires --field.
-`
 
 var jsonErrorOutput bool
 
@@ -178,8 +129,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
-	case "patch":
-		return runReplace(args[1:], stdout, stderr)
+	case "title", "overview", "dod", "implementation", "verification":
+		return runBehavioralEdit(args, stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
 		// Help text is verbose human-oriented prose; under --json-errors the
@@ -664,138 +615,6 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	_, _ = stdout.Write(append(out, '\n'))
 	return 0
-}
-
-func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
-	for _, a := range args {
-		if a == "--help" || a == "-h" {
-			_, _ = io.WriteString(stdout, patchHelpText)
-			return 0
-		}
-	}
-	positional, pf, err := splitPreviewArgs(args, true, true)
-	if err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	var sourcePath, patchPath, outputPath string
-	var flags []string
-	// positional still contains --section / --subsection / --append after splitPreviewArgs
-	// strips only --stdin/--diff/--dry-run. Count path args (2 with --stdin, 3 otherwise).
-	pathCount := 3
-	if pf.stdin {
-		pathCount = 2
-	}
-	if len(positional) < pathCount {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, "usage: planner patch <plan.md> [<patch.json>|<diff.txt>] <output.md> --section <section> [--subsection <name-or-index>] [--file <filename>] [--field <field>] [--raw] [--append] [--stdin] [--diff] [--dry-run]"))
-		return 2
-	}
-	switch pathCount {
-	case 3:
-		sourcePath, patchPath, outputPath = positional[0], positional[1], positional[2]
-		flags = positional[3:]
-	case 2:
-		sourcePath, outputPath = positional[0], positional[1]
-		flags = positional[2:]
-	}
-
-	opts, err := parseReplaceOptions(flags)
-	if err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-
-	var patchData []byte
-	switch {
-	case opts.Raw:
-		patchData, err = readRawScalar(patchPath, pf.stdin)
-	case opts.Field == "diff":
-		patchData, err = readRawSource(patchPath, pf.stdin)
-	default:
-		patchData, _, err = readJSONSource(patchPath, pf.stdin, false, stderr)
-	}
-	if err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(patchPath, pf.stdin)))
-		return 1
-	}
-
-	out, result, err := PreviewFromData(sourcePath, opts, patchData)
-	if err != nil {
-		cliErr := mapReplaceCLIError(err, sourcePath)
-		reportError(stderr, "patch", cliErr)
-		return plannerExitCode(cliErr)
-	}
-
-	exit := runPreviewAgainstSource(stdout, stderr, pf, out, sourcePath, outputPath, "patch", func() error {
-		if err := WriteAtomic(outputPath, []byte(out)); err != nil {
-			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
-		}
-		return nil
-	})
-	if exit != 0 || pf.dryRun || pf.diff {
-		return exit
-	}
-
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerWriteOutputError, err, "result JSON"))
-		return 1
-	}
-	return 0
-}
-
-func parseReplaceOptions(flags []string) (ReplaceOptions, error) {
-	opts := ReplaceOptions{}
-	for i := 0; i < len(flags); i++ {
-		switch flags[i] {
-		case "--section", "-s":
-			i++
-			if i >= len(flags) {
-				return opts, fmt.Errorf("missing value for --section")
-			}
-			opts.Section = flags[i]
-		case "--subsection":
-			i++
-			if i >= len(flags) {
-				return opts, fmt.Errorf("missing value for --subsection")
-			}
-			opts.Subsection = flags[i]
-		case "--file":
-			i++
-			if i >= len(flags) {
-				return opts, fmt.Errorf("missing value for --file")
-			}
-			opts.File = flags[i]
-		case "--field":
-			i++
-			if i >= len(flags) {
-				return opts, fmt.Errorf("missing value for --field")
-			}
-			opts.Field = flags[i]
-		case "--append":
-			opts.Append = true
-		case "--raw":
-			opts.Raw = true
-		default:
-			return opts, fmt.Errorf("unknown flag %q", flags[i])
-		}
-	}
-	if opts.Section == "" {
-		return opts, fmt.Errorf("--section is required")
-	}
-	if opts.Section == "implementation" && opts.Subsection != "" && !opts.Append {
-		if _, err := strconv.Atoi(opts.Subsection); err != nil {
-			return opts, fmt.Errorf("--subsection for implementation must be a 1-based integer index")
-		}
-	}
-	if err := validateFieldGrammar(opts); err != nil {
-		return opts, err
-	}
-	if err := validateRawPatchTarget(opts); err != nil {
-		return opts, err
-	}
-	return opts, nil
 }
 
 // previewFlags carries the preview-state flags stripped before subcommand

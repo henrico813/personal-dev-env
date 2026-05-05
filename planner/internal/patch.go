@@ -58,6 +58,7 @@ type ReplaceOptions struct {
 	Subsection string // field name for definition_of_done; 1-based step index for implementation
 	Append     bool   // append a new step to implementation
 	File       string // filename selector for implementation diff-field splices
+	Change     int    // 1-based FileChange index inside an implementation step; preferred by behavioral edit CLI
 	Field      string // field selector for implementation leaf updates
 	Raw        bool   // raw scalar input for string targets; required for scalar string patch paths
 }
@@ -209,8 +210,8 @@ func validateOpts(opts ReplaceOptions) error {
 		}
 		switch opts.Field {
 		case "diff", "filename", "explanation":
-			if opts.File == "" {
-				return fmt.Errorf("--field %s requires --file F", opts.Field)
+			if opts.File == "" && opts.Change == 0 {
+				return fmt.Errorf("--field %s requires --file F or --change N", opts.Field)
 			}
 		case "title", "summary":
 			if opts.File != "" {
@@ -327,6 +328,12 @@ func finalizeFieldPatch(out string, opts ReplaceOptions) (string, ReplaceResult,
 // lookupFileChange returns the FileChange index in the addressed step whose
 // filename matches opts.File.
 func lookupFileChange(plan Plan, opts ReplaceOptions, stepIdx int) (int, error) {
+	if opts.Change != 0 {
+		if opts.Change < 1 || opts.Change > len(plan.Implementation[stepIdx-1].FileChanges) {
+			return 0, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("--change %d out of range for step %d", opts.Change, stepIdx))
+		}
+		return opts.Change - 1, nil
+	}
 	matches := []int{}
 	for i, fc := range plan.Implementation[stepIdx-1].FileChanges {
 		if fc.Filename == opts.File {
