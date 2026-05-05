@@ -115,6 +115,10 @@ mod tests {
 
     #[test]
     fn parses_run_arguments() {
+        let _guard = stderr_env_lock().lock().expect("lock stderr env");
+        let saved = save_stderr_env();
+        std::env::remove_var("VIBE_STDERR_LEVEL");
+
         let args = try_parse_from([
             "vibe",
             "run",
@@ -128,6 +132,8 @@ mod tests {
             "docs: update note",
         ])
         .expect("parse args");
+
+        restore_stderr_env(saved);
 
         assert_eq!(args.key, "demo");
         assert_eq!(
