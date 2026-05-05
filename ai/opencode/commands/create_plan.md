@@ -103,9 +103,9 @@ Once aligned on approach:
 After structure approval:
 
 1. Run `planner help` first; do not guess command shapes from memory.
-   For in-place edits, prefer `planner patch --field ...` over re-providing surrounding containers.
-   For scalar string edits (title, overview, step summary, etc.), use `--raw --stdin`:
-   `echo 'New value' | planner patch plan.md plan.md --section <s> --raw --stdin`
+   For in-place edits, use behavioral commands such as `planner title set`,
+   `planner implementation step summary set`, and
+   `planner implementation step file-change diff set`.
 2. Run `planner template --json > <draft.json>` to create a valid draft
 2. Edit the draft JSON fields in place
 3. Run `planner check <draft.json>` to confirm before writing
@@ -115,14 +115,13 @@ Do not emit freeform markdown directly when the installed helper is available.
 
 #### Partial Updates
 
-For updating only the implementation section of an existing plan:
+For targeted updates to an existing plan:
 
 1. Run `planner inspect <plan.md>` to see the parsed plan JSON
-2. Run `planner template --json --section <s>` to learn the patch shape
-3. Write patch JSON for the target scope
-4. Run `planner patch <plan.md> <patch.json> <output.md> --section <section>`
+2. Run `planner help` to choose the matching behavioral edit command
+3. Use commands such as `planner dod goal set`, `planner implementation step file-change add`, or `planner verification automated remove`
 
-This preserves overview, definition of done, and verification sections byte-for-byte.
+Non-targeted sections are preserved byte-for-byte.
 
 #### Example Template
 
