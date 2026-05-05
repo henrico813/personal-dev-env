@@ -135,17 +135,30 @@ pub fn require_auth() -> Result<(), String> {
     }
 }
 
+struct DockerRunArgs<'a> {
+    repo_root: &'a Path,
+    git_common_dir: &'a Path,
+    worktree: &'a Path,
+    artifacts: &'a ArtifactPaths,
+    model: &'a str,
+    stderr_level: &'a str,
+    snapshot_ref: &'a str,
+    user: &'a HostUser,
+}
+
 /// Keep prompt/env wiring pure so tests can lock the Docker seam.
-fn docker_run_args(
-    repo_root: &Path,
-    git_common_dir: &Path,
-    worktree: &Path,
-    artifacts: &ArtifactPaths,
-    model: &str,
-    stderr_level: &str,
-    snapshot_ref: &str,
-    user: &HostUser,
-) -> Vec<String> {
+fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
+    let DockerRunArgs {
+        repo_root,
+        git_common_dir,
+        worktree,
+        artifacts,
+        model,
+        stderr_level,
+        snapshot_ref,
+        user,
+    } = args;
+
     vec![
         "run".to_string(),
         "--rm".to_string(),
@@ -213,16 +226,16 @@ pub fn run_task(
 
     // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
     let mut cmd = Command::new("docker");
-    cmd.args(docker_run_args(
+    cmd.args(docker_run_args(&DockerRunArgs {
         repo_root,
         git_common_dir,
         worktree,
         artifacts,
         model,
         stderr_level,
-        &snapshot_ref,
-        &user,
-    ));
+        snapshot_ref: &snapshot_ref,
+        user: &user,
+    }));
     for key in AUTH_VARS {
         if let Ok(value) = std::env::var(key) {
             cmd.args(["-e", &format!("{key}={value}")]);
@@ -489,16 +502,16 @@ mod tests {
             gid: "1001".to_string(),
         };
 
-        let args = docker_run_args(
-            &repo_root,
-            &git_common_dir,
-            &worktree,
-            &artifacts,
-            "openai-codex/gpt-5.4",
-            "info",
-            "refs/vibe/snapshots/run",
-            &user,
-        );
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: &repo_root,
+            git_common_dir: &git_common_dir,
+            worktree: &worktree,
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+        });
 
         assert!(args
             .iter()

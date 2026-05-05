@@ -124,6 +124,9 @@ persisted in the artifact directory.
 Dogfood by inspecting:
 
 - `prompt.txt`
+- `system-prompt.txt`
+- `combined-prompt.txt`
+- `system-prompt-versions.txt`
 - `commit-message.txt`
 - `events.jsonl`
 - `agent.stderr.log`

@@ -187,7 +187,6 @@ pub fn execute(args: RunArgs) -> RunResult {
 #[cfg(test)]
 mod tests {
     use super::read_supervisor_prompt;
-    use std::path::Path;
     use tempfile::tempdir;
 
     #[test]
