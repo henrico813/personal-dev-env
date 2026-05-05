@@ -22,7 +22,12 @@ if [[ -z "${combined_prompt_file}" || ! -r "${combined_prompt_file}" ]]; then
   echo "missing combined prompt artifact: ${missing}" >&2
   exit 97
 fi
-PROMPT="$(<"${combined_prompt_file}")"
+mapfile -d '' -t PROMPT_PARTS < "${combined_prompt_file}"
+if ((${#PROMPT_PARTS[@]})); then
+  PROMPT="${PROMPT_PARTS[0]}"
+else
+  PROMPT=""
+fi
 
 PI_ARGS=(
   --mode json
