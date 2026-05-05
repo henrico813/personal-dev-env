@@ -117,7 +117,9 @@ mod tests {
         fs::create_dir_all(&repo_root).expect("mkdir repo");
         fs::write(&combined_prompt, b"Line one\nLine two\n").expect("write prompt");
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
-        let mut script_perms = fs::metadata(&script).expect("script metadata").permissions();
+        let mut script_perms = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
         script_perms.set_mode(0o755);
         fs::set_permissions(&script, script_perms).expect("chmod script");
 
@@ -137,7 +139,14 @@ mod tests {
         let status = Command::new(&script)
             .current_dir(&repo_root)
             .env("HOME", &home)
-            .env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default()))
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    bin.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
             .env("PI_CAPTURE_FILE", &capture)
             .env("VIBE_REPO_ROOT", &repo_root)
             .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
@@ -151,6 +160,9 @@ mod tests {
             String::from_utf8_lossy(&status.stdout),
             String::from_utf8_lossy(&status.stderr),
         );
-        assert_eq!(fs::read(&capture).expect("read captured prompt"), b"Line one\nLine two\n");
+        assert_eq!(
+            fs::read(&capture).expect("read captured prompt"),
+            b"Line one\nLine two\n"
+        );
     }
 }
