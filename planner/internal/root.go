@@ -22,14 +22,30 @@ Usage:
   planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
   planner inspect <plan.md>
-  planner title set <plan.md> <output.md> --value <text> [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner overview set <plan.md> <output.md> --value <text> [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner dod narrative/current-state/module-shape set <plan.md> <output.md> --value <text>
-  planner dod goal add/set/remove <plan.md> <output.md> [--index N] --text <text>
-  planner implementation step add/remove/title set/summary set <plan.md> <output.md> ...
-  planner implementation step file-change add/remove/filename set/explanation set/diff set <plan.md> <output.md> ...
-  planner verification summary set <plan.md> <output.md> --value <text>
-  planner verification automated/manual add/set/remove <plan.md> <output.md> [--index N] --text <text>
+  planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner dod current-state set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner dod module-shape set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner dod goal add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
+  planner dod goal set <plan.md> <out.md> --goal N <text> [--diff] [--dry-run] [--json-errors]
+  planner dod goal remove <plan.md> <out.md> --goal N [--diff] [--dry-run] [--json-errors]
+  planner implementation step add <plan.md> <out.md> --title T --summary S --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
+  planner implementation step remove <plan.md> <out.md> --step N [--diff] [--dry-run] [--json-errors]
+  planner implementation step title set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner implementation step summary set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner implementation step file-change add <plan.md> <out.md> --step N --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
+  planner implementation step file-change remove <plan.md> <out.md> --step N --change N [--diff] [--dry-run] [--json-errors]
+  planner implementation step file-change filename set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner implementation step file-change explanation set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner implementation step file-change diff set <plan.md> <out.md> --step N --change N --stdin [--diff] [--dry-run] [--json-errors]
+  planner verification summary set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner verification automated add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
+  planner verification automated set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
+  planner verification automated remove <plan.md> <out.md> --item N [--diff] [--dry-run] [--json-errors]
+  planner verification manual add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
+  planner verification manual set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
+  planner verification manual remove <plan.md> <out.md> --item N [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -55,14 +71,12 @@ Partial update flow:
   3. Non-targeted sections remain byte-for-byte unchanged.
 
 behavioral edit flags:
-  --value <text>                   Scalar value for title, overview, summaries, and prose fields.
-  --text <text>                    Checklist item text.
+  --goal N                         1-based definition_of_done goal selector.
+  --item N                         1-based verification checklist selector.
   --step N                         1-based implementation step selector.
   --change N                       1-based FileChange selector within --step.
-  --index N                        1-based checklist selector.
-  --filename <path>                FileChange filename for structured add or filename set.
-  --explanation <text>             FileChange explanation for structured add or explanation set.
-  --diff <text>                    Diff body for structured add.
+  --filename <path>                FileChange filename for structured add.
+  --explanation <text>             FileChange explanation for structured add.
   --stdin                          Read scalar values or file-change diff set from stdin.
   --diff-stdin                     Read structured add diff body from stdin.
   --diff                           Print preview diff to stdout; additive.

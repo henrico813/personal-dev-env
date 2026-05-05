@@ -1,10 +1,18 @@
 package internal
 
-func runOverviewEdit(ctx editContext, args []string) int {
+func runOverviewEdit(ctx editContext) int {
 	ctx.cmd = "overview"
-	if len(args) < 1 || args[0] != "set" { reportError(ctx.stderr, "overview", newPlannerCLIError(PlannerUsageError, nil, "usage: planner overview set <plan.md> <output.md> --value <text> [--stdin]")); return 2 }
-	if err := rejectDiffStdin(ctx); err != nil { reportError(ctx.stderr, "overview", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-	v, err := scalarValue(ctx, "--value", "--overview")
-	if err != nil { reportError(ctx.stderr, "overview", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-	return runEditPreview(ctx, ReplaceOptions{Section:"overview", Raw:true}, v)
+	var text []string
+	var err error
+	ctx, text, err = requirePositional(ctx, []string{"set"}, 2, 3)
+	if err != nil {
+		reportError(ctx.stderr, "overview", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	v, err := scalarValue(ctx, text, true)
+	if err != nil {
+		reportError(ctx.stderr, "overview", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	return runEditPreview(ctx, ReplaceOptions{Section: "overview", Raw: true}, v)
 }

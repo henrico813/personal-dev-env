@@ -2,39 +2,100 @@ package internal
 
 import "fmt"
 
-func runVerificationEdit(ctx editContext, args []string) int {
+func runVerificationEdit(ctx editContext) int {
 	ctx.cmd = "verification"
-	if len(args) < 2 { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "usage: planner verification summary set|automated add|set|remove|manual add|set|remove")); return 2 }
-	target, action := args[0], args[1]
-	if target == "summary" {
-		if action != "set" { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "usage: planner verification summary set <plan.md> <output.md> --value <text>")); return 2 }
-		if err := rejectDiffStdin(ctx); err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-		var v []byte
-		if ctx.flags.stdin { b, err := readRawScalar("", true); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerReadInputError, err, "stdin")); return 1 }; v = b } else { s := ctx.flags.optional("--value", "--summary"); v = []byte(s) }
-		return runEditPreview(ctx, ReplaceOptions{Section:"verification", Subsection:"summary", Raw:true}, v)
+	pos := ctx.flags.positional
+	if len(pos) < 2 {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "usage: planner verification summary set|automated add|set|remove|manual add|set|remove"))
+		return 2
 	}
-	if target != "automated" && target != "manual" { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown verification target: %s", target))); return 2 }
-	if err := rejectStdinForStructured(ctx); err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-	if err := rejectDiffStdin(ctx); err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-	plan, err := readPlanForEdit(ctx.sourcePath); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath)); return 1 }
-	if plan.Verification == nil { plan.Verification = &Verification{} }
+	target, action := pos[0], pos[1]
+	if target == "summary" {
+		var text []string
+		var err error
+		ctx, text, err = requirePositional(ctx, []string{"summary", "set"}, 2, 3)
+		if err != nil {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		v, err := scalarValue(ctx, text, false)
+		if err != nil {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		return runEditPreview(ctx, ReplaceOptions{Section: "verification", Subsection: "summary", Raw: true}, v)
+	}
+	if target != "automated" && target != "manual" {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown verification target: %s", target)))
+		return 2
+	}
+	if err := rejectStdinForStructured(ctx); err != nil {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if err := rejectDiffStdin(ctx); err != nil {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	maxTail := 2
+	if action == "add" || action == "set" {
+		maxTail = 3
+	}
+	var tail []string
+	var err error
+	ctx, tail, err = requirePositional(ctx, []string{target, action}, 2, maxTail)
+	if err != nil {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	plan, err := readPlanForEdit(ctx.sourcePath)
+	if err != nil {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
+		return 1
+	}
+	if plan.Verification == nil {
+		plan.Verification = &Verification{}
+	}
 	items := append([]ChecklistItem(nil), plan.Verification.Automated...)
-	if target == "manual" { items = append([]ChecklistItem(nil), plan.Verification.Manual...) }
+	if target == "manual" {
+		items = append([]ChecklistItem(nil), plan.Verification.Manual...)
+	}
 	switch action {
 	case "add":
-		text, err := ctx.flags.stringFlag("--text", "--value"); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-		items = append(items, ChecklistItem{Text:text})
+		if len(tail) != 1 || trimEmpty(tail[0]) {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "missing required text"))
+			return 2
+		}
+		items = append(items, ChecklistItem{Text: tail[0]})
 	case "set":
-		idx, err := ctx.flags.index("--index"); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-		if idx > len(items) { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--index %d out of range", idx))); return 2 }
-		text, err := ctx.flags.stringFlag("--text", "--value"); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-		items[idx-1].Text = text
+		idx, err := ctx.flags.index("--item")
+		if err != nil {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		if idx > len(items) {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--item %d out of range", idx)))
+			return 2
+		}
+		if len(tail) != 1 || trimEmpty(tail[0]) {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "missing required text"))
+			return 2
+		}
+		items[idx-1].Text = tail[0]
 	case "remove":
-		idx, err := ctx.flags.index("--index"); if err != nil { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error())); return 2 }
-		if idx > len(items) { reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--index %d out of range", idx))); return 2 }
+		idx, err := ctx.flags.index("--item")
+		if err != nil {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
+		if idx > len(items) {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--item %d out of range", idx)))
+			return 2
+		}
 		items = append(items[:idx-1], items[idx:]...)
 	default:
-		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "usage: planner verification automated|manual add|set|remove")); return 2
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, nil, "usage: planner verification automated|manual add|set|remove"))
+		return 2
 	}
-	return runEditPreview(ctx, ReplaceOptions{Section:"verification", Subsection:target}, mustJSON(items))
+	return runEditPreview(ctx, ReplaceOptions{Section: "verification", Subsection: target}, jsonBytes(items))
 }

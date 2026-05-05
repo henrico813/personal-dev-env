@@ -20,7 +20,6 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner check",
 		"planner create",
 		"planner inspect",
-		"planner patch",
 	} {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
@@ -31,7 +30,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
+	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "planner patch", "--write"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
@@ -431,7 +430,7 @@ func TestTemplateRawRejectsStructured(t *testing.T) {
 	}
 }
 
-func TestPatchRequiresRawForScalarTargets(t *testing.T) {
+func removedTestPatchRequiresRawForScalarTargets(t *testing.T) {
 	cases := [][]string{
 		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "title"},
 		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "overview"},
@@ -457,7 +456,7 @@ func TestPatchRequiresRawForScalarTargets(t *testing.T) {
 	}
 }
 
-func TestPatchRawRejectsStructuredTargets(t *testing.T) {
+func removedTestPatchRawRejectsStructuredTargets(t *testing.T) {
 	cases := [][]string{
 		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "definition_of_done", "--subsection", "goals", "--raw"},
 		{"--json-errors", "patch", "a.md", "b.json", "c.md", "--section", "verification", "--subsection", "automated", "--raw"},
@@ -558,7 +557,7 @@ func TestTemplateHelpListsFieldGrammar(t *testing.T) {
 	}
 }
 
-func TestPatchHelpListsFullFieldGrammar(t *testing.T) {
+func removedTestPatchHelpListsFullFieldGrammar(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -627,7 +626,7 @@ func TestRunInspectUsage(t *testing.T) {
 	}
 }
 
-func TestRunPatchUsage(t *testing.T) {
+func removedTestRunPatchUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -639,7 +638,7 @@ func TestRunPatchUsage(t *testing.T) {
 	}
 }
 
-func TestPatchRejectsUnknownFlag(t *testing.T) {
+func removedTestPatchRejectsUnknownFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if exitCode := Execute([]string{"patch", "a.md", "b.json", "c.md", "--unknown"}, &stdout, &stderr); exitCode != 2 {
@@ -650,7 +649,7 @@ func TestPatchRejectsUnknownFlag(t *testing.T) {
 	}
 }
 
-func TestPatchRequiresSection(t *testing.T) {
+func removedTestPatchRequiresSection(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	if exitCode := Execute([]string{"patch", "a.md", "b.json", "c.md"}, &stdout, &stderr); exitCode != 2 {
@@ -661,7 +660,7 @@ func TestPatchRequiresSection(t *testing.T) {
 	}
 }
 
-func TestPatchFieldDiffHappyPath(t *testing.T) {
+func removedTestPatchFieldDiffHappyPath(t *testing.T) {
 	dir := t.TempDir()
 	planPath := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -703,7 +702,7 @@ func TestPatchFieldDiffHappyPath(t *testing.T) {
 	}
 }
 
-func TestPatchFieldDiffFileNotFoundEmitsRecoveryHint(t *testing.T) {
+func removedTestPatchFieldDiffFileNotFoundEmitsRecoveryHint(t *testing.T) {
 	dir := t.TempDir()
 	planPath := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -741,7 +740,7 @@ func TestPatchFieldDiffFileNotFoundEmitsRecoveryHint(t *testing.T) {
 	}
 }
 
-func TestPatchFieldDiffEmptyEmitsRecoveryHint(t *testing.T) {
+func removedTestPatchFieldDiffEmptyEmitsRecoveryHint(t *testing.T) {
 	dir := t.TempDir()
 	planPath := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -781,7 +780,7 @@ func TestPatchFieldDiffEmptyEmitsRecoveryHint(t *testing.T) {
 	}
 }
 
-func TestPatchFieldDiffUnparseableEmitsRecoveryHint(t *testing.T) {
+func removedTestPatchFieldDiffUnparseableEmitsRecoveryHint(t *testing.T) {
 	dir := t.TempDir()
 	planPath := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -822,7 +821,7 @@ func TestPatchFieldDiffUnparseableEmitsRecoveryHint(t *testing.T) {
 	}
 }
 
-func TestPatchFieldFlagValidationMatrix(t *testing.T) {
+func removedTestPatchFieldFlagValidationMatrix(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
@@ -1163,6 +1162,82 @@ func TestValidateCommandRemoved(t *testing.T) {
 	}
 }
 
+func TestPatchCommandRemoved(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"patch", "--help"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown command: patch") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
+	}
+}
+
+func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
+	dir := t.TempDir()
+	planPath := writeBehavioralPlan(t, dir)
+	out := dir + "/out.md"
+
+	runPlannerOK(t, []string{"title", "set", planPath, out, "New title"}, nil)
+	assertParsed(t, out, func(p Plan) {
+		if p.Title != "New title" {
+			t.Fatalf("title=%q", p.Title)
+		}
+	})
+
+	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
+	assertParsed(t, out, func(p Plan) {
+		if p.DefinitionOfDone.Goals[0].Text != "renamed goal" || !p.DefinitionOfDone.Goals[0].Status {
+			t.Fatalf("goal not updated with status preserved: %#v", p.DefinitionOfDone.Goals[0])
+		}
+	})
+
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "f", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", out, out, "--step", "1", "--change", "2", "renamed"}, nil)
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", out, out, "--step", "1", "--change", "2", "--stdin"}, []byte("raw diff bytes"))
+	assertParsed(t, out, func(p Plan) {
+		if got := p.Implementation[0].FileChanges[1].Filename; got != "renamed" {
+			t.Fatalf("second filename=%q", got)
+		}
+		if got := p.Implementation[0].FileChanges[1].Diff; got != "raw diff bytes" {
+			t.Fatalf("second diff=%q", got)
+		}
+	})
+
+	runPlannerOK(t, []string{"verification", "automated", "set", out, out, "--item", "1", "new automated"}, nil)
+	assertParsed(t, out, func(p Plan) {
+		if p.Verification.Automated[0].Text != "new automated" || !p.Verification.Automated[0].Status {
+			t.Fatalf("automated not updated with status preserved: %#v", p.Verification.Automated[0])
+		}
+	})
+}
+
+func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
+	dir := t.TempDir()
+	planPath := writeBehavioralPlan(t, dir)
+	out := dir + "/out.md"
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"goal", []string{"dod", "goal", "remove", planPath, out, "--goal", "1"}, "cannot remove the final definition_of_done goal"},
+		{"step", []string{"implementation", "step", "remove", planPath, out, "--step", "1"}, "cannot remove the final implementation step"},
+		{"change", []string{"implementation", "step", "file-change", "remove", planPath, out, "--step", "1", "--change", "1"}, "cannot remove the final file change from a step"},
+		{"json", []string{"--json-errors", "title", "set", planPath, out, "   "}, "USAGE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if exit := Execute(tc.args, &stdout, &stderr); exit != 2 {
+				t.Fatalf("exit=%d want 2 stderr=%q", exit, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("stderr missing %q: %q", tc.want, stderr.String())
+			}
+		})
+	}
+}
+
 func TestCreateRejectsWriteFlag(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/out.md"
@@ -1193,7 +1268,7 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	fn()
 }
 
-func TestWriteFailureSuppressesResultJSON(t *testing.T) {
+func removedTestWriteFailureSuppressesResultJSON(t *testing.T) {
 	dir := t.TempDir()
 	// Write source plan to disk.
 	planPath := dir + "/plan.md"
@@ -1223,6 +1298,69 @@ func TestWriteFailureSuppressesResultJSON(t *testing.T) {
 	if strings.Contains(stdout.String(), "{") {
 		t.Fatalf("patch result JSON must not be emitted on write failure; stdout = %q", stdout.String())
 	}
+}
+
+func writeBehavioralPlan(t *testing.T, dir string) string {
+	t.Helper()
+	path := dir + "/plan.md"
+	withStdin(t, mustJSON(Plan{
+		Title:    "T",
+		Overview: "O",
+		DefinitionOfDone: DefinitionOfDone{
+			Narrative:    "N",
+			Goals:        []ChecklistItem{{Text: "g", Status: true}},
+			CurrentState: "C",
+			ModuleShape:  "M",
+		},
+		Implementation: []Step{{
+			Title:   "T",
+			Summary: "S",
+			FileChanges: []FileChange{{
+				Filename:    "f",
+				Explanation: "e",
+				Diff:        "@@ -1 +1 @@\n-a\n+b",
+			}},
+		}},
+		Verification: &Verification{
+			Summary:   "",
+			Automated: []ChecklistItem{{Text: "A", Status: true}},
+			Manual:    []ChecklistItem{{Text: "M"}},
+		},
+	}), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", path, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("create exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	return path
+}
+
+func runPlannerOK(t *testing.T, args []string, stdin []byte) {
+	t.Helper()
+	run := func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute(args, &stdout, &stderr); exit != 0 {
+			t.Fatalf("Execute(%v) exit=%d stderr=%q stdout=%q", args, exit, stderr.String(), stdout.String())
+		}
+	}
+	if stdin != nil {
+		withStdin(t, stdin, run)
+		return
+	}
+	run()
+}
+
+func assertParsed(t *testing.T, path string, check func(Plan)) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v\n%s", err, string(raw))
+	}
+	check(parsed.Plan)
 }
 
 func validPlanJSON() []byte {
@@ -1427,7 +1565,7 @@ func brokenDiffJSON() []byte {
 	return []byte(strings.ReplaceAll(string(validPlanJSON()), `\n`, "\n"))
 }
 
-func TestStdinPatchInput(t *testing.T) {
+func removedTestStdinPatchInput(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
 	withStdin(t, validPlanJSON(), func() {
@@ -1544,7 +1682,7 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 	}
 }
 
-func TestPatchHelpPrintsWorkflow(t *testing.T) {
+func removedTestPatchHelpPrintsWorkflow(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
@@ -1558,7 +1696,7 @@ func TestPatchHelpPrintsWorkflow(t *testing.T) {
 	}
 }
 
-func TestPatchHelpListsFieldFlagsAndDiffWorkflow(t *testing.T) {
+func removedTestPatchHelpListsFieldFlagsAndDiffWorkflow(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
