@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bytes"
@@ -8,10 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"planner/render"
-	"planner/schema"
-	"planner/validate"
 )
 
 func TestHelpTextIncludesRules(t *testing.T) {
@@ -62,11 +58,11 @@ func TestTemplateJSONIsValidPlan(t *testing.T) {
 		t.Fatalf("Execute(template --json) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
 
-	plan, err := schema.DecodePlan(stdout.Bytes())
+	plan, err := DecodePlan(stdout.Bytes())
 	if err != nil {
 		t.Fatalf("template JSON output is not valid plan JSON: %v", err)
 	}
-	if err := validate.ValidatePlan(plan); err != nil {
+	if err := ValidatePlan(plan); err != nil {
 		t.Fatalf("template JSON plan does not validate: %v", err)
 	}
 	if plan.Implementation[0].FileChanges[0].Diff != "PLACEHOLDER" {
@@ -265,7 +261,7 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "title",
 			args:       []string{"template", "--json", "--section", "title"},
-			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxTitleLength),
+			wantSubstr: fmt.Sprintf("max %d chars", MaxTitleLength),
 		},
 		{
 			name:       "verification summary",
@@ -285,12 +281,12 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 		{
 			name:       "step title field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
-			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxTitleLength),
+			wantSubstr: fmt.Sprintf("max %d chars", MaxTitleLength),
 		},
 		{
 			name:       "step summary field",
 			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
-			wantSubstr: fmt.Sprintf("max %d chars", schema.MaxStepSummaryLength),
+			wantSubstr: fmt.Sprintf("max %d chars", MaxStepSummaryLength),
 		},
 		{
 			name:       "filename field",
@@ -364,10 +360,10 @@ func TestTemplateRejectsInvalidGrammar(t *testing.T) {
 }
 
 func TestTemplateRawScalar(t *testing.T) {
-	plan := schema.BuildPlanTemplate()
+	plan := BuildPlanTemplate()
 	decode := func(section, subsection, file, field string) string {
 		t.Helper()
-		raw, err := schema.MarshalSection(plan, section, subsection, file, field)
+		raw, err := MarshalSection(plan, section, subsection, file, field)
 		if err != nil {
 			t.Fatalf("MarshalSection(%s,%s,%s,%s): %v", section, subsection, file, field, err)
 		}
@@ -999,11 +995,11 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 }
 
 func TestRunCheckMarkdown(t *testing.T) {
-	plan, err := schema.DecodePlan(validPlanJSON())
+	plan, err := DecodePlan(validPlanJSON())
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
 	}
-	rendered, err := render.RenderPlan(plan)
+	rendered, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -1037,11 +1033,11 @@ func TestRunCheckJSON(t *testing.T) {
 }
 
 func TestRunCheckStdinFormatMd(t *testing.T) {
-	plan, err := schema.DecodePlan(validPlanJSON())
+	plan, err := DecodePlan(validPlanJSON())
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
 	}
-	rendered, err := render.RenderPlan(plan)
+	rendered, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -1106,29 +1102,29 @@ func TestRunCheckUnknownFormat(t *testing.T) {
 }
 
 func TestRunCheckAggregatesViolations(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "",
 		Overview: "",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    strings.Repeat("n", 501),
-			Goals:        []schema.ChecklistItem{{Text: "goal"}},
+			Goals:        []ChecklistItem{{Text: "goal"}},
 			CurrentState: "current state",
 			ModuleShape:  "planner/check",
 		},
-		Implementation: []schema.Step{
+		Implementation: []Step{
 			{
 				Title:   "step title",
 				Summary: "step summary",
-				FileChanges: []schema.FileChange{{
+				FileChanges: []FileChange{{
 					Filename:    "planner/check/check.go",
 					Explanation: "explanation",
 					Diff:        "@@ -1 +1 @@\n- old\n+ new",
 				}},
 			},
 		},
-		Verification: &schema.Verification{
-			Automated: []schema.ChecklistItem{{Text: "automation"}},
-			Manual:    []schema.ChecklistItem{{Text: "manual"}},
+		Verification: &Verification{
+			Automated: []ChecklistItem{{Text: "automation"}},
+			Manual:    []ChecklistItem{{Text: "manual"}},
 		},
 	}
 	raw, err := json.Marshal(plan)
@@ -1149,7 +1145,7 @@ func TestRunCheckAggregatesViolations(t *testing.T) {
 	for _, want := range []string{
 		"title is required",
 		"overview is required",
-		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", schema.MaxDoDNarrativeLength),
+		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", MaxDoDNarrativeLength),
 	} {
 		if !strings.Contains(stderr.String(), want) {
 			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
@@ -1230,28 +1226,28 @@ func TestWriteFailureSuppressesResultJSON(t *testing.T) {
 }
 
 func validPlanJSON() []byte {
-	return mustJSON(schema.Plan{
+	return mustJSON(Plan{
 		Title:    "T",
 		Overview: "O",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "N",
-			Goals:        []schema.ChecklistItem{{Text: "g"}},
+			Goals:        []ChecklistItem{{Text: "g"}},
 			CurrentState: "C",
 			ModuleShape:  "M",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:   "T",
 			Summary: "S",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "f",
 				Explanation: "e",
 				Diff:        "@@ -1 +1 @@\n-a\n+b",
 			}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "",
-			Automated: []schema.ChecklistItem{{Text: "A"}},
-			Manual:    []schema.ChecklistItem{{Text: "M"}},
+			Automated: []ChecklistItem{{Text: "A"}},
+			Manual:    []ChecklistItem{{Text: "M"}},
 		},
 	})
 }
@@ -1536,11 +1532,11 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
 	}
 
-	plan, err := schema.DecodePlan(stdout.Bytes())
+	plan, err := DecodePlan(stdout.Bytes())
 	if err != nil {
 		t.Fatalf("inspect output not valid plan JSON: %v", err)
 	}
-	if err := validate.ValidatePlan(plan); err != nil {
+	if err := ValidatePlan(plan); err != nil {
 		t.Fatalf("inspect output does not validate: %v", err)
 	}
 	if plan.Title == "" || len(plan.Implementation) == 0 || plan.Verification == nil {
