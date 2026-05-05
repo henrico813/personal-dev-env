@@ -1,7 +1,6 @@
 use crate::{
     cli::RunArgs,
-    observe,
-    prompts,
+    observe, prompts,
     result::{RunResult, SetupErrorContext, Status},
     sandbox, snapshot, worktree,
 };

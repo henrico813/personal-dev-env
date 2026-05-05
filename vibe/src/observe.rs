@@ -108,7 +108,10 @@ mod tests {
         assert_eq!(paths.prompt_txt, dir.join("prompt.txt"));
         assert_eq!(paths.system_prompt_txt, dir.join("system-prompt.txt"));
         assert_eq!(paths.combined_prompt_txt, dir.join("combined-prompt.txt"));
-        assert_eq!(paths.system_prompt_versions_txt, dir.join("system-prompt-versions.txt"));
+        assert_eq!(
+            paths.system_prompt_versions_txt,
+            dir.join("system-prompt-versions.txt")
+        );
         assert_eq!(paths.events_jsonl, dir.join("events.jsonl"));
         assert_eq!(paths.stderr_log, dir.join("agent.stderr.log"));
         assert_eq!(paths.extension_jsonl, dir.join("extension-events.jsonl"));
@@ -120,8 +123,8 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("repo");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
-        let paths = create_artifacts_in(temp.path(), &repo_root, "demo", "run")
-            .expect("artifact paths");
+        let paths =
+            create_artifacts_in(temp.path(), &repo_root, "demo", "run").expect("artifact paths");
         let rendered = RenderedPrompt {
             system_prompt: "system text".to_string(),
             combined_prompt: "combined text".to_string(),
@@ -131,7 +134,10 @@ mod tests {
         write_prompt_artifact(&paths.prompt_txt, "raw text").expect("raw prompt");
         write_rendered_prompt(&paths, &rendered).expect("rendered prompt");
 
-        assert_eq!(std::fs::read_to_string(&paths.prompt_txt).expect("raw"), "raw text");
+        assert_eq!(
+            std::fs::read_to_string(&paths.prompt_txt).expect("raw"),
+            "raw text"
+        );
         assert_eq!(
             std::fs::read_to_string(&paths.system_prompt_txt).expect("system"),
             "system text"

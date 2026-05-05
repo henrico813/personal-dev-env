@@ -68,9 +68,7 @@ pub(crate) fn render_executor_prompt(supervisor_prompt: &str) -> RenderedPrompt 
         .join("\n\n");
     let combined_prompt = format!(
         "{}\n\n{}{}",
-        system_prompt,
-        EXECUTOR_PROMPT_CONTRACT.task_header,
-        supervisor_prompt
+        system_prompt, EXECUTOR_PROMPT_CONTRACT.task_header, supervisor_prompt
     );
     let version_manifest = contract_version_manifest(&EXECUTOR_PROMPT_CONTRACT);
 
@@ -104,7 +102,10 @@ mod tests {
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts.len(), 2);
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].name, "execution_focus");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].version, "v1");
-        assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[1].name, "snapshot_commit_protocol");
+        assert_eq!(
+            EXECUTOR_PROMPT_CONTRACT.prompts[1].name,
+            "snapshot_commit_protocol"
+        );
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[1].version, "v1");
         assert_eq!(
             render_executor_prompt("").version_manifest,

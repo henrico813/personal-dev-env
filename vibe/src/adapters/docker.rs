@@ -312,7 +312,7 @@ pub fn run_task(
 mod tests {
     use super::{
         auth_file_from_home, auth_is_configured, docker_run_args, require_auth, ArtifactPaths,
-        HostUser, AUTH_VARS,
+        DockerRunArgs, HostUser, AUTH_VARS,
     };
     use std::{
         ffi::OsString,
