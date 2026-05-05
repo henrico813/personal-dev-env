@@ -1186,7 +1186,7 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 
 	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
 	assertParsed(t, out, func(p Plan) {
-		if p.DefinitionOfDone.Goals[0].Text != "renamed goal" || !p.DefinitionOfDone.Goals[0].Status {
+		if p.DefinitionOfDone.Goals[0].Text != "renamed goal" || p.DefinitionOfDone.Goals[0].Status != StatusDone {
 			t.Fatalf("goal not updated with status preserved: %#v", p.DefinitionOfDone.Goals[0])
 		}
 	})
@@ -1205,7 +1205,7 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 
 	runPlannerOK(t, []string{"verification", "automated", "set", out, out, "--item", "1", "new automated"}, nil)
 	assertParsed(t, out, func(p Plan) {
-		if p.Verification.Automated[0].Text != "new automated" || !p.Verification.Automated[0].Status {
+		if p.Verification.Automated[0].Text != "new automated" || p.Verification.Automated[0].Status != StatusDone {
 			t.Fatalf("automated not updated with status preserved: %#v", p.Verification.Automated[0])
 		}
 	})
@@ -1308,7 +1308,7 @@ func writeBehavioralPlan(t *testing.T, dir string) string {
 		Overview: "O",
 		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g", Status: true}},
+			Goals:        []ChecklistItem{{Text: "g", Status: StatusDone}},
 			CurrentState: "C",
 			ModuleShape:  "M",
 		},
@@ -1323,7 +1323,7 @@ func writeBehavioralPlan(t *testing.T, dir string) string {
 		}},
 		Verification: &Verification{
 			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A", Status: true}},
+			Automated: []ChecklistItem{{Text: "A", Status: StatusDone}},
 			Manual:    []ChecklistItem{{Text: "M"}},
 		},
 	}), func() {
