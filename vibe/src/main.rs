@@ -2,6 +2,7 @@ mod adapters;
 mod app;
 mod cli;
 mod observe;
+mod prompts;
 mod result;
 mod sandbox;
 mod snapshot;
