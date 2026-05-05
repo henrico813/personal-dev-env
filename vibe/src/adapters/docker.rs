@@ -135,6 +135,75 @@ pub fn require_auth() -> Result<(), String> {
     }
 }
 
+struct DockerRunArgs<'a> {
+    repo_root: &'a Path,
+    git_common_dir: &'a Path,
+    worktree: &'a Path,
+    artifacts: &'a ArtifactPaths,
+    model: &'a str,
+    stderr_level: &'a str,
+    snapshot_ref: &'a str,
+    user: &'a HostUser,
+}
+
+/// Keep prompt/env wiring pure so tests can lock the Docker seam.
+fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
+    let DockerRunArgs {
+        repo_root,
+        git_common_dir,
+        worktree,
+        artifacts,
+        model,
+        stderr_level,
+        snapshot_ref,
+        user,
+    } = args;
+
+    vec![
+        "run".to_string(),
+        "--rm".to_string(),
+        "--user".to_string(),
+        format!("{}:{}", user.uid, user.gid),
+        "--tmpfs".to_string(),
+        format!("/vibe-home:uid={},gid={},mode=700", user.uid, user.gid),
+        "-v".to_string(),
+        format!("{}:{}", worktree.display(), worktree.display()),
+        "-v".to_string(),
+        format!("{}:{}", git_common_dir.display(), git_common_dir.display()),
+        "-v".to_string(),
+        format!("{}:/artifacts", artifacts.dir.display()),
+        "-w".to_string(),
+        worktree.to_str().unwrap_or("").to_string(),
+        "-e".to_string(),
+        "HOME=/vibe-home".to_string(),
+        "-e".to_string(),
+        format!("VIBE_MODEL={model}"),
+        "-e".to_string(),
+        format!("VIBE_STDERR_LEVEL={stderr_level}"),
+        "-e".to_string(),
+        "VIBE_COMBINED_PROMPT_FILE=/artifacts/combined-prompt.txt".to_string(),
+        "-e".to_string(),
+        "VIBE_COMMIT_MESSAGE_FILE=/artifacts/commit-message.txt".to_string(),
+        "-e".to_string(),
+        format!(
+            "VIBE_EXTENSION_LOG=/artifacts/{}",
+            artifacts
+                .extension_jsonl
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("extension-events.jsonl")
+        ),
+        "-e".to_string(),
+        "VIBE_SNAPSHOT_LOG=/artifacts/snapshots.jsonl".to_string(),
+        "-e".to_string(),
+        format!("VIBE_SNAPSHOT_REF={snapshot_ref}"),
+        "-e".to_string(),
+        "VIBE_GIT_HOOKS_DIR=/opt/vibe/hooks".to_string(),
+        "-e".to_string(),
+        format!("VIBE_REPO_ROOT={}", repo_root.display()),
+    ]
+}
+
 pub fn run_task(
     repo_root: &Path,
     git_common_dir: &Path,
@@ -155,50 +224,18 @@ pub fn run_task(
     let user = host_user()?;
     let auth_file = auth_file_from_home(std::env::var("HOME").ok().as_deref());
 
+    // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
     let mut cmd = Command::new("docker");
-    cmd.args([
-        "run",
-        "--rm",
-        "--user",
-        &format!("{}:{}", user.uid, user.gid),
-        "--tmpfs",
-        &format!("/vibe-home:uid={},gid={},mode=700", user.uid, user.gid),
-        "-v",
-        &format!("{}:{}", worktree.display(), worktree.display()),
-        "-v",
-        &format!("{}:{}", git_common_dir.display(), git_common_dir.display()),
-        "-v",
-        &format!("{}:/artifacts", artifacts.dir.display()),
-        "-w",
-        worktree.to_str().unwrap_or(""),
-        "-e",
-        "HOME=/vibe-home",
-        "-e",
-        &format!("VIBE_MODEL={model}"),
-        "-e",
-        &format!("VIBE_STDERR_LEVEL={stderr_level}"),
-        "-e",
-        "VIBE_PROMPT_FILE=/artifacts/prompt.txt",
-        "-e",
-        "VIBE_COMMIT_MESSAGE_FILE=/artifacts/commit-message.txt",
-        "-e",
-        &format!(
-            "VIBE_EXTENSION_LOG=/artifacts/{}",
-            artifacts
-                .extension_jsonl
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("extension-events.jsonl")
-        ),
-        "-e",
-        "VIBE_SNAPSHOT_LOG=/artifacts/snapshots.jsonl",
-        "-e",
-        &format!("VIBE_SNAPSHOT_REF={snapshot_ref}"),
-        "-e",
-        "VIBE_GIT_HOOKS_DIR=/opt/vibe/hooks",
-        "-e",
-        &format!("VIBE_REPO_ROOT={}", repo_root.display()),
-    ]);
+    cmd.args(docker_run_args(&DockerRunArgs {
+        repo_root,
+        git_common_dir,
+        worktree,
+        artifacts,
+        model,
+        stderr_level,
+        snapshot_ref: &snapshot_ref,
+        user: &user,
+    }));
     for key in AUTH_VARS {
         if let Ok(value) = std::env::var(key) {
             cmd.args(["-e", &format!("{key}={value}")]);
@@ -273,7 +310,10 @@ pub fn run_task(
 
 #[cfg(test)]
 mod tests {
-    use super::{auth_file_from_home, auth_is_configured, require_auth, AUTH_VARS};
+    use super::{
+        auth_file_from_home, auth_is_configured, docker_run_args, require_auth, ArtifactPaths,
+        DockerRunArgs, HostUser, AUTH_VARS,
+    };
     use std::{
         ffi::OsString,
         fs,
@@ -438,6 +478,50 @@ mod tests {
             result.expect_err("missing Azure base URL should fail"),
             ERROR_MESSAGE
         );
+    }
+
+    #[test]
+    fn docker_run_args_uses_combined_prompt_artifact() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        let git_common_dir = temp.path().join("git");
+        let worktree = temp.path().join("worktree");
+        let artifacts = ArtifactPaths {
+            dir: temp.path().join("artifacts"),
+            prompt_txt: temp.path().join("artifacts/prompt.txt"),
+            system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
+            combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
+            system_prompt_versions_txt: temp.path().join("artifacts/system-prompt-versions.txt"),
+            events_jsonl: temp.path().join("artifacts/events.jsonl"),
+            stderr_log: temp.path().join("artifacts/agent.stderr.log"),
+            extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
+            snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+        };
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: &repo_root,
+            git_common_dir: &git_common_dir,
+            worktree: &worktree,
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+        });
+
+        assert!(args
+            .iter()
+            .any(|arg| arg == "VIBE_COMBINED_PROMPT_FILE=/artifacts/combined-prompt.txt"));
+        assert!(!args
+            .iter()
+            .any(|arg| arg == "VIBE_PROMPT_FILE=/artifacts/prompt.txt"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("VIBE_REPO_ROOT={}", repo_root.display())));
     }
 
     #[test]

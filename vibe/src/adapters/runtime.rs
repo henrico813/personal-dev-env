@@ -87,3 +87,82 @@ fn set_executable(path: &Path, executable: bool) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+    use tempfile::tempdir;
+
+    fn write_executable(path: &Path, contents: &str) {
+        fs::write(path, contents).expect("write script");
+        let mut perms = fs::metadata(path).expect("script metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).expect("chmod script");
+    }
+
+    #[test]
+    fn shipped_runtime_shell_preserves_combined_prompt_newline() {
+        let temp = tempdir().expect("tempdir");
+        let bin = temp.path().join("bin");
+        let home = temp.path().join("home");
+        let repo_root = temp.path().join("repo");
+        let capture = temp.path().join("captured-prompt.bin");
+        let combined_prompt = temp.path().join("combined-prompt.txt");
+        let script = temp.path().join("run-agent.sh");
+
+        fs::create_dir_all(&bin).expect("mkdir bin");
+        fs::create_dir_all(&home).expect("mkdir home");
+        fs::create_dir_all(&repo_root).expect("mkdir repo");
+        fs::write(&combined_prompt, b"Line one\nLine two\n").expect("write prompt");
+        fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
+        let mut script_perms = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
+        script_perms.set_mode(0o755);
+        fs::set_permissions(&script, script_perms).expect("chmod script");
+
+        write_executable(
+            &bin.join("git"),
+            "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        );
+        write_executable(
+            &bin.join("node"),
+            "#!/usr/bin/env bash\nset -euo pipefail\ncat >/dev/null\n",
+        );
+        write_executable(
+            &bin.join("pi"),
+            "#!/usr/bin/env bash\nset -euo pipefail\nlast=\"${!#}\"\nprintf '%s' \"$last\" > \"$PI_CAPTURE_FILE\"\n",
+        );
+
+        let status = Command::new(&script)
+            .current_dir(&repo_root)
+            .env("HOME", &home)
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    bin.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("PI_CAPTURE_FILE", &capture)
+            .env("VIBE_REPO_ROOT", &repo_root)
+            .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
+            .env("VIBE_MODEL", "fake/model")
+            .output()
+            .expect("run runtime shell");
+
+        assert!(
+            status.status.success(),
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&status.stdout),
+            String::from_utf8_lossy(&status.stderr),
+        );
+        assert_eq!(
+            fs::read(&capture).expect("read captured prompt"),
+            b"Line one\nLine two\n"
+        );
+    }
+}
