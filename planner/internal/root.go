@@ -264,36 +264,6 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 	return opts, nil
 }
 
-func isScalarPatch(opts ReplaceOptions) bool {
-	switch opts.Section {
-	case "title", "overview":
-		return true
-	case "definition_of_done":
-		return opts.Subsection == "narrative" || opts.Subsection == "current_state" || opts.Subsection == "module_shape"
-	case "implementation":
-		switch opts.Field {
-		case "title", "summary", "filename", "explanation":
-			return true
-		}
-	case "verification":
-		return opts.Subsection == "summary"
-	}
-	return false
-}
-
-func validateRawPatchTarget(opts ReplaceOptions) error {
-	if opts.Raw {
-		if !isScalarPatch(opts) {
-			return fmt.Errorf("--raw is only valid with scalar string targets")
-		}
-		return nil
-	}
-	if isScalarPatch(opts) {
-		return fmt.Errorf("scalar string targets require --raw (JSON string input is no longer accepted on this path)")
-	}
-	return nil
-}
-
 // validateFieldGrammar is the shared leaf-selector validator for patch and
 // template. It keeps both commands aligned on the same section/subsection/file
 // and field combinations.
