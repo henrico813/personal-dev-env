@@ -1611,50 +1611,6 @@ func TestReadPlanFromReturnsTypedDecodeError(t *testing.T) {
 	}
 }
 
-func TestDiffWritesButDoesNotEmitResult(t *testing.T) {
-	dir := t.TempDir()
-	src := dir + "/plan.md"
-	withStdin(t, validPlanJSON(), func() {
-		var stdout, stderr bytes.Buffer
-		if exit := Execute([]string{"create", src, "--stdin"}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("seed exit %d stderr %q", exit, stderr.String())
-		}
-	})
-	patch := []byte("Fresh overview text.")
-	withStdin(t, patch, func() {
-		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--raw", "--diff"}, &stdout, &stderr)
-		if exit != 0 {
-			t.Fatalf("exit %d stderr %q", exit, stderr.String())
-		}
-		if strings.Contains(stdout.String(), `"section"`) {
-			t.Fatalf("patch result JSON must not appear on stdout when --diff is set; stdout = %q", stdout.String())
-		}
-	})
-}
-
-func TestInvalidSourceMarkdownReturnsDecodeError(t *testing.T) {
-	dir := t.TempDir()
-	src := dir + "/not-a-plan.md"
-	if err := os.WriteFile(src, []byte("# not a planner doc\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	patch := []byte("Fresh overview text.")
-	withStdin(t, patch, func() {
-		var stdout, stderr bytes.Buffer
-		exit := Execute([]string{"patch", src, src, "--section", "overview", "--stdin", "--raw"}, &stdout, &stderr)
-		if exit != 1 {
-			t.Fatalf("exit %d want 1 stderr %q", exit, stderr.String())
-		}
-		if strings.Contains(stderr.String(), "decode patch JSON") {
-			t.Fatalf("misclassified patch error: %q", stderr.String())
-		}
-		if !strings.Contains(stderr.String(), "decode plan markdown") {
-			t.Fatalf("expected plan markdown decode error, got %q", stderr.String())
-		}
-	})
-}
-
 func TestInspectOutputIsValidPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"

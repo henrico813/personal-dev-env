@@ -118,7 +118,6 @@ Create workflow:
   3. planner check draft.json && planner create draft.json out.md
 `
 
-
 var jsonErrorOutput bool
 
 // Execute is the production command entrypoint used by main() and CLI tests.
