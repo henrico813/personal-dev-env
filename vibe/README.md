@@ -40,9 +40,10 @@ It does not require the target repo checkout to contain a local `vibe/`
 directory. On first run, `vibe` extracts its bundled runtime assets to
 `~/.local/share/vibe/<version>/` and builds the Docker image from there.
 
-Before `vibe run` starts Docker, it requires provider auth via supported
-env vars or a readable `~/.pi/agent/auth.json`; missing auth fails early
-as `setup_error`.
+Before `vibe run` starts Docker, it reads `--prompt-file` as UTF-8,
+renders the immutable executor prompt contract in `src/prompts.rs`, and
+requires provider auth via supported env vars or a readable
+`~/.pi/agent/auth.json`; missing auth fails early as `setup_error`.
 Supported env vars are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or the Azure pair
 `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL`.
@@ -70,6 +71,11 @@ vibe run \
   `~/.local/share/vibe/<version>/`
 - Vibe mounts the target worktree, shared git metadata, and `/artifacts`
 - the container runs as the host UID/GID and sets git `safe.directory`
+- `prompt.txt` stores the raw UTF-8 supervisor prompt
+- `system-prompt.txt` stores the rendered executor system prompt
+- `combined-prompt.txt` stores the system prompt plus task prompt
+- `system-prompt-versions.txt` stores the executor contract version plus per-prompt versions
+- `run-agent.sh` reads only `VIBE_COMBINED_PROMPT_FILE` inside Docker
 
 Artifacts land under `~/.local/state/vibe/<repo>/<slug>/runs/.../`, where
 `<slug>` is the normalized `--key` value.
