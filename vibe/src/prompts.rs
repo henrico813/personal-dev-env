@@ -1,7 +1,6 @@
 //! Rust-owned executor prompt contract.
 //!
-//! Keeping the prompt text and rendering rules here lets tests lock the exact
-//! contract without depending on wider runtime code.
+//! The prompt contract lives here so tests can lock the exact shape and rendered output.
 
 #[derive(Clone, Copy)]
 struct SystemPrompt {
@@ -56,7 +55,7 @@ const SNAPSHOT_COMMIT_PROTOCOL_PROMPT: SystemPrompt = SystemPrompt {
 
 const EXECUTOR_PROMPT_CONTRACT: PromptContract = PromptContract {
     version: "v1",
-    task_header: "Task:",
+    task_header: "Task:\n",
     prompts: &[EXECUTION_FOCUS_PROMPT, SNAPSHOT_COMMIT_PROTOCOL_PROMPT],
 };
 
@@ -68,7 +67,7 @@ pub(crate) fn render_executor_prompt(supervisor_prompt: &str) -> RenderedPrompt 
         .collect::<Vec<_>>()
         .join("\n\n");
     let combined_prompt = format!(
-        "{}\n\n{}\n{}",
+        "{}\n\n{}{}",
         system_prompt,
         EXECUTOR_PROMPT_CONTRACT.task_header,
         supervisor_prompt
@@ -101,7 +100,7 @@ mod tests {
     #[test]
     fn locks_metadata_and_version_manifest() {
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.version, "v1");
-        assert_eq!(EXECUTOR_PROMPT_CONTRACT.task_header, "Task:");
+        assert_eq!(EXECUTOR_PROMPT_CONTRACT.task_header, "Task:\n");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts.len(), 2);
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].name, "execution_focus");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].version, "v1");
