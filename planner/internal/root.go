@@ -10,11 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"planner/inspect"
 	"planner/internal/jsoninput"
-	"planner/render"
-	"planner/schema"
-	"planner/validate"
 )
 
 const helpText = `planner provides implementation-plan workflows from canonical JSON.
@@ -417,10 +413,10 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 
-	plan := schema.BuildPlanTemplate()
+	plan := BuildPlanTemplate()
 	switch {
 	case opts.md:
-		rendered, err := render.RenderPlan(plan)
+		rendered, err := RenderPlan(plan)
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 			return 1
@@ -428,7 +424,7 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		_, _ = io.WriteString(stdout, rendered)
 		return 0
 	case opts.section == "":
-		raw, err := schema.MarshalJSONNoEscape(plan)
+		raw, err := MarshalJSONNoEscape(plan)
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "template JSON"))
 			return 1
@@ -447,7 +443,7 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		_, _ = stdout.Write([]byte("--- a/<path>\n+++ b/<path>\n@@ -1 +1 @@\n-old\n+new\n"))
 		return 0
 	default:
-		raw, err := schema.MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
+		raw, err := MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 			return 2
@@ -481,8 +477,8 @@ func isScalarTemplate(opts templateOptions) bool {
 	return false
 }
 
-func scalarTemplateValue(plan schema.Plan, opts templateOptions) (string, error) {
-	raw, err := schema.MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
+func scalarTemplateValue(plan Plan, opts templateOptions) (string, error) {
+	raw, err := MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
 	if err != nil {
 		return "", err
 	}
@@ -549,7 +545,7 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 		return 2
 	}
 
-	var plan schema.Plan
+	var plan Plan
 	if format == "md" {
 		var raw []byte
 		if pf.stdin {
@@ -561,7 +557,7 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 			reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
 			return 1
 		}
-		parsed, parseErr := inspect.ParseMarkdown(string(raw))
+		parsed, parseErr := ParseMarkdown(string(raw))
 		if parseErr != nil {
 			reportError(stderr, cmd, newPlannerCLIError(PlannerDecodeInputError, parseErr, "plan markdown"))
 			return 1
@@ -575,7 +571,7 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 		}
 	}
 
-	if errs := validate.ValidatePlanAll(plan); len(errs) > 0 {
+	if errs := ValidatePlanAll(plan); len(errs) > 0 {
 		messages := make([]string, len(errs))
 		for i, e := range errs {
 			messages[i] = e.Message
@@ -612,16 +608,16 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "create", err)
 		return plannerExitCode(err)
 	}
-	rendered, err := render.RenderPlan(plan)
+	rendered, err := RenderPlan(plan)
 	if err != nil {
 		reportError(stderr, "create", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 		return 1
 	}
-	if err := validate.ValidatePlan(plan); err != nil {
+	if err := ValidatePlan(plan); err != nil {
 		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
 		return 1
 	}
-	if err := validate.VerifyRenderedText(rendered, plan); err != nil {
+	if err := VerifyRenderedText(rendered, plan); err != nil {
 		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "rendered plan"))
 		return 1
 	}
@@ -640,7 +636,7 @@ func printHelp(w io.Writer) {
 func buildHelpText() string {
 	var b strings.Builder
 	b.WriteString(helpText)
-	for _, rule := range schema.ValidationRules() {
+	for _, rule := range ValidationRules() {
 		b.WriteString("  - " + rule + "\n")
 	}
 	return b.String()
@@ -657,7 +653,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	parsed, err := inspect.ParseMarkdown(string(raw))
+	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
@@ -885,18 +881,18 @@ func readRawScalar(path string, useStdin bool) ([]byte, error) {
 // readPlanFrom is the plan-decoding wrapper for runCheck/runCreate.
 // Decode errors are wrapped in typed planner CLI errors so tests can assert on
 // stable failure categories instead of raw strings.
-func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (schema.Plan, error) {
+func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (Plan, error) {
 	path := ""
 	if len(positional) > 0 {
 		path = positional[0]
 	}
 	data, _, err := readJSONSource(path, useStdin, true, stderr)
 	if err != nil {
-		return schema.Plan{}, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, useStdin))
+		return Plan{}, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, useStdin))
 	}
-	plan, err := schema.DecodePlan(data)
+	plan, err := DecodePlan(data)
 	if err != nil {
-		return schema.Plan{}, newPlannerCLIError(PlannerDecodeInputError, err, "plan JSON")
+		return Plan{}, newPlannerCLIError(PlannerDecodeInputError, err, "plan JSON")
 	}
 	return plan, nil
 }

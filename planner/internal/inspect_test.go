@@ -1,29 +1,27 @@
-package inspect
+package internal
 
 import (
 	"reflect"
 	"strings"
 	"testing"
 
-	"planner/render"
-	"planner/schema"
 )
 
 func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Plan",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			Goals:        []ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
-		Implementation: []schema.Step{
+		Implementation: []Step{
 			{
 				Title:   "First",
 				Summary: "summary one",
-				FileChanges: []schema.FileChange{{
+				FileChanges: []FileChange{{
 					Filename:    "a.txt",
 					Explanation: "explain",
 					Diff:        "@@ -1 +1 @@\n-old\n+new",
@@ -32,21 +30,21 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 			{
 				Title:   "Second",
 				Summary: "summary two",
-				FileChanges: []schema.FileChange{{
+				FileChanges: []FileChange{{
 					Filename:    "b.txt",
 					Explanation: "explain",
 					Diff:        "@@ -1 +1 @@\n-old\n+new",
 				}},
 			},
 		},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Verification summary.",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -80,32 +78,32 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 // (which prepend YAML frontmatter before the plan title) are parsed correctly and
 // that returned spans are absolute into the original source (including frontmatter).
 func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Plan",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			Goals:        []ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:   "First",
 			Summary: "summary one",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "a.txt",
 				Explanation: "explain",
 				Diff:        "@@ -1 +1 @@\n-old\n+new",
 			}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Verification summary.",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -133,24 +131,24 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 // with no implementation steps can be parsed without error. This is the bootstrap
 // case for append: an agent creates a plan skeleton and appends steps incrementally.
 func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Plan",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			Goals:        []ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
 		Implementation: nil,
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Verification summary.",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -206,28 +204,28 @@ func TestSectionBodyAllowsThematicBreakInContent(t *testing.T) {
 // produces byte-identical output and preserves mixed unchecked/done checkbox
 // states across the full cycle.
 func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Round-trip",
 		Overview: "Overview.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "Pending goal"}, {Text: "Done goal", Status: schema.StatusDone}},
+			Goals:        []ChecklistItem{{Text: "Pending goal"}, {Text: "Done goal", Status: StatusDone}},
 			CurrentState: "Current.",
 			ModuleShape:  "Shape.",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:       "Step",
 			Summary:     "summary",
-			FileChanges: []schema.FileChange{{Filename: "f.go", Explanation: "why", Diff: "@@ -1 +1 @@\n-a\n+b"}},
+			FileChanges: []FileChange{{Filename: "f.go", Explanation: "why", Diff: "@@ -1 +1 @@\n-a\n+b"}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "",
-			Automated: []schema.ChecklistItem{{Text: "auto"}, {Text: "done auto", Status: schema.StatusDone}},
-			Manual:    []schema.ChecklistItem{{Text: "manual"}},
+			Automated: []ChecklistItem{{Text: "auto"}, {Text: "done auto", Status: StatusDone}},
+			Manual:    []ChecklistItem{{Text: "manual"}},
 		},
 	}
 
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -240,7 +238,7 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", result.Plan, plan)
 	}
 
-	rerendered, err := render.RenderPlan(result.Plan)
+	rerendered, err := RenderPlan(result.Plan)
 	if err != nil {
 		t.Fatalf("RenderPlan (re-render): %v", err)
 	}
@@ -250,20 +248,20 @@ func TestRoundTripPreservesCheckboxStatus(t *testing.T) {
 }
 
 func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Plan",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			Goals:        []ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
-		Implementation: []schema.Step{
+		Implementation: []Step{
 			{
 				Title:   "First",
 				Summary: "summary one",
-				FileChanges: []schema.FileChange{
+				FileChanges: []FileChange{
 					{
 						Filename:    "a.txt",
 						Explanation: "explain",
@@ -277,14 +275,14 @@ func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
 				},
 			},
 		},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Verification summary.",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	}
 
-	md, err := render.RenderPlan(plan)
+	md, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -335,28 +333,28 @@ func TestParseMarkdownReturnsTitleSpan(t *testing.T) {
 }
 
 func TestParseMarkdownRejectsBadFilenameShapes(t *testing.T) {
-	md, err := render.RenderPlan(schema.Plan{
+	md, err := RenderPlan(Plan{
 		Title:    "Plan",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "One goal"}},
+			Goals:        []ChecklistItem{{Text: "One goal"}},
 			CurrentState: "Current state.",
 			ModuleShape:  "module shape",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:   "First",
 			Summary: "summary one",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "a.txt",
 				Explanation: "explain",
 				Diff:        "@@ -1 +1 @@\n-old\n+new",
 			}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "Verification summary.",
-			Automated: []schema.ChecklistItem{{Text: "go test ./..."}},
-			Manual:    []schema.ChecklistItem{{Text: "smoke"}},
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
 	})
 	if err != nil {
@@ -399,31 +397,31 @@ func TestParseMarkdownRejectsBadFilenameShapes(t *testing.T) {
 
 func buildPlanNoFrontmatter(t *testing.T) string {
 	t.Helper()
-	plan := schema.Plan{
+	plan := Plan{
 		Title:    "Sample",
 		Overview: "o",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "n",
-			Goals:        []schema.ChecklistItem{{Text: "g"}},
+			Goals:        []ChecklistItem{{Text: "g"}},
 			CurrentState: "c",
 			ModuleShape:  "m",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:   "t",
 			Summary: "s",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "a.go",
 				Explanation: "e",
 				Diff:        "@@ -1 +1 @@\n-x\n+y",
 			}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "vs",
-			Automated: []schema.ChecklistItem{{Text: "a"}},
-			Manual:    []schema.ChecklistItem{{Text: "m"}},
+			Automated: []ChecklistItem{{Text: "a"}},
+			Manual:    []ChecklistItem{{Text: "m"}},
 		},
 	}
-	out, err := render.RenderPlan(plan)
+	out, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatal(err)
 	}

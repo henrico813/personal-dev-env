@@ -6,11 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"planner/inspect"
 	"planner/internal/jsoninput"
-	"planner/render"
-	"planner/schema"
-	"planner/validate"
 )
 
 // ReplaceErrorCode classifies failures from PreviewFromData/Run so CLI callers
@@ -108,7 +104,7 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 		return "", ReplaceResult{}, newReplaceError(ReplaceReadSourceError, err)
 	}
 
-	parsed, err := inspect.ParseMarkdown(string(sourceRaw))
+	parsed, err := ParseMarkdown(string(sourceRaw))
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSourceError, err)
 	}
@@ -238,9 +234,9 @@ func validateOpts(opts ReplaceOptions) error {
 	return nil
 }
 
-func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error {
+func applyDoDPatch(plan *Plan, subsection string, patchRaw []byte) error {
 	if subsection == "" {
-		var dod schema.DefinitionOfDone
+		var dod DefinitionOfDone
 		if err := decodePatch(patchRaw, &dod); err != nil {
 			return err
 		}
@@ -255,7 +251,7 @@ func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error 
 		}
 		plan.DefinitionOfDone.Narrative = s
 	case "goals":
-		var goals []schema.ChecklistItem
+		var goals []ChecklistItem
 		if err := decodePatch(patchRaw, &goals); err != nil {
 			return err
 		}
@@ -278,9 +274,9 @@ func applyDoDPatch(plan *schema.Plan, subsection string, patchRaw []byte) error 
 	return nil
 }
 
-func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw []byte) ([]int, bool, error) {
+func applyImplementationPatch(plan *Plan, opts ReplaceOptions, patchRaw []byte) ([]int, bool, error) {
 	if opts.Append {
-		var step schema.Step
+		var step Step
 		if err := decodePatch(patchRaw, &step); err != nil {
 			return nil, false, err
 		}
@@ -292,14 +288,14 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 		if err != nil || idx < 1 || idx > len(plan.Implementation) {
 			return nil, false, fmt.Errorf("invalid implementation step index %q: valid range is 1-%d", opts.Subsection, len(plan.Implementation))
 		}
-		var step schema.Step
+		var step Step
 		if err := decodePatch(patchRaw, &step); err != nil {
 			return nil, false, err
 		}
 		plan.Implementation[idx-1] = step
 		return []int{idx}, false, nil
 	}
-	var steps []schema.Step
+	var steps []Step
 	if err := decodePatch(patchRaw, &steps); err != nil {
 		return nil, false, err
 	}
@@ -315,11 +311,11 @@ func applyImplementationPatch(plan *schema.Plan, opts ReplaceOptions, patchRaw [
 // patch paths: parse the spliced markdown, then validate the reconstructed
 // plan before returning success.
 func finalizeFieldPatch(out string, opts ReplaceOptions) (string, ReplaceResult, error) {
-	parsed, err := inspect.ParseMarkdown(out)
+	parsed, err := ParseMarkdown(out)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSplicedSourceError, err)
 	}
-	if err := validate.ValidatePlan(parsed.Plan); err != nil {
+	if err := ValidatePlan(parsed.Plan); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 	return out, ReplaceResult{
@@ -332,7 +328,7 @@ func finalizeFieldPatch(out string, opts ReplaceOptions) (string, ReplaceResult,
 
 // lookupFileChange returns the FileChange index in the addressed step whose
 // filename matches opts.File.
-func lookupFileChange(plan schema.Plan, opts ReplaceOptions, stepIdx int) (int, error) {
+func lookupFileChange(plan Plan, opts ReplaceOptions, stepIdx int) (int, error) {
 	matches := []int{}
 	for i, fc := range plan.Implementation[stepIdx-1].FileChanges {
 		if fc.Filename == opts.File {
@@ -351,7 +347,7 @@ func lookupFileChange(plan schema.Plan, opts ReplaceOptions, stepIdx int) (int, 
 
 // requireStepIndex parses opts.Subsection as a 1-based implementation step
 // index and returns the addressed step number.
-func requireStepIndex(opts ReplaceOptions, plan schema.Plan) (int, error) {
+func requireStepIndex(opts ReplaceOptions, plan Plan) (int, error) {
 	idx, err := strconv.Atoi(opts.Subsection)
 	if err != nil || idx < 1 || idx > len(plan.Implementation) {
 		return 0, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("--subsection %q invalid for implementation (have %d steps)", opts.Subsection, len(plan.Implementation)))
@@ -359,7 +355,7 @@ func requireStepIndex(opts ReplaceOptions, plan schema.Plan) (int, error) {
 	return idx, nil
 }
 
-func spliceStepField(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, stepSpans []inspect.Span) (string, ReplaceResult, error) {
+func spliceStepField(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, stepSpans []Span) (string, ReplaceResult, error) {
 	stepIdx, err := requireStepIndex(opts, plan)
 	if err != nil {
 		return "", ReplaceResult{}, err
@@ -377,14 +373,14 @@ func spliceStepField(source string, opts ReplaceOptions, patchRaw []byte, plan s
 	default:
 		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("spliceStepField got unexpected --field %q", opts.Field))
 	}
-	rendered, err := render.RenderImplementationStep(stepIdx, updated)
+	rendered, err := RenderImplementationStep(stepIdx, updated)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 	return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
 }
 
-func spliceFileChangeField(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, stepSpans []inspect.Span) (string, ReplaceResult, error) {
+func spliceFileChangeField(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, stepSpans []Span) (string, ReplaceResult, error) {
 	stepIdx, err := requireStepIndex(opts, plan)
 	if err != nil {
 		return "", ReplaceResult{}, err
@@ -408,14 +404,14 @@ func spliceFileChangeField(source string, opts ReplaceOptions, patchRaw []byte, 
 		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("spliceFileChangeField got unexpected --field %q", opts.Field))
 	}
 	updated.FileChanges[fcIdx] = fc
-	rendered, err := render.RenderImplementationStep(stepIdx, updated)
+	rendered, err := RenderImplementationStep(stepIdx, updated)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 	return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
 }
 
-func applyTitlePatch(source string, opts ReplaceOptions, patchRaw []byte, sectionSpans inspect.SectionSpans) (string, ReplaceResult, error) {
+func applyTitlePatch(source string, opts ReplaceOptions, patchRaw []byte, sectionSpans SectionSpans) (string, ReplaceResult, error) {
 	var value string
 	if err := decodePatch(patchRaw, &value); err != nil {
 		return "", ReplaceResult{}, err
@@ -423,9 +419,9 @@ func applyTitlePatch(source string, opts ReplaceOptions, patchRaw []byte, sectio
 	return finalizeFieldPatch(splice(source, sectionSpans.Title, value), opts)
 }
 
-func applyVerificationPatch(plan *schema.Plan, subsection string, patchRaw []byte) error {
+func applyVerificationPatch(plan *Plan, subsection string, patchRaw []byte) error {
 	if subsection == "" {
-		var v schema.Verification
+		var v Verification
 		if err := decodePatch(patchRaw, &v); err != nil {
 			return err
 		}
@@ -433,7 +429,7 @@ func applyVerificationPatch(plan *schema.Plan, subsection string, patchRaw []byt
 		return nil
 	}
 	if plan.Verification == nil {
-		plan.Verification = &schema.Verification{}
+		plan.Verification = &Verification{}
 	}
 	switch subsection {
 	case "summary":
@@ -443,13 +439,13 @@ func applyVerificationPatch(plan *schema.Plan, subsection string, patchRaw []byt
 		}
 		plan.Verification.Summary = s
 	case "automated":
-		var items []schema.ChecklistItem
+		var items []ChecklistItem
 		if err := decodePatch(patchRaw, &items); err != nil {
 			return err
 		}
 		plan.Verification.Automated = items
 	case "manual":
-		var items []schema.ChecklistItem
+		var items []ChecklistItem
 		if err := decodePatch(patchRaw, &items); err != nil {
 			return err
 		}
@@ -460,8 +456,8 @@ func applyVerificationPatch(plan *schema.Plan, subsection string, patchRaw []byt
 	return nil
 }
 
-func finalizeUpdatedPlan(source string, updated schema.Plan, opts ReplaceOptions, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span, stepsReplaced []int, appended bool) (string, ReplaceResult, error) {
-	if err := validate.ValidatePlan(updated); err != nil {
+func finalizeUpdatedPlan(source string, updated Plan, opts ReplaceOptions, sectionSpans SectionSpans, stepSpans []Span, stepsReplaced []int, appended bool) (string, ReplaceResult, error) {
+	if err := ValidatePlan(updated); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
 
@@ -470,7 +466,7 @@ func finalizeUpdatedPlan(source string, updated schema.Plan, opts ReplaceOptions
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
 
-	reparsed, err := inspect.ParseMarkdown(out)
+	reparsed, err := ParseMarkdown(out)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 	}
@@ -489,7 +485,7 @@ func finalizeUpdatedPlan(source string, updated schema.Plan, opts ReplaceOptions
 // rawScalarPatch assigns raw text to scalar string targets after the caller
 // strips the trailing newline. It keeps the same post-splice validation path
 // as the JSON-backed patch flow.
-func rawScalarPatch(source string, opts ReplaceOptions, value string, plan schema.Plan, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span) (string, ReplaceResult, error) {
+func rawScalarPatch(source string, opts ReplaceOptions, value string, plan Plan, sectionSpans SectionSpans, stepSpans []Span) (string, ReplaceResult, error) {
 	switch opts.Section {
 	case "title":
 		return finalizeFieldPatch(splice(source, sectionSpans.Title, value), opts)
@@ -540,7 +536,7 @@ func rawScalarPatch(source string, opts ReplaceOptions, value string, plan schem
 		default:
 			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid raw scalar field %q", opts.Field))
 		}
-		rendered, err := render.RenderImplementationStep(stepIdx, updated)
+		rendered, err := RenderImplementationStep(stepIdx, updated)
 		if err != nil {
 			return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
 		}
@@ -548,7 +544,7 @@ func rawScalarPatch(source string, opts ReplaceOptions, value string, plan schem
 	case "verification":
 		updated := plan
 		if updated.Verification == nil {
-			updated.Verification = &schema.Verification{}
+			updated.Verification = &Verification{}
 		}
 		if opts.Subsection != "summary" {
 			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", opts.Subsection))
@@ -562,7 +558,7 @@ func rawScalarPatch(source string, opts ReplaceOptions, value string, plan schem
 
 // applyFieldPatch dispatches a field-level patch across diff, step leaves, and
 // file-change leaves. The caller already validated the selector grammar.
-func applyFieldPatch(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, stepSpans []inspect.Span, diffSpans [][]inspect.Span) (string, ReplaceResult, error) {
+func applyFieldPatch(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, stepSpans []Span, diffSpans [][]Span) (string, ReplaceResult, error) {
 	switch opts.Field {
 	case "diff":
 		return spliceDiffField(source, opts, patchRaw, plan, diffSpans)
@@ -578,7 +574,7 @@ func applyFieldPatch(source string, opts ReplaceOptions, patchRaw []byte, plan s
 // spliceDiffField replaces one FileChange diff body with raw bytes and then
 // re-parses the spliced markdown before returning. No JSON decode or schema
 // validation runs on the field body itself.
-func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan schema.Plan, diffSpans [][]inspect.Span) (string, ReplaceResult, error) {
+func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, diffSpans [][]Span) (string, ReplaceResult, error) {
 	stepIdx, err := requireStepIndex(opts, plan)
 	if err != nil {
 		return "", ReplaceResult{}, err
@@ -596,14 +592,14 @@ func decodePatch(patchRaw []byte, target any) error {
 	return newReplaceError(ReplaceDecodePatchError, jsoninput.DecodeStrict(patchRaw, target))
 }
 
-func applySplice(source string, updated schema.Plan, opts ReplaceOptions, sectionSpans inspect.SectionSpans, stepSpans []inspect.Span) (string, error) {
+func applySplice(source string, updated Plan, opts ReplaceOptions, sectionSpans SectionSpans, stepSpans []Span) (string, error) {
 	// Step-level replace: splice only the targeted step span.
 	if opts.Section == "implementation" && !opts.Append && opts.Subsection != "" {
 		idx, err := strconv.Atoi(opts.Subsection)
 		if err != nil {
 			return "", fmt.Errorf("invalid implementation step index %q", opts.Subsection)
 		}
-		renderedStep, err := render.RenderImplementationStep(idx, updated.Implementation[idx-1])
+		renderedStep, err := RenderImplementationStep(idx, updated.Implementation[idx-1])
 		if err != nil {
 			return "", err
 		}
@@ -616,7 +612,7 @@ func applySplice(source string, updated schema.Plan, opts ReplaceOptions, sectio
 	if err != nil {
 		return "", err
 	}
-	var targetSpan inspect.Span
+	var targetSpan Span
 	switch opts.Section {
 	case "overview":
 		targetSpan = sectionSpans.Overview
@@ -632,12 +628,12 @@ func applySplice(source string, updated schema.Plan, opts ReplaceOptions, sectio
 
 // renderSection re-renders the full plan and extracts the named section. This
 // avoids needing separate per-section templates while guaranteeing canonical output.
-func renderSection(plan schema.Plan, section string) (string, error) {
-	full, err := render.RenderPlan(plan)
+func renderSection(plan Plan, section string) (string, error) {
+	full, err := RenderPlan(plan)
 	if err != nil {
 		return "", err
 	}
-	preserved, err := inspect.ParseMarkdown(full)
+	preserved, err := ParseMarkdown(full)
 	if err != nil {
 		return "", err
 	}
@@ -656,11 +652,11 @@ func renderSection(plan schema.Plan, section string) (string, error) {
 	}
 }
 
-func splice(raw string, span inspect.Span, replacement string) string {
+func splice(raw string, span Span, replacement string) string {
 	return raw[:span.Start] + replacement + raw[span.End:]
 }
 
-func assertPreserved(before, after string, opts ReplaceOptions, beforeSections, afterSections inspect.SectionSpans, beforeSteps, afterSteps []inspect.Span) error {
+func assertPreserved(before, after string, opts ReplaceOptions, beforeSections, afterSections SectionSpans, beforeSteps, afterSteps []Span) error {
 	if opts.Section != "overview" {
 		if rawAt(before, beforeSections.Overview) != rawAt(after, afterSections.Overview) {
 			return fmt.Errorf("overview changed unexpectedly")
@@ -696,7 +692,7 @@ func assertPreserved(before, after string, opts ReplaceOptions, beforeSections, 
 	return nil
 }
 
-func rawAt(raw string, span inspect.Span) string {
+func rawAt(raw string, span Span) string {
 	if span.Start < 0 || span.End > len(raw) || span.Start >= span.End {
 		return ""
 	}

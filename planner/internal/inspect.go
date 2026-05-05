@@ -1,13 +1,12 @@
 // Package inspect provides markdown parsing for canonical planner-rendered plans.
-// It reconstructs schema.Plan from markdown and returns a ParseResult with typed
+// It reconstructs Plan from markdown and returns a ParseResult with typed
 // section/step spans for splice-based partial replacement.
-package inspect
+package internal
 
 import (
 	"fmt"
 	"strings"
 
-	"planner/schema"
 )
 
 // Span represents a byte range in the source markdown document.
@@ -28,7 +27,7 @@ type SectionSpans struct {
 // ParseResult bundles the parsed plan with the byte spans needed by splice
 // operations.
 type ParseResult struct {
-	Plan         schema.Plan
+	Plan         Plan
 	Sections     SectionSpans
 	Steps        []Span
 	DiffContents [][]Span
@@ -58,7 +57,7 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	}
 	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
-	plan := schema.Plan{}
+	plan := Plan{}
 	titleLine := strings.SplitN(body, "\n", 2)[0]
 	plan.Title = strings.TrimSpace(strings.TrimPrefix(titleLine, "# "))
 	spansTyped := toSectionSpans(sectionSpans)
@@ -233,27 +232,27 @@ func scanHeadings(input string, prefix string) []headingMatch {
 	return matches
 }
 
-func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
+func parseDefinitionOfDone(body string) (DefinitionOfDone, error) {
 	parts := strings.Split(body, "### Goals")
 	if len(parts) != 2 {
-		return schema.DefinitionOfDone{}, fmt.Errorf("definition of done missing goals")
+		return DefinitionOfDone{}, fmt.Errorf("definition of done missing goals")
 	}
 	narrative := strings.TrimSpace(parts[0])
 	goalsAndRest := strings.Split(parts[1], "### Current State")
 	if len(goalsAndRest) != 2 {
-		return schema.DefinitionOfDone{}, fmt.Errorf("definition of done missing current state")
+		return DefinitionOfDone{}, fmt.Errorf("definition of done missing current state")
 	}
 	stateAndShape := strings.Split(goalsAndRest[1], "### Module Shape")
 	if len(stateAndShape) != 2 {
-		return schema.DefinitionOfDone{}, fmt.Errorf("definition of done missing module shape")
+		return DefinitionOfDone{}, fmt.Errorf("definition of done missing module shape")
 	}
 
 	goals, err := parseChecklistItems(goalsAndRest[0])
 	if err != nil {
-		return schema.DefinitionOfDone{}, err
+		return DefinitionOfDone{}, err
 	}
 
-	return schema.DefinitionOfDone{
+	return DefinitionOfDone{
 		Narrative:    narrative,
 		Goals:        goals,
 		CurrentState: strings.TrimSpace(stateAndShape[0]),
@@ -261,7 +260,7 @@ func parseDefinitionOfDone(body string) (schema.DefinitionOfDone, error) {
 	}, nil
 }
 
-func parseImplementation(body string, base int) ([]schema.Step, []Span, [][]Span, error) {
+func parseImplementation(body string, base int) ([]Step, []Span, [][]Span, error) {
 	rawHeadings := scanHeadings(body, "### ")
 	headings := []headingMatch{}
 	for _, h := range rawHeadings {
@@ -278,7 +277,7 @@ func parseImplementation(body string, base int) ([]schema.Step, []Span, [][]Span
 		return nil, nil, nil, fmt.Errorf("implementation section has no steps")
 	}
 
-	steps := []schema.Step{}
+	steps := []Step{}
 	spans := []Span{}
 	diffSpans := [][]Span{}
 	for i, h := range headings {
@@ -300,10 +299,10 @@ func parseImplementation(body string, base int) ([]schema.Step, []Span, [][]Span
 	return steps, spans, diffSpans, nil
 }
 
-func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []Span, error) {
+func parseStepChunk(chunk string, title string, chunkStart int) (Step, []Span, error) {
 	lines := strings.SplitAfter(chunk, "\n")
 	if len(lines) < 2 {
-		return schema.Step{}, nil, fmt.Errorf("invalid implementation step block")
+		return Step{}, nil, fmt.Errorf("invalid implementation step block")
 	}
 
 	lineStarts := make([]int, len(lines))
@@ -314,7 +313,7 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 	}
 
 	summaryLines := []string{}
-	changes := []schema.FileChange{}
+	changes := []FileChange{}
 	var fcSpans []Span
 	i := 1
 	for i < len(lines) {
@@ -333,8 +332,8 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 			continue
 		}
 		filename := strings.Trim(line, "`")
-		if err := schema.ValidateFilenameShape(filename); err != nil {
-			return schema.Step{}, nil, err
+		if err := ValidateFilenameShape(filename); err != nil {
+			return Step{}, nil, err
 		}
 		i++
 		explanation := ""
@@ -350,12 +349,12 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 			i++
 		}
 		if i >= len(lines) {
-			return schema.Step{}, nil, fmt.Errorf("missing diff fence for file %q", filename)
+			return Step{}, nil, fmt.Errorf("missing diff fence for file %q", filename)
 		}
 		openIdx := i
 		fence, ok := parseFence(strings.TrimSpace(strings.TrimSuffix(lines[openIdx], "\n")))
 		if !ok {
-			return schema.Step{}, nil, fmt.Errorf("invalid fence line %q", strings.TrimSpace(strings.TrimSuffix(lines[openIdx], "\n")))
+			return Step{}, nil, fmt.Errorf("invalid fence line %q", strings.TrimSpace(strings.TrimSuffix(lines[openIdx], "\n")))
 		}
 		contentStart := chunkStart + lineStarts[openIdx] + len(lines[openIdx])
 		i++
@@ -363,7 +362,7 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 			i++
 		}
 		if i >= len(lines) {
-			return schema.Step{}, nil, fmt.Errorf("unterminated diff fence for file %q", filename)
+			return Step{}, nil, fmt.Errorf("unterminated diff fence for file %q", filename)
 		}
 		closeIdx := i
 		contentEnd := chunkStart + lineStarts[closeIdx] - 1
@@ -374,17 +373,17 @@ func parseStepChunk(chunk string, title string, chunkStart int) (schema.Step, []
 		fcSpans = append(fcSpans, Span{Start: contentStart, End: contentEnd})
 		i++
 
-		changes = append(changes, schema.FileChange{
+		changes = append(changes, FileChange{
 			Filename:    filename,
 			Explanation: explanation,
 			Diff:        strings.TrimRight(strings.Join(diffLines, "\n"), "\n"),
 		})
 	}
 
-	return schema.Step{Title: title, Summary: strings.TrimSpace(strings.Join(summaryLines, "\n")), FileChanges: changes}, fcSpans, nil
+	return Step{Title: title, Summary: strings.TrimSpace(strings.Join(summaryLines, "\n")), FileChanges: changes}, fcSpans, nil
 }
 
-func parseVerification(body string) (*schema.Verification, error) {
+func parseVerification(body string) (*Verification, error) {
 	parts := strings.Split(body, "### Automated Verification")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("missing automated verification section")
@@ -402,7 +401,7 @@ func parseVerification(body string) (*schema.Verification, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &schema.Verification{
+	return &Verification{
 		Summary:   strings.TrimSpace(parts[0]),
 		Automated: automated,
 		Manual:    manualItems,
@@ -414,8 +413,8 @@ func parseVerification(body string) (*schema.Verification, error) {
 // Obsidian on macOS when a task is checked via cmd-enter. Returns an error
 // for lines that start with "- [" but use an unrecognized marker, so data
 // loss from silently dropped lines is caught at parse time.
-func parseChecklistItems(raw string) ([]schema.ChecklistItem, error) {
-	items := []schema.ChecklistItem{}
+func parseChecklistItems(raw string) ([]ChecklistItem, error) {
+	items := []ChecklistItem{}
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "- [") {
@@ -423,18 +422,18 @@ func parseChecklistItems(raw string) ([]schema.ChecklistItem, error) {
 		}
 		switch {
 		case strings.HasPrefix(trimmed, "- [ ] "):
-			items = append(items, schema.ChecklistItem{
+			items = append(items, ChecklistItem{
 				Text: strings.TrimSpace(strings.TrimPrefix(trimmed, "- [ ] ")),
 			})
 		case strings.HasPrefix(trimmed, "- [x] "):
-			items = append(items, schema.ChecklistItem{
+			items = append(items, ChecklistItem{
 				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [x] ")),
-				Status: schema.StatusDone,
+				Status: StatusDone,
 			})
 		case strings.HasPrefix(trimmed, "- [X] "):
-			items = append(items, schema.ChecklistItem{
+			items = append(items, ChecklistItem{
 				Text:   strings.TrimSpace(strings.TrimPrefix(trimmed, "- [X] ")),
-				Status: schema.StatusDone,
+				Status: StatusDone,
 			})
 		default:
 			return nil, fmt.Errorf("malformed checklist line: %q", trimmed)

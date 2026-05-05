@@ -1,15 +1,14 @@
-package render
+package internal
 
 import (
 	"strings"
 	"testing"
 
-	"planner/schema"
 )
 
 func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
 	plan := minimalPlan()
-	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: "pending goal"}}
+	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "pending goal"}}
 	out, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
@@ -21,7 +20,7 @@ func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
 
 func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
 	plan := minimalPlan()
-	plan.DefinitionOfDone.Goals = []schema.ChecklistItem{{Text: "done goal", Status: schema.StatusDone}}
+	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "done goal", Status: StatusDone}}
 	out, err := RenderPlan(plan)
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
@@ -32,34 +31,34 @@ func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
 }
 
 func TestRenderPlanFromExampleDoesNotError(t *testing.T) {
-	if _, err := RenderPlan(schema.BuildPlanExample()); err != nil {
+	if _, err := RenderPlan(BuildPlanExample()); err != nil {
 		t.Fatalf("BuildPlanExample should render cleanly: %v", err)
 	}
 }
 
-func minimalPlan() schema.Plan {
-	return schema.Plan{
+func minimalPlan() Plan {
+	return Plan{
 		Title:    "T",
 		Overview: "Overview text.",
-		DefinitionOfDone: schema.DefinitionOfDone{
+		DefinitionOfDone: DefinitionOfDone{
 			Narrative:    "Narrative.",
-			Goals:        []schema.ChecklistItem{{Text: "g"}},
+			Goals:        []ChecklistItem{{Text: "g"}},
 			CurrentState: "Current.",
 			ModuleShape:  "Shape.",
 		},
-		Implementation: []schema.Step{{
+		Implementation: []Step{{
 			Title:   "Step",
 			Summary: "summary",
-			FileChanges: []schema.FileChange{{
+			FileChanges: []FileChange{{
 				Filename:    "f.go",
 				Explanation: "why",
 				Diff:        "@@ -1 +1 @@\n-a\n+b",
 			}},
 		}},
-		Verification: &schema.Verification{
+		Verification: &Verification{
 			Summary:   "",
-			Automated: []schema.ChecklistItem{{Text: "a"}},
-			Manual:    []schema.ChecklistItem{{Text: "m"}},
+			Automated: []ChecklistItem{{Text: "a"}},
+			Manual:    []ChecklistItem{{Text: "m"}},
 		},
 	}
 }
