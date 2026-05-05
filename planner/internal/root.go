@@ -13,7 +13,6 @@ import (
 	"planner/inspect"
 	"planner/internal/jsoninput"
 	"planner/render"
-	"planner/replace"
 	"planner/schema"
 	"planner/validate"
 )
@@ -307,7 +306,7 @@ func parseTemplateOptions(args []string) (templateOptions, error) {
 	return opts, nil
 }
 
-func isScalarPatch(opts replace.ReplaceOptions) bool {
+func isScalarPatch(opts ReplaceOptions) bool {
 	switch opts.Section {
 	case "title", "overview":
 		return true
@@ -324,7 +323,7 @@ func isScalarPatch(opts replace.ReplaceOptions) bool {
 	return false
 }
 
-func validateRawPatchTarget(opts replace.ReplaceOptions) error {
+func validateRawPatchTarget(opts ReplaceOptions) error {
 	if opts.Raw {
 		if !isScalarPatch(opts) {
 			return fmt.Errorf("--raw is only valid with scalar string targets")
@@ -340,7 +339,7 @@ func validateRawPatchTarget(opts replace.ReplaceOptions) error {
 // validateFieldGrammar is the shared leaf-selector validator for patch and
 // template. It keeps both commands aligned on the same section/subsection/file
 // and field combinations.
-func validateFieldGrammar(opts replace.ReplaceOptions) error {
+func validateFieldGrammar(opts ReplaceOptions) error {
 	if opts.Append && opts.Section != "implementation" {
 		return fmt.Errorf("--append is only valid with --section implementation")
 	}
@@ -402,7 +401,7 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	if err := validateFieldGrammar(replace.ReplaceOptions{
+	if err := validateFieldGrammar(ReplaceOptions{
 		Section:    opts.section,
 		Subsection: opts.subsection,
 		File:       opts.file,
@@ -627,7 +626,7 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	return runPreview(stdout, stderr, pf, rendered, outputPath, "create", func() error {
-		if err := replace.WriteAtomic(outputPath, []byte(rendered)); err != nil {
+		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil
@@ -726,7 +725,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	out, result, err := replace.PreviewFromData(sourcePath, opts, patchData)
+	out, result, err := PreviewFromData(sourcePath, opts, patchData)
 	if err != nil {
 		cliErr := mapReplaceCLIError(err, sourcePath)
 		reportError(stderr, "patch", cliErr)
@@ -734,7 +733,7 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	exit := runPreviewAgainstSource(stdout, stderr, pf, out, sourcePath, outputPath, "patch", func() error {
-		if err := replace.WriteAtomic(outputPath, []byte(out)); err != nil {
+		if err := WriteAtomic(outputPath, []byte(out)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil
@@ -752,8 +751,8 @@ func runReplace(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func parseReplaceOptions(flags []string) (replace.ReplaceOptions, error) {
-	opts := replace.ReplaceOptions{}
+func parseReplaceOptions(flags []string) (ReplaceOptions, error) {
+	opts := ReplaceOptions{}
 	for i := 0; i < len(flags); i++ {
 		switch flags[i] {
 		case "--section", "-s":
@@ -916,32 +915,32 @@ func patchSourceLabel(path string, useStdin bool) string {
 // envelopes. Subject strings describe data ("result", "patch JSON"), not the
 // command name; the cmd argument to reportError owns the CLI label.
 func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
-	var replaceErr *replace.ReplaceError
+	var replaceErr *ReplaceError
 	if !errors.As(err, &replaceErr) {
 		return newPlannerCLIError(PlannerValidateInputError, err, "result")
 	}
 	switch replaceErr.Code {
-	case replace.ReplaceInvalidOptionsError:
+	case ReplaceInvalidOptionsError:
 		return newPlannerCLIError(PlannerUsageError, err, err.Error())
-	case replace.ReplaceReadSourceError:
+	case ReplaceReadSourceError:
 		return newPlannerCLIError(PlannerReadInputError, err, sourcePath)
-	case replace.ReplaceParseSourceError:
+	case ReplaceParseSourceError:
 		return newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown")
-	case replace.ReplaceDecodePatchError:
+	case ReplaceDecodePatchError:
 		return newPlannerCLIError(PlannerDecodeInputError, err, "patch JSON")
-	case replace.ReplaceRenderResultError:
+	case ReplaceRenderResultError:
 		return newPlannerCLIError(PlannerRenderOutputError, err, "updated plan markdown")
-	case replace.ReplaceValidateResultError:
+	case ReplaceValidateResultError:
 		return newPlannerCLIError(PlannerValidateInputError, err, "updated plan")
-	case replace.ReplaceFileNotFoundError:
+	case ReplaceFileNotFoundError:
 		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
 		e.RecoveryHint = "run planner inspect <plan.md> to list valid filenames in the targeted step"
 		return e
-	case replace.ReplaceFileAmbiguousError:
+	case ReplaceFileAmbiguousError:
 		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
 		e.RecoveryHint = "rename or consolidate duplicate FileChange filenames before patching"
 		return e
-	case replace.ReplaceParseSplicedSourceError:
+	case ReplaceParseSplicedSourceError:
 		e := newPlannerCLIError(PlannerValidateInputError, err, "spliced plan markdown")
 		e.RecoveryHint = "remove or escape triple-backtick fences in the diff body, then patch again"
 		return e
