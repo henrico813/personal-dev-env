@@ -1,9 +1,36 @@
 use crate::{
     cli::RunArgs,
     observe,
+    prompts,
     result::{RunResult, SetupErrorContext, Status},
     sandbox, snapshot, worktree,
 };
+use std::{fs, path::Path};
+
+const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
+
+/// Read the supervisor prompt as UTF-8 so the rendered contract is deterministic.
+pub fn read_supervisor_prompt(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| format!("read prompt file as UTF-8: {e}"))
+}
+
+fn setup_error_context(
+    session: &worktree::WorktreeSession,
+    args: &RunArgs,
+    artifacts: &observe::ArtifactPaths,
+    pre_run_commit: Option<String>,
+) -> SetupErrorContext {
+    SetupErrorContext {
+        branch: Some(session.branch.clone()),
+        worktree: Some(session.worktree.display().to_string()),
+        model: Some(args.model.clone()),
+        pre_run_commit,
+        artifacts_dir: Some(artifacts.dir.display().to_string()),
+        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
+        stderr_path: Some(artifacts.stderr_log.display().to_string()),
+        ..SetupErrorContext::default()
+    }
+}
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(args: RunArgs) -> RunResult {
@@ -15,18 +42,26 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
-    if let Err(err) = observe::copy_prompt(&args.prompt_file, &artifacts.prompt_txt) {
+    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
+        Ok(prompt) => prompt,
+        Err(err) => {
+            return RunResult::setup_error_with_context(
+                err,
+                setup_error_context(&session, &args, &artifacts, None),
+            );
+        }
+    };
+    if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return RunResult::setup_error_with_context(
             err,
-            SetupErrorContext {
-                branch: Some(session.branch.clone()),
-                worktree: Some(session.worktree.display().to_string()),
-                model: Some(args.model.clone()),
-                artifacts_dir: Some(artifacts.dir.display().to_string()),
-                events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-                stderr_path: Some(artifacts.stderr_log.display().to_string()),
-                ..SetupErrorContext::default()
-            },
+            setup_error_context(&session, &args, &artifacts, None),
+        );
+    }
+    let rendered_prompt = prompts::render_executor_prompt(&supervisor_prompt);
+    if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
+        return RunResult::setup_error_with_context(
+            err,
+            setup_error_context(&session, &args, &artifacts, None),
         );
     }
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
@@ -50,15 +85,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return RunResult::setup_error_with_context(
                 err,
-                SetupErrorContext {
-                    branch: Some(session.branch.clone()),
-                    worktree: Some(session.worktree.display().to_string()),
-                    model: Some(args.model.clone()),
-                    artifacts_dir: Some(artifacts.dir.display().to_string()),
-                    events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-                    stderr_path: Some(artifacts.stderr_log.display().to_string()),
-                    ..SetupErrorContext::default()
-                },
+                setup_error_context(&session, &args, &artifacts, None),
             )
         }
     };
@@ -67,16 +94,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return RunResult::setup_error_with_context(
                 err,
-                SetupErrorContext {
-                    branch: Some(session.branch.clone()),
-                    worktree: Some(session.worktree.display().to_string()),
-                    model: Some(args.model.clone()),
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    artifacts_dir: Some(artifacts.dir.display().to_string()),
-                    events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-                    stderr_path: Some(artifacts.stderr_log.display().to_string()),
-                    ..SetupErrorContext::default()
-                },
+                setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
             )
         }
     };
@@ -92,19 +110,16 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return RunResult::setup_error_with_context(
                 err,
-                SetupErrorContext {
-                    branch: Some(session.branch.clone()),
-                    worktree: Some(session.worktree.display().to_string()),
-                    model: Some(args.model.clone()),
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    artifacts_dir: Some(artifacts.dir.display().to_string()),
-                    events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-                    stderr_path: Some(artifacts.stderr_log.display().to_string()),
-                    ..SetupErrorContext::default()
-                },
+                setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
             )
         }
     };
+    if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
+        return RunResult::setup_error_with_context(
+            "combined prompt artifact unavailable inside sandbox",
+            setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
+        );
+    }
 
     let snapshot_commits = snapshot::read_snapshot_shas(&artifacts.snapshots_jsonl);
     let dirty_after = match worktree::is_dirty(&session.worktree) {
@@ -166,5 +181,23 @@ pub fn execute(args: RunArgs) -> RunResult {
         events_log_path: Some(artifacts.events_jsonl.display().to_string()),
         stderr_path: Some(artifacts.stderr_log.display().to_string()),
         error_message,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_supervisor_prompt;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    #[test]
+    fn rejects_non_utf8_prompt_file() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("prompt.txt");
+        std::fs::write(&path, [0xff_u8, 0xfe_u8]).expect("write prompt");
+
+        let err = read_supervisor_prompt(&path).expect_err("invalid UTF-8 should fail");
+
+        assert!(err.starts_with("read prompt file as UTF-8:"));
     }
 }
