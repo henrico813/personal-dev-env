@@ -3,7 +3,6 @@ package internal
 import (
 	"strings"
 	"testing"
-
 )
 
 func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {

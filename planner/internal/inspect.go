@@ -1,12 +1,10 @@
-// Package inspect provides markdown parsing for canonical planner-rendered plans.
-// It reconstructs Plan from markdown and returns a ParseResult with typed
-// section/step spans for splice-based partial replacement.
+// Markdown parsing reconstructs Plan values from canonical planner-rendered
+// plans and keeps section spans for splice-based partial replacement.
 package internal
 
 import (
 	"fmt"
 	"strings"
-
 )
 
 // Span represents a byte range in the source markdown document.

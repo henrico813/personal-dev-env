@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
 )
 
 func TestHelpTextIncludesRules(t *testing.T) {
