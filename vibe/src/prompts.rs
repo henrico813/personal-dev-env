@@ -1,7 +1,7 @@
 //! Rust-owned executor prompt contract.
 //!
-//! This module keeps the immutable prompt text, contract metadata, and exact
-//! rendering rules in one place so the tests can lock the public surface.
+//! This module keeps the prompt text and rendering rules together so tests can
+//! pin the exact contract surface.
 
 #[derive(Clone, Copy)]
 struct SystemPrompt {
@@ -13,7 +13,6 @@ struct SystemPrompt {
 #[derive(Clone, Copy)]
 struct PromptContract {
     version: &'static str,
-    task_header: &'static str,
     prompts: &'static [SystemPrompt],
 }
 
@@ -41,8 +40,8 @@ Execution rules:
 - When the requested change is implemented and verified, stop."#,
 };
 
-const SNAPSHOT_COMMIT_PROMPT: SystemPrompt = SystemPrompt {
-    name: "snapshot_commit",
+const SNAPSHOT_COMMIT_PROTOCOL_PROMPT: SystemPrompt = SystemPrompt {
+    name: "snapshot_commit_protocol",
     version: "v1",
     body: r#"Maintain /artifacts/commit-message.txt as the snapshot subject for repository changes made during this run.
 - Keep exactly one line.
@@ -56,13 +55,16 @@ const SNAPSHOT_COMMIT_PROMPT: SystemPrompt = SystemPrompt {
 
 const EXECUTOR_PROMPT_CONTRACT: PromptContract = PromptContract {
     version: "v1",
-    task_header: "Task:\n",
-    prompts: &[EXECUTION_FOCUS_PROMPT, SNAPSHOT_COMMIT_PROMPT],
+    prompts: &[EXECUTION_FOCUS_PROMPT, SNAPSHOT_COMMIT_PROTOCOL_PROMPT],
 };
 
-pub(crate) fn render_executor_prompt(supervisor_prompt: &str) -> RenderedPrompt {
-    let system_prompt = EXECUTOR_PROMPT_CONTRACT.prompts[0].body.to_string();
-    let combined_prompt = format!("{}{}", EXECUTOR_PROMPT_CONTRACT.task_header, supervisor_prompt);
+fn render_executor_prompt(supervisor_prompt: &str) -> RenderedPrompt {
+    let system_prompt = format!(
+        "{}\n\n{}",
+        EXECUTOR_PROMPT_CONTRACT.prompts[0].body,
+        EXECUTOR_PROMPT_CONTRACT.prompts[1].body,
+    );
+    let combined_prompt = format!("{}\n\nTask:\n{}", system_prompt, supervisor_prompt);
     let version_manifest = contract_version_manifest(&EXECUTOR_PROMPT_CONTRACT);
 
     RenderedPrompt {
@@ -91,20 +93,63 @@ mod tests {
     #[test]
     fn locks_metadata_and_version_manifest() {
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.version, "v1");
-        assert_eq!(EXECUTOR_PROMPT_CONTRACT.task_header, "Task:\n");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts.len(), 2);
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].name, "execution_focus");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[0].version, "v1");
-        assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[1].name, "snapshot_commit");
+        assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[1].name, "snapshot_commit_protocol");
         assert_eq!(EXECUTOR_PROMPT_CONTRACT.prompts[1].version, "v1");
-        assert_eq!(render_executor_prompt("").version_manifest, "executor_prompt_contract=v1\nexecution_focus=v1\nsnapshot_commit=v1");
+        assert_eq!(render_executor_prompt("").version_manifest, "executor_prompt_contract=v1\nexecution_focus=v1\nsnapshot_commit_protocol=v1");
     }
 
     #[test]
     fn locks_system_and_combined_prompt_rendering() {
         let rendered = render_executor_prompt("Update README.");
 
-        assert_eq!(rendered.system_prompt, EXECUTION_FOCUS_PROMPT.body);
-        assert_eq!(rendered.combined_prompt, "Task:\nUpdate README.");
+        assert_eq!(
+            rendered.system_prompt,
+            concat!(
+                "The supervisor provides the task for this run. Your job is to implement that repository change and nothing else.",
+                "\n\n",
+                "Execution rules:",
+                "\n- Follow the supervisor's instructions exactly within these runtime rules.",
+                "\n- Work only on the requested repository change. Do not broaden scope.",
+                "\n- Inspect only the files needed to locate edit points or run minimal verification.",
+                "\n- Do not perform broad repository exploration, architecture review, option generation, or system-internals investigation.",
+                "\n- Do not inspect runtime, tooling, sandbox, auth, editor, CI, or prompt internals unless the supervisor explicitly requests it or the requested repository change cannot be completed without it.",
+                "\n- As soon as you find a plausible edit location, start editing. Do not continue searching for extra context unless blocked or verification fails.",
+                "\n- Make the smallest correct change. Do not refactor unrelated code. Do not add optional improvements.",
+                "\n- If there is not a single obvious implementation path, report the ambiguity briefly instead of exploring alternatives.",
+                "\n- After editing, run only the smallest relevant verification requested by the supervisor or directly implied by the changed code.",
+                "\n- When the requested change is implemented and verified, stop.",
+                "\n\n",
+                "Maintain /artifacts/commit-message.txt as the snapshot subject for repository changes made during this run.",
+                "\n- Keep exactly one line.",
+                "\n- Use an unscoped conventional commit subject unless explicitly instructed otherwise.",
+                "\n- If the task is clear, you may write an initial subject before editing.",
+                "\n- Before finishing, update the subject to match the actual repository changes.",
+                "\n- If no repository changes were made, do not leave a misleading subject.",
+                "\n- Do not create commit-message.txt in the repository.",
+                "\n- Do not run git commit."
+            )
+        );
+        assert_eq!(
+            rendered.combined_prompt,
+            concat!(
+                "The supervisor provides the task for this run. Your job is to implement that repository change and nothing else.",
+                "\n\n",
+                "Execution rules:",
+                "\n- Follow the supervisor's instructions exactly within these runtime rules.",
+                "\n- Work only on the requested repository change. Do not broaden scope.",
+                "\n- Inspect only the files needed to locate edit points or run minimal verification.",
+                "\n- Do not perform broad repository exploration, architecture review, option generation, or system-internals investigation.",
+                "\n- Do not inspect runtime, tooling, sandbox, auth, editor, CI, or prompt internals unless the supervisor explicitly requests it or the requested repository change cannot be completed without it.",
+                "\n- As soon as you find a plausible edit location, start editing. Do not continue searching for extra context unless blocked or verification fails.",
+                "\n- Make the smallest correct change. Do not refactor unrelated code. Do not add optional improvements.",
+                "\n- If there is not a single obvious implementation path, report the ambiguity briefly instead of exploring alternatives.",
+                "\n- After editing, run only the smallest relevant verification requested by the supervisor or directly implied by the changed code.",
+                "\n- When the requested change is implemented and verified, stop.",
+                "\n\nTask:\nUpdate README."
+            )
+        );
     }
 }
