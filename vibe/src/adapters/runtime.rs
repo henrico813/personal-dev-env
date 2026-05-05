@@ -145,7 +145,12 @@ mod tests {
             .output()
             .expect("run runtime shell");
 
-        assert!(status.status.success(), "stdout: {}\nstderr: {}", String::from_utf8_lossy(&status.stdout), String::from_utf8_lossy(&status.stderr));
+        assert!(
+            status.status.success(),
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&status.stdout),
+            String::from_utf8_lossy(&status.stderr),
+        );
         assert_eq!(fs::read(&capture).expect("read captured prompt"), b"Line one\nLine two\n");
     }
 }
