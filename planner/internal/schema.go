@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-
-	"planner/internal/jsoninput"
 )
 
 const (
@@ -87,7 +85,7 @@ func DecodePlan(data []byte) (Plan, error) {
 	dec.DisallowUnknownFields()
 	var plan Plan
 	if err := dec.Decode(&plan); err != nil {
-		return Plan{}, fmt.Errorf("%s: %w", jsoninput.Lint(data, err), err)
+		return Plan{}, fmt.Errorf("%s: %w", Lint(data, err), err)
 	}
 	if dec.More() {
 		return Plan{}, fmt.Errorf("trailing data after plan JSON")
@@ -112,7 +110,7 @@ func (c *ChecklistItem) UnmarshalJSON(data []byte) error {
 	}
 	type raw ChecklistItem
 	var r raw
-	if err := jsoninput.DecodeStrict(data, &r); err != nil {
+	if err := DecodeStrict(data, &r); err != nil {
 		return err
 	}
 	switch r.Status {

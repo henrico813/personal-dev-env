@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-
-	"planner/internal/jsoninput"
 )
 
 // ReplaceErrorCode classifies failures from PreviewFromData/Run so CLI callers
@@ -589,7 +587,7 @@ func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan P
 }
 
 func decodePatch(patchRaw []byte, target any) error {
-	return newReplaceError(ReplaceDecodePatchError, jsoninput.DecodeStrict(patchRaw, target))
+	return newReplaceError(ReplaceDecodePatchError, DecodeStrict(patchRaw, target))
 }
 
 func applySplice(source string, updated Plan, opts ReplaceOptions, sectionSpans SectionSpans, stepSpans []Span) (string, error) {

@@ -8,8 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"planner/internal/jsoninput"
 )
 
 // writeRenderedPlan renders plan to a temp file and returns its path.
@@ -769,7 +767,7 @@ func TestGoalsPatchAcceptsLegacyStringsAndObjects(t *testing.T) {
 
 func TestDecodeRejectsTrailingData(t *testing.T) {
 	var s string
-	if err := jsoninput.DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
+	if err := DecodeStrict([]byte(`"valid" trailing`), &s); err == nil {
 		t.Fatal("expected error for trailing data after JSON value")
 	}
 }

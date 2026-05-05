@@ -9,8 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
-	"planner/internal/jsoninput"
 )
 
 const helpText = `planner provides implementation-plan workflows from canonical JSON.
@@ -840,7 +838,7 @@ func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Write
 	if useStdin && !stdinPiped() && !jsonErrorOutput {
 		_, _ = fmt.Fprintln(stderr, "planner: reading JSON from stdin (Ctrl-D to end)")
 	}
-	data, repaired, err := jsoninput.Read(path, useStdin, allowAutoDetect, os.Stdin, stdinPiped)
+	data, repaired, err := Read(path, useStdin, allowAutoDetect, os.Stdin, stdinPiped)
 	if err != nil {
 		return nil, false, err
 	}
