@@ -2,6 +2,10 @@ package internal
 
 func runTitleEdit(ctx editContext) int {
 	ctx.cmd = "title"
+	if err := ctx.flags.rejectValueFlagsExcept(); err != nil {
+		reportError(ctx.stderr, "title", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	var text []string
 	var err error
 	ctx, text, err = requirePositional(ctx, []string{"set"}, 2, 3)

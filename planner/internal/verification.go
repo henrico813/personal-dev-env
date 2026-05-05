@@ -11,6 +11,10 @@ func runVerificationEdit(ctx editContext) int {
 	}
 	target, action := pos[0], pos[1]
 	if target == "summary" {
+		if err := ctx.flags.rejectValueFlagsExcept(); err != nil {
+			reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
 		var text []string
 		var err error
 		ctx, text, err = requirePositional(ctx, []string{"summary", "set"}, 2, 3)
@@ -48,10 +52,17 @@ func runVerificationEdit(ctx editContext) int {
 		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	allowed := []string{}
+	if action == "set" || action == "remove" {
+		allowed = []string{"--item"}
+	}
+	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
-		reportError(ctx.stderr, "verification", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
-		return 1
+		return reportEditError(ctx, "verification", err)
 	}
 	if plan.Verification == nil {
 		plan.Verification = &Verification{}

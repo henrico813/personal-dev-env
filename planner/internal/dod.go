@@ -15,6 +15,10 @@ func runDoDEdit(ctx editContext) int {
 	sub := pos[0]
 	subMap := map[string]string{"narrative": "narrative", "current-state": "current_state", "module-shape": "module_shape"}
 	if ss, ok := subMap[sub]; ok {
+		if err := ctx.flags.rejectValueFlagsExcept(); err != nil {
+			reportError(ctx.stderr, "dod", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
 		var text []string
 		var err error
 		ctx, text, err = requirePositional(ctx, []string{sub, "set"}, 2, 3)
@@ -53,10 +57,17 @@ func runDoDEdit(ctx editContext) int {
 		reportError(ctx.stderr, "dod", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	allowed := []string{}
+	if action == "set" || action == "remove" {
+		allowed = []string{"--goal"}
+	}
+	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+		reportError(ctx.stderr, "dod", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
-		reportError(ctx.stderr, "dod", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
-		return 1
+		return reportEditError(ctx, "dod", err)
 	}
 	goals := append([]ChecklistItem(nil), plan.DefinitionOfDone.Goals...)
 	switch action {

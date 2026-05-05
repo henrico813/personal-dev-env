@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -89,6 +90,24 @@ func parseEditFlags(args []string) (editFlagSet, error) {
 		return fs, fmt.Errorf("--stdin and --diff-stdin are mutually exclusive")
 	}
 	return fs, nil
+}
+
+func (f editFlagSet) rejectValueFlagsExcept(allowed ...string) error {
+	allow := map[string]bool{}
+	for _, name := range allowed {
+		allow[name] = true
+	}
+	names := make([]string, 0, len(f.values))
+	for name := range f.values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !allow[name] {
+			return fmt.Errorf("unknown flag %s", name)
+		}
+	}
+	return nil
 }
 
 func (f editFlagSet) stringFlag(names ...string) (string, error) {
@@ -176,13 +195,18 @@ func runEditPreview(ctx editContext, opts ReplaceOptions, patch []byte) int {
 func readPlanForEdit(path string) (Plan, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, newPlannerCLIError(PlannerReadInputError, err, path)
 	}
 	p, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, newPlannerCLIError(PlannerDecodeInputError, err, path)
 	}
 	return p.Plan, nil
+}
+
+func reportEditError(ctx editContext, cmd string, err error) int {
+	reportError(ctx.stderr, cmd, err)
+	return plannerExitCode(err)
 }
 
 func jsonBytes(v any) []byte {

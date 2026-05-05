@@ -1238,6 +1238,45 @@ func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
 	}
 }
 
+func TestBehavioralEditRejectsUnknownValueFlag(t *testing.T) {
+	dir := t.TempDir()
+	planPath := writeBehavioralPlan(t, dir)
+	out := dir + "/out.md"
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"title", "set", planPath, out, "New title", "--typo", "x"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2 stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown flag --typo") {
+		t.Fatalf("stderr missing unknown flag: %q", stderr.String())
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("output should not be written, stat err = %v", err)
+	}
+}
+
+func TestStructuredBehavioralEditMalformedMarkdownJSONError(t *testing.T) {
+	dir := t.TempDir()
+	bad := dir + "/bad.md"
+	out := dir + "/out.md"
+	if err := os.WriteFile(bad, []byte("not a canonical plan"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"--json-errors", "dod", "goal", "set", bad, out, "--goal", "1", "renamed"}, &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit=%d want 1 stderr=%q", exit, stderr.String())
+	}
+	code, _ := firstStderrJSON(t, &stderr)
+	if code != "DECODE_INPUT" {
+		t.Fatalf("code=%q want DECODE_INPUT", code)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("output should not be written, stat err = %v", err)
+	}
+}
+
 func TestCreateRejectsWriteFlag(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/out.md"

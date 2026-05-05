@@ -14,6 +14,10 @@ func runImplementationEdit(ctx editContext) int {
 	}
 	if pos[1] == "title" || pos[1] == "summary" {
 		action := pos[1]
+		if err := ctx.flags.rejectValueFlagsExcept("--step"); err != nil {
+			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+			return 2
+		}
 		var text []string
 		var err error
 		ctx, text, err = requirePositional(ctx, []string{"step", action, "set"}, 2, 3)
@@ -44,10 +48,20 @@ func runImplementationEdit(ctx editContext) int {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	allowed := []string{}
+	switch action {
+	case "add":
+		allowed = []string{"--title", "--summary", "--filename", "--explanation"}
+	case "remove":
+		allowed = []string{"--step"}
+	}
+	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
-		return 1
+		return reportEditError(ctx, "implementation", err)
 	}
 	steps := append([]Step(nil), plan.Implementation...)
 	switch action {
@@ -155,10 +169,20 @@ func runFileChangeEdit(ctx editContext) int {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	allowed := []string{}
+	switch action {
+	case "add":
+		allowed = []string{"--step", "--filename", "--explanation"}
+	case "remove":
+		allowed = []string{"--step", "--change"}
+	}
+	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
-		return 1
+		return reportEditError(ctx, "implementation", err)
 	}
 	step, updated, ok := selectedStep(ctx, plan)
 	if !ok {
@@ -208,6 +232,10 @@ func runFileChangeEdit(ctx editContext) int {
 }
 
 func mutateFileChange(ctx editContext, action string, text []string) int {
+	if err := ctx.flags.rejectValueFlagsExcept("--step", "--change"); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
 	if action != "diff" {
 		if err := rejectDiffStdin(ctx); err != nil {
 			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -216,8 +244,7 @@ func mutateFileChange(ctx editContext, action string, text []string) int {
 	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerReadInputError, err, ctx.sourcePath))
-		return 1
+		return reportEditError(ctx, "implementation", err)
 	}
 	step, updated, ok := selectedStep(ctx, plan)
 	if !ok {
