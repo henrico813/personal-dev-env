@@ -142,6 +142,7 @@ struct DockerRunArgs<'a> {
     artifacts: &'a ArtifactPaths,
     model: &'a str,
     stderr_level: &'a str,
+    insecure_tls: bool,
     snapshot_ref: &'a str,
     user: &'a HostUser,
 }
@@ -211,6 +212,7 @@ pub fn run_task(
     artifacts: &ArtifactPaths,
     model: &str,
     stderr_level: &str,
+    insecure_tls: bool,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -233,6 +235,7 @@ pub fn run_task(
         artifacts,
         model,
         stderr_level,
+        insecure_tls,
         snapshot_ref: &snapshot_ref,
         user: &user,
     }));
@@ -509,6 +512,7 @@ mod tests {
             artifacts: &artifacts,
             model: "openai-codex/gpt-5.4",
             stderr_level: "info",
+            insecure_tls: false,
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
         });

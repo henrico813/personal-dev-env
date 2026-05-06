@@ -64,6 +64,10 @@ pub struct RunArgs {
     /// Stderr verbosity for streamed Vibe progress.
     #[arg(long, env = "VIBE_STDERR_LEVEL", value_enum, default_value_t = StderrLevel::Info)]
     pub stderr_level: StderrLevel,
+
+    /// Allow insecure TLS connections in Docker.
+    #[arg(long)]
+    pub insecure_tls: bool,
 }
 
 pub fn parse() -> RunArgs {
@@ -143,6 +147,25 @@ mod tests {
         assert_eq!(args.model, "openai-codex/gpt-5.4-mini");
         assert_eq!(args.commit_message.as_deref(), Some("docs: update note"));
         assert_eq!(args.stderr_level, StderrLevel::Info);
+        assert!(!args.insecure_tls);
+    }
+
+    #[test]
+    fn parses_explicit_insecure_tls() {
+        let args = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--model",
+            "model",
+            "--insecure-tls",
+        ])
+        .expect("parse args");
+
+        assert!(args.insecure_tls);
     }
 
     #[test]

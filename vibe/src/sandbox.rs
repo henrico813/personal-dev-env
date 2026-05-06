@@ -20,6 +20,7 @@ pub fn run_agent(
     artifacts: &ArtifactPaths,
     model: &str,
     stderr_level: &str,
+    insecure_tls: bool,
 ) -> Result<i32, String> {
     docker::run_task(
         &mounts.repo_root,
@@ -28,5 +29,6 @@ pub fn run_agent(
         artifacts,
         model,
         stderr_level,
+        insecure_tls,
     )
 }

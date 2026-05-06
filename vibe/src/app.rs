@@ -104,6 +104,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         &artifacts,
         &args.model,
         args.stderr_level.as_str(),
+        args.insecure_tls,
     ) {
         Ok(code) => code,
         Err(err) => {
