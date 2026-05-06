@@ -156,11 +156,12 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         artifacts,
         model,
         stderr_level,
+        insecure_tls,
         snapshot_ref,
         user,
     } = args;
 
-    vec![
+    let mut run_args = vec![
         "run".to_string(),
         "--rm".to_string(),
         "--user".to_string(),
@@ -202,7 +203,12 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         "VIBE_GIT_HOOKS_DIR=/opt/vibe/hooks".to_string(),
         "-e".to_string(),
         format!("VIBE_REPO_ROOT={}", repo_root.display()),
-    ]
+    ];
+    if *insecure_tls {
+        run_args.push("-e".to_string());
+        run_args.push("NODE_TLS_REJECT_UNAUTHORIZED=0".to_string());
+    }
+    run_args
 }
 
 pub fn run_task(
@@ -227,6 +233,10 @@ pub fn run_task(
     let auth_file = auth_file_from_home(std::env::var("HOME").ok().as_deref());
 
     // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
+    if insecure_tls {
+        eprintln!("warning: --insecure-tls disables TLS certificate verification inside Docker");
+    }
+
     let mut cmd = Command::new("docker");
     cmd.args(docker_run_args(&DockerRunArgs {
         repo_root,
@@ -523,9 +533,51 @@ mod tests {
         assert!(!args
             .iter()
             .any(|arg| arg == "VIBE_PROMPT_FILE=/artifacts/prompt.txt"));
+        assert!(!args
+            .iter()
+            .any(|arg| arg == "NODE_TLS_REJECT_UNAUTHORIZED=0"));
         assert!(args
             .iter()
             .any(|arg| arg == &format!("VIBE_REPO_ROOT={}", repo_root.display())));
+    }
+
+    #[test]
+    fn docker_run_args_sets_insecure_tls_env() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        let git_common_dir = temp.path().join("git");
+        let worktree = temp.path().join("worktree");
+        let artifacts = ArtifactPaths {
+            dir: temp.path().join("artifacts"),
+            prompt_txt: temp.path().join("artifacts/prompt.txt"),
+            system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
+            combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
+            system_prompt_versions_txt: temp.path().join("artifacts/system-prompt-versions.txt"),
+            events_jsonl: temp.path().join("artifacts/events.jsonl"),
+            stderr_log: temp.path().join("artifacts/agent.stderr.log"),
+            extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
+            snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+        };
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: &repo_root,
+            git_common_dir: &git_common_dir,
+            worktree: &worktree,
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: true,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+        });
+
+        assert!(args
+            .iter()
+            .any(|arg| arg == "NODE_TLS_REJECT_UNAUTHORIZED=0"));
     }
 
     #[test]
