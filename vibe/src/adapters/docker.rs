@@ -8,7 +8,7 @@ use std::{
 
 use crate::observe::ArtifactPaths;
 
-const IMAGE: &str = "vibe-pi:0.1.0";
+const IMAGE: &str = "vibe-pi:0.5.0";
 const AUTH_VARS: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
