@@ -63,6 +63,10 @@ vibe run \
   --commit-message "docs: update README note"
 ```
 
+Add `--insecure-tls` only if you need to bypass certificate verification in
+Docker; it sets `NODE_TLS_REJECT_UNAUTHORIZED=0` inside the container and
+reduces TLS security.
+
 ## Runtime model
 
 - the managed worktree stays the canonical git state
