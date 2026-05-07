@@ -66,8 +66,7 @@ step:
 - no secrets or generated artifacts were committed
 - verification passes
 
-Update plan state with the planner CLI, not direct markdown edits. Do not mark
-manual verification complete unless the user confirms it.
+Use the planner CLI first for plan updates. Update goals and verification checkboxes as work completes, but do not add checkboxes to implementation steps. Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI. After plan updates, run `planner check <plan.md> --json-errors`. If the plan cannot be parsed, stop and escalate to the user. Do not mark manual verification complete unless the user confirms it.
 
 When finished, summarize:
 - steps run
@@ -131,7 +130,9 @@ After implementing a phase:
 - Run the success criteria checks (usually `make check test` covers everything)
 - Fix any issues before proceeding
 - Update your progress in both the plan and your todos
-- Check off completed items in the plan file itself using Edit
+- Update goals and verification checkboxes as work completes; do not add checkboxes to implementation steps
+- Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI
+- After plan updates, run `planner check <plan.md> --json-errors`
 - **Pause for human verification**: After completing all automated verification for a phase, pause and inform the human that the phase is ready for manual testing. Use this format:
   ```
   Phase [N] Complete - Ready for Manual Verification
