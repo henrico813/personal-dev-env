@@ -66,8 +66,7 @@ step:
 - no secrets or generated artifacts were committed
 - verification passes
 
-Update plan state with the planner CLI, not direct markdown edits. Do not mark
-manual verification complete unless the user confirms it.
+Use the planner CLI first for plan updates. Unless the user explicitly asks otherwise, the only direct edits allowed in the plan file are checkbox updates. If the plan cannot be parsed, stop and escalate to the user. Do not mark manual verification complete unless the user confirms it.
 
 When finished, summarize:
 - steps run
