@@ -135,7 +135,7 @@ fn answer_question(
             .then_with(|| display_path(repo_root, &a.path).cmp(&display_path(repo_root, &b.path)))
     });
 
-    let findings = ranked_files
+    let findings: Vec<Finding> = ranked_files
         .into_iter()
         .flat_map(|mut file| {
             file.findings.sort_by_key(|finding| finding.line);
