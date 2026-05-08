@@ -1,5 +1,5 @@
 use crate::schema::{Answer, Finding, GatherOutput, ResearchOutput, TraceOutput};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
@@ -123,25 +123,36 @@ fn answer_question(
 }
 
 fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
+    let question_tokens = question_tokens(question);
+    let question_token_set: HashSet<String> = question_tokens
+        .iter()
+        .flat_map(|token| token_variants(token))
+        .collect();
+
+    let matching_terms: Vec<String> = terms
+        .iter()
+        .filter_map(|term| {
+            let token = term.trim().to_lowercase();
+            if token.is_empty() {
+                return None;
+            }
+            let variants = token_variants(&token);
+            if variants.iter().any(|variant| question_token_set.contains(variant)) {
+                Some(token)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let source = if matching_terms.is_empty() {
+        question_tokens
+    } else {
+        matching_terms
+    };
+
     let mut tokens = Vec::new();
-
-    for term in terms {
-        let token = term.trim().to_lowercase();
-        push_token(&mut tokens, &token);
-        if token.contains('-') {
-            push_token(&mut tokens, &token.replace('-', "_"));
-        } else if token.contains('_') {
-            push_token(&mut tokens, &token.replace('_', "-"));
-        }
-    }
-
-    for raw in question.split_whitespace() {
-        let token = raw
-            .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_')
-            .to_lowercase();
-        if token.is_empty() || is_generic_question_token(&token) {
-            continue;
-        }
+    for token in source {
         push_token(&mut tokens, &token);
         if token.contains('-') {
             push_token(&mut tokens, &token.replace('-', "_"));
@@ -151,6 +162,40 @@ fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
     }
 
     tokens
+}
+
+fn question_tokens(question: &str) -> Vec<String> {
+    question
+        .split_whitespace()
+        .filter_map(|raw| {
+            let token = raw
+                .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_')
+                .to_lowercase();
+            if token.is_empty() || is_generic_question_token(&token) {
+                None
+            } else {
+                Some(token)
+            }
+        })
+        .collect()
+}
+
+fn token_variants(token: &str) -> Vec<String> {
+    let mut variants = vec![token.to_string()];
+
+    if token.contains('-') {
+        let variant = token.replace('-', "_");
+        if variant != token {
+            variants.push(variant);
+        }
+    } else if token.contains('_') {
+        let variant = token.replace('_', "-");
+        if variant != token {
+            variants.push(variant);
+        }
+    }
+
+    variants
 }
 
 fn push_token(tokens: &mut Vec<String>, token: &str) {
@@ -301,6 +346,29 @@ mod tests {
         assert_eq!(findings[0].path, "surveil/src/lib.rs");
         assert_eq!(findings[0].matched_from, "tree-sitter");
         assert!(trace.skipped_paths.iter().any(|path| path.contains("surveil/target")));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn falls_back_to_question_tokens_when_declared_terms_do_not_match() {
+        let repo = temp_repo("fallback");
+        write_file(&repo.join("surveil/src/build.rs"), "// build only\n");
+        write_file(&repo.join("surveil/src/lib.rs"), "// attach here\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["build".to_string()],
+            &["surveil/".to_string()],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "surveil/src/lib.rs");
+        assert_eq!(findings[0].matched_from, "attach");
 
         let _ = fs::remove_dir_all(repo);
     }

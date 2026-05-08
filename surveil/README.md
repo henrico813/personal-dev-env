@@ -8,7 +8,7 @@
 # Task
 
 ## Summary
-- short summary text
+short summary text
 
 ## Explicit Files
 - path/to/file.rs

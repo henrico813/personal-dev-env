@@ -214,7 +214,7 @@ mod tests {
 # Task
 
 ## Summary
-- investigate attachment points
+investigate attachment points
 
 ## Explicit Files
 

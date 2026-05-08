@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: &str = "1";
+pub const SCHEMA_VERSION: &str = "surveil.v4";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatherOutput {
