@@ -31,13 +31,13 @@ pub struct ResearchOutput {
 pub struct Answer {
     pub question: String,
     pub findings: Vec<Finding>,
-    pub negative_evidence: Vec<Finding>,
+    pub negative_evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finding {
     pub path: String,
-    pub line: usize,
+    pub line: u32,
     pub excerpt: String,
     pub source: String,
     pub matched_from: String,
@@ -48,7 +48,7 @@ pub struct TraceOutput {
     pub schema_version: String,
     pub searched_areas: Vec<String>,
     pub skipped_paths: Vec<String>,
-    pub files_considered: Vec<String>,
-    pub files_matched: Vec<String>,
+    pub files_considered: usize,
+    pub files_matched: usize,
     pub unmatched_questions: Vec<String>,
 }

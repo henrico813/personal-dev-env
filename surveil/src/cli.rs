@@ -1,8 +1,41 @@
+mod gather;
 mod schema;
 
-use std::env;
+use clap::{Args, Parser, Subcommand};
 use std::error::Error;
 use std::io;
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(name = "surveil")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    Gather(GatherArgs),
+    Research(ResearchArgs),
+}
+
+#[derive(Args)]
+struct GatherArgs {
+    #[arg(long)]
+    repo: PathBuf,
+
+    #[arg(long = "task-file")]
+    task_file: PathBuf,
+}
+
+#[derive(Args)]
+struct ResearchArgs {
+    #[arg(long)]
+    context: PathBuf,
+
+    #[arg(long = "trace-out")]
+    trace_out: PathBuf,
+}
 
 fn main() {
     if let Err(err) = run() {
@@ -12,13 +45,14 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
-    let mut args = env::args().skip(1);
-    let command = args.next().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "expected a command"))?;
+    let cli = Cli::parse();
 
-    match command.as_str() {
-        "gather" => Err(io::Error::new(io::ErrorKind::Unsupported, "gather is not implemented yet").into()),
-        "research" => Err(io::Error::new(io::ErrorKind::Unsupported, "research is not implemented yet").into()),
-        "trace" => Err(io::Error::new(io::ErrorKind::Unsupported, "trace is not implemented yet").into()),
-        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("unknown command: {command}")).into()),
+    match cli.command {
+        Command::Gather(args) => gather::run(&args.repo, &args.task_file),
+        Command::Research(args) => research_placeholder(&args.context, &args.trace_out),
     }
+}
+
+fn research_placeholder(_context: &PathBuf, _trace_out: &PathBuf) -> Result<(), Box<dyn Error>> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "research is not implemented yet").into())
 }
