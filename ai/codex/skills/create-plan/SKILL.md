@@ -104,13 +104,13 @@ Once aligned on approach:
 After structure approval:
 
 1. Run `planner help` first; do not guess command shapes from memory.
-   For in-place edits, use behavioral commands such as `planner title set`,
+2. For in-place edits, use behavioral commands such as `planner title set`,
    `planner implementation step summary set`, and
    `planner implementation step file-change diff set`.
-2. Run `planner template --json > <draft.json>` to create a valid draft
-2. Edit the draft JSON fields in place
-3. Run `planner check <draft.json>` to confirm before writing
-4. Run `planner create <draft.json> <output.md>` to render to the vault
+3. For new plans, use `planner template --json > <draft.json>` to create a valid draft.
+4. Edit the draft JSON fields in place.
+5. Run `planner check <draft.json>` to confirm before writing.
+6. Run `planner create <draft.json> <output.md>` to render to the vault.
 
 Do not emit freeform markdown directly when the installed helper is available.
 
@@ -118,7 +118,7 @@ Do not emit freeform markdown directly when the installed helper is available.
 
 For targeted updates to an existing plan:
 
-1. Run `planner inspect <plan.md>` to see the parsed plan JSON
+1. Run `planner inspect <plan.md>`
 2. Run `planner help` to choose the matching behavioral edit command
 3. Use commands such as `planner dod goal set`, `planner implementation step file-change add`, or `planner verification automated remove`
 
