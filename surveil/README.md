@@ -42,3 +42,5 @@ Research answers are grouped by question:
 - `question`
 - `findings` with `path`, `line`, `excerpt`, `source`, and `matched_from`
 - `negative_evidence`
+
+`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The JSON shape stays the same.

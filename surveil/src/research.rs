@@ -71,6 +71,14 @@ struct TraceState {
     unmatched_questions: Vec<String>,
 }
 
+const MAX_FINDINGS_PER_FILE: usize = 3;
+
+struct RankedFileFindings {
+    path: PathBuf,
+    explicit: bool,
+    findings: Vec<Finding>,
+}
+
 fn answer_question(
     repo_root: &Path,
     question: &str,
@@ -80,7 +88,7 @@ fn answer_question(
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
-    let mut findings = Vec::new();
+    let mut ranked_files = Vec::new();
 
     for (file, from_explicit) in collect_candidate_files(repo_root, search_areas, explicit_files, trace)? {
         trace.files_considered.insert(file.clone());
@@ -92,12 +100,11 @@ fn answer_question(
             }
         };
 
-        let mut file_matched = false;
+        let mut file_findings = Vec::new();
         for (index, line) in text.lines().enumerate() {
             let lower_line = line.to_lowercase();
             if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
-                file_matched = true;
-                findings.push(Finding {
+                file_findings.push(Finding {
                     path: display_path(repo_root, &file),
                     line: (index + 1) as u32,
                     excerpt: line.trim().to_string(),
@@ -111,10 +118,31 @@ fn answer_question(
             }
         }
 
-        if file_matched {
-            trace.files_matched.insert(file);
+        if !file_findings.is_empty() {
+            trace.files_matched.insert(file.clone());
+            ranked_files.push(RankedFileFindings {
+                path: file,
+                explicit: from_explicit,
+                findings: file_findings,
+            });
         }
     }
+
+    ranked_files.sort_by(|a, b| {
+        b.explicit
+            .cmp(&a.explicit)
+            .then_with(|| b.findings.len().cmp(&a.findings.len()))
+            .then_with(|| display_path(repo_root, &a.path).cmp(&display_path(repo_root, &b.path)))
+    });
+
+    let findings = ranked_files
+        .into_iter()
+        .flat_map(|mut file| {
+            file.findings.sort_by_key(|finding| finding.line);
+            file.findings.truncate(MAX_FINDINGS_PER_FILE);
+            file.findings
+        })
+        .collect();
 
     let negative_evidence = if findings.is_empty() {
         vec![format!("searched declared areas: {}", search_areas.join(", "))]
@@ -460,6 +488,64 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "notes/design.md");
         assert_eq!(findings[0].source, "explicit_file");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn ranks_explicit_files_ahead_of_broad_lexical_hits() {
+        let repo = temp_repo("ranking");
+        write_file(
+            &repo.join("notes/design.md"),
+            "// tree-sitter attach\n",
+        );
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "// tree-sitter attach one\n// tree-sitter attach two\n// tree-sitter attach three\n// tree-sitter attach four\n",
+        );
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[ExplicitFile {
+                path: "notes/design.md".to_string(),
+                found: true,
+            }],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings[0].path, "notes/design.md");
+        assert_eq!(findings[0].source, "explicit_file");
+        assert!(findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn caps_findings_per_file_at_three() {
+        let repo = temp_repo("caps");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "// tree-sitter attach one\n// tree-sitter attach two\n// tree-sitter attach three\n// tree-sitter attach four\n// tree-sitter attach five\n",
+        );
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 3);
+        assert_eq!(findings.iter().filter(|finding| finding.path == "surveil/src/lib.rs").count(), 3);
 
         let _ = fs::remove_dir_all(repo);
     }
