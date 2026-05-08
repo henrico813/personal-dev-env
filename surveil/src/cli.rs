@@ -1,9 +1,9 @@
 mod gather;
+mod research;
 mod schema;
 
 use clap::{Args, Parser, Subcommand};
 use std::error::Error;
-use std::io;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -49,10 +49,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Command::Gather(args) => gather::run(&args.repo, &args.task_file),
-        Command::Research(args) => research_placeholder(&args.context, &args.trace_out),
+        Command::Research(args) => research::run(&args.context, &args.trace_out),
     }
-}
-
-fn research_placeholder(_context: &PathBuf, _trace_out: &PathBuf) -> Result<(), Box<dyn Error>> {
-    Err(io::Error::new(io::ErrorKind::Unsupported, "research is not implemented yet").into())
 }

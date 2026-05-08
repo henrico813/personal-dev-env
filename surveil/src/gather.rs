@@ -46,6 +46,11 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
         let line = raw_line.trim_end();
         let trimmed = line.trim();
 
+        if trimmed == "# Task" {
+            current = None;
+            continue;
+        }
+
         if let Some(section) = heading_name(trimmed) {
             if !is_allowed_section(&section) {
                 return Err(io::Error::new(io::ErrorKind::InvalidData, format!("unexpected section: {section}")).into());
@@ -85,12 +90,12 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
 }
 
 fn heading_name(line: &str) -> Option<String> {
-    let without_hashes = line.strip_prefix('#')?;
-    let name = without_hashes.trim_start_matches('#').trim();
+    let without_hashes = line.strip_prefix("##")?;
+    let name = without_hashes.trim().to_string();
     if name.is_empty() {
         return None;
     }
-    Some(name.to_string())
+    Some(name)
 }
 
 fn is_allowed_section(section: &str) -> bool {
