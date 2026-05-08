@@ -1,4 +1,4 @@
-use crate::schema::{Answer, Finding, GatherOutput, ResearchOutput, TraceOutput};
+use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput};
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::fs;
@@ -19,6 +19,7 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
             question,
             &gather.terms,
             &gather.search_areas,
+            &gather.explicit_files,
             &mut trace,
         )?;
         if findings.is_empty() {
@@ -75,41 +76,43 @@ fn answer_question(
     question: &str,
     terms: &[String],
     search_areas: &[String],
+    explicit_files: &[ExplicitFile],
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
     let mut findings = Vec::new();
 
-    for area in search_areas {
-        let area_path = resolve_path(repo_root, area);
-        for file in collect_files(repo_root, &area_path, trace)? {
-            trace.files_considered.insert(file.clone());
-            let text = match fs::read_to_string(&file) {
-                Ok(text) => text,
-                Err(_) => {
-                    trace.skipped_paths.push(display_path(repo_root, &file));
-                    continue;
-                }
-            };
-
-            let mut file_matched = false;
-            for (index, line) in text.lines().enumerate() {
-                let lower_line = line.to_lowercase();
-                if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
-                    file_matched = true;
-                    findings.push(Finding {
-                        path: display_path(repo_root, &file),
-                        line: (index + 1) as u32,
-                        excerpt: line.trim().to_string(),
-                        source: "lexical".to_string(),
-                        matched_from: matched_from.clone(),
-                    });
-                }
+    for (file, from_explicit) in collect_candidate_files(repo_root, search_areas, explicit_files, trace)? {
+        trace.files_considered.insert(file.clone());
+        let text = match fs::read_to_string(&file) {
+            Ok(text) => text,
+            Err(_) => {
+                trace.skipped_paths.push(display_path(repo_root, &file));
+                continue;
             }
+        };
 
-            if file_matched {
-                trace.files_matched.insert(file);
+        let mut file_matched = false;
+        for (index, line) in text.lines().enumerate() {
+            let lower_line = line.to_lowercase();
+            if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
+                file_matched = true;
+                findings.push(Finding {
+                    path: display_path(repo_root, &file),
+                    line: (index + 1) as u32,
+                    excerpt: line.trim().to_string(),
+                    source: if from_explicit {
+                        "explicit_file".to_string()
+                    } else {
+                        "lexical".to_string()
+                    },
+                    matched_from: matched_from.clone(),
+                });
             }
+        }
+
+        if file_matched {
+            trace.files_matched.insert(file);
         }
     }
 
@@ -218,6 +221,39 @@ fn is_generic_question_token(token: &str) -> bool {
     )
 }
 
+fn collect_candidate_files(
+    repo_root: &Path,
+    search_areas: &[String],
+    explicit_files: &[ExplicitFile],
+    trace: &mut TraceState,
+) -> Result<Vec<(PathBuf, bool)>, Box<dyn Error>> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut explicit_paths: Vec<PathBuf> = explicit_files
+        .iter()
+        .filter(|file| file.found)
+        .map(|file| resolve_path(repo_root, &file.path))
+        .collect();
+    explicit_paths.sort();
+    for file in explicit_paths {
+        if seen.insert(file.clone()) {
+            candidates.push((file, true));
+        }
+    }
+
+    for area in search_areas {
+        let area_path = resolve_path(repo_root, area);
+        for file in collect_files(repo_root, &area_path, trace)? {
+            if seen.insert(file.clone()) {
+                candidates.push((file, false));
+            }
+        }
+    }
+
+    Ok(candidates)
+}
+
 fn collect_files(repo_root: &Path, dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     if is_skipped_path(repo_root, dir) {
         trace.skipped_paths.push(display_path(repo_root, dir));
@@ -303,6 +339,7 @@ fn display_path(repo_root: &Path, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{answer_question, TraceState};
+    use crate::schema::ExplicitFile;
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -338,6 +375,7 @@ mod tests {
             "Where should Tree-sitter attach?",
             &["tree-sitter".to_string()],
             &["surveil/".to_string()],
+            &[],
             &mut trace,
         )
         .expect("research answer");
@@ -362,6 +400,7 @@ mod tests {
             "Where should Tree-sitter attach?",
             &["build".to_string()],
             &["surveil/".to_string()],
+            &[],
             &mut trace,
         )
         .expect("research answer");
@@ -385,6 +424,7 @@ mod tests {
             "Where should Tree-sitter attach?",
             &["tree-sitter".to_string()],
             &["surveil/".to_string()],
+            &[],
             &mut trace,
         )
         .expect("research answer");
@@ -395,5 +435,32 @@ mod tests {
         assert!(trace.skipped_paths.iter().all(|path| !path.contains("worktrees/repo/surveil")));
 
         let _ = fs::remove_dir_all(repo.parent().expect("parent"));
+    }
+
+    #[test]
+    fn includes_explicit_files_outside_search_areas() {
+        let repo = temp_repo("explicit");
+        write_file(&repo.join("notes/design.md"), "// tree-sitter attach\n");
+        write_file(&repo.join("surveil/src/lib.rs"), "// unrelated\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[ExplicitFile {
+                path: "notes/design.md".to_string(),
+                found: true,
+            }],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "notes/design.md");
+        assert_eq!(findings[0].source, "explicit_file");
+
+        let _ = fs::remove_dir_all(repo);
     }
 }
