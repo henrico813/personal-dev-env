@@ -118,7 +118,7 @@ Do not emit freeform markdown directly when the installed helper is available.
 
 For targeted updates to an existing plan:
 
-1. Run `planner inspect <plan.md>` to see the parsed plan JSON
+1. Run `planner inspect <plan.md>`
 2. Run `planner help` to choose the matching behavioral edit command
 3. Use commands such as `planner dod goal set`, `planner implementation step file-change add`, or `planner verification automated remove`
 
