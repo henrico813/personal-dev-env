@@ -14,7 +14,13 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let mut answers = Vec::with_capacity(gather.questions.len());
 
     for question in &gather.questions {
-        let (findings, negative_evidence) = answer_question(&repo_root, question, &gather.search_areas, &mut trace)?;
+        let (findings, negative_evidence) = answer_question(
+            &repo_root,
+            question,
+            &gather.terms,
+            &gather.search_areas,
+            &mut trace,
+        )?;
         if findings.is_empty() {
             trace.unmatched_questions.push(question.clone());
         }
@@ -67,10 +73,11 @@ struct TraceState {
 fn answer_question(
     repo_root: &Path,
     question: &str,
+    terms: &[String],
     search_areas: &[String],
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
-    let tokens = question_tokens(question);
+    let tokens = search_tokens(terms, question);
     let mut findings = Vec::new();
 
     for area in search_areas {
@@ -115,21 +122,63 @@ fn answer_question(
     Ok((findings, negative_evidence))
 }
 
-fn question_tokens(question: &str) -> Vec<String> {
+fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
     let mut tokens = Vec::new();
-    for raw in question.split(|ch: char| !ch.is_ascii_alphanumeric()) {
-        let token = raw.trim().to_lowercase();
-        if token.len() < 3 {
-            continue;
-        }
-        if !tokens.contains(&token) {
-            tokens.push(token);
+
+    for term in terms {
+        let token = term.trim().to_lowercase();
+        push_token(&mut tokens, &token);
+        if token.contains('-') {
+            push_token(&mut tokens, &token.replace('-', "_"));
+        } else if token.contains('_') {
+            push_token(&mut tokens, &token.replace('_', "-"));
         }
     }
+
+    for raw in question.split_whitespace() {
+        let token = raw
+            .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_')
+            .to_lowercase();
+        if token.is_empty() || is_generic_question_token(&token) {
+            continue;
+        }
+        push_token(&mut tokens, &token);
+        if token.contains('-') {
+            push_token(&mut tokens, &token.replace('-', "_"));
+        } else if token.contains('_') {
+            push_token(&mut tokens, &token.replace('_', "-"));
+        }
+    }
+
     tokens
 }
 
+fn push_token(tokens: &mut Vec<String>, token: &str) {
+    if token.len() < 3 {
+        return;
+    }
+    if !tokens.iter().any(|existing| existing == token) {
+        tokens.push(token.to_string());
+    }
+}
+
+fn is_generic_question_token(token: &str) -> bool {
+    matches!(
+        token,
+        "what" | "where" | "when" | "why" | "how" | "who" | "whom" | "which" | "whose"
+            | "should" | "would" | "could" | "can" | "may" | "might" | "do" | "does"
+            | "did" | "is" | "are" | "was" | "were" | "be" | "been" | "being" | "the"
+            | "a" | "an" | "to" | "of" | "and" | "or" | "for" | "in" | "on" | "at"
+            | "by" | "with" | "from" | "into" | "this" | "that" | "these" | "those"
+    )
+}
+
 fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    if is_skipped_path(dir) {
+        trace.skipped_paths.push(dir.to_string_lossy().into_owned());
+        return Ok(Vec::new());
+    }
+
     if dir.is_file() {
         return Ok(vec![dir.to_path_buf()]);
     }
@@ -164,6 +213,10 @@ fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box
                 continue;
             }
         };
+        if is_skipped_path(&path) {
+            trace.skipped_paths.push(path.to_string_lossy().into_owned());
+            continue;
+        }
         if metadata.is_dir() {
             files.extend(collect_files(&path, trace)?);
         } else if metadata.is_file() {
@@ -182,8 +235,72 @@ fn resolve_path(repo_root: &Path, raw: &str) -> PathBuf {
     }
 }
 
+fn is_skipped_path(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(name)
+                if matches!(
+                    name.to_string_lossy().as_ref(),
+                    "target" | "node_modules" | "dist" | "build" | "pack" | "worktrees" | ".git"
+                )
+        )
+    })
+}
+
 fn display_path(repo_root: &Path, path: &Path) -> String {
     path.strip_prefix(repo_root)
         .map(|relative| relative.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{answer_question, TraceState};
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_repo(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("surveil-{name}-{stamp}"));
+        fs::create_dir_all(&path).expect("create temp repo");
+        path
+    }
+
+    fn write_file(path: &PathBuf, content: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        let mut file = fs::File::create(path).expect("create file");
+        file.write_all(content.as_bytes()).expect("write file");
+    }
+
+    #[test]
+    fn skips_generated_output_and_prefers_declared_terms() {
+        let repo = temp_repo("research");
+        write_file(&repo.join("src/lib.rs"), "// tree-sitter attach\n");
+        write_file(&repo.join("target/generated.rs"), "// tree-sitter attach\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &[".".to_string()],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "src/lib.rs");
+        assert_eq!(findings[0].matched_from, "tree-sitter");
+        assert!(trace.skipped_paths.iter().any(|path| path.contains("target")));
+
+        let _ = fs::remove_dir_all(repo);
+    }
 }

@@ -203,3 +203,37 @@ fn resolve_path(repo_root: &Path, raw: &str) -> PathBuf {
         repo_root.join(path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_task;
+
+    #[test]
+    fn parses_structured_task_questions_and_terms() {
+        let task = r#"
+# Task
+
+## Summary
+- investigate attachment points
+
+## Explicit Files
+
+## Search Areas
+- src/
+
+## Questions
+- Where should Tree-sitter attach?
+- What still needs verification?
+
+## Terms
+- tree-sitter
+- attach
+"#;
+
+        let parsed = parse_task(task).expect("task parses");
+        assert_eq!(parsed.summary, "investigate attachment points");
+        assert_eq!(parsed.search_areas, vec!["src/"]);
+        assert_eq!(parsed.questions, vec!["Where should Tree-sitter attach?", "What still needs verification?"]);
+        assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
+    }
+}
