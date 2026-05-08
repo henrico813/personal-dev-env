@@ -82,7 +82,7 @@ fn answer_question(
 
     for area in search_areas {
         let area_path = resolve_path(repo_root, area);
-        for file in collect_files(&area_path, trace)? {
+        for file in collect_files(repo_root, &area_path, trace)? {
             trace.files_considered.insert(file.clone());
             let text = match fs::read_to_string(&file) {
                 Ok(text) => text,
@@ -173,9 +173,9 @@ fn is_generic_question_token(token: &str) -> bool {
     )
 }
 
-fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    if is_skipped_path(dir) {
-        trace.skipped_paths.push(dir.to_string_lossy().into_owned());
+fn collect_files(repo_root: &Path, dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    if is_skipped_path(repo_root, dir) {
+        trace.skipped_paths.push(display_path(repo_root, dir));
         return Ok(Vec::new());
     }
 
@@ -184,7 +184,7 @@ fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box
     }
 
     if !dir.is_dir() {
-        trace.skipped_paths.push(dir.to_string_lossy().into_owned());
+        trace.skipped_paths.push(display_path(repo_root, dir));
         return Ok(Vec::new());
     }
 
@@ -192,14 +192,14 @@ fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box
     let read_dir = match fs::read_dir(dir) {
         Ok(read_dir) => read_dir,
         Err(_) => {
-            trace.skipped_paths.push(dir.to_string_lossy().into_owned());
+            trace.skipped_paths.push(display_path(repo_root, dir));
             return Ok(Vec::new());
         }
     };
     for entry in read_dir {
         match entry {
             Ok(entry) => entries.push(entry.path()),
-            Err(_) => trace.skipped_paths.push(dir.to_string_lossy().into_owned()),
+            Err(_) => trace.skipped_paths.push(display_path(repo_root, dir)),
         }
     }
     entries.sort();
@@ -209,16 +209,16 @@ fn collect_files(dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box
         let metadata = match fs::symlink_metadata(&path) {
             Ok(metadata) => metadata,
             Err(_) => {
-                trace.skipped_paths.push(path.to_string_lossy().into_owned());
+                trace.skipped_paths.push(display_path(repo_root, &path));
                 continue;
             }
         };
-        if is_skipped_path(&path) {
-            trace.skipped_paths.push(path.to_string_lossy().into_owned());
+        if is_skipped_path(repo_root, &path) {
+            trace.skipped_paths.push(display_path(repo_root, &path));
             continue;
         }
         if metadata.is_dir() {
-            files.extend(collect_files(&path, trace)?);
+            files.extend(collect_files(repo_root, &path, trace)?);
         } else if metadata.is_file() {
             files.push(path);
         }
@@ -235,14 +235,15 @@ fn resolve_path(repo_root: &Path, raw: &str) -> PathBuf {
     }
 }
 
-fn is_skipped_path(path: &Path) -> bool {
-    path.components().any(|component| {
+fn is_skipped_path(repo_root: &Path, path: &Path) -> bool {
+    let relative = path.strip_prefix(repo_root).unwrap_or(path);
+    relative.components().any(|component| {
         matches!(
             component,
             std::path::Component::Normal(name)
                 if matches!(
                     name.to_string_lossy().as_ref(),
-                    "target" | "node_modules" | "dist" | "build" | "pack" | "worktrees" | ".git"
+                    "target" | "node_modules" | "dist" | "build" | "pack" | ".git"
                 )
         )
     })
@@ -281,26 +282,50 @@ mod tests {
     }
 
     #[test]
-    fn skips_generated_output_and_prefers_declared_terms() {
+    fn skips_generated_repo_relative_output_and_prefers_declared_terms() {
         let repo = temp_repo("research");
-        write_file(&repo.join("src/lib.rs"), "// tree-sitter attach\n");
-        write_file(&repo.join("target/generated.rs"), "// tree-sitter attach\n");
+        write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
+        write_file(&repo.join("surveil/target/generated.rs"), "// tree-sitter attach\n");
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
             &repo,
             "Where should Tree-sitter attach?",
             &["tree-sitter".to_string()],
-            &[".".to_string()],
+            &["surveil/".to_string()],
             &mut trace,
         )
         .expect("research answer");
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].path, "src/lib.rs");
+        assert_eq!(findings[0].path, "surveil/src/lib.rs");
         assert_eq!(findings[0].matched_from, "tree-sitter");
-        assert!(trace.skipped_paths.iter().any(|path| path.contains("target")));
+        assert!(trace.skipped_paths.iter().any(|path| path.contains("surveil/target")));
 
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn searches_repo_relative_area_inside_worktree() {
+        let repo = temp_repo("worktrees").join("worktrees/repo");
+        fs::create_dir_all(&repo).expect("create worktree repo");
+        write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "surveil/src/lib.rs");
+        assert!(trace.files_considered.len() > 0);
+        assert!(trace.skipped_paths.iter().all(|path| !path.contains("worktrees/repo/surveil")));
+
+        let _ = fs::remove_dir_all(repo.parent().expect("parent"));
     }
 }

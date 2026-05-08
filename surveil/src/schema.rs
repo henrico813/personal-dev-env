@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const SCHEMA_VERSION: &str = "1";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatherOutput {
     pub schema_version: String,

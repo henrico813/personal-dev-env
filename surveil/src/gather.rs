@@ -1,4 +1,4 @@
-use crate::schema::{ExplicitFile, GatherOutput};
+use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
@@ -13,7 +13,7 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     validate_search_areas(repo_root, &parsed.search_areas)?;
 
     let output = GatherOutput {
-        schema_version: "1".to_string(),
+        schema_version: SCHEMA_VERSION.to_string(),
         repo_root: repo_root.to_string_lossy().into_owned(),
         summary: parsed.summary,
         explicit_files,
