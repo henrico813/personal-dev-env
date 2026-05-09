@@ -190,6 +190,14 @@ struct MatchedFinding {
 }
 
 fn should_enrich_symbol_metadata(path: &Path) -> bool {
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with('.'))
+    {
+        return false;
+    }
+
     if path.extension().is_none() {
         return false;
     }
@@ -843,9 +851,10 @@ mod tests {
     }
 
     #[test]
-    fn parseable_root_env_remains_lexical_only() {
+    fn parseable_root_env_dotfiles_remain_lexical_only() {
         let repo = temp_repo("env-symbols");
         write_file(&repo.join(".env"), "fn attach() { // tree-sitter attach }\n");
+        write_file(&repo.join(".env.local"), "fn attach() { // tree-sitter attach }\n");
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -858,12 +867,14 @@ mod tests {
         )
         .expect("research answer");
 
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].path, ".env");
-        assert_eq!(findings[0].symbol_kind, None);
-        assert_eq!(findings[0].symbol_name, None);
-        assert_eq!(findings[0].symbol_start_line, None);
-        assert_eq!(findings[0].symbol_end_line, None);
+        assert_eq!(findings.len(), 2);
+        for path in [".env", ".env.local"] {
+            let finding = findings.iter().find(|finding| finding.path == path).expect("finding");
+            assert_eq!(finding.symbol_kind, None);
+            assert_eq!(finding.symbol_name, None);
+            assert_eq!(finding.symbol_start_line, None);
+            assert_eq!(finding.symbol_end_line, None);
+        }
 
         let _ = fs::remove_dir_all(repo);
     }
