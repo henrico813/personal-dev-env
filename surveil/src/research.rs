@@ -215,21 +215,7 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
         return false;
     }
 
-    match extension.as_deref() {
-        Some(ext) => matches!(
-            ext,
-            "rs" | "go" | "py" | "ts" | "tsx" | "js" | "jsx" | "c" | "h" | "cc" | "cpp"
-                | "cxx" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "rb" | "lua"
-                | "zig" | "cs" | "php" | "m" | "mm"
-        ),
-        None => path.components().any(|component| {
-            let component = component.as_os_str().to_string_lossy();
-            matches!(
-                component.as_ref(),
-                "src" | "tests" | "test" | "benches" | "examples" | "scripts" | "bin"
-            )
-        }),
-    }
+    true
 }
 
 fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
