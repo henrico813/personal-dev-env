@@ -9,6 +9,9 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := ensureCargo(cfg, runner); err != nil {
 		return err
 	}
+	if err := ensureSurveilSource(cfg, runner); err != nil {
+		return err
+	}
 
 	for _, path := range []string{
 		filepath.Join(cfg.OpenCodeConfigDir, "agents"),
@@ -29,6 +32,10 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 	shimBin, err := buildOpenCodeInlineShimBinary(cfg, runner)
+	if err != nil {
+		return err
+	}
+	surveilBin, err := buildSurveilBinary(cfg, runner)
 	if err != nil {
 		return err
 	}
@@ -74,10 +81,16 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installOpenCodeInlineShimLaunchers(cfg, shimBin, runner); err != nil {
 		return err
 	}
+	if err := installSurveilLauncher(cfg, surveilBin, runner); err != nil {
+		return err
+	}
 	if err := verifyPlannerLauncher(cfg, runner); err != nil {
 		return err
 	}
 	if err := verifyOpenCodeInlineShimLauncher(cfg, runner); err != nil {
+		return err
+	}
+	if err := verifySurveilLauncher(cfg, runner); err != nil {
 		return err
 	}
 

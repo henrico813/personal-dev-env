@@ -185,7 +185,7 @@ CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in
 
 The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
-Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `vibe`, and the managed OpenCode agent config.
+Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `surveil`, `vibe`, and the managed OpenCode agent config.
 
 `~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, and `OPENCODE_INLINE_MODEL`. When Neovim starts from a PDE-managed shell, those variables are already exported; when it starts elsewhere, CodeCompanion best-effort falls back to reading them from `paths.env`.
 

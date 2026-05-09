@@ -40,3 +40,4 @@ planner/planner
 cli/pde
 cli/pde.exe
 vibe/target/
+surveil/target/
