@@ -30,7 +30,7 @@ cd cli && go build -o ~/.local/bin/pde .
 pde install ai-tools
 ```
 
-Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, and Vibe binaries plus repo-managed AI config.
+Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe binaries plus repo-managed AI config.
 
 ## AI Source Tree
 
@@ -38,6 +38,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, and Vibe binaries p
 - `ai/opencode/` holds OpenCode agents and commands.
 - `ai/codex/` holds Codex skills.
 - `ai/pi/agent/` holds Pi settings and package resources.
+- `surveil/` holds the Surveil task-doc CLI docs.
 - `pde/AGENTS.md` holds repo-local PDE notes.
 
 ## Installed Layout
@@ -49,6 +50,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, and Vibe binaries p
 | OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
+| Surveil | `surveil/` | `~/.local/bin/surveil` | Task-document gather/research CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
 The config helper only manages the shared PDE config files under `~/.zshrc`, `~/.zsh_plugins.txt`, `~/.tmux.conf`, `~/.p10k.zsh`, and `~/.config/bottom/bottom.toml`.
