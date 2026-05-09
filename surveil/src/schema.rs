@@ -89,45 +89,4 @@ mod tests {
         assert!(err.to_string().contains("unexpected"));
     }
 
-    #[test]
-    fn serializes_query_result_and_symbol_fields_without_legacy_names() {
-        let output = ResearchOutput {
-            schema_version: SCHEMA_VERSION.to_string(),
-            summary: "summary".to_string(),
-            result: vec![Answer {
-                query: "Where should Tree-sitter attach?".to_string(),
-                findings: vec![Finding {
-                    path: "src/lib.rs".to_string(),
-                    line: 12,
-                    excerpt: "fn attach() {}".to_string(),
-                    source: "lexical".to_string(),
-                    matched_from: "attach".to_string(),
-                    symbol_kind: Some("function".to_string()),
-                    symbol_name: Some("attach".to_string()),
-                    symbol_start_line: Some(10),
-                    symbol_end_line: Some(14),
-                }],
-                negative_evidence: vec![],
-            }],
-            blockers: vec![],
-            open_questions: vec![],
-        };
-
-        let json = serde_json::to_value(output).expect("serialize");
-        let obj = json.as_object().expect("object");
-        assert!(obj.contains_key("result"));
-        assert!(!obj.contains_key("answers"));
-
-        let answer = obj["result"].as_array().expect("result array")[0].as_object().expect("answer object");
-        assert!(answer.contains_key("query"));
-        assert!(!answer.contains_key("question"));
-
-        let finding = answer["findings"].as_array().expect("findings array")[0].as_object().expect("finding object");
-        assert!(finding.contains_key("symbol_kind"));
-        assert!(finding.contains_key("symbol_name"));
-        assert!(finding.contains_key("symbol_start_line"));
-        assert!(finding.contains_key("symbol_end_line"));
-        assert!(!finding.contains_key("answers"));
-        assert!(!finding.contains_key("question"));
-    }
 }

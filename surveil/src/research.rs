@@ -9,16 +9,6 @@ use tree_sitter::Parser;
 pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let context_text = fs::read_to_string(context)?;
     let gather: GatherOutput = serde_json::from_str(&context_text)?;
-    if gather.schema_version != SCHEMA_VERSION {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "context version mismatch: expected {}, got {}",
-                SCHEMA_VERSION, gather.schema_version
-            ),
-        )
-        .into());
-    }
 
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
@@ -156,13 +146,7 @@ fn answer_question(
         }
 
         if !file_findings.is_empty() {
-            if let Some((language, symbol_language)) = symbol_language_for_path(&file) {
-                if let Some(tree) = parse_tree(&text, language) {
-                    if !tree.root_node().has_error() {
-                        enrich_symbol_metadata(&text, &tree, symbol_language, &mut file_findings);
-                    }
-                }
-            }
+            enrich_symbol_metadata(&text, &mut file_findings);
             trace.files_matched.insert(file.clone());
             ranked_files.push(RankedFileFindings {
                 path: file,
@@ -203,47 +187,43 @@ struct MatchedFinding {
     byte_offset: usize,
 }
 
-#[derive(Clone, Copy)]
-enum SymbolLanguage {
-    Rust,
-    Go,
-    Python,
-    TypeScript,
-    Tsx,
-}
-
-fn symbol_language_for_path(path: &Path) -> Option<(tree_sitter::Language, SymbolLanguage)> {
-    let extension = path.extension()?.to_string_lossy().to_ascii_lowercase();
-    match extension.as_str() {
-        "rs" => Some((tree_sitter_rust::LANGUAGE.into(), SymbolLanguage::Rust)),
-        "go" => Some((tree_sitter_go::LANGUAGE.into(), SymbolLanguage::Go)),
-        "py" => Some((tree_sitter_python::LANGUAGE.into(), SymbolLanguage::Python)),
-        "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), SymbolLanguage::TypeScript)),
-        "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), SymbolLanguage::Tsx)),
-        _ => None,
-    }
-}
-
 fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
     let mut parser = Parser::new();
     parser.set_language(&language).ok()?;
     parser.parse(text, None)
 }
 
-fn enrich_symbol_metadata(
-    text: &str,
-    tree: &tree_sitter::Tree,
-    language: SymbolLanguage,
-    findings: &mut [MatchedFinding],
-) {
+fn enrich_symbol_metadata(text: &str, findings: &mut [MatchedFinding]) {
+    for language in [
+        tree_sitter_rust::LANGUAGE.into(),
+        tree_sitter_go::LANGUAGE.into(),
+        tree_sitter_python::LANGUAGE.into(),
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        tree_sitter_typescript::LANGUAGE_TSX.into(),
+    ] {
+        if let Some(tree) = parse_tree(text, language) {
+            if tree.root_node().has_error() {
+                continue;
+            }
+            if attach_symbol_metadata(text, &tree, findings) {
+                return;
+            }
+        }
+    }
+}
+
+fn attach_symbol_metadata(text: &str, tree: &tree_sitter::Tree, findings: &mut [MatchedFinding]) -> bool {
+    let mut attached = false;
     for hit in findings {
-        if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset, language) {
+        if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
             hit.finding.symbol_kind = Some(symbol.kind);
             hit.finding.symbol_name = Some(symbol.name);
             hit.finding.symbol_start_line = Some(symbol.start_line);
             hit.finding.symbol_end_line = Some(symbol.end_line);
+            attached = true;
         }
     }
+    attached
 }
 
 struct SymbolInfo {
@@ -257,17 +237,16 @@ fn enclosing_symbol(
     root: tree_sitter::Node,
     source: &[u8],
     byte_offset: usize,
-    language: SymbolLanguage,
 ) -> Option<SymbolInfo> {
     let mut node = root.descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
     loop {
-        if is_symbol_node(node, language) {
+        if is_symbol_node(node) {
             let name_node = node
                 .child_by_field_name("name")
                 .or_else(|| node.named_child(0))?;
             let name = name_node.utf8_text(source).ok()?.to_string();
             return Some(SymbolInfo {
-                kind: normalized_symbol_kind(node, language).to_string(),
+                kind: normalized_symbol_kind(node.kind()).to_string(),
                 name,
                 start_line: node.start_position().row as u32 + 1,
                 end_line: node.end_position().row as u32 + 1,
@@ -277,47 +256,47 @@ fn enclosing_symbol(
     }
 }
 
-fn is_symbol_node(node: tree_sitter::Node, language: SymbolLanguage) -> bool {
+fn is_symbol_node(node: tree_sitter::Node) -> bool {
     matches!(
-        (language, node.kind()),
-        (SymbolLanguage::Rust, "function_item")
-            | (SymbolLanguage::Rust, "struct_item")
-            | (SymbolLanguage::Rust, "enum_item")
-            | (SymbolLanguage::Rust, "trait_item")
-            | (SymbolLanguage::Rust, "impl_item")
-            | (SymbolLanguage::Rust, "mod_item")
-            | (SymbolLanguage::Rust, "const_item")
-            | (SymbolLanguage::Rust, "static_item")
-            | (SymbolLanguage::Rust, "type_item")
-            | (SymbolLanguage::Go, "function_declaration")
-            | (SymbolLanguage::Go, "method_declaration")
-            | (SymbolLanguage::Go, "type_declaration")
-            | (SymbolLanguage::Python, "function_definition")
-            | (SymbolLanguage::Python, "class_definition")
-            | (SymbolLanguage::TypeScript, "function_declaration")
-            | (SymbolLanguage::TypeScript, "method_definition")
-            | (SymbolLanguage::TypeScript, "class_declaration")
-            | (SymbolLanguage::TypeScript, "interface_declaration")
-            | (SymbolLanguage::TypeScript, "type_alias_declaration")
-            | (SymbolLanguage::Tsx, "function_declaration")
-            | (SymbolLanguage::Tsx, "method_definition")
-            | (SymbolLanguage::Tsx, "class_declaration")
-            | (SymbolLanguage::Tsx, "interface_declaration")
-            | (SymbolLanguage::Tsx, "type_alias_declaration")
+        node.kind(),
+        "function_item"
+            | "struct_item"
+            | "enum_item"
+            | "trait_item"
+            | "impl_item"
+            | "mod_item"
+            | "const_item"
+            | "static_item"
+            | "type_item"
+            | "function_declaration"
+            | "method_declaration"
+            | "type_declaration"
+            | "function_definition"
+            | "class_definition"
+            | "class_declaration"
+            | "method_definition"
+            | "interface_declaration"
+            | "type_alias_declaration"
     )
 }
 
-fn normalized_symbol_kind(node: tree_sitter::Node, language: SymbolLanguage) -> &'static str {
-    match (language, node.kind()) {
-        (SymbolLanguage::Rust, "function_item")
-        | (SymbolLanguage::Go, "function_declaration")
-        | (SymbolLanguage::Python, "function_definition")
-        | (SymbolLanguage::TypeScript, "function_declaration")
-        | (SymbolLanguage::Tsx, "function_declaration") => "function",
-        (SymbolLanguage::Go, "method_declaration")
-        | (SymbolLanguage::TypeScript, "method_definition")
-        | (SymbolLanguage::Tsx, "method_definition") => "method",
-        _ => "type",
+fn normalized_symbol_kind(kind: &str) -> &'static str {
+    if kind.contains("function") {
+        "function"
+    } else if kind.contains("method") {
+        "method"
+    } else if kind.contains("class")
+        || kind.contains("struct")
+        || kind.contains("enum")
+        || kind.contains("trait")
+        || kind.contains("interface")
+        || kind.contains("type")
+    {
+        "type"
+    } else if kind.contains("module") || kind.contains("mod") || kind.contains("package") {
+        "module"
+    } else {
+        "symbol"
     }
 }
 
@@ -742,31 +721,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mismatched_context_version() {
-        let repo = temp_repo("version-mismatch");
-        let context = repo.join("context.json");
-        let trace = repo.join("trace.json");
-        write_context(
-            &context,
-            &GatherOutput {
-                schema_version: "surveil.v4".to_string(),
-                repo_root: repo.to_string_lossy().into_owned(),
-                summary: "summary".to_string(),
-                explicit_files: Vec::new(),
-                search_areas: Vec::new(),
-                query: Vec::new(),
-                terms: Vec::new(),
-                blockers: Vec::new(),
-            },
-        );
-
-        let error = run(&context, &trace).expect_err("version mismatch");
-        assert!(error.to_string().contains("context version mismatch"));
-
-        let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
     fn skips_non_utf8_files_and_records_path() {
         let repo = temp_repo("non-utf8");
         let path = repo.join("surveil/src/lib.rs");
@@ -868,10 +822,10 @@ mod tests {
     }
 
     #[test]
-    fn crlf_source_with_combining_character_attaches_correct_enclosing_symbol() {
+    fn crlf_source_with_combining_character_attaches_correct_enclosing_symbol_without_extension() {
         let repo = temp_repo("crlf-symbols");
         write_file(
-            &repo.join("surveil/src/lib.rs"),
+            &repo.join("surveil/src/lib"),
             "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
         );
 
