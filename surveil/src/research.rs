@@ -126,7 +126,7 @@ fn answer_question(
             let line = &text[line_start..content_end];
             let lower_line = line.to_lowercase();
             if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
-                if let Some(match_offset) = lower_line.find(matched_from.as_str()) {
+                if let Some(match_offset) = case_insensitive_byte_offset(line, matched_from) {
                     file_findings.push(MatchedFinding {
                         finding: Finding {
                             path: display_path(repo_root, &file),
@@ -267,7 +267,7 @@ fn enclosing_symbol(
                 .or_else(|| node.named_child(0))?;
             let name = name_node.utf8_text(source).ok()?.to_string();
             return Some(SymbolInfo {
-                kind: node.kind().to_string(),
+                kind: normalized_symbol_kind(node, language).to_string(),
                 name,
                 start_line: node.start_position().row as u32 + 1,
                 end_line: node.end_position().row as u32 + 1,
@@ -278,33 +278,62 @@ fn enclosing_symbol(
 }
 
 fn is_symbol_node(node: tree_sitter::Node, language: SymbolLanguage) -> bool {
+    matches!(
+        (language, node.kind()),
+        (SymbolLanguage::Rust, "function_item")
+            | (SymbolLanguage::Rust, "struct_item")
+            | (SymbolLanguage::Rust, "enum_item")
+            | (SymbolLanguage::Rust, "trait_item")
+            | (SymbolLanguage::Rust, "impl_item")
+            | (SymbolLanguage::Rust, "mod_item")
+            | (SymbolLanguage::Rust, "const_item")
+            | (SymbolLanguage::Rust, "static_item")
+            | (SymbolLanguage::Rust, "type_item")
+            | (SymbolLanguage::Go, "function_declaration")
+            | (SymbolLanguage::Go, "method_declaration")
+            | (SymbolLanguage::Go, "type_declaration")
+            | (SymbolLanguage::Python, "function_definition")
+            | (SymbolLanguage::Python, "class_definition")
+            | (SymbolLanguage::TypeScript, "function_declaration")
+            | (SymbolLanguage::TypeScript, "method_definition")
+            | (SymbolLanguage::TypeScript, "class_declaration")
+            | (SymbolLanguage::TypeScript, "interface_declaration")
+            | (SymbolLanguage::TypeScript, "type_alias_declaration")
+            | (SymbolLanguage::Tsx, "function_declaration")
+            | (SymbolLanguage::Tsx, "method_definition")
+            | (SymbolLanguage::Tsx, "class_declaration")
+            | (SymbolLanguage::Tsx, "interface_declaration")
+            | (SymbolLanguage::Tsx, "type_alias_declaration")
+    )
+}
+
+fn normalized_symbol_kind(node: tree_sitter::Node, language: SymbolLanguage) -> &'static str {
     match (language, node.kind()) {
         (SymbolLanguage::Rust, "function_item")
-        | (SymbolLanguage::Rust, "struct_item")
-        | (SymbolLanguage::Rust, "enum_item")
-        | (SymbolLanguage::Rust, "trait_item")
-        | (SymbolLanguage::Rust, "impl_item")
-        | (SymbolLanguage::Rust, "mod_item")
-        | (SymbolLanguage::Rust, "const_item")
-        | (SymbolLanguage::Rust, "static_item")
-        | (SymbolLanguage::Rust, "type_item")
         | (SymbolLanguage::Go, "function_declaration")
-        | (SymbolLanguage::Go, "method_declaration")
-        | (SymbolLanguage::Go, "type_declaration")
         | (SymbolLanguage::Python, "function_definition")
-        | (SymbolLanguage::Python, "class_definition")
         | (SymbolLanguage::TypeScript, "function_declaration")
+        | (SymbolLanguage::Tsx, "function_declaration") => "function",
+        (SymbolLanguage::Go, "method_declaration")
         | (SymbolLanguage::TypeScript, "method_definition")
-        | (SymbolLanguage::TypeScript, "class_declaration")
-        | (SymbolLanguage::TypeScript, "interface_declaration")
-        | (SymbolLanguage::TypeScript, "type_alias_declaration")
-        | (SymbolLanguage::Tsx, "function_declaration")
-        | (SymbolLanguage::Tsx, "method_definition")
-        | (SymbolLanguage::Tsx, "class_declaration")
-        | (SymbolLanguage::Tsx, "interface_declaration")
-        | (SymbolLanguage::Tsx, "type_alias_declaration") => true,
-        _ => false,
+        | (SymbolLanguage::Tsx, "method_definition") => "method",
+        _ => "type",
     }
+}
+
+fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
+    let line_bytes = line.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    if needle_bytes.is_empty() || needle_bytes.len() > line_bytes.len() {
+        return None;
+    }
+
+    line_bytes.windows(needle_bytes.len()).position(|window| {
+        window
+            .iter()
+            .zip(needle_bytes.iter())
+            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+    })
 }
 
 fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
@@ -858,7 +887,7 @@ mod tests {
         .expect("research answer");
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].symbol_kind.as_deref(), Some("function_item"));
+        assert_eq!(findings[0].symbol_kind.as_deref(), Some("function"));
         assert_eq!(findings[0].symbol_name.as_deref(), Some("attach"));
         assert_eq!(findings[0].symbol_start_line, Some(1));
         assert_eq!(findings[0].symbol_end_line, Some(3));
