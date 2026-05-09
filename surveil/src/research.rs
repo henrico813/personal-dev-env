@@ -190,6 +190,10 @@ struct MatchedFinding {
 }
 
 fn should_enrich_symbol_metadata(path: &Path) -> bool {
+    if path.extension().is_none() {
+        return false;
+    }
+
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -205,10 +209,6 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
         return false;
     }
 
-    if is_extensionless_doc_basename(path) {
-        return false;
-    }
-
     if path.components().any(|component| {
         let component = component.as_os_str().to_string_lossy();
         matches!(
@@ -220,25 +220,6 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
     }
 
     true
-}
-
-fn is_extensionless_doc_basename(path: &Path) -> bool {
-    const DOC_BASENAMES: [&str; 7] = [
-        "README",
-        "LICENSE",
-        "CHANGELOG",
-        "CONTRIBUTING",
-        "NOTICE",
-        "AUTHORS",
-        "COPYING",
-    ];
-
-    path.extension().is_none()
-        && path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(|name| DOC_BASENAMES.iter().any(|basename| name.eq_ignore_ascii_case(basename)))
-            .unwrap_or(false)
 }
 
 fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
@@ -862,9 +843,9 @@ mod tests {
     }
 
     #[test]
-    fn parseable_root_license_remains_lexical_only() {
-        let repo = temp_repo("license-symbols");
-        write_file(&repo.join("LICENSE"), "fn attach() { // tree-sitter attach }\n");
+    fn parseable_root_env_remains_lexical_only() {
+        let repo = temp_repo("env-symbols");
+        write_file(&repo.join(".env"), "fn attach() { // tree-sitter attach }\n");
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -878,7 +859,33 @@ mod tests {
         .expect("research answer");
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].path, "LICENSE");
+        assert_eq!(findings[0].path, ".env");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_extensionless_source_file_remains_lexical_only() {
+        let repo = temp_repo("extensionless-source");
+        write_file(&repo.join("surveil/src/lib"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "surveil/src/lib");
         assert_eq!(findings[0].symbol_kind, None);
         assert_eq!(findings[0].symbol_name, None);
         assert_eq!(findings[0].symbol_start_line, None);
@@ -916,10 +923,10 @@ mod tests {
     }
 
     #[test]
-    fn crlf_source_with_combining_character_attaches_correct_enclosing_symbol_without_extension() {
+    fn crlf_source_with_combining_character_attaches_correct_enclosing_symbol() {
         let repo = temp_repo("crlf-symbols");
         write_file(
-            &repo.join("surveil/src/lib"),
+            &repo.join("surveil/src/lib.rs"),
             "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
         );
 
