@@ -30,6 +30,47 @@ func buildPlannerBinary(cfg *Config, runner Runner) (string, error) {
 	return plannerBin, nil
 }
 
+func ensureSurveilSource(cfg *Config, runner Runner) error {
+	surveilManifest := filepath.Join(cfg.RepoRoot, "surveil", "Cargo.toml")
+	if _, err := os.Stat(surveilManifest); err != nil {
+		return fmt.Errorf("surveil/Cargo.toml is required for `pde install ai-tools`; restore the surveil crate and re-run")
+	}
+	return nil
+}
+
+func buildSurveilBinary(cfg *Config, runner Runner) (string, error) {
+	runtimeDir := filepath.Join(cfg.AIRuntimeDir, "surveil")
+	targetDir := filepath.Join(runtimeDir, "target")
+	surveilBin := filepath.Join(runtimeDir, "surveil")
+	surveilSourceDir := filepath.Join(cfg.RepoRoot, "surveil")
+	targetBinary := filepath.Join(targetDir, "release", "surveil")
+
+	if err := runner.MkdirAll("create surveil runtime dir", runtimeDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := runner.Bash("build surveil", fmt.Sprintf(
+		"set -euo pipefail; cd %s && cargo build --release --target-dir %s --bin surveil; install -m 0755 %s %s",
+		shellQuote(surveilSourceDir),
+		shellQuote(targetDir),
+		shellQuote(targetBinary),
+		shellQuote(surveilBin),
+	)); err != nil {
+		return "", err
+	}
+	return surveilBin, nil
+}
+
+func installSurveilLauncher(cfg *Config, surveilBin string, runner Runner) error {
+	return linkBinary(surveilBin, filepath.Join(cfg.LocalBinDir, "surveil"), runner)
+}
+
+func verifySurveilLauncher(cfg *Config, runner Runner) error {
+	return runner.Bash("verify surveil", fmt.Sprintf(
+		"set -euo pipefail; export PATH=%s:$PATH; surveil --help >/dev/null",
+		shellQuote(cfg.LocalBinDir),
+	))
+}
+
 func buildOpenCodeInlineShimBinary(cfg *Config, runner Runner) (string, error) {
 	shimDir := filepath.Join(cfg.AIRuntimeDir, "opencode-inline-shim")
 	shimBin := filepath.Join(shimDir, "opencode-inline-shim")

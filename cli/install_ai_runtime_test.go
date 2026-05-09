@@ -64,6 +64,21 @@ func TestVerifyVibeLauncherRunsHelp(t *testing.T) {
 	}
 }
 
+func TestVerifySurveilLauncherRunsHelp(t *testing.T) {
+	localBin := filepath.Join(t.TempDir(), ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatalf("mkdir local bin: %v", err)
+	}
+
+	surveilPath := filepath.Join(localBin, "surveil")
+	writeStubExecutable(t, surveilPath, "--help")
+
+	cfg := &Config{LocalBinDir: localBin}
+	if err := verifySurveilLauncher(cfg, Runner{}); err != nil {
+		t.Fatalf("verify surveil launcher: %v", err)
+	}
+}
+
 func TestVerifyPiLauncherRunsHelp(t *testing.T) {
 	localBin := filepath.Join(t.TempDir(), ".local", "bin")
 	if err := os.MkdirAll(localBin, 0o755); err != nil {
