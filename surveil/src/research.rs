@@ -114,6 +114,10 @@ fn answer_question(
                         "lexical".to_string()
                     },
                     matched_from: matched_from.clone(),
+                    symbol_kind: None,
+                    symbol_name: None,
+                    symbol_start_line: None,
+                    symbol_end_line: None,
                 });
             }
         }

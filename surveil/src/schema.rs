@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: &str = "surveil.v4";
+pub const SCHEMA_VERSION: &str = "surveil.v5";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatherOutput {
@@ -43,6 +43,10 @@ pub struct Finding {
     pub excerpt: String,
     pub source: String,
     pub matched_from: String,
+    pub symbol_kind: Option<String>,
+    pub symbol_name: Option<String>,
+    pub symbol_start_line: Option<u32>,
+    pub symbol_end_line: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
