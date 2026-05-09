@@ -1,4 +1,8 @@
-use crate::{observe, result::{RunResult, Status}, worktree};
+use crate::{
+    observe,
+    result::{RunResult, Status},
+    worktree,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
