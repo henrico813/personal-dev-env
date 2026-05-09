@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 )
 
@@ -42,24 +42,26 @@ func TestLoadVaultPathsEnvOverridesFile(t *testing.T) {
 	}
 }
 
-func TestResolveShellPathExpandsQuotesAndVariables(t *testing.T) {
+func TestResolveShellPathNormalizesShellStyleValues(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
-	t.Setenv("PDE_SAMPLE", filepath.Join(homeDir, "sample"))
 
-	got, err := resolveShellPath("\"$PDE_SAMPLE/~/..\"", homeDir)
-	if err != nil {
-		t.Fatalf("resolve shell path: %v", err)
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{`"$HOME/vault"`, filepath.Join(homeDir, "vault")},
+		{`'~/notes'`, filepath.Join(homeDir, "notes")},
 	}
-	want := filepath.Join(homeDir, "sample", "~", "..")
-	if got == "" {
-		t.Fatal("expected resolved path")
-	}
-	if reflect.TypeOf(got) == nil {
-		t.Fatal("unexpected nil type")
-	}
-	if got != filepath.Clean(want) {
-		t.Fatalf("unexpected path %q want %q", got, filepath.Clean(want))
+
+	for _, tc := range cases {
+		got, err := resolveShellPath(tc.input, homeDir)
+		if err != nil {
+			t.Fatalf("resolve shell path %q: %v", tc.input, err)
+		}
+		if got != tc.want {
+			t.Fatalf("resolve shell path %q = %q want %q", tc.input, got, tc.want)
+		}
 	}
 }
 
@@ -91,9 +93,40 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	}
 }
 
+func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	if err := os.MkdirAll(workVault, 0o755); err != nil {
+		t.Fatalf("mkdir work vault: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
+	mustWriteFile(t, filepath.Join(workVault, "work.md"), "needle", 0o644)
+
+	var out bytes.Buffer
+	if err := runVaultLocate(&out, homeDir, func(key string) (string, bool) {
+		switch key {
+		case "PDE_MAIN_VAULT":
+			return mainVault, true
+		case "PDE_WORK_VAULT":
+			return workVault, true
+		default:
+			return "", false
+		}
+	}, vaultLocateOptions{Vault: "main", Query: "needle"}); err != nil {
+		t.Fatalf("run vault locate: %v", err)
+	}
+	if got := out.String(); got != filepath.Join(mainVault, "main.md")+"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+}
+
 func TestRunVaultLocateRejectsWhitespaceOnlyQuery(t *testing.T) {
-	vault := t.TempDir()
-	if err := runVaultLocate(os.Stdout, t.TempDir(), func(string) (string, bool) { return "", false }, vaultLocateOptions{Vault: vault, Query: "   "}); err == nil {
+	var out bytes.Buffer
+	if err := runVaultLocate(&out, t.TempDir(), func(string) (string, bool) { return "", false }, vaultLocateOptions{Vault: "default", Query: "   "}); err == nil {
 		t.Fatal("expected whitespace query to be rejected")
 	}
 }

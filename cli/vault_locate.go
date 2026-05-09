@@ -38,33 +38,40 @@ func normalizeQueryInput(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func resolveVaults(homeDir string, lookup envLookup, explicitVault string) ([]string, error) {
-	if explicitVault != "" {
-		vault, err := resolveShellPath(explicitVault, homeDir)
-		if err != nil {
-			return nil, err
-		}
-		if err := validateVaultDir(vault); err != nil {
-			return nil, err
-		}
-		return []string{vault}, nil
-	}
-
+func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
 	paths, err := loadVaultPaths(homeDir, lookup)
 	if err != nil {
 		return nil, err
 	}
 
-	var vaults []string
-	for _, key := range []string{"PDE_MAIN_VAULT", "PDE_WORK_VAULT"} {
-		if path := paths[key]; path != "" {
-			vaults = append(vaults, path)
+	mainVault := paths["PDE_MAIN_VAULT"]
+	workVault := paths["PDE_WORK_VAULT"]
+
+	switch selector {
+	case "", "default", "any":
+		var vaults []string
+		for _, vault := range []string{mainVault, workVault} {
+			if vault != "" {
+				vaults = append(vaults, vault)
+			}
 		}
+		if len(vaults) == 0 {
+			return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
+		}
+		return vaults, nil
+	case "main":
+		if mainVault == "" {
+			return nil, fmt.Errorf("main vault not configured")
+		}
+		return []string{mainVault}, nil
+	case "work":
+		if workVault == "" {
+			return nil, fmt.Errorf("work vault not configured")
+		}
+		return []string{workVault}, nil
+	default:
+		return nil, fmt.Errorf("invalid --vault value %q", selector)
 	}
-	if len(vaults) == 0 {
-		return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
-	}
-	return vaults, nil
 }
 
 func loadVaultPaths(homeDir string, lookup envLookup) (map[string]string, error) {

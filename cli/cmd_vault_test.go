@@ -19,6 +19,17 @@ func TestRootCmdRegistersVaultLocate(t *testing.T) {
 	}
 }
 
+func TestVaultLocateDefaultsToSelectorDefault(t *testing.T) {
+	cmd := newVaultLocateCmd()
+	flag := cmd.Flags().Lookup("vault")
+	if flag == nil {
+		t.Fatal("expected --vault flag")
+	}
+	if flag.DefValue != "default" {
+		t.Fatalf("unexpected default %q", flag.DefValue)
+	}
+}
+
 func TestVaultLocateJSONUsageFailure(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

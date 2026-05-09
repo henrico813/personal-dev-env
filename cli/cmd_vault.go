@@ -36,7 +36,7 @@ func newVaultLocateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Vault, "vault", "", "Path to the vault to search")
+	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any")
 	cmd.Flags().StringVar(&opts.Filename, "filename", "", "Exact note filename to locate")
 	cmd.Flags().StringVar(&opts.Query, "query", "", "Search query to locate")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Emit JSON output")
@@ -46,7 +46,7 @@ func newVaultLocateCmd() *cobra.Command {
 func runVaultLocate(out io.Writer, homeDir string, lookup envLookup, opts vaultLocateOptions) error {
 	opts.Filename = normalizeQueryInput(opts.Filename)
 	opts.Query = normalizeQueryInput(opts.Query)
-	opts.Vault = normalizeShellPath(opts.Vault, homeDir)
+	opts.Vault = normalizeQueryInput(opts.Vault)
 
 	if opts.Filename == "" && opts.Query == "" {
 		return writeVaultLocateError(out, opts.JSON, errors.New("provide --filename or --query"))
