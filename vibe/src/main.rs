@@ -6,6 +6,7 @@ mod prompts;
 mod result;
 mod sandbox;
 mod snapshot;
+mod state;
 mod worktree;
 
 use std::process;
