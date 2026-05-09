@@ -134,9 +134,9 @@ Recovery notes:
 
 - `run-state.json` is the mutable checkpoint journal for one run.
 - `result.json` is the durable final result payload when wrapper emission succeeds.
-- `vibe status --key ...` reads the latest persisted state for the normalized key.
+- `vibe status --key ...` reads the latest readable persisted state for the normalized key.
 - `vibe status` must be run from inside the target repo checkout.
-- Latest-run lookup remains compatible with legacy planner-prefixed run IDs.
+- Latest-run lookup skips unreadable newest runs and remains compatible with legacy planner-prefixed run IDs.
 - New managed worktrees still branch from the resolved remote/base branch,
   not the caller's current `HEAD`.
 

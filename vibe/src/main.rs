@@ -17,6 +17,10 @@ use crate::{
 };
 
 fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
+    let error_message = match &result.error_message {
+        Some(original) => Some(format!("{original}; persistence failed: {message}")),
+        None => Some(message),
+    };
     RunResult {
         status: Status::WrapperFailed,
         branch: result.branch.clone(),
@@ -28,8 +32,13 @@ fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
         artifacts_dir: result.artifacts_dir.clone(),
         events_log_path: result.events_log_path.clone(),
         stderr_path: result.stderr_path.clone(),
-        error_message: Some(message),
+        error_message,
     }
+}
+
+fn persist_terminal_artifacts(result: &RunResult) {
+    let _ = persist_result_json(result);
+    let _ = state::write_terminal_from_result(result);
 }
 
 fn persist_result_json(result: &RunResult) -> Result<(), String> {
@@ -54,11 +63,12 @@ fn main() {
             let result = app::execute(args);
             if let Err(err) = persist_result_json(&result) {
                 let wrapper_failed = wrapper_failed_from(&result, err);
-                let _ = state::write_terminal_from_result(&wrapper_failed);
+                persist_terminal_artifacts(&wrapper_failed);
                 emit_and_exit(&wrapper_failed);
             }
             if let Err(err) = state::write_terminal_from_result(&result) {
                 let wrapper_failed = wrapper_failed_from(&result, err);
+                persist_terminal_artifacts(&wrapper_failed);
                 emit_and_exit(&wrapper_failed);
             }
             emit_and_exit(&result);
