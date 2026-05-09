@@ -41,6 +41,8 @@ pub enum Command {
         after_help = "Example:\n  vibe run --key pdev-049-demo --prompt-file /tmp/vibe-task.txt --model openai-codex/gpt-5.4\n\nArtifacts:\n  ~/.local/state/vibe/<repo>/<slug>/runs/..."
     )]
     Run(RunArgs),
+    #[command(about = "Show the latest persisted run state for one key.")]
+    Status(StatusArgs),
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -70,11 +72,24 @@ pub struct RunArgs {
     pub insecure_tls: bool,
 }
 
-pub fn parse() -> RunArgs {
+#[derive(clap::Args, Clone, Debug)]
+pub struct StatusArgs {
+    /// Stable identifier for the managed Vibe worktree.
+    #[arg(long)]
+    pub key: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum ParsedCommand {
+    Run(RunArgs),
+    Status(StatusArgs),
+}
+
+pub fn parse() -> ParsedCommand {
     try_parse_from(std::env::args_os()).unwrap_or_else(|err| err.exit())
 }
 
-pub fn try_parse_from<I, T>(itr: I) -> Result<RunArgs, clap::Error>
+pub fn try_parse_from<I, T>(itr: I) -> Result<ParsedCommand, clap::Error>
 where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
@@ -87,14 +102,15 @@ where
                     .expect("cwd")
                     .join(&args.prompt_file);
             }
-            Ok(args)
+            Ok(ParsedCommand::Run(args))
         }
+        Command::Status(args) => Ok(ParsedCommand::Status(args)),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{try_parse_from, StderrLevel};
+    use super::{try_parse_from, ParsedCommand, StderrLevel};
     use std::{
         ffi::OsString,
         sync::{Mutex, OnceLock},
@@ -123,7 +139,7 @@ mod tests {
         let saved = save_stderr_env();
         std::env::remove_var("VIBE_STDERR_LEVEL");
 
-        let args = try_parse_from([
+        let ParsedCommand::Run(args) = try_parse_from([
             "vibe",
             "run",
             "--key",
@@ -135,7 +151,9 @@ mod tests {
             "--commit-message",
             "docs: update note",
         ])
-        .expect("parse args");
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
 
         restore_stderr_env(saved);
 
@@ -152,7 +170,7 @@ mod tests {
 
     #[test]
     fn parses_explicit_insecure_tls() {
-        let args = try_parse_from([
+        let ParsedCommand::Run(args) = try_parse_from([
             "vibe",
             "run",
             "--key",
@@ -163,14 +181,16 @@ mod tests {
             "model",
             "--insecure-tls",
         ])
-        .expect("parse args");
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
 
         assert!(args.insecure_tls);
     }
 
     #[test]
     fn parses_explicit_stderr_level() {
-        let args = try_parse_from([
+        let ParsedCommand::Run(args) = try_parse_from([
             "vibe",
             "run",
             "--key",
@@ -182,7 +202,9 @@ mod tests {
             "--stderr-level",
             "debug",
         ])
-        .expect("parse args");
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
 
         assert_eq!(args.stderr_level, StderrLevel::Debug);
     }
@@ -193,7 +215,7 @@ mod tests {
         let saved = save_stderr_env();
         std::env::set_var("VIBE_STDERR_LEVEL", "warn");
 
-        let args = try_parse_from([
+        let ParsedCommand::Run(args) = try_parse_from([
             "vibe",
             "run",
             "--key",
@@ -203,7 +225,9 @@ mod tests {
             "--model",
             "model",
         ])
-        .expect("parse args");
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
 
         restore_stderr_env(saved);
         assert_eq!(args.stderr_level, StderrLevel::Warn);
@@ -211,7 +235,7 @@ mod tests {
 
     #[test]
     fn normalizes_relative_prompt_file() {
-        let args = try_parse_from([
+        let ParsedCommand::Run(args) = try_parse_from([
             "vibe",
             "run",
             "--key",
@@ -221,7 +245,9 @@ mod tests {
             "--model",
             "model",
         ])
-        .expect("parse args");
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
 
         assert_eq!(
             args.prompt_file,
@@ -240,5 +266,17 @@ mod tests {
     #[test]
     fn requires_key_and_prompt_file() {
         assert!(try_parse_from(["vibe", "run", "--model", "model"]).is_err());
+    }
+
+    #[test]
+    fn parses_status_arguments() {
+        let ParsedCommand::Status(args) =
+            try_parse_from(["vibe", "status", "--key", "PDEV-055 demo/key"])
+                .expect("parse status args")
+        else {
+            panic!("expected status args");
+        };
+
+        assert_eq!(args.key, "PDEV-055 demo/key");
     }
 }

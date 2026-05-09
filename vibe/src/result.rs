@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Stable machine-readable outcome for `vibe run`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Completed,
@@ -9,6 +9,8 @@ pub enum Status {
     AgentFailed,
     CommitFailed,
     RefusedDirty,
+    SnapshotFailed,
+    WrapperFailed,
     SetupError,
 }
 
@@ -27,18 +29,6 @@ pub struct RunResult {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct SetupErrorContext {
-    pub branch: Option<String>,
-    pub worktree: Option<String>,
-    pub model: Option<String>,
-    pub pre_run_commit: Option<String>,
-    pub snapshot_commits: Vec<String>,
-    pub artifacts_dir: Option<String>,
-    pub events_log_path: Option<String>,
-    pub stderr_path: Option<String>,
-}
-
 impl RunResult {
     pub fn exit_code(&self) -> i32 {
         match self.status {
@@ -47,7 +37,9 @@ impl RunResult {
             Status::AgentFailed => 2,
             Status::CommitFailed => 3,
             Status::RefusedDirty => 4,
-            Status::SetupError => 5,
+            Status::SnapshotFailed => 5,
+            Status::WrapperFailed => 6,
+            Status::SetupError => 7,
         }
     }
 
@@ -66,30 +58,11 @@ impl RunResult {
             error_message: Some(message.into()),
         }
     }
-
-    pub fn setup_error_with_context(
-        message: impl Into<String>,
-        context: SetupErrorContext,
-    ) -> Self {
-        Self {
-            status: Status::SetupError,
-            branch: context.branch,
-            worktree: context.worktree,
-            model: context.model,
-            pre_run_commit: context.pre_run_commit,
-            commit: None,
-            snapshot_commits: context.snapshot_commits,
-            artifacts_dir: context.artifacts_dir,
-            events_log_path: context.events_log_path,
-            stderr_path: context.stderr_path,
-            error_message: Some(message.into()),
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{RunResult, SetupErrorContext, Status};
+    use super::{RunResult, Status};
 
     fn sample_result(status: Status) -> RunResult {
         RunResult {
@@ -115,7 +88,9 @@ mod tests {
             (Status::AgentFailed, 2),
             (Status::CommitFailed, 3),
             (Status::RefusedDirty, 4),
-            (Status::SetupError, 5),
+            (Status::SnapshotFailed, 5),
+            (Status::WrapperFailed, 6),
+            (Status::SetupError, 7),
         ];
 
         for (status, code) in cases {
@@ -141,29 +116,5 @@ mod tests {
         assert!(value["branch"].is_null());
         assert!(value["artifacts_dir"].is_null());
         assert_eq!(value["error_message"], "boom");
-    }
-
-    #[test]
-    fn setup_error_with_context_preserves_run_metadata() {
-        let value = serde_json::to_value(RunResult::setup_error_with_context(
-            "boom",
-            SetupErrorContext {
-                branch: Some("vibe/demo".to_string()),
-                worktree: Some("/tmp/worktree".to_string()),
-                model: Some("model".to_string()),
-                pre_run_commit: Some("abc".to_string()),
-                snapshot_commits: vec!["snap".to_string()],
-                artifacts_dir: Some("/tmp/run".to_string()),
-                events_log_path: Some("/tmp/run/events.jsonl".to_string()),
-                stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
-            },
-        ))
-        .expect("serialize");
-
-        assert_eq!(value["status"], "setup_error");
-        assert_eq!(value["branch"], "vibe/demo");
-        assert_eq!(value["artifacts_dir"], "/tmp/run");
-        assert_eq!(value["pre_run_commit"], "abc");
-        assert_eq!(value["snapshot_commits"][0], "snap");
     }
 }
