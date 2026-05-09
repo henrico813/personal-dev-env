@@ -223,11 +223,21 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
 }
 
 fn is_extensionless_doc_basename(path: &Path) -> bool {
+    const DOC_BASENAMES: [&str; 7] = [
+        "README",
+        "LICENSE",
+        "CHANGELOG",
+        "CONTRIBUTING",
+        "NOTICE",
+        "AUTHORS",
+        "COPYING",
+    ];
+
     path.extension().is_none()
         && path
             .file_name()
             .and_then(|name| name.to_str())
-            .map(|name| name.eq_ignore_ascii_case("README"))
+            .map(|name| DOC_BASENAMES.iter().any(|basename| name.eq_ignore_ascii_case(basename)))
             .unwrap_or(false)
 }
 
@@ -843,6 +853,32 @@ mod tests {
 
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "README");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_root_license_remains_lexical_only() {
+        let repo = temp_repo("license-symbols");
+        write_file(&repo.join("LICENSE"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &[".".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "LICENSE");
         assert_eq!(findings[0].symbol_kind, None);
         assert_eq!(findings[0].symbol_name, None);
         assert_eq!(findings[0].symbol_start_line, None);
