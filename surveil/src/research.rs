@@ -1,9 +1,10 @@
-use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput};
+use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use tree_sitter::Parser;
 
 pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let context_text = fs::read_to_string(context)?;
@@ -11,22 +12,22 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
 
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
-    let mut answers = Vec::with_capacity(gather.questions.len());
+    let mut result = Vec::with_capacity(gather.query.len());
 
-    for question in &gather.questions {
+    for query in &gather.query {
         let (findings, negative_evidence) = answer_question(
             &repo_root,
-            question,
+            query,
             &gather.terms,
             &gather.search_areas,
             &gather.explicit_files,
             &mut trace,
         )?;
         if findings.is_empty() {
-            trace.unmatched_questions.push(question.clone());
+            trace.unmatched_questions.push(query.clone());
         }
-        answers.push(Answer {
-            question: question.clone(),
+        result.push(Answer {
+            query: query.clone(),
             findings,
             negative_evidence,
         });
@@ -34,15 +35,15 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
 
     let open_questions = trace.unmatched_questions.clone();
     let report = ResearchOutput {
-        schema_version: gather.schema_version.clone(),
+        schema_version: SCHEMA_VERSION.to_string(),
         summary: gather.summary,
-        answers,
+        result,
         blockers: gather.blockers,
         open_questions,
     };
 
     let trace_output = TraceOutput {
-        schema_version: gather.schema_version,
+        schema_version: SCHEMA_VERSION.to_string(),
         searched_areas: gather.search_areas,
         skipped_paths: trace.skipped_paths,
         files_considered: trace.files_considered.len(),
@@ -101,29 +102,58 @@ fn answer_question(
         };
 
         let mut file_findings = Vec::new();
-        for (index, line) in text.lines().enumerate() {
+        let mut line_start = 0usize;
+        let mut line_number = 1u32;
+        while line_start <= text.len() {
+            let line_end = text[line_start..]
+                .find('\n')
+                .map(|offset| line_start + offset)
+                .unwrap_or(text.len());
+            let mut content_end = line_end;
+            if content_end > line_start && text.as_bytes()[content_end - 1] == b'\r' {
+                content_end -= 1;
+            }
+            let line = &text[line_start..content_end];
             let lower_line = line.to_lowercase();
             if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
-                file_findings.push(Finding {
-                    path: display_path(repo_root, &file),
-                    line: (index + 1) as u32,
-                    excerpt: line.trim().to_string(),
-                    source: if from_explicit {
-                        "explicit_file".to_string()
-                    } else {
-                        "lexical".to_string()
-                    },
-                    matched_from: matched_from.clone(),
-                });
+                if let Some(match_offset) = case_insensitive_byte_offset(line, matched_from) {
+                    file_findings.push(MatchedFinding {
+                        finding: Finding {
+                            path: display_path(repo_root, &file),
+                            line: line_number,
+                            excerpt: line.trim().to_string(),
+                            source: if from_explicit {
+                                "explicit_file".to_string()
+                            } else {
+                                "lexical".to_string()
+                            },
+                            matched_from: matched_from.clone(),
+                            symbol_kind: None,
+                            symbol_name: None,
+                            symbol_start_line: None,
+                            symbol_end_line: None,
+                        },
+                        byte_offset: line_start + match_offset,
+                    });
+                }
             }
+
+            if line_end == text.len() {
+                break;
+            }
+            line_start = line_end + 1;
+            line_number += 1;
         }
 
         if !file_findings.is_empty() {
+            if should_enrich_symbol_metadata(&file) {
+                enrich_symbol_metadata(&text, &mut file_findings);
+            }
             trace.files_matched.insert(file.clone());
             ranked_files.push(RankedFileFindings {
                 path: file,
                 explicit: from_explicit,
-                findings: file_findings,
+                findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
             });
         }
     }
@@ -151,6 +181,168 @@ fn answer_question(
     };
 
     Ok((findings, negative_evidence))
+}
+
+#[derive(Debug)]
+struct MatchedFinding {
+    finding: Finding,
+    byte_offset: usize,
+}
+
+fn should_enrich_symbol_metadata(path: &Path) -> bool {
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with('.'))
+    {
+        return false;
+    }
+
+    if path.extension().is_none() {
+        return false;
+    }
+
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+
+    if matches!(
+        extension.as_deref(),
+        Some(
+            "md" | "markdown" | "rst" | "txt" | "toml" | "json" | "yaml" | "yml" | "ini"
+                | "cfg" | "conf" | "env"
+        )
+    ) {
+        return false;
+    }
+
+    if path.components().any(|component| {
+        let component = component.as_os_str().to_string_lossy();
+        matches!(
+            component.as_ref(),
+            "docs" | "doc" | "config" | "configs" | "configuration"
+        )
+    }) {
+        return false;
+    }
+
+    true
+}
+
+fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
+    let mut parser = Parser::new();
+    parser.set_language(&language).ok()?;
+    parser.parse(text, None)
+}
+
+fn enrich_symbol_metadata(text: &str, findings: &mut [MatchedFinding]) {
+    for language in [
+        tree_sitter_rust::LANGUAGE.into(),
+        tree_sitter_go::LANGUAGE.into(),
+        tree_sitter_python::LANGUAGE.into(),
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        tree_sitter_typescript::LANGUAGE_TSX.into(),
+    ] {
+        if let Some(tree) = parse_tree(text, language) {
+            if tree.root_node().has_error() {
+                continue;
+            }
+            if attach_symbol_metadata(text, &tree, findings) {
+                return;
+            }
+        }
+    }
+}
+
+fn attach_symbol_metadata(text: &str, tree: &tree_sitter::Tree, findings: &mut [MatchedFinding]) -> bool {
+    let mut attached = false;
+    for hit in findings {
+        if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
+            hit.finding.symbol_kind = Some(symbol.kind);
+            hit.finding.symbol_name = Some(symbol.name);
+            hit.finding.symbol_start_line = Some(symbol.start_line);
+            hit.finding.symbol_end_line = Some(symbol.end_line);
+            attached = true;
+        }
+    }
+    attached
+}
+
+struct SymbolInfo {
+    kind: String,
+    name: String,
+    start_line: u32,
+    end_line: u32,
+}
+
+fn enclosing_symbol(
+    root: tree_sitter::Node,
+    source: &[u8],
+    byte_offset: usize,
+) -> Option<SymbolInfo> {
+    let mut node = root.descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
+    loop {
+        if is_symbol_node(node) {
+            let name_node = symbol_name_node(node)?;
+            let name = name_node.utf8_text(source).ok()?.to_string();
+            return Some(SymbolInfo {
+                kind: normalized_symbol_kind(node.kind()).to_string(),
+                name,
+                start_line: node.start_position().row as u32 + 1,
+                end_line: node.end_position().row as u32 + 1,
+            });
+        }
+        node = node.parent()?;
+    }
+}
+
+fn symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    node.child_by_field_name("name").or_else(|| node.named_child(0))
+}
+
+fn is_symbol_node(node: tree_sitter::Node) -> bool {
+    let kind = node.kind();
+    node.child_by_field_name("name").is_some()
+        && (kind.ends_with("_item")
+            || kind.ends_with("_declaration")
+            || kind.ends_with("_definition")
+            || kind.ends_with("_declarator"))
+}
+
+fn normalized_symbol_kind(kind: &str) -> &'static str {
+    if kind.contains("function") {
+        "function"
+    } else if kind.contains("method") {
+        "method"
+    } else if kind.contains("class")
+        || kind.contains("struct")
+        || kind.contains("enum")
+        || kind.contains("trait")
+        || kind.contains("interface")
+        || kind.contains("type")
+    {
+        "type"
+    } else if kind.contains("module") || kind.contains("mod") || kind.contains("package") {
+        "module"
+    } else {
+        "symbol"
+    }
+}
+
+fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
+    let line_bytes = line.as_bytes();
+    let needle_bytes = needle.as_bytes();
+    if needle_bytes.is_empty() || needle_bytes.len() > line_bytes.len() {
+        return None;
+    }
+
+    line_bytes.windows(needle_bytes.len()).position(|window| {
+        window
+            .iter()
+            .zip(needle_bytes.iter())
+            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+    })
 }
 
 fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
@@ -366,11 +558,12 @@ fn display_path(repo_root: &Path, path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{answer_question, TraceState};
-    use crate::schema::ExplicitFile;
+    use super::{answer_question, run, TraceState};
+    use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_repo(name: &str) -> PathBuf {
@@ -389,6 +582,13 @@ mod tests {
         }
         let mut file = fs::File::create(path).expect("create file");
         file.write_all(content.as_bytes()).expect("write file");
+    }
+
+    fn write_context(path: &PathBuf, context: &GatherOutput) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(path, serde_json::to_vec(context).expect("serialize context")).expect("write context");
     }
 
     #[test]
@@ -548,5 +748,254 @@ mod tests {
         assert_eq!(findings.iter().filter(|finding| finding.path == "surveil/src/lib.rs").count(), 3);
 
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn skips_non_utf8_files_and_records_path() {
+        let repo = temp_repo("non-utf8");
+        let path = repo.join("surveil/src/lib.rs");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(&path, &[0xff_u8, 0xfe_u8, 0xfd_u8]).expect("write invalid utf8");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert!(findings.is_empty());
+        assert!(trace.skipped_paths.iter().any(|path| path == "surveil/src/lib.rs"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn preserves_token_priority_when_multiple_terms_match_same_line() {
+        let repo = temp_repo("token-priority");
+        write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["attach".to_string(), "tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].matched_from, "attach");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_markdown_docs_remain_lexical_only() {
+        let repo = temp_repo("markdown-symbols");
+        write_file(&repo.join("docs/notes.md"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["docs/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "docs/notes.md");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_root_readme_remains_lexical_only() {
+        let repo = temp_repo("readme-symbols");
+        write_file(&repo.join("README"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &[".".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "README");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_root_env_dotfiles_remain_lexical_only() {
+        let repo = temp_repo("env-symbols");
+        write_file(&repo.join(".env"), "fn attach() { // tree-sitter attach }\n");
+        write_file(&repo.join(".env.local"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &[".".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 2);
+        for path in [".env", ".env.local"] {
+            let finding = findings.iter().find(|finding| finding.path == path).expect("finding");
+            assert_eq!(finding.symbol_kind, None);
+            assert_eq!(finding.symbol_name, None);
+            assert_eq!(finding.symbol_start_line, None);
+            assert_eq!(finding.symbol_end_line, None);
+        }
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_extensionless_source_file_remains_lexical_only() {
+        let repo = temp_repo("extensionless-source");
+        write_file(&repo.join("surveil/src/lib"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "surveil/src/lib");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parse_error_fallback_leaves_symbol_fields_empty() {
+        let repo = temp_repo("parse-error");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "fn attach( {\r\n    // tree-sitter attach\r\n}\r\n",
+        );
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn crlf_source_with_combining_character_attaches_correct_enclosing_symbol() {
+        let repo = temp_repo("crlf-symbols");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
+        );
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].symbol_kind.as_deref(), Some("function"));
+        assert_eq!(findings[0].symbol_name.as_deref(), Some("attach"));
+        assert_eq!(findings[0].symbol_start_line, Some(1));
+        assert_eq!(findings[0].symbol_end_line, Some(3));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn run_writes_schema_version_child() {
+        let repo = temp_repo("run-version-child");
+        write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
+        let context = repo.join("context.json");
+        let trace = repo.join("trace.json");
+        write_context(
+            &context,
+            &GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "summary".to_string(),
+                explicit_files: Vec::new(),
+                search_areas: vec!["surveil/".to_string()],
+                query: vec!["Where should Tree-sitter attach?".to_string()],
+                terms: vec!["tree-sitter".to_string()],
+                blockers: Vec::new(),
+            },
+        );
+
+        run(&context, &trace).expect("research run");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn versioned_run_output_writes_schema_version_and_not_surveil_version() {
+        let output = Command::new(std::env::current_exe().expect("current exe"))
+            .arg("run_writes_schema_version_child")
+            .arg("--nocapture")
+            .output()
+            .expect("spawn test binary");
+        assert!(output.status.success(), "child test failed: {}", String::from_utf8_lossy(&output.stderr));
+        let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+        assert!(stdout.contains("\"schema_version\":\"surveil.v5\""), "stdout: {stdout}");
+        assert!(!stdout.contains("\"surveil_version\""), "stdout: {stdout}");
     }
 }
