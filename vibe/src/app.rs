@@ -1,10 +1,12 @@
 use crate::{
     cli::RunArgs,
     observe, prompts,
-    result::{RunResult, SetupErrorContext, Status},
-    sandbox, snapshot, worktree,
+    result::{RunResult, Status},
+    sandbox, snapshot,
+    state::{self, PersistedRunState, RunPhase},
+    worktree,
 };
-use std::{fs, path::Path};
+use std::{fs, fs::OpenOptions, io::Write, path::Path};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
 
@@ -13,22 +15,68 @@ pub fn read_supervisor_prompt(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("read prompt file as UTF-8: {e}"))
 }
 
-fn setup_error_context(
-    session: &worktree::WorktreeSession,
-    args: &RunArgs,
+fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
+    let mut log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("open wrapper log: {e}"))?;
+    writeln!(log, "{message}").map_err(|e| format!("write wrapper log: {e}"))
+}
+
+fn persist_phase(
     artifacts: &observe::ArtifactPaths,
+    persisted: &mut PersistedRunState,
+    phase: RunPhase,
+    note: &str,
+) -> Result<(), String> {
+    persisted.phase = phase;
+    state::write(&artifacts.state_json, persisted)?;
+    append_wrapper_log(&artifacts.vibe_log, note)
+}
+
+struct ResultParts {
     pre_run_commit: Option<String>,
-) -> SetupErrorContext {
-    SetupErrorContext {
+    status: Status,
+    commit: Option<String>,
+    snapshot_commits: Vec<String>,
+    error_message: Option<String>,
+}
+
+fn build_result(
+    session: &worktree::WorktreeSession,
+    artifacts: &observe::ArtifactPaths,
+    model: &str,
+    parts: ResultParts,
+) -> RunResult {
+    RunResult {
+        status: parts.status,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
-        model: Some(args.model.clone()),
-        pre_run_commit,
+        model: Some(model.to_string()),
+        pre_run_commit: parts.pre_run_commit,
+        commit: parts.commit,
+        snapshot_commits: parts.snapshot_commits,
         artifacts_dir: Some(artifacts.dir.display().to_string()),
         events_log_path: Some(artifacts.events_jsonl.display().to_string()),
         stderr_path: Some(artifacts.stderr_log.display().to_string()),
-        ..SetupErrorContext::default()
+        error_message: parts.error_message,
     }
+}
+
+fn finish_result(
+    artifacts: &observe::ArtifactPaths,
+    persisted: &mut PersistedRunState,
+    result: RunResult,
+) -> RunResult {
+    persisted.phase = RunPhase::Finished;
+    persisted.terminal_status = Some(result.status_str().to_string());
+    persisted.pre_run_commit = result.pre_run_commit.clone();
+    persisted.commit = result.commit.clone();
+    persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.error_message = result.error_message.clone();
+    let _ = state::write(&artifacts.state_json, persisted);
+    result
 }
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
@@ -41,63 +89,207 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
+    let mut persisted = PersistedRunState {
+        key: session.key.clone(),
+        slug: session.slug.clone(),
+        branch: Some(session.branch.clone()),
+        worktree: Some(session.worktree.display().to_string()),
+        model: Some(args.model.clone()),
+        phase: RunPhase::PreparingArtifacts,
+        terminal_status: None,
+        pre_run_commit: None,
+        commit: None,
+        snapshot_commits: Vec::new(),
+        artifacts_dir: Some(artifacts.dir.display().to_string()),
+        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
+        stderr_path: Some(artifacts.stderr_log.display().to_string()),
+        result_path: Some(artifacts.result_json.display().to_string()),
+        wrapper_log_path: Some(artifacts.vibe_log.display().to_string()),
+        error_message: None,
+    };
+    if let Err(err) = state::write(&artifacts.state_json, &persisted) {
+        return build_result(
+            &session,
+            &artifacts,
+            &args.model,
+            ResultParts {
+                pre_run_commit: None,
+                status: Status::WrapperFailed,
+                commit: None,
+                snapshot_commits: Vec::new(),
+                error_message: Some(err),
+            },
+        );
+    }
+    let _ = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared");
+    if let Err(err) = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::CopyingPrompt,
+        "copy prompt",
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
         Ok(prompt) => prompt,
         Err(err) => {
-            return RunResult::setup_error_with_context(
-                err,
-                setup_error_context(&session, &args, &artifacts, None),
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: None,
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits: Vec::new(),
+                        error_message: Some(err),
+                    },
+                ),
             );
         }
     };
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
-        return RunResult::setup_error_with_context(
-            err,
-            setup_error_context(&session, &args, &artifacts, None),
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
         );
     }
     let rendered_prompt = prompts::render_executor_prompt(&supervisor_prompt);
     if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
-        return RunResult::setup_error_with_context(
-            err,
-            setup_error_context(&session, &args, &artifacts, None),
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
         );
     }
+    let _ = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::CheckingDirty,
+        "check dirty",
+    );
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
-        return RunResult {
-            status: Status::RefusedDirty,
-            branch: Some(session.branch),
-            worktree: Some(session.worktree.display().to_string()),
-            model: Some(args.model),
-            pre_run_commit: None,
-            commit: None,
-            snapshot_commits: Vec::new(),
-            artifacts_dir: Some(artifacts.dir.display().to_string()),
-            events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-            stderr_path: Some(artifacts.stderr_log.display().to_string()),
-            error_message: Some(err),
-        };
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::RefusedDirty,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
     }
 
+    let _ = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::ReadingPreRunCommit,
+        "read pre-run commit",
+    );
     let pre_run_commit = match worktree::pre_run_commit(&session.worktree) {
         Ok(sha) => sha,
         Err(err) => {
-            return RunResult::setup_error_with_context(
-                err,
-                setup_error_context(&session, &args, &artifacts, None),
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: None,
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits: Vec::new(),
+                        error_message: Some(err),
+                    },
+                ),
             )
         }
     };
+    persisted.pre_run_commit = Some(pre_run_commit.clone());
+    let _ = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::PreparingSandbox,
+        "prepare sandbox",
+    );
     let runtime_root = match sandbox::prepare() {
         Ok(path) => path,
         Err(err) => {
-            return RunResult::setup_error_with_context(
-                err,
-                setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: Some(pre_run_commit.clone()),
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits: Vec::new(),
+                        error_message: Some(err),
+                    },
+                ),
             )
         }
     };
     let mounts = session.sandbox_mounts();
+    let _ = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::RunningAgent,
+        "run agent",
+    );
     let agent_exit = match sandbox::run_agent(
         &runtime_root,
         &mounts,
@@ -108,35 +300,91 @@ pub fn execute(args: RunArgs) -> RunResult {
     ) {
         Ok(code) => code,
         Err(err) => {
-            return RunResult::setup_error_with_context(
-                err,
-                setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: Some(pre_run_commit.clone()),
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits: Vec::new(),
+                        error_message: Some(err),
+                    },
+                ),
             )
         }
     };
     if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
-        return RunResult::setup_error_with_context(
-            "combined prompt artifact unavailable inside sandbox",
-            setup_error_context(&session, &args, &artifacts, Some(pre_run_commit.clone())),
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: Some(pre_run_commit.clone()),
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(
+                        "combined prompt artifact unavailable inside sandbox".to_string(),
+                    ),
+                },
+            ),
         );
     }
 
-    let snapshot_commits = snapshot::read_snapshot_shas(&artifacts.snapshots_jsonl);
+    let _ = persist_phase(
+        &artifacts,
+        &mut persisted,
+        RunPhase::ReadingSnapshots,
+        "read snapshots",
+    );
+    let snapshot_commits = match snapshot::read_snapshot_shas(&artifacts.snapshots_jsonl) {
+        Ok(shas) => shas,
+        Err(err) => {
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: Some(pre_run_commit.clone()),
+                        status: Status::SnapshotFailed,
+                        commit: None,
+                        snapshot_commits: Vec::new(),
+                        error_message: Some(err),
+                    },
+                ),
+            );
+        }
+    };
+    persisted.snapshot_commits = snapshot_commits.clone();
     let dirty_after = match worktree::is_dirty(&session.worktree) {
         Ok(dirty) => dirty,
         Err(err) => {
-            return RunResult::setup_error_with_context(
-                err,
-                SetupErrorContext {
-                    branch: Some(session.branch),
-                    worktree: Some(session.worktree.display().to_string()),
-                    model: Some(args.model),
-                    pre_run_commit: Some(pre_run_commit),
-                    snapshot_commits,
-                    artifacts_dir: Some(artifacts.dir.display().to_string()),
-                    events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-                    stderr_path: Some(artifacts.stderr_log.display().to_string()),
-                },
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: Some(pre_run_commit),
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits,
+                        error_message: Some(err),
+                    },
+                ),
             );
         }
     };
@@ -149,6 +397,12 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut error_message = None;
 
     if dirty_after {
+        let _ = persist_phase(
+            &artifacts,
+            &mut persisted,
+            RunPhase::CommittingResult,
+            "commit result",
+        );
         let message = args
             .commit_message
             .clone()
@@ -169,19 +423,22 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     }
 
-    RunResult {
-        status,
-        branch: Some(session.branch),
-        worktree: Some(session.worktree.display().to_string()),
-        model: Some(args.model),
-        pre_run_commit: Some(pre_run_commit),
-        commit,
-        snapshot_commits,
-        artifacts_dir: Some(artifacts.dir.display().to_string()),
-        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-        stderr_path: Some(artifacts.stderr_log.display().to_string()),
-        error_message,
-    }
+    finish_result(
+        &artifacts,
+        &mut persisted,
+        build_result(
+            &session,
+            &artifacts,
+            &args.model,
+            ResultParts {
+                pre_run_commit: Some(pre_run_commit),
+                status,
+                commit,
+                snapshot_commits,
+                error_message,
+            },
+        ),
+    )
 }
 
 #[cfg(test)]

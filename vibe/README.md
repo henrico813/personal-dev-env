@@ -61,6 +61,8 @@ vibe run \
   --model openai-codex/gpt-5.4 \
   --stderr-level info \
   --commit-message "docs: update README note"
+
+vibe status --key pdev-049-demo
 ```
 
 Add `--insecure-tls` only if you need to bypass certificate verification in
@@ -90,6 +92,9 @@ presentation channel controlled by `--stderr-level` or
 or raw stream seen by the caller. Docker build logs are always
 suppressed. Other container stderr remains pass-through today and is not
 level-filtered. Progress logs also stay in `extension-events.jsonl`.
+Wrapper-owned recovery state lives beside those files in `run-state.json`,
+`result.json`, and `vibe.log`. Vibe seeds an empty `snapshots.jsonl` for
+every run so no-op runs still have a durable snapshot log path.
 
 Supported stderr levels are `error`, `warn`, `info`, `debug`, and
 `trace`. Use `info` for Codex-supervised runs, because it emits compact
@@ -125,6 +130,16 @@ missing or empty.
 Auth is copied into an ephemeral container home for the run and is not
 persisted in the artifact directory.
 
+Recovery notes:
+
+- `run-state.json` is the mutable checkpoint journal for one run.
+- `result.json` is the durable final result payload when wrapper emission succeeds.
+- `vibe status --key ...` reads the latest persisted state for the normalized key.
+- `vibe status` must be run from inside the target repo checkout.
+- Latest-run lookup remains compatible with legacy planner-prefixed run IDs.
+- New managed worktrees still branch from the resolved remote/base branch,
+  not the caller's current `HEAD`.
+
 Dogfood by inspecting:
 
 - `prompt.txt`
@@ -135,6 +150,9 @@ Dogfood by inspecting:
 - `events.jsonl`
 - `agent.stderr.log`
 - `extension-events.jsonl`
+- `run-state.json`
+- `result.json`
+- `vibe.log`
 - `snapshots.jsonl`
 - the result commit on the worktree branch
 - snapshot refs and commits under `refs/vibe/snapshots/...`
