@@ -21,6 +21,12 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 		PiAgentDir:        filepath.Join(root, "home", ".pi", "agent"),
 	}
 
+	if err := os.MkdirAll(filepath.Join(root, "surveil"), 0o755); err != nil {
+		t.Fatalf("mkdir surveil dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "surveil", "Cargo.toml"), []byte("[package]\nname = \"surveil\"\nversion = \"0.1.0\"\n"), 0o644); err != nil {
+		t.Fatalf("write surveil manifest: %v", err)
+	}
 	if err := os.MkdirAll(filepath.Join(cfg.OpenCodeConfigDir, "agents"), 0o755); err != nil {
 		t.Fatalf("mkdir managed agents dir: %v", err)
 	}
@@ -37,14 +43,26 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	backup := strings.Index(dryRun, "DRY-RUN: backup existing config")
 	plannerBuild := strings.Index(dryRun, "DRY-RUN: build planner")
 	shimBuild := strings.Index(dryRun, "DRY-RUN: build opencode inline shim")
+	surveilBuild := strings.Index(dryRun, "DRY-RUN: build surveil")
+	surveilLink := strings.Index(dryRun, "DRY-RUN: link surveil")
+	surveilVerify := strings.Index(dryRun, "DRY-RUN: verify surveil")
 	vibe := strings.Index(dryRun, "DRY-RUN: install vibe")
 	node := strings.Index(dryRun, "DRY-RUN: install Node 22")
 
-	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || vibe == -1 || node == -1 {
+	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || vibe == -1 || node == -1 {
 		t.Fatalf("missing expected dry-run output:\n%s", dryRun)
 	}
-	if cargo > backup || cargo > plannerBuild || cargo > shimBuild {
+	if cargo > backup || cargo > plannerBuild || cargo > shimBuild || cargo > surveilBuild {
 		t.Fatalf("cargo preflight should run before mutable work:\n%s", dryRun)
+	}
+	if plannerBuild > shimBuild || shimBuild > surveilBuild {
+		t.Fatalf("build steps should stay in planner/shim/surveil order:\n%s", dryRun)
+	}
+	if surveilBuild > vibe {
+		t.Fatalf("surveil build should run before vibe install:\n%s", dryRun)
+	}
+	if surveilLink > surveilVerify {
+		t.Fatalf("surveil link should run before verify:\n%s", dryRun)
 	}
 	if vibe > node {
 		t.Fatalf("vibe install should run before Node setup:\n%s", dryRun)
