@@ -22,22 +22,22 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
 
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
-    let mut answers = Vec::with_capacity(gather.questions.len());
+    let mut result = Vec::with_capacity(gather.query.len());
 
-    for question in &gather.questions {
+    for query in &gather.query {
         let (findings, negative_evidence) = answer_question(
             &repo_root,
-            question,
+            query,
             &gather.terms,
             &gather.search_areas,
             &gather.explicit_files,
             &mut trace,
         )?;
         if findings.is_empty() {
-            trace.unmatched_questions.push(question.clone());
+            trace.unmatched_questions.push(query.clone());
         }
-        answers.push(Answer {
-            question: question.clone(),
+        result.push(Answer {
+            query: query.clone(),
             findings,
             negative_evidence,
         });
@@ -47,7 +47,7 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let report = ResearchOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         summary: gather.summary,
-        answers,
+        result,
         blockers: gather.blockers,
         open_questions,
     };
@@ -754,7 +754,7 @@ mod tests {
                 summary: "summary".to_string(),
                 explicit_files: Vec::new(),
                 search_areas: Vec::new(),
-                questions: Vec::new(),
+                query: Vec::new(),
                 terms: Vec::new(),
                 blockers: Vec::new(),
             },
@@ -909,7 +909,7 @@ mod tests {
                 summary: "summary".to_string(),
                 explicit_files: Vec::new(),
                 search_areas: vec!["surveil/".to_string()],
-                questions: vec!["Where should Tree-sitter attach?".to_string()],
+                query: vec!["Where should Tree-sitter attach?".to_string()],
                 terms: vec!["tree-sitter".to_string()],
                 blockers: Vec::new(),
             },
