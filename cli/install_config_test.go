@@ -140,6 +140,22 @@ func TestInstallConfigBacksUpPathsEnvSymlinkToReadableFileAndPreservesProfile(t 
 	mustSymlinkTarget(t, backup, seed)
 }
 
+func TestInstallConfigPreservesMainAndWorkVaultLines(t *testing.T) {
+	cfg, pathsEnv := newInstallConfigFixture(t)
+	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\"/vaults/main\"\nexport PDE_WORK_VAULT=\"/vaults/work\"\n", 0o644)
+
+	if err := installConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("install config: %v", err)
+	}
+	content := mustFileContents(t, pathsEnv, "")
+	if !strings.Contains(content, "export PDE_MAIN_VAULT=\"/vaults/main\"") {
+		t.Fatalf("expected main vault line to be preserved, got:\n%s", content)
+	}
+	if !strings.Contains(content, "export PDE_WORK_VAULT=\"/vaults/work\"") {
+		t.Fatalf("expected work vault line to be preserved, got:\n%s", content)
+	}
+}
+
 func TestInstallConfigBacksUpPathsEnvSymlinkToDirectoryWithoutProfile(t *testing.T) {
 	cfg, pathsEnv := newInstallConfigFixture(t)
 	seedDir := filepath.Join(cfg.HomeDir, "paths-env-dir")

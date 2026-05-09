@@ -27,9 +27,10 @@ var installTargets = map[string]Installer{
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pde",
-		Short: "Install PDE targets and config sets",
+		Short: "Manage PDE installs and vault tooling",
 	}
 	root.AddCommand(newInstallCmd())
+	root.AddCommand(newVaultCmd())
 	return root
 }
 
@@ -66,6 +67,13 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().StringVar(&repoRoot, "repo-root", "", "Path to the personal-dev-env checkout")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print actions without writing")
 	return cmd
+}
+
+func newVaultCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "vault",
+		Short: "Manage PDE vault tooling",
+	}
 }
 
 func sortedInstallTargets() []string {
