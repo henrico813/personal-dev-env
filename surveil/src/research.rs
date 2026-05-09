@@ -241,9 +241,7 @@ fn enclosing_symbol(
     let mut node = root.descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
     loop {
         if is_symbol_node(node) {
-            let name_node = node
-                .child_by_field_name("name")
-                .or_else(|| node.named_child(0))?;
+            let name_node = symbol_name_node(node)?;
             let name = name_node.utf8_text(source).ok()?.to_string();
             return Some(SymbolInfo {
                 kind: normalized_symbol_kind(node.kind()).to_string(),
@@ -256,28 +254,17 @@ fn enclosing_symbol(
     }
 }
 
+fn symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    node.child_by_field_name("name").or_else(|| node.named_child(0))
+}
+
 fn is_symbol_node(node: tree_sitter::Node) -> bool {
-    matches!(
-        node.kind(),
-        "function_item"
-            | "struct_item"
-            | "enum_item"
-            | "trait_item"
-            | "impl_item"
-            | "mod_item"
-            | "const_item"
-            | "static_item"
-            | "type_item"
-            | "function_declaration"
-            | "method_declaration"
-            | "type_declaration"
-            | "function_definition"
-            | "class_definition"
-            | "class_declaration"
-            | "method_definition"
-            | "interface_declaration"
-            | "type_alias_declaration"
-    )
+    let kind = node.kind();
+    node.child_by_field_name("name").is_some()
+        && (kind.ends_with("_item")
+            || kind.ends_with("_declaration")
+            || kind.ends_with("_definition")
+            || kind.ends_with("_declarator"))
 }
 
 fn normalized_symbol_kind(kind: &str) -> &'static str {

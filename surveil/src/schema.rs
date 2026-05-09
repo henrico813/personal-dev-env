@@ -67,7 +67,7 @@ pub struct TraceOutput {
 
 #[cfg(test)]
 mod tests {
-    use super::{Answer, Finding, GatherOutput, ResearchOutput, SCHEMA_VERSION};
+    use super::{GatherOutput, SCHEMA_VERSION};
 
     #[test]
     fn rejects_unknown_fields_for_gather_output() {
