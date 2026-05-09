@@ -43,6 +43,6 @@ Research results are grouped by query:
 - each answer has `query`, `findings`, and `negative_evidence`
 - `findings` include `path`, `line`, `excerpt`, `source`, `matched_from`, and optional `symbol_kind`, `symbol_name`, `symbol_start_line`, and `symbol_end_line`
 
-`research` is lexical-first: it scans readable UTF-8 files for token matches, then best-effort enriches matches with Tree-sitter symbol metadata when parsing succeeds. Files that do not parse cleanly or do not yield a containing symbol keep symbol fields `null`. Unreadable or non-UTF-8 files are skipped and listed in `TraceOutput.skipped_paths`.
+`research` is lexical-first: it scans readable UTF-8 files for token matches, then best-effort enriches source-like paths with Tree-sitter symbol metadata when parsing succeeds. Docs/config text formats remain lexical-only, so their findings keep symbol fields `null`. Unreadable or non-UTF-8 files are skipped and listed in `TraceOutput.skipped_paths`.
 
-`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. It scans readable UTF-8 files lexically first, then best-effort enriches matches with Tree-sitter symbol metadata when parsing succeeds. The public result contract is versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on findings.
+`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The public result contract is versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.

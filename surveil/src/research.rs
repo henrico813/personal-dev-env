@@ -146,7 +146,9 @@ fn answer_question(
         }
 
         if !file_findings.is_empty() {
-            enrich_symbol_metadata(&text, &mut file_findings);
+            if should_enrich_symbol_metadata(&file) {
+                enrich_symbol_metadata(&text, &mut file_findings);
+            }
             trace.files_matched.insert(file.clone());
             ranked_files.push(RankedFileFindings {
                 path: file,
@@ -185,6 +187,49 @@ fn answer_question(
 struct MatchedFinding {
     finding: Finding,
     byte_offset: usize,
+}
+
+fn should_enrich_symbol_metadata(path: &Path) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase());
+
+    if matches!(
+        extension.as_deref(),
+        Some(
+            "md" | "markdown" | "rst" | "txt" | "toml" | "json" | "yaml" | "yml" | "ini"
+                | "cfg" | "conf" | "env"
+        )
+    ) {
+        return false;
+    }
+
+    if path.components().any(|component| {
+        let component = component.as_os_str().to_string_lossy();
+        matches!(
+            component.as_ref(),
+            "docs" | "doc" | "config" | "configs" | "configuration"
+        )
+    }) {
+        return false;
+    }
+
+    match extension.as_deref() {
+        Some(ext) => matches!(
+            ext,
+            "rs" | "go" | "py" | "ts" | "tsx" | "js" | "jsx" | "c" | "h" | "cc" | "cpp"
+                | "cxx" | "hpp" | "hh" | "java" | "kt" | "kts" | "swift" | "rb" | "lua"
+                | "zig" | "cs" | "php" | "m" | "mm"
+        ),
+        None => path.components().any(|component| {
+            let component = component.as_os_str().to_string_lossy();
+            matches!(
+                component.as_ref(),
+                "src" | "tests" | "test" | "benches" | "examples" | "scripts" | "bin"
+            )
+        }),
+    }
 }
 
 fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
@@ -756,22 +801,23 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_utf8_file_leaves_symbol_fields_empty() {
-        let repo = temp_repo("unsupported-symbols");
-        write_file(&repo.join("surveil/notes.md"), "// tree-sitter attach\n");
+    fn parseable_markdown_docs_remain_lexical_only() {
+        let repo = temp_repo("markdown-symbols");
+        write_file(&repo.join("docs/notes.md"), "fn attach() { // tree-sitter attach }\n");
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
             &repo,
             "Where should Tree-sitter attach?",
             &["tree-sitter".to_string()],
-            &["surveil/".to_string()],
+            &["docs/".to_string()],
             &[],
             &mut trace,
         )
         .expect("research answer");
 
         assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "docs/notes.md");
         assert_eq!(findings[0].symbol_kind, None);
         assert_eq!(findings[0].symbol_name, None);
         assert_eq!(findings[0].symbol_start_line, None);
