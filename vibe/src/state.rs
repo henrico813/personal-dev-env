@@ -1,132 +1,158 @@
-use crate::observe;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use crate::{observe, result::RunResult, worktree};
+use serde::{Deserialize, Serialize};
+use std::{
+    fs,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+// Phase 1 defines the persisted-state contract ahead of the runtime and
+// recovery wiring that will consume it in later phases.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RunPhase {
-    Created,
-    Running,
-    Finalizing,
-    Completed,
-    Failed,
+    PreparingArtifacts,
+    CopyingPrompt,
+    CheckingDirty,
+    ReadingPreRunCommit,
+    PreparingSandbox,
+    RunningAgent,
+    ReadingSnapshots,
+    CommittingResult,
+    Finished,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedRunState {
     pub key: String,
-    pub run_id: String,
+    pub slug: String,
+    pub branch: Option<String>,
+    pub worktree: Option<String>,
+    pub model: Option<String>,
     pub phase: RunPhase,
-    pub artifacts_dir: String,
+    pub terminal_status: Option<String>,
+    pub pre_run_commit: Option<String>,
+    pub commit: Option<String>,
+    pub snapshot_commits: Vec<String>,
+    pub artifacts_dir: Option<String>,
+    pub events_log_path: Option<String>,
+    pub stderr_path: Option<String>,
+    pub result_path: Option<String>,
+    pub wrapper_log_path: Option<String>,
+    pub error_message: Option<String>,
 }
 
-pub fn atomic_write<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn write(path: &Path, state: &PersistedRunState) -> Result<(), String> {
     let parent = path
         .parent()
-        .ok_or_else(|| format!("write {}: missing parent", path.display()))?;
-    fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
-    let tmp = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name().and_then(|s| s.to_str()).unwrap_or("state"),
-        std::process::id()
-    ));
-    let bytes = serde_json::to_vec_pretty(value).map_err(|e| format!("serialize state: {e}"))?;
-    let mut file = fs::File::create(&tmp).map_err(|e| format!("create {}: {e}", tmp.display()))?;
-    file.write_all(&bytes)
-        .map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    file.sync_all()
-        .map_err(|e| format!("sync {}: {e}", tmp.display()))?;
-    drop(file);
-    fs::rename(&tmp, path).map_err(|e| format!("replace {}: {e}", path.display()))
+        .ok_or_else(|| format!("state path has no parent: {}", path.display()))?;
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let tmp = parent.join(format!(".run-state.{ts}.tmp"));
+    let json = serde_json::to_string_pretty(state).map_err(|e| format!("serialize state: {e}"))?;
+    fs::write(&tmp, json).map_err(|e| format!("write state temp: {e}"))?;
+    fs::rename(&tmp, path).map_err(|e| format!("rename state temp: {e}"))?;
+    Ok(())
 }
 
-pub fn atomic_read<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, String> {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(format!("read {}: {err}", path.display())),
-    };
-    serde_json::from_str(&text)
-        .map(Some)
-        .map_err(|e| format!("parse {}: {e}", path.display()))
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn read(path: &Path) -> Result<PersistedRunState, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("read state: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("parse state: {e}"))
 }
 
-pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<Option<PersistedRunState>, String> {
-    let Some(run_dir) = observe::latest_run_dir(repo_root, key)? else {
-        return Ok(None);
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, String> {
+    let slug = worktree::slugify(key);
+    let run_dir = observe::latest_run_dir(repo_root, &slug)?
+        .ok_or_else(|| format!("no persisted runs found for key {key}"))?;
+    read(&run_dir.join("run-state.json"))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
+    let Some(dir) = result.artifacts_dir.as_deref() else {
+        return Ok(());
     };
-    let state_path = run_dir.join("state.json");
-    atomic_read(&state_path)
+    let path = std::path::Path::new(dir).join("run-state.json");
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let mut persisted = read(&path)?;
+    persisted.phase = RunPhase::Finished;
+    persisted.terminal_status = Some(result.status_str().to_string());
+    persisted.pre_run_commit = result.pre_run_commit.clone();
+    persisted.commit = result.commit.clone();
+    persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.error_message = result.error_message.clone();
+    write(&path, &persisted)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{atomic_read, atomic_write, latest_for_key, PersistedRunState, RunPhase};
-    use std::path::{Path, PathBuf};
+    use super::{latest_for_key, read, write, PersistedRunState, RunPhase};
     use tempfile::tempdir;
 
-    fn run_dir(home: &Path, repo_root: &Path, key: &str, run_id: &str) -> PathBuf {
-        home.join(".local/state/vibe")
-            .join(repo_root.file_name().and_then(|s| s.to_str()).unwrap_or("repo"))
-            .join(key)
-            .join("runs")
-            .join(run_id)
+    fn sample_state() -> PersistedRunState {
+        PersistedRunState {
+            key: "PDEV-055 demo/key".to_string(),
+            slug: "pdev-055-demo-key".to_string(),
+            branch: Some("vibe/pdev-055-demo-key".to_string()),
+            worktree: Some("/tmp/worktree".to_string()),
+            model: Some("openai-codex/gpt-5.4".to_string()),
+            phase: RunPhase::RunningAgent,
+            terminal_status: None,
+            pre_run_commit: Some("abc".to_string()),
+            commit: None,
+            snapshot_commits: vec!["snap".to_string()],
+            artifacts_dir: Some("/tmp/run".to_string()),
+            events_log_path: Some("/tmp/run/events.jsonl".to_string()),
+            stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
+            result_path: Some("/tmp/run/result.json".to_string()),
+            wrapper_log_path: Some("/tmp/run/vibe.log".to_string()),
+            error_message: None,
+        }
     }
 
     #[test]
-    fn atomic_helpers_round_trip_state() {
+    fn state_round_trips_through_atomic_write() {
         let temp = tempdir().expect("tempdir");
-        let path = temp.path().join("state.json");
-        let state = PersistedRunState {
-            key: "demo".to_string(),
-            run_id: "1700000000-1".to_string(),
-            phase: RunPhase::Running,
-            artifacts_dir: "/tmp/run".to_string(),
-        };
+        let path = temp.path().join("run-state.json");
+        let state = sample_state();
 
-        atomic_write(&path, &state).expect("write state");
-        let read_back: PersistedRunState = atomic_read(&path)
-            .expect("read state")
-            .expect("state present");
+        write(&path, &state).expect("write state");
+        let read_back = read(&path).expect("read state");
 
-        assert_eq!(read_back, state);
+        assert_eq!(read_back.slug, state.slug);
+        assert_eq!(read_back.phase, state.phase);
+        assert_eq!(read_back.snapshot_commits, state.snapshot_commits);
     }
 
     #[test]
-    fn latest_for_key_returns_latest_state_file() {
+    fn latest_for_key_normalizes_raw_key() {
         let temp = tempdir().expect("tempdir");
         let saved_home = std::env::var_os("HOME");
         std::env::set_var("HOME", temp.path());
-        let repo_root = temp.path().join("repo");
+        let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
 
-        let older_dir = run_dir(temp.path(), &repo_root, "demo", "1700000000-1");
-        let newer_dir = run_dir(temp.path(), &repo_root, "demo", "1700000001-1");
-        std::fs::create_dir_all(&older_dir).expect("older dir");
-        std::fs::create_dir_all(&newer_dir).expect("newer dir");
+        let run_dir = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs/1778000000-42");
+        std::fs::create_dir_all(&run_dir).expect("run dir");
 
-        let older = PersistedRunState {
-            key: "demo".to_string(),
-            run_id: "1700000000-1".to_string(),
-            phase: RunPhase::Running,
-            artifacts_dir: older_dir.display().to_string(),
-        };
-        let newer = PersistedRunState {
-            key: "demo".to_string(),
-            run_id: "1700000001-1".to_string(),
-            phase: RunPhase::Finalizing,
-            artifacts_dir: newer_dir.display().to_string(),
-        };
-        atomic_write(&older_dir.join("state.json"), &older).expect("write older");
-        atomic_write(&newer_dir.join("state.json"), &newer).expect("write newer");
+        let state = sample_state();
+        write(&run_dir.join("run-state.json"), &state).expect("write state");
 
-        let latest = latest_for_key(&repo_root, "demo")
-            .expect("latest state")
-            .expect("state present");
+        let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
 
-        assert_eq!(latest, newer);
+        assert_eq!(latest.slug, "pdev-055-demo-key");
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
