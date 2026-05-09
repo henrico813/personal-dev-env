@@ -18,7 +18,7 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
         summary: parsed.summary,
         explicit_files,
         search_areas: parsed.search_areas,
-        questions: parsed.questions,
+        query: parsed.query,
         terms: parsed.terms,
         blockers: Vec::new(),
     };
@@ -34,7 +34,7 @@ struct ParsedTask {
     summary: String,
     explicit_files: Vec<String>,
     search_areas: Vec<String>,
-    questions: Vec<String>,
+    query: Vec<String>,
     terms: Vec<String>,
 }
 
@@ -74,9 +74,9 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
     let summary = take_text_section(&sections, "Summary")?;
     let explicit_files = take_list_section(&sections, "Explicit Files")?;
     let search_areas = take_list_section(&sections, "Search Areas")?;
-    let questions = take_list_section(&sections, "Questions")?;
-    if questions.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Questions section is required and must not be empty").into());
+    let query = take_list_section(&sections, "Query")?;
+    if query.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "Query section is required and must not be empty").into());
     }
     let terms = take_optional_list_section(&sections, "Terms");
 
@@ -84,7 +84,7 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
         summary,
         explicit_files,
         search_areas,
-        questions,
+        query,
         terms,
     })
 }
@@ -99,7 +99,7 @@ fn heading_name(line: &str) -> Option<String> {
 }
 
 fn is_allowed_section(section: &str) -> bool {
-    matches!(section, "Summary" | "Explicit Files" | "Search Areas" | "Questions" | "Terms")
+    matches!(section, "Summary" | "Explicit Files" | "Search Areas" | "Query" | "Terms")
 }
 
 fn take_text_section(sections: &HashMap<String, Vec<String>>, name: &str) -> Result<String, Box<dyn Error>> {
@@ -209,7 +209,7 @@ mod tests {
     use super::parse_task;
 
     #[test]
-    fn parses_structured_task_questions_and_terms() {
+    fn parses_structured_task_query_and_terms() {
         let task = r#"
 # Task
 
@@ -221,7 +221,7 @@ investigate attachment points
 ## Search Areas
 - src/
 
-## Questions
+## Query
 - Where should Tree-sitter attach?
 - What still needs verification?
 
@@ -233,7 +233,7 @@ investigate attachment points
         let parsed = parse_task(task).expect("task parses");
         assert_eq!(parsed.summary, "investigate attachment points");
         assert_eq!(parsed.search_areas, vec!["src/"]);
-        assert_eq!(parsed.questions, vec!["Where should Tree-sitter attach?", "What still needs verification?"]);
+        assert_eq!(parsed.query, vec!["Where should Tree-sitter attach?", "What still needs verification?"]);
         assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
     }
 }
