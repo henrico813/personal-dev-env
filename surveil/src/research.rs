@@ -205,6 +205,10 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
         return false;
     }
 
+    if is_extensionless_doc_basename(path) {
+        return false;
+    }
+
     if path.components().any(|component| {
         let component = component.as_os_str().to_string_lossy();
         matches!(
@@ -216,6 +220,15 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
     }
 
     true
+}
+
+fn is_extensionless_doc_basename(path: &Path) -> bool {
+    path.extension().is_none()
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.eq_ignore_ascii_case("README"))
+            .unwrap_or(false)
 }
 
 fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
@@ -804,6 +817,32 @@ mod tests {
 
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "docs/notes.md");
+        assert_eq!(findings[0].symbol_kind, None);
+        assert_eq!(findings[0].symbol_name, None);
+        assert_eq!(findings[0].symbol_start_line, None);
+        assert_eq!(findings[0].symbol_end_line, None);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn parseable_root_readme_remains_lexical_only() {
+        let repo = temp_repo("readme-symbols");
+        write_file(&repo.join("README"), "fn attach() { // tree-sitter attach }\n");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &[".".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].path, "README");
         assert_eq!(findings[0].symbol_kind, None);
         assert_eq!(findings[0].symbol_name, None);
         assert_eq!(findings[0].symbol_start_line, None);
