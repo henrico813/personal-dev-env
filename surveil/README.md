@@ -2,6 +2,10 @@
 
 `surveil` works with structured task documents.
 
+## Install
+
+`pde install ai-tools` installs `~/.local/bin/surveil`.
+
 ## Task format
 
 ```md
