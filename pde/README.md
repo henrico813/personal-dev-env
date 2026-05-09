@@ -26,9 +26,9 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 
 Some setups belong beside the base profiles, not inside them.
 
-`config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and preserves an existing `PDE_PROFILE` line when one is already present, but it does not install runtimes, plugins, or profile extras.
+`config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and preserves an existing `PDE_PROFILE` line, plus any existing `PDE_MAIN_VAULT` and `PDE_WORK_VAULT` entries in `~/.config/pde/paths.env`, when one is already present, but it does not install runtimes, plugins, or profile extras.
 
-`obsidian` and `ai-tools` are installed through the Go CLI after `minimal` provides the PDE Neovim config:
+The `obsidian`, `vault`, and `ai-tools` commands are available through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
@@ -41,7 +41,9 @@ pde install ai-tools
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `surveil` and `vibe` install through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
-`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, and `OPENCODE_INLINE_MODEL`. PDE shells export those variables automatically; Neovim only falls back to reading them from `paths.env` when it starts outside a PDE-managed shell. `<leader>pm` and `<leader>pM` intentionally share CodeCompanion's selector over OpenCode ACP models: chat applies to the active chat session, while inline stores a separate session override that flows through `opencode-inline-shim`. When there is no inline session override and no `OPENCODE_INLINE_MODEL`, the shim lets OpenCode choose its current default model. For the default loopback setup, `opencode-inline-shim` starts `opencode serve` on demand. Thinking-suffixed inline selections are accepted for compatibility with the shared selector, but the shim currently strips the suffix and sends only the base backend model until explicit OpenCode HTTP thinking support is verified. After changing any of those env values, restart `opencode-inline-shim` so the shim picks up the new environment.
+`vault` resolves vault-style references without creating destinations. It starts with `pde vault locate --json --vault default` and widens to `--vault any` only after a miss.
+
+`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, and `PDE_WORK_VAULT`. PDE shells export those variables automatically; Neovim only falls back to reading them from `paths.env` when it starts outside a PDE-managed shell. `<leader>pm` and `<leader>pM` intentionally share CodeCompanion's selector over OpenCode ACP models: chat applies to the active chat session, while inline stores a separate session override that flows through `opencode-inline-shim`. When there is no inline session override and no `OPENCODE_INLINE_MODEL`, the shim lets OpenCode choose its current default model. For the default loopback setup, `opencode-inline-shim` starts `opencode serve` on demand. Thinking-suffixed inline selections are accepted for compatibility with the shared selector, but the shim currently strips the suffix and sends only the base backend model until explicit OpenCode HTTP thinking support is verified. After changing any of those env values, restart `opencode-inline-shim` so the shim picks up the new environment.
 
 ## Repository Layout
 
