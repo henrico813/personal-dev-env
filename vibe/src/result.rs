@@ -30,19 +30,6 @@ pub struct RunResult {
 }
 
 impl RunResult {
-    pub fn status_str(&self) -> &'static str {
-        match self.status {
-            Status::Completed => "completed",
-            Status::Noop => "noop",
-            Status::AgentFailed => "agent_failed",
-            Status::CommitFailed => "commit_failed",
-            Status::RefusedDirty => "refused_dirty",
-            Status::SnapshotFailed => "snapshot_failed",
-            Status::WrapperFailed => "wrapper_failed",
-            Status::SetupError => "setup_error",
-        }
-    }
-
     pub fn exit_code(&self) -> i32 {
         match self.status {
             Status::Completed => 0,
@@ -119,10 +106,6 @@ mod tests {
         assert_eq!(value["status"], "agent_failed");
         assert_eq!(value["artifacts_dir"], "/tmp/run");
         assert_eq!(value["pre_run_commit"], "abc");
-        assert_eq!(
-            sample_result(Status::WrapperFailed).status_str(),
-            "wrapper_failed"
-        );
     }
 
     #[test]
