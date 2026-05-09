@@ -78,7 +78,11 @@ fn parse_run_dir_name(name: &str) -> Option<(u64, u32)> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-fn latest_run_dir_in(home: &Path, repo_root: &Path, slug: &str) -> Result<Option<PathBuf>, String> {
+pub(crate) fn run_dirs_newest_to_oldest_in(
+    home: &Path,
+    repo_root: &Path,
+    slug: &str,
+) -> Result<Vec<PathBuf>, String> {
     let repo_id = repo_root
         .file_name()
         .and_then(|s| s.to_str())
@@ -89,11 +93,11 @@ fn latest_run_dir_in(home: &Path, repo_root: &Path, slug: &str) -> Result<Option
         .join(slug)
         .join("runs");
     if !runs_dir.exists() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let entries = fs::read_dir(&runs_dir).map_err(|err| format!("read runs dir: {err}"))?;
 
-    let mut latest: Option<(u64, u32, PathBuf)> = None;
+    let mut runs: Vec<(u64, u32, PathBuf)> = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("read runs entry: {e}"))?;
         let path = entry.path();
@@ -106,18 +110,20 @@ fn latest_run_dir_in(home: &Path, repo_root: &Path, slug: &str) -> Result<Option
         let Some((ts, pid)) = parse_run_dir_name(name) else {
             continue;
         };
-        let replace = latest
-            .as_ref()
-            .map(|(latest_ts, latest_pid, _)| {
-                ts > *latest_ts || (ts == *latest_ts && pid > *latest_pid)
-            })
-            .unwrap_or(true);
-        if replace {
-            latest = Some((ts, pid, path));
-        }
+        runs.push((ts, pid, path));
     }
 
-    Ok(latest.map(|(_, _, path)| path))
+    runs.sort_by(|(left_ts, left_pid, _), (right_ts, right_pid, _)| {
+        right_ts.cmp(left_ts).then(right_pid.cmp(left_pid))
+    });
+    Ok(runs.into_iter().map(|(_, _, path)| path).collect())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn latest_run_dir_in(home: &Path, repo_root: &Path, slug: &str) -> Result<Option<PathBuf>, String> {
+    Ok(run_dirs_newest_to_oldest_in(home, repo_root, slug)?
+        .into_iter()
+        .next())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]

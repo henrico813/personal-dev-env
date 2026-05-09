@@ -1,4 +1,4 @@
-use crate::{observe, result::RunResult, worktree};
+use crate::{observe, result::{RunResult, Status}, worktree};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -32,7 +32,7 @@ pub struct PersistedRunState {
     pub worktree: Option<String>,
     pub model: Option<String>,
     pub phase: RunPhase,
-    pub terminal_status: Option<String>,
+    pub terminal_status: Option<Status>,
     pub pre_run_commit: Option<String>,
     pub commit: Option<String>,
     pub snapshot_commits: Vec<String>,
@@ -69,9 +69,16 @@ pub fn read(path: &Path) -> Result<PersistedRunState, String> {
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, String> {
     let slug = worktree::slugify(key);
-    let run_dir = observe::latest_run_dir(repo_root, &slug)?
-        .ok_or_else(|| format!("no persisted runs found for key {key}"))?;
-    read(&run_dir.join("run-state.json"))
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let mut last_error = None;
+    for run_dir in observe::run_dirs_newest_to_oldest_in(Path::new(&home), repo_root, &slug)? {
+        match read(&run_dir.join("run-state.json")) {
+            Ok(state) => return Ok(state),
+            Err(err) => last_error = Some(err),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| format!("no persisted runs found for key {key}")))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -86,7 +93,7 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
 
     let mut persisted = read(&path)?;
     persisted.phase = RunPhase::Finished;
-    persisted.terminal_status = Some(result.status_str().to_string());
+    persisted.terminal_status = Some(result.status.clone());
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
@@ -97,6 +104,7 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{latest_for_key, read, write, PersistedRunState, RunPhase};
+    use crate::result::Status;
     use tempfile::tempdir;
 
     fn sample_state() -> PersistedRunState {
@@ -153,6 +161,37 @@ mod tests {
         let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
 
         assert_eq!(latest.slug, "pdev-055-demo-key");
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_for_key_skips_broken_newest_run() {
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let runs = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        std::fs::create_dir_all(runs.join("1778000001-43")).expect("older run");
+        std::fs::create_dir_all(runs.join("1778000003-45")).expect("incomplete run");
+        std::fs::create_dir_all(runs.join("1778000004-46")).expect("broken run");
+
+        let mut state = sample_state();
+        state.terminal_status = Some(Status::Completed);
+        write(&runs.join("1778000001-43/run-state.json"), &state).expect("write older state");
+        std::fs::write(runs.join("1778000004-46/run-state.json"), "{").expect("write broken state");
+
+        let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
+
+        assert_eq!(latest.terminal_status, Some(Status::Completed));
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);

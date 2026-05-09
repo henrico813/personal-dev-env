@@ -24,6 +24,16 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
     writeln!(log, "{message}").map_err(|e| format!("write wrapper log: {e}"))
 }
 
+fn wrap_wrapper_failed(mut result: RunResult, error: String) -> RunResult {
+    let error_message = match result.error_message.take() {
+        Some(original) => Some(format!("{original}; persistence failed: {error}")),
+        None => Some(error),
+    };
+    result.status = Status::WrapperFailed;
+    result.error_message = error_message;
+    result
+}
+
 fn persist_phase(
     artifacts: &observe::ArtifactPaths,
     persisted: &mut PersistedRunState,
@@ -70,12 +80,14 @@ fn finish_result(
     result: RunResult,
 ) -> RunResult {
     persisted.phase = RunPhase::Finished;
-    persisted.terminal_status = Some(result.status_str().to_string());
+    persisted.terminal_status = Some(result.status.clone());
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
     persisted.error_message = result.error_message.clone();
-    let _ = state::write(&artifacts.state_json, persisted);
+    if let Err(err) = state::write(&artifacts.state_json, persisted) {
+        return wrap_wrapper_failed(result, format!("write run state: {err}"));
+    }
     result
 }
 
@@ -121,7 +133,24 @@ pub fn execute(args: RunArgs) -> RunResult {
             },
         );
     }
-    let _ = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared");
+    if let Err(err) = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared") {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
@@ -203,12 +232,29 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    let _ = persist_phase(
+    if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
         RunPhase::CheckingDirty,
         "check dirty",
-    );
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
         return finish_result(
             &artifacts,
@@ -228,12 +274,29 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
 
-    let _ = persist_phase(
+    if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
         RunPhase::ReadingPreRunCommit,
         "read pre-run commit",
-    );
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: None,
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     let pre_run_commit = match worktree::pre_run_commit(&session.worktree) {
         Ok(sha) => sha,
         Err(err) => {
@@ -256,12 +319,29 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     };
     persisted.pre_run_commit = Some(pre_run_commit.clone());
-    let _ = persist_phase(
+    if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
         RunPhase::PreparingSandbox,
         "prepare sandbox",
-    );
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: Some(pre_run_commit.clone()),
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     let runtime_root = match sandbox::prepare() {
         Ok(path) => path,
         Err(err) => {
@@ -284,12 +364,29 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     };
     let mounts = session.sandbox_mounts();
-    let _ = persist_phase(
+    if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
         RunPhase::RunningAgent,
         "run agent",
-    );
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: Some(pre_run_commit.clone()),
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     let agent_exit = match sandbox::run_agent(
         &runtime_root,
         &mounts,
@@ -339,12 +436,29 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
 
-    let _ = persist_phase(
+    if let Err(err) = persist_phase(
         &artifacts,
         &mut persisted,
         RunPhase::ReadingSnapshots,
         "read snapshots",
-    );
+    ) {
+        return finish_result(
+            &artifacts,
+            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts {
+                    pre_run_commit: Some(pre_run_commit.clone()),
+                    status: Status::WrapperFailed,
+                    commit: None,
+                    snapshot_commits: Vec::new(),
+                    error_message: Some(err),
+                },
+            ),
+        );
+    }
     let snapshot_commits = match snapshot::read_snapshot_shas(&artifacts.snapshots_jsonl) {
         Ok(shas) => shas,
         Err(err) => {
@@ -397,12 +511,29 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut error_message = None;
 
     if dirty_after {
-        let _ = persist_phase(
+        if let Err(err) = persist_phase(
             &artifacts,
             &mut persisted,
             RunPhase::CommittingResult,
             "commit result",
-        );
+        ) {
+            return finish_result(
+                &artifacts,
+                &mut persisted,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts {
+                        pre_run_commit: Some(pre_run_commit.clone()),
+                        status: Status::WrapperFailed,
+                        commit: None,
+                        snapshot_commits: snapshot_commits.clone(),
+                        error_message: Some(err),
+                    },
+                ),
+            );
+        }
         let message = args
             .commit_message
             .clone()
