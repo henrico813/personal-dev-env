@@ -69,12 +69,6 @@ func newInstallCmd() *cobra.Command {
 	return cmd
 }
 
-func newVaultCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "vault",
-		Short: "Manage PDE vault tooling",
-	}
-}
 
 func sortedInstallTargets() []string {
 	names := make([]string, 0, len(installTargets))
