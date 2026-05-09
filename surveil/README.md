@@ -46,4 +46,4 @@ Research results are grouped by query:
 
 `research` is lexical-first: it scans readable UTF-8 files for token matches, then uses tree-sitter symbol metadata when the file extension is `rs`, `go`, `py`, `ts`, or `tsx` and parsing succeeds. Unsupported extensions or unparseable UTF-8 files keep symbol fields `null`. Unreadable or non-UTF-8 files are skipped and listed in `TraceOutput.skipped_paths`.
 
-`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The JSON shape stays the same.
+`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The public result contract is versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on findings.
