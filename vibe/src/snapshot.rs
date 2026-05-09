@@ -1,11 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-pub fn read_snapshot_shas(path: &Path) -> Vec<String> {
-    let Ok(text) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    parse_snapshot_shas(&text)
+pub fn read_snapshot_shas(path: &Path) -> Result<Vec<String>, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("read snapshot log: {e}"))?;
+    Ok(parse_snapshot_shas(&text))
 }
 
 fn parse_snapshot_shas(text: &str) -> Vec<String> {
@@ -21,7 +19,8 @@ fn parse_snapshot_shas(text: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_snapshot_shas;
+    use super::{parse_snapshot_shas, read_snapshot_shas};
+    use tempfile::tempdir;
 
     #[test]
     fn snapshot_parser_reads_shas() {
@@ -44,5 +43,14 @@ mod tests {
         );
 
         assert_eq!(shas, vec!["abc"]);
+    }
+
+    #[test]
+    fn snapshot_reader_errors_when_seeded_file_is_missing() {
+        let temp = tempdir().expect("tempdir");
+        let err = read_snapshot_shas(&temp.path().join("snapshots.jsonl"))
+            .expect_err("missing file should error");
+
+        assert!(err.contains("read snapshot log"));
     }
 }
