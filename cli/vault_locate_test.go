@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -90,6 +91,48 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 		if filepath.Ext(match) != ".md" {
 			t.Fatalf("expected markdown match, got %q", match)
 		}
+	}
+}
+
+func TestResolveVaultsDefaultPrefersWorkThenMain(t *testing.T) {
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	if err := os.MkdirAll(workVault, 0o755); err != nil {
+		t.Fatalf("mkdir work vault: %v", err)
+	}
+
+	vaults, err := resolveVaults(homeDir, func(key string) (string, bool) {
+		switch key {
+		case "PDE_MAIN_VAULT":
+			return mainVault, true
+		case "PDE_WORK_VAULT":
+			return workVault, true
+		default:
+			return "", false
+		}
+	}, "default")
+	if err != nil {
+		t.Fatalf("resolve default vaults: %v", err)
+	}
+	if !reflect.DeepEqual(vaults, []string{workVault}) {
+		t.Fatalf("unexpected default vaults: %#v", vaults)
+	}
+
+	vaults, err = resolveVaults(homeDir, func(key string) (string, bool) {
+		if key == "PDE_MAIN_VAULT" {
+			return mainVault, true
+		}
+		return "", false
+	}, "default")
+	if err != nil {
+		t.Fatalf("resolve fallback main vault: %v", err)
+	}
+	if !reflect.DeepEqual(vaults, []string{mainVault}) {
+		t.Fatalf("unexpected fallback vaults: %#v", vaults)
 	}
 }
 

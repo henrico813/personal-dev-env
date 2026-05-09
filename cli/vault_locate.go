@@ -48,7 +48,15 @@ func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string,
 	workVault := paths["PDE_WORK_VAULT"]
 
 	switch selector {
-	case "", "default", "any":
+	case "", "default":
+		if workVault != "" {
+			return []string{workVault}, nil
+		}
+		if mainVault != "" {
+			return []string{mainVault}, nil
+		}
+		return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
+	case "any":
 		var vaults []string
 		for _, vault := range []string{mainVault, workVault} {
 			if vault != "" {
