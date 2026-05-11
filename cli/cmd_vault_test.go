@@ -33,6 +33,7 @@ func TestVaultLocateDefaultsToSelectorDefault(t *testing.T) {
 }
 
 func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
+	clearVaultEnv(t)
 	homeDir := t.TempDir()
 	workVault := filepath.Join(homeDir, "work")
 	if err := os.MkdirAll(filepath.Join(workVault, "projects", "alpha"), 0o755); err != nil {
@@ -59,6 +60,7 @@ func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
 }
 
 func TestVaultLocatePositionalReferenceRejectsQuery(t *testing.T) {
+	clearVaultEnv(t)
 	t.Setenv("HOME", t.TempDir())
 
 	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "projects/alpha/note.md", "--query", "needle")
@@ -111,6 +113,30 @@ func TestVaultLocateJSONConfigFailure(t *testing.T) {
 	if result.Error == "" {
 		t.Fatal("expected config error in JSON output")
 	}
+}
+
+func clearVaultEnv(t *testing.T) {
+	t.Helper()
+	mainVault, mainVaultOK := os.LookupEnv("PDE_MAIN_VAULT")
+	workVault, workVaultOK := os.LookupEnv("PDE_WORK_VAULT")
+	if err := os.Unsetenv("PDE_MAIN_VAULT"); err != nil {
+		t.Fatalf("unset PDE_MAIN_VAULT: %v", err)
+	}
+	if err := os.Unsetenv("PDE_WORK_VAULT"); err != nil {
+		t.Fatalf("unset PDE_WORK_VAULT: %v", err)
+	}
+	t.Cleanup(func() {
+		if mainVaultOK {
+			_ = os.Setenv("PDE_MAIN_VAULT", mainVault)
+		} else {
+			_ = os.Unsetenv("PDE_MAIN_VAULT")
+		}
+		if workVaultOK {
+			_ = os.Setenv("PDE_WORK_VAULT", workVault)
+		} else {
+			_ = os.Unsetenv("PDE_WORK_VAULT")
+		}
+	})
 }
 
 func executeVaultLocate(t *testing.T, args ...string) (*bytes.Buffer, *bytes.Buffer, error) {
