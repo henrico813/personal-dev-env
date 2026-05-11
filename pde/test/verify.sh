@@ -107,6 +107,18 @@ check_link ~/.config/nvim "pde/config/nvim"
 # PDE config
 check_file ~/.config/pde/paths.env "PDE paths.env"
 
+if grep -Fxq 'export PDE_MAIN_VAULT=""' ~/.config/pde/paths.env; then
+    pass "PDE_MAIN_VAULT placeholder"
+else
+    fail "PDE_MAIN_VAULT placeholder missing from ~/.config/pde/paths.env"
+fi
+
+if grep -Fxq 'export PDE_WORK_VAULT=""' ~/.config/pde/paths.env; then
+    pass "PDE_WORK_VAULT placeholder"
+else
+    fail "PDE_WORK_VAULT placeholder missing from ~/.config/pde/paths.env"
+fi
+
 # Config symlinks (match the config suffix so both standalone and combined repo installs pass)
 check_link ~/.zshrc "pde/config/zsh/zshrc"
 check_link ~/.tmux.conf "pde/config/tmux/tmux.conf"
