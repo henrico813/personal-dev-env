@@ -41,7 +41,7 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 - Read every mentioned file fully before drafting the plan.
 - Research the relevant code, tests, config, and documentation before drafting the plan.
-- For repo-backed implementation plans, surveil artifacts are required baseline inputs before broad manual repo research.
+- For repo-backed implementation plans, treat `surveil` artifacts as required baseline inputs before broad manual repo research.
 - Do not draft the final plan until research is complete.
 - If blocking questions remain after research, ask only those questions and stop.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
@@ -54,12 +54,12 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 First classify whether the request is a repo-backed implementation plan.
 
-Treat the request as repo-backed and use surveil when any of these are true:
+Treat the request as repo-backed and use `surveil` when any of these are true:
 - the user wants an implementation plan for an existing repo feature, refactor, bug fix, or integration
 - the plan depends on current code, tests, config, docs, or workflow behavior
 - the request names files, modules, services, commands, or directories in this repo
 
-Skip surveil when:
+Skip `surveil` when:
 - the request is purely conceptual or comparative
 - the user is brainstorming options without needing concrete repo research
 - there is no meaningful local codebase surface to inspect
@@ -72,16 +72,16 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
 3. If the request is repo-backed, build a structured surveil task before broad repo research.
 4. Build the task using these mechanical rules:
-   - Summary: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
-   - Explicit Files: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
-   - Search Areas: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
-   - Query: use this fixed ordered set of planning prompts:
+   - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
+   - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
+   - `Search Areas`: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
+   - `Query`: use this fixed ordered set of planning prompts:
      - `What is the current behavior in this area of the repo?`
      - `Where are the integration points or callers that would need to change?`
      - `What tests or test patterns already cover this area?`
      - `What docs, config, or commands affect this area?`
      - `How should this change be verified?`
-   - Terms: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
+   - `Terms`: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
 
 ### Step 2: Research the Codebase
 
