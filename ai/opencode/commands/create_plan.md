@@ -83,6 +83,7 @@ If any repo-backed trigger is present, do not fall back to manual-first research
      - `What docs, config, or commands affect this area?`
      - `How should this change be verified?`
    - `Terms`: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
+6. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
 
 ### Step 2: Research the Codebase
 
