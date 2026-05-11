@@ -72,7 +72,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	mustWriteFile(t, filepath.Join(vault, "note.txt"), "needle", 0o644)
 	mustWriteFile(t, filepath.Join(vault, "other.md"), "needle in markdown", 0o644)
 
-	matches, err := locateVaultMatches([]string{vault}, "note", "")
+	matches, err := locateVaultMatches([]string{vault}, "note", "", "")
 	if err != nil {
 		t.Fatalf("locate filename: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 		t.Fatalf("unexpected filename matches: %#v", matches)
 	}
 
-	matches, err = locateVaultMatches([]string{vault}, "", "needle")
+	matches, err = locateVaultMatches([]string{vault}, "", "", "needle")
 	if err != nil {
 		t.Fatalf("locate query: %v", err)
 	}
@@ -90,6 +90,22 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	for _, match := range matches {
 		if filepath.Ext(match) != ".md" {
 			t.Fatalf("expected markdown match, got %q", match)
+		}
+	}
+}
+
+func TestLocateVaultMatchesNestedReferenceVariants(t *testing.T) {
+	vault := t.TempDir()
+	want := filepath.Join(vault, "projects", "alpha", "note.md")
+	mustWriteFile(t, want, "needle", 0o644)
+
+	for _, reference := range []string{"projects/alpha/note.md", "projects/alpha/note"} {
+		matches, err := locateVaultMatches([]string{vault}, "", reference, "")
+		if err != nil {
+			t.Fatalf("locate reference %q: %v", reference, err)
+		}
+		if !reflect.DeepEqual(matches, []string{want}) {
+			t.Fatalf("unexpected matches for %q: %#v", reference, matches)
 		}
 	}
 }

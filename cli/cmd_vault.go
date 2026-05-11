@@ -22,12 +22,16 @@ func newVaultLocateCmd() *cobra.Command {
 	var opts vaultLocateOptions
 
 	cmd := &cobra.Command{
-		Use:           "locate",
+		Use:           "locate [reference]",
 		Short:         "Locate a note in a PDE vault",
-		Args:          cobra.NoArgs,
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Reference = ""
+			if len(args) == 1 {
+				opts.Reference = args[0]
+			}
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				return err
@@ -45,11 +49,15 @@ func newVaultLocateCmd() *cobra.Command {
 
 func runVaultLocate(out io.Writer, homeDir string, lookup envLookup, opts vaultLocateOptions) error {
 	opts.Filename = normalizeQueryInput(opts.Filename)
+	opts.Reference = normalizeVaultReference(opts.Reference)
 	opts.Query = normalizeQueryInput(opts.Query)
 	opts.Vault = normalizeQueryInput(opts.Vault)
 
-	if opts.Filename == "" && opts.Query == "" {
-		return writeVaultLocateError(out, opts.JSON, errors.New("provide --filename or --query"))
+	if opts.Reference != "" && (opts.Filename != "" || opts.Query != "") {
+		return writeVaultLocateError(out, opts.JSON, errors.New("reference is mutually exclusive with --filename and --query"))
+	}
+	if opts.Reference == "" && opts.Filename == "" && opts.Query == "" {
+		return writeVaultLocateError(out, opts.JSON, errors.New("provide a reference, --filename, or --query"))
 	}
 	if opts.Filename != "" && opts.Query != "" {
 		return writeVaultLocateError(out, opts.JSON, errors.New("--filename and --query are mutually exclusive"))
@@ -60,7 +68,7 @@ func runVaultLocate(out io.Writer, homeDir string, lookup envLookup, opts vaultL
 		return writeVaultLocateError(out, opts.JSON, err)
 	}
 
-	matches, err := locateVaultMatches(vaults, opts.Filename, opts.Query)
+	matches, err := locateVaultMatches(vaults, opts.Filename, opts.Reference, opts.Query)
 	if err != nil {
 		return writeVaultLocateError(out, opts.JSON, err)
 	}

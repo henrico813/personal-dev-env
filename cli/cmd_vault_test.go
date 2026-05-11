@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -27,6 +29,47 @@ func TestVaultLocateDefaultsToSelectorDefault(t *testing.T) {
 	}
 	if flag.DefValue != "default" {
 		t.Fatalf("unexpected default %q", flag.DefValue)
+	}
+}
+
+func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
+	homeDir := t.TempDir()
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(filepath.Join(workVault, "projects", "alpha"), 0o755); err != nil {
+		t.Fatalf("mkdir work vault: %v", err)
+	}
+	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
+	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
+		t.Fatalf("mkdir paths.env parent: %v", err)
+	}
+	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	mustWriteFile(t, filepath.Join(workVault, "projects", "alpha", "note.md"), "needle", 0o644)
+	t.Setenv("HOME", homeDir)
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "projects/alpha/note.md")
+	if err != nil {
+		t.Fatalf("execute locate: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if got := stdout.String(); got != filepath.Join(workVault, "projects", "alpha", "note.md")+"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+}
+
+func TestVaultLocatePositionalReferenceRejectsQuery(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "projects/alpha/note.md", "--query", "needle")
+	if err == nil {
+		t.Fatal("expected positional reference with --query to be rejected")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout, got %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
 	}
 }
 

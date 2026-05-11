@@ -15,10 +15,11 @@ import (
 type envLookup func(string) (string, bool)
 
 type vaultLocateOptions struct {
-	Vault    string
-	Filename string
-	Query    string
-	JSON     bool
+	Vault     string
+	Filename  string
+	Reference string
+	Query     string
+	JSON      bool
 }
 
 type vaultLocateResult struct {
@@ -36,6 +37,14 @@ func encodeVaultLocateJSON(out io.Writer, result vaultLocateResult) error {
 
 func normalizeQueryInput(s string) string {
 	return strings.TrimSpace(s)
+}
+
+func normalizeVaultReference(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(s))
 }
 
 func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
@@ -187,7 +196,29 @@ func validateVaultDir(path string) error {
 	return nil
 }
 
-func locateVaultMatches(vaults []string, filename, query string) ([]string, error) {
+func matchesVaultFilename(path, filename string) bool {
+	base := filepath.Base(path)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	return base == filename || (filepath.Ext(filename) == "" && stem == filename)
+}
+
+func matchesVaultReference(path, vaultRoot, reference string) bool {
+	reference = normalizeVaultReference(reference)
+	if reference == "" {
+		return false
+	}
+	base := filepath.Base(path)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	rel, err := filepath.Rel(vaultRoot, path)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	relStem := strings.TrimSuffix(rel, ".md")
+	return reference == base || reference == stem || reference == rel || reference == relStem
+}
+
+func locateVaultMatches(vaults []string, filename, reference, query string) ([]string, error) {
 	matches := map[string]struct{}{}
 	for _, vault := range vaults {
 		if err := validateVaultDir(vault); err != nil {
@@ -204,9 +235,13 @@ func locateVaultMatches(vaults []string, filename, query string) ([]string, erro
 				return nil
 			}
 			if filename != "" {
-				base := filepath.Base(path)
-				stem := strings.TrimSuffix(base, filepath.Ext(base))
-				if base == filename || (filepath.Ext(filename) == "" && stem == filename) {
+				if matchesVaultFilename(path, filename) {
+					matches[path] = struct{}{}
+				}
+				return nil
+			}
+			if reference != "" {
+				if matchesVaultReference(path, vault, reference) {
 					matches[path] = struct{}{}
 				}
 				return nil
