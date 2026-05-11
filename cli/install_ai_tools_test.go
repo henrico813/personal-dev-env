@@ -92,6 +92,8 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 		}
 	}
 
+	requireFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), "repo agents\n")
+
 	if err := os.MkdirAll(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), 0o755); err != nil {
 		t.Fatalf("mkdir opencode agents: %v", err)
 	}
