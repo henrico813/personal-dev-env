@@ -87,6 +87,8 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 For repo-backed implementation plans, use `surveil` as the default research workflow.
 
+For requests that are not repo-backed, skip `surveil` and research the relevant code, tests, config, docs, or comparative material directly using the available read-only tools before drafting.
+
 Capture artifacts with fixed commands and paths:
 
 - `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json`
