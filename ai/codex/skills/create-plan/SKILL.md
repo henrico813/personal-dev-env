@@ -29,7 +29,7 @@ Please provide:
 2. Any constraints or requirements that materially affect implementation
 3. Links or paths to related docs, previous plans, or prior implementations
 
-I'll build the fixed surveil task, capture context, report, and trace, and use the report's `result` as baseline evidence before drafting.
+I'll research the relevant code and produce a concrete implementation plan.
 
 Tip: You can invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
 ```
@@ -86,26 +86,37 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 ### Step 2: Research the Codebase
 
-For repo-backed implementation plans, use surveil as the default research workflow.
+For repo-backed implementation plans, use `surveil` as the default research workflow.
 
-1. Build the fixed task file at `/tmp/opencode/create-plan-task.md` using the task rules from Step 1.
-2. Run the fixed artifact commands:
-```bash
-surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json
-surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json
-```
-3. If `surveil` is unavailable, fails, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
-4. Consume `/tmp/opencode/create-plan-report.json` first:
-   - `result` is the baseline evidence for the plan.
-   - Review `trace` next only when present, to confirm the reasoning path and any important dependencies.
-   - Preserve `negative_evidence` and `open_questions` as constraints; do not overwrite or ignore them.
-5. Read additional files only in bounded follow-up:
-   - use the report's file references to inspect the smallest relevant set of implementation files, tests, configs, and docs;
-   - read those files fully before drafting;
-   - stop once the report evidence is sufficient to answer the planning questions.
-6. Treat weak or noisy evidence as a trigger for scoped follow-up only:
-   - conflicting results, missing call sites, or unclear verification paths may justify one more targeted read or sub-task;
-   - do not expand to broad manual repo research before the initial surveil pass is complete.
+Capture artifacts with fixed commands and paths:
+
+- `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json`
+- `surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json`
+
+If `surveil` is unavailable, fails to run, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
+
+Consume artifacts in this order:
+
+1. Read `/tmp/opencode/create-plan-report.json` first and treat `result` as the default evidence outline.
+2. Read `/tmp/opencode/create-plan-trace.json` only when `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
+3. Preserve `negative_evidence` and `open_questions` as planning inputs instead of smoothing them away.
+
+Bound follow-up reading after `surveil`:
+
+- prefer surfaced snippets over broad repo reads
+- read full files only for the top surfaced file per query, with one extra file allowed only when the first file is insufficient for exact diff planning, capped at five total files
+- when the query is about tests, docs, config, or verification, prefer surfaced files from that class before defaulting to implementation files
+
+Do targeted follow-up investigation when `surveil` is weak or noisy, for example when:
+
+- top ranked files are mostly docs, fixtures, generated files, or plumbing
+- broad terms dominate `matched_from`
+- explicit files are not preferred for queries they should answer
+- a docs, config, or tests query returns only implementation snippets
+- `open_questions` is non-empty
+- `negative_evidence` conflicts with the expected repo surface
+
+In those cases, refine with focused reads and searches rather than skipping `surveil`, and do not draft until each required planning query has evidence or explicit follow-up results.
 
 
 ### Step 3: Plan Structure Development
@@ -237,8 +248,8 @@ Make sure the implementation and verification sections include explicit,
 
 3. **Be Thorough**:
    - Read all context files COMPLETELY before planning
-   - Use `surveil` before broad manual research on repo-backed plans
-   - Only use sub-tasks after the initial `surveil` pass when more investigation is needed
+   - For repo-backed planning, use `surveil` before broad manual repo research
+   - Research actual code patterns using parallel sub-tasks only after the initial `surveil` pass when additional investigation is still needed
    - Include specific file paths and line numbers
    - Write measurable success criteria with clear automated vs manual distinction
    - automated steps should use `make` whenever possible - for example `make -C myapp check` instead of `cd myapp && npm run fmt`
@@ -361,7 +372,7 @@ Assistant: Let me read that document completely first...
 
 [Reads file fully]
 
-Based on the document, I understand we need to track parent-child relationships for agent sub-task events. Before I start planning, I have some questions...
+Assistant: This is a repo-backed implementation plan, so I'll build the fixed `surveil` task, capture `context`, `report`, and `trace`, and use `result` as the baseline evidence pack before drafting.
 
 [Interactive process continues...]
 ```
