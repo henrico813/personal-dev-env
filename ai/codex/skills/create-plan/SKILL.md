@@ -29,7 +29,7 @@ Please provide:
 2. Any constraints or requirements that materially affect implementation
 3. Links or paths to related docs, previous plans, or prior implementations
 
-I'll research the relevant code and produce a concrete implementation plan.
+I'll build the fixed surveil task, capture context, report, and trace, and use the report's `result` as baseline evidence before drafting.
 
 Tip: You can invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
 ```
@@ -86,25 +86,27 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 ### Step 2: Research the Codebase
 
-Research the codebase before planning. Use available read-only tools to inspect:
+For repo-backed implementation plans, use surveil as the default research workflow.
 
-- implementation files
-- tests
-- configuration
-- interfaces and contracts
-- similar features or patterns
-- related docs or notes if they affect execution
+1. Build the fixed task file at `/tmp/opencode/create-plan-task.md` using the task rules from Step 1.
+2. Run the fixed artifact commands:
+```bash
+surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json
+surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json
+```
+3. If `surveil` is unavailable, fails, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
+4. Consume `/tmp/opencode/create-plan-report.json` first:
+   - `result` is the baseline evidence for the plan.
+   - Review `trace` next only when present, to confirm the reasoning path and any important dependencies.
+   - Preserve `negative_evidence` and `open_questions` as constraints; do not overwrite or ignore them.
+5. Read additional files only in bounded follow-up:
+   - use the report's file references to inspect the smallest relevant set of implementation files, tests, configs, and docs;
+   - read those files fully before drafting;
+   - stop once the report evidence is sufficient to answer the planning questions.
+6. Treat weak or noisy evidence as a trigger for scoped follow-up only:
+   - conflicting results, missing call sites, or unclear verification paths may justify one more targeted read or sub-task;
+   - do not expand to broad manual repo research before the initial surveil pass is complete.
 
-When available, parallelize independent research tasks. After research, read the most relevant discovered files fully before drafting.
-
-Focus on:
-
-- current behavior
-- integration points
-- invariants and constraints
-- similar patterns to follow
-- likely edge cases
-- verification entry points
 
 ### Step 3: Plan Structure Development
 
@@ -235,7 +237,8 @@ Make sure the implementation and verification sections include explicit,
 
 3. **Be Thorough**:
    - Read all context files COMPLETELY before planning
-   - Research actual code patterns using parallel sub-tasks
+   - Use `surveil` before broad manual research on repo-backed plans
+   - Only use sub-tasks after the initial `surveil` pass when more investigation is needed
    - Include specific file paths and line numbers
    - Write measurable success criteria with clear automated vs manual distinction
    - automated steps should use `make` whenever possible - for example `make -C myapp check` instead of `cd myapp && npm run fmt`
