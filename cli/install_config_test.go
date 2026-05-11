@@ -199,6 +199,18 @@ func TestInstallConfigBacksUpPathsEnvDirectoryWithoutProfile(t *testing.T) {
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "dir contents")
 }
 
+func TestExistingPDEPathsEnvLinesReturnsErrorForUnexpectedStatFailure(t *testing.T) {
+	path := "bad\x00path"
+
+	_, err := existingPDEPathsEnvLines(path)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("expected error to include path %q, got %v", path, err)
+	}
+}
+
 func TestInstallConfigBacksUpBrokenPathsEnvSymlinkWithoutProfile(t *testing.T) {
 	cfg, pathsEnv := newInstallConfigFixture(t)
 	brokenTarget := filepath.Join(cfg.HomeDir, "missing-paths.env")

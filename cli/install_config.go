@@ -84,7 +84,10 @@ func writePDEPathsEnv(cfg *Config, existingLines map[string]string, runner Runne
 func existingPDEPathsEnvLines(path string) (map[string]string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return map[string]string{}, nil
+		if os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+		return nil, fmt.Errorf("stat existing PDE paths.env file %s: %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
 		return map[string]string{}, nil
