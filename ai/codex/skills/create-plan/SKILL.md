@@ -10,10 +10,9 @@ You are tasked with creating detailed implementation plans that are grounded in 
 Your default behavior is:
 
 1. Read all provided context fully.
-2. Research the relevant code, tests, config, and docs.
+2. For repo-backed implementation planning, use surveil as the default research engine.
 3. Resolve uncertainty through investigation whenever possible.
 4. Produce the full plan including diffs of all lines needed for a code change.
-5. For repo-backed implementation planning, use surveil as the default research engine.
 
 Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. The skill owns the structure.
   
@@ -54,14 +53,14 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 ## Workflow
 
-### Repo-Backed Classification
+First classify whether the request is a repo-backed implementation plan.
 
-Treat the request as repo-backed if it:
+Treat the request as repo-backed and use surveil when any of these are true:
 - concerns an existing repo feature, refactor, bug fix, or integration
 - depends on current code, tests, config, docs, or workflow behavior
 - names files, modules, services, commands, or directories in this repo
 
-Skip repo-backed classification only if it is:
+Skip surveil when:
 - purely conceptual or comparative
 - brainstorming without concrete repo research
 - lacking any meaningful local codebase surface to inspect
@@ -72,7 +71,8 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. For repo-backed requests, build a structured surveil task before broad repo research.
+3. If the request is repo-backed, build a structured surveil task before broad repo research.
+   Build the task using these mechanical rules:
    - Summary: one concise sentence describing the repo-backed change and why it matters.
    - Explicit Files: the exact files named by the user plus directly implicated files already known from the request.
    - Search Areas: the smallest set of repo directories likely to contain the implementation surface, ordered from most to least likely.
