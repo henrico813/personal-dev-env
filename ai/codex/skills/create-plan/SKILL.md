@@ -1,6 +1,6 @@
 ---
 name: create-plan
-description: Use when the user asks to create a surveil-backed implementation plan through the shared Go planner CLI.
+description: surveil-backed
 ---
 
 # Create Plan
@@ -56,14 +56,14 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 First classify whether the request is a repo-backed implementation plan.
 
 Treat the request as repo-backed and use surveil when any of these are true:
-- concerns an existing repo feature, refactor, bug fix, or integration
-- depends on current code, tests, config, docs, or workflow behavior
-- names files, modules, services, commands, or directories in this repo
+- the user wants an implementation plan for an existing repo feature, refactor, bug fix, or integration
+- the plan depends on current code, tests, config, docs, or workflow behavior
+- the request names files, modules, services, commands, or directories in this repo
 
 Skip surveil when:
-- purely conceptual or comparative
-- brainstorming without concrete repo research
-- lacking any meaningful local codebase surface to inspect
+- the request is purely conceptual or comparative
+- the user is brainstorming options without needing concrete repo research
+- there is no meaningful local codebase surface to inspect
 
 If any repo-backed trigger is present, do not fall back to manual-first research.
 
@@ -72,13 +72,17 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
 3. If the request is repo-backed, build a structured surveil task before broad repo research.
-   Build the task using these mechanical rules:
-   - Summary: one concise sentence describing the repo-backed change and why it matters.
-   - Explicit Files: the exact files named by the user plus directly implicated files already known from the request.
-   - Search Areas: the smallest set of repo directories likely to contain the implementation surface, ordered from most to least likely.
-   - Query: the specific implementation questions the research must answer before planning.
-   - Terms: optional repo-specific file names, symbols, commands, or concepts that should widen lexical matching.
-4. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
+4. Build the task using these mechanical rules:
+   - Summary: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
+   - Explicit Files: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
+   - Search Areas: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
+   - Query: use this fixed ordered set of planning prompts:
+     - `What is the current behavior in this area of the repo?`
+     - `Where are the integration points or callers that would need to change?`
+     - `What tests or test patterns already cover this area?`
+     - `What docs, config, or commands affect this area?`
+     - `How should this change be verified?`
+   - Terms: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
 
 ### Step 2: Research the Codebase
 
