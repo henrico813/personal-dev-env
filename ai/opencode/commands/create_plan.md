@@ -9,7 +9,7 @@ You are tasked with creating detailed implementation plans that are grounded in 
 Your default behavior is:
 
 1. Read all provided context fully.
-2. Research the relevant code, tests, config, and docs.
+2. For repo-backed implementation planning, use surveil as the default research engine.
 3. Resolve uncertainty through investigation whenever possible.
 4. Produce the full plan including diffs of all lines needed for a code change.
 
@@ -41,6 +41,7 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 - Read every mentioned file fully before drafting the plan.
 - Research the relevant code, tests, config, and documentation before drafting the plan.
+- For repo-backed implementation plans, treat `surveil` artifacts as required baseline inputs before broad manual repo research.
 - Do not draft the final plan until research is complete.
 - If blocking questions remain after research, ask only those questions and stop.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
@@ -51,33 +52,73 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 ## Workflow
 
+First classify whether the request is a repo-backed implementation plan.
+
+Treat the request as repo-backed and use `surveil` when any of these are true:
+- the user wants an implementation plan for an existing repo feature, refactor, bug fix, or integration
+- the plan depends on current code, tests, config, docs, or workflow behavior
+- the request names files, modules, services, commands, or directories in this repo
+
+Skip `surveil` when:
+- the request is purely conceptual or comparative
+- the user is brainstorming options without needing concrete repo research
+- there is no meaningful local codebase surface to inspect
+
+If any repo-backed trigger is present, do not fall back to manual-first research.
+
 ### Step 1: Read and Gather Context
 
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
+3. If the request is repo-backed, build a structured surveil task before broad repo research.
+4. Build the task using these mechanical rules:
+   - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
+   - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
+   - `Search Areas`: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
+   - `Query`: use this fixed ordered set of planning prompts:
+     - `What is the current behavior in this area of the repo?`
+     - `Where are the integration points or callers that would need to change?`
+     - `What tests or test patterns already cover this area?`
+     - `What docs, config, or commands affect this area?`
+     - `How should this change be verified?`
+   - `Terms`: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
 
 ### Step 2: Research the Codebase
 
-Research the codebase before planning. Use available read-only tools to inspect:
+For repo-backed implementation plans, use `surveil` as the default research workflow.
 
-- implementation files
-- tests
-- configuration
-- interfaces and contracts
-- similar features or patterns
-- related docs or notes if they affect execution
+For requests that are not repo-backed, skip `surveil` and research the relevant code, tests, config, docs, or comparative material directly using the available read-only tools before drafting.
 
-When available, parallelize independent research tasks. After research, read the most relevant discovered files fully before drafting.
+Capture artifacts with fixed commands and paths:
 
-Focus on:
+- `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json`
+- `surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json`
 
-- current behavior
-- integration points
-- invariants and constraints
-- similar patterns to follow
-- likely edge cases
-- verification entry points
+If `surveil` is unavailable, fails to run, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
+
+Consume artifacts in this order:
+
+1. Read `/tmp/opencode/create-plan-report.json` first and treat `result` as the default evidence outline.
+2. Read `/tmp/opencode/create-plan-trace.json` only when `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
+3. Preserve `negative_evidence` and `open_questions` as planning inputs instead of smoothing them away.
+
+Bound follow-up reading after `surveil`:
+
+- prefer surfaced snippets over broad repo reads
+- read full files only for the top surfaced file per query, with one extra file allowed only when the first file is insufficient for exact diff planning, capped at five total files
+- when the query is about tests, docs, config, or verification, prefer surfaced files from that class before defaulting to implementation files
+
+Do targeted follow-up investigation when `surveil` is weak or noisy, for example when:
+
+- top ranked files are mostly docs, fixtures, generated files, or plumbing
+- broad terms dominate `matched_from`
+- explicit files are not preferred for queries they should answer
+- a docs, config, or tests query returns only implementation snippets
+- `open_questions` is non-empty
+- `negative_evidence` conflicts with the expected repo surface
+
+In those cases, refine with focused reads and searches rather than skipping `surveil`, and do not draft until each required planning query has evidence or explicit follow-up results.
+
 
 ### Step 3: Plan Structure Development
 
@@ -208,7 +249,8 @@ Make sure the implementation and verification sections include explicit,
 
 3. **Be Thorough**:
    - Read all context files COMPLETELY before planning
-   - Research actual code patterns using parallel sub-tasks
+   - For repo-backed planning, use `surveil` before broad manual repo research
+   - Research actual code patterns using parallel sub-tasks only after the initial `surveil` pass when additional investigation is still needed
    - Include specific file paths and line numbers
    - Write measurable success criteria with clear automated vs manual distinction
    - automated steps should use `make` whenever possible - for example `make -C myapp check` instead of `cd myapp && npm run fmt`
@@ -331,7 +373,7 @@ Assistant: Let me read that document completely first...
 
 [Reads file fully]
 
-Based on the document, I understand we need to track parent-child relationships for agent sub-task events. Before I start planning, I have some questions...
+Assistant: This is a repo-backed implementation plan, so I'll build the fixed `surveil` task, capture `context`, `report`, and `trace`, and use `result` as the baseline evidence pack before drafting.
 
 [Interactive process continues...]
 ```
