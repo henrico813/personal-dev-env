@@ -13,13 +13,16 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 ./pde/pde full      # everything above + Node, Claude Code, fonts
 ```
 
-Optional PDE targets live in the Go CLI:
+Optional PDE commands live in the Go CLI:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
 pde install config
+pde vault locate --json --vault default "<reference>"
 pde install obsidian
 ```
+
+`pde vault locate` resolves quoted positional vault references without creating destinations. Use `--query` only when you explicitly want note-content search.
 
 See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 

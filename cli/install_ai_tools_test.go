@@ -68,3 +68,68 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 		t.Fatalf("vibe install should run before Node setup:\n%s", dryRun)
 	}
 }
+
+func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
+	root := t.TempDir()
+	cfg := &Config{
+		RepoRoot:          root,
+		HomeDir:           filepath.Join(root, "home"),
+		LocalBinDir:       filepath.Join(root, "home", ".local", "bin"),
+		AIRepoDir:         filepath.Join(root, "ai"),
+		AIRuntimeDir:      filepath.Join(root, "home", ".local", "share", "pde", "ai"),
+		OpenCodeConfigDir: filepath.Join(root, "home", ".config", "opencode"),
+		CodexConfigDir:    filepath.Join(root, "home", ".codex"),
+		PiAgentDir:        filepath.Join(root, "home", ".pi", "agent"),
+	}
+
+	requireFile := func(path, contents string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	requireFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), "repo agents\n")
+
+	if err := os.MkdirAll(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), 0o755); err != nil {
+		t.Fatalf("mkdir opencode agents: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.AIRepoDir, "opencode", "commands"), 0o755); err != nil {
+		t.Fatalf("mkdir opencode commands: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(cfg.AIRepoDir, "codex", "skills"), 0o755); err != nil {
+		t.Fatalf("mkdir codex skills: %v", err)
+	}
+
+	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "create_plan.md"), "opencode create-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "implement_plan.md"), "opencode implement-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "create-plan", "SKILL.md"), "codex create-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "implement-plan", "SKILL.md"), "codex implement-plan\n")
+
+	if err := installOpenCodeConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("install opencode config: %v", err)
+	}
+	if err := installCodexConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("install codex config: %v", err)
+	}
+
+	cases := map[string]string{
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):       "opencode create-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):    "opencode implement-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):   "codex create-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"): "codex implement-plan\n",
+	}
+
+	for path, want := range cases {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if string(got) != want {
+			t.Fatalf("%s = %q, want %q", path, string(got), want)
+		}
+	}
+}
