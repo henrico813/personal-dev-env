@@ -27,9 +27,10 @@ var installTargets = map[string]Installer{
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "pde",
-		Short: "Install PDE targets and config sets",
+		Short: "Manage PDE installs and vault tooling",
 	}
 	root.AddCommand(newInstallCmd())
+	root.AddCommand(newVaultCmd())
 	return root
 }
 
@@ -67,6 +68,7 @@ func newInstallCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print actions without writing")
 	return cmd
 }
+
 
 func sortedInstallTargets() []string {
 	names := make([]string, 0, len(installTargets))
