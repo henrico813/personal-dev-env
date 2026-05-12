@@ -60,10 +60,10 @@ Markdown-first authoring flow:
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
 Legacy JSON render flow:
-  1. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  2. Edit the draft JSON or use behavioral edit commands for targeted updates.
-  3. Run planner check <plan.json>.
-  4. Run planner create <plan.json> <output.md>.
+  1. Run planner template --json > draft.json.
+  2. Edit the draft JSON directly.
+  3. Run planner check draft.json.
+  4. Run planner create draft.json out.md.
 
 Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
@@ -123,7 +123,7 @@ Selectors:
 Reference workflow:
   - planner new <output.md>
   - planner template --md
-  - planner template --json/--raw
+  - planner template --json or planner template --raw when you need a JSON skeleton or scalar selector
 `
 
 var jsonErrorOutput bool
