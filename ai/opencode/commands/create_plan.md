@@ -71,8 +71,9 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
 3. If the user references a vault-style path, resolve it with `pde vault locate --json --vault default "<reference>"`. If that returns `not_found`, retry once with `--vault any "<reference>"`. Treat `ambiguous`, `error`, and a final `not_found` as stop-and-ask states. Use the vault helper for lookup only; do not use it to create destination paths. Use `--query` only when you explicitly want note-content search.
-4. If the request is repo-backed, build a structured surveil task before broad repo research.
+4. If the request is repo-backed, scaffold a structured surveil task with `surveil new task /tmp/opencode/create-plan-task` before broad repo research.
 5. Build the task using these mechanical rules:
+   - Populate `/tmp/opencode/create-plan-task/task.md` after scaffolding it.
    - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
    - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
    - `Search Areas`: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
@@ -93,7 +94,9 @@ For requests that are not repo-backed, skip `surveil` and research the relevant 
 
 Capture artifacts with fixed commands and paths:
 
-- `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task.md > /tmp/opencode/create-plan-context.json`
+- `surveil new task /tmp/opencode/create-plan-task`
+- Populate `/tmp/opencode/create-plan-task/task.md` using the mechanical rules above.
+- `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task/task.md > /tmp/opencode/create-plan-context.json`
 - `surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json`
 
 If `surveil` is unavailable, fails to run, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
