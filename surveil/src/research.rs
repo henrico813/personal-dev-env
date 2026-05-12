@@ -1,4 +1,6 @@
+use crate::index;
 use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
+use crate::source;
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::fs;
@@ -89,16 +91,15 @@ fn answer_question(
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
+    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
+    let cache = index::open(repo_root).ok().flatten();
     let mut ranked_files = Vec::new();
 
-    for (file, from_explicit) in collect_candidate_files(repo_root, search_areas, explicit_files, trace)? {
+    for (file, from_explicit) in candidates {
         trace.files_considered.insert(file.clone());
-        let text = match fs::read_to_string(&file) {
-            Ok(text) => text,
-            Err(_) => {
-                trace.skipped_paths.push(display_path(repo_root, &file));
-                continue;
-            }
+        let text = match load_candidate_text(repo_root, &file, cache.as_ref(), trace) {
+            Some(text) => text,
+            None => continue,
         };
 
         let mut file_findings = Vec::new();
@@ -119,7 +120,7 @@ fn answer_question(
                 if let Some(match_offset) = case_insensitive_byte_offset(line, matched_from) {
                     file_findings.push(MatchedFinding {
                         finding: Finding {
-                            path: display_path(repo_root, &file),
+                            path: source::display_path(repo_root, &file),
                             line: line_number,
                             excerpt: line.trim().to_string(),
                             source: if from_explicit {
@@ -162,7 +163,7 @@ fn answer_question(
         b.explicit
             .cmp(&a.explicit)
             .then_with(|| b.findings.len().cmp(&a.findings.len()))
-            .then_with(|| display_path(repo_root, &a.path).cmp(&display_path(repo_root, &b.path)))
+            .then_with(|| source::display_path(repo_root, &a.path).cmp(&source::display_path(repo_root, &b.path)))
     });
 
     let findings: Vec<Finding> = ranked_files
@@ -181,6 +182,29 @@ fn answer_question(
     };
 
     Ok((findings, negative_evidence))
+}
+
+fn load_candidate_text(
+    repo_root: &Path,
+    file: &Path,
+    cache: Option<&rusqlite::Connection>,
+    trace: &mut TraceState,
+) -> Option<String> {
+    if let Some(cache) = cache {
+        if let Ok(Some(cached)) = index::load_text(cache, repo_root, file) {
+            if index::is_fresh(file, &cached).ok() == Some(true) {
+                return Some(cached.text);
+            }
+        }
+    }
+
+    match fs::read_to_string(file) {
+        Ok(text) => Some(text),
+        Err(_) => {
+            trace.skipped_paths.push(source::display_path(repo_root, file));
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -441,124 +465,11 @@ fn is_generic_question_token(token: &str) -> bool {
     )
 }
 
-fn collect_candidate_files(
-    repo_root: &Path,
-    search_areas: &[String],
-    explicit_files: &[ExplicitFile],
-    trace: &mut TraceState,
-) -> Result<Vec<(PathBuf, bool)>, Box<dyn Error>> {
-    let mut candidates = Vec::new();
-    let mut seen = HashSet::new();
-
-    let mut explicit_paths: Vec<PathBuf> = explicit_files
-        .iter()
-        .filter(|file| file.found)
-        .map(|file| resolve_path(repo_root, &file.path))
-        .collect();
-    explicit_paths.sort();
-    for file in explicit_paths {
-        if seen.insert(file.clone()) {
-            candidates.push((file, true));
-        }
-    }
-
-    for area in search_areas {
-        let area_path = resolve_path(repo_root, area);
-        for file in collect_files(repo_root, &area_path, trace)? {
-            if seen.insert(file.clone()) {
-                candidates.push((file, false));
-            }
-        }
-    }
-
-    Ok(candidates)
-}
-
-fn collect_files(repo_root: &Path, dir: &Path, trace: &mut TraceState) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    if is_skipped_path(repo_root, dir) {
-        trace.skipped_paths.push(display_path(repo_root, dir));
-        return Ok(Vec::new());
-    }
-
-    if dir.is_file() {
-        return Ok(vec![dir.to_path_buf()]);
-    }
-
-    if !dir.is_dir() {
-        trace.skipped_paths.push(display_path(repo_root, dir));
-        return Ok(Vec::new());
-    }
-
-    let mut entries = Vec::new();
-    let read_dir = match fs::read_dir(dir) {
-        Ok(read_dir) => read_dir,
-        Err(_) => {
-            trace.skipped_paths.push(display_path(repo_root, dir));
-            return Ok(Vec::new());
-        }
-    };
-    for entry in read_dir {
-        match entry {
-            Ok(entry) => entries.push(entry.path()),
-            Err(_) => trace.skipped_paths.push(display_path(repo_root, dir)),
-        }
-    }
-    entries.sort();
-
-    let mut files = Vec::new();
-    for path in entries {
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(_) => {
-                trace.skipped_paths.push(display_path(repo_root, &path));
-                continue;
-            }
-        };
-        if is_skipped_path(repo_root, &path) {
-            trace.skipped_paths.push(display_path(repo_root, &path));
-            continue;
-        }
-        if metadata.is_dir() {
-            files.extend(collect_files(repo_root, &path, trace)?);
-        } else if metadata.is_file() {
-            files.push(path);
-        }
-    }
-    Ok(files)
-}
-
-fn resolve_path(repo_root: &Path, raw: &str) -> PathBuf {
-    let path = Path::new(raw);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root.join(path)
-    }
-}
-
-fn is_skipped_path(repo_root: &Path, path: &Path) -> bool {
-    let relative = path.strip_prefix(repo_root).unwrap_or(path);
-    relative.components().any(|component| {
-        matches!(
-            component,
-            std::path::Component::Normal(name)
-                if matches!(
-                    name.to_string_lossy().as_ref(),
-                    "target" | "node_modules" | "dist" | "build" | "pack" | ".git"
-                )
-        )
-    })
-}
-
-fn display_path(repo_root: &Path, path: &Path) -> String {
-    path.strip_prefix(repo_root)
-        .map(|relative| relative.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_string_lossy().into_owned())
-}
 
 #[cfg(test)]
 mod tests {
     use super::{answer_question, run, TraceState};
+    use crate::index;
     use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
     use std::fs;
     use std::io::Write;
@@ -636,6 +547,95 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "surveil/src/lib.rs");
         assert_eq!(findings[0].matched_from, "attach");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn indexed_mode_matches_scan_mode_for_scoped_results() {
+        let repo = temp_repo("indexed-parity");
+        write_file(&repo.join("notes/design.md"), "attach here\n");
+        write_file(&repo.join("other/ignore.md"), "attach here too\n");
+
+        let mut scan_trace = TraceState::default();
+        let scan = answer_question(
+            &repo,
+            "Where should attach live?",
+            &["attach".to_string()],
+            &["notes/".to_string()],
+            &[],
+            &mut scan_trace,
+        )
+        .expect("scan result");
+
+        index::run(&repo).expect("build index");
+
+        let mut indexed_trace = TraceState::default();
+        let indexed = answer_question(
+            &repo,
+            "Where should attach live?",
+            &["attach".to_string()],
+            &["notes/".to_string()],
+            &[],
+            &mut indexed_trace,
+        )
+        .expect("indexed result");
+
+        assert_eq!(scan.0, indexed.0);
+        assert_eq!(scan.1, indexed.1);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn stale_index_falls_back_to_current_file_text() {
+        let repo = temp_repo("stale-index");
+        write_file(&repo.join("notes/design.md"), "old text\n");
+        index::run(&repo).expect("build index");
+        write_file(&repo.join("notes/design.md"), "attach here\n");
+
+        let mut trace = TraceState::default();
+        let (findings, negative_evidence) = answer_question(
+            &repo,
+            "Where should attach live?",
+            &["attach".to_string()],
+            &["notes/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("fallback result");
+
+        assert!(negative_evidence.is_empty());
+        assert_eq!(findings[0].path, "notes/design.md");
+        assert_eq!(findings[0].excerpt, "attach here");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn indexed_mode_preserves_crlf_symbol_attachment() {
+        let repo = temp_repo("indexed-crlf-symbols");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
+        );
+        index::run(&repo).expect("build index");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("indexed result");
+
+        assert_eq!(findings[0].symbol_kind.as_deref(), Some("function"));
+        assert_eq!(findings[0].symbol_name.as_deref(), Some("attach"));
+        assert_eq!(findings[0].symbol_start_line, Some(1));
+        assert_eq!(findings[0].symbol_end_line, Some(3));
 
         let _ = fs::remove_dir_all(repo);
     }
