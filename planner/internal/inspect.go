@@ -41,10 +41,11 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	if strings.Contains(input, "\r") {
 		return ParseResult{}, fmt.Errorf("CRLF line endings not supported; convert to LF")
 	}
-	prefixLen, body, err := splitFrontmatter(input)
+	frontmatter, body, err := splitFrontmatter(input)
 	if err != nil {
 		return ParseResult{}, err
 	}
+	prefixLen := len(frontmatter)
 	if !strings.HasPrefix(body, "# ") {
 		return ParseResult{}, fmt.Errorf("missing title heading")
 	}
@@ -100,23 +101,49 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	return ParseResult{Plan: plan, Sections: spansTyped, Steps: stepSpans, DiffContents: diffSpans}, nil
 }
 
-// splitFrontmatter strips an optional YAML frontmatter block (--- ... ---) from
-// the start of input and returns the byte length of the stripped prefix and the
-// remaining body. If no frontmatter is present, prefixLen is 0 and body is input.
-func splitFrontmatter(input string) (int, string, error) {
+// splitFrontmatter strips the supported YAML frontmatter block from the start
+// of input and returns the raw consumed bytes plus the remaining body.
+func splitFrontmatter(input string) (string, string, error) {
 	const fence = "---\n"
+	if strings.HasPrefix(input, "---") && !strings.HasPrefix(input, fence) {
+		return "", "", fmt.Errorf("unsupported frontmatter format")
+	}
 	if !strings.HasPrefix(input, fence) {
-		return 0, input, nil
+		return "", input, nil
 	}
 	end := strings.Index(input[len(fence):], "\n---\n")
 	if end < 0 {
-		return 0, "", fmt.Errorf("unterminated frontmatter")
+		return "", "", fmt.Errorf("unterminated frontmatter")
 	}
 	prefixLen := len(fence) + end + len("\n---\n")
 	if prefixLen < len(input) && input[prefixLen] == '\n' {
 		prefixLen++
 	}
-	return prefixLen, input[prefixLen:], nil
+	frontmatter := input[:prefixLen]
+	if err := validateSupportedFrontmatter(frontmatter); err != nil {
+		return "", "", err
+	}
+	return frontmatter, input[prefixLen:], nil
+}
+
+func validateSupportedFrontmatter(frontmatter string) error {
+	// The parser only accepts the canonical vault issue frontmatter shape.
+	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
+	if len(lines) != 11 {
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	if lines[0] != "---" || lines[1] != "tags:" || lines[2] != "  - \"#Ticket\"" ||
+		lines[3] != "type: issue" || lines[5] != "template_version: 1" ||
+		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	for idx, lineIdx := range []int{4, 6, 7} {
+		prefix := []string{"status: ", "project: ", "date_created: "}[idx]
+		if !strings.HasPrefix(lines[lineIdx], prefix) || len(strings.TrimPrefix(lines[lineIdx], prefix)) == 0 {
+			return fmt.Errorf("unsupported frontmatter format")
+		}
+	}
+	return nil
 }
 
 // offsetSpans shifts all span values in a section map by offset bytes, making

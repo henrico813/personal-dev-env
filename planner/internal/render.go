@@ -29,10 +29,10 @@ func CreatePlan(inputPath string, outputPath string) error {
 	return nil
 }
 
-// CreatePlanFromStruct validates, renders, and atomically writes the canonical
-// scaffold. The CLI entrypoints call this shared renderer so the scaffold is
-// validated, rendered, and verified in one place below planner new and
-// planner template --md.
+// CreatePlanFromStruct validates, renders, and atomically writes canonical
+// markdown, preserving any existing leading frontmatter on rewrite. The CLI
+// entrypoints share this path so scaffold rendering and rewrite preservation
+// stay aligned in one place.
 func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -44,7 +44,11 @@ func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := VerifyRenderedText(rendered, plan); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
-	if err := writeOutput(outputPath, rendered); err != nil {
+	finalRendered, err := preserveExistingFrontmatter(outputPath, rendered)
+	if err != nil {
+		return fmt.Errorf("frontmatter: %w", err)
+	}
+	if err := writeOutput(outputPath, finalRendered); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
@@ -80,6 +84,33 @@ func RenderPlan(plan Plan) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// preserveExistingFrontmatter keeps supported frontmatter on rewrite so the
+// CLI can preserve it without changing markdown decode error handling.
+func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return rendered, nil
+		}
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return rendered, nil
+	}
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		return "", err
+	}
+	frontmatter, _, err := splitFrontmatter(string(raw))
+	if err != nil {
+		return "", err
+	}
+	if frontmatter == "" {
+		return rendered, nil
+	}
+	return frontmatter + rendered, nil
 }
 
 // writeOutput atomically writes rendered content to path via a temp file and
