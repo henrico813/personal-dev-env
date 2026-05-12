@@ -30,8 +30,8 @@ func CreatePlan(inputPath string, outputPath string) error {
 }
 
 // CreatePlanFromStruct validates, renders, and atomically writes canonical
-// markdown. Rendered plans are markdown-only outputs and do not embed JSON
-// appendices.
+// markdown, preserving any existing leading frontmatter on rewrite.
+// Rendered plans are markdown-only outputs and do not embed JSON appendices.
 func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -43,7 +43,11 @@ func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := VerifyRenderedText(rendered, plan); err != nil {
 		return fmt.Errorf("verify: %w", err)
 	}
-	if err := writeOutput(outputPath, rendered); err != nil {
+	finalRendered, err := preserveExistingFrontmatter(outputPath, rendered)
+	if err != nil {
+		return fmt.Errorf("frontmatter: %w", err)
+	}
+	if err := writeOutput(outputPath, finalRendered); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
@@ -64,6 +68,26 @@ func RenderPlan(plan Plan) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// preserveExistingFrontmatter prepends any existing leading frontmatter block
+// from the current output file to a freshly rendered plan.
+func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return rendered, nil
+		}
+		return "", err
+	}
+	prefixLen, _, err := splitFrontmatter(string(raw))
+	if err != nil {
+		return "", err
+	}
+	if prefixLen == 0 {
+		return rendered, nil
+	}
+	return string(raw[:prefixLen]) + rendered, nil
 }
 
 // writeOutput atomically writes rendered content to path via a temp file and

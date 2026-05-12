@@ -553,8 +553,13 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "rendered plan"))
 		return 1
 	}
-	return runPreview(stdout, stderr, pf, rendered, outputPath, "create", func() error {
-		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
+	finalRendered, err := preserveExistingFrontmatter(outputPath, rendered)
+	if err != nil {
+		reportError(stderr, "create", newPlannerCLIError(PlannerDecodeInputError, err, "existing markdown output"))
+		return 1
+	}
+	return runPreview(stdout, stderr, pf, finalRendered, outputPath, "create", func() error {
+		if err := WriteAtomic(outputPath, []byte(finalRendered)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil
