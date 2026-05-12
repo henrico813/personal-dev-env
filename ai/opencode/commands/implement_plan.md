@@ -40,11 +40,12 @@ the supported env vars or `~/.pi/agent/auth.json`. Missing auth should fail
 as `setup_error`, not a generic agent failure.
 
 Read the plan fully, then run one unchecked implementation step at a time.
-Extract the current step into a prompt file, then invoke the `vibe` CLI
+Scaffold a structured task prompt with `surveil new task /tmp/opencode/implement-plan-task`.
+Populate `/tmp/opencode/implement-plan-task/task.md` with the exact current plan step content verbatim, then invoke the `vibe` CLI
 directly with the current run contract:
 
 ```bash
-vibe run --key "$KEY" --prompt-file "$PROMPT_FILE" --model "$MODEL"
+vibe run --key "$KEY" --prompt-file /tmp/opencode/implement-plan-task/task.md --model "$MODEL"
 ```
 
 The skill owns step selection and prompt preparation. Vibe owns worktree
