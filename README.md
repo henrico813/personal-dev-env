@@ -53,7 +53,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 | OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
-| Surveil | `surveil/` | `~/.local/bin/surveil` | Task-document gather/research CLI |
+| Surveil | `surveil/` | `~/.local/bin/surveil` | Task-document scaffold/gather/research CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
 The config helper only manages the shared PDE config files under `~/.zshrc`, `~/.zsh_plugins.txt`, `~/.tmux.conf`, `~/.p10k.zsh`, and `~/.config/bottom/bottom.toml`.
