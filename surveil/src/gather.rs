@@ -1,9 +1,10 @@
 use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
+use crate::source;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     let task_text = fs::read_to_string(task_file)?;
@@ -171,8 +172,8 @@ fn validate_explicit_files(repo_root: &Path, files: &[String]) -> Result<Vec<Exp
     let mut explicit_files = Vec::with_capacity(files.len());
 
     for path in files {
-        let resolved = resolve_path(repo_root, path);
-        if !resolved.is_file() {
+        let resolved = source::resolve_path(repo_root, path);
+        if source::is_skipped_path(repo_root, &resolved) || !resolved.is_file() {
             return Err(io::Error::new(io::ErrorKind::NotFound, format!("explicit file not found: {path}")).into());
         }
 
@@ -187,22 +188,14 @@ fn validate_explicit_files(repo_root: &Path, files: &[String]) -> Result<Vec<Exp
 
 fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<(), Box<dyn Error>> {
     for area in search_areas {
-        let resolved = resolve_path(repo_root, area);
-        if !resolved.exists() {
+        let resolved = source::resolve_path(repo_root, area);
+        if source::is_skipped_path(repo_root, &resolved) || !resolved.exists() {
             return Err(io::Error::new(io::ErrorKind::NotFound, format!("search area not found: {area}")).into());
         }
     }
     Ok(())
 }
 
-fn resolve_path(repo_root: &Path, raw: &str) -> PathBuf {
-    let path = Path::new(raw);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        repo_root.join(path)
-    }
-}
 
 #[cfg(test)]
 mod tests {
