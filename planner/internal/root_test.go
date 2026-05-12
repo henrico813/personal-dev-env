@@ -16,6 +16,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	// Positive anchors: every command we ship must appear in help so AIs can
 	// discover the current surface from `planner help` alone.
 	for _, command := range []string{
+		"planner new",
 		"planner template",
 		"planner check",
 		"planner create",
@@ -33,6 +34,20 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "planner patch", "--write"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
+		}
+	}
+}
+
+func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
+	help := buildHelpText()
+	for _, want := range []string{
+		"planner new plan.md.",
+		"planner check plan.md --json-errors.",
+		"<out.md> may be the same path as <plan.md>",
+		"same-file updates",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("buildHelpText() missing %q", want)
 		}
 	}
 }
@@ -480,10 +495,15 @@ func TestTemplateHelpPrintsWorkflow(t *testing.T) {
 		t.Fatalf("Execute(template --help) exit code = %d, want 0, stderr = %q", exitCode, stderr.String())
 	}
 
-	// Anchor: PLACEHOLDER is the irreducible thing AIs need to learn from
-	// this help text. Wording around it is free to drift.
-	if !strings.Contains(stdout.String(), "PLACEHOLDER") {
-		t.Fatalf("template --help missing PLACEHOLDER anchor: %q", stdout.String())
+	for _, want := range []string{
+		"PLACEHOLDER",
+		"planner new <output.md>",
+		"Reference workflow:",
+		"planner template --md",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("template --help missing %q: %q", want, stdout.String())
+		}
 	}
 }
 
@@ -504,6 +524,156 @@ func TestTemplateHelpListsFieldGrammar(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("template --help missing %q: %q", want, stdout.String())
 		}
+	}
+}
+
+func TestNewRejectsNonMarkdownOutput(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.txt"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exit := Execute([]string{"new", out}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("Execute(new) exit = %d, want 2; stderr = %q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "planner new requires an output path ending in .md") {
+		t.Fatalf("stderr %q missing .md requirement", stderr.String())
+	}
+}
+
+func TestNewJSONErrorsReportsUsage(t *testing.T) {
+	dir := t.TempDir()
+	badOut := dir + "/plan.txt"
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "non_md", args: []string{"--json-errors", "new", badOut}, want: "planner new requires an output path ending in .md"},
+		{name: "missing_output", args: []string{"new", "--json-errors"}, want: "usage: planner new <output.md> [--diff] [--dry-run]"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if exit := Execute(tc.args, &stdout, &stderr); exit != 2 {
+				t.Fatalf("Execute(%v) exit = %d, want 2; stderr = %q", tc.args, exit, stderr.String())
+			}
+			code, msg := firstStderrJSON(t, &stderr)
+			if code != "USAGE" {
+				t.Fatalf("code=%q want USAGE", code)
+			}
+			if !strings.Contains(msg, tc.want) {
+				t.Fatalf("message %q missing %q", msg, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewMatchesTemplateMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	var templateStdout bytes.Buffer
+	var templateStderr bytes.Buffer
+	if exit := Execute([]string{"template", "--md"}, &templateStdout, &templateStderr); exit != 0 {
+		t.Fatalf("Execute(template --md) exit = %d, stderr = %q", exit, templateStderr.String())
+	}
+
+	var newStdout bytes.Buffer
+	var newStderr bytes.Buffer
+	if exit := Execute([]string{"new", out}, &newStdout, &newStderr); exit != 0 {
+		t.Fatalf("Execute(new) exit = %d, stderr = %q", exit, newStderr.String())
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", out, err)
+	}
+	if string(got) != templateStdout.String() {
+		t.Fatalf("new scaffold does not match template --md")
+	}
+}
+
+func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
+	path := writeNewScaffold(t, t.TempDir())
+
+	var checkStdout bytes.Buffer
+	var checkStderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &checkStdout, &checkStderr); exit != 0 {
+		t.Fatalf("Execute(check) exit = %d, stderr = %q", exit, checkStderr.String())
+	}
+
+	var inspectStdout bytes.Buffer
+	var inspectStderr bytes.Buffer
+	if exit := Execute([]string{"inspect", path}, &inspectStdout, &inspectStderr); exit != 0 {
+		t.Fatalf("Execute(inspect) exit = %d, stderr = %q", exit, inspectStderr.String())
+	}
+	plan, err := DecodePlan(inspectStdout.Bytes())
+	if err != nil {
+		t.Fatalf("inspect output is not valid plan JSON: %v", err)
+	}
+	if err := ValidatePlan(plan); err != nil {
+		t.Fatalf("inspect output does not validate: %v", err)
+	}
+}
+
+func TestNewScaffoldSupportsSamePathEdits(t *testing.T) {
+	cases := []struct {
+		name string
+		args func(string) []string
+		check func(*testing.T, Plan)
+	}{
+		{
+			name: "goal_set",
+			args: func(path string) []string {
+				return []string{"dod", "goal", "set", path, path, "--goal", "1", "updated goal"}
+			},
+			check: func(t *testing.T, plan Plan) {
+				if got := plan.DefinitionOfDone.Goals[0].Text; got != "updated goal" {
+					t.Fatalf("goal text = %q, want updated goal", got)
+				}
+			},
+		},
+		{
+			name: "step_summary_set",
+			args: func(path string) []string {
+				return []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "updated summary"}
+			},
+			check: func(t *testing.T, plan Plan) {
+				if got := plan.Implementation[0].Summary; got != "updated summary" {
+					t.Fatalf("step summary = %q, want updated summary", got)
+				}
+			},
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeNewScaffold(t, t.TempDir())
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if exit := Execute(tc.args(path), &stdout, &stderr); exit != 0 {
+				t.Fatalf("Execute(%v) exit = %d, stderr = %q", tc.args(path), exit, stderr.String())
+			}
+			assertParsed(t, path, func(plan Plan) { tc.check(t, plan) })
+		})
+	}
+}
+
+func TestNewDryRunDiffDoesNotWriteChanges(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exit := Execute([]string{"new", out, "--diff", "--dry-run"}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("Execute(new --diff --dry-run) exit = %d, want 1; stderr = %q", exit, stderr.String())
+	}
+	if stdout.Len() == 0 {
+		t.Fatal("expected diff on stdout")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("output should not be written, stat err = %v", err)
 	}
 }
 
@@ -956,6 +1126,19 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	defer func() { os.Stdin = original }()
 	go func() { defer w.Close(); _, _ = w.Write(data) }()
 	fn()
+}
+
+func writeNewScaffold(t *testing.T, dir string) string {
+	t.Helper()
+	path := dir + "/plan.md"
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"new", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("Execute(new %s) exit=%d stderr=%q", path, exit, stderr.String())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected scaffold at %s: %v", path, err)
+	}
+	return path
 }
 
 func writeBehavioralPlan(t *testing.T, dir string) string {

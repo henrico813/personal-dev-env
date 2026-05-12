@@ -528,18 +528,20 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 }
 
 func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
+	const usage = "planner new requires an output path ending in .md: usage: planner new <output.md> [--diff] [--dry-run]"
+
 	positional, pf, err := splitPreviewArgs(args, true, false)
 	if err != nil {
 		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	if len(positional) != 1 {
-		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, "usage: planner new <output.md> [--diff] [--dry-run]"))
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, usage))
 		return 2
 	}
 	outputPath := positional[0]
 	if !strings.HasSuffix(strings.ToLower(outputPath), ".md") {
-		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, "usage: planner new <output.md> [--diff] [--dry-run]"))
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, usage))
 		return 2
 	}
 	rendered, err := renderCanonicalScaffold()
