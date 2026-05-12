@@ -528,7 +528,8 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 }
 
 func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
-	const usage = "planner new requires an output path ending in .md: usage: planner new <output.md> [--diff] [--dry-run]"
+	const usage = "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"
+	const nonMarkdownUsage = "planner new requires an output path ending in .md: " + usage
 
 	positional, pf, err := splitPreviewArgs(args, true, false)
 	if err != nil {
@@ -541,7 +542,7 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	outputPath := positional[0]
 	if !strings.HasSuffix(strings.ToLower(outputPath), ".md") {
-		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, usage))
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, nonMarkdownUsage))
 		return 2
 	}
 	rendered, err := renderCanonicalScaffold()
