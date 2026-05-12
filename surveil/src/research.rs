@@ -45,6 +45,7 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
         open_questions,
     };
 
+    dedupe_in_place(&mut trace.skipped_paths);
     let trace_output = TraceOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         searched_areas: gather.search_areas,
@@ -440,6 +441,11 @@ fn normalized_symbol_kind(kind: &str) -> &'static str {
     }
 }
 
+fn dedupe_in_place(values: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
+}
+
 fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
     let line_bytes = line.as_bytes();
     let needle_bytes = needle.as_bytes();
@@ -556,7 +562,9 @@ fn is_generic_question_token(token: &str) -> bool {
 mod tests {
     use super::{answer_question, run, TraceState};
     use crate::index;
-    use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
+    use crate::schema::{
+        ExplicitFile, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION,
+    };
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -586,6 +594,14 @@ mod tests {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
         fs::write(path, serde_json::to_vec(context).expect("serialize context")).expect("write context");
+    }
+
+    fn parse_report_from_stdout(stdout: &str) -> ResearchOutput {
+        let line = stdout
+            .lines()
+            .find(|line| line.trim_start().starts_with("{\"schema_version\""))
+            .expect("report line");
+        serde_json::from_str(line).expect("parse report")
     }
 
     #[test]
@@ -1048,6 +1064,86 @@ mod tests {
     }
 
     #[test]
+    fn run_dedupes_skipped_paths() {
+        let repo = temp_repo("single-pass-trace");
+        fs::create_dir_all(repo.join("surveil")).expect("create search area");
+        let context = repo.join("context.json");
+        let trace = repo.join("trace.json");
+        write_context(
+            &context,
+            &GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "summary".to_string(),
+                explicit_files: vec![
+                    ExplicitFile {
+                        path: ".surveil/index.sqlite".to_string(),
+                        found: true,
+                    },
+                    ExplicitFile {
+                        path: ".surveil/index.sqlite".to_string(),
+                        found: true,
+                    },
+                ],
+                search_areas: vec!["surveil/".to_string()],
+                query: vec![
+                    "Where should Tree-sitter attach?".to_string(),
+                    "How should this change be verified?".to_string(),
+                ],
+                terms: vec!["tree-sitter".to_string(), "verified".to_string()],
+                blockers: Vec::new(),
+            },
+        );
+
+        run(&context, &trace).expect("research run");
+
+        let trace_output: TraceOutput = serde_json::from_str(
+            &fs::read_to_string(&trace).expect("read trace"),
+        )
+        .expect("parse trace");
+        assert_eq!(trace_output.skipped_paths, vec![".surveil/index.sqlite".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn run_keeps_multi_query_parity_child() {
+        let repo = temp_repo("single-pass-parity");
+        write_file(&repo.join("notes/design.md"), "// tree-sitter attach\n");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "fn attach() {\r\n    // tree-sitter attach one\r\n    // tree-sitter attach two\r\n    // tree-sitter attach three\r\n    // tree-sitter attach four\r\n}\r\n",
+        );
+
+        let context = repo.join("context.json");
+        let trace = repo.join("trace.json");
+        write_context(
+            &context,
+            &GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "summary".to_string(),
+                explicit_files: vec![ExplicitFile {
+                    path: "notes/design.md".to_string(),
+                    found: true,
+                }],
+                search_areas: vec!["surveil/".to_string()],
+                query: vec![
+                    "Where should Tree-sitter attach?".to_string(),
+                    "How should attach be verified?".to_string(),
+                    "Where should missing live?".to_string(),
+                ],
+                terms: vec!["tree-sitter".to_string(), "attach".to_string(), "missing".to_string()],
+                blockers: Vec::new(),
+            },
+        );
+
+        run(&context, &trace).expect("research run");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
     fn run_writes_schema_version_child() {
         let repo = temp_repo("run-version-child");
         write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
@@ -1070,6 +1166,45 @@ mod tests {
         run(&context, &trace).expect("research run");
 
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn run_keeps_multi_query_parity() {
+        let output = Command::new(std::env::current_exe().expect("current exe"))
+            .arg("run_keeps_multi_query_parity_child")
+            .arg("--nocapture")
+            .output()
+            .expect("spawn test binary");
+        assert!(output.status.success(), "child test failed: {}", String::from_utf8_lossy(&output.stderr));
+
+        let report = parse_report_from_stdout(&String::from_utf8(output.stdout).expect("utf8 stdout"));
+
+        assert_eq!(report.result.len(), 3);
+        for answer in &report.result[..2] {
+            assert_eq!(answer.findings[0].path, "notes/design.md");
+            assert_eq!(answer.findings[0].source, "explicit_file");
+            assert!(answer.findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+            assert!(answer.negative_evidence.is_empty());
+        }
+
+        let rust_findings: Vec<_> = report.result[0]
+            .findings
+            .iter()
+            .filter(|finding| finding.path == "surveil/src/lib.rs")
+            .collect();
+        assert_eq!(rust_findings.len(), 3);
+        assert_eq!(rust_findings[0].excerpt, "// tree-sitter attach one");
+        assert_eq!(rust_findings[0].symbol_kind.as_deref(), Some("function"));
+        assert_eq!(rust_findings[0].symbol_name.as_deref(), Some("attach"));
+        assert_eq!(rust_findings[0].symbol_start_line, Some(1));
+        assert_eq!(rust_findings[0].symbol_end_line, Some(6));
+
+        assert!(report.result[2].findings.is_empty());
+        assert_eq!(
+            report.result[2].negative_evidence,
+            vec!["searched declared areas: surveil/".to_string()]
+        );
+        assert_eq!(report.open_questions, vec!["Where should missing live?".to_string()]);
     }
 
     #[test]
