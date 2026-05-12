@@ -14,17 +14,18 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
 
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
+    let loaded_files = load_candidate_files(
+        &repo_root,
+        &gather.search_areas,
+        &gather.explicit_files,
+        &mut trace,
+    )?;
+    let corpus = build_corpus(loaded_files);
     let mut result = Vec::with_capacity(gather.query.len());
 
     for query in &gather.query {
-        let (findings, negative_evidence) = answer_question(
-            &repo_root,
-            query,
-            &gather.terms,
-            &gather.search_areas,
-            &gather.explicit_files,
-            &mut trace,
-        )?;
+        let (findings, negative_evidence) =
+            answer_question_from_corpus(query, &gather.terms, &gather.search_areas, &corpus, &mut trace)?;
         if findings.is_empty() {
             trace.unmatched_questions.push(query.clone());
         }
@@ -44,6 +45,7 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
         open_questions,
     };
 
+    dedupe_in_place(&mut trace.skipped_paths);
     let trace_output = TraceOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         searched_areas: gather.search_areas,
@@ -77,53 +79,55 @@ struct TraceState {
 const MAX_FINDINGS_PER_FILE: usize = 3;
 
 struct RankedFileFindings {
-    path: PathBuf,
+    display_path: String,
     explicit: bool,
     findings: Vec<Finding>,
 }
 
-fn answer_question(
-    repo_root: &Path,
+struct LoadedFile {
+    path: PathBuf,
+    display_path: String,
+    explicit: bool,
+    text: String,
+}
+
+struct CorpusFile {
+    path: PathBuf,
+    display_path: String,
+    explicit: bool,
+    text: String,
+    lines: Vec<CorpusLine>,
+}
+
+struct CorpusLine {
+    number: u32,
+    start: usize,
+    end: usize,
+    lower_text: String,
+}
+
+fn answer_question_from_corpus(
     question: &str,
     terms: &[String],
     search_areas: &[String],
-    explicit_files: &[ExplicitFile],
+    corpus: &[CorpusFile],
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
-    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
-    let cache = index::open(repo_root).ok().flatten();
     let mut ranked_files = Vec::new();
 
-    for (file, from_explicit) in candidates {
-        trace.files_considered.insert(file.clone());
-        let text = match load_candidate_text(repo_root, &file, cache.as_ref(), trace) {
-            Some(text) => text,
-            None => continue,
-        };
-
+    for file in corpus {
         let mut file_findings = Vec::new();
-        let mut line_start = 0usize;
-        let mut line_number = 1u32;
-        while line_start <= text.len() {
-            let line_end = text[line_start..]
-                .find('\n')
-                .map(|offset| line_start + offset)
-                .unwrap_or(text.len());
-            let mut content_end = line_end;
-            if content_end > line_start && text.as_bytes()[content_end - 1] == b'\r' {
-                content_end -= 1;
-            }
-            let line = &text[line_start..content_end];
-            let lower_line = line.to_lowercase();
-            if let Some(matched_from) = tokens.iter().find(|token| lower_line.contains(token.as_str())) {
-                if let Some(match_offset) = case_insensitive_byte_offset(line, matched_from) {
+        for line in &file.lines {
+            let line_text = &file.text[line.start..line.end];
+            if let Some(matched_from) = tokens.iter().find(|token| line.lower_text.contains(token.as_str())) {
+                if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
                     file_findings.push(MatchedFinding {
                         finding: Finding {
-                            path: source::display_path(repo_root, &file),
-                            line: line_number,
-                            excerpt: line.trim().to_string(),
-                            source: if from_explicit {
+                            path: file.display_path.clone(),
+                            line: line.number,
+                            excerpt: line_text.trim().to_string(),
+                            source: if file.explicit {
                                 "explicit_file".to_string()
                             } else {
                                 "lexical".to_string()
@@ -134,26 +138,20 @@ fn answer_question(
                             symbol_start_line: None,
                             symbol_end_line: None,
                         },
-                        byte_offset: line_start + match_offset,
+                        byte_offset: line.start + match_offset,
                     });
                 }
             }
-
-            if line_end == text.len() {
-                break;
-            }
-            line_start = line_end + 1;
-            line_number += 1;
         }
 
         if !file_findings.is_empty() {
-            if should_enrich_symbol_metadata(&file) {
-                enrich_symbol_metadata(&text, &mut file_findings);
+            if should_enrich_symbol_metadata(&file.path) {
+                enrich_symbol_metadata(&file.text, &mut file_findings);
             }
-            trace.files_matched.insert(file.clone());
+            trace.files_matched.insert(file.path.clone());
             ranked_files.push(RankedFileFindings {
-                path: file,
-                explicit: from_explicit,
+                display_path: file.display_path.clone(),
+                explicit: file.explicit,
                 findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
             });
         }
@@ -163,7 +161,7 @@ fn answer_question(
         b.explicit
             .cmp(&a.explicit)
             .then_with(|| b.findings.len().cmp(&a.findings.len()))
-            .then_with(|| source::display_path(repo_root, &a.path).cmp(&source::display_path(repo_root, &b.path)))
+            .then_with(|| a.display_path.cmp(&b.display_path))
     });
 
     let findings: Vec<Finding> = ranked_files
@@ -205,6 +203,93 @@ fn load_candidate_text(
             None
         }
     }
+}
+
+fn load_candidate_files(
+    repo_root: &Path,
+    search_areas: &[String],
+    explicit_files: &[ExplicitFile],
+    trace: &mut TraceState,
+) -> Result<Vec<LoadedFile>, Box<dyn Error>> {
+    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
+    let cache = index::open(repo_root).ok().flatten();
+    let mut loaded_files = Vec::with_capacity(candidates.len());
+
+    for (path, explicit) in candidates {
+        trace.files_considered.insert(path.clone());
+        let text = match load_candidate_text(repo_root, &path, cache.as_ref(), trace) {
+            Some(text) => text,
+            None => continue,
+        };
+
+        loaded_files.push(LoadedFile {
+            display_path: source::display_path(repo_root, &path),
+            path,
+            explicit,
+            text,
+        });
+    }
+
+    Ok(loaded_files)
+}
+
+fn build_corpus(loaded_files: Vec<LoadedFile>) -> Vec<CorpusFile> {
+    loaded_files
+        .into_iter()
+        .map(|file| CorpusFile {
+            lines: prepare_lines(&file.text),
+            path: file.path,
+            display_path: file.display_path,
+            explicit: file.explicit,
+            text: file.text,
+        })
+        .collect()
+}
+
+fn prepare_lines(text: &str) -> Vec<CorpusLine> {
+    let mut lines = Vec::new();
+    let mut line_start = 0usize;
+    let mut line_number = 1u32;
+
+    while line_start <= text.len() {
+        let line_end = text[line_start..]
+            .find('\n')
+            .map(|offset| line_start + offset)
+            .unwrap_or(text.len());
+        let mut content_end = line_end;
+        if content_end > line_start && text.as_bytes()[content_end - 1] == b'\r' {
+            content_end -= 1;
+        }
+
+        lines.push(CorpusLine {
+            number: line_number,
+            start: line_start,
+            end: content_end,
+            lower_text: text[line_start..content_end].to_lowercase(),
+        });
+
+        if line_end == text.len() {
+            break;
+        }
+        line_start = line_end + 1;
+        line_number += 1;
+    }
+
+    lines
+}
+
+#[cfg(test)]
+fn answer_question(
+    repo_root: &Path,
+    question: &str,
+    terms: &[String],
+    search_areas: &[String],
+    explicit_files: &[ExplicitFile],
+    trace: &mut TraceState,
+) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
+    let loaded_files = load_candidate_files(repo_root, search_areas, explicit_files, trace)?;
+    let corpus = build_corpus(loaded_files);
+    answer_question_from_corpus(question, terms, search_areas, &corpus, trace)
 }
 
 #[derive(Debug)]
@@ -354,6 +439,11 @@ fn normalized_symbol_kind(kind: &str) -> &'static str {
     }
 }
 
+fn dedupe_in_place(values: &mut Vec<String>) {
+    let mut seen = HashSet::new();
+    values.retain(|value| seen.insert(value.clone()));
+}
+
 fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
     let line_bytes = line.as_bytes();
     let needle_bytes = needle.as_bytes();
@@ -470,7 +560,9 @@ fn is_generic_question_token(token: &str) -> bool {
 mod tests {
     use super::{answer_question, run, TraceState};
     use crate::index;
-    use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
+    use crate::schema::{
+        ExplicitFile, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION,
+    };
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -500,6 +592,14 @@ mod tests {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
         fs::write(path, serde_json::to_vec(context).expect("serialize context")).expect("write context");
+    }
+
+    fn parse_report_from_stdout(stdout: &str) -> ResearchOutput {
+        let line = stdout
+            .lines()
+            .find(|line| line.trim_start().starts_with("{\"schema_version\""))
+            .expect("report line");
+        serde_json::from_str(line).expect("parse report")
     }
 
     #[test]
@@ -962,6 +1062,86 @@ mod tests {
     }
 
     #[test]
+    fn run_dedupes_skipped_paths() {
+        let repo = temp_repo("single-pass-trace");
+        fs::create_dir_all(repo.join("surveil")).expect("create search area");
+        let context = repo.join("context.json");
+        let trace = repo.join("trace.json");
+        write_context(
+            &context,
+            &GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "summary".to_string(),
+                explicit_files: vec![
+                    ExplicitFile {
+                        path: ".surveil/index.sqlite".to_string(),
+                        found: true,
+                    },
+                    ExplicitFile {
+                        path: ".surveil/index.sqlite".to_string(),
+                        found: true,
+                    },
+                ],
+                search_areas: vec!["surveil/".to_string()],
+                query: vec![
+                    "Where should Tree-sitter attach?".to_string(),
+                    "How should this change be verified?".to_string(),
+                ],
+                terms: vec!["tree-sitter".to_string(), "verified".to_string()],
+                blockers: Vec::new(),
+            },
+        );
+
+        run(&context, &trace).expect("research run");
+
+        let trace_output: TraceOutput = serde_json::from_str(
+            &fs::read_to_string(&trace).expect("read trace"),
+        )
+        .expect("parse trace");
+        assert_eq!(trace_output.skipped_paths, vec![".surveil/index.sqlite".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn run_keeps_multi_query_parity_child() {
+        let repo = temp_repo("single-pass-parity");
+        write_file(&repo.join("notes/design.md"), "// tree-sitter attach\n");
+        write_file(
+            &repo.join("surveil/src/lib.rs"),
+            "fn attach() {\r\n    // tree-sitter attach one\r\n    // tree-sitter attach two\r\n    // tree-sitter attach three\r\n    // tree-sitter attach four\r\n}\r\n",
+        );
+
+        let context = repo.join("context.json");
+        let trace = repo.join("trace.json");
+        write_context(
+            &context,
+            &GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "summary".to_string(),
+                explicit_files: vec![ExplicitFile {
+                    path: "notes/design.md".to_string(),
+                    found: true,
+                }],
+                search_areas: vec!["surveil/".to_string()],
+                query: vec![
+                    "Where should Tree-sitter attach?".to_string(),
+                    "How should attach be verified?".to_string(),
+                    "Where should missing live?".to_string(),
+                ],
+                terms: vec!["tree-sitter".to_string(), "attach".to_string(), "missing".to_string()],
+                blockers: Vec::new(),
+            },
+        );
+
+        run(&context, &trace).expect("research run");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
     fn run_writes_schema_version_child() {
         let repo = temp_repo("run-version-child");
         write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
@@ -984,6 +1164,50 @@ mod tests {
         run(&context, &trace).expect("research run");
 
         let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn run_keeps_multi_query_parity() {
+        let output = Command::new(std::env::current_exe().expect("current exe"))
+            .arg("run_keeps_multi_query_parity_child")
+            .arg("--nocapture")
+            .output()
+            .expect("spawn test binary");
+        assert!(output.status.success(), "child test failed: {}", String::from_utf8_lossy(&output.stderr));
+
+        let report = parse_report_from_stdout(&String::from_utf8(output.stdout).expect("utf8 stdout"));
+
+        assert_eq!(report.result.len(), 3);
+        for answer in &report.result[..2] {
+            assert_eq!(answer.findings[0].path, "notes/design.md");
+            assert_eq!(answer.findings[0].source, "explicit_file");
+            assert!(answer.findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+            assert!(answer.negative_evidence.is_empty());
+        }
+
+        let rust_findings: Vec<_> = report.result[0]
+            .findings
+            .iter()
+            .filter(|finding| finding.path == "surveil/src/lib.rs")
+            .collect();
+        assert_eq!(rust_findings.len(), 3);
+        assert_eq!(
+            rust_findings.iter().map(|finding| finding.excerpt.as_str()).collect::<Vec<_>>(),
+            vec!["fn attach() {", "// tree-sitter attach one", "// tree-sitter attach two"]
+        );
+        for finding in &rust_findings {
+            assert_eq!(finding.symbol_kind.as_deref(), Some("function"));
+            assert_eq!(finding.symbol_name.as_deref(), Some("attach"));
+            assert_eq!(finding.symbol_start_line, Some(1));
+            assert_eq!(finding.symbol_end_line, Some(6));
+        }
+
+        assert!(report.result[2].findings.is_empty());
+        assert_eq!(
+            report.result[2].negative_evidence,
+            vec!["searched declared areas: surveil/".to_string()]
+        );
+        assert_eq!(report.open_questions, vec!["Where should missing live?".to_string()]);
     }
 
     #[test]
