@@ -30,8 +30,9 @@ func CreatePlan(inputPath string, outputPath string) error {
 }
 
 // CreatePlanFromStruct validates, renders, and atomically writes canonical
-// markdown, preserving any existing leading frontmatter on rewrite.
-// Rendered plans are markdown-only outputs and do not embed JSON appendices.
+// markdown, preserving any existing leading frontmatter on rewrite. The CLI
+// entrypoints share this path so scaffold rendering and rewrite preservation
+// stay aligned in one place.
 func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -51,6 +52,21 @@ func CreatePlanFromStruct(plan Plan, outputPath string) error {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
+}
+
+func renderCanonicalScaffold() (string, error) {
+	plan := BuildPlanTemplate()
+	if err := ValidatePlan(plan); err != nil {
+		return "", fmt.Errorf("validate: %w", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		return "", fmt.Errorf("render: %w", err)
+	}
+	if err := VerifyRenderedText(rendered, plan); err != nil {
+		return "", fmt.Errorf("verify: %w", err)
+	}
+	return rendered, nil
 }
 
 // RenderPlan renders a validated Plan to canonical markdown format.
