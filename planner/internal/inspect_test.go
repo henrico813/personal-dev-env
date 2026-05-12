@@ -73,9 +73,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 	}
 }
 
-// TestParseMarkdownAllowsLeadingFrontmatter verifies that vault-style issue files
-// (which prepend YAML frontmatter before the plan title) are parsed correctly and
-// that returned spans are absolute into the original source (including frontmatter).
+// Frontmatter is ignored and spans stay absolute.
 func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	plan := Plan{
 		Title:    "Plan",
@@ -106,7 +104,7 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\n---\n\n"
+	frontmatter := canonicalFrontmatter()
 	withFrontmatter := frontmatter + md
 
 	result, err := ParseMarkdown(withFrontmatter)
@@ -123,6 +121,33 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	}
 	if !strings.Contains(withFrontmatter[sectionSpans.Overview.Start:sectionSpans.Overview.End], "Overview text.") {
 		t.Fatal("overview span should point into original source with frontmatter")
+	}
+}
+
+func TestParseMarkdownRejectsBadTagValue(t *testing.T) {
+	input := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected unsupported frontmatter to fail")
+	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsLegacyFrontmatterOrder(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"template_version: 1\n" +
+		"topics: []\n" +
+		"status: open\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected legacy frontmatter order to fail")
+	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -427,7 +452,20 @@ func buildPlanNoFrontmatter(t *testing.T) string {
 	return out
 }
 
+func canonicalFrontmatter() string {
+	return "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"template_version: 1\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
+		"---\n\n"
+}
+
 func buildPlanWithFrontmatter(t *testing.T) string {
 	t.Helper()
-	return "---\nproject: DevEnv\ndate_created: 2026-04-26\n---\n" + buildPlanNoFrontmatter(t)
+	return canonicalFrontmatter() + buildPlanNoFrontmatter(t)
 }
