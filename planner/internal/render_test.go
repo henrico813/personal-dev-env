@@ -39,7 +39,7 @@ func TestRenderPlanFromExampleDoesNotError(t *testing.T) {
 func TestCreatePlanFromStructPreservesExistingFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
-	frontmatter := "---\ntags:\n  - keep\n---\n\n"
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\ntemplate_version: 1\ntopics: []\nstatus: open\nproject: PDEV-083\ndate_created: 2026-05-12\n---\n\n"
 	if err := os.WriteFile(out, []byte(frontmatter+"old body\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -82,16 +82,16 @@ func TestCreatePlanFromStructLeavesNewOutputsUnchanged(t *testing.T) {
 	}
 }
 
-func TestCreatePlanFromStructRejectsMalformedFrontmatter(t *testing.T) {
+func TestCreatePlanFromStructRejectsUnsupportedFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
-	if err := os.WriteFile(out, []byte("---\ntags:\n  - keep\nold body\n"), 0o644); err != nil {
+	if err := os.WriteFile(out, []byte("---\ntags:\n  - \"#ticket\"\ntype: issue\ntemplate_version: 1\ntopics: []\nstatus: open\nproject: PDEV-083\ndate_created: 2026-05-12\n---\n\nold body\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := CreatePlanFromStruct(minimalPlan(), out); err == nil {
-		t.Fatal("expected malformed frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unterminated frontmatter") {
+		t.Fatal("expected unsupported frontmatter to fail")
+	} else if !strings.Contains(err.Error(), "unsupported frontmatter format") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

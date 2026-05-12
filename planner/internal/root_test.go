@@ -1270,6 +1270,39 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 	}
 }
 
+func TestInspectOutputOmitsFrontmatterFields(t *testing.T) {
+	dir := t.TempDir()
+	src := dir + "/plan.md"
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	if err := os.WriteFile(src, []byte("---\ntags:\n  - \"#Ticket\"\ntype: issue\ntemplate_version: 1\ntopics: []\nstatus: open\nproject: PDEV-083\ndate_created: 2026-05-12\n---\n\n"+rendered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"inspect", src}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
+	}
+	outPlan, err := DecodePlan(stdout.Bytes())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	if err := ValidatePlan(outPlan); err != nil {
+		t.Fatalf("ValidatePlan: %v", err)
+	}
+	for _, want := range []string{"\"tags\"", "\"type\"", "\"template_version\"", "\"topics\"", "\"project\"", "\"date_created\""} {
+		if strings.Contains(stdout.String(), want) {
+			t.Fatalf("inspect output unexpectedly contains %q: %q", want, stdout.String())
+		}
+	}
+}
+
 func TestReplaceCommandRemoved(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -1296,7 +1329,7 @@ func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
 func TestCreatePreservesExistingFrontmatterOnRewrite(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
-	frontmatter := "---\ntags:\n  - keep\n---\n\n"
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\ntemplate_version: 1\ntopics: []\nstatus: open\nproject: PDEV-083\ndate_created: 2026-05-12\n---\n\n"
 	if err := os.WriteFile(out, []byte(frontmatter+"old body\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1346,6 +1379,26 @@ func TestCreatePreservesExistingFrontmatterOnRewrite(t *testing.T) {
 	}
 }
 
+func TestJSONErrorsCoversUnsupportedFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	if err := os.WriteFile(out, []byte("---\ntags:\n  - \"#ticket\"\ntype: issue\ntemplate_version: 1\ntopics: []\nstatus: open\nproject: PDEV-083\ndate_created: 2026-05-12\n---\n\nold body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		exit := Execute([]string{"create", out, "--stdin", "--json-errors"}, &stdout, &stderr)
+		if exit != 1 {
+			t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+		}
+		code, _ := firstStderrJSON(t, &stderr)
+		if code != "DECODE_INPUT" {
+			t.Fatalf("code=%q want DECODE_INPUT", code)
+		}
+	})
+}
+
 // firstStderrJSON unmarshals the first non-empty stderr line as the planner
 // error envelope. Tests use it to assert the --json-errors contract: every
 // failure path emits one parseable JSON object with a stable code.
@@ -1393,10 +1446,8 @@ func TestJSONErrorsCoversUsageFailure(t *testing.T) {
 	}
 }
 
-func TestJSONErrorsCoversRuntimeFailure(t *testing.T) {
-	// Pass a directory as outputPath so runPreview's baseline read fails.
-	// The error must be coded READ_INPUT, not the RUNTIME or VALIDATE_INPUT
-	// fallback, proving runPreview constructs a typed error at the call site.
+func TestCreateDirOutputJSONError(t *testing.T) {
+	// Directory output must fail as READ_INPUT.
 	dir := t.TempDir()
 	withStdin(t, validPlanJSON(), func() {
 		var stdout, stderr bytes.Buffer
