@@ -79,7 +79,6 @@ struct TraceState {
 const MAX_FINDINGS_PER_FILE: usize = 3;
 
 struct RankedFileFindings {
-    path: PathBuf,
     display_path: String,
     explicit: bool,
     findings: Vec<Finding>,
@@ -151,7 +150,6 @@ fn answer_question_from_corpus(
             }
             trace.files_matched.insert(file.path.clone());
             ranked_files.push(RankedFileFindings {
-                path: file.path.clone(),
                 display_path: file.display_path.clone(),
                 explicit: file.explicit,
                 findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
@@ -1193,11 +1191,16 @@ mod tests {
             .filter(|finding| finding.path == "surveil/src/lib.rs")
             .collect();
         assert_eq!(rust_findings.len(), 3);
-        assert_eq!(rust_findings[0].excerpt, "// tree-sitter attach one");
-        assert_eq!(rust_findings[0].symbol_kind.as_deref(), Some("function"));
-        assert_eq!(rust_findings[0].symbol_name.as_deref(), Some("attach"));
-        assert_eq!(rust_findings[0].symbol_start_line, Some(1));
-        assert_eq!(rust_findings[0].symbol_end_line, Some(6));
+        assert_eq!(
+            rust_findings.iter().map(|finding| finding.excerpt.as_str()).collect::<Vec<_>>(),
+            vec!["fn attach() {", "// tree-sitter attach one", "// tree-sitter attach two"]
+        );
+        for finding in &rust_findings {
+            assert_eq!(finding.symbol_kind.as_deref(), Some("function"));
+            assert_eq!(finding.symbol_name.as_deref(), Some("attach"));
+            assert_eq!(finding.symbol_start_line, Some(1));
+            assert_eq!(finding.symbol_end_line, Some(6));
+        }
 
         assert!(report.result[2].findings.is_empty());
         assert_eq!(
