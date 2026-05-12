@@ -1,7 +1,9 @@
 mod gather;
+mod index;
 mod research;
 mod schema;
 mod taskfile;
+mod source;
 
 use clap::{Args, Parser, Subcommand};
 use std::error::Error;
@@ -18,6 +20,7 @@ struct Cli {
 enum Command {
     Gather(GatherArgs),
     New(NewArgs),
+    Index(IndexArgs),
     Research(ResearchArgs),
 }
 
@@ -47,6 +50,12 @@ struct NewTaskArgs {
 }
 
 #[derive(Args)]
+struct IndexArgs {
+    #[arg(long)]
+    repo: PathBuf,
+}
+
+#[derive(Args)]
 struct ResearchArgs {
     #[arg(long)]
     context: PathBuf,
@@ -70,6 +79,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         Command::New(args) => match args.command {
             NewCommand::Task(args) => taskfile::run(&args.output_dir).map_err(Into::into),
         },
+        Command::Index(args) => index::run(&args.repo),
         Command::Research(args) => research::run(&args.context, &args.trace_out),
     }
 }
