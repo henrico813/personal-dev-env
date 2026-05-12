@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const helpText = `planner provides implementation-plan workflows from canonical JSON.
+const helpText = `planner provides markdown-first implementation-plan workflows.
 
 Usage:
   planner
@@ -51,12 +51,19 @@ Usage:
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
-Create flow:
-  1. Research the task.
-  2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  3. Edit the draft JSON or use behavioral edit commands for targeted updates.
-  4. Run planner check <plan.json>.
-  5. Run planner create <plan.json> <output.md>.
+Markdown-first authoring flow:
+  1. Run planner new plan.md.
+  2. Edit the markdown directly, or use behavioral edit commands for same-path updates.
+  3. For behavioral edit commands, <out.md> may be the same path as <plan.md>
+     for same-file updates.
+  4. Run planner check plan.md --json-errors.
+  5. If parsing fails, stop and escalate before rendering or applying more edits.
+
+Legacy JSON render flow:
+  1. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
+  2. Edit the draft JSON or use behavioral edit commands for targeted updates.
+  3. Run planner check <plan.json>.
+  4. Run planner create <plan.json> <output.md>.
 
 Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
@@ -113,10 +120,10 @@ Selectors:
   --raw                 Emit raw text for scalar string selectors (no JSON quoting).
                         --field diff is the one selector that emits raw bytes and does not require --json.
 
-Create workflow:
-  1. planner template --json > draft.json
-  2. Edit fields directly or use behavioral edit commands for targeted markdown updates.
-  3. planner check draft.json && planner create draft.json out.md
+Reference workflow:
+  - planner new <output.md>
+  - planner template --md
+  - planner template --json/--raw
 `
 
 var jsonErrorOutput bool
