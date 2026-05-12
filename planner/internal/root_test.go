@@ -661,6 +661,20 @@ func TestNewScaffoldSupportsSamePathEdits(t *testing.T) {
 	}
 }
 
+func TestNewDryRunDoesNotWriteChanges(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	if exit := Execute([]string{"new", out, "--dry-run"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("Execute(new --dry-run) exit = %d, want 0; stderr = %q", exit, stderr.String())
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatalf("output should not be written, stat err = %v", err)
+	}
+}
+
 func TestNewDryRunDiffDoesNotWriteChanges(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
