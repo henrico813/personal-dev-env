@@ -73,11 +73,18 @@ func RenderPlan(plan Plan) (string, error) {
 // preserveExistingFrontmatter prepends any existing leading frontmatter block
 // from the current output file to a freshly rendered plan.
 func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
-	raw, err := os.ReadFile(outputPath)
+	info, err := os.Stat(outputPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return rendered, nil
 		}
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return rendered, nil
+	}
+	raw, err := os.ReadFile(outputPath)
+	if err != nil {
 		return "", err
 	}
 	prefixLen, _, err := splitFrontmatter(string(raw))
