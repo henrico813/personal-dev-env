@@ -133,13 +133,13 @@ func validateSupportedFrontmatter(frontmatter string) error {
 		return fmt.Errorf("unsupported frontmatter format")
 	}
 	if lines[0] != "---" || lines[1] != "tags:" || lines[2] != "  - \"#Ticket\"" ||
-		lines[3] != "type: issue" || lines[4] != "template_version: 1" ||
-		lines[5] != "topics: []" || lines[9] != "---" || lines[10] != "" {
+		lines[3] != "type: issue" || lines[5] != "template_version: 1" ||
+		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
 		return fmt.Errorf("unsupported frontmatter format")
 	}
-	for _, i := range []int{6, 7, 8} {
-		prefix := []string{"status: ", "project: ", "date_created: "}[i-6]
-		if !strings.HasPrefix(lines[i], prefix) || len(strings.TrimPrefix(lines[i], prefix)) == 0 {
+	for idx, lineIdx := range []int{4, 6, 7} {
+		prefix := []string{"status: ", "project: ", "date_created: "}[idx]
+		if !strings.HasPrefix(lines[lineIdx], prefix) || len(strings.TrimPrefix(lines[lineIdx], prefix)) == 0 {
 			return fmt.Errorf("unsupported frontmatter format")
 		}
 	}

@@ -133,6 +133,24 @@ func TestParseMarkdownRejectsBadTagValue(t *testing.T) {
 	}
 }
 
+func TestParseMarkdownRejectsLegacyFrontmatterOrder(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"template_version: 1\n" +
+		"topics: []\n" +
+		"status: open\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected legacy frontmatter order to fail")
+	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestParseMarkdownAllowsEmptyImplementationSection verifies that a plan rendered
 // with no implementation steps can be parsed without error. This is the bootstrap
 // case for append: an agent creates a plan skeleton and appends steps incrementally.
@@ -439,11 +457,11 @@ func canonicalFrontmatter() string {
 		"tags:\n" +
 		"  - \"#Ticket\"\n" +
 		"type: issue\n" +
-		"template_version: 1\n" +
-		"topics: []\n" +
 		"status: open\n" +
+		"template_version: 1\n" +
 		"project: PDEV-083\n" +
 		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
 		"---\n\n"
 }
 
