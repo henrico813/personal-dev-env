@@ -1293,6 +1293,59 @@ func TestCreateBaselineReadFailureExitsOne(t *testing.T) {
 	})
 }
 
+func TestCreatePreservesExistingFrontmatterOnRewrite(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	frontmatter := "---\ntags:\n  - keep\n---\n\n"
+	if err := os.WriteFile(out, []byte(frontmatter+"old body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := Plan{
+		Title:    "T",
+		Overview: "O",
+		DefinitionOfDone: DefinitionOfDone{
+			Narrative:    "N",
+			Goals:        []ChecklistItem{{Text: "g"}},
+			CurrentState: "C",
+			ModuleShape:  "M",
+		},
+		Implementation: []Step{{
+			Title:   "T",
+			Summary: "S",
+			FileChanges: []FileChange{{
+				Filename:    "f",
+				Explanation: "e",
+				Diff:        "@@ -1 +1 @@\n-a\n+b",
+			}},
+		}},
+		Verification: &Verification{
+			Summary:   "",
+			Automated: []ChecklistItem{{Text: "A"}},
+			Manual:    []ChecklistItem{{Text: "M"}},
+		},
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", out, "--stdin"}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("create exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got, want := string(raw), frontmatter+rendered; got != want {
+		t.Fatalf("rewritten output mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
+	}
+}
+
 // firstStderrJSON unmarshals the first non-empty stderr line as the planner
 // error envelope. Tests use it to assert the --json-errors contract: every
 // failure path emits one parseable JSON object with a stable code.

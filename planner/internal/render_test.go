@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,66 @@ func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
 func TestRenderPlanFromExampleDoesNotError(t *testing.T) {
 	if _, err := RenderPlan(BuildPlanExample()); err != nil {
 		t.Fatalf("BuildPlanExample should render cleanly: %v", err)
+	}
+}
+
+func TestCreatePlanFromStructPreservesExistingFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	frontmatter := "---\ntags:\n  - keep\n---\n\n"
+	if err := os.WriteFile(out, []byte(frontmatter+"old body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := minimalPlan()
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	if err := CreatePlanFromStruct(plan, out); err != nil {
+		t.Fatalf("CreatePlanFromStruct: %v", err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got, want := string(raw), frontmatter+rendered; got != want {
+		t.Fatalf("rewritten output mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
+	}
+}
+
+func TestCreatePlanFromStructLeavesNewOutputsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+
+	plan := minimalPlan()
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	if err := CreatePlanFromStruct(plan, out); err != nil {
+		t.Fatalf("CreatePlanFromStruct: %v", err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if got, want := string(raw), rendered; got != want {
+		t.Fatalf("new output mismatch\nwant:\n%s\n\ngot:\n%s", want, got)
+	}
+}
+
+func TestCreatePlanFromStructRejectsMalformedFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	out := dir + "/plan.md"
+	if err := os.WriteFile(out, []byte("---\ntags:\n  - keep\nold body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CreatePlanFromStruct(minimalPlan(), out); err == nil {
+		t.Fatal("expected malformed frontmatter to fail")
+	} else if !strings.Contains(err.Error(), "unterminated frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
