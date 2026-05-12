@@ -10,12 +10,13 @@ import (
 	"strings"
 )
 
-const helpText = `planner provides implementation-plan workflows from canonical JSON.
+const helpText = `planner provides markdown-first implementation-plan workflows.
 
 Usage:
   planner
   planner help
   planner template --md
+  planner new <output.md> [--diff] [--dry-run] [--json-errors]
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
   planner template --help
@@ -50,12 +51,19 @@ Usage:
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
-Create flow:
-  1. Research the task.
-  2. Run planner template --json > draft.json (or planner template --help for the full walkthrough).
-  3. Edit the draft JSON or use behavioral edit commands for targeted updates.
-  4. Run planner check <plan.json>.
-  5. Run planner create <plan.json> <output.md>.
+Markdown-first authoring flow:
+  1. Run planner new plan.md.
+  2. Edit the markdown directly, or use behavioral edit commands for same-path updates.
+  3. For behavioral edit commands, <out.md> may be the same path as <plan.md>
+     for same-file updates.
+  4. Run planner check plan.md --json-errors.
+  5. If parsing fails, stop and escalate before rendering or applying more edits.
+
+Legacy JSON render flow:
+  1. Run planner template --json > draft.json.
+  2. Edit the draft JSON directly.
+  3. Run planner check draft.json.
+  4. Run planner create draft.json out.md.
 
 Rewrite flow (full rewrite):
   1. Read the existing markdown issue.
@@ -112,10 +120,10 @@ Selectors:
   --raw                 Emit raw text for scalar string selectors (no JSON quoting).
                         --field diff is the one selector that emits raw bytes and does not require --json.
 
-Create workflow:
-  1. planner template --json > draft.json
-  2. Edit fields directly or use behavioral edit commands for targeted markdown updates.
-  3. planner check draft.json && planner create draft.json out.md
+Reference workflow:
+  - planner new <output.md>
+  - planner template --md
+  - planner template --json or planner template --raw when you need a JSON skeleton or scalar selector
 `
 
 var jsonErrorOutput bool
@@ -136,6 +144,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	case "template":
 		return runTemplate(args[1:], stdout, stderr)
+	case "new":
+		return runNew(args[1:], stdout, stderr)
 	case "check":
 		return runCheck("check", args[1:], stdout, stderr)
 	case "create":
@@ -345,16 +355,18 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 
-	plan := BuildPlanTemplate()
-	switch {
-	case opts.md:
-		rendered, err := RenderPlan(plan)
+	if opts.md {
+		rendered, err := renderCanonicalScaffold()
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 			return 1
 		}
 		_, _ = io.WriteString(stdout, rendered)
 		return 0
+	}
+
+	plan := BuildPlanTemplate()
+	switch {
 	case opts.section == "":
 		raw, err := MarshalJSONNoEscape(plan)
 		if err != nil {
@@ -513,6 +525,37 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 	}
 	_, _ = io.WriteString(stdout, "OK\n")
 	return 0
+}
+
+func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
+	const usage = "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"
+	const nonMarkdownUsage = "planner new requires an output path ending in .md: " + usage
+
+	positional, pf, err := splitPreviewArgs(args, true, false)
+	if err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if len(positional) != 1 {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, usage))
+		return 2
+	}
+	outputPath := positional[0]
+	if !strings.HasSuffix(strings.ToLower(outputPath), ".md") {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, nonMarkdownUsage))
+		return 2
+	}
+	rendered, err := renderCanonicalScaffold()
+	if err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
+		return 1
+	}
+	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
+		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
+			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
+		}
+		return nil
+	}, outputPath)
 }
 
 func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
