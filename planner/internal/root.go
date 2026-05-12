@@ -16,6 +16,7 @@ Usage:
   planner
   planner help
   planner template --md
+  planner new <output.md> [--diff] [--dry-run] [--json-errors]
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
   planner template --help
@@ -136,6 +137,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	case "template":
 		return runTemplate(args[1:], stdout, stderr)
+	case "new":
+		return runNew(args[1:], stdout, stderr)
 	case "check":
 		return runCheck("check", args[1:], stdout, stderr)
 	case "create":
@@ -345,16 +348,18 @@ func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 
-	plan := BuildPlanTemplate()
-	switch {
-	case opts.md:
-		rendered, err := RenderPlan(plan)
+	if opts.md {
+		rendered, err := renderCanonicalScaffold()
 		if err != nil {
 			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 			return 1
 		}
 		_, _ = io.WriteString(stdout, rendered)
 		return 0
+	}
+
+	plan := BuildPlanTemplate()
+	switch {
 	case opts.section == "":
 		raw, err := MarshalJSONNoEscape(plan)
 		if err != nil {
@@ -513,6 +518,34 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 	}
 	_, _ = io.WriteString(stdout, "OK\n")
 	return 0
+}
+
+func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
+	positional, pf, err := splitPreviewArgs(args, true, false)
+	if err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if len(positional) != 1 {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, "usage: planner new <output.md> [--diff] [--dry-run]"))
+		return 2
+	}
+	outputPath := positional[0]
+	if !strings.HasSuffix(strings.ToLower(outputPath), ".md") {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, "usage: planner new <output.md> [--diff] [--dry-run]"))
+		return 2
+	}
+	rendered, err := renderCanonicalScaffold()
+	if err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
+		return 1
+	}
+	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
+		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
+			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
+		}
+		return nil
+	}, outputPath)
 }
 
 func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
