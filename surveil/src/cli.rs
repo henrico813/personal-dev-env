@@ -1,6 +1,7 @@
 mod gather;
 mod research;
 mod schema;
+mod taskfile;
 
 use clap::{Args, Parser, Subcommand};
 use std::error::Error;
@@ -16,6 +17,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Gather(GatherArgs),
+    New(NewArgs),
     Research(ResearchArgs),
 }
 
@@ -26,6 +28,22 @@ struct GatherArgs {
 
     #[arg(long = "task-file")]
     task_file: PathBuf,
+}
+
+#[derive(Args)]
+struct NewArgs {
+    #[command(subcommand)]
+    command: NewCommand,
+}
+
+#[derive(Subcommand)]
+enum NewCommand {
+    Task(NewTaskArgs),
+}
+
+#[derive(Args)]
+struct NewTaskArgs {
+    output_dir: PathBuf,
 }
 
 #[derive(Args)]
@@ -49,6 +67,40 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     match cli.command {
         Command::Gather(args) => gather::run(&args.repo, &args.task_file),
+        Command::New(args) => match args.command {
+            NewCommand::Task(args) => taskfile::run(&args.output_dir).map_err(Into::into),
+        },
         Command::Research(args) => research::run(&args.context, &args.trace_out),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command, NewCommand};
+    use clap::Parser;
+    use clap::error::ErrorKind;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_new_task_output_dir() {
+        let cli = Cli::try_parse_from(["surveil", "new", "task", "/tmp/tasks"])
+            .expect("parse new task command");
+
+        match cli.command {
+            Command::New(args) => match args.command {
+                NewCommand::Task(args) => {
+                    assert_eq!(args.output_dir, PathBuf::from("/tmp/tasks"));
+                }
+            },
+            _ => panic!("expected new command"),
+        }
+    }
+
+    #[test]
+    fn new_task_requires_output_dir() {
+        match Cli::try_parse_from(["surveil", "new", "task"]) {
+            Ok(_) => panic!("expected missing argument error"),
+            Err(err) => assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument),
+        }
     }
 }
