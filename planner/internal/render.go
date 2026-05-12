@@ -29,9 +29,10 @@ func CreatePlan(inputPath string, outputPath string) error {
 	return nil
 }
 
-// CreatePlanFromStruct validates, renders, and atomically writes canonical
-// markdown. Rendered plans are markdown-only outputs and do not embed JSON
-// appendices.
+// CreatePlanFromStruct validates, renders, and atomically writes the canonical
+// scaffold. The CLI entrypoints call this shared renderer so the scaffold is
+// validated, rendered, and verified in one place below planner new and
+// planner template --md.
 func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
@@ -47,6 +48,21 @@ func CreatePlanFromStruct(plan Plan, outputPath string) error {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
+}
+
+func renderCanonicalScaffold() (string, error) {
+	plan := BuildPlanTemplate()
+	if err := ValidatePlan(plan); err != nil {
+		return "", fmt.Errorf("validate: %w", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		return "", fmt.Errorf("render: %w", err)
+	}
+	if err := VerifyRenderedText(rendered, plan); err != nil {
+		return "", fmt.Errorf("verify: %w", err)
+	}
+	return rendered, nil
 }
 
 // RenderPlan renders a validated Plan to canonical markdown format.
