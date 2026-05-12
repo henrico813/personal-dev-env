@@ -36,6 +36,7 @@ pde/user-config.yml
 .specstory/
 pde/.specstory/
 worktrees/
+.surveil/
 planner/planner
 cli/pde
 cli/pde.exe
