@@ -70,8 +70,8 @@ func RenderPlan(plan Plan) (string, error) {
 	return buf.String(), nil
 }
 
-// preserveExistingFrontmatter prepends any existing leading frontmatter block
-// from the current output file to a freshly rendered plan.
+// preserveExistingFrontmatter keeps supported frontmatter on rewrite so the
+// CLI can preserve it without changing markdown decode error handling.
 func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
 	info, err := os.Stat(outputPath)
 	if err != nil {
@@ -87,14 +87,14 @@ func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	prefixLen, _, err := splitFrontmatter(string(raw))
+	frontmatter, _, err := splitFrontmatter(string(raw))
 	if err != nil {
 		return "", err
 	}
-	if prefixLen == 0 {
+	if frontmatter == "" {
 		return rendered, nil
 	}
-	return string(raw[:prefixLen]) + rendered, nil
+	return frontmatter + rendered, nil
 }
 
 // writeOutput atomically writes rendered content to path via a temp file and
