@@ -86,14 +86,14 @@ func TestTemplateJSONIsValidPlan(t *testing.T) {
 
 func TestTemplateSectionShapes(t *testing.T) {
 	tests := []struct {
-		name  string
-		args  []string
-		check func(*testing.T, []byte)
+		name	string
+		args	[]string
+		check	func(*testing.T, []byte)
 	}{
 		{
-			name: "overview",
-			args: []string{"template", "--json", "--section", "overview"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"overview",
+			args:	[]string{"template", "--json", "--section", "overview"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got string
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -105,9 +105,9 @@ func TestTemplateSectionShapes(t *testing.T) {
 			},
 		},
 		{
-			name: "definition_of_done",
-			args: []string{"template", "--json", "--section", "definition_of_done"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"definition_of_done",
+			args:	[]string{"template", "--json", "--section", "definition_of_done"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got map[string]any
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -121,9 +121,9 @@ func TestTemplateSectionShapes(t *testing.T) {
 			},
 		},
 		{
-			name: "goals",
-			args: []string{"template", "--json", "--section", "definition_of_done", "--subsection", "goals"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"goals",
+			args:	[]string{"template", "--json", "--section", "definition_of_done", "--subsection", "goals"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got []any
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -135,9 +135,9 @@ func TestTemplateSectionShapes(t *testing.T) {
 			},
 		},
 		{
-			name: "implementation",
-			args: []string{"template", "--json", "--section", "implementation"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"implementation",
+			args:	[]string{"template", "--json", "--section", "implementation"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got []any
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -149,9 +149,9 @@ func TestTemplateSectionShapes(t *testing.T) {
 			},
 		},
 		{
-			name: "implementation_step",
-			args: []string{"template", "--json", "--section", "implementation", "--subsection", "1"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"implementation_step",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got map[string]any
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -165,9 +165,9 @@ func TestTemplateSectionShapes(t *testing.T) {
 			},
 		},
 		{
-			name: "verification",
-			args: []string{"template", "--json", "--section", "verification"},
-			check: func(t *testing.T, raw []byte) {
+			name:	"verification",
+			args:	[]string{"template", "--json", "--section", "verification"},
+			check:	func(t *testing.T, raw []byte) {
 				t.Helper()
 				var got map[string]any
 				if err := json.Unmarshal(raw, &got); err != nil {
@@ -196,59 +196,59 @@ func TestTemplateSectionShapes(t *testing.T) {
 
 func TestTemplateUsageErrors(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
+		name	string
+		args	[]string
+		wantErr	string
 	}{
 		{
-			name:    "section_requires_json",
-			args:    []string{"template", "--section", "overview"},
-			wantErr: "--section requires --json",
+			name:	"section_requires_json",
+			args:	[]string{"template", "--section", "overview"},
+			wantErr:	"--section requires --json",
 		},
 		{
-			name:    "overview_rejects_subsection",
-			args:    []string{"template", "--json", "--section", "overview", "--subsection", "1"},
-			wantErr: "does not support subsections",
+			name:	"overview_rejects_subsection",
+			args:	[]string{"template", "--json", "--section", "overview", "--subsection", "1"},
+			wantErr:	"does not support subsections",
 		},
 		{
-			name:    "subsection_requires_section",
-			args:    []string{"template", "--json", "--subsection", "1"},
-			wantErr: "--subsection requires --section",
+			name:	"subsection_requires_section",
+			args:	[]string{"template", "--json", "--subsection", "1"},
+			wantErr:	"--subsection requires --section",
 		},
 		{
-			name:    "md_and_json_are_mutually_exclusive",
-			args:    []string{"template", "--md", "--json"},
-			wantErr: "--md and --json are mutually exclusive",
+			name:	"md_and_json_are_mutually_exclusive",
+			args:	[]string{"template", "--md", "--json"},
+			wantErr:	"--md and --json are mutually exclusive",
 		},
 		{
-			name:    "raw_and_json_are_mutually_exclusive",
-			args:    []string{"template", "--raw", "--json", "--section", "title"},
-			wantErr: "--raw is mutually exclusive with --md and --json",
+			name:	"raw_and_json_are_mutually_exclusive",
+			args:	[]string{"template", "--raw", "--json", "--section", "title"},
+			wantErr:	"--raw is mutually exclusive with --md and --json",
 		},
 		{
-			name:    "raw_requires_section",
-			args:    []string{"template", "--raw"},
-			wantErr: "--raw requires --section",
+			name:	"raw_requires_section",
+			args:	[]string{"template", "--raw"},
+			wantErr:	"--raw requires --section",
 		},
 		{
-			name:    "implementation_subsection_must_be_numeric",
-			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "banana"},
-			wantErr: "1-based integer index",
+			name:	"implementation_subsection_must_be_numeric",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "banana"},
+			wantErr:	"1-based integer index",
 		},
 		{
-			name:    "implementation_subsection_must_be_in_range",
-			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "2"},
-			wantErr: "out of range",
+			name:	"implementation_subsection_must_be_in_range",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "2"},
+			wantErr:	"out of range",
 		},
 		{
-			name:    "verification_bad_subsection",
-			args:    []string{"template", "--json", "--section", "verification", "--subsection", "bogus"},
-			wantErr: "invalid verification subsection",
+			name:	"verification_bad_subsection",
+			args:	[]string{"template", "--json", "--section", "verification", "--subsection", "bogus"},
+			wantErr:	"invalid verification subsection",
 		},
 		{
-			name:    "md_does_not_accept_selectors",
-			args:    []string{"template", "--md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
-			wantErr: "--md does not accept selectors",
+			name:	"md_does_not_accept_selectors",
+			args:	[]string{"template", "--md", "--section", "implementation", "--subsection", "1", "--field", "diff"},
+			wantErr:	"--md does not accept selectors",
 		},
 	}
 
@@ -268,54 +268,54 @@ func TestTemplateUsageErrors(t *testing.T) {
 
 func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		wantSubstr string
+		name	string
+		args	[]string
+		wantSubstr	string
 	}{
 		{
-			name:       "title",
-			args:       []string{"template", "--json", "--section", "title"},
-			wantSubstr: fmt.Sprintf("max %d chars", MaxTitleLength),
+			name:	"title",
+			args:	[]string{"template", "--json", "--section", "title"},
+			wantSubstr:	fmt.Sprintf("max %d chars", MaxTitleLength),
 		},
 		{
-			name:       "verification summary",
-			args:       []string{"template", "--json", "--section", "verification", "--subsection", "summary"},
-			wantSubstr: "\"<optional summary>\"",
+			name:	"verification summary",
+			args:	[]string{"template", "--json", "--section", "verification", "--subsection", "summary"},
+			wantSubstr:	"\"<optional summary>\"",
 		},
 		{
-			name:       "verification automated",
-			args:       []string{"template", "--json", "--section", "verification", "--subsection", "automated"},
-			wantSubstr: "[",
+			name:	"verification automated",
+			args:	[]string{"template", "--json", "--section", "verification", "--subsection", "automated"},
+			wantSubstr:	"[",
 		},
 		{
-			name:       "verification manual",
-			args:       []string{"template", "--json", "--section", "verification", "--subsection", "manual"},
-			wantSubstr: "[",
+			name:	"verification manual",
+			args:	[]string{"template", "--json", "--section", "verification", "--subsection", "manual"},
+			wantSubstr:	"[",
 		},
 		{
-			name:       "step title field",
-			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
-			wantSubstr: fmt.Sprintf("max %d chars", MaxTitleLength),
+			name:	"step title field",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "title"},
+			wantSubstr:	fmt.Sprintf("max %d chars", MaxTitleLength),
 		},
 		{
-			name:       "step summary field",
-			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
-			wantSubstr: fmt.Sprintf("max %d chars", MaxStepSummaryLength),
+			name:	"step summary field",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "summary"},
+			wantSubstr:	fmt.Sprintf("max %d chars", MaxStepSummaryLength),
 		},
 		{
-			name:       "filename field",
-			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "filename"},
-			wantSubstr: "\"<filename>\"",
+			name:	"filename field",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "filename"},
+			wantSubstr:	"\"<filename>\"",
 		},
 		{
-			name:       "explanation field",
-			args:       []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "explanation"},
-			wantSubstr: "\"<explanation>\"",
+			name:	"explanation field",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "explanation"},
+			wantSubstr:	"\"<explanation>\"",
 		},
 		{
-			name:       "diff field raw",
-			args:       []string{"template", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"},
-			wantSubstr: "--- a/<path>",
+			name:	"diff field raw",
+			args:	[]string{"template", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "diff"},
+			wantSubstr:	"--- a/<path>",
 		},
 	}
 	for _, tc := range tests {
@@ -334,29 +334,29 @@ func TestTemplateAcceptsFullFieldGrammar(t *testing.T) {
 
 func TestTemplateRejectsInvalidGrammar(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
+		name	string
+		args	[]string
+		wantErr	string
 	}{
 		{
-			name:    "title_with_subsection",
-			args:    []string{"template", "--json", "--section", "title", "--subsection", "1"},
-			wantErr: "--section title accepts no other selectors",
+			name:	"title_with_subsection",
+			args:	[]string{"template", "--json", "--section", "title", "--subsection", "1"},
+			wantErr:	"--section title accepts no other selectors",
 		},
 		{
-			name:    "title_field_with_file",
-			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "title"},
-			wantErr: "--field title does not take --file",
+			name:	"title_field_with_file",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f", "--field", "title"},
+			wantErr:	"--field title does not take --file",
 		},
 		{
-			name:    "filename_without_file",
-			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "filename"},
-			wantErr: "--field filename requires --file F",
+			name:	"filename_without_file",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--field", "filename"},
+			wantErr:	"--field filename requires --file F",
 		},
 		{
-			name:    "file_without_field",
-			args:    []string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f"},
-			wantErr: "--file requires --field",
+			name:	"file_without_field",
+			args:	[]string{"template", "--json", "--section", "implementation", "--subsection", "1", "--file", "f"},
+			wantErr:	"--file requires --field",
 		},
 	}
 	for _, tc := range tests {
@@ -388,12 +388,12 @@ func TestTemplateRawScalar(t *testing.T) {
 		return got
 	}
 	cases := []struct {
-		name       string
-		args       []string
-		section    string
-		subsection string
-		file       string
-		field      string
+		name	string
+		args	[]string
+		section	string
+		subsection	string
+		file	string
+		field	string
 	}{
 		{name: "title", args: []string{"template", "--raw", "--section", "title"}, section: "title"},
 		{name: "overview", args: []string{"template", "--raw", "--section", "overview"}, section: "overview"},
@@ -625,22 +625,22 @@ func TestNewScaffoldSupportsSamePathEdits(t *testing.T) {
 		check func(*testing.T, Plan)
 	}{
 		{
-			name: "goal_set",
-			args: func(path string) []string {
+			name:	"goal_set",
+			args:	func(path string) []string {
 				return []string{"dod", "goal", "set", path, path, "--goal", "1", "updated goal"}
 			},
-			check: func(t *testing.T, plan Plan) {
+			check:	func(t *testing.T, plan Plan) {
 				if got := plan.DefinitionOfDone.Goals[0].Text; got != "updated goal" {
 					t.Fatalf("goal text = %q, want updated goal", got)
 				}
 			},
 		},
 		{
-			name: "step_summary_set",
-			args: func(path string) []string {
+			name:	"step_summary_set",
+			args:	func(path string) []string {
 				return []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "updated summary"}
 			},
-			check: func(t *testing.T, plan Plan) {
+			check:	func(t *testing.T, plan Plan) {
 				if got := plan.Implementation[0].Summary; got != "updated summary" {
 					t.Fatalf("step summary = %q, want updated summary", got)
 				}
@@ -814,9 +814,9 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 		t.Fatalf("unexpected informational stderr in json mode: %q", stderr.String())
 	}
 	var got struct {
-		Code         string `json:"code"`
-		Message      string `json:"message"`
-		RecoveryHint string `json:"recovery_hint"`
+		Code		string `json:"code"`
+		Message		string `json:"message"`
+		RecoveryHint	string `json:"recovery_hint"`
 	}
 	if err := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &got); err != nil {
 		t.Fatalf("stderr is not JSON: %v; raw=%q", err, stderr.String())
@@ -938,28 +938,28 @@ func TestRunCheckUnknownFormat(t *testing.T) {
 
 func TestRunCheckAggregatesViolations(t *testing.T) {
 	plan := Plan{
-		Title:    "",
-		Overview: "",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    strings.Repeat("n", 501),
-			Goals:        []ChecklistItem{{Text: "goal"}},
-			CurrentState: "current state",
-			ModuleShape:  "planner/check",
+		Title:	"",
+		Overview:	"",
+		DefinitionOfDone:	DefinitionOfDone{
+			Narrative:	strings.Repeat("n", 501),
+			Goals:	[]ChecklistItem{{Text: "goal"}},
+			CurrentState:	"current state",
+			ModuleShape:	"planner/check",
 		},
-		Implementation: []Step{
+		Implementation:	[]Step{
 			{
-				Title:   "step title",
-				Summary: "step summary",
-				FileChanges: []FileChange{{
-					Filename:    "planner/check/check.go",
-					Explanation: "explanation",
-					Diff:        "@@ -1 +1 @@\n- old\n+ new",
+				Title:	"step title",
+				Summary:	"step summary",
+				FileChanges:	[]FileChange{{
+					Filename:	"planner/check/check.go",
+					Explanation:	"explanation",
+					Diff:	"@@ -1 +1 @@\n- old\n+ new",
 				}},
 			},
 		},
-		Verification: &Verification{
-			Automated: []ChecklistItem{{Text: "automation"}},
-			Manual:    []ChecklistItem{{Text: "manual"}},
+		Verification:	&Verification{
+			Automated:	[]ChecklistItem{{Text: "automation"}},
+			Manual:	[]ChecklistItem{{Text: "manual"}},
 		},
 	}
 	raw, err := json.Marshal(plan)
@@ -1160,27 +1160,27 @@ func writeBehavioralPlan(t *testing.T, dir string) string {
 	t.Helper()
 	path := dir + "/plan.md"
 	withStdin(t, mustJSON(Plan{
-		Title:    "T",
-		Overview: "O",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g", Status: StatusDone}},
-			CurrentState: "C",
-			ModuleShape:  "M",
+		Title:	"T",
+		Overview:	"O",
+		DefinitionOfDone:	DefinitionOfDone{
+			Narrative:	"N",
+			Goals:	[]ChecklistItem{{Text: "g", Status: StatusDone}},
+			CurrentState:	"C",
+			ModuleShape:	"M",
 		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "@@ -1 +1 @@\n-a\n+b",
+		Implementation:	[]Step{{
+			Title:	"T",
+			Summary:	"S",
+			FileChanges:	[]FileChange{{
+				Filename:	"f",
+				Explanation:	"e",
+				Diff:	"@@ -1 +1 @@\n-a\n+b",
 			}},
 		}},
-		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A", Status: StatusDone}},
-			Manual:    []ChecklistItem{{Text: "M"}},
+		Verification:	&Verification{
+			Summary:	"",
+			Automated:	[]ChecklistItem{{Text: "A", Status: StatusDone}},
+			Manual:	[]ChecklistItem{{Text: "M"}},
 		},
 	}), func() {
 		var stdout, stderr bytes.Buffer
@@ -1221,27 +1221,27 @@ func assertParsed(t *testing.T, path string, check func(Plan)) {
 
 func validPlanJSON() []byte {
 	return mustJSON(Plan{
-		Title:    "T",
-		Overview: "O",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g"}},
-			CurrentState: "C",
-			ModuleShape:  "M",
+		Title:	"T",
+		Overview:	"O",
+		DefinitionOfDone:	DefinitionOfDone{
+			Narrative:	"N",
+			Goals:	[]ChecklistItem{{Text: "g"}},
+			CurrentState:	"C",
+			ModuleShape:	"M",
 		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "@@ -1 +1 @@\n-a\n+b",
+		Implementation:	[]Step{{
+			Title:	"T",
+			Summary:	"S",
+			FileChanges:	[]FileChange{{
+				Filename:	"f",
+				Explanation:	"e",
+				Diff:	"@@ -1 +1 @@\n-a\n+b",
 			}},
 		}},
-		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A"}},
-			Manual:    []ChecklistItem{{Text: "M"}},
+		Verification:	&Verification{
+			Summary:	"",
+			Automated:	[]ChecklistItem{{Text: "A"}},
+			Manual:	[]ChecklistItem{{Text: "M"}},
 		},
 	})
 }
@@ -1305,21 +1305,21 @@ func TestRepairNoticeIsSuppressedInJSONMode(t *testing.T) {
 
 func TestCheckSurfacesSchemaErrors(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   func(t *testing.T) []byte
-		wantErr string
+		name	string
+		input	func(t *testing.T) []byte
+		wantErr	string
 	}{
 		{
-			name:    "trailing_data",
-			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
-			wantErr: "trailing data after plan JSON",
+			name:	"trailing_data",
+			input:	func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr:	"trailing data after plan JSON",
 		},
 		{
-			name: "unknown_field",
-			input: func(t *testing.T) []byte {
+			name:	"unknown_field",
+			input:	func(t *testing.T) []byte {
 				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
 			},
-			wantErr: "unknown field",
+			wantErr:	"unknown field",
 		},
 	}
 	for _, tc := range tests {
@@ -1336,21 +1336,21 @@ func TestCheckSurfacesSchemaErrors(t *testing.T) {
 
 func TestCreateSurfacesSchemaErrors(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   func(t *testing.T) []byte
-		wantErr string
+		name	string
+		input	func(t *testing.T) []byte
+		wantErr	string
 	}{
 		{
-			name:    "trailing_data",
-			input:   func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
-			wantErr: "trailing data after plan JSON",
+			name:	"trailing_data",
+			input:	func(t *testing.T) []byte { return append(validPlanJSON(), []byte(" trailing")...) },
+			wantErr:	"trailing data after plan JSON",
 		},
 		{
-			name: "unknown_field",
-			input: func(t *testing.T) []byte {
+			name:	"unknown_field",
+			input:	func(t *testing.T) []byte {
 				return validPlanJSONMap(t, map[string]any{"extra_field": "boom"})
 			},
-			wantErr: "unknown field",
+			wantErr:	"unknown field",
 		},
 	}
 	for _, tc := range tests {
@@ -1533,27 +1533,27 @@ func TestCreatePreservesExistingFrontmatterOnRewrite(t *testing.T) {
 	}
 
 	plan := Plan{
-		Title:    "T",
-		Overview: "O",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g"}},
-			CurrentState: "C",
-			ModuleShape:  "M",
+		Title:	"T",
+		Overview:	"O",
+		DefinitionOfDone:	DefinitionOfDone{
+			Narrative:	"N",
+			Goals:	[]ChecklistItem{{Text: "g"}},
+			CurrentState:	"C",
+			ModuleShape:	"M",
 		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "@@ -1 +1 @@\n-a\n+b",
+		Implementation:	[]Step{{
+			Title:	"T",
+			Summary:	"S",
+			FileChanges:	[]FileChange{{
+				Filename:	"f",
+				Explanation:	"e",
+				Diff:	"@@ -1 +1 @@\n-a\n+b",
 			}},
 		}},
-		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A"}},
-			Manual:    []ChecklistItem{{Text: "M"}},
+		Verification:	&Verification{
+			Summary:	"",
+			Automated:	[]ChecklistItem{{Text: "A"}},
+			Manual:	[]ChecklistItem{{Text: "M"}},
 		},
 	}
 	rendered, err := RenderPlan(plan)
@@ -1610,8 +1610,8 @@ func firstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) 
 		line = line[:nl]
 	}
 	var got struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
+		Code		string `json:"code"`
+		Message		string `json:"message"`
 	}
 	if err := json.Unmarshal(line, &got); err != nil {
 		t.Fatalf("first stderr line is not JSON: %v; raw=%q", err, stderr.String())
