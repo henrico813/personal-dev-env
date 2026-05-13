@@ -825,3 +825,27 @@ func TestPreviewPreservesCheckboxesInUntouchedSections(t *testing.T) {
 		t.Fatalf("lost done checkbox state:\n%s", out)
 	}
 }
+
+func TestPreviewFromDataPreservesCanonicalFrontmatter(t *testing.T) {
+	plan := twoStepPlan()
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	sourcePath := filepath.Join(t.TempDir(), "source.md")
+	if err := os.WriteFile(sourcePath, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+
+	out, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview", Raw: true}, []byte("Updated overview."))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	if !strings.HasPrefix(out, frontmatter) {
+		t.Fatalf("frontmatter changed:\n%s", out)
+	}
+	if !strings.Contains(out, "Updated overview.") {
+		t.Fatalf("updated overview missing:\n%s", out)
+	}
+}
