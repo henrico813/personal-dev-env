@@ -14,63 +14,8 @@ func newVaultCmd() *cobra.Command {
 		Use:   "vault",
 		Short: "Manage PDE vault tooling",
 	}
-	cmd.AddCommand(newVaultDefaultCmd())
 	cmd.AddCommand(newVaultLocateCmd())
 	return cmd
-}
-
-func newVaultDefaultCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:           "default",
-		Short:         "Get or set the persisted default vault selector",
-		Args:          cobra.NoArgs,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return err
-			}
-			return runVaultDefaultGet(cmd.OutOrStdout(), homeDir)
-		},
-	}
-	cmd.AddCommand(newVaultDefaultGetCmd())
-	cmd.AddCommand(newVaultDefaultSetCmd())
-	return cmd
-}
-
-func newVaultDefaultGetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "get",
-		Short:         "Print the persisted default vault selector",
-		Args:          cobra.NoArgs,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return err
-			}
-			return runVaultDefaultGet(cmd.OutOrStdout(), homeDir)
-		},
-	}
-}
-
-func newVaultDefaultSetCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "set <main|work>",
-		Short:         "Persist the default vault selector",
-		Args:          cobra.ExactArgs(1),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return err
-			}
-			return runVaultDefaultSet(cmd.OutOrStdout(), homeDir, os.LookupEnv, args[0])
-		},
-	}
 }
 
 func newVaultLocateCmd() *cobra.Command {
@@ -169,36 +114,4 @@ func writeVaultLocateStatus(out io.Writer, jsonMode bool, result vaultLocateResu
 		return nil
 	}
 	return encodeVaultLocateJSON(out, result)
-}
-
-func runVaultDefaultGet(out io.Writer, homeDir string) error {
-	selector, err := storedDefaultVaultSelector(homeDir)
-	if err != nil {
-		return err
-	}
-	if selector == "" {
-		selector = "unset"
-	}
-	_, err = fmt.Fprintln(out, selector)
-	return err
-}
-
-func runVaultDefaultSet(out io.Writer, homeDir string, lookup envLookup, selector string) error {
-	selector = normalizeVaultSelector(selector)
-	if selector != "main" && selector != "work" {
-		return fmt.Errorf("invalid default vault %q; expected main or work", selector)
-	}
-
-	cfg, err := loadVaultConfig(homeDir, lookup)
-	if err != nil {
-		return err
-	}
-	if _, err := resolveVaultRoots(cfg, selector); err != nil {
-		return err
-	}
-	if err := setPathsEnvExport(homeDir, defaultVaultEnvKey, selector); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(out, selector)
-	return err
 }
