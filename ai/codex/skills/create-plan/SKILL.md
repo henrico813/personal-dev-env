@@ -47,6 +47,7 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - If blocking questions remain after research, ask only those questions and stop.
 - Determine the final output path before running `planner new <output.md>` or scaffolding `surveil`.
 - Write the final plan to its real destination, not a transient temp path.
+- If the user says a legacy surface is being phased out, treat that surface as out of scope unless they explicitly request changes there.
 - Use a unique per-plan temp artifact directory under `/tmp/opencode/`; do not reuse shared temp paths.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
 - Do not add extra sections unless the user explicitly asks for them.
