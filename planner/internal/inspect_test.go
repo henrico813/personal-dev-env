@@ -166,7 +166,7 @@ func TestParseMarkdownRejectsUnsupportedStatusValue(t *testing.T) {
 	input := strings.Replace(buildPlanWithFrontmatter(t), "status: open", "status: closed", 1)
 	if _, err := ParseMarkdown(input); err == nil {
 		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestParseMarkdownRejectsMalformedDateCreated(t *testing.T) {
 	input := strings.Replace(buildPlanWithFrontmatter(t), "date_created: 2026-05-12", "date_created: 2026/05/12", 1)
 	if _, err := ParseMarkdown(input); err == nil {
 		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

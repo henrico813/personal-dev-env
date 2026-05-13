@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	issueFrontmatterDateRE  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	issueFrontmatterDateRE    = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	errUnsupportedWrappedDoc  = errors.New("unsupported wrapped issue doc frontmatter")
 	errUnterminatedWrappedDoc = errors.New("unterminated wrapped issue doc frontmatter")
 )
