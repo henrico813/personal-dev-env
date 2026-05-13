@@ -53,6 +53,18 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 	}
 }
 
+func TestHelpTextMentionsWrappedIssueDocs(t *testing.T) {
+	help := buildHelpText()
+	for _, want := range []string{
+		"Wrapped issue docs are supported on the markdown path.",
+		"same-file updates preserve supported wrapped issue frontmatter automatically",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("buildHelpText() missing %q", want)
+		}
+	}
+}
+
 func TestTemplateMarkdownIncludesPlaceholder(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -904,6 +916,41 @@ func TestRunCheckMarkdownWithCanonicalFrontmatter(t *testing.T) {
 	}
 }
 
+func TestRunCheckUnsupportedWrappedFrontmatterGetsWrappedError(t *testing.T) {
+	path := t.TempDir() + "/plan.md"
+	bad := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "wrapped issue doc markdown") {
+		t.Fatalf("stderr missing wrapped-doc subject: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("stderr missing wrapped-doc error: %q", stderr.String())
+	}
+}
+
+func TestRunInspectUnsupportedWrappedFrontmatterGetsWrappedError(t *testing.T) {
+	path := t.TempDir() + "/plan.md"
+	bad := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"inspect", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "wrapped issue doc markdown") {
+		t.Fatalf("stderr missing wrapped-doc subject: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("stderr missing wrapped-doc error: %q", stderr.String())
+	}
+}
 func TestRunCheckJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/plan.json"

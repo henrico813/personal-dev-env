@@ -20,9 +20,9 @@ Usage:
   planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
   planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
   planner template --help
-  planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run.
+  planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run. Wrapped issue docs are supported on the markdown path.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner inspect <plan.md>
+  planner inspect <plan.md>  Wrapped issue docs are supported on the markdown path.
   planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -76,7 +76,7 @@ Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON.
   2. Use behavioral commands such as planner title set, planner dod goal set,
      planner implementation step file-change diff set, and planner verification automated add.
-  3. Non-targeted sections remain byte-for-byte unchanged.
+  3. Non-targeted sections remain byte-for-byte unchanged, and same-file updates preserve supported wrapped issue frontmatter automatically.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
@@ -446,6 +446,18 @@ func detectFormat(path string) string {
 	}
 }
 
+func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
+	subject := "plan markdown"
+	if strings.HasPrefix(string(raw), "---\n") {
+		subject = "wrapped issue doc markdown"
+	}
+	cliErr := newPlannerCLIError(PlannerDecodeInputError, parseErr, subject)
+	if strings.HasPrefix(string(raw), "---\n") && isWrappedDocError(parseErr) {
+		cliErr.RecoveryHint = "use the canonical vault issue frontmatter block or remove the wrapper before retrying"
+	}
+	return cliErr
+}
+
 // runCheck validates markdown or JSON plans and reports every violation.
 func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
 	format := ""
@@ -503,7 +515,7 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 		}
 		parsed, parseErr := ParseMarkdown(string(raw))
 		if parseErr != nil {
-			reportError(stderr, cmd, newPlannerCLIError(PlannerDecodeInputError, parseErr, "plan markdown"))
+			reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
 			return 1
 		}
 		plan = parsed.Plan
@@ -640,7 +652,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
+		reportError(stderr, "inspect", plannerMarkdownDecodeError(raw, err))
 		return 1
 	}
 

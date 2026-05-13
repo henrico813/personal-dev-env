@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -124,11 +125,39 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	}
 }
 
+func TestSplitMarkdownEnvelopePreservesCanonicalWrapperBytes(t *testing.T) {
+	input := buildPlanWithFrontmatter(t)
+	envelope, err := splitMarkdownEnvelope(input)
+	if err != nil {
+		t.Fatalf("splitMarkdownEnvelope: %v", err)
+	}
+	if !envelope.Wrapped {
+		t.Fatal("expected wrapped envelope")
+	}
+	if envelope.Frontmatter != canonicalFrontmatter() {
+		t.Fatalf("frontmatter mismatch\nwant:\n%s\n\ngot:\n%s", canonicalFrontmatter(), envelope.Frontmatter)
+	}
+	if envelope.BodyOffset != len(canonicalFrontmatter()) {
+		t.Fatalf("body offset = %d, want %d", envelope.BodyOffset, len(canonicalFrontmatter()))
+	}
+	if !strings.HasPrefix(envelope.Body, "# Sample") {
+		t.Fatalf("body not preserved: %q", envelope.Body)
+	}
+}
+
+func TestSplitMarkdownEnvelopeRejectsUnterminatedWrapper(t *testing.T) {
+	input := strings.TrimSuffix(canonicalFrontmatter(), "---\n\n") + buildPlanNoFrontmatter(t)
+	_, err := splitMarkdownEnvelope(input)
+	if !errors.Is(err, errUnterminatedWrappedDoc) {
+		t.Fatalf("expected errUnterminatedWrappedDoc, got %v", err)
+	}
+}
+
 func TestParseMarkdownRejectsBadTagValue(t *testing.T) {
 	input := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
 	if _, err := ParseMarkdown(input); err == nil {
 		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -164,7 +193,7 @@ func TestParseMarkdownRejectsLegacyFrontmatterOrder(t *testing.T) {
 		"---\n\n" + buildPlanNoFrontmatter(t)
 	if _, err := ParseMarkdown(input); err == nil {
 		t.Fatal("expected legacy frontmatter order to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
