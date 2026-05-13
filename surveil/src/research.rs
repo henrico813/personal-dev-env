@@ -215,17 +215,17 @@ fn load_candidate_files(
     let cache = index::open(repo_root).ok().flatten();
     let mut loaded_files = Vec::with_capacity(candidates.len());
 
-    for (path, explicit) in candidates {
-        trace.files_considered.insert(path.clone());
-        let text = match load_candidate_text(repo_root, &path, cache.as_ref(), trace) {
+    for candidate in candidates {
+        trace.files_considered.insert(candidate.path().to_path_buf());
+        let text = match load_candidate_text(repo_root, candidate.path(), cache.as_ref(), trace) {
             Some(text) => text,
             None => continue,
         };
 
         loaded_files.push(LoadedFile {
-            display_path: source::display_path(repo_root, &path),
-            path,
-            explicit,
+            display_path: candidate.display_path().to_string(),
+            path: candidate.path().to_path_buf(),
+            explicit: candidate.is_explicit(),
             text,
         });
     }
