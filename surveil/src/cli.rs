@@ -1,3 +1,4 @@
+mod chunk;
 mod gather;
 mod index;
 mod research;

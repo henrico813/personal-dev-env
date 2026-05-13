@@ -1,6 +1,6 @@
 use crate::index;
 use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
-use crate::source;
+use crate::source::{self, SourceFile};
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
 use std::fs;
@@ -85,16 +85,12 @@ struct RankedFileFindings {
 }
 
 struct LoadedFile {
-    path: PathBuf,
-    display_path: String,
-    explicit: bool,
+    source: SourceFile,
     text: String,
 }
 
 struct CorpusFile {
-    path: PathBuf,
-    display_path: String,
-    explicit: bool,
+    source: SourceFile,
     text: String,
     lines: Vec<CorpusLine>,
 }
@@ -124,10 +120,10 @@ fn answer_question_from_corpus(
                 if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
                     file_findings.push(MatchedFinding {
                         finding: Finding {
-                            path: file.display_path.clone(),
+                            path: file.source.display_path().to_string(),
                             line: line.number,
                             excerpt: line_text.trim().to_string(),
-                            source: if file.explicit {
+                            source: if file.source.is_explicit() {
                                 "explicit_file".to_string()
                             } else {
                                 "lexical".to_string()
@@ -145,13 +141,13 @@ fn answer_question_from_corpus(
         }
 
         if !file_findings.is_empty() {
-            if should_enrich_symbol_metadata(&file.path) {
+            if should_enrich_symbol_metadata(file.source.path()) {
                 enrich_symbol_metadata(&file.text, &mut file_findings);
             }
-            trace.files_matched.insert(file.path.clone());
+            trace.files_matched.insert(file.source.path().to_path_buf());
             ranked_files.push(RankedFileFindings {
-                display_path: file.display_path.clone(),
-                explicit: file.explicit,
+                display_path: file.source.display_path().to_string(),
+                explicit: file.source.is_explicit(),
                 findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
             });
         }
@@ -215,19 +211,14 @@ fn load_candidate_files(
     let cache = index::open(repo_root).ok().flatten();
     let mut loaded_files = Vec::with_capacity(candidates.len());
 
-    for (path, explicit) in candidates {
-        trace.files_considered.insert(path.clone());
-        let text = match load_candidate_text(repo_root, &path, cache.as_ref(), trace) {
+    for source in candidates {
+        trace.files_considered.insert(source.path().to_path_buf());
+        let text = match load_candidate_text(repo_root, source.path(), cache.as_ref(), trace) {
             Some(text) => text,
             None => continue,
         };
 
-        loaded_files.push(LoadedFile {
-            display_path: source::display_path(repo_root, &path),
-            path,
-            explicit,
-            text,
-        });
+        loaded_files.push(LoadedFile { source, text });
     }
 
     Ok(loaded_files)
@@ -238,9 +229,7 @@ fn build_corpus(loaded_files: Vec<LoadedFile>) -> Vec<CorpusFile> {
         .into_iter()
         .map(|file| CorpusFile {
             lines: prepare_lines(&file.text),
-            path: file.path,
-            display_path: file.display_path,
-            explicit: file.explicit,
+            source: file.source,
             text: file.text,
         })
         .collect()
@@ -821,6 +810,58 @@ mod tests {
         assert_eq!(findings[0].path, "notes/design.md");
         assert_eq!(findings[0].source, "explicit_file");
         assert!(findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn indexed_mode_preserves_explicit_ordering_and_trace_counts() {
+        let repo = temp_repo("indexed-explicit-order");
+        write_file(&repo.join("notes/design.md"), "// tree-sitter attach\n");
+        write_file(
+            &repo.join("surveil/src/a.rs"),
+            "// tree-sitter attach one\n// tree-sitter attach two\n",
+        );
+        write_file(
+            &repo.join("surveil/src/b.rs"),
+            "// tree-sitter attach one\n// tree-sitter attach two\n",
+        );
+
+        let explicit = [ExplicitFile {
+            path: "notes/design.md".to_string(),
+            found: true,
+        }];
+
+        let mut scan_trace = TraceState::default();
+        let scan = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &explicit,
+            &mut scan_trace,
+        )
+        .expect("scan result");
+
+        index::run(&repo).expect("build index");
+
+        let mut indexed_trace = TraceState::default();
+        let indexed = answer_question(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &explicit,
+            &mut indexed_trace,
+        )
+        .expect("indexed result");
+
+        assert_eq!(scan.0, indexed.0);
+        assert_eq!(scan.1, indexed.1);
+        assert_eq!(indexed.0[0].path, "notes/design.md");
+        assert_eq!(indexed.0[1].path, "surveil/src/a.rs");
+        assert_eq!(indexed_trace.files_considered.len(), scan_trace.files_considered.len());
+        assert_eq!(indexed_trace.files_matched.len(), scan_trace.files_matched.len());
 
         let _ = fs::remove_dir_all(repo);
     }

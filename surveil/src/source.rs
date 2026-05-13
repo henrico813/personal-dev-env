@@ -4,12 +4,41 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceFile {
+    path: PathBuf,
+    display_path: String,
+    explicit: bool,
+}
+
+impl SourceFile {
+    pub(crate) fn new(repo_root: &Path, path: PathBuf, explicit: bool) -> Self {
+        Self {
+            display_path: display_path(repo_root, &path),
+            path,
+            explicit,
+        }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn display_path(&self) -> &str {
+        &self.display_path
+    }
+
+    pub(crate) fn is_explicit(&self) -> bool {
+        self.explicit
+    }
+}
+
 pub fn collect_candidate_files(
     repo_root: &Path,
     search_areas: &[String],
     explicit_files: &[ExplicitFile],
     skipped_paths: &mut Vec<String>,
-) -> Result<Vec<(PathBuf, bool)>, Box<dyn Error>> {
+) -> Result<Vec<SourceFile>, Box<dyn Error>> {
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
 
@@ -25,7 +54,7 @@ pub fn collect_candidate_files(
             continue;
         }
         if seen.insert(file.clone()) {
-            candidates.push((file, true));
+            candidates.push(SourceFile::new(repo_root, file, true));
         }
     }
 
@@ -33,7 +62,7 @@ pub fn collect_candidate_files(
         let area_path = resolve_path(repo_root, area);
         for file in collect_files(repo_root, &area_path, skipped_paths)? {
             if seen.insert(file.clone()) {
-                candidates.push((file, false));
+                candidates.push(SourceFile::new(repo_root, file, false));
             }
         }
     }
@@ -181,6 +210,32 @@ mod tests {
         .expect("collect candidates");
         assert!(candidates.is_empty());
         assert!(candidate_skips.iter().any(|path| path == ".surveil/index.sqlite"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn candidate_files_carry_display_path_and_explicit_marker() {
+        let repo = temp_repo("source-record");
+        write_file(&repo.join("notes/design.md"), "design\n");
+        write_file(&repo.join("src/lib.rs"), "fn main() {}\n");
+
+        let mut skipped_paths = Vec::new();
+        let candidates = collect_candidate_files(
+            &repo,
+            &["src/".to_string()],
+            &[ExplicitFile {
+                path: "notes/design.md".to_string(),
+                found: true,
+            }],
+            &mut skipped_paths,
+        )
+        .expect("collect candidates");
+
+        assert_eq!(candidates[0].display_path(), "notes/design.md");
+        assert!(candidates[0].is_explicit());
+        assert_eq!(candidates[1].display_path(), "src/lib.rs");
+        assert!(!candidates[1].is_explicit());
 
         let _ = fs::remove_dir_all(repo);
     }
