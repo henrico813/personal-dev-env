@@ -598,6 +598,11 @@ func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	finalRendered, err := preserveExistingFrontmatter(outputPath, rendered)
 	if err != nil {
+		var fmErr *existingFrontmatterError
+		if errors.As(err, &fmErr) && fmErr.kind == existingFrontmatterReadError {
+			reportError(stderr, "create", newPlannerCLIError(PlannerReadInputError, err, outputPath))
+			return 1
+		}
 		reportError(stderr, "create", newPlannerCLIError(PlannerDecodeInputError, err, "existing markdown output"))
 		return 1
 	}
