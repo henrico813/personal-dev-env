@@ -45,6 +45,10 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - For repo-backed implementation plans, treat `surveil` artifacts as required baseline inputs before broad manual repo research.
 - Do not draft the final plan until research is complete.
 - If blocking questions remain after research, ask only those questions and stop.
+- Determine the final output path before running `planner new <output.md>` or scaffolding `surveil`.
+- Write the final plan to its real destination, not a transient temp path.
+- If the user says a legacy surface is being phased out, treat that surface as out of scope unless they explicitly request changes there.
+- Use a unique per-plan temp artifact directory under `/tmp/opencode/`; do not reuse shared temp paths.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
 - Do not add extra sections unless the user explicitly asks for them.
 - Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
@@ -72,9 +76,9 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
 3. If the user references a vault-style path, resolve it with `pde vault locate --json --vault default "<reference>"`. If that returns `not_found`, retry once with `--vault any "<reference>"`. Treat `ambiguous`, `error`, and a final `not_found` as stop-and-ask states. Use the vault helper for lookup only; do not use it to create destination paths. Use `--query` only when you explicitly want note-content search.
-4. If the request is repo-backed, scaffold a structured surveil task with `surveil new task /tmp/opencode/create-plan-task` before broad repo research.
+4. If the request is repo-backed, let `<artifact-dir>` be a unique per-plan temp artifact directory under `/tmp/opencode/`, then scaffold a structured surveil task at `<artifact-dir>` before broad repo research.
 5. Build the task using these mechanical rules:
-   - Populate `/tmp/opencode/create-plan-task/task.md` after scaffolding it.
+   - Populate `<artifact-dir>/task.md` after scaffolding it.
    - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
    - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
    - `Search Areas`: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
@@ -93,19 +97,19 @@ For repo-backed implementation plans, use `surveil` as the default research work
 
 For requests that are not repo-backed, skip `surveil` and research the relevant code, tests, config, docs, or comparative material directly using the available read-only tools before drafting.
 
-Capture artifacts with fixed commands and paths:
+Capture artifacts with this fixed command pattern:
 
-- `surveil new task /tmp/opencode/create-plan-task`
-- Populate `/tmp/opencode/create-plan-task/task.md` using the mechanical rules above.
-- `surveil gather --repo <repo> --task-file /tmp/opencode/create-plan-task/task.md > /tmp/opencode/create-plan-context.json`
-- `surveil research --context /tmp/opencode/create-plan-context.json --trace-out /tmp/opencode/create-plan-trace.json > /tmp/opencode/create-plan-report.json`
+- `surveil new task <artifact-dir>`
+- Populate `<artifact-dir>/task.md` using the mechanical rules above.
+- `surveil gather --repo <repo> --task-file <artifact-dir>/task.md > <artifact-dir>/context.json`
+- `surveil research --context <artifact-dir>/context.json --trace-out <artifact-dir>/trace.json > <artifact-dir>/report.json`
 
 If `surveil` is unavailable, fails to run, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
 
 Consume artifacts in this order:
 
-1. Read `/tmp/opencode/create-plan-report.json` first and treat `result` as the default evidence outline.
-2. Read `/tmp/opencode/create-plan-trace.json` only when `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
+1. Read `<artifact-dir>/report.json` first and treat `result` as the default evidence outline.
+2. Read `<artifact-dir>/trace.json` only when `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
 3. Preserve `negative_evidence` and `open_questions` as planning inputs instead of smoothing them away.
 
 Bound follow-up reading after `surveil`:
@@ -130,7 +134,7 @@ In those cases, refine with focused reads and searches rather than skipping `sur
 
 Once aligned on approach:
 
-1. **Create initial plan outline**:
+1. **Create the initial outline internally unless the user explicitly asked for interactive planning**:
    ```
    Here's my proposed plan structure:
 
@@ -142,12 +146,12 @@ Once aligned on approach:
    3. [Phase name] - [what it accomplishes]
    4. [Phase name] - [what it accomplishes]
 
-   Does this phasing make sense? Should I adjust the order or granularity?
+   Use the smallest scope that satisfies the request and constraints.
    ```
 
 ### Step 4: Detailed Plan Writing
 
-After structure approval:
+After research is complete:
 
 1. Run `planner help` first; do not guess command shapes from memory.
 2. For new plans, run `planner new <output.md>`.
@@ -223,21 +227,11 @@ Examples:
 
 Make sure the implementation and verification sections include explicit, 
 
-### Step 5: Review
+### Step 5: Validate And Report
 
-1. **Present the draft plan** and ask:
-   - Are the steps properly scoped?
-   - Are the success criteria specific enough?
-   - Any technical details that need adjustment?
-   - Missing edge cases or considerations?
-
-2. **Iterate based on feedback** - be ready to:
-   - Add missing phases
-   - Adjust technical approach
-   - Clarify success criteria (both automated and manual)
-   - Add/remove scope items
-
-3. **Continue refining** until the user is satisfied
+1. Run `planner check <output.md>`.
+2. Fix any validation failures before reporting success.
+3. Report the final output path, validation result, scope summary, and any blockers.
 
 ## Important Guidelines
 
