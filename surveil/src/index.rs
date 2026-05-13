@@ -78,17 +78,18 @@ fn rebuild_index(repo_root: &Path, conn: &mut Connection) -> Result<(), Box<dyn 
     let mut skipped_paths = Vec::new();
     let search_areas = [".".to_string()];
     let candidates = source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
-    for (path, _) in candidates {
-        let text = match fs::read_to_string(&path) {
+    for candidate in candidates {
+        let path = candidate.path();
+        let text = match fs::read_to_string(path) {
             Ok(text) => text,
             Err(_) => continue,
         };
-        let metadata = fs::metadata(&path)?;
+        let metadata = fs::metadata(path)?;
         let modified = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_nanos() as i64;
         tx.execute(
             "INSERT INTO files(path, mtime_ns, size_bytes, text) VALUES (?1, ?2, ?3, ?4)",
             params![
-                source::display_path(repo_root, &path),
+                candidate.display_path(),
                 modified,
                 metadata.len() as i64,
                 text,
