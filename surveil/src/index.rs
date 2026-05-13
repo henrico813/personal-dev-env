@@ -78,18 +78,17 @@ fn rebuild_index(repo_root: &Path, conn: &mut Connection) -> Result<(), Box<dyn 
     let mut skipped_paths = Vec::new();
     let search_areas = [".".to_string()];
     let candidates = source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
-    for candidate in candidates {
-        let path = candidate.path();
-        let text = match fs::read_to_string(path) {
+    for source in candidates {
+        let text = match fs::read_to_string(source.path()) {
             Ok(text) => text,
             Err(_) => continue,
         };
-        let metadata = fs::metadata(path)?;
+        let metadata = fs::metadata(source.path())?;
         let modified = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_nanos() as i64;
         tx.execute(
             "INSERT INTO files(path, mtime_ns, size_bytes, text) VALUES (?1, ?2, ?3, ?4)",
             params![
-                candidate.display_path(),
+                source.display_path(),
                 modified,
                 metadata.len() as i64,
                 text,
@@ -128,6 +127,29 @@ mod tests {
         let cached = load_text(&conn, &repo, &repo.join("notes/design.md")).unwrap().unwrap();
         assert_eq!(cached.text, "attach index here\n");
         assert!(is_fresh(&repo.join("notes/design.md"), &cached).unwrap());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn index_stores_repo_relative_paths_and_skips_surveil_dir() {
+        let repo = temp_repo("display-paths");
+        fs::create_dir_all(repo.join("notes")).unwrap();
+        fs::create_dir_all(repo.join(".surveil")).unwrap();
+        fs::write(repo.join("notes/design.md"), "attach index here\n").unwrap();
+        fs::write(repo.join(".surveil/ignored.md"), "ignored\n").unwrap();
+
+        run(&repo).unwrap();
+
+        let conn = open(&repo).unwrap().unwrap();
+        let stored: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT path FROM files ORDER BY path").unwrap();
+            let rows = stmt.query_map([], |row| row.get(0)).unwrap();
+            rows.map(|row| row.unwrap()).collect()
+        };
+
+        assert_eq!(stored, vec!["notes/design.md".to_string()]);
+        assert!(load_text(&conn, &repo, &repo.join(".surveil/ignored.md")).unwrap().is_none());
 
         let _ = fs::remove_dir_all(repo);
     }
