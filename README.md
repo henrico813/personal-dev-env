@@ -18,11 +18,13 @@ Optional PDE commands live in the Go CLI:
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
 pde install config
+pde vault default get
+pde vault default set main
 pde vault locate --json --vault default "<reference>"
 pde install obsidian
 ```
 
-`pde vault locate` resolves quoted positional vault references without creating destinations. Use `--query` only when you explicitly want note-content search.
+`pde vault default get` prints the persisted selector (`main`, `work`, or `unset`), `pde vault default set <main|work>` updates it, and `pde vault locate --vault default` follows that selector before the legacy fallback. Use `--query` only when you explicitly want note-content search.
 
 See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 
