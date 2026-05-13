@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -620,8 +621,8 @@ func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
 
 func TestNewScaffoldSupportsSamePathEdits(t *testing.T) {
 	cases := []struct {
-		name string
-		args func(string) []string
+		name  string
+		args  func(string) []string
 		check func(*testing.T, Plan)
 	}{
 		{
@@ -829,6 +830,34 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestJSONErrorsUnreadableExistingOutputStaysReadInput(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o000); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	defer os.Chmod(path, 0o644)
+
+	withStdin(t, validPlanJSON(), func() {
+		var stdout, stderr bytes.Buffer
+		if exit := Execute([]string{"create", path, "--stdin", "--json-errors"}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+		}
+		code, _ := firstStderrJSON(t, &stderr)
+		if code != "READ_INPUT" {
+			t.Fatalf("code=%q want READ_INPUT", code)
+		}
+	})
+}
+
 func TestRunCheckMarkdown(t *testing.T) {
 	plan, err := DecodePlan(validPlanJSON())
 	if err != nil {
@@ -845,6 +874,29 @@ func TestRunCheckMarkdown(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "OK") {
+		t.Fatalf("expected OK in stdout, got %q", stdout.String())
+	}
+}
+
+func TestRunCheckMarkdownWithCanonicalFrontmatter(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path, "--format", "md"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "OK") {
@@ -1124,6 +1176,37 @@ func TestCreateRejectsWriteFlag(t *testing.T) {
 		}
 		if !strings.Contains(stderr.String(), "unknown flag \"--write\"") {
 			t.Fatalf("expected rejected --write flag, got %q", stderr.String())
+		}
+	})
+}
+
+func TestOverviewSetSameFilePreservesFrontmatter(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	runPlannerOK(t, []string{"overview", "set", path, path, "Updated overview"}, nil)
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.HasPrefix(string(raw), frontmatter) {
+		t.Fatalf("frontmatter changed:\n%s", string(raw))
+	}
+	assertParsed(t, path, func(p Plan) {
+		if p.Overview != "Updated overview" {
+			t.Fatalf("overview=%q", p.Overview)
 		}
 	})
 }

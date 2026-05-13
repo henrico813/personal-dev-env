@@ -4,8 +4,11 @@ package internal
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+var issueFrontmatterDateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 // Span represents a byte range in the source markdown document.
 type Span struct {
@@ -137,11 +140,22 @@ func validateSupportedFrontmatter(frontmatter string) error {
 		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
 		return fmt.Errorf("unsupported frontmatter format")
 	}
-	for idx, lineIdx := range []int{4, 6, 7} {
-		prefix := []string{"status: ", "project: ", "date_created: "}[idx]
-		if !strings.HasPrefix(lines[lineIdx], prefix) || len(strings.TrimPrefix(lines[lineIdx], prefix)) == 0 {
-			return fmt.Errorf("unsupported frontmatter format")
-		}
+	if !strings.HasPrefix(lines[4], "status: ") {
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	switch strings.TrimPrefix(lines[4], "status: ") {
+	case "open", "in-progress", "done":
+	default:
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	if !strings.HasPrefix(lines[6], "project: ") || strings.TrimPrefix(lines[6], "project: ") == "" {
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	if !strings.HasPrefix(lines[7], "date_created: ") {
+		return fmt.Errorf("unsupported frontmatter format")
+	}
+	if !issueFrontmatterDateRE.MatchString(strings.TrimPrefix(lines[7], "date_created: ")) {
+		return fmt.Errorf("unsupported frontmatter format")
 	}
 	return nil
 }

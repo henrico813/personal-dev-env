@@ -18,6 +18,22 @@ var implementationSectionTemplate string
 //go:embed implementation_step.md.tmpl
 var implementationStepTemplate string
 
+type existingFrontmatterErrorKind int
+
+const (
+	existingFrontmatterReadError existingFrontmatterErrorKind = iota + 1
+	existingFrontmatterDecodeError
+)
+
+type existingFrontmatterError struct {
+	kind existingFrontmatterErrorKind
+	err  error
+}
+
+func (e *existingFrontmatterError) Error() string { return e.err.Error() }
+
+func (e *existingFrontmatterError) Unwrap() error { return e.err }
+
 func CreatePlan(inputPath string, outputPath string) error {
 	plan, err := ReadPlanFile(inputPath)
 	if err != nil {
@@ -94,18 +110,18 @@ func preserveExistingFrontmatter(outputPath, rendered string) (string, error) {
 		if os.IsNotExist(err) {
 			return rendered, nil
 		}
-		return "", err
+		return "", &existingFrontmatterError{kind: existingFrontmatterReadError, err: err}
 	}
 	if !info.Mode().IsRegular() {
 		return rendered, nil
 	}
 	raw, err := os.ReadFile(outputPath)
 	if err != nil {
-		return "", err
+		return "", &existingFrontmatterError{kind: existingFrontmatterReadError, err: err}
 	}
 	frontmatter, _, err := splitFrontmatter(string(raw))
 	if err != nil {
-		return "", err
+		return "", &existingFrontmatterError{kind: existingFrontmatterDecodeError, err: err}
 	}
 	if frontmatter == "" {
 		return rendered, nil
