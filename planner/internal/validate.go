@@ -127,10 +127,16 @@ func walkValidationRules(plan Plan) []ValidationError {
 		if len(step.FileChanges) == 0 {
 			add(field+".file_changes", "each implementation step needs file changes", 0)
 		}
+		seen := map[string]int{}
 		for j, change := range step.FileChanges {
 			changeField := fmt.Sprintf("%s.file_changes[%d]", field, j)
 			if err := ValidateFilenameShape(change.Filename); err != nil {
 				add(changeField+".filename", err.Error(), 0)
+			}
+			if prev, ok := seen[change.Filename]; ok {
+				add(changeField+".filename", fmt.Sprintf("duplicate filename %q in implementation step (matches file_changes[%d])", change.Filename, prev), 0)
+			} else {
+				seen[change.Filename] = j
 			}
 			if strings.TrimSpace(change.Explanation) == "" {
 				add(changeField+".explanation", "each file change needs an explanation", 0)

@@ -43,6 +43,10 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"planner check plan.md --json-errors.",
 		"<out.md> may be the same path as <plan.md>",
 		"planner patch <plan.md> [<out.md>]",
+		"*** Update Diff: <selector>",
+		"*** Expect: sha256:<token>",
+		"implementation[N].file_changes[N]",
+		"Update Diff is a dedicated single-op patch form.",
 		"implementation[N].title",
 		"implementation[N].summary",
 		"implementation[N].file_changes[N].filename",
@@ -180,12 +184,18 @@ func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
 	if exit := Execute([]string{"inspect", path}, &inspectStdout, &inspectStderr); exit != 0 {
 		t.Fatalf("Execute(inspect) exit = %d, stderr = %q", exit, inspectStderr.String())
 	}
-	plan, err := DecodePlan(inspectStdout.Bytes())
-	if err != nil {
-		t.Fatalf("inspect output is not valid plan JSON: %v", err)
+	var inspected InspectPlan
+	if err := json.Unmarshal(inspectStdout.Bytes(), &inspected); err != nil {
+		t.Fatalf("inspect output is not valid inspect JSON: %v", err)
 	}
-	if err := ValidatePlan(plan); err != nil {
-		t.Fatalf("inspect output does not validate: %v", err)
+	if inspected.Title == "" || len(inspected.Implementation) == 0 || inspected.Verification == nil {
+		t.Fatalf("inspect output missing inspect content: %#v", inspected)
+	}
+	if inspected.Implementation[0].FileChanges[0].Selector != "implementation[1].file_changes[1]" {
+		t.Fatalf("selector=%q", inspected.Implementation[0].FileChanges[0].Selector)
+	}
+	if !strings.HasPrefix(inspected.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
+		t.Fatalf("token=%q", inspected.Implementation[0].FileChanges[0].UpdateDiffExpect)
 	}
 }
 
@@ -522,6 +532,18 @@ func TestPatchRejectsNestedMismatchJSONErrors(t *testing.T) {
 	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "refresh the old value from planner inspect or the current file, then retry")
 }
 
+func TestPatchRejectsStaleDiffTokenJSONErrors(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	patch := []byte("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:deadbeef\n@@ -1 +1 @@\n-old\n+new")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "refresh update_diff_expect from planner inspect, then retry")
+}
+
 func TestPatchPreservesWrappedFrontmatter(t *testing.T) {
 	plan, err := DecodePlan(validPlanJSON())
 	if err != nil {
@@ -625,7 +647,7 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 		}
 	})
 
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "f", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "g", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
 	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", out, out, "--step", "1", "--change", "2", "renamed"}, nil)
 	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", out, out, "--step", "1", "--change", "2", "--stdin"}, []byte("raw diff bytes"))
 	assertParsed(t, out, func(p Plan) {
@@ -928,15 +950,18 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
 	}
 
-	inspectedPlan, err := DecodePlan(stdout.Bytes())
-	if err != nil {
-		t.Fatalf("inspect output not valid plan JSON: %v", err)
+	var inspected InspectPlan
+	if err := json.Unmarshal(stdout.Bytes(), &inspected); err != nil {
+		t.Fatalf("inspect output not valid inspect JSON: %v", err)
 	}
-	if err := ValidatePlan(inspectedPlan); err != nil {
-		t.Fatalf("inspect output does not validate: %v", err)
+	if inspected.Title == "" || len(inspected.Implementation) == 0 || inspected.Verification == nil {
+		t.Fatalf("inspect output missing inspect content: %#v", inspected)
 	}
-	if inspectedPlan.Title == "" || len(inspectedPlan.Implementation) == 0 || inspectedPlan.Verification == nil {
-		t.Fatalf("inspect output missing plan content: %#v", inspectedPlan)
+	if inspected.Implementation[0].FileChanges[0].Selector != "implementation[1].file_changes[1]" {
+		t.Fatalf("selector=%q", inspected.Implementation[0].FileChanges[0].Selector)
+	}
+	if !strings.HasPrefix(inspected.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
+		t.Fatalf("token=%q", inspected.Implementation[0].FileChanges[0].UpdateDiffExpect)
 	}
 }
 
@@ -959,12 +984,12 @@ func TestInspectOutputOmitsFrontmatterFields(t *testing.T) {
 	if exit := Execute([]string{"inspect", src}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
 	}
-	outPlan, err := DecodePlan(stdout.Bytes())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
+	var inspected InspectPlan
+	if err := json.Unmarshal(stdout.Bytes(), &inspected); err != nil {
+		t.Fatalf("inspect output: %v", err)
 	}
-	if err := ValidatePlan(outPlan); err != nil {
-		t.Fatalf("ValidatePlan: %v", err)
+	if inspected.Verification == nil || inspected.Implementation[0].FileChanges[0].UpdateDiffExpect == "" {
+		t.Fatalf("inspect output missing diff metadata: %#v", inspected)
 	}
 	for _, want := range []string{"\"tags\"", "\"type\"", "\"template_version\"", "\"topics\"", "\"project\"", "\"date_created\""} {
 		if strings.Contains(stdout.String(), want) {
