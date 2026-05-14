@@ -22,7 +22,7 @@ Usage:
   planner template --help
   planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run. Wrapped issue docs are supported on the markdown path.
   planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner inspect <plan.md>  Wrapped issue docs are supported on the markdown path.
+  planner inspect <plan.md>
   planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -653,7 +653,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		reportError(stderr, "inspect", plannerMarkdownDecodeError(raw, err))
+		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
 		return 1
 	}
 
