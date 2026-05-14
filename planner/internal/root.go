@@ -15,13 +15,8 @@ const helpText = `planner provides markdown-first implementation-plan workflows.
 Usage:
   planner
   planner help
-  planner template --md
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
-  planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
-  planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
-  planner template --help
-  planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run. Wrapped issue docs are supported on the markdown path.
-  planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner inspect <plan.md>
   planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -59,19 +54,6 @@ Markdown-first authoring flow:
   4. Run planner check plan.md --json-errors.
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
-Legacy JSON render flow:
-  1. Run planner template --json > draft.json.
-  2. Edit the draft JSON directly.
-  3. Run planner check draft.json.
-  4. Run planner create draft.json out.md.
-
-Rewrite flow (full rewrite):
-  1. Read the existing markdown issue.
-  2. Map its content into canonical JSON matching planner template --json.
-  3. Run planner check <plan.json>.
-  4. Run planner create <plan.json> <output.md>.
-  5. Compare the rendered issue with the source issue for dropped content.
-
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON.
   2. Use behavioral commands such as planner title set, planner dod goal set,
@@ -89,15 +71,6 @@ behavioral edit flags:
   --diff-stdin                     Read structured add diff body from stdin.
   --diff                           Print preview diff to stdout; additive.
   --dry-run                        Do not write the output; with --diff, exit 1 on drift.
-
-template selectors:
-  --md                             Print the canonical markdown plan with PLACEHOLDER text.
-  --json                           Print the full JSON skeleton.
-  --json --section <s>             Print a section-level JSON shape.
-  --json --section <s> --subsection <x>  Print a subsection-level JSON shape.
-  --json --section implementation --subsection N --field <field>  Print a leaf shape.
-  --help                           Walk through the create workflow and PLACEHOLDER convention.
-  Note: --section without --json or --raw is rejected with a USAGE error.
 
 Validation rules:
 `
@@ -142,14 +115,10 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "help", "--help", "-h":
 		printHelp(stdout)
 		return 0
-	case "template":
-		return runTemplate(args[1:], stdout, stderr)
 	case "new":
 		return runNew(args[1:], stdout, stderr)
 	case "check":
 		return runCheck("check", args[1:], stdout, stderr)
-	case "create":
-		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
 	case "title", "overview", "dod", "implementation", "verification":
@@ -459,30 +428,22 @@ func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	return cliErr
 }
 
-// runCheck validates markdown or JSON plans and reports every violation.
+// runCheck validates markdown plans and reports every violation.
 func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
-	format := ""
-	rest := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--format" {
-			i++
-			if i >= len(args) {
-				reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "missing value for --format"))
-				return 2
-			}
-			format = args[i]
-			continue
+	const usage = "usage: planner check [<plan.md>] [--stdin] [--json-errors]"
+	for _, a := range args {
+		if a == "--format" {
+			reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
+			return 2
 		}
-		rest = append(rest, args[i])
 	}
-
-	positional, pf, err := splitPreviewArgs(rest, false, true)
+	positional, pf, err := splitPreviewArgs(args, false, true)
 	if err != nil {
 		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	if (len(positional) == 0 && !pf.stdin) || len(positional) > 1 {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "usage: planner check [<plan.md|plan.json>] [--format md|json] [--stdin]"))
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
 		return 2
 	}
 
@@ -490,43 +451,27 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 	if len(positional) == 1 {
 		path = positional[0]
 	}
-	if format == "" && path != "" {
-		format = detectFormat(path)
-	}
-	if format == "" {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "--format md|json is required for stdin or paths with no recognised extension"))
-		return 2
-	}
-	if format != "md" && format != "json" {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--format %q is not valid; use md or json", format)))
+	if path != "" && strings.HasSuffix(strings.ToLower(path), ".json") {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "planner check no longer accepts JSON plan input: "+usage))
 		return 2
 	}
 
-	var plan Plan
-	if format == "md" {
-		var raw []byte
-		if pf.stdin {
-			raw, err = io.ReadAll(os.Stdin)
-		} else {
-			raw, err = os.ReadFile(path)
-		}
-		if err != nil {
-			reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
-			return 1
-		}
-		parsed, parseErr := ParseMarkdown(string(raw))
-		if parseErr != nil {
-			reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
-			return 1
-		}
-		plan = parsed.Plan
+	var raw []byte
+	if pf.stdin {
+		raw, err = io.ReadAll(os.Stdin)
 	} else {
-		plan, err = readPlanFrom(filterNonEmpty([]string{path}), pf.stdin, stderr)
-		if err != nil {
-			reportError(stderr, cmd, err)
-			return plannerExitCode(err)
-		}
+		raw, err = os.ReadFile(path)
 	}
+	if err != nil {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
+		return 1
+	}
+	parsed, parseErr := ParseMarkdown(string(raw))
+	if parseErr != nil {
+		reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
+		return 1
+	}
+	plan := parsed.Plan
 
 	if errs := ValidatePlanAll(plan); len(errs) > 0 {
 		messages := make([]string, len(errs))
@@ -700,8 +645,8 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 
 // readJSONSource returns JSON bytes for a subcommand's input and reports
 // whether repair produced replacement bytes. When --stdin is set, reads stdin.
-// When allowAutoDetect is true (validate/create only) and no path is supplied
-// and stdin is piped, reads stdin. Otherwise reads the path.
+// When allowAutoDetect is true and no path is supplied and stdin is piped,
+// reads stdin. Otherwise reads the path.
 func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Writer) ([]byte, bool, error) {
 	if useStdin && !stdinPiped() && !jsonErrorOutput {
 		_, _ = fmt.Fprintln(stderr, "planner: reading JSON from stdin (Ctrl-D to end)")
@@ -744,7 +689,7 @@ func readRawScalar(path string, useStdin bool) ([]byte, error) {
 	return data, nil
 }
 
-// readPlanFrom is the plan-decoding wrapper for runCheck/runCreate.
+// readPlanFrom is the plan-decoding wrapper for check and legacy rewrite helpers.
 // Decode errors are wrapped in typed planner CLI errors so tests can assert on
 // stable failure categories instead of raw strings.
 func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (Plan, error) {
