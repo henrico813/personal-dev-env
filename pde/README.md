@@ -26,12 +26,15 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 
 Some setups belong beside the base profiles, not inside them.
 
+The Go CLI also exposes `pde install minimal`, which reuses the legacy shell/tools/editor base and then applies the Go-managed `config`, `obsidian`, and `ai-tools` layers.
+
 `config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and preserves existing `PDE_PROFILE`, `PDE_MAIN_VAULT`, `PDE_WORK_VAULT`, and `PDE_DEFAULT_VAULT` entries in `~/.config/pde/paths.env`, when present, but it does not install runtimes, plugins, or profile extras.
 
 The `obsidian`, `vault`, and `ai-tools` commands are available through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
+pde install minimal
 pde install config
 pde install obsidian
 pde install ai-tools

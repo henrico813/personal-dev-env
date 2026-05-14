@@ -3,6 +3,7 @@
 Shell, editor, and AI tooling configuration. Two independent entry points:
 
 - **`./pde/pde`** -- Install the shell environment (zsh, tmux, neovim, CLI tools).
+- **`pde install minimal`** -- Run the legacy minimal base, then apply the Go-managed config, Obsidian, and AI layers.
 - **`pde install config`** -- Migrate the shared config set with no sudo; it does not install runtimes, plugins, or profile extras.
 - **`pde install ai-tools`** -- Install AI tool configuration and binaries.
 
@@ -13,10 +14,11 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 ./pde/pde full      # everything above + Node, Claude Code, fonts
 ```
 
-Optional PDE commands live in the Go CLI:
+Optional and composed PDE commands live in the Go CLI:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
+pde install minimal
 pde install config
 pde vault default get
 # after configuring PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env

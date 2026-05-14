@@ -29,6 +29,18 @@ Options:
 EOF
 }
 
+install_minimal_base() {
+    need_sudo
+
+    source "$SCRIPT_DIR/lib/shell.sh"
+    source "$SCRIPT_DIR/lib/tools.sh"
+    source "$SCRIPT_DIR/lib/editor.sh"
+
+    install_shell      # zsh, tmux from source, plugins
+    install_tools      # apt + cargo tools, yazi
+    install_editor     # neovim + PDE nvim config
+}
+
 install_configs() {
     section "Config Files"
 
@@ -68,16 +80,13 @@ main() {
     case "$profile" in
         minimal)
             section "Installing minimal profile"
-            need_sudo
-
-            source "$SCRIPT_DIR/lib/shell.sh"
-            source "$SCRIPT_DIR/lib/tools.sh"
-            source "$SCRIPT_DIR/lib/editor.sh"
-
-            install_shell      # zsh, tmux from source, plugins
-            install_tools      # apt + cargo tools, yazi
-            install_editor     # neovim + PDE nvim config
+            install_minimal_base
             install_configs    # all configs except ai
+            ;;
+
+        __legacy_minimal_base)
+            section "Installing legacy minimal base"
+            install_minimal_base
             ;;
 
         full)
