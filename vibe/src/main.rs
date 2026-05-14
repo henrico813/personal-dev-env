@@ -1,6 +1,7 @@
 mod adapters;
 mod app;
 mod cli;
+mod ledger;
 mod observe;
 mod prompts;
 mod result;
@@ -17,7 +18,6 @@ use crate::{
 };
 
 fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
-    let persistence_error = Some(message.clone());
     let error_message = match &result.error_message {
         Some(original) => Some(format!("{original}; persistence failed: {message}")),
         None => Some(message),
@@ -35,7 +35,8 @@ fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
         events_log_path: result.events_log_path.clone(),
         stderr_path: result.stderr_path.clone(),
         summary_path: result.summary_path.clone(),
-        persistence_error,
+        changed_files: result.changed_files.clone(),
+        persistence_error: result.persistence_error.clone(),
         error_message,
     }
 }

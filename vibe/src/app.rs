@@ -1,18 +1,12 @@
 use crate::{
     cli::RunArgs,
-    observe, prompts,
+    ledger, observe, prompts,
     result::{RunResult, Status},
     sandbox, snapshot,
     state::{self, PersistedRunState, RunPhase},
     worktree,
 };
-use std::{
-    fs,
-    fs::OpenOptions,
-    io::Write,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, fs::OpenOptions, io::Write, path::Path};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
 
@@ -33,10 +27,9 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
 fn wrap_wrapper_failed(mut result: RunResult, error: String) -> RunResult {
     let error_message = match result.error_message.take() {
         Some(original) => Some(format!("{original}; persistence failed: {error}")),
-        None => Some(error.clone()),
+        None => Some(error),
     };
     result.status = Status::WrapperFailed;
-    result.persistence_error = Some(error);
     result.error_message = error_message;
     result
 }
@@ -57,7 +50,26 @@ struct ResultParts {
     status: Status,
     commit: Option<String>,
     snapshot_commits: Vec<String>,
+    changed_files: Vec<String>,
     error_message: Option<String>,
+}
+
+impl ResultParts {
+    fn failure(
+        pre_run_commit: Option<String>,
+        status: Status,
+        snapshot_commits: Vec<String>,
+        error_message: Option<String>,
+    ) -> Self {
+        Self {
+            pre_run_commit,
+            status,
+            commit: None,
+            snapshot_commits,
+            changed_files: Vec::new(),
+            error_message,
+        }
+    }
 }
 
 fn build_result(
@@ -79,6 +91,7 @@ fn build_result(
         events_log_path: Some(artifacts.events_jsonl.display().to_string()),
         stderr_path: Some(artifacts.stderr_log.display().to_string()),
         summary_path: Some(artifacts.summary_json.display().to_string()),
+        changed_files: parts.changed_files,
         persistence_error: None,
         error_message: parts.error_message,
     }
@@ -94,7 +107,7 @@ fn finish_result(
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
-    persisted.summary_path = result.summary_path.clone();
+    persisted.changed_files = result.changed_files.clone();
     persisted.persistence_error = result.persistence_error.clone();
     persisted.error_message = result.error_message.clone();
     if let Err(err) = state::write(&artifacts.state_json, persisted) {
@@ -109,16 +122,14 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
     };
-    let artifacts = match observe::create_artifacts(session.repo_root(), &session.slug) {
+    let run_id = ledger::run_id();
+    let created_at = ledger::created_at().unwrap_or(0);
+    let artifacts = match observe::create_artifacts(session.repo_root(), &session.slug, &run_id) {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
     let mut persisted = PersistedRunState {
-        run_id: artifacts.run_id.clone(),
+        run_id,
         key: session.key.clone(),
         slug: session.slug.clone(),
         created_at,
@@ -136,21 +147,16 @@ pub fn execute(args: RunArgs) -> RunResult {
         result_path: Some(artifacts.result_json.display().to_string()),
         wrapper_log_path: Some(artifacts.vibe_log.display().to_string()),
         summary_path: Some(artifacts.summary_json.display().to_string()),
-        persistence_error: None,
+        changed_files: Vec::new(),
         error_message: None,
+        persistence_error: None,
     };
     if let Err(err) = state::write(&artifacts.state_json, &persisted) {
         return build_result(
             &session,
             &artifacts,
             &args.model,
-            ResultParts {
-                pre_run_commit: None,
-                status: Status::WrapperFailed,
-                commit: None,
-                snapshot_commits: Vec::new(),
-                error_message: Some(err),
-            },
+            ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared") {
@@ -161,13 +167,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -184,13 +184,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -204,13 +198,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: None,
-                        status: Status::WrapperFailed,
-                        commit: None,
-                        snapshot_commits: Vec::new(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             );
         }
@@ -223,13 +211,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -242,13 +224,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -265,13 +241,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -283,13 +253,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::RefusedDirty,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
             ),
         );
     }
@@ -307,13 +271,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: None,
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
@@ -327,13 +285,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: None,
-                        status: Status::WrapperFailed,
-                        commit: None,
-                        snapshot_commits: Vec::new(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             )
         }
@@ -352,13 +304,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some(err),
+                ),
             ),
         );
     }
@@ -372,13 +323,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: Some(pre_run_commit.clone()),
-                        status: Status::WrapperFailed,
-                        commit: None,
-                        snapshot_commits: Vec::new(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(
+                        Some(pre_run_commit.clone()),
+                        Status::WrapperFailed,
+                        Vec::new(),
+                        Some(err),
+                    ),
                 ),
             )
         }
@@ -397,13 +347,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some(err),
+                ),
             ),
         );
     }
@@ -424,13 +373,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: Some(pre_run_commit.clone()),
-                        status: Status::WrapperFailed,
-                        commit: None,
-                        snapshot_commits: Vec::new(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(
+                        Some(pre_run_commit.clone()),
+                        Status::WrapperFailed,
+                        Vec::new(),
+                        Some(err),
+                    ),
                 ),
             )
         }
@@ -443,15 +391,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(
-                        "combined prompt artifact unavailable inside sandbox".to_string(),
-                    ),
-                },
+                ResultParts::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some("combined prompt artifact unavailable inside sandbox".to_string()),
+                ),
             ),
         );
     }
@@ -469,13 +414,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                 &session,
                 &artifacts,
                 &args.model,
-                ResultParts {
-                    pre_run_commit: Some(pre_run_commit.clone()),
-                    status: Status::WrapperFailed,
-                    commit: None,
-                    snapshot_commits: Vec::new(),
-                    error_message: Some(err),
-                },
+                ResultParts::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some(err),
+                ),
             ),
         );
     }
@@ -489,13 +433,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: Some(pre_run_commit.clone()),
-                        status: Status::SnapshotFailed,
-                        commit: None,
-                        snapshot_commits: Vec::new(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(
+                        Some(pre_run_commit.clone()),
+                        Status::SnapshotFailed,
+                        Vec::new(),
+                        Some(err),
+                    ),
                 ),
             );
         }
@@ -511,13 +454,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: Some(pre_run_commit),
-                        status: Status::WrapperFailed,
-                        commit: None,
+                    ResultParts::failure(
+                        Some(pre_run_commit),
+                        Status::WrapperFailed,
                         snapshot_commits,
-                        error_message: Some(err),
-                    },
+                        Some(err),
+                    ),
                 ),
             );
         }
@@ -544,13 +486,12 @@ pub fn execute(args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &args.model,
-                    ResultParts {
-                        pre_run_commit: Some(pre_run_commit.clone()),
-                        status: Status::WrapperFailed,
-                        commit: None,
-                        snapshot_commits: snapshot_commits.clone(),
-                        error_message: Some(err),
-                    },
+                    ResultParts::failure(
+                        Some(pre_run_commit.clone()),
+                        Status::WrapperFailed,
+                        snapshot_commits.clone(),
+                        Some(err),
+                    ),
                 ),
             );
         }
@@ -586,6 +527,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 status,
                 commit,
                 snapshot_commits,
+                changed_files: Vec::new(),
                 error_message,
             },
         ),

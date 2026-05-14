@@ -1,8 +1,6 @@
 use crate::prompts::RenderedPrompt;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 /// Artifact paths for one Vibe run.
 pub struct ArtifactPaths {
@@ -23,6 +21,7 @@ pub struct ArtifactPaths {
     pub extension_jsonl: PathBuf,
     pub snapshots_jsonl: PathBuf,
     pub summary_json: PathBuf,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub runs_index_jsonl: PathBuf,
 }
 
@@ -65,14 +64,13 @@ fn create_artifacts_in(
     })
 }
 
-pub fn create_artifacts(repo_root: &Path, key: &str) -> Result<ArtifactPaths, String> {
+pub fn create_artifacts(
+    repo_root: &Path,
+    key: &str,
+    run_id: &str,
+) -> Result<ArtifactPaths, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs();
-    let run_id = format!("{}-{}", ts, std::process::id());
-    create_artifacts_in(Path::new(&home), repo_root, key, &run_id)
+    create_artifacts_in(Path::new(&home), repo_root, key, run_id)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -106,6 +104,7 @@ pub(crate) fn run_dirs_newest_to_oldest_in(
     let entries = fs::read_dir(&runs_dir).map_err(|err| format!("read runs dir: {err}"))?;
 
     let mut runs: Vec<(u64, u32, PathBuf)> = Vec::new();
+    let mut unknown: Vec<PathBuf> = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("read runs entry: {e}"))?;
         let path = entry.path();
@@ -115,16 +114,22 @@ pub(crate) fn run_dirs_newest_to_oldest_in(
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        let Some((ts, pid)) = parse_run_dir_name(name) else {
-            continue;
-        };
-        runs.push((ts, pid, path));
+        if let Some((ts, pid)) = parse_run_dir_name(name) {
+            runs.push((ts, pid, path));
+        } else {
+            unknown.push(path);
+        }
     }
 
     runs.sort_by(|(left_ts, left_pid, _), (right_ts, right_pid, _)| {
         right_ts.cmp(left_ts).then(right_pid.cmp(left_pid))
     });
-    Ok(runs.into_iter().map(|(_, _, path)| path).collect())
+    unknown.sort_by(|left, right| right.cmp(left));
+    Ok(runs
+        .into_iter()
+        .map(|(_, _, path)| path)
+        .chain(unknown)
+        .collect())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -138,10 +143,6 @@ fn latest_run_dir_in(home: &Path, repo_root: &Path, slug: &str) -> Result<Option
 pub fn latest_run_dir(repo_root: &Path, slug: &str) -> Result<Option<PathBuf>, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     latest_run_dir_in(Path::new(&home), repo_root, slug)
-}
-
-pub fn run_id() -> String {
-    Uuid::new_v4().to_string()
 }
 
 fn write_text(dst: &Path, text: &str, label: &str) -> Result<(), String> {

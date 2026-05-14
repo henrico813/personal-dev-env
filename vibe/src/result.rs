@@ -28,6 +28,7 @@ pub struct RunResult {
     pub events_log_path: Option<String>,
     pub stderr_path: Option<String>,
     pub summary_path: Option<String>,
+    pub changed_files: Vec<String>,
     pub persistence_error: Option<String>,
     pub error_message: Option<String>,
 }
@@ -60,6 +61,7 @@ impl RunResult {
             events_log_path: None,
             stderr_path: None,
             summary_path: None,
+            changed_files: Vec::new(),
             persistence_error: None,
             error_message: Some(message.into()),
         }
@@ -84,6 +86,7 @@ mod tests {
             events_log_path: Some("/tmp/run/events.jsonl".to_string()),
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
             summary_path: Some("/tmp/run/summary.json".to_string()),
+            changed_files: Vec::new(),
             persistence_error: None,
             error_message: None,
         }
@@ -128,6 +131,7 @@ mod tests {
         assert!(value["branch"].is_null());
         assert!(value["artifacts_dir"].is_null());
         assert!(value["summary_path"].is_null());
+        assert_eq!(value["changed_files"], serde_json::json!([]));
         assert!(value["persistence_error"].is_null());
         assert_eq!(value["error_message"], "boom");
     }

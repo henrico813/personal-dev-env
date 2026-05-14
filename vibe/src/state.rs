@@ -1,5 +1,5 @@
 use crate::{
-    observe,
+    ledger, observe,
     result::{RunResult, Status},
     worktree,
 };
@@ -9,6 +9,15 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(test)]
+pub(crate) fn home_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 // Phase 1 defines the persisted-state contract ahead of the runtime and
 // recovery wiring that will consume it in later phases.
@@ -49,9 +58,13 @@ pub struct PersistedRunState {
     pub stderr_path: Option<String>,
     pub result_path: Option<String>,
     pub wrapper_log_path: Option<String>,
+    #[serde(default)]
     pub summary_path: Option<String>,
-    pub persistence_error: Option<String>,
+    #[serde(default)]
+    pub changed_files: Vec<String>,
     pub error_message: Option<String>,
+    #[serde(default)]
+    pub persistence_error: Option<String>,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -81,6 +94,11 @@ pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, 
     let slug = worktree::slugify(key);
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let mut last_error = None;
+
+    if let Ok(Some(state)) = latest_for_key_from_index(repo_root, &home, &slug) {
+        return Ok(state);
+    }
+
     for run_dir in observe::run_dirs_newest_to_oldest_in(Path::new(&home), repo_root, &slug)? {
         match read(&run_dir.join("run-state.json")) {
             Ok(state) => return Ok(state),
@@ -89,6 +107,45 @@ pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, 
     }
 
     Err(last_error.unwrap_or_else(|| format!("no persisted runs found for key {key}")))
+}
+
+fn latest_for_key_from_index(
+    repo_root: &Path,
+    home: &str,
+    slug: &str,
+) -> Result<Option<PersistedRunState>, String> {
+    let home = Path::new(home);
+    let index = ledger::runs_index_path(home, repo_root, slug);
+    let entries = match ledger::read_runs_index(&index) {
+        Ok(entries) => entries,
+        Err(_) => return read_fallback(home, repo_root, slug),
+    };
+
+    if entries.is_empty() {
+        return Ok(None);
+    }
+
+    for entry in entries.into_iter().rev() {
+        match read(Path::new(&entry.state_path)) {
+            Ok(state) => return Ok(Some(state)),
+            Err(_) => continue,
+        }
+    }
+    Ok(None)
+}
+
+fn read_fallback(
+    home: &Path,
+    repo_root: &Path,
+    slug: &str,
+) -> Result<Option<PersistedRunState>, String> {
+    for run_dir in observe::run_dirs_newest_to_oldest_in(home, repo_root, slug)? {
+        match read(&run_dir.join("run-state.json")) {
+            Ok(state) => return Ok(Some(state)),
+            Err(_) => continue,
+        }
+    }
+    Ok(None)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -107,9 +164,9 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
-    persisted.summary_path = result.summary_path.clone();
-    persisted.persistence_error = result.persistence_error.clone();
+    persisted.changed_files = result.changed_files.clone();
     persisted.error_message = result.error_message.clone();
+    persisted.persistence_error = result.persistence_error.clone();
     write(&path, &persisted)
 }
 
@@ -139,8 +196,9 @@ mod tests {
             result_path: Some("/tmp/run/result.json".to_string()),
             wrapper_log_path: Some("/tmp/run/vibe.log".to_string()),
             summary_path: Some("/tmp/run/summary.json".to_string()),
-            persistence_error: None,
+            changed_files: Vec::new(),
             error_message: None,
+            persistence_error: None,
         }
     }
 
@@ -160,6 +218,7 @@ mod tests {
 
     #[test]
     fn latest_for_key_normalizes_raw_key() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
         let temp = tempdir().expect("tempdir");
         let saved_home = std::env::var_os("HOME");
         std::env::set_var("HOME", temp.path());
@@ -187,6 +246,7 @@ mod tests {
 
     #[test]
     fn latest_for_key_skips_broken_newest_run() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
         let temp = tempdir().expect("tempdir");
         let saved_home = std::env::var_os("HOME");
         std::env::set_var("HOME", temp.path());
