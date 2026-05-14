@@ -328,3 +328,114 @@ pub fn persist_terminal_run(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{record_late_persistence_error, RunSummary};
+    use crate::{
+        result::{RunResult, Status},
+        state::{self, PersistedRunState, RunPhase},
+    };
+    use tempfile::tempdir;
+
+    fn sample_result(artifacts_dir: &std::path::Path, summary_path: &std::path::Path) -> RunResult {
+        RunResult {
+            run_id: Some("run-id".to_string()),
+            status: Status::Completed,
+            branch: Some("vibe/pdev-099b".to_string()),
+            worktree: Some("/tmp/worktree".to_string()),
+            model: Some("openai-codex/gpt-5.4-mini".to_string()),
+            pre_run_commit: Some("abc".to_string()),
+            commit: Some("def".to_string()),
+            snapshot_commits: vec!["snap".to_string()],
+            artifacts_dir: Some(artifacts_dir.display().to_string()),
+            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
+            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
+            summary_path: Some(summary_path.display().to_string()),
+            changed_files: vec!["vibe/src/ledger.rs".to_string()],
+            persistence_error: None,
+            error_message: None,
+        }
+    }
+
+    fn sample_state(
+        summary_path: &std::path::Path,
+        artifacts_dir: &std::path::Path,
+    ) -> PersistedRunState {
+        PersistedRunState {
+            run_id: "run-id".to_string(),
+            key: "pdev-099b".to_string(),
+            slug: "pdev-099b".to_string(),
+            created_at: 1778781727,
+            branch: Some("vibe/pdev-099b".to_string()),
+            worktree: Some("/tmp/worktree".to_string()),
+            model: Some("openai-codex/gpt-5.4-mini".to_string()),
+            phase: RunPhase::Finished,
+            terminal_status: Some(Status::Completed),
+            pre_run_commit: Some("abc".to_string()),
+            commit: Some("def".to_string()),
+            snapshot_commits: vec!["snap".to_string()],
+            artifacts_dir: Some(artifacts_dir.display().to_string()),
+            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
+            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
+            result_path: Some(artifacts_dir.join("result.json").display().to_string()),
+            wrapper_log_path: Some(artifacts_dir.join("vibe.log").display().to_string()),
+            summary_path: Some(summary_path.display().to_string()),
+            changed_files: vec!["vibe/src/ledger.rs".to_string()],
+            error_message: None,
+            persistence_error: None,
+        }
+    }
+
+    #[test]
+    fn late_persistence_error_updates_run_state_when_summary_is_missing() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("run");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        let summary_path = artifacts_dir.join("summary.json");
+        let state_path = artifacts_dir.join("run-state.json");
+        let state = sample_state(&summary_path, &artifacts_dir);
+        state::write(&state_path, &state).expect("write state");
+        let mut result = sample_result(&artifacts_dir, &summary_path);
+
+        let err =
+            record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
+                .expect_err("missing summary should still report repair error");
+
+        assert!(err.starts_with("read summary:"));
+        assert_eq!(
+            result.persistence_error.as_deref(),
+            Some("append runs_index.jsonl: boom")
+        );
+
+        let repaired = state::read(&state_path).expect("read repaired state");
+        assert_eq!(
+            repaired.persistence_error.as_deref(),
+            Some("append runs_index.jsonl: boom")
+        );
+    }
+
+    #[test]
+    fn run_summary_round_trip_preserves_new_terminal_fields() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("run");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        let summary_path = artifacts_dir.join("summary.json");
+        let result = sample_result(&artifacts_dir, &summary_path);
+        let summary = RunSummary::from_run_result(
+            "run-id",
+            "pdev-099b",
+            "pdev-099b",
+            &result,
+            vec!["vibe/src/ledger.rs".to_string()],
+            Some("boom".to_string()),
+        );
+
+        let value = serde_json::to_value(summary).expect("serialize summary");
+
+        assert_eq!(value["summary_path"], summary_path.display().to_string());
+        assert_eq!(value["result_path"], "");
+        assert_eq!(value["created_at"], 0);
+        assert_eq!(value["persistence_error"], "boom");
+    }
+}

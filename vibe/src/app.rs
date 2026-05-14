@@ -106,6 +106,29 @@ fn collect_changed_files(
     worktree::changed_files_since(worktree, pre_run_commit, commit)
 }
 
+// Final result metadata should stay truthful even when git inspection fails.
+fn finalize_changed_files(
+    worktree: &std::path::Path,
+    pre_run_commit: &str,
+    commit: Option<&str>,
+    dirty_after: bool,
+) -> (Vec<String>, Option<String>) {
+    if !dirty_after {
+        return (Vec::new(), None);
+    }
+
+    match commit {
+        Some(commit) => match collect_changed_files(worktree, pre_run_commit, Some(commit)) {
+            Ok(files) => (files, None),
+            Err(err) => (Vec::new(), Some(format!("collect changed_files: {err}"))),
+        },
+        None => match worktree::changed_files(worktree) {
+            Ok(files) => (files, None),
+            Err(err) => (Vec::new(), Some(format!("collect changed_files: {err}"))),
+        },
+    }
+}
+
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(args: RunArgs) -> RunResult {
     let session = match worktree::prepare(&args.key) {
@@ -505,29 +528,12 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     }
 
-    let mut persistence_error = None;
-    let changed_files = if dirty_after {
-        match commit.as_deref() {
-            Some(commit) => {
-                match collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)) {
-                    Ok(files) => files,
-                    Err(err) => {
-                        persistence_error = Some(format!("collect changed_files: {err}"));
-                        Vec::new()
-                    }
-                }
-            }
-            None => match worktree::changed_files(&session.worktree) {
-                Ok(files) => files,
-                Err(err) => {
-                    persistence_error = Some(format!("collect changed_files: {err}"));
-                    Vec::new()
-                }
-            },
-        }
-    } else {
-        Vec::new()
-    };
+    let (changed_files, persistence_error) = finalize_changed_files(
+        &session.worktree,
+        &pre_run_commit,
+        commit.as_deref(),
+        dirty_after,
+    );
 
     let mut result = build_result(
         &session,
@@ -548,7 +554,7 @@ pub fn execute(args: RunArgs) -> RunResult {
 
 #[cfg(test)]
 mod tests {
-    use super::read_supervisor_prompt;
+    use super::{finalize_changed_files, read_supervisor_prompt};
     use tempfile::tempdir;
 
     #[test]
@@ -560,5 +566,32 @@ mod tests {
         let err = read_supervisor_prompt(&path).expect_err("invalid UTF-8 should fail");
 
         assert!(err.starts_with("read prompt file as UTF-8:"));
+    }
+
+    #[test]
+    fn changed_files_failure_after_commit_becomes_persistence_error() {
+        let temp = tempdir().expect("tempdir");
+        let missing_repo = temp.path().join("missing");
+
+        let (files, persistence_error) =
+            finalize_changed_files(&missing_repo, "abc", Some("def"), true);
+
+        assert!(files.is_empty());
+        assert!(persistence_error
+            .expect("persistence error")
+            .starts_with("collect changed_files:"));
+    }
+
+    #[test]
+    fn dirty_uncommitted_changed_files_failure_becomes_persistence_error() {
+        let temp = tempdir().expect("tempdir");
+        let missing_repo = temp.path().join("missing");
+
+        let (files, persistence_error) = finalize_changed_files(&missing_repo, "abc", None, true);
+
+        assert!(files.is_empty());
+        assert!(persistence_error
+            .expect("persistence error")
+            .starts_with("collect changed_files:"));
     }
 }
