@@ -92,6 +92,10 @@ pub fn is_dirty(worktree: &Path) -> Result<bool, String> {
     git::is_dirty(worktree)
 }
 
+pub fn changed_files(worktree: &Path) -> Result<Vec<String>, String> {
+    git::changed_files_in_worktree(worktree)
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn changed_files_since(
     worktree: &Path,

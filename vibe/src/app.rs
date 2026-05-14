@@ -524,7 +524,10 @@ pub fn execute(args: RunArgs) -> RunResult {
     }
 
     let changed_files = if dirty_after {
-        collect_changed_files(&session.worktree, &pre_run_commit, commit.as_deref())
+        match commit.as_deref() {
+            Some(commit) => collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)),
+            None => worktree::changed_files(&session.worktree).unwrap_or_default(),
+        }
     } else {
         Vec::new()
     };
