@@ -904,6 +904,43 @@ func TestRunCheckMarkdownWithCanonicalFrontmatter(t *testing.T) {
 	}
 }
 
+func TestCheckWrappedFrontmatterError(t *testing.T) {
+	path := t.TempDir() + "/plan.md"
+	bad := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "wrapped issue doc markdown") {
+		t.Fatalf("stderr missing wrapped-doc subject: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("stderr missing wrapped-doc error: %q", stderr.String())
+	}
+}
+
+func TestJSONErrorsWrappedCheck(t *testing.T) {
+	path := t.TempDir() + "/plan.md"
+	bad := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
+	if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("exit %d want 1; stderr %q", exit, stderr.String())
+	}
+	code, msg := firstStderrJSON(t, &stderr)
+	if code != "DECODE_INPUT" {
+		t.Fatalf("code=%q want DECODE_INPUT", code)
+	}
+	if !strings.Contains(msg, "wrapped issue doc markdown") {
+		t.Fatalf("message %q missing wrapped-doc subject", msg)
+	}
+}
+
 func TestRunCheckJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/plan.json"
@@ -1207,6 +1244,37 @@ func TestOverviewSetSameFilePreservesFrontmatter(t *testing.T) {
 	assertParsed(t, path, func(p Plan) {
 		if p.Overview != "Updated overview" {
 			t.Fatalf("overview=%q", p.Overview)
+		}
+	})
+}
+
+func TestImplementationStepSummarySetSameFilePreservesWrappedFrontmatter(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	runPlannerOK(t, []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "Updated summary"}, nil)
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.HasPrefix(string(raw), frontmatter) {
+		t.Fatalf("frontmatter changed:\n%s", string(raw))
+	}
+	assertParsed(t, path, func(p Plan) {
+		if p.Implementation[0].Summary != "Updated summary" {
+			t.Fatalf("summary=%q", p.Implementation[0].Summary)
 		}
 	})
 }
