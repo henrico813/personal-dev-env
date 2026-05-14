@@ -1,5 +1,6 @@
 use crate::{
-    ledger, observe,
+    ledger::{self, RunRecord},
+    observe,
     result::{RunResult, Status},
     worktree,
 };
@@ -92,22 +93,22 @@ pub fn read(path: &Path) -> Result<PersistedRunState, String> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, String> {
+pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<RunRecord, String> {
     let slug = worktree::slugify(key);
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let mut last_error = None;
 
-    if let Ok(Some(state)) = latest_for_key_from_index(repo_root, &home, &slug) {
-        return Ok(state);
+    if let Ok(Some(record)) = latest_for_key_from_index(repo_root, &home, &slug) {
+        return Ok(record);
     }
 
-    if let Some(state) = latest_for_key_from_runs(Path::new(&home), repo_root, &slug)? {
-        return Ok(state);
+    if let Some(record) = latest_for_key_from_runs(Path::new(&home), repo_root, &slug)? {
+        return Ok(record);
     }
 
     for run_dir in observe::run_dirs_newest_to_oldest_in(Path::new(&home), repo_root, &slug)? {
-        match read(&run_dir.join("run-state.json")) {
-            Ok(state) => return Ok(state),
+        match read_legacy_or_record(&run_dir) {
+            Ok(record) => return Ok(record),
             Err(err) => last_error = Some(err),
         }
     }
@@ -119,7 +120,7 @@ fn latest_for_key_from_index(
     repo_root: &Path,
     home: &str,
     slug: &str,
-) -> Result<Option<PersistedRunState>, String> {
+) -> Result<Option<RunRecord>, String> {
     let home = Path::new(home);
     let index = ledger::runs_index_path(home, repo_root, slug);
     let entries = match ledger::read_runs_index(&index) {
@@ -132,13 +133,19 @@ fn latest_for_key_from_index(
     }
 
     for entry in entries.into_iter().rev() {
-        let path = if entry.record_path.is_empty() {
-            &entry.state_path
+        let record_path = if entry.record_path.is_empty() {
+            Path::new(&entry.state_path).to_path_buf()
         } else {
-            &entry.record_path
+            Path::new(&entry.record_path).to_path_buf()
         };
-        match read(Path::new(path)) {
-            Ok(state) => return Ok(Some(state)),
+        if record_path.ends_with("run.json") {
+            match ledger::read_run_record(&record_path) {
+                Ok(record) => return Ok(Some(record)),
+                Err(_) => continue,
+            }
+        }
+        match read(&record_path) {
+            Ok(state) => return Ok(Some(legacy_run_record(&state))),
             Err(_) => continue,
         }
     }
@@ -151,39 +158,55 @@ fn latest_for_key_from_runs(
     home: &Path,
     repo_root: &Path,
     slug: &str,
-) -> Result<Option<PersistedRunState>, String> {
-    let mut states = Vec::new();
+) -> Result<Option<RunRecord>, String> {
+    let mut records = Vec::new();
     for run_dir in observe::run_dirs_newest_to_oldest_in(home, repo_root, slug)? {
-        match read(&run_dir.join("run-state.json")) {
-            Ok(state) => states.push(state),
+        match read_legacy_or_record(&run_dir) {
+            Ok(record) => records.push(record),
             Err(_) => continue,
         }
     }
-    states.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-    Ok(states.into_iter().next())
+    records.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    Ok(records.into_iter().next())
+}
+
+fn read_legacy_or_record(run_dir: &Path) -> Result<RunRecord, String> {
+    let run_path = run_dir.join("run.json");
+    if run_path.exists() {
+        return ledger::read_run_record(&run_path);
+    }
+    read(&run_dir.join("run-state.json")).map(|state| legacy_run_record(&state))
+}
+
+fn legacy_run_record(state: &PersistedRunState) -> RunRecord {
+    RunRecord {
+        run_id: state.run_id.clone(),
+        key: state.key.clone(),
+        slug: state.slug.clone(),
+        created_at: state.created_at,
+        phase: state.phase.clone(),
+        terminal_status: state.terminal_status.clone(),
+        branch: state.branch.clone(),
+        worktree: state.worktree.clone(),
+        model: state.model.clone(),
+        pre_run_commit: state.pre_run_commit.clone(),
+        commit: state.commit.clone(),
+        snapshot_commits: state.snapshot_commits.clone(),
+        changed_files: state.changed_files.clone(),
+        artifacts_dir: state.artifacts_dir.clone().unwrap_or_default(),
+        run_path: state.run_path.clone().unwrap_or_default(),
+        summary_path: state.summary_path.clone().unwrap_or_default(),
+        result_path: state.result_path.clone().unwrap_or_default(),
+        events_log_path: state.events_log_path.clone().unwrap_or_default(),
+        stderr_path: state.stderr_path.clone().unwrap_or_default(),
+        error_message: state.error_message.clone(),
+        persistence_error: state.persistence_error.clone(),
+    }
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
-    let Some(dir) = result.artifacts_dir.as_deref() else {
-        return Ok(());
-    };
-    let path = std::path::Path::new(dir).join("run-state.json");
-    if !path.exists() {
-        return Ok(());
-    }
-
-    let mut persisted = read(&path)?;
-    persisted.phase = RunPhase::Finished;
-    persisted.terminal_status = Some(result.status.clone());
-    persisted.pre_run_commit = result.pre_run_commit.clone();
-    persisted.commit = result.commit.clone();
-    persisted.snapshot_commits = result.snapshot_commits.clone();
-    persisted.changed_files = result.changed_files.clone();
-    persisted.run_path = result.run_path.clone();
-    persisted.error_message = result.error_message.clone();
-    persisted.persistence_error = result.persistence_error.clone();
-    write(&path, &persisted)
+pub fn write_terminal_from_result(_result: &RunResult) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(test)]

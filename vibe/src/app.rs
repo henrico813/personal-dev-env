@@ -3,7 +3,7 @@ use crate::{
     ledger, observe, prompts,
     result::{RunResult, Status},
     sandbox, snapshot,
-    state::{self, PersistedRunState, RunPhase},
+    state::RunPhase,
     worktree,
 };
 use std::{fs, fs::OpenOptions, io::Write, path::Path};
@@ -26,12 +26,12 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
 
 fn persist_phase(
     artifacts: &observe::ArtifactPaths,
-    persisted: &mut PersistedRunState,
+    persisted: &mut ledger::RunRecord,
     phase: RunPhase,
     note: &str,
 ) -> Result<(), String> {
     persisted.phase = phase;
-    state::write(&artifacts.state_json, persisted)?;
+    ledger::write_run_record(&artifacts.run_json, persisted)?;
     append_wrapper_log(&artifacts.vibe_log, note)
 }
 
@@ -90,7 +90,7 @@ fn build_result(
 
 fn finish_result(
     artifacts: &observe::ArtifactPaths,
-    persisted: &mut PersistedRunState,
+    persisted: &mut ledger::RunRecord,
     mut result: RunResult,
 ) -> RunResult {
     if let Err(err) = ledger::persist_terminal_run(artifacts, persisted, &mut result) {
@@ -142,31 +142,30 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
-    let mut persisted = PersistedRunState {
+    let mut persisted = ledger::RunRecord {
         run_id,
         key: session.key.clone(),
         slug: session.slug.clone(),
         created_at,
+        phase: RunPhase::PreparingArtifacts,
+        terminal_status: None,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
         model: Some(args.model.clone()),
-        phase: RunPhase::PreparingArtifacts,
-        terminal_status: None,
         pre_run_commit: None,
         commit: None,
         snapshot_commits: Vec::new(),
-        artifacts_dir: Some(artifacts.dir.display().to_string()),
-        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-        stderr_path: Some(artifacts.stderr_log.display().to_string()),
-        run_path: Some(artifacts.run_json.display().to_string()),
-        result_path: Some(artifacts.result_json.display().to_string()),
-        wrapper_log_path: Some(artifacts.vibe_log.display().to_string()),
-        summary_path: Some(artifacts.summary_json.display().to_string()),
         changed_files: Vec::new(),
+        artifacts_dir: artifacts.dir.display().to_string(),
+        run_path: artifacts.run_json.display().to_string(),
+        summary_path: artifacts.summary_json.display().to_string(),
+        result_path: artifacts.result_json.display().to_string(),
+        events_log_path: artifacts.events_jsonl.display().to_string(),
+        stderr_path: artifacts.stderr_log.display().to_string(),
         error_message: None,
         persistence_error: None,
     };
-    if let Err(err) = state::write(&artifacts.state_json, &persisted) {
+    if let Err(err) = ledger::write_run_record(&artifacts.run_json, &persisted) {
         return build_result(
             &session,
             &artifacts,

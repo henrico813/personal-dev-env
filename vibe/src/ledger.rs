@@ -48,27 +48,27 @@ pub struct RunSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct RunRecord {
-    run_id: String,
-    key: String,
-    slug: String,
-    created_at: u64,
-    phase: RunPhase,
-    terminal_status: Option<Status>,
-    branch: Option<String>,
-    worktree: Option<String>,
-    model: Option<String>,
-    pre_run_commit: Option<String>,
-    commit: Option<String>,
-    snapshot_commits: Vec<String>,
-    changed_files: Vec<String>,
-    artifacts_dir: String,
-    run_path: String,
-    summary_path: String,
-    result_path: String,
-    events_log_path: String,
-    stderr_path: String,
-    error_message: Option<String>,
-    persistence_error: Option<String>,
+    pub run_id: String,
+    pub key: String,
+    pub slug: String,
+    pub created_at: u64,
+    pub phase: RunPhase,
+    pub terminal_status: Option<Status>,
+    pub branch: Option<String>,
+    pub worktree: Option<String>,
+    pub model: Option<String>,
+    pub pre_run_commit: Option<String>,
+    pub commit: Option<String>,
+    pub snapshot_commits: Vec<String>,
+    pub changed_files: Vec<String>,
+    pub artifacts_dir: String,
+    pub run_path: String,
+    pub summary_path: String,
+    pub result_path: String,
+    pub events_log_path: String,
+    pub stderr_path: String,
+    pub error_message: Option<String>,
+    pub persistence_error: Option<String>,
 }
 
 impl RunSummary {
@@ -406,14 +406,25 @@ pub fn record_late_persistence_error(
 
 pub fn persist_terminal_run(
     artifacts: &ArtifactPaths,
-    persisted: &mut PersistedRunState,
+    persisted: &mut RunRecord,
     result: &mut RunResult,
 ) -> Result<(), String> {
-    let record = run_record(artifacts, persisted, result);
-    write_run_record(&artifacts.run_json, &record)?;
-    *persisted = terminal_state(persisted, &record);
+    persisted.phase = RunPhase::Finished;
+    persisted.terminal_status = Some(result.status.clone());
+    persisted.pre_run_commit = result.pre_run_commit.clone();
+    persisted.commit = result.commit.clone();
+    persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.changed_files = result.changed_files.clone();
+    persisted.result_path = result
+        .run_path
+        .as_deref()
+        .map(|path| Path::new(path).with_file_name("result.json").display().to_string())
+        .unwrap_or_else(|| artifacts.result_json.display().to_string());
+    persisted.error_message = result.error_message.clone();
+    persisted.persistence_error = result.persistence_error.clone();
+    write_run_record(&artifacts.run_json, persisted)?;
 
-    let summary = run_summary(&record);
+    let summary = run_summary(persisted);
     if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
         record_run_persistence_error(result, &artifacts.run_json, format!("write summary: {err}"))?;
         return Ok(());
@@ -444,7 +455,7 @@ mod tests {
     };
     use crate::{
         result::{RunResult, Status},
-        state::{PersistedRunState, RunPhase},
+        state::RunPhase,
     };
     use tempfile::tempdir;
 
@@ -489,36 +500,6 @@ mod tests {
             result_path: artifacts_dir.join("result.json").display().to_string(),
             events_log_path: artifacts_dir.join("events.jsonl").display().to_string(),
             stderr_path: artifacts_dir.join("agent.stderr.log").display().to_string(),
-            changed_files: vec!["vibe/src/ledger.rs".to_string()],
-            error_message: None,
-            persistence_error: None,
-        }
-    }
-
-    fn sample_state(
-        summary_path: &std::path::Path,
-        artifacts_dir: &std::path::Path,
-    ) -> PersistedRunState {
-        PersistedRunState {
-            run_id: "run-id".to_string(),
-            key: "pdev-099b".to_string(),
-            slug: "pdev-099b".to_string(),
-            created_at: 1778781727,
-            branch: Some("vibe/pdev-099b".to_string()),
-            worktree: Some("/tmp/worktree".to_string()),
-            model: Some("openai-codex/gpt-5.4-mini".to_string()),
-            phase: RunPhase::Finished,
-            terminal_status: Some(Status::Completed),
-            pre_run_commit: Some("abc".to_string()),
-            commit: Some("def".to_string()),
-            snapshot_commits: vec!["snap".to_string()],
-            artifacts_dir: Some(artifacts_dir.display().to_string()),
-            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
-            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
-            run_path: Some(artifacts_dir.join("run.json").display().to_string()),
-            result_path: Some(artifacts_dir.join("result.json").display().to_string()),
-            wrapper_log_path: Some(artifacts_dir.join("vibe.log").display().to_string()),
-            summary_path: Some(summary_path.display().to_string()),
             changed_files: vec!["vibe/src/ledger.rs".to_string()],
             error_message: None,
             persistence_error: None,
@@ -582,7 +563,7 @@ mod tests {
         std::fs::create_dir_all(artifacts_dir.join("summary.json")).expect("block summary file");
         let artifacts = sample_artifacts(&artifacts_dir);
         let summary_path = artifacts.summary_json.clone();
-        let mut persisted = sample_state(&summary_path, &artifacts_dir);
+        let mut persisted = sample_record(&summary_path, &artifacts_dir);
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         persist_terminal_run(&artifacts, &mut persisted, &mut result)

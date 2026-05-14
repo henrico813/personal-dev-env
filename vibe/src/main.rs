@@ -49,11 +49,11 @@ fn main() {
                 eprintln!("vibe status requires a target repo checkout: {err}");
                 process::exit(2);
             });
-            let state = state::latest_for_key(&repo.repo_root, &args.key).unwrap_or_else(|err| {
+            let record = state::latest_for_key(&repo.repo_root, &args.key).unwrap_or_else(|err| {
                 eprintln!("{err}");
                 process::exit(2);
             });
-            let json = serde_json::to_string_pretty(&state).expect("serialize state");
+            let json = serde_json::to_string_pretty(&record).expect("serialize record");
             println!("{json}");
         }
     }
