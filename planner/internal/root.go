@@ -292,10 +292,6 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 
 func runPatch(args []string, stdout io.Writer, stderr io.Writer) int {
 	const usage = "usage: planner patch <plan.md> [<out.md>]"
-	if _, _, err := splitPreviewArgs(args, true, false); err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
 	reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, usage))
 	return 2
 }
