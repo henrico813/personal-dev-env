@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     observe::ArtifactPaths,
     result::{RunResult, Status},
-    state::{PersistedRunState, RunPhase},
+    state::RunPhase,
 };
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -189,36 +189,6 @@ fn append_log(path: &Path, message: &str) -> Result<(), String> {
     writeln!(log, "{message}").map_err(|e| format!("write log for index append: {e}"))
 }
 
-fn run_record(
-    artifacts: &ArtifactPaths,
-    persisted: &PersistedRunState,
-    result: &RunResult,
-) -> RunRecord {
-    RunRecord {
-        run_id: persisted.run_id.clone(),
-        key: persisted.key.clone(),
-        slug: persisted.slug.clone(),
-        created_at: persisted.created_at,
-        phase: RunPhase::Finished,
-        terminal_status: Some(result.status.clone()),
-        branch: persisted.branch.clone(),
-        worktree: persisted.worktree.clone(),
-        model: persisted.model.clone(),
-        pre_run_commit: result.pre_run_commit.clone(),
-        commit: result.commit.clone(),
-        snapshot_commits: result.snapshot_commits.clone(),
-        changed_files: result.changed_files.clone(),
-        artifacts_dir: artifacts.dir.display().to_string(),
-        run_path: artifacts.run_json.display().to_string(),
-        summary_path: artifacts.summary_json.display().to_string(),
-        result_path: artifacts.result_json.display().to_string(),
-        events_log_path: artifacts.events_jsonl.display().to_string(),
-        stderr_path: artifacts.stderr_log.display().to_string(),
-        error_message: result.error_message.clone(),
-        persistence_error: result.persistence_error.clone(),
-    }
-}
-
 pub fn run_summary(record: &RunRecord) -> RunSummary {
     RunSummary {
         run_id: record.run_id.clone(),
@@ -244,24 +214,6 @@ pub fn run_summary(record: &RunRecord) -> RunSummary {
         error_message: record.error_message.clone(),
         persistence_error: record.persistence_error.clone(),
     }
-}
-
-fn terminal_state(persisted: &PersistedRunState, record: &RunRecord) -> PersistedRunState {
-    let mut state_copy = persisted.clone();
-    state_copy.phase = record.phase.clone();
-    state_copy.terminal_status = record.terminal_status.clone();
-    state_copy.pre_run_commit = record.pre_run_commit.clone();
-    state_copy.commit = record.commit.clone();
-    state_copy.snapshot_commits = record.snapshot_commits.clone();
-    state_copy.changed_files = record.changed_files.clone();
-    state_copy.run_path = Some(record.run_path.clone());
-    state_copy.summary_path = Some(record.summary_path.clone());
-    state_copy.result_path = Some(record.result_path.clone());
-    state_copy.events_log_path = Some(record.events_log_path.clone());
-    state_copy.stderr_path = Some(record.stderr_path.clone());
-    state_copy.error_message = record.error_message.clone();
-    state_copy.persistence_error = record.persistence_error.clone();
-    state_copy
 }
 
 fn record_run_persistence_error(
@@ -418,7 +370,12 @@ pub fn persist_terminal_run(
     persisted.result_path = result
         .run_path
         .as_deref()
-        .map(|path| Path::new(path).with_file_name("result.json").display().to_string())
+        .map(|path| {
+            Path::new(path)
+                .with_file_name("result.json")
+                .display()
+                .to_string()
+        })
         .unwrap_or_else(|| artifacts.result_json.display().to_string());
     persisted.error_message = result.error_message.clone();
     persisted.persistence_error = result.persistence_error.clone();
