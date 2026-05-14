@@ -48,6 +48,40 @@ func writePatchText(t *testing.T, value string) string {
 	return path
 }
 
+func TestSourcePreviewMatchesPathPreview(t *testing.T) {
+	sourcePath := writeRenderedPlan(t, twoStepPlan())
+	sourceRaw, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromPath, _, err := PreviewFromData(sourcePath, ReplaceOptions{Section: "overview", Raw: true}, []byte("Updated overview"))
+	if err != nil {
+		t.Fatalf("PreviewFromData: %v", err)
+	}
+	fromRaw, _, err := PreviewFromSourceData(sourcePath, sourceRaw, ReplaceOptions{Section: "overview", Raw: true}, []byte("Updated overview"))
+	if err != nil {
+		t.Fatalf("PreviewFromSourceData: %v", err)
+	}
+	if fromPath != fromRaw {
+		t.Fatalf("preview mismatch")
+	}
+}
+
+func TestSourcePreviewKeepsDiffSplice(t *testing.T) {
+	sourcePath := writeFixturePlan(t, twoNamedFileChanges("a.go", "OLD A", "b.go", "OLD B"))
+	sourceRaw, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := PreviewFromSourceData(sourcePath, sourceRaw, ReplaceOptions{Section: "implementation", Subsection: "1", File: "a.go", Field: "diff"}, []byte("NEW DIFF"))
+	if err != nil {
+		t.Fatalf("PreviewFromSourceData: %v", err)
+	}
+	if !strings.Contains(out, "NEW DIFF") || strings.Contains(out, "OLD A") {
+		t.Fatalf("diff splice changed behavior")
+	}
+}
+
 // parseOutputPlan reads outputPath and parses it via ParseMarkdown.
 func parseOutputPlan(t *testing.T, outputPath string) Plan {
 	t.Helper()
