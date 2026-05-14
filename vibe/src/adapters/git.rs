@@ -18,6 +18,23 @@ fn git(cwd: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+fn git_paths_z(cwd: &Path, args: &[&str]) -> Result<Vec<String>, String> {
+    let out = Command::new("git")
+        .args(["-C", cwd.to_str().unwrap_or(".")])
+        .args(args)
+        .output()
+        .map_err(|e| format!("spawn git: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(out
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| String::from_utf8_lossy(entry).to_string())
+        .collect())
+}
+
 fn command_output(out: &std::process::Output) -> String {
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -152,6 +169,19 @@ pub fn head_sha(repo: &Path) -> Result<String, String> {
     git(repo, &["rev-parse", "HEAD"])
 }
 
+/// Final dirty worktree reporting must include both tracked diffs and
+/// untracked files so callers can describe terminal state truthfully.
+pub fn changed_files_in_worktree(repo: &Path) -> Result<Vec<String>, String> {
+    let mut files = git_paths_z(repo, &["diff", "--name-only", "-z", "HEAD"])?;
+    files.extend(git_paths_z(
+        repo,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+    )?);
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 /// Result commits are the canonical run result; snapshot hooks ignore this kind.
 pub fn commit_all(
     repo: &Path,
@@ -193,4 +223,72 @@ pub fn commit_all(
         });
     }
     head_sha(repo)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::changed_files_in_worktree;
+    use std::process::Command;
+    use tempfile::tempdir;
+
+    #[test]
+    fn changed_files_in_worktree_includes_tracked_and_untracked_files() {
+        let temp = tempdir().expect("tempdir");
+        let repo = temp.path();
+
+        let init = Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .expect("git init");
+        assert!(
+            init.status.success(),
+            "{}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+
+        let config_name = Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo)
+            .output()
+            .expect("git config name");
+        assert!(config_name.status.success());
+
+        let config_email = Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(repo)
+            .output()
+            .expect("git config email");
+        assert!(config_email.status.success());
+
+        std::fs::write(repo.join("tracked.txt"), "one\n").expect("write tracked file");
+
+        let add = Command::new("git")
+            .args(["add", "tracked.txt"])
+            .current_dir(repo)
+            .output()
+            .expect("git add");
+        assert!(add.status.success());
+
+        let commit = Command::new("git")
+            .args(["commit", "-m", "seed"])
+            .current_dir(repo)
+            .output()
+            .expect("git commit");
+        assert!(
+            commit.status.success(),
+            "{}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
+
+        std::fs::write(repo.join("tracked.txt"), "one\ntwo\n").expect("modify tracked");
+        std::fs::write(repo.join("untracked.txt"), "hello\n").expect("write untracked");
+
+        let changed = changed_files_in_worktree(repo).expect("changed files");
+
+        assert_eq!(
+            changed,
+            vec!["tracked.txt".to_string(), "untracked.txt".to_string()]
+        );
+    }
 }

@@ -1,6 +1,7 @@
 mod adapters;
 mod app;
 mod cli;
+mod ledger;
 mod observe;
 mod prompts;
 mod result;
@@ -22,6 +23,7 @@ fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
         None => Some(message),
     };
     RunResult {
+        run_id: result.run_id.clone(),
         status: Status::WrapperFailed,
         branch: result.branch.clone(),
         worktree: result.worktree.clone(),
@@ -32,6 +34,9 @@ fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
         artifacts_dir: result.artifacts_dir.clone(),
         events_log_path: result.events_log_path.clone(),
         stderr_path: result.stderr_path.clone(),
+        summary_path: result.summary_path.clone(),
+        changed_files: result.changed_files.clone(),
+        persistence_error: result.persistence_error.clone(),
         error_message,
     }
 }
