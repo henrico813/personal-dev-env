@@ -290,7 +290,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runPatch(args []string, stdout io.Writer, stderr io.Writer) int {
+func runPatchPlaceholder(args []string, stdout io.Writer, stderr io.Writer) int {
 	const usage = "usage: planner patch <plan.md> [<out.md>]"
 	reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, usage))
 	return 2
