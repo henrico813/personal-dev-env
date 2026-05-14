@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,6 +187,25 @@ func TestVaultDefaultSetPersistsSelectorAndGetPrintsIt(t *testing.T) {
 	}
 	if got := stdout.String(); got != "main\n" {
 		t.Fatalf("unexpected get output %q", got)
+	}
+}
+
+func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
+	clearVaultEnv(t)
+	homeDir := t.TempDir()
+	t.Setenv("PDE_MAIN_VAULT", filepath.Join(homeDir, "env-main"))
+
+	err := runVaultDefaultSet(io.Discard, homeDir, "main")
+	if err == nil {
+		t.Fatal("expected set main to fail without a persisted main vault path")
+	}
+
+	var vaultErr *vaultError
+	if !errors.As(err, &vaultErr) {
+		t.Fatalf("expected vaultError, got %T", err)
+	}
+	if vaultErr.Code != vaultDefaultMainRequiresPath {
+		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }
 

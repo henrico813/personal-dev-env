@@ -8,6 +8,41 @@ import (
 	"testing"
 )
 
+func TestLoadVaultPathsEnvOverridesFile(t *testing.T) {
+	homeDir := t.TempDir()
+	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
+	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
+		t.Fatalf("mkdir paths.env parent: %v", err)
+	}
+	fileMain := filepath.Join(homeDir, "file-main")
+	fileWork := filepath.Join(homeDir, "file-work")
+	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+fileMain+"\"\nexport PDE_WORK_VAULT=\""+fileWork+"\"\n", 0o644)
+
+	envMain := filepath.Join(homeDir, "env-main")
+	if err := os.MkdirAll(envMain, 0o755); err != nil {
+		t.Fatalf("mkdir env vault: %v", err)
+	}
+	if err := os.MkdirAll(fileWork, 0o755); err != nil {
+		t.Fatalf("mkdir file work vault: %v", err)
+	}
+
+	paths, err := loadVaultPaths(homeDir, func(key string) (string, bool) {
+		if key == "PDE_MAIN_VAULT" {
+			return envMain, true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatalf("load vault paths: %v", err)
+	}
+	if got := paths["PDE_MAIN_VAULT"]; got != envMain {
+		t.Fatalf("unexpected main vault %q want %q", got, envMain)
+	}
+	if got := paths["PDE_WORK_VAULT"]; got != fileWork {
+		t.Fatalf("unexpected work vault %q want %q", got, fileWork)
+	}
+}
+
 func TestResolveVaultsDefaultHonorsPersistedSelector(t *testing.T) {
 	homeDir := t.TempDir()
 	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")

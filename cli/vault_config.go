@@ -21,6 +21,7 @@ func loadPersistedVaultConfig(homeDir string) (vaultConfig, error) {
 	if err != nil {
 		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
+
 	mainPath, err := resolveShellPath(fileValues["PDE_MAIN_VAULT"], homeDir)
 	if err != nil {
 		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
@@ -29,10 +30,12 @@ func loadPersistedVaultConfig(homeDir string) (vaultConfig, error) {
 	if err != nil {
 		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
+
 	selector := normalizeVaultSelector(fileValues[defaultVaultEnvKey])
 	if selector != "" && selector != "main" && selector != "work" {
 		return vaultConfig{}, newVaultError(vaultInvalidPersistedSelector, nil, selector)
 	}
+
 	return vaultConfig{MainPath: mainPath, WorkPath: workPath, DefaultSelector: selector}, nil
 }
 
@@ -84,6 +87,7 @@ func storedDefaultVaultSelector(homeDir string) (string, error) {
 	if err != nil {
 		return "", newVaultError(vaultReadConfigFailed, err, err)
 	}
+
 	selector := normalizeVaultSelector(values[defaultVaultEnvKey])
 	if selector != "" && selector != "main" && selector != "work" {
 		return "", newVaultError(vaultInvalidPersistedSelector, nil, selector)
@@ -105,6 +109,7 @@ func persistDefaultVaultSelector(homeDir, selector string) error {
 	if _, err := resolveVaultRoots(cfg, "default"); err != nil {
 		return err
 	}
+
 	return setPathsEnvExport(homeDir, defaultVaultEnvKey, selector)
 }
 
@@ -176,7 +181,7 @@ func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
 		}
 		return []string{cfg.WorkPath}, nil
 	default:
-		return nil, newVaultError(vaultInvalidSelector, nil, selector)
+		return nil, fmt.Errorf("invalid --vault value %q", selector)
 	}
 }
 
@@ -190,14 +195,14 @@ func readPathsEnvFile(path string) (string, error) {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
-		return "", fmt.Errorf("stat paths.env %s: %w", path, err)
+		return "", err
 	}
 	if !info.Mode().IsRegular() {
 		return "", nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read paths.env %s: %w", path, err)
+		return "", err
 	}
 	return string(data), nil
 }
@@ -213,7 +218,7 @@ func readPathsEnvExports(path string, keys []string) (map[string]string, error) 
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
 		}
-		return nil, fmt.Errorf("open paths.env %s: %w", path, err)
+		return nil, err
 	}
 	defer f.Close()
 
@@ -235,7 +240,7 @@ func readPathsEnvExports(path string, keys []string) (map[string]string, error) 
 		values[key] = strings.TrimSpace(value)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan paths.env %s: %w", path, err)
+		return nil, err
 	}
 	return values, nil
 }
@@ -284,13 +289,9 @@ func normalizeShellValue(value string) string {
 	if value == "" {
 		return ""
 	}
-
-	if len(value) >= 2 {
-		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
-			value = value[1 : len(value)-1]
-		}
+	if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+		value = value[1 : len(value)-1]
 	}
-
 	return value
 }
 
@@ -303,14 +304,12 @@ func resolveShellPath(value, homeDir string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
-
 	value = os.ExpandEnv(value)
 	if value == "~" {
 		value = homeDir
 	} else if strings.HasPrefix(value, "~/") {
 		value = filepath.Join(homeDir, value[2:])
 	}
-
 	if value == "" {
 		return "", nil
 	}
