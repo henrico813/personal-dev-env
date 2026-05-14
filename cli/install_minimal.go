@@ -47,7 +47,15 @@ var defaultMinimalInstallers = minimalInstallers{
 }
 
 func installMinimal(cfg *Config, runner Runner) error {
-	return runMinimal(cfg, runner, defaultMinimalInstallers)
+	installers := defaultMinimalInstallers
+	if runner.DryRun {
+		installers.installObsidian = func(cfg *Config, runner Runner) error {
+			return installObsidianWithOptions(cfg, runner, obsidianInstallOptions{
+				skipNvimPreflightOnDryRun: true,
+			})
+		}
+	}
+	return runMinimal(cfg, runner, installers)
 }
 
 func runMinimal(cfg *Config, runner Runner, installers minimalInstallers) error {
