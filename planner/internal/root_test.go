@@ -18,6 +18,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner new",
 		"planner check",
 		"planner inspect",
+		"planner patch",
 	} {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
@@ -28,7 +29,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "planner patch", "--write"} {
+	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
@@ -41,6 +42,8 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"planner new plan.md.",
 		"planner check plan.md --json-errors.",
 		"<out.md> may be the same path as <plan.md>",
+		"planner patch <plan.md> [<out.md>]",
+		"planner patch preserves wrapped frontmatter",
 		"same-file updates",
 	} {
 		if !strings.Contains(help, want) {
@@ -437,12 +440,12 @@ func TestValidateCommandRemoved(t *testing.T) {
 	}
 }
 
-func TestPatchCommandRemoved(t *testing.T) {
+func TestPatchCommandUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"patch", "--help"}, &stdout, &stderr); exit != 2 {
 		t.Fatalf("exit=%d want 2; stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "unknown command: patch") {
+	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<out.md>]") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
