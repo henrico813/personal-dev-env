@@ -156,6 +156,19 @@ func TestInstallConfigPreservesMainAndWorkVaultLines(t *testing.T) {
 	}
 }
 
+func TestInstallConfigPreservesDefaultVaultLine(t *testing.T) {
+	cfg, pathsEnv := newInstallConfigFixture(t)
+	mustWriteFile(t, pathsEnv, "export PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
+
+	if err := installConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("install config: %v", err)
+	}
+	content := mustFileContents(t, pathsEnv, "")
+	if !strings.Contains(content, "export PDE_DEFAULT_VAULT=\"main\"") {
+		t.Fatalf("expected default selector line to be preserved, got:\n%s", content)
+	}
+}
+
 func TestInstallConfigBacksUpPathsEnvSymlinkToDirectoryWithoutProfile(t *testing.T) {
 	cfg, pathsEnv := newInstallConfigFixture(t)
 	seedDir := filepath.Join(cfg.HomeDir, "paths-env-dir")
