@@ -177,6 +177,54 @@ func TestResolveVaultsDefaultPrefersWorkThenMain(t *testing.T) {
 	}
 }
 
+func TestResolveVaultsDefaultSkipsMissingAndNonDirRoots(t *testing.T) {
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	workVault := filepath.Join(homeDir, "work")
+	mustWriteFile(t, workVault, "not a dir", 0o644)
+
+	vaults, err := resolveVaults(homeDir, func(key string) (string, bool) {
+		switch key {
+		case "PDE_MAIN_VAULT":
+			return mainVault, true
+		case "PDE_WORK_VAULT":
+			return workVault, true
+		default:
+			return "", false
+		}
+	}, "default")
+	if err != nil {
+		t.Fatalf("resolve default vaults: %v", err)
+	}
+	if !reflect.DeepEqual(vaults, []string{mainVault}) {
+		t.Fatalf("unexpected default vaults: %#v", vaults)
+	}
+
+	_, err = resolveVaults(homeDir, func(key string) (string, bool) {
+		switch key {
+		case "PDE_MAIN_VAULT":
+			return filepath.Join(homeDir, "missing-main"), true
+		case "PDE_WORK_VAULT":
+			return filepath.Join(homeDir, "missing-work"), true
+		default:
+			return "", false
+		}
+	}, "default")
+	if err == nil {
+		t.Fatal("expected error when no usable default vault roots exist")
+	}
+	vaultErr, ok := err.(*vaultError)
+	if !ok {
+		t.Fatalf("expected vaultError, got %T", err)
+	}
+	if vaultErr.Code != vaultDefaultNeedsUsablePath {
+		t.Fatalf("unexpected error code %v", vaultErr.Code)
+	}
+}
+
 func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	homeDir := t.TempDir()
 	mainVault := filepath.Join(homeDir, "main")
