@@ -187,7 +187,7 @@ The chat window opens on the right and is clamped back into the old 25%-40% widt
 
 Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `surveil`, `vibe`, and the managed OpenCode agent config.
 
-`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, and `PDE_WORK_VAULT`; running `pde vault default set <main|work>` also persists `PDE_DEFAULT_VAULT` there. When Neovim starts from a PDE-managed shell, those variables are already exported; when it starts elsewhere, CodeCompanion best-effort falls back to reading them from `paths.env`.
+`~/.config/pde/paths.env` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, and `PDE_WORK_VAULT`; running `pde vault default set <main|work>` also persists `PDE_DEFAULT_VAULT` there. When Neovim starts from a PDE-managed shell, those variables are already exported; when it starts elsewhere, CodeCompanion and the Obsidian plugin best-effort fall back to reading them from `paths.env`.
 
 For the default loopback setup, the shim auto-starts `opencode serve` on demand when inline requests arrive and the backend is missing. If `OPENCODE_BASE_URL` points at a remote host or a non-loopback address, the shim will not try to start it for you.
 
