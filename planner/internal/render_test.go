@@ -91,22 +91,22 @@ func TestCreatePlanFromStructRejectsUnsupportedFrontmatter(t *testing.T) {
 
 	if err := CreatePlanFromStruct(minimalPlan(), out); err == nil {
 		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter format") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestCreatePlanFromStructRejectsMalformedDateFrontmatter(t *testing.T) {
+func TestCreatePlanFromStructRejectsMalformedTagFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
-	bad := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026/05/12\ntopics: []\n---\n\nold body\n"
+	bad := "---\ntags:\n  - \"#ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\nold body\n"
 	if err := os.WriteFile(out, []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := CreatePlanFromStruct(minimalPlan(), out); err == nil {
 		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported frontmatter format") {
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
