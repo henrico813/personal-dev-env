@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +24,27 @@ import (
 //   - verification.automated
 //   - verification.manual
 const patchUsage = "usage: planner patch <plan.md> [<out.md>]"
+
+var (
+	patchStepFieldSelectorRE       = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
+	patchFileChangeFieldSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]\.(filename|explanation)$`)
+)
+
+type patchFieldSelectorKind int
+
+const (
+	patchFieldSelectorTopLevel patchFieldSelectorKind = iota + 1
+	patchFieldSelectorStep
+	patchFieldSelectorFileChange
+)
+
+type patchFieldSelector struct {
+	Kind            patchFieldSelectorKind
+	TopLevel        string
+	StepIndex       int
+	FileChangeIndex int
+	Field           string
+}
 
 type patchOpKind int
 
@@ -63,12 +86,6 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	parsed, err := ParseMarkdown(string(sourceRaw))
-	if err != nil {
-		reportError(stderr, "patch", plannerMarkdownDecodeError(sourceRaw, err))
-		return 1
-	}
-
 	patchRaw, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		reportError(stderr, "patch", newPlannerCLIError(PlannerReadInputError, err, "stdin"))
@@ -82,28 +99,13 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 		return plannerExitCode(cliErr)
 	}
 
-	plan := parsed.Plan
-	if err := applyPlannerPatch(&plan, ops); err != nil {
+	updatedRaw, err := applyPlannerPatch(sourceRaw, ops)
+	if err != nil {
 		cliErr := mapReplaceCLIError(err, sourcePath)
 		reportError(stderr, "patch", cliErr)
 		return plannerExitCode(cliErr)
 	}
-	if err := ValidatePlan(plan); err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerValidateInputError, err, "updated plan"))
-		return 1
-	}
-
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		reportError(stderr, "patch", newPlannerCLIError(PlannerRenderOutputError, err, "updated plan markdown"))
-		return 1
-	}
-	frontmatter, _, err := splitFrontmatter(string(sourceRaw))
-	if err != nil {
-		reportError(stderr, "patch", plannerMarkdownDecodeError(sourceRaw, err))
-		return 1
-	}
-	if err := WriteAtomic(outputPath, []byte(frontmatter+rendered)); err != nil {
+	if err := WriteAtomic(outputPath, updatedRaw); err != nil {
 		reportError(stderr, "patch", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
 		return 1
 	}
@@ -222,63 +224,185 @@ func parsePlannerPatchOp(lines []string, start int) (patchOp, int, error) {
 	return op, next, nil
 }
 
-func applyPlannerPatch(plan *Plan, ops []patchOp) error {
+func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
+	currentRaw := sourceRaw
 	for _, op := range ops {
+		parsed, err := ParseMarkdown(string(currentRaw))
+		if err != nil {
+			return nil, newReplaceError(ReplaceParseSourceError, err)
+		}
 		switch op.Kind {
 		case patchOpUpdateField:
-			if err := applyPlannerPatchField(plan, op.Selector, op.OldText, op.NewText); err != nil {
-				return err
+			nextRaw, err := applyPlannerPatchField(currentRaw, parsed, op.Selector, op.OldText, op.NewText)
+			if err != nil {
+				return nil, err
 			}
+			currentRaw = nextRaw
 		case patchOpAddItem:
-			if err := applyPlannerPatchChecklistItem(plan, op.Selector, op.NewText); err != nil {
-				return err
+			plan := parsed.Plan
+			if err := applyPlannerPatchChecklistItem(&plan, op.Selector, op.NewText); err != nil {
+				return nil, err
 			}
+			nextRaw, err := renderPatchedPlan(currentRaw, plan)
+			if err != nil {
+				return nil, err
+			}
+			currentRaw = nextRaw
 		default:
-			return fmt.Errorf("unknown patch operation")
+			return nil, fmt.Errorf("unknown patch operation")
 		}
 	}
-	return nil
+	return currentRaw, nil
 }
 
-func applyPlannerPatchField(plan *Plan, selector, oldText, newText string) error {
-	switch selector {
-	case "title":
-		if plan.Title != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for title"))
-		}
-		plan.Title = newText
-	case "overview":
-		if plan.Overview != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for overview"))
-		}
-		plan.Overview = newText
-	case "definition_of_done.narrative":
-		if plan.DefinitionOfDone.Narrative != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for definition_of_done.narrative"))
-		}
-		plan.DefinitionOfDone.Narrative = newText
-	case "definition_of_done.current_state":
-		if plan.DefinitionOfDone.CurrentState != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for definition_of_done.current_state"))
-		}
-		plan.DefinitionOfDone.CurrentState = newText
-	case "definition_of_done.module_shape":
-		if plan.DefinitionOfDone.ModuleShape != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for definition_of_done.module_shape"))
-		}
-		plan.DefinitionOfDone.ModuleShape = newText
-	case "verification.summary":
-		if plan.Verification == nil {
-			plan.Verification = &Verification{}
-		}
-		if plan.Verification.Summary != oldText {
-			return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for verification.summary"))
-		}
-		plan.Verification.Summary = newText
-	default:
-		return newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", selector))
+func renderPatchedPlan(sourceRaw []byte, plan Plan) ([]byte, error) {
+	if err := ValidatePlan(plan); err != nil {
+		return nil, newReplaceError(ReplaceValidateResultError, err)
 	}
-	return nil
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		return nil, newReplaceError(ReplaceRenderResultError, err)
+	}
+	frontmatter, _, err := splitFrontmatter(string(sourceRaw))
+	if err != nil {
+		return nil, newReplaceError(ReplaceParseSourceError, err)
+	}
+	return []byte(frontmatter + rendered), nil
+}
+
+func parsePatchFieldSelector(raw string) (patchFieldSelector, error) {
+	switch raw {
+	case "title", "overview", "definition_of_done.narrative", "definition_of_done.current_state", "definition_of_done.module_shape", "verification.summary":
+		return patchFieldSelector{Kind: patchFieldSelectorTopLevel, TopLevel: raw}, nil
+	}
+	if match := patchStepFieldSelectorRE.FindStringSubmatch(raw); match != nil {
+		stepIdx, err := parsePatchSelectorIndex(match[1], raw, "step")
+		if err != nil {
+			return patchFieldSelector{}, err
+		}
+		return patchFieldSelector{Kind: patchFieldSelectorStep, StepIndex: stepIdx, Field: match[2]}, nil
+	}
+	if match := patchFileChangeFieldSelectorRE.FindStringSubmatch(raw); match != nil {
+		stepIdx, err := parsePatchSelectorIndex(match[1], raw, "step")
+		if err != nil {
+			return patchFieldSelector{}, err
+		}
+		changeIdx, err := parsePatchSelectorIndex(match[2], raw, "file change")
+		if err != nil {
+			return patchFieldSelector{}, err
+		}
+		return patchFieldSelector{Kind: patchFieldSelectorFileChange, StepIndex: stepIdx, FileChangeIndex: changeIdx, Field: match[3]}, nil
+	}
+	return patchFieldSelector{}, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", raw))
+}
+
+func parsePatchSelectorIndex(raw, selector, segment string) (int, error) {
+	idx, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", selector))
+	}
+	if idx < 1 {
+		return 0, patchSelectorRangeError(selector, segment, idx, 0)
+	}
+	return idx, nil
+}
+
+func patchSelectorRangeError(selector, segment string, idx, have int) error {
+	return newReplaceError(ReplacePatchSelectorError, fmt.Errorf("patch selector %q %s %d out of range (have %d)", selector, segment, idx, have))
+}
+
+func patchOldValueMismatch(selector string) error {
+	return newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch old value mismatch for %s", selector))
+}
+
+func patchSelectorValue(plan Plan, selector patchFieldSelector) (string, error) {
+	switch selector.Kind {
+	case patchFieldSelectorTopLevel:
+		switch selector.TopLevel {
+		case "title":
+			return plan.Title, nil
+		case "overview":
+			return plan.Overview, nil
+		case "definition_of_done.narrative":
+			return plan.DefinitionOfDone.Narrative, nil
+		case "definition_of_done.current_state":
+			return plan.DefinitionOfDone.CurrentState, nil
+		case "definition_of_done.module_shape":
+			return plan.DefinitionOfDone.ModuleShape, nil
+		case "verification.summary":
+			if plan.Verification == nil {
+				return "", nil
+			}
+			return plan.Verification.Summary, nil
+		}
+	case patchFieldSelectorStep:
+		if selector.StepIndex > len(plan.Implementation) {
+			return "", patchSelectorRangeError(fmt.Sprintf("implementation[%d].%s", selector.StepIndex, selector.Field), "step", selector.StepIndex, len(plan.Implementation))
+		}
+		step := plan.Implementation[selector.StepIndex-1]
+		if selector.Field == "title" {
+			return step.Title, nil
+		}
+		return step.Summary, nil
+	case patchFieldSelectorFileChange:
+		if selector.StepIndex > len(plan.Implementation) {
+			return "", patchSelectorRangeError(fmt.Sprintf("implementation[%d].file_changes[%d].%s", selector.StepIndex, selector.FileChangeIndex, selector.Field), "step", selector.StepIndex, len(plan.Implementation))
+		}
+		step := plan.Implementation[selector.StepIndex-1]
+		if selector.FileChangeIndex > len(step.FileChanges) {
+			return "", patchSelectorRangeError(fmt.Sprintf("implementation[%d].file_changes[%d].%s", selector.StepIndex, selector.FileChangeIndex, selector.Field), "file change", selector.FileChangeIndex, len(step.FileChanges))
+		}
+		change := step.FileChanges[selector.FileChangeIndex-1]
+		if selector.Field == "filename" {
+			return change.Filename, nil
+		}
+		return change.Explanation, nil
+	}
+	return "", newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector"))
+}
+
+func applyPlannerPatchField(sourceRaw []byte, parsed ParseResult, selector, oldText, newText string) ([]byte, error) {
+	field, err := parsePatchFieldSelector(selector)
+	if err != nil {
+		return nil, err
+	}
+	current, err := patchSelectorValue(parsed.Plan, field)
+	if err != nil {
+		return nil, err
+	}
+	if current != oldText {
+		return nil, patchOldValueMismatch(selector)
+	}
+	switch field.Kind {
+	case patchFieldSelectorTopLevel:
+		plan := parsed.Plan
+		switch field.TopLevel {
+		case "title":
+			plan.Title = newText
+		case "overview":
+			plan.Overview = newText
+		case "definition_of_done.narrative":
+			plan.DefinitionOfDone.Narrative = newText
+		case "definition_of_done.current_state":
+			plan.DefinitionOfDone.CurrentState = newText
+		case "definition_of_done.module_shape":
+			plan.DefinitionOfDone.ModuleShape = newText
+		case "verification.summary":
+			if plan.Verification == nil {
+				plan.Verification = &Verification{}
+			}
+			plan.Verification.Summary = newText
+		}
+		return renderPatchedPlan(sourceRaw, plan)
+	case patchFieldSelectorStep, patchFieldSelectorFileChange:
+		opts := ReplaceOptions{Section: "implementation", Subsection: strconv.Itoa(field.StepIndex), Field: field.Field, Raw: true}
+		out, _, err := spliceImplementationScalarByIndex(string(sourceRaw), parsed.Plan, parsed.Steps, opts, field.StepIndex, field.FileChangeIndex, newText)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(out), nil
+	}
+	return nil, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", selector))
 }
 
 func applyPlannerPatchChecklistItem(plan *Plan, selector, text string) error {
