@@ -21,6 +21,9 @@ const (
 	ReplaceFileNotFoundError
 	ReplaceFileAmbiguousError
 	ReplaceParseSplicedSourceError
+	ReplacePatchSyntaxError
+	ReplacePatchSelectorError
+	ReplacePatchMismatchError
 )
 
 // ReplaceError wraps the underlying failure with a stable category.
@@ -97,10 +100,18 @@ func PreviewFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte) (s
 	if err := validateOpts(opts); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, err)
 	}
-
 	sourceRaw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceReadSourceError, err)
+	}
+	return PreviewFromSourceData(sourcePath, sourceRaw, opts, patchRaw)
+}
+
+// PreviewFromSourceData is PreviewFromData with pre-read source bytes. It keeps
+// the preview path reusable for callers that already have the source in memory.
+func PreviewFromSourceData(sourcePath string, sourceRaw []byte, opts ReplaceOptions, patchRaw []byte) (string, ReplaceResult, error) {
+	if err := validateOpts(opts); err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, err)
 	}
 
 	parsed, err := ParseMarkdown(string(sourceRaw))

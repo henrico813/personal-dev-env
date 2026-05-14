@@ -18,6 +18,7 @@ Usage:
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
   planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner inspect <plan.md>
+  planner patch <plan.md> [<out.md>]
   planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -56,9 +57,41 @@ Markdown-first authoring flow:
 
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON.
-  2. Use behavioral commands such as planner title set, planner dod goal set,
-     planner implementation step file-change diff set, and planner verification automated add.
-  3. Non-targeted sections remain byte-for-byte unchanged, and same-file updates preserve supported wrapped issue frontmatter automatically.
+  2. Prefer planner patch <plan.md> [<out.md>] for scalar and checklist edits.
+  3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
+  4. Use behavioral commands for step, file-change, and other unsupported edits.
+
+planner patch:
+  Reads a structured patch from stdin and applies all operations to one plan.
+  planner patch accepts no subcommand flags; only global flags such as
+  --json-errors.
+
+  Supported operations:
+    *** Update Field: <selector>
+    -<old line>
+    +<new line>
+
+    *** Add Item: <selector>
+    +<new checklist item>
+
+  Supported field selectors:
+    title
+    overview
+    definition_of_done.narrative
+    definition_of_done.current_state
+    definition_of_done.module_shape
+    verification.summary
+
+  Supported checklist selectors:
+    definition_of_done.goals
+    verification.automated
+    verification.manual
+
+  Notes:
+    - Patch body lines beginning with *** start the next patch operation.
+    - Checklist edits must be single-line.
+    - Only verification.summary may be set to an empty value.
+    - Unsupported structural edits should use behavioral commands.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
@@ -97,6 +130,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runCheck("check", args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
+	case "patch":
+		return runPatch(args[1:], stdout, stderr)
 	case "title", "overview", "dod", "implementation", "verification":
 		return runBehavioralEdit(args, stdout, stderr)
 	default:
@@ -287,6 +322,12 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
+func runPatchPlaceholder(args []string, stdout io.Writer, stderr io.Writer) int {
+	const usage = "usage: planner patch <plan.md> [<out.md>]"
+	reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, usage))
+	return 2
+}
+
 // previewFlags carries the preview-state flags stripped before subcommand
 // parsing. Write is the default; --dry-run opts out of it.
 type previewFlags struct {
@@ -389,6 +430,16 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 	case ReplaceParseSplicedSourceError:
 		e := newPlannerCLIError(PlannerValidateInputError, err, "spliced plan markdown")
 		e.RecoveryHint = "remove or escape triple-backtick fences in the diff body, then patch again"
+		return e
+	case ReplacePatchSyntaxError:
+		return newPlannerCLIError(PlannerDecodeInputError, err, "structured patch")
+	case ReplacePatchSelectorError:
+		e := newPlannerCLIError(PlannerValidateInputError, err, "structured patch")
+		e.RecoveryHint = "use the documented selector grammar or fall back to a behavioral command"
+		return e
+	case ReplacePatchMismatchError:
+		e := newPlannerCLIError(PlannerValidateInputError, err, "patch old value")
+		e.RecoveryHint = "refresh the old value from planner inspect or the current file, then retry"
 		return e
 	default:
 		return newPlannerCLIError(PlannerValidateInputError, err, "result")

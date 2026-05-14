@@ -18,6 +18,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner new",
 		"planner check",
 		"planner inspect",
+		"planner patch",
 	} {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
@@ -28,7 +29,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "planner patch", "--write"} {
+	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
@@ -41,6 +42,8 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"planner new plan.md.",
 		"planner check plan.md --json-errors.",
 		"<out.md> may be the same path as <plan.md>",
+		"planner patch <plan.md> [<out.md>]",
+		"planner patch preserves wrapped frontmatter",
 		"same-file updates",
 	} {
 		if !strings.Contains(help, want) {
@@ -437,14 +440,147 @@ func TestValidateCommandRemoved(t *testing.T) {
 	}
 }
 
-func TestPatchCommandRemoved(t *testing.T) {
+func TestPatchCommandUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"patch", "--help"}, &stdout, &stderr); exit != 2 {
 		t.Fatalf("exit=%d want 2; stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "unknown command: patch") {
+	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<out.md>]") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
+}
+
+func TestPatchRejectsUnsupportedSelector(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	if !strings.Contains(stderr.String(), "unsupported patch selector") {
+		t.Fatalf("stderr missing unsupported-selector error: %q", stderr.String())
+	}
+}
+
+func TestBehavioralFallbackStillWorks(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	var stdout, stderr bytes.Buffer
+	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", path, path, "--step", "1", "--change", "1", "--stdin"}, []byte("raw diff bytes"))
+	assertParsed(t, path, func(plan Plan) {
+		if plan.Implementation[0].FileChanges[0].Diff != "raw diff bytes" {
+			t.Fatalf("diff=%q", plan.Implementation[0].FileChanges[0].Diff)
+		}
+	})
+}
+
+func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	code, msg := firstStderrJSON(t, &stderr)
+	if code != "VALIDATE_INPUT" {
+		t.Fatalf("code=%q want VALIDATE_INPUT", code)
+	}
+	if !strings.Contains(msg, "unsupported patch selector") {
+		t.Fatalf("message %q missing unsupported-selector error", msg)
+	}
+}
+
+func TestPatchPreservesWrappedFrontmatter(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), frontmatter) {
+		t.Fatalf("frontmatter changed:\n%s", string(raw))
+	}
+	assertParsed(t, path, func(plan Plan) {
+		if plan.Title != "Renamed" {
+			t.Fatalf("title=%q", plan.Title)
+		}
+	})
+}
+
+func TestPatchRerendersCanonically(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := strings.Replace(string(raw), "## Verification\n---\n", "## Verification\n---\n\n", 1)
+	if err := os.WriteFile(path, []byte(mutated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(updated), "## Verification\n---\n\n") {
+		t.Fatalf("expected canonical rerender:\n%s", string(updated))
+	}
+}
+
+func TestPatchWritesAlternateOutputPath(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := writeBehavioralPlan(t, dir)
+	outPath := filepath.Join(dir, "out.md")
+	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", sourcePath, outPath}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	assertParsed(t, sourcePath, func(plan Plan) {
+		if plan.Title != "T" {
+			t.Fatalf("source title changed: %q", plan.Title)
+		}
+	})
+	assertParsed(t, outPath, func(plan Plan) {
+		if plan.Title != "Renamed" {
+			t.Fatalf("out title=%q", plan.Title)
+		}
+	})
 }
 
 func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
