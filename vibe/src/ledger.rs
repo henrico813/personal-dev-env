@@ -13,6 +13,7 @@ use crate::{
 
 #[cfg_attr(not(test), allow(dead_code))]
 const SUMMARY_FILE: &str = "summary.json";
+#[cfg_attr(not(test), allow(dead_code))]
 const RUN_RECORD_FILE: &str = "run.json";
 const RUNS_INDEX_FILE: &str = "runs_index.jsonl";
 
@@ -146,6 +147,7 @@ pub fn summary_path(artifacts_dir: &Path) -> PathBuf {
     artifacts_dir.join(SUMMARY_FILE)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn run_record_path(artifacts_dir: &Path) -> PathBuf {
     artifacts_dir.join(RUN_RECORD_FILE)
 }
@@ -318,16 +320,16 @@ pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
 
 fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
     result
-        .run_path
+        .summary_path
         .as_deref()
-        .map(Path::new)
-        .and_then(Path::parent)
-        .map(|dir| dir.join("run-state.json"))
+        .and_then(|path| state_path_from_summary(Path::new(path)).map(PathBuf::from))
         .or_else(|| {
             result
-                .summary_path
+                .run_path
                 .as_deref()
-                .and_then(|path| state_path_from_summary(Path::new(path)).map(PathBuf::from))
+                .map(Path::new)
+                .and_then(Path::parent)
+                .map(|dir| dir.join("run-state.json"))
         })
         .or_else(|| {
             result
@@ -403,7 +405,11 @@ pub fn persist_terminal_run(
 
     let summary = run_summary(&record);
     if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
-        record_state_persistence_error(result, &artifacts.state_json, format!("write summary: {err}"))?;
+        record_state_persistence_error(
+            result,
+            &artifacts.state_json,
+            format!("write summary: {err}"),
+        )?;
         return Ok(());
     }
 
@@ -425,7 +431,7 @@ pub fn persist_terminal_run(
 
 #[cfg(test)]
 mod tests {
-    use super::{record_late_persistence_error, ArtifactPaths, RunSummary};
+    use super::{persist_terminal_run, record_late_persistence_error, ArtifactPaths, RunSummary};
     use crate::{
         result::{RunResult, Status},
         state::{self, PersistedRunState, RunPhase},
@@ -543,7 +549,8 @@ mod tests {
         let mut persisted = sample_state(&summary_path, &artifacts_dir);
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
-        persist_terminal_run(&artifacts, &mut persisted, &mut result).expect("persist terminal run");
+        persist_terminal_run(&artifacts, &mut persisted, &mut result)
+            .expect("persist terminal run");
 
         let repaired = state::read(&artifacts.state_json).expect("read repaired state");
         assert_eq!(repaired.phase, RunPhase::Finished);
