@@ -1248,6 +1248,37 @@ func TestOverviewSetSameFilePreservesFrontmatter(t *testing.T) {
 	})
 }
 
+func TestImplementationStepSummarySetSameFilePreservesWrappedFrontmatter(t *testing.T) {
+	plan, err := DecodePlan(validPlanJSON())
+	if err != nil {
+		t.Fatalf("DecodePlan: %v", err)
+	}
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	runPlannerOK(t, []string{"implementation", "step", "summary", "set", path, path, "Updated summary"}, nil)
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.HasPrefix(string(raw), frontmatter) {
+		t.Fatalf("frontmatter changed:\n%s", string(raw))
+	}
+	assertParsed(t, path, func(p Plan) {
+		if p.Implementation[0].Summary != "Updated summary" {
+			t.Fatalf("summary=%q", p.Implementation[0].Summary)
+		}
+	})
+}
+
 // withStdin routes data through os.Stdin for the duration of fn via a real
 // os.Pipe (no mock). Tests exercise the production Execute path end-to-end.
 func withStdin(t *testing.T, data []byte, fn func()) {

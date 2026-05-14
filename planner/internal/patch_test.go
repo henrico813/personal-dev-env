@@ -849,3 +849,60 @@ func TestPreviewFromDataPreservesCanonicalFrontmatter(t *testing.T) {
 		t.Fatalf("updated overview missing:\n%s", out)
 	}
 }
+
+func TestRunSameFileWrappedEditsPreserveFrontmatter(t *testing.T) {
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
+	for _, tc := range []struct {
+		name      string
+		opts      ReplaceOptions
+		patchPath func(*testing.T) string
+		contains  string
+	}{
+		{
+			name:      "wrapped-title",
+			opts:      ReplaceOptions{Section: "title", Raw: true},
+			patchPath: func(t *testing.T) string { return writePatchText(t, "Wrapped title") },
+			contains:  "# Wrapped title",
+		},
+		{
+			name:      "wrapped-overview",
+			opts:      ReplaceOptions{Section: "overview", Raw: true},
+			patchPath: func(t *testing.T) string { return writePatchText(t, "Wrapped overview") },
+			contains:  "Wrapped overview",
+		},
+		{
+			name:      "wrapped-step-summary",
+			opts:      ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary", Raw: true},
+			patchPath: func(t *testing.T) string { return writePatchText(t, "Wrapped summary") },
+			contains:  "Wrapped summary",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := twoStepPlan()
+			rendered, err := RenderPlan(plan)
+			if err != nil {
+				t.Fatalf("RenderPlan: %v", err)
+			}
+			sourcePath := filepath.Join(t.TempDir(), "source.md")
+			if err := os.WriteFile(sourcePath, []byte(frontmatter+rendered), 0o644); err != nil {
+				t.Fatalf("WriteFile(source): %v", err)
+			}
+
+			patchPath := tc.patchPath(t)
+			if _, err := Run(sourcePath, tc.opts, patchPath, sourcePath); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			raw, err := os.ReadFile(sourcePath)
+			if err != nil {
+				t.Fatalf("ReadFile(output): %v", err)
+			}
+			if !strings.HasPrefix(string(raw), frontmatter) {
+				t.Fatalf("frontmatter changed:\n%s", string(raw))
+			}
+			if !strings.Contains(string(raw), tc.contains) {
+				t.Fatalf("updated content missing:\n%s", string(raw))
+			}
+		})
+	}
+}
