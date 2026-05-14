@@ -27,6 +27,7 @@ pub struct RunResult {
     pub artifacts_dir: Option<String>,
     pub events_log_path: Option<String>,
     pub stderr_path: Option<String>,
+    pub run_path: Option<String>,
     pub summary_path: Option<String>,
     pub changed_files: Vec<String>,
     pub persistence_error: Option<String>,
@@ -60,6 +61,7 @@ impl RunResult {
             artifacts_dir: None,
             events_log_path: None,
             stderr_path: None,
+            run_path: None,
             summary_path: None,
             changed_files: Vec::new(),
             persistence_error: None,
@@ -85,6 +87,7 @@ mod tests {
             artifacts_dir: Some("/tmp/run".to_string()),
             events_log_path: Some("/tmp/run/events.jsonl".to_string()),
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
+            run_path: Some("/tmp/run/run.json".to_string()),
             summary_path: Some("/tmp/run/summary.json".to_string()),
             changed_files: Vec::new(),
             persistence_error: None,
@@ -119,6 +122,7 @@ mod tests {
         assert_eq!(value["run_id"], "run-id");
         assert_eq!(value["artifacts_dir"], "/tmp/run");
         assert_eq!(value["pre_run_commit"], "abc");
+        assert_eq!(value["run_path"], "/tmp/run/run.json");
         assert_eq!(value["summary_path"], "/tmp/run/summary.json");
     }
 
@@ -130,6 +134,7 @@ mod tests {
         assert!(value["run_id"].is_null());
         assert!(value["branch"].is_null());
         assert!(value["artifacts_dir"].is_null());
+        assert!(value["run_path"].is_null());
         assert!(value["summary_path"].is_null());
         assert_eq!(value["changed_files"], serde_json::json!([]));
         assert!(value["persistence_error"].is_null());
