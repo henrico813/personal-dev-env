@@ -185,14 +185,19 @@ func parsePlannerPatchOp(lines []string, start int) (patchOp, int, error) {
 	switch op.Kind {
 	case patchOpUpdateField:
 		var oldLines, newLines []string
+		minusPhase := true
 		for _, line := range bodyLines {
 			if line == "" {
 				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must prefix every line with + or -"))
 			}
 			switch line[0] {
 			case '-':
+				if !minusPhase {
+					return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must list - lines before + lines"))
+				}
 				oldLines = append(oldLines, line[1:])
 			case '+':
+				minusPhase = false
 				newLines = append(newLines, line[1:])
 			default:
 				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must prefix every line with + or -"))
@@ -292,7 +297,7 @@ func applyPlannerPatchChecklistItem(plan *Plan, selector, text string) error {
 		}
 		plan.Verification.Manual = append(plan.Verification.Manual, item)
 	default:
-		return fmt.Errorf("unsupported checklist selector %q", selector)
+		return newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported checklist selector %q", selector))
 	}
 	return nil
 }

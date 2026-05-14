@@ -74,6 +74,13 @@ func TestPatchRejectsUnknownHeader(t *testing.T) {
 	}
 }
 
+func TestPatchRejectsMixedFieldOrder(t *testing.T) {
+	_, err := parsePlannerPatch("*** Begin Patch\n*** Update Field: title\n+Renamed\n-T\n*** End Patch\n")
+	if err == nil || !strings.Contains(err.Error(), "must list - lines before + lines") {
+		t.Fatalf("unexpected err: %v", err)
+	}
+}
+
 func TestPatchAllowsEmptyVerificationSummary(t *testing.T) {
 	dir := t.TempDir()
 	sourcePath := writeBehavioralPlan(t, dir)
@@ -96,5 +103,25 @@ func TestPatchAllowsEmptyVerificationSummary(t *testing.T) {
 	}
 	if parsed.Plan.Verification == nil || parsed.Plan.Verification.Summary != "" {
 		t.Fatalf("verification summary changed unexpectedly: %#v", parsed.Plan.Verification)
+	}
+}
+
+func TestPatchRejectsUnsupportedAddItemSelector(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := writeBehavioralPlan(t, dir)
+	patch := "*** Begin Patch\n*** Add Item: implementation.steps\n+oops\n*** End Patch\n"
+
+	var stdout, stderr bytes.Buffer
+	withStdin(t, []byte(patch), func() {
+		if exit := Execute([]string{"patch", "--json-errors", sourcePath}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+		}
+	})
+	code, msg := firstStderrJSON(t, &stderr)
+	if code != "VALIDATE_INPUT" {
+		t.Fatalf("code=%q want VALIDATE_INPUT", code)
+	}
+	if !strings.Contains(msg, "unsupported checklist selector") {
+		t.Fatalf("message %q missing unsupported checklist selector", msg)
 	}
 }
