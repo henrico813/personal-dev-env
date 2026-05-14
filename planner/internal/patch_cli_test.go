@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
