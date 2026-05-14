@@ -61,6 +61,38 @@ Partial update flow:
   3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
   4. Use behavioral commands for step, file-change, and other unsupported edits.
 
+planner patch:
+  Reads a structured patch from stdin and applies all operations to one plan.
+  planner patch accepts no subcommand flags; only global flags such as
+  --json-errors.
+
+  Supported operations:
+    *** Update Field: <selector>
+    -<old line>
+    +<new line>
+
+    *** Add Item: <selector>
+    +<new checklist item>
+
+  Supported field selectors:
+    title
+    overview
+    definition_of_done.narrative
+    definition_of_done.current_state
+    definition_of_done.module_shape
+    verification.summary
+
+  Supported checklist selectors:
+    definition_of_done.goals
+    verification.automated
+    verification.manual
+
+  Notes:
+    - Patch body lines beginning with *** start the next patch operation.
+    - Checklist edits must be single-line.
+    - Only verification.summary may be set to an empty value.
+    - Unsupported structural edits should use behavioral commands.
+
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
   --item N                         1-based verification checklist selector.
