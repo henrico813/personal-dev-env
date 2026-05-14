@@ -415,11 +415,7 @@ pub fn persist_terminal_run(
 
     let summary = run_summary(&record);
     if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
-        record_run_persistence_error(
-            result,
-            &artifacts.run_json,
-            format!("write summary: {err}"),
-        )?;
+        record_run_persistence_error(result, &artifacts.run_json, format!("write summary: {err}"))?;
         return Ok(());
     }
 
@@ -448,7 +444,7 @@ mod tests {
     };
     use crate::{
         result::{RunResult, Status},
-        state::RunPhase,
+        state::{PersistedRunState, RunPhase},
     };
     use tempfile::tempdir;
 
@@ -493,6 +489,36 @@ mod tests {
             result_path: artifacts_dir.join("result.json").display().to_string(),
             events_log_path: artifacts_dir.join("events.jsonl").display().to_string(),
             stderr_path: artifacts_dir.join("agent.stderr.log").display().to_string(),
+            changed_files: vec!["vibe/src/ledger.rs".to_string()],
+            error_message: None,
+            persistence_error: None,
+        }
+    }
+
+    fn sample_state(
+        summary_path: &std::path::Path,
+        artifacts_dir: &std::path::Path,
+    ) -> PersistedRunState {
+        PersistedRunState {
+            run_id: "run-id".to_string(),
+            key: "pdev-099b".to_string(),
+            slug: "pdev-099b".to_string(),
+            created_at: 1778781727,
+            branch: Some("vibe/pdev-099b".to_string()),
+            worktree: Some("/tmp/worktree".to_string()),
+            model: Some("openai-codex/gpt-5.4-mini".to_string()),
+            phase: RunPhase::Finished,
+            terminal_status: Some(Status::Completed),
+            pre_run_commit: Some("abc".to_string()),
+            commit: Some("def".to_string()),
+            snapshot_commits: vec!["snap".to_string()],
+            artifacts_dir: Some(artifacts_dir.display().to_string()),
+            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
+            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
+            run_path: Some(artifacts_dir.join("run.json").display().to_string()),
+            result_path: Some(artifacts_dir.join("result.json").display().to_string()),
+            wrapper_log_path: Some(artifacts_dir.join("vibe.log").display().to_string()),
+            summary_path: Some(summary_path.display().to_string()),
             changed_files: vec!["vibe/src/ledger.rs".to_string()],
             error_message: None,
             persistence_error: None,
@@ -556,7 +582,7 @@ mod tests {
         std::fs::create_dir_all(artifacts_dir.join("summary.json")).expect("block summary file");
         let artifacts = sample_artifacts(&artifacts_dir);
         let summary_path = artifacts.summary_json.clone();
-        let mut persisted = sample_record(&summary_path, &artifacts_dir);
+        let mut persisted = sample_state(&summary_path, &artifacts_dir);
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         persist_terminal_run(&artifacts, &mut persisted, &mut result)
