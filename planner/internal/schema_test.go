@@ -187,6 +187,36 @@ func TestDecodePlanNormalizesStatus(t *testing.T) {
 	}
 }
 
+func TestValidatePlanRejectsDuplicateStepFilenames(t *testing.T) {
+	plan := Plan{
+		Title:    "T",
+		Overview: "O",
+		DefinitionOfDone: DefinitionOfDone{
+			Narrative:    "N",
+			Goals:        []ChecklistItem{{Text: "g"}},
+			CurrentState: "C",
+			ModuleShape:  "M",
+		},
+		Implementation: []Step{{
+			Title:   "S",
+			Summary: "sum",
+			FileChanges: []FileChange{{
+				Filename:    "f.go",
+				Explanation: "e",
+				Diff:        "@@ -1 +1 @@\n-a\n+b",
+			}, {
+				Filename:    "f.go",
+				Explanation: "e2",
+				Diff:        "@@ -1 +1 @@\n-a\n+b",
+			}},
+		}},
+		Verification: &Verification{Summary: "v"},
+	}
+	if err := ValidatePlan(plan); err == nil || !strings.Contains(err.Error(), "duplicate filename") {
+		t.Fatalf("ValidatePlan() err = %v", err)
+	}
+}
+
 func TestValidationRulesUseExportedLimits(t *testing.T) {
 	rules := ValidationRules()
 
