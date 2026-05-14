@@ -28,6 +28,7 @@ const patchUsage = "usage: planner patch <plan.md> [<out.md>]"
 var (
 	patchStepFieldSelectorRE       = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
 	patchFileChangeFieldSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]\.(filename|explanation)$`)
+	patchFileChangeSelectorRE      = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)
 )
 
 type patchFieldSelectorKind int
@@ -50,6 +51,7 @@ type patchOpKind int
 
 const (
 	patchOpUpdateField patchOpKind = iota + 1
+	patchOpUpdateDiff
 	patchOpAddItem
 )
 
@@ -58,6 +60,7 @@ type patchOp struct {
 	Selector string
 	OldText  string
 	NewText  string
+	Expect   string
 }
 
 func runPatch(args []string, stdout, stderr io.Writer) int {
@@ -144,10 +147,16 @@ func parsePlannerPatch(raw string) ([]patchOp, error) {
 		if err != nil {
 			return nil, err
 		}
+		if op.Kind == patchOpUpdateDiff && len(ops) > 0 {
+			return nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff must be the only patch operation"))
+		}
 		ops = append(ops, op)
 		i = next
 	}
 
+	if len(ops) == 1 && ops[0].Kind == patchOpUpdateDiff {
+		return ops, nil
+	}
 	return nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("missing *** End Patch"))
 }
 
@@ -167,10 +176,28 @@ func parsePlannerPatchOp(lines []string, start int) (patchOp, int, error) {
 	switch verb {
 	case "Update Field":
 		op.Kind = patchOpUpdateField
+	case "Update Diff":
+		op.Kind = patchOpUpdateDiff
 	case "Add Item":
 		op.Kind = patchOpAddItem
 	default:
 		return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("unknown patch header %q", lines[start]))
+	}
+
+	if op.Kind == patchOpUpdateDiff {
+		if start+1 >= len(lines) {
+			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff requires an Expect header"))
+		}
+		expectLine := lines[start+1]
+		if !strings.HasPrefix(expectLine, "*** Expect: ") {
+			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff must place *** Expect immediately after the selector"))
+		}
+		op.Expect = strings.TrimSpace(strings.TrimPrefix(expectLine, "*** Expect: "))
+		if op.Expect == "" {
+			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff requires a non-empty Expect token"))
+		}
+		op.NewText = strings.Join(lines[start+2:], "\n")
+		return op, len(lines), nil
 	}
 
 	bodyLines := []string{}
@@ -238,6 +265,12 @@ func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
 				return nil, err
 			}
 			currentRaw = nextRaw
+		case patchOpUpdateDiff:
+			nextRaw, err := applyPlannerPatchDiff(currentRaw, parsed, op.Selector, op.Expect, op.NewText)
+			if err != nil {
+				return nil, err
+			}
+			currentRaw = nextRaw
 		case patchOpAddItem:
 			plan := parsed.Plan
 			if err := applyPlannerPatchChecklistItem(&plan, op.Selector, op.NewText); err != nil {
@@ -253,6 +286,48 @@ func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
 		}
 	}
 	return currentRaw, nil
+}
+
+func parsePatchFileChangeSelector(selector string) (int, int, error) {
+	match := patchFileChangeSelectorRE.FindStringSubmatch(selector)
+	if match == nil {
+		return 0, 0, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", selector))
+	}
+	stepIdx, err := parsePatchSelectorIndex(match[1], selector, "step")
+	if err != nil {
+		return 0, 0, err
+	}
+	changeIdx, err := parsePatchSelectorIndex(match[2], selector, "file change")
+	if err != nil {
+		return 0, 0, err
+	}
+	return stepIdx, changeIdx, nil
+}
+
+func applyPlannerPatchDiff(sourceRaw []byte, parsed ParseResult, selector, expect, newText string) ([]byte, error) {
+	stepIdx, changeIdx, err := parsePatchFileChangeSelector(selector)
+	if err != nil {
+		return nil, err
+	}
+	if stepIdx > len(parsed.Plan.Implementation) {
+		return nil, patchSelectorRangeError(selector, "step", stepIdx, len(parsed.Plan.Implementation))
+	}
+	step := parsed.Plan.Implementation[stepIdx-1]
+	if changeIdx > len(step.FileChanges) {
+		return nil, patchSelectorRangeError(selector, "file change", changeIdx, len(step.FileChanges))
+	}
+	change := step.FileChanges[changeIdx-1]
+	raw := rawAt(string(sourceRaw), parsed.DiffContents[stepIdx-1][changeIdx-1])
+	currentExpect := buildUpdateDiffExpect(selector, change.Filename, change.Explanation, raw)
+	if expect != currentExpect {
+		return nil, newReplaceError(ReplacePatchExpectMismatchError, fmt.Errorf("patch diff token mismatch for %s", selector))
+	}
+	opts := ReplaceOptions{Section: "implementation", Subsection: strconv.Itoa(stepIdx), Field: "diff"}
+	out, _, err := spliceImplementationDiffByIndex(string(sourceRaw), parsed.Plan, parsed.DiffContents, opts, stepIdx, changeIdx, newText)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
 }
 
 func renderPatchedPlan(sourceRaw []byte, plan Plan) ([]byte, error) {

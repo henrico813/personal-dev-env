@@ -234,7 +234,7 @@ func ValidationRules() []string {
 		fmt.Sprintf("each definition_of_done.goals item must be at most %d characters", MaxDoDGoalLength),
 		"implementation must contain at least one step",
 		"each implementation step must include a title, summary, and at least one file change",
-		"each file change filename must be non-empty, whitespace-free, at most 200 bytes, and path-shaped",
+		"each file change filename must be unique per step, non-empty, whitespace-free, at most 200 bytes, and path-shaped",
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
 		fmt.Sprintf("title must be at most %d characters", MaxTitleLength),
