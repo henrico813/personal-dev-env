@@ -16,36 +16,51 @@ type vaultConfig struct {
 	DefaultSelector string
 }
 
-func loadVaultConfig(homeDir string, lookup envLookup) (vaultConfig, error) {
+func loadPersistedVaultConfig(homeDir string) (vaultConfig, error) {
 	fileValues, err := readPathsEnvExports(pathsEnvPath(homeDir), []string{"PDE_MAIN_VAULT", "PDE_WORK_VAULT", defaultVaultEnvKey})
+	if err != nil {
+		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
+	}
+	mainPath, err := resolveShellPath(fileValues["PDE_MAIN_VAULT"], homeDir)
+	if err != nil {
+		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
+	}
+	workPath, err := resolveShellPath(fileValues["PDE_WORK_VAULT"], homeDir)
+	if err != nil {
+		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
+	}
+	selector := normalizeVaultSelector(fileValues[defaultVaultEnvKey])
+	if selector != "" && selector != "main" && selector != "work" {
+		return vaultConfig{}, newVaultError(vaultInvalidPersistedSelector, nil, selector)
+	}
+	return vaultConfig{MainPath: mainPath, WorkPath: workPath, DefaultSelector: selector}, nil
+}
+
+func loadVaultConfig(homeDir string, lookup envLookup) (vaultConfig, error) {
+	persisted, err := loadPersistedVaultConfig(homeDir)
 	if err != nil {
 		return vaultConfig{}, err
 	}
 
-	rawMain := fileValues["PDE_MAIN_VAULT"]
+	rawMain := persisted.MainPath
 	if value, ok := lookup("PDE_MAIN_VAULT"); ok {
 		rawMain = value
 	}
-	rawWork := fileValues["PDE_WORK_VAULT"]
+	rawWork := persisted.WorkPath
 	if value, ok := lookup("PDE_WORK_VAULT"); ok {
 		rawWork = value
 	}
-	rawDefault := fileValues[defaultVaultEnvKey]
 
 	mainPath, err := resolveShellPath(rawMain, homeDir)
 	if err != nil {
-		return vaultConfig{}, fmt.Errorf("resolve PDE_MAIN_VAULT: %w", err)
+		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
 	workPath, err := resolveShellPath(rawWork, homeDir)
 	if err != nil {
-		return vaultConfig{}, fmt.Errorf("resolve PDE_WORK_VAULT: %w", err)
+		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
 
-	return vaultConfig{
-		MainPath:        mainPath,
-		WorkPath:        workPath,
-		DefaultSelector: normalizeVaultSelector(rawDefault),
-	}, nil
+	return vaultConfig{MainPath: mainPath, WorkPath: workPath, DefaultSelector: persisted.DefaultSelector}, nil
 }
 
 func loadVaultPaths(homeDir string, lookup envLookup) (map[string]string, error) {
@@ -67,25 +82,48 @@ func loadVaultPaths(homeDir string, lookup envLookup) (map[string]string, error)
 func storedDefaultVaultSelector(homeDir string) (string, error) {
 	values, err := readPathsEnvExports(pathsEnvPath(homeDir), []string{defaultVaultEnvKey})
 	if err != nil {
-		return "", err
+		return "", newVaultError(vaultReadConfigFailed, err, err)
 	}
-	return normalizeVaultSelector(values[defaultVaultEnvKey]), nil
+	selector := normalizeVaultSelector(values[defaultVaultEnvKey])
+	if selector != "" && selector != "main" && selector != "work" {
+		return "", newVaultError(vaultInvalidPersistedSelector, nil, selector)
+	}
+	return selector, nil
+}
+
+func persistDefaultVaultSelector(homeDir, selector string) error {
+	selector = normalizeVaultSelector(selector)
+	if selector != "main" && selector != "work" {
+		return newVaultError(vaultInvalidSelector, nil, selector)
+	}
+
+	cfg, err := loadPersistedVaultConfig(homeDir)
+	if err != nil {
+		return err
+	}
+	if _, err := resolveVaultRoots(cfg, selector); err != nil {
+		return err
+	}
+	return setPathsEnvExport(homeDir, defaultVaultEnvKey, selector)
 }
 
 func setPathsEnvExport(homeDir, key, value string) error {
 	path := pathsEnvPath(homeDir)
 	content, err := readPathsEnvFile(path)
 	if err != nil {
-		return err
+		return newVaultError(vaultReadConfigFailed, err, err)
 	}
 	updated := upsertPathsEnvExport(content, key, value)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return newVaultError(vaultWriteConfigFailed, err, err)
 	}
 	if err := backupConfigInstallPath(path, Runner{}); err != nil {
-		return err
+		return newVaultError(vaultWriteConfigFailed, err, err)
 	}
-	return os.WriteFile(path, []byte(updated), 0o644)
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		return newVaultError(vaultWriteConfigFailed, err, err)
+	}
+	return nil
 }
 
 func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
@@ -96,12 +134,12 @@ func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
 		switch cfg.DefaultSelector {
 		case "main":
 			if cfg.MainPath == "" {
-				return nil, fmt.Errorf("default vault selector %q requires PDE_MAIN_VAULT", cfg.DefaultSelector)
+				return nil, newVaultError(vaultDefaultMainRequiresPath, nil, cfg.DefaultSelector)
 			}
 			return []string{cfg.MainPath}, nil
 		case "work":
 			if cfg.WorkPath == "" {
-				return nil, fmt.Errorf("default vault selector %q requires PDE_WORK_VAULT", cfg.DefaultSelector)
+				return nil, newVaultError(vaultDefaultWorkRequiresPath, nil, cfg.DefaultSelector)
 			}
 			return []string{cfg.WorkPath}, nil
 		case "":
@@ -111,9 +149,9 @@ func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
 			if cfg.MainPath != "" {
 				return []string{cfg.MainPath}, nil
 			}
-			return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
+			return nil, newVaultError(vaultNoVaultConfigured, nil)
 		default:
-			return nil, fmt.Errorf("invalid PDE_DEFAULT_VAULT %q; expected main or work", cfg.DefaultSelector)
+			return nil, newVaultError(vaultInvalidPersistedSelector, nil, cfg.DefaultSelector)
 		}
 	case "any":
 		var vaults []string
@@ -123,21 +161,21 @@ func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
 			}
 		}
 		if len(vaults) == 0 {
-			return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
+			return nil, newVaultError(vaultNoVaultConfigured, nil)
 		}
 		return vaults, nil
 	case "main":
 		if cfg.MainPath == "" {
-			return nil, fmt.Errorf("main vault not configured")
+			return nil, newVaultError(vaultMainNotConfigured, nil)
 		}
 		return []string{cfg.MainPath}, nil
 	case "work":
 		if cfg.WorkPath == "" {
-			return nil, fmt.Errorf("work vault not configured")
+			return nil, newVaultError(vaultWorkNotConfigured, nil)
 		}
 		return []string{cfg.WorkPath}, nil
 	default:
-		return nil, fmt.Errorf("invalid --vault value %q", selector)
+		return nil, newVaultError(vaultInvalidSelector, nil, selector)
 	}
 }
 

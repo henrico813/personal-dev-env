@@ -68,7 +68,7 @@ func newVaultDefaultSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runVaultDefaultSet(cmd.OutOrStdout(), homeDir, os.LookupEnv, args[0])
+			return runVaultDefaultSet(cmd.OutOrStdout(), homeDir, args[0])
 		},
 	}
 }
@@ -183,22 +183,10 @@ func runVaultDefaultGet(out io.Writer, homeDir string) error {
 	return err
 }
 
-func runVaultDefaultSet(out io.Writer, homeDir string, lookup envLookup, selector string) error {
-	selector = normalizeVaultSelector(selector)
-	if selector != "main" && selector != "work" {
-		return fmt.Errorf("invalid default vault %q; expected main or work", selector)
-	}
-
-	cfg, err := loadVaultConfig(homeDir, lookup)
-	if err != nil {
+func runVaultDefaultSet(out io.Writer, homeDir, selector string) error {
+	if err := persistDefaultVaultSelector(homeDir, selector); err != nil {
 		return err
 	}
-	if _, err := resolveVaultRoots(cfg, selector); err != nil {
-		return err
-	}
-	if err := setPathsEnvExport(homeDir, defaultVaultEnvKey, selector); err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(out, selector)
+	_, err := fmt.Fprintln(out, normalizeVaultSelector(selector))
 	return err
 }
