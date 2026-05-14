@@ -2,7 +2,9 @@ local M = {}
 
 local pde_paths = require("core.pde_paths")
 
-local persisted_paths = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" })
+local persisted_paths = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" }, {
+  path_keys = { "PDE_MAIN_VAULT", "PDE_WORK_VAULT" },
+})
 for _, key in ipairs({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" }) do
   if (vim.env[key] == nil or vim.env[key] == "") and persisted_paths[key] and persisted_paths[key] ~= "" then
     vim.env[key] = persisted_paths[key]
