@@ -19,12 +19,13 @@ Optional PDE commands live in the Go CLI:
 cd cli && go build -o ~/.local/bin/pde .
 pde install config
 pde vault default get
+# after configuring PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env
 pde vault default set main
 pde vault locate --json --vault default "<reference>"
 pde install obsidian
 ```
 
-`pde vault default get` prints the persisted selector (`main`, `work`, or `unset`), `pde vault default set <main|work>` updates it, and `pde vault locate --vault default` follows that selector before the legacy fallback. Use `--query` only when you explicitly want note-content search.
+`pde vault default get` prints the persisted selector (`main`, `work`, or `unset`), `pde vault default set <main|work>` updates it after the matching vault path is already configured in `paths.env`, and `pde vault locate --vault default` follows that selector before the legacy fallback. Use `--query` only when you explicitly want note-content search.
 
 See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 
