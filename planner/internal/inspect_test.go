@@ -67,6 +67,28 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 	if !strings.HasPrefix(strings.TrimSpace(firstStepRaw), "### 1. First") {
 		t.Fatalf("step span does not point at first step heading")
 	}
+}
+
+func TestInspectViewEmitsUpdateDiffExpect(t *testing.T) {
+	plan := twoStepPlan()
+	md, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	parsed, err := ParseMarkdown(md)
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	view := buildInspectPlan(parsed, md)
+	if view.Implementation[0].FileChanges[0].Selector != "implementation[1].file_changes[1]" {
+		t.Fatalf("selector=%q", view.Implementation[0].FileChanges[0].Selector)
+	}
+	if !strings.HasPrefix(view.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
+		t.Fatalf("token=%q", view.Implementation[0].FileChanges[0].UpdateDiffExpect)
+	}
+	if view.Implementation[0].FileChanges[0].UpdateDiffExpect == view.Implementation[1].FileChanges[0].UpdateDiffExpect {
+		t.Fatalf("tokens must be unique per file change: %#v", view.Implementation)
+	}
 
 	implRaw := md[sectionSpans.Implementation.Start:sectionSpans.Implementation.End]
 	if !strings.Contains(implRaw, "### 1. First") || !strings.Contains(implRaw, "### 2. Second") {
@@ -246,6 +268,7 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
+	sectionSpans := result.Sections
 	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)

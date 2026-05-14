@@ -2,6 +2,8 @@ package internal
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,10 +58,10 @@ Markdown-first authoring flow:
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
 Partial update flow:
-  1. Run planner inspect <plan.md> to see the parsed plan JSON.
-  2. Prefer planner patch <plan.md> [<out.md>] for scalar and checklist edits.
+  1. Run planner inspect <plan.md> to see the parsed plan JSON and update_diff_expect tokens.
+  2. Prefer planner patch <plan.md> [<out.md>] for scalar, checklist, and diff edits.
   3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
-  4. Use behavioral commands for step, file-change, and other unsupported edits.
+  4. Use behavioral commands for structural edits that patch does not cover.
 
 planner patch:
   Reads a structured patch from stdin and applies all operations to one plan.
@@ -70,6 +72,10 @@ planner patch:
     *** Update Field: <selector>
     -<old line>
     +<new line>
+
+    *** Update Diff: <selector>
+    *** Expect: sha256:<token>
+    <raw diff body through EOF>
 
     *** Add Item: <selector>
     +<new checklist item>
@@ -91,12 +97,17 @@ planner patch:
     verification.automated
     verification.manual
 
+  Supported diff selectors:
+    implementation[N].file_changes[N]
+
   Notes:
     - Nested selectors use 1-based indices.
     - Patch body lines beginning with *** start the next patch operation.
+    - Update Diff is a dedicated single-op patch form.
+    - Update Diff tokens come from planner inspect.
     - Checklist edits must be single-line.
     - Only verification.summary may be set to an empty value.
-    - Diff and structural edits should use behavioral commands.
+    - Structural edits should use behavioral commands.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
@@ -318,7 +329,8 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 
-	out, err := json.MarshalIndent(parsed.Plan, "", "  ")
+	view := buildInspectPlan(parsed, string(raw))
+	out, err := json.MarshalIndent(view, "", "  ")
 	if err != nil {
 		reportError(stderr, "inspect", newPlannerCLIError(PlannerWriteOutputError, err, "inspect JSON"))
 		return 1
@@ -446,9 +458,73 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 		e := newPlannerCLIError(PlannerValidateInputError, err, "patch old value")
 		e.RecoveryHint = "refresh the old value from planner inspect or the current file, then retry"
 		return e
+	case ReplacePatchExpectMismatchError:
+		e := newPlannerCLIError(PlannerValidateInputError, err, "patch diff token")
+		e.RecoveryHint = "refresh update_diff_expect from planner inspect, then retry"
+		return e
 	default:
 		return newPlannerCLIError(PlannerValidateInputError, err, "result")
 	}
+}
+
+type InspectPlan struct {
+	Title            string        `json:"title"`
+	Overview         string        `json:"overview"`
+	DefinitionOfDone DefinitionOfDone `json:"definition_of_done"`
+	Implementation   []InspectStep `json:"implementation"`
+	Verification     *Verification  `json:"verification"`
+}
+
+type InspectStep struct {
+	Title       string             `json:"title"`
+	Summary     string             `json:"summary"`
+	FileChanges []InspectFileChange `json:"file_changes"`
+}
+
+type InspectFileChange struct {
+	Filename         string `json:"filename"`
+	Explanation      string `json:"explanation"`
+	Diff             string `json:"diff"`
+	Selector         string `json:"selector"`
+	UpdateDiffExpect string `json:"update_diff_expect"`
+}
+
+func buildInspectPlan(parsed ParseResult, source string) InspectPlan {
+	view := InspectPlan{
+		Title:            parsed.Plan.Title,
+		Overview:         parsed.Plan.Overview,
+		DefinitionOfDone: parsed.Plan.DefinitionOfDone,
+		Implementation:   make([]InspectStep, 0, len(parsed.Plan.Implementation)),
+		Verification:     parsed.Plan.Verification,
+	}
+	for stepIdx, step := range parsed.Plan.Implementation {
+		inspectStep := InspectStep{Title: step.Title, Summary: step.Summary}
+		for changeIdx, change := range step.FileChanges {
+			raw := rawAt(source, parsed.DiffContents[stepIdx][changeIdx])
+			selector := fmt.Sprintf("implementation[%d].file_changes[%d]", stepIdx+1, changeIdx+1)
+			inspectStep.FileChanges = append(inspectStep.FileChanges, InspectFileChange{
+				Filename:         change.Filename,
+				Explanation:      change.Explanation,
+				Diff:             change.Diff,
+				Selector:         selector,
+				UpdateDiffExpect: buildUpdateDiffExpect(selector, change.Filename, change.Explanation, raw),
+			})
+		}
+		view.Implementation = append(view.Implementation, inspectStep)
+	}
+	return view
+}
+
+func buildUpdateDiffExpect(selector, filename, explanation, diffRaw string) string {
+	h := sha256.New()
+	_, _ = io.WriteString(h, selector)
+	_, _ = io.WriteString(h, "\x00")
+	_, _ = io.WriteString(h, filename)
+	_, _ = io.WriteString(h, "\x00")
+	_, _ = io.WriteString(h, explanation)
+	_, _ = io.WriteString(h, "\x00")
+	_, _ = io.WriteString(h, diffRaw)
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // stdinPiped reports whether os.Stdin has piped data (not a terminal).
