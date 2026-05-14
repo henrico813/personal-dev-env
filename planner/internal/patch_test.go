@@ -539,6 +539,63 @@ func TestSpliceStepFieldPatches(t *testing.T) {
 	})
 }
 
+func TestSpliceImplementationScalarByIndex(t *testing.T) {
+	t.Run("summary", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		parsed, err := ParseMarkdown(string(mustReadFile(t, src)))
+		if err != nil {
+			t.Fatalf("ParseMarkdown: %v", err)
+		}
+		out, result, err := spliceImplementationScalarByIndex(string(mustReadFile(t, src)), parsed.Plan, parsed.Steps, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary", Raw: true}, 1, 0, "Updated summary")
+		if err != nil {
+			t.Fatalf("spliceImplementationScalarByIndex: %v", err)
+		}
+		if result.Field != "summary" || !strings.Contains(out, "Updated summary") {
+			t.Fatalf("unexpected result: %+v", result)
+		}
+	})
+
+	t.Run("file_change_explanation", func(t *testing.T) {
+		src := writeFixturePlan(t, twoStepPlan())
+		parsed, err := ParseMarkdown(string(mustReadFile(t, src)))
+		if err != nil {
+			t.Fatalf("ParseMarkdown: %v", err)
+		}
+		out, _, err := spliceImplementationScalarByIndex(string(mustReadFile(t, src)), parsed.Plan, parsed.Steps, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "explanation", Raw: true}, 1, 1, "Updated explanation")
+		if err != nil {
+			t.Fatalf("spliceImplementationScalarByIndex: %v", err)
+		}
+		if !strings.Contains(out, "Updated explanation") {
+			t.Fatalf("updated explanation missing")
+		}
+	})
+}
+
+func TestSpliceImplementationScalarByIndexRejectsBadIndices(t *testing.T) {
+	src := writeFixturePlan(t, twoStepPlan())
+	parsed, err := ParseMarkdown(string(mustReadFile(t, src)))
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	for _, tc := range []struct {
+		name     string
+		stepIdx  int
+		changeIdx int
+		field    string
+	}{
+		{name: "step_zero", stepIdx: 0, field: "summary"},
+		{name: "change_overflow", stepIdx: 1, changeIdx: 2, field: "filename"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := spliceImplementationScalarByIndex(string(mustReadFile(t, src)), parsed.Plan, parsed.Steps, ReplaceOptions{Section: "implementation", Subsection: "1", Field: tc.field, Raw: true}, tc.stepIdx, tc.changeIdx, "x")
+			var re *ReplaceError
+			if !errors.As(err, &re) || re.Code != ReplaceInvalidOptionsError {
+				t.Fatalf("got %v, want ReplaceInvalidOptionsError", err)
+			}
+		})
+	}
+}
+
 func TestSpliceStepFieldRejectsEmptyValue(t *testing.T) {
 	src := writeFixturePlan(t, twoStepPlan())
 	_, _, err := PreviewFromData(src, ReplaceOptions{Section: "implementation", Subsection: "1", Field: "summary", Raw: true}, []byte(""))
@@ -712,6 +769,15 @@ func twoStepPlan() Plan {
 func writeFixturePlan(t *testing.T, plan Plan) string {
 	t.Helper()
 	return writeRenderedPlan(t, plan)
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	return raw
 }
 
 func twoNamedFileChanges(name1, diff1, name2, diff2 string) Plan {
