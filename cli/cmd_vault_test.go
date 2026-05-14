@@ -109,6 +109,7 @@ func TestVaultLocateJSONUsageFailure(t *testing.T) {
 }
 
 func TestVaultLocateJSONConfigFailure(t *testing.T) {
+	clearVaultEnv(t)
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
