@@ -101,7 +101,8 @@ func persistDefaultVaultSelector(homeDir, selector string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := resolveVaultRoots(cfg, selector); err != nil {
+	cfg.DefaultSelector = selector
+	if _, err := resolveVaultRoots(cfg, "default"); err != nil {
 		return err
 	}
 	return setPathsEnvExport(homeDir, defaultVaultEnvKey, selector)
