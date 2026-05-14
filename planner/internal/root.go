@@ -80,6 +80,10 @@ planner patch:
     definition_of_done.narrative
     definition_of_done.current_state
     definition_of_done.module_shape
+    implementation[N].title
+    implementation[N].summary
+    implementation[N].file_changes[N].filename
+    implementation[N].file_changes[N].explanation
     verification.summary
 
   Supported checklist selectors:
@@ -88,10 +92,11 @@ planner patch:
     verification.manual
 
   Notes:
+    - Nested selectors use 1-based indices.
     - Patch body lines beginning with *** start the next patch operation.
     - Checklist edits must be single-line.
     - Only verification.summary may be set to an empty value.
-    - Unsupported structural edits should use behavioral commands.
+    - Diff and structural edits should use behavioral commands.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
