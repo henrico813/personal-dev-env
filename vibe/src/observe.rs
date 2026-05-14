@@ -15,6 +15,8 @@ pub struct ArtifactPaths {
     #[cfg_attr(not(test), allow(dead_code))]
     pub result_json: PathBuf,
     #[cfg_attr(not(test), allow(dead_code))]
+    pub run_json: PathBuf,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub vibe_log: PathBuf,
     pub events_jsonl: PathBuf,
     pub stderr_log: PathBuf,
@@ -54,6 +56,7 @@ fn create_artifacts_in(
         system_prompt_versions_txt: dir.join("system-prompt-versions.txt"),
         state_json: dir.join("run-state.json"),
         result_json: dir.join("result.json"),
+        run_json: dir.join("run.json"),
         vibe_log: dir.join("vibe.log"),
         events_jsonl: dir.join("events.jsonl"),
         stderr_log: dir.join("agent.stderr.log"),
@@ -206,6 +209,7 @@ mod tests {
         );
         assert_eq!(paths.state_json, dir.join("run-state.json"));
         assert_eq!(paths.result_json, dir.join("result.json"));
+        assert_eq!(paths.run_json, dir.join("run.json"));
         assert_eq!(paths.vibe_log, dir.join("vibe.log"));
         assert_eq!(paths.events_jsonl, dir.join("events.jsonl"));
         assert_eq!(paths.stderr_log, dir.join("agent.stderr.log"));
