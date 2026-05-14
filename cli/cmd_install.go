@@ -19,6 +19,7 @@ func (fn installerFunc) Install(cfg *Config, runner Runner) error {
 }
 
 var installTargets = map[string]Installer{
+	"minimal":  installerFunc(installMinimal),
 	"ai-tools": installerFunc(installAITools),
 	"config":   installerFunc(installConfig),
 	"obsidian": installerFunc(installObsidian),

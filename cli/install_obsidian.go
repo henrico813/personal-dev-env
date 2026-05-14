@@ -13,9 +13,17 @@ const (
 	nodeVersion  = "22"
 )
 
+type obsidianInstallOptions struct {
+	skipNvimPreflightOnDryRun bool
+}
+
 func installObsidian(cfg *Config, runner Runner) error {
-	if _, err := os.Stat(filepath.Join(cfg.NvimConfigDir, "init.lua")); err != nil {
-		return fmt.Errorf("Neovim config not found at %s; run ./pde/pde minimal first", cfg.NvimConfigDir)
+	return installObsidianWithOptions(cfg, runner, obsidianInstallOptions{})
+}
+
+func installObsidianWithOptions(cfg *Config, runner Runner, opts obsidianInstallOptions) error {
+	if err := requireNvimConfig(cfg, runner, opts); err != nil {
+		return err
 	}
 
 	if err := installObsidianPlugin(filepath.Join(cfg.NvimConfigDir, "pack", "plugins", "start", "obsidian.nvim"), runner); err != nil {
@@ -28,6 +36,16 @@ func installObsidian(cfg *Config, runner Runner) error {
 		return err
 	}
 
+	return nil
+}
+
+func requireNvimConfig(cfg *Config, runner Runner, opts obsidianInstallOptions) error {
+	if runner.DryRun && opts.skipNvimPreflightOnDryRun {
+		return nil
+	}
+	if _, err := os.Stat(filepath.Join(cfg.NvimConfigDir, "init.lua")); err != nil {
+		return fmt.Errorf("Neovim config not found at %s; run pde install minimal first", cfg.NvimConfigDir)
+	}
 	return nil
 }
 
