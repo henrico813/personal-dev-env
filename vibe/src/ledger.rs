@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     observe::ArtifactPaths,
     result::{RunResult, Status},
-    state::{self, PersistedRunState, RunPhase},
+    state::{PersistedRunState, RunPhase},
 };
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -45,8 +45,9 @@ pub struct RunSummary {
     pub persistence_error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct RunRecord {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct RunRecord {
     run_id: String,
     key: String,
     slug: String,
@@ -109,7 +110,10 @@ impl RunSummary {
 pub struct RunIndexEntry {
     pub run_id: String,
     pub created_at: u64,
+    #[serde(default)]
     pub state_path: String,
+    #[serde(default)]
+    pub record_path: String,
     pub summary_path: String,
 }
 
@@ -150,6 +154,15 @@ pub fn summary_path(artifacts_dir: &Path) -> PathBuf {
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn run_record_path(artifacts_dir: &Path) -> PathBuf {
     artifacts_dir.join(RUN_RECORD_FILE)
+}
+
+pub fn read_run_record(path: &Path) -> Result<RunRecord, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("read run record: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("parse run record: {e}"))
+}
+
+pub fn write_run_record(path: &Path, record: &RunRecord) -> Result<(), String> {
+    write_json_atomic(path, record, "run")
 }
 
 pub fn read_runs_index(path: &Path) -> Result<Vec<RunIndexEntry>, String> {
@@ -206,7 +219,7 @@ fn run_record(
     }
 }
 
-fn run_summary(record: &RunRecord) -> RunSummary {
+pub fn run_summary(record: &RunRecord) -> RunSummary {
     RunSummary {
         run_id: record.run_id.clone(),
         key: record.key.clone(),
@@ -251,17 +264,17 @@ fn terminal_state(persisted: &PersistedRunState, record: &RunRecord) -> Persiste
     state_copy
 }
 
-fn record_state_persistence_error(
+fn record_run_persistence_error(
     result: &mut RunResult,
-    state_path: &Path,
+    run_path: &Path,
     message: String,
 ) -> Result<(), String> {
     let merged = merge_persistence_error(result.persistence_error.as_deref(), &message);
     result.persistence_error = Some(merged.clone());
 
-    let mut persisted = state::read(state_path)?;
-    persisted.persistence_error = Some(merged);
-    state::write(state_path, &persisted)
+    let mut record = read_run_record(run_path)?;
+    record.persistence_error = Some(merged);
+    write_run_record(run_path, &record)
 }
 
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<(), String> {
@@ -320,16 +333,14 @@ pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
 
 fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
     result
-        .summary_path
+        .run_path
         .as_deref()
-        .and_then(|path| state_path_from_summary(Path::new(path)).map(PathBuf::from))
+        .map(PathBuf::from)
         .or_else(|| {
             result
-                .run_path
+                .summary_path
                 .as_deref()
-                .map(Path::new)
-                .and_then(Path::parent)
-                .map(|dir| dir.join("run-state.json"))
+                .and_then(|path| state_path_from_summary(Path::new(path)).map(PathBuf::from))
         })
         .or_else(|| {
             result
@@ -362,14 +373,14 @@ pub fn record_late_persistence_error(
     let mut repair_errors = Vec::new();
 
     if let Some(state_path) = state_path_from_result(result) {
-        match state::read(&state_path) {
-            Ok(mut persisted) => {
-                persisted.persistence_error = Some(merged.clone());
-                if let Err(err) = state::write(&state_path, &persisted) {
-                    repair_errors.push(format!("write run state: {err}"));
+        match read_run_record(&state_path) {
+            Ok(mut record) => {
+                record.persistence_error = Some(merged.clone());
+                if let Err(err) = write_run_record(&state_path, &record) {
+                    repair_errors.push(format!("write run record: {err}"));
                 }
             }
-            Err(err) => repair_errors.push(format!("read run state: {err}")),
+            Err(err) => repair_errors.push(err),
         }
     }
 
@@ -399,15 +410,14 @@ pub fn persist_terminal_run(
     result: &mut RunResult,
 ) -> Result<(), String> {
     let record = run_record(artifacts, persisted, result);
-    let state_copy = terminal_state(persisted, &record);
-    state::write(&artifacts.state_json, &state_copy)?;
-    *persisted = state_copy;
+    write_run_record(&artifacts.run_json, &record)?;
+    *persisted = terminal_state(persisted, &record);
 
     let summary = run_summary(&record);
     if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
-        record_state_persistence_error(
+        record_run_persistence_error(
             result,
-            &artifacts.state_json,
+            &artifacts.run_json,
             format!("write summary: {err}"),
         )?;
         return Ok(());
@@ -418,7 +428,8 @@ pub fn persist_terminal_run(
         &RunIndexEntry {
             run_id: persisted.run_id.clone(),
             created_at: persisted.created_at,
-            state_path: artifacts.state_json.display().to_string(),
+            state_path: String::new(),
+            record_path: artifacts.run_json.display().to_string(),
             summary_path: artifacts.summary_json.display().to_string(),
         },
         &artifacts.vibe_log,
@@ -431,10 +442,13 @@ pub fn persist_terminal_run(
 
 #[cfg(test)]
 mod tests {
-    use super::{persist_terminal_run, record_late_persistence_error, ArtifactPaths, RunSummary};
+    use super::{
+        persist_terminal_run, read_run_record, record_late_persistence_error, ArtifactPaths,
+        RunRecord, RunSummary,
+    };
     use crate::{
         result::{RunResult, Status},
-        state::{self, PersistedRunState, RunPhase},
+        state::RunPhase,
     };
     use tempfile::tempdir;
 
@@ -459,11 +473,8 @@ mod tests {
         }
     }
 
-    fn sample_state(
-        summary_path: &std::path::Path,
-        artifacts_dir: &std::path::Path,
-    ) -> PersistedRunState {
-        PersistedRunState {
+    fn sample_record(summary_path: &std::path::Path, artifacts_dir: &std::path::Path) -> RunRecord {
+        RunRecord {
             run_id: "run-id".to_string(),
             key: "pdev-099b".to_string(),
             slug: "pdev-099b".to_string(),
@@ -476,13 +487,12 @@ mod tests {
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
-            artifacts_dir: Some(artifacts_dir.display().to_string()),
-            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
-            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
-            run_path: Some(artifacts_dir.join("run.json").display().to_string()),
-            result_path: Some(artifacts_dir.join("result.json").display().to_string()),
-            wrapper_log_path: Some(artifacts_dir.join("vibe.log").display().to_string()),
-            summary_path: Some(summary_path.display().to_string()),
+            artifacts_dir: artifacts_dir.display().to_string(),
+            run_path: artifacts_dir.join("run.json").display().to_string(),
+            summary_path: summary_path.display().to_string(),
+            result_path: artifacts_dir.join("result.json").display().to_string(),
+            events_log_path: artifacts_dir.join("events.jsonl").display().to_string(),
+            stderr_path: artifacts_dir.join("agent.stderr.log").display().to_string(),
             changed_files: vec!["vibe/src/ledger.rs".to_string()],
             error_message: None,
             persistence_error: None,
@@ -516,9 +526,9 @@ mod tests {
         let artifacts_dir = temp.path().join("run");
         std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
         let summary_path = artifacts_dir.join("summary.json");
-        let state_path = artifacts_dir.join("run-state.json");
-        let state = sample_state(&summary_path, &artifacts_dir);
-        state::write(&state_path, &state).expect("write state");
+        let record_path = artifacts_dir.join("run.json");
+        let state = sample_record(&summary_path, &artifacts_dir);
+        super::write_run_record(&record_path, &state).expect("write record");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         let err =
@@ -531,7 +541,7 @@ mod tests {
             Some("append runs_index.jsonl: boom")
         );
 
-        let repaired = state::read(&state_path).expect("read repaired state");
+        let repaired = read_run_record(&record_path).expect("read repaired record");
         assert_eq!(
             repaired.persistence_error.as_deref(),
             Some("append runs_index.jsonl: boom")
@@ -546,13 +556,13 @@ mod tests {
         std::fs::create_dir_all(artifacts_dir.join("summary.json")).expect("block summary file");
         let artifacts = sample_artifacts(&artifacts_dir);
         let summary_path = artifacts.summary_json.clone();
-        let mut persisted = sample_state(&summary_path, &artifacts_dir);
+        let mut persisted = sample_record(&summary_path, &artifacts_dir);
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         persist_terminal_run(&artifacts, &mut persisted, &mut result)
             .expect("persist terminal run");
 
-        let repaired = state::read(&artifacts.state_json).expect("read repaired state");
+        let repaired = read_run_record(&artifacts.run_json).expect("read repaired record");
         assert_eq!(repaired.phase, RunPhase::Finished);
         assert_eq!(repaired.terminal_status, Some(Status::Completed));
         assert_eq!(repaired.commit.as_deref(), Some("def"));

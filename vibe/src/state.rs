@@ -132,7 +132,12 @@ fn latest_for_key_from_index(
     }
 
     for entry in entries.into_iter().rev() {
-        match read(Path::new(&entry.state_path)) {
+        let path = if entry.record_path.is_empty() {
+            &entry.state_path
+        } else {
+            &entry.record_path
+        };
+        match read(Path::new(path)) {
             Ok(state) => return Ok(Some(state)),
             Err(_) => continue,
         }
