@@ -12,6 +12,7 @@ const (
 	vaultWorkNotConfigured
 	vaultDefaultMainRequiresPath
 	vaultDefaultWorkRequiresPath
+	vaultDefaultNeedsUsablePath
 	vaultReadConfigFailed
 	vaultWriteConfigFailed
 )
@@ -24,6 +25,7 @@ var vaultErrorMessages = map[vaultErrorCode]string{
 	vaultWorkNotConfigured:       "extra not configured",
 	vaultDefaultMainRequiresPath: "default vault selector %q requires PDE_MAIN_VAULT",
 	vaultDefaultWorkRequiresPath: "default vault selector %q requires PDE_extra",
+	vaultDefaultNeedsUsablePath:  "default vault needs an existing PDE_extra or PDE_MAIN_VAULT",
 	vaultReadConfigFailed:        "read paths.env: %v",
 	vaultWriteConfigFailed:       "write paths.env: %v",
 }
