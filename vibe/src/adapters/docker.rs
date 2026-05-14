@@ -327,17 +327,13 @@ mod tests {
         auth_file_from_home, auth_is_configured, docker_run_args, require_auth, ArtifactPaths,
         DockerRunArgs, HostUser, AUTH_VARS,
     };
-    use std::{
-        ffi::OsString,
-        fs,
-        sync::{Mutex, OnceLock},
-    };
+    use crate::state::home_env_lock;
+    use std::{ffi::OsString, fs};
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
 
-    fn auth_env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+    fn auth_env_lock() -> &'static std::sync::Mutex<()> {
+        home_env_lock()
     }
 
     fn save_env(keys: &[&str]) -> Vec<(String, Option<OsString>)> {
@@ -501,6 +497,7 @@ mod tests {
         let worktree = temp.path().join("worktree");
         let artifacts = ArtifactPaths {
             dir: temp.path().join("artifacts"),
+            run_id: "run-id".to_string(),
             prompt_txt: temp.path().join("artifacts/prompt.txt"),
             system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
             combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
@@ -512,6 +509,8 @@ mod tests {
             stderr_log: temp.path().join("artifacts/agent.stderr.log"),
             extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
             snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+            summary_json: temp.path().join("artifacts/summary.json"),
+            runs_index_jsonl: temp.path().join("runs_index.jsonl"),
         };
         let user = HostUser {
             uid: "1000".to_string(),
@@ -552,6 +551,7 @@ mod tests {
         let worktree = temp.path().join("worktree");
         let artifacts = ArtifactPaths {
             dir: temp.path().join("artifacts"),
+            run_id: "run-id".to_string(),
             prompt_txt: temp.path().join("artifacts/prompt.txt"),
             system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
             combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
@@ -563,6 +563,8 @@ mod tests {
             stderr_log: temp.path().join("artifacts/agent.stderr.log"),
             extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
             snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+            summary_json: temp.path().join("artifacts/summary.json"),
+            runs_index_jsonl: temp.path().join("runs_index.jsonl"),
         };
         let user = HostUser {
             uid: "1000".to_string(),

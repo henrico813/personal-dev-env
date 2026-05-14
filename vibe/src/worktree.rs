@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::adapters::git;
 
@@ -89,6 +90,42 @@ pub fn pre_run_commit(worktree: &Path) -> Result<String, String> {
 
 pub fn is_dirty(worktree: &Path) -> Result<bool, String> {
     git::is_dirty(worktree)
+}
+
+pub fn changed_files(worktree: &Path) -> Result<Vec<String>, String> {
+    git::changed_files_in_worktree(worktree)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn changed_files_since(
+    worktree: &Path,
+    from: &str,
+    to: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(worktree.to_str().unwrap_or("."));
+    command.args(["diff", "--name-only"]);
+    match to {
+        Some(to) => {
+            command.args([from, to]);
+        }
+        None => {
+            command.arg(from);
+        }
+    }
+    let out = command
+        .output()
+        .map_err(|e| format!("git diff --name-only: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.to_string())
+        .collect())
 }
 
 pub fn commit_result(worktree: &Path, message: &str, hooks_dir: &Path) -> Result<String, String> {

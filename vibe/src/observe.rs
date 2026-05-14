@@ -1,11 +1,11 @@
 use crate::prompts::RenderedPrompt;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Artifact paths for one Vibe run.
 pub struct ArtifactPaths {
     pub dir: PathBuf,
+    pub run_id: String,
     pub prompt_txt: PathBuf,
     pub system_prompt_txt: PathBuf,
     pub combined_prompt_txt: PathBuf,
@@ -20,6 +20,9 @@ pub struct ArtifactPaths {
     pub stderr_log: PathBuf,
     pub extension_jsonl: PathBuf,
     pub snapshots_jsonl: PathBuf,
+    pub summary_json: PathBuf,
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub runs_index_jsonl: PathBuf,
 }
 
 fn create_artifacts_in(
@@ -38,11 +41,13 @@ fn create_artifacts_in(
         .join(key)
         .join("runs")
         .join(run_id);
+    let key_dir = home.join(".local/state/vibe").join(repo_id).join(key);
     fs::create_dir_all(&dir).map_err(|e| format!("create run dir: {e}"))?;
     let snapshots_jsonl = dir.join("snapshots.jsonl");
     File::create(&snapshots_jsonl).map_err(|e| format!("seed snapshots artifact: {e}"))?;
     Ok(ArtifactPaths {
         dir: dir.clone(),
+        run_id: run_id.to_string(),
         prompt_txt: dir.join("prompt.txt"),
         system_prompt_txt: dir.join("system-prompt.txt"),
         combined_prompt_txt: dir.join("combined-prompt.txt"),
@@ -54,17 +59,18 @@ fn create_artifacts_in(
         stderr_log: dir.join("agent.stderr.log"),
         extension_jsonl: dir.join("extension-events.jsonl"),
         snapshots_jsonl,
+        summary_json: dir.join("summary.json"),
+        runs_index_jsonl: key_dir.join("runs_index.jsonl"),
     })
 }
 
-pub fn create_artifacts(repo_root: &Path, key: &str) -> Result<ArtifactPaths, String> {
+pub fn create_artifacts(
+    repo_root: &Path,
+    key: &str,
+    run_id: &str,
+) -> Result<ArtifactPaths, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_secs();
-    let run_id = format!("{}-{}", ts, std::process::id());
-    create_artifacts_in(Path::new(&home), repo_root, key, &run_id)
+    create_artifacts_in(Path::new(&home), repo_root, key, run_id)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -98,6 +104,7 @@ pub(crate) fn run_dirs_newest_to_oldest_in(
     let entries = fs::read_dir(&runs_dir).map_err(|err| format!("read runs dir: {err}"))?;
 
     let mut runs: Vec<(u64, u32, PathBuf)> = Vec::new();
+    let mut unknown: Vec<PathBuf> = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("read runs entry: {e}"))?;
         let path = entry.path();
@@ -107,16 +114,22 @@ pub(crate) fn run_dirs_newest_to_oldest_in(
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        let Some((ts, pid)) = parse_run_dir_name(name) else {
-            continue;
-        };
-        runs.push((ts, pid, path));
+        if let Some((ts, pid)) = parse_run_dir_name(name) {
+            runs.push((ts, pid, path));
+        } else {
+            unknown.push(path);
+        }
     }
 
     runs.sort_by(|(left_ts, left_pid, _), (right_ts, right_pid, _)| {
         right_ts.cmp(left_ts).then(right_pid.cmp(left_pid))
     });
-    Ok(runs.into_iter().map(|(_, _, path)| path).collect())
+    unknown.sort_by(|left, right| right.cmp(left));
+    Ok(runs
+        .into_iter()
+        .map(|(_, _, path)| path)
+        .chain(unknown)
+        .collect())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -183,6 +196,7 @@ mod tests {
             .path()
             .join(".local/state/vibe/personal-dev-env/pdev-049-demo/runs/1700000000-4242");
         assert_eq!(paths.dir, dir);
+        assert_eq!(paths.run_id, "1700000000-4242");
         assert_eq!(paths.prompt_txt, dir.join("prompt.txt"));
         assert_eq!(paths.system_prompt_txt, dir.join("system-prompt.txt"));
         assert_eq!(paths.combined_prompt_txt, dir.join("combined-prompt.txt"));
@@ -197,6 +211,12 @@ mod tests {
         assert_eq!(paths.stderr_log, dir.join("agent.stderr.log"));
         assert_eq!(paths.extension_jsonl, dir.join("extension-events.jsonl"));
         assert_eq!(paths.snapshots_jsonl, dir.join("snapshots.jsonl"));
+        assert_eq!(paths.summary_json, dir.join("summary.json"));
+        assert_eq!(
+            paths.runs_index_jsonl,
+            temp.path()
+                .join(".local/state/vibe/personal-dev-env/pdev-049-demo/runs_index.jsonl")
+        );
         assert_eq!(
             std::fs::read_to_string(&paths.snapshots_jsonl).expect("snapshots"),
             ""

@@ -1,5 +1,5 @@
 use crate::{
-    observe,
+    ledger, observe,
     result::{RunResult, Status},
     worktree,
 };
@@ -9,6 +9,15 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(test)]
+pub(crate) fn home_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 // Phase 1 defines the persisted-state contract ahead of the runtime and
 // recovery wiring that will consume it in later phases.
@@ -30,8 +39,12 @@ pub enum RunPhase {
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedRunState {
+    #[serde(default)]
+    pub run_id: String,
     pub key: String,
     pub slug: String,
+    #[serde(default)]
+    pub created_at: u64,
     pub branch: Option<String>,
     pub worktree: Option<String>,
     pub model: Option<String>,
@@ -45,7 +58,13 @@ pub struct PersistedRunState {
     pub stderr_path: Option<String>,
     pub result_path: Option<String>,
     pub wrapper_log_path: Option<String>,
+    #[serde(default)]
+    pub summary_path: Option<String>,
+    #[serde(default)]
+    pub changed_files: Vec<String>,
     pub error_message: Option<String>,
+    #[serde(default)]
+    pub persistence_error: Option<String>,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -75,6 +94,15 @@ pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, 
     let slug = worktree::slugify(key);
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let mut last_error = None;
+
+    if let Ok(Some(state)) = latest_for_key_from_index(repo_root, &home, &slug) {
+        return Ok(state);
+    }
+
+    if let Some(state) = latest_for_key_from_runs(Path::new(&home), repo_root, &slug)? {
+        return Ok(state);
+    }
+
     for run_dir in observe::run_dirs_newest_to_oldest_in(Path::new(&home), repo_root, &slug)? {
         match read(&run_dir.join("run-state.json")) {
             Ok(state) => return Ok(state),
@@ -83,6 +111,49 @@ pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, 
     }
 
     Err(last_error.unwrap_or_else(|| format!("no persisted runs found for key {key}")))
+}
+
+fn latest_for_key_from_index(
+    repo_root: &Path,
+    home: &str,
+    slug: &str,
+) -> Result<Option<PersistedRunState>, String> {
+    let home = Path::new(home);
+    let index = ledger::runs_index_path(home, repo_root, slug);
+    let entries = match ledger::read_runs_index(&index) {
+        Ok(entries) => entries,
+        Err(_) => return latest_for_key_from_runs(home, repo_root, slug),
+    };
+
+    if entries.is_empty() {
+        return Ok(None);
+    }
+
+    for entry in entries.into_iter().rev() {
+        match read(Path::new(&entry.state_path)) {
+            Ok(state) => return Ok(Some(state)),
+            Err(_) => continue,
+        }
+    }
+    Ok(None)
+}
+
+// UUID run ids deliberately make directory names opaque, so fallback recency
+// must come from persisted state instead of lexical directory ordering.
+fn latest_for_key_from_runs(
+    home: &Path,
+    repo_root: &Path,
+    slug: &str,
+) -> Result<Option<PersistedRunState>, String> {
+    let mut states = Vec::new();
+    for run_dir in observe::run_dirs_newest_to_oldest_in(home, repo_root, slug)? {
+        match read(&run_dir.join("run-state.json")) {
+            Ok(state) => states.push(state),
+            Err(_) => continue,
+        }
+    }
+    states.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    Ok(states.into_iter().next())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -101,7 +172,9 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.changed_files = result.changed_files.clone();
     persisted.error_message = result.error_message.clone();
+    persisted.persistence_error = result.persistence_error.clone();
     write(&path, &persisted)
 }
 
@@ -113,8 +186,10 @@ mod tests {
 
     fn sample_state() -> PersistedRunState {
         PersistedRunState {
+            run_id: "run-id".to_string(),
             key: "PDEV-055 demo/key".to_string(),
             slug: "pdev-055-demo-key".to_string(),
+            created_at: 1778000000,
             branch: Some("vibe/pdev-055-demo-key".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
             model: Some("openai-codex/gpt-5.4".to_string()),
@@ -128,7 +203,10 @@ mod tests {
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
             result_path: Some("/tmp/run/result.json".to_string()),
             wrapper_log_path: Some("/tmp/run/vibe.log".to_string()),
+            summary_path: Some("/tmp/run/summary.json".to_string()),
+            changed_files: Vec::new(),
             error_message: None,
+            persistence_error: None,
         }
     }
 
@@ -148,6 +226,7 @@ mod tests {
 
     #[test]
     fn latest_for_key_normalizes_raw_key() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
         let temp = tempdir().expect("tempdir");
         let saved_home = std::env::var_os("HOME");
         std::env::set_var("HOME", temp.path());
@@ -175,6 +254,7 @@ mod tests {
 
     #[test]
     fn latest_for_key_skips_broken_newest_run() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
         let temp = tempdir().expect("tempdir");
         let saved_home = std::env::var_os("HOME");
         std::env::set_var("HOME", temp.path());
@@ -196,6 +276,41 @@ mod tests {
         let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
 
         assert_eq!(latest.terminal_status, Some(Status::Completed));
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_for_key_falls_back_to_created_at_for_uuid_dirs() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let runs = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        std::fs::create_dir_all(runs.join("b-uuid")).expect("older run");
+        std::fs::create_dir_all(runs.join("a-uuid")).expect("newer run");
+
+        let mut older = sample_state();
+        older.created_at = 10;
+        write(&runs.join("b-uuid/run-state.json"), &older).expect("write older state");
+
+        let mut newer = sample_state();
+        newer.run_id = "newer-run".to_string();
+        newer.created_at = 20;
+        write(&runs.join("a-uuid/run-state.json"), &newer).expect("write newer state");
+
+        let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
+
+        assert_eq!(latest.run_id, "newer-run");
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
