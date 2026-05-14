@@ -209,6 +209,70 @@ func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
 	}
 }
 
+func TestLocateDefaultRejectsBrokenWork(t *testing.T) {
+	clearVaultEnv(t)
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
+	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
+		t.Fatalf("mkdir paths.env parent: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
+	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"work\"\n", 0o644)
+	t.Setenv("HOME", homeDir)
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "--json", "--query", "needle")
+	if err != nil {
+		t.Fatalf("execute locate: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	result := mustDecodeVaultLocateResult(t, stdout.Bytes())
+	if result.Status != "error" {
+		t.Fatalf("unexpected status %q", result.Status)
+	}
+	if !strings.Contains(result.Error, workVault) {
+		t.Fatalf("expected work vault error, got %q", result.Error)
+	}
+}
+
+func TestLocateAnyStaysStrict(t *testing.T) {
+	clearVaultEnv(t)
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
+	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
+		t.Fatalf("mkdir paths.env parent: %v", err)
+	}
+	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
+	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	t.Setenv("HOME", homeDir)
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "--vault", "any", "--json", "--query", "needle")
+	if err != nil {
+		t.Fatalf("execute locate: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	result := mustDecodeVaultLocateResult(t, stdout.Bytes())
+	if result.Status != "error" {
+		t.Fatalf("unexpected status %q", result.Status)
+	}
+	if !strings.Contains(result.Error, workVault) {
+		t.Fatalf("expected work vault error, got %q", result.Error)
+	}
+}
+
 func clearVaultEnv(t *testing.T) {
 	t.Helper()
 	mainVault, mainVaultOK := os.LookupEnv("PDE_MAIN_VAULT")
