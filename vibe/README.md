@@ -92,11 +92,12 @@ presentation channel controlled by `--stderr-level` or
 or raw stream seen by the caller. Docker build logs are always
 suppressed. Other container stderr remains pass-through today and is not
 level-filtered. Progress logs also stay in `extension-events.jsonl`.
-Wrapper-owned recovery state lives beside those files in `run-state.json`,
-best-effort `result.json`, canonical `summary.json`, and `vibe.log`.
-Each key also maintains append-only `runs_index.jsonl` as a discovery aid,
-not the source of truth for a run. Vibe seeds an empty `snapshots.jsonl`
-for every run so no-op runs still have a durable snapshot log path.
+Wrapper-owned recovery state currently lives beside those files in mutable
+`run-state.json`, best-effort `result.json`, transitional `summary.json`,
+reserved `run.json`, and `vibe.log`. Each key also maintains append-only
+`runs_index.jsonl` as a discovery aid, not the source of truth for a run.
+Vibe seeds an empty `snapshots.jsonl` for every run so no-op runs still
+have a durable snapshot log path.
 
 Supported stderr levels are `error`, `warn`, `info`, `debug`, and
 `trace`. Use `info` for Codex-supervised runs, because it emits compact
@@ -134,8 +135,9 @@ persisted in the artifact directory.
 
 Recovery notes:
 
-- `run-state.json` is the mutable checkpoint journal for one run.
-- `summary.json` is the canonical durable per-run record.
+- `run-state.json` remains the mutable checkpoint journal through Phase 1B.
+- `summary.json` remains the terminal companion artifact through Phase 1B.
+- `run.json` is the reserved path for the upcoming single-record cutover.
 - `runs_index.jsonl` is a best-effort lookup index that may be rebuilt.
 - `result.json` is a best-effort emitted result artifact.
 - Late persistence failures populate durable `persistence_error` fields without rewriting the execution `status`.
@@ -156,6 +158,7 @@ Dogfood by inspecting:
 - `agent.stderr.log`
 - `extension-events.jsonl`
 - `run-state.json`
+- `run.json`
 - `summary.json`
 - `runs_index.jsonl`
 - `result.json`
