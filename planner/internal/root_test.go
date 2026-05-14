@@ -43,6 +43,11 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"planner check plan.md --json-errors.",
 		"<out.md> may be the same path as <plan.md>",
 		"planner patch <plan.md> [<out.md>]",
+		"implementation[N].title",
+		"implementation[N].summary",
+		"implementation[N].file_changes[N].filename",
+		"implementation[N].file_changes[N].explanation",
+		"Nested selectors use 1-based indices.",
 		"planner patch preserves wrapped frontmatter",
 		"same-file updates",
 	} {
@@ -481,6 +486,18 @@ func TestBehavioralFallbackStillWorks(t *testing.T) {
 	})
 }
 
+func TestPatchRejectsStructuralSelectorJSONErrors(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	patch := []byte("*** Begin Patch\n*** Add Item: implementation[1].file_changes\n+oops\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
+}
+
 func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
 	path := writeBehavioralPlan(t, t.TempDir())
 	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
@@ -490,13 +507,19 @@ func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
 			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 		}
 	})
-	code, msg := firstStderrJSON(t, &stderr)
-	if code != "VALIDATE_INPUT" {
-		t.Fatalf("code=%q want VALIDATE_INPUT", code)
-	}
-	if !strings.Contains(msg, "unsupported patch selector") {
-		t.Fatalf("message %q missing unsupported-selector error", msg)
-	}
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
+}
+
+func TestPatchRejectsNestedMismatchJSONErrors(t *testing.T) {
+	path := writeBehavioralPlan(t, t.TempDir())
+	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].summary\n-old\n+new\n*** End Patch\n")
+	var stdout, stderr bytes.Buffer
+	withStdin(t, patch, func() {
+		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "refresh the old value from planner inspect or the current file, then retry")
 }
 
 func TestPatchPreservesWrappedFrontmatter(t *testing.T) {
@@ -993,4 +1016,29 @@ func firstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) 
 		t.Fatalf("first stderr line is not JSON: %v; raw=%q", err, stderr.String())
 	}
 	return got.Code, got.Message
+}
+
+func assertPlannerJSONError(t *testing.T, stderr *bytes.Buffer, wantCode, wantHint string) {
+	t.Helper()
+	line := bytes.TrimSpace(stderr.Bytes())
+	if len(line) == 0 {
+		t.Fatal("stderr is empty")
+	}
+	if nl := bytes.IndexByte(line, '\n'); nl >= 0 {
+		line = line[:nl]
+	}
+	var got struct {
+		Code         string `json:"code"`
+		Message      string `json:"message"`
+		RecoveryHint string `json:"recovery_hint"`
+	}
+	if err := json.Unmarshal(line, &got); err != nil {
+		t.Fatalf("first stderr line is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	if got.Code != wantCode {
+		t.Fatalf("code=%q want %q", got.Code, wantCode)
+	}
+	if !strings.Contains(got.RecoveryHint, wantHint) {
+		t.Fatalf("recovery hint %q missing %q", got.RecoveryHint, wantHint)
+	}
 }
