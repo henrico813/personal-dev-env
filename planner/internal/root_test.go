@@ -1263,7 +1263,7 @@ func TestImplementationStepSummarySetSameFilePreservesWrappedFrontmatter(t *test
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	runPlannerOK(t, []string{"implementation", "step", "summary", "set", path, path, "Updated summary"}, nil)
+	runPlannerOK(t, []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "Updated summary"}, nil)
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
