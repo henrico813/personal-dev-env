@@ -508,13 +508,15 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut persistence_error = None;
     let changed_files = if dirty_after {
         match commit.as_deref() {
-            Some(commit) => match collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)) {
-                Ok(files) => files,
-                Err(err) => {
-                    persistence_error = Some(format!("collect changed_files: {err}"));
-                    Vec::new()
+            Some(commit) => {
+                match collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)) {
+                    Ok(files) => files,
+                    Err(err) => {
+                        persistence_error = Some(format!("collect changed_files: {err}"));
+                        Vec::new()
+                    }
                 }
-            },
+            }
             None => match worktree::changed_files(&session.worktree) {
                 Ok(files) => files,
                 Err(err) => {

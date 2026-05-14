@@ -154,7 +154,8 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Resul
         .map_err(|e| e.to_string())?
         .as_nanos();
     let tmp = parent.join(format!(".{label}.{ts}.tmp"));
-    let json = serde_json::to_string_pretty(value).map_err(|e| format!("serialize {label}: {e}"))?;
+    let json =
+        serde_json::to_string_pretty(value).map_err(|e| format!("serialize {label}: {e}"))?;
     fs::write(&tmp, json).map_err(|e| format!("write {label} temp: {e}"))?;
     fs::rename(&tmp, path).map_err(|e| format!("rename {label} temp: {e}"))?;
     Ok(())
@@ -165,11 +166,7 @@ fn write_summary(path: &Path, summary: &RunSummary) -> Result<(), String> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn append_run_index(
-    path: &Path,
-    entry: &RunIndexEntry,
-    log_path: &Path,
-) -> Result<(), String> {
+pub fn append_run_index(path: &Path, entry: &RunIndexEntry, log_path: &Path) -> Result<(), String> {
     let existing = read_runs_index(path)?;
     if existing.iter().any(|it| it.run_id == entry.run_id) {
         append_log(
@@ -186,14 +183,19 @@ pub fn append_run_index(
         .append(true)
         .open(path)
         .map_err(|e| format!("open runs index: {e}"))?;
-    let line = serde_json::to_string(entry).map_err(|e| format!("serialize runs index entry: {e}"))?;
+    let line =
+        serde_json::to_string(entry).map_err(|e| format!("serialize runs index entry: {e}"))?;
     writeln!(file, "{line}").map_err(|e| format!("append runs index: {e}"))?;
     Ok(())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
-    Some(summary_path.to_str()?.replace(SUMMARY_FILE, "run-state.json"))
+    Some(
+        summary_path
+            .to_str()?
+            .replace(SUMMARY_FILE, "run-state.json"),
+    )
 }
 
 fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
