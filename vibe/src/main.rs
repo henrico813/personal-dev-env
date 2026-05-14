@@ -12,39 +12,7 @@ mod worktree;
 
 use std::process;
 
-use crate::{
-    cli::ParsedCommand,
-    result::{RunResult, Status},
-};
-
-fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
-    let error_message = match &result.error_message {
-        Some(original) => Some(format!("{original}; persistence failed: {message}")),
-        None => Some(message),
-    };
-    RunResult {
-        run_id: result.run_id.clone(),
-        status: Status::WrapperFailed,
-        branch: result.branch.clone(),
-        worktree: result.worktree.clone(),
-        model: result.model.clone(),
-        pre_run_commit: result.pre_run_commit.clone(),
-        commit: result.commit.clone(),
-        snapshot_commits: result.snapshot_commits.clone(),
-        artifacts_dir: result.artifacts_dir.clone(),
-        events_log_path: result.events_log_path.clone(),
-        stderr_path: result.stderr_path.clone(),
-        summary_path: result.summary_path.clone(),
-        changed_files: result.changed_files.clone(),
-        persistence_error: result.persistence_error.clone(),
-        error_message,
-    }
-}
-
-fn persist_terminal_artifacts(result: &RunResult) {
-    let _ = persist_result_json(result);
-    let _ = state::write_terminal_from_result(result);
-}
+use crate::{cli::ParsedCommand, result::RunResult};
 
 fn persist_result_json(result: &RunResult) -> Result<(), String> {
     let Some(dir) = result.artifacts_dir.as_deref() else {
@@ -65,16 +33,12 @@ fn emit_and_exit(result: &RunResult) -> ! {
 fn main() {
     match cli::parse() {
         ParsedCommand::Run(args) => {
-            let result = app::execute(args);
+            let mut result = app::execute(args);
             if let Err(err) = persist_result_json(&result) {
-                let wrapper_failed = wrapper_failed_from(&result, err);
-                persist_terminal_artifacts(&wrapper_failed);
-                emit_and_exit(&wrapper_failed);
-            }
-            if let Err(err) = state::write_terminal_from_result(&result) {
-                let wrapper_failed = wrapper_failed_from(&result, err);
-                persist_terminal_artifacts(&wrapper_failed);
-                emit_and_exit(&wrapper_failed);
+                let _ = ledger::record_late_persistence_error(
+                    &mut result,
+                    format!("write result.json: {err}"),
+                );
             }
             emit_and_exit(&result);
         }

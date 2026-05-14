@@ -24,16 +24,6 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
     writeln!(log, "{message}").map_err(|e| format!("write wrapper log: {e}"))
 }
 
-fn wrap_wrapper_failed(mut result: RunResult, error: String) -> RunResult {
-    let error_message = match result.error_message.take() {
-        Some(original) => Some(format!("{original}; persistence failed: {error}")),
-        None => Some(error),
-    };
-    result.status = Status::WrapperFailed;
-    result.error_message = error_message;
-    result
-}
-
 fn persist_phase(
     artifacts: &observe::ArtifactPaths,
     persisted: &mut PersistedRunState,
@@ -100,18 +90,10 @@ fn build_result(
 fn finish_result(
     artifacts: &observe::ArtifactPaths,
     persisted: &mut PersistedRunState,
-    result: RunResult,
+    mut result: RunResult,
 ) -> RunResult {
-    persisted.phase = RunPhase::Finished;
-    persisted.terminal_status = Some(result.status.clone());
-    persisted.pre_run_commit = result.pre_run_commit.clone();
-    persisted.commit = result.commit.clone();
-    persisted.snapshot_commits = result.snapshot_commits.clone();
-    persisted.changed_files = result.changed_files.clone();
-    persisted.persistence_error = result.persistence_error.clone();
-    persisted.error_message = result.error_message.clone();
-    if let Err(err) = state::write(&artifacts.state_json, persisted) {
-        return wrap_wrapper_failed(result, format!("write run state: {err}"));
+    if let Err(err) = ledger::persist_terminal_run(artifacts, persisted, &mut result) {
+        let _ = ledger::record_late_persistence_error(&mut result, err);
     }
     result
 }
@@ -120,8 +102,8 @@ fn collect_changed_files(
     worktree: &std::path::Path,
     pre_run_commit: &str,
     commit: Option<&str>,
-) -> Vec<String> {
-    worktree::changed_files_since(worktree, pre_run_commit, commit).unwrap_or_default()
+) -> Result<Vec<String>, String> {
+    worktree::changed_files_since(worktree, pre_run_commit, commit)
 }
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
@@ -523,32 +505,43 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     }
 
+    let mut persistence_error = None;
     let changed_files = if dirty_after {
         match commit.as_deref() {
-            Some(commit) => collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)),
-            None => worktree::changed_files(&session.worktree).unwrap_or_default(),
+            Some(commit) => match collect_changed_files(&session.worktree, &pre_run_commit, Some(commit)) {
+                Ok(files) => files,
+                Err(err) => {
+                    persistence_error = Some(format!("collect changed_files: {err}"));
+                    Vec::new()
+                }
+            },
+            None => match worktree::changed_files(&session.worktree) {
+                Ok(files) => files,
+                Err(err) => {
+                    persistence_error = Some(format!("collect changed_files: {err}"));
+                    Vec::new()
+                }
+            },
         }
     } else {
         Vec::new()
     };
 
-    finish_result(
+    let mut result = build_result(
+        &session,
         &artifacts,
-        &mut persisted,
-        build_result(
-            &session,
-            &artifacts,
-            &args.model,
-            ResultParts {
-                pre_run_commit: Some(pre_run_commit),
-                status,
-                commit,
-                snapshot_commits,
-                changed_files,
-                error_message,
-            },
-        ),
-    )
+        &args.model,
+        ResultParts {
+            pre_run_commit: Some(pre_run_commit),
+            status,
+            commit,
+            snapshot_commits,
+            changed_files,
+            error_message,
+        },
+    );
+    result.persistence_error = persistence_error;
+    finish_result(&artifacts, &mut persisted, result)
 }
 
 #[cfg(test)]
