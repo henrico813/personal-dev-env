@@ -3,8 +3,6 @@ package internal
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -293,6 +291,19 @@ func TestRunInspectUsage(t *testing.T) {
 	}
 }
 
+func TestRemovedPublicJSONCommands(t *testing.T) {
+	for _, command := range []string{"template", "create"} {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exitCode := Execute([]string{command}, &stdout, &stderr); exitCode != 2 {
+			t.Fatalf("Execute(%s) exit code = %d, want 2", command, exitCode)
+		}
+		if !strings.Contains(stderr.String(), "unknown command: "+command) {
+			t.Fatalf("stderr %q missing unknown-command error for %s", stderr.String(), command)
+		}
+	}
+}
+
 func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"check", "--json-errors", "/no/such/path.md"}, &stdout, &stderr); exit != 1 {
@@ -400,55 +411,19 @@ func TestJSONErrorsWrappedCheck(t *testing.T) {
 	}
 }
 
-func TestRunCheckAggregatesViolations(t *testing.T) {
-	plan := Plan{
-		Title:    "",
-		Overview: "",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    strings.Repeat("n", 501),
-			Goals:        []ChecklistItem{{Text: "goal"}},
-			CurrentState: "current state",
-			ModuleShape:  "planner/check",
-		},
-		Implementation: []Step{
-			{
-				Title:   "step title",
-				Summary: "step summary",
-				FileChanges: []FileChange{{
-					Filename:    "planner/check/check.go",
-					Explanation: "explanation",
-					Diff:        "@@ -1 +1 @@\n- old\n+ new",
-				}},
-			},
-		},
-		Verification: &Verification{
-			Automated: []ChecklistItem{{Text: "automation"}},
-			Manual:    []ChecklistItem{{Text: "manual"}},
-		},
-	}
-	raw, err := json.Marshal(plan)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-
+func TestCheckRejectsJSONInputPath(t *testing.T) {
 	dir := t.TempDir()
-	path := dir + "/plan.json"
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	path := filepath.Join(dir, "plan.json")
+	if err := os.WriteFile(path, validPlanJSON(), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 1 {
-		t.Fatalf("Execute(check) exit = %d, want 1; stderr = %q", exit, stderr.String())
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
 	}
-	for _, want := range []string{
-		"title is required",
-		"overview is required",
-		fmt.Sprintf("definition_of_done.narrative must be no more than %d characters", MaxDoDNarrativeLength),
-	} {
-		if !strings.Contains(stderr.String(), want) {
-			t.Fatalf("stderr missing %q:\n%s", want, stderr.String())
-		}
+	if !strings.Contains(stderr.String(), "planner check no longer accepts JSON plan input") {
+		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
 
@@ -778,26 +753,6 @@ func mustJSON(v any) []byte {
 	return raw
 }
 
-func TestReadPlanFromReturnsTypedDecodeError(t *testing.T) {
-	dir := t.TempDir()
-	path := dir + "/bad.json"
-	if err := os.WriteFile(path, []byte(`{"title":123}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var stderr bytes.Buffer
-	_, err := readPlanFrom([]string{path}, false, &stderr)
-	if err == nil {
-		t.Fatal("expected typed decode error")
-	}
-	var cliErr *PlannerCLIError
-	if !errors.As(err, &cliErr) {
-		t.Fatalf("expected PlannerCLIError, got %T", err)
-	}
-	if cliErr.Code != PlannerDecodeInputError {
-		t.Fatalf("got code %v, want %v", cliErr.Code, PlannerDecodeInputError)
-	}
-}
-
 func TestInspectOutputIsValidPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
@@ -814,15 +769,15 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 		t.Fatalf("inspect exit %d stderr %q", exit, stderr.String())
 	}
 
-	plan, err := DecodePlan(stdout.Bytes())
+	inspectedPlan, err := DecodePlan(stdout.Bytes())
 	if err != nil {
 		t.Fatalf("inspect output not valid plan JSON: %v", err)
 	}
-	if err := ValidatePlan(plan); err != nil {
+	if err := ValidatePlan(inspectedPlan); err != nil {
 		t.Fatalf("inspect output does not validate: %v", err)
 	}
-	if plan.Title == "" || len(plan.Implementation) == 0 || plan.Verification == nil {
-		t.Fatalf("inspect output missing plan content: %#v", plan)
+	if inspectedPlan.Title == "" || len(inspectedPlan.Implementation) == 0 || inspectedPlan.Verification == nil {
+		t.Fatalf("inspect output missing plan content: %#v", inspectedPlan)
 	}
 }
 
@@ -880,4 +835,26 @@ func TestJSONErrorsCoversUnknownCommand(t *testing.T) {
 	if code != "USAGE" {
 		t.Fatalf("code=%q want USAGE", code)
 	}
+}
+
+// firstStderrJSON unmarshals the first non-empty stderr line as the planner
+// error envelope. Tests use it to assert the --json-errors contract: every
+// failure path emits one parseable JSON object with a stable code.
+func firstStderrJSON(t *testing.T, stderr *bytes.Buffer) (code, message string) {
+	t.Helper()
+	line := bytes.TrimSpace(stderr.Bytes())
+	if len(line) == 0 {
+		t.Fatal("stderr is empty")
+	}
+	if nl := bytes.IndexByte(line, '\n'); nl >= 0 {
+		line = line[:nl]
+	}
+	var got struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(line, &got); err != nil {
+		t.Fatalf("first stderr line is not JSON: %v; raw=%q", err, stderr.String())
+	}
+	return got.Code, got.Message
 }

@@ -74,7 +74,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 	}
 }
 
-// Frontmatter is ignored and spans stay absolute.
+// Canonical wrapped frontmatter remains parser-owned: keep acceptance and rejection coverage here while JSON authoring surfaces are removed elsewhere.
 func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	plan := Plan{
 		Title:    "Plan",

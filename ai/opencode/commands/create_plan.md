@@ -160,7 +160,7 @@ After research is complete:
    `planner implementation step summary set`, and
    `planner implementation step file-change diff set`; for behavioral edit commands,
    `<out.md>` may be the same path as `<plan.md>` for same-file updates.
-6. Keep the legacy JSON flow only when intentionally needed: run `planner template --json > draft.json`, edit the draft JSON directly, run `planner check draft.json`, then run `planner create draft.json <output.md>`.
+6. Preserve canonical wrapped-issue frontmatter on same-path edits and validate the final markdown with `planner check <output.md> --json-errors`.
 
 Do not emit freeform markdown directly when the installed helper is available.
 
@@ -172,7 +172,7 @@ For targeted updates to an existing plan:
 2. Run `planner help` to choose the matching behavioral edit command; for behavioral edit commands, `<out.md>` may be the same path as `<plan.md>` for same-file updates.
 3. Use commands such as `planner dod goal set`, `planner implementation step file-change add`, or `planner verification automated remove`
 
-Non-targeted sections are preserved byte-for-byte.
+Non-targeted sections are preserved byte-for-byte, including canonical wrapped issue frontmatter.
 
 #### Example Template
 

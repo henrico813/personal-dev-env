@@ -75,7 +75,8 @@ func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath st
 // RunFromData is Run but with pre-read patch bytes, so the CLI can stream the
 // patch from stdin without staging a temp file. Behavior is otherwise
 // identical: source read from sourcePath, output written atomically to
-// outputPath, non-targeted sections preserved byte-for-byte.
+// outputPath, and non-targeted bytes preserved byte-for-byte, including the
+// canonical wrapped-issue frontmatter block accepted by ParseMarkdown.
 func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (ReplaceResult, error) {
 	out, result, err := PreviewFromData(sourcePath, opts, patchRaw)
 	if err != nil {
