@@ -448,11 +448,12 @@ func detectFormat(path string) string {
 
 func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	subject := "plan markdown"
-	if strings.HasPrefix(string(raw), "---\n") {
+	wrapped, malformedWrapper := wrappedDocContext(parseErr)
+	if wrapped {
 		subject = "wrapped issue doc markdown"
 	}
 	cliErr := newPlannerCLIError(PlannerDecodeInputError, parseErr, subject)
-	if strings.HasPrefix(string(raw), "---\n") && isWrappedDocError(parseErr) {
+	if malformedWrapper {
 		cliErr.RecoveryHint = "use the canonical vault issue frontmatter block or remove the wrapper before retrying"
 	}
 	return cliErr

@@ -22,6 +22,15 @@ type markdownEnvelope struct {
 	Wrapped     bool
 }
 
+type markdownParseError struct {
+	Wrapped bool
+	Err     error
+}
+
+func (e *markdownParseError) Error() string { return e.Err.Error() }
+
+func (e *markdownParseError) Unwrap() error { return e.Err }
+
 // Span represents a byte range in the source markdown document.
 type Span struct {
 	Start int `json:"start"`
@@ -63,12 +72,12 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	body := envelope.Body
 	prefixLen := envelope.BodyOffset
 	if !strings.HasPrefix(body, "# ") {
-		return ParseResult{}, fmt.Errorf("missing title heading")
+		return ParseResult{}, wrapMarkdownParseError(envelope, fmt.Errorf("missing title heading"))
 	}
 
 	sectionSpans, err := findTopLevelSections(body)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
@@ -80,37 +89,37 @@ func ParseMarkdown(input string) (ParseResult, error) {
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Overview = strings.TrimSpace(overviewBody)
 
 	dodBody, _, err := sectionBody(input, sectionSpans["Definition of Done"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	parsedDoD, err := parseDefinitionOfDone(dodBody)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.DefinitionOfDone = parsedDoD
 
 	implBody, implBodyStart, err := sectionBody(input, sectionSpans["Implementation"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Implementation = steps
 
 	verificationBody, _, err := sectionBody(input, sectionSpans["Verification"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	parsedVerification, err := parseVerification(verificationBody)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Verification = parsedVerification
 
@@ -170,8 +179,22 @@ func splitMarkdownEnvelope(input string) (markdownEnvelope, error) {
 	}, nil
 }
 
-func isWrappedDocError(err error) bool {
-	return errors.Is(err, errUnsupportedWrappedDoc) || errors.Is(err, errUnterminatedWrappedDoc)
+func wrapMarkdownParseError(envelope markdownEnvelope, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &markdownParseError{Wrapped: envelope.Wrapped, Err: err}
+}
+
+func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
+	var parseErr *markdownParseError
+	if errors.As(err, &parseErr) && parseErr.Wrapped {
+		wrapped = true
+	}
+	if errors.Is(err, errUnsupportedWrappedDoc) || errors.Is(err, errUnterminatedWrappedDoc) {
+		return true, true
+	}
+	return wrapped, false
 }
 
 func validateSupportedFrontmatter(frontmatter string) error {

@@ -145,6 +145,23 @@ func TestSplitMarkdownEnvelopePreservesCanonicalWrapperBytes(t *testing.T) {
 	}
 }
 
+func TestSplitMarkdownEnvelopeRejectsBodyDividerClose(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"template_version: 1\n" +
+		"project: PDEV-098\n" +
+		"date_created: 2026-05-13\n" +
+		"topics: []\n" +
+		"# Wrapped Plan\n---\n\n" + buildPlanNoFrontmatter(t)
+	_, err := splitMarkdownEnvelope(input)
+	if !errors.Is(err, errUnterminatedWrappedDoc) {
+		t.Fatalf("expected errUnterminatedWrappedDoc, got %v", err)
+	}
+}
+
 func TestSplitMarkdownEnvelopeRejectsUnterminatedWrapper(t *testing.T) {
 	input := strings.TrimSuffix(canonicalFrontmatter(), "---\n\n") + buildPlanNoFrontmatter(t)
 	_, err := splitMarkdownEnvelope(input)
