@@ -54,7 +54,6 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
-	sectionSpans := result.Sections
 	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
@@ -79,6 +78,7 @@ func TestInspectViewEmitsUpdateDiffExpect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
+	sectionSpans := parsed.Sections
 	view := buildInspectPlan(parsed, md)
 	if view.Implementation[0].FileChanges[0].Selector != "implementation[1].file_changes[1]" {
 		t.Fatalf("selector=%q", view.Implementation[0].FileChanges[0].Selector)
@@ -268,7 +268,6 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
-	sectionSpans := result.Sections
 	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
