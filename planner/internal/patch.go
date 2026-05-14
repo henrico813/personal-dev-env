@@ -365,6 +365,44 @@ func requireStepIndex(opts ReplaceOptions, plan Plan) (int, error) {
 	return idx, nil
 }
 
+func requireFileChangeIndex(plan Plan, stepIdx, changeIdx int) error {
+	if changeIdx < 1 || changeIdx > len(plan.Implementation[stepIdx-1].FileChanges) {
+		return newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("file change index %d invalid for step %d (have %d file changes)", changeIdx, stepIdx, len(plan.Implementation[stepIdx-1].FileChanges)))
+	}
+	return nil
+}
+
+func spliceImplementationScalarByIndex(source string, plan Plan, stepSpans []Span, opts ReplaceOptions, stepIdx, changeIdx int, value string) (string, ReplaceResult, error) {
+	if stepIdx < 1 || stepIdx > len(plan.Implementation) {
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("step index %d invalid (have %d steps)", stepIdx, len(plan.Implementation)))
+	}
+	updated := plan.Implementation[stepIdx-1]
+	switch opts.Field {
+	case "title":
+		updated.Title = value
+	case "summary":
+		updated.Summary = value
+	case "filename", "explanation":
+		if err := requireFileChangeIndex(plan, stepIdx, changeIdx); err != nil {
+			return "", ReplaceResult{}, err
+		}
+		fc := updated.FileChanges[changeIdx-1]
+		if opts.Field == "filename" {
+			fc.Filename = value
+		} else {
+			fc.Explanation = value
+		}
+		updated.FileChanges[changeIdx-1] = fc
+	default:
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("unexpected implementation scalar field %q", opts.Field))
+	}
+	rendered, err := RenderImplementationStep(stepIdx, updated)
+	if err != nil {
+		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
+	}
+	return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
+}
+
 func spliceStepField(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, stepSpans []Span) (string, ReplaceResult, error) {
 	stepIdx, err := requireStepIndex(opts, plan)
 	if err != nil {
@@ -374,20 +412,7 @@ func spliceStepField(source string, opts ReplaceOptions, patchRaw []byte, plan P
 	if err := decodePatch(patchRaw, &value); err != nil {
 		return "", ReplaceResult{}, err
 	}
-	updated := plan.Implementation[stepIdx-1]
-	switch opts.Field {
-	case "title":
-		updated.Title = value
-	case "summary":
-		updated.Summary = value
-	default:
-		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("spliceStepField got unexpected --field %q", opts.Field))
-	}
-	rendered, err := RenderImplementationStep(stepIdx, updated)
-	if err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
-	}
-	return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
+	return spliceImplementationScalarByIndex(source, plan, stepSpans, opts, stepIdx, 0, value)
 }
 
 func spliceFileChangeField(source string, opts ReplaceOptions, patchRaw []byte, plan Plan, stepSpans []Span) (string, ReplaceResult, error) {
@@ -403,22 +428,7 @@ func spliceFileChangeField(source string, opts ReplaceOptions, patchRaw []byte, 
 	if err := decodePatch(patchRaw, &value); err != nil {
 		return "", ReplaceResult{}, err
 	}
-	updated := plan.Implementation[stepIdx-1]
-	fc := updated.FileChanges[fcIdx]
-	switch opts.Field {
-	case "filename":
-		fc.Filename = value
-	case "explanation":
-		fc.Explanation = value
-	default:
-		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("spliceFileChangeField got unexpected --field %q", opts.Field))
-	}
-	updated.FileChanges[fcIdx] = fc
-	rendered, err := RenderImplementationStep(stepIdx, updated)
-	if err != nil {
-		return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
-	}
-	return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
+	return spliceImplementationScalarByIndex(source, plan, stepSpans, opts, stepIdx, fcIdx+1, value)
 }
 
 func applyTitlePatch(source string, opts ReplaceOptions, patchRaw []byte, sectionSpans SectionSpans) (string, ReplaceResult, error) {
@@ -521,36 +531,15 @@ func rawScalarPatch(source string, opts ReplaceOptions, value string, plan Plan,
 		if err != nil {
 			return "", ReplaceResult{}, err
 		}
-		updated := plan.Implementation[stepIdx-1]
-		switch opts.Field {
-		case "title":
-			updated.Title = value
-		case "summary":
-			updated.Summary = value
-		case "filename":
+		changeIdx := 0
+		if opts.Field == "filename" || opts.Field == "explanation" {
 			fcIdx, err := lookupFileChange(plan, opts, stepIdx)
 			if err != nil {
 				return "", ReplaceResult{}, err
 			}
-			fc := updated.FileChanges[fcIdx]
-			fc.Filename = value
-			updated.FileChanges[fcIdx] = fc
-		case "explanation":
-			fcIdx, err := lookupFileChange(plan, opts, stepIdx)
-			if err != nil {
-				return "", ReplaceResult{}, err
-			}
-			fc := updated.FileChanges[fcIdx]
-			fc.Explanation = value
-			updated.FileChanges[fcIdx] = fc
-		default:
-			return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("invalid raw scalar field %q", opts.Field))
+			changeIdx = fcIdx + 1
 		}
-		rendered, err := RenderImplementationStep(stepIdx, updated)
-		if err != nil {
-			return "", ReplaceResult{}, newReplaceError(ReplaceRenderResultError, err)
-		}
-		return finalizeFieldPatch(splice(source, stepSpans[stepIdx-1], rendered), opts)
+		return spliceImplementationScalarByIndex(source, plan, stepSpans, opts, stepIdx, changeIdx, value)
 	case "verification":
 		updated := plan
 		if updated.Verification == nil {
