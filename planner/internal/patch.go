@@ -24,6 +24,7 @@ const (
 	ReplacePatchSyntaxError
 	ReplacePatchSelectorError
 	ReplacePatchMismatchError
+	ReplacePatchExpectMismatchError
 )
 
 // ReplaceError wraps the underlying failure with a stable category.
@@ -325,6 +326,9 @@ func finalizeFieldPatch(out string, opts ReplaceOptions) (string, ReplaceResult,
 	if err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceParseSplicedSourceError, err)
 	}
+	if err := requireUniqueStepFilenames(parsed.Plan); err != nil {
+		return "", ReplaceResult{}, err
+	}
 	if err := ValidatePlan(parsed.Plan); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
@@ -368,6 +372,19 @@ func requireStepIndex(opts ReplaceOptions, plan Plan) (int, error) {
 func requireFileChangeIndex(plan Plan, stepIdx, changeIdx int) error {
 	if changeIdx < 1 || changeIdx > len(plan.Implementation[stepIdx-1].FileChanges) {
 		return newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("file change index %d invalid for step %d (have %d file changes)", changeIdx, stepIdx, len(plan.Implementation[stepIdx-1].FileChanges)))
+	}
+	return nil
+}
+
+func requireUniqueStepFilenames(plan Plan) error {
+	for stepIdx, step := range plan.Implementation {
+		seen := map[string]struct{}{}
+		for _, change := range step.FileChanges {
+			if _, ok := seen[change.Filename]; ok {
+				return newReplaceError(ReplaceValidateResultError, fmt.Errorf("step %d contains duplicate filename %q", stepIdx+1, change.Filename))
+			}
+			seen[change.Filename] = struct{}{}
+		}
 	}
 	return nil
 }
@@ -477,6 +494,9 @@ func applyVerificationPatch(plan *Plan, subsection string, patchRaw []byte) erro
 }
 
 func finalizeUpdatedPlan(source string, updated Plan, opts ReplaceOptions, sectionSpans SectionSpans, stepSpans []Span, stepsReplaced []int, appended bool) (string, ReplaceResult, error) {
+	if err := requireUniqueStepFilenames(updated); err != nil {
+		return "", ReplaceResult{}, err
+	}
 	if err := ValidatePlan(updated); err != nil {
 		return "", ReplaceResult{}, newReplaceError(ReplaceValidateResultError, err)
 	}
@@ -585,6 +605,17 @@ func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan P
 
 	span := diffSpans[stepIdx-1][fcIdx]
 	return finalizeFieldPatch(splice(source, span, string(patchRaw)), opts)
+}
+
+func spliceImplementationDiffByIndex(source string, plan Plan, diffSpans [][]Span, opts ReplaceOptions, stepIdx, changeIdx int, value string) (string, ReplaceResult, error) {
+	if stepIdx < 1 || stepIdx > len(plan.Implementation) {
+		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("step index %d invalid (have %d steps)", stepIdx, len(plan.Implementation)))
+	}
+	if err := requireFileChangeIndex(plan, stepIdx, changeIdx); err != nil {
+		return "", ReplaceResult{}, err
+	}
+	span := diffSpans[stepIdx-1][changeIdx-1]
+	return finalizeFieldPatch(splice(source, span, value), opts)
 }
 
 func decodePatch(patchRaw []byte, target any) error {

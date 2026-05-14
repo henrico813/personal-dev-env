@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -14,6 +15,47 @@ func TestPatchParsesTrailingNewline(t *testing.T) {
 	}
 	if len(ops) != 1 || ops[0].Selector != "title" {
 		t.Fatalf("unexpected ops: %+v", ops)
+	}
+}
+
+func TestPatchParsesUpdateDiffEOFBody(t *testing.T) {
+	ops, err := parsePlannerPatch("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:abc\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw")
+	if err != nil {
+		t.Fatalf("parsePlannerPatch: %v", err)
+	}
+	if len(ops) != 1 || ops[0].Kind != patchOpUpdateDiff || ops[0].Expect != "sha256:abc" {
+		t.Fatalf("unexpected ops: %+v", ops)
+	}
+	if !strings.Contains(ops[0].NewText, "*** literal content stays raw") {
+		t.Fatalf("raw diff body was truncated: %+v", ops[0])
+	}
+}
+
+func TestPatchUpdatesDiffWithLiteralStars(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := writeBehavioralPlan(t, dir)
+	var inspectStdout bytes.Buffer
+	var inspectStderr bytes.Buffer
+	if exit := Execute([]string{"inspect", sourcePath}, &inspectStdout, &inspectStderr); exit != 0 {
+		t.Fatalf("inspect exit=%d stderr=%q", exit, inspectStderr.String())
+	}
+	var inspected InspectPlan
+	if err := json.Unmarshal(inspectStdout.Bytes(), &inspected); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	expect := inspected.Implementation[0].FileChanges[0].UpdateDiffExpect
+	patch := "*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw"
+
+	var stdout, stderr bytes.Buffer
+	withStdin(t, []byte(patch), func() {
+		if exit := Execute([]string{"patch", sourcePath}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+		}
+	})
+
+	parsed := parseOutputPlan(t, sourcePath)
+	if !strings.Contains(parsed.Implementation[0].FileChanges[0].Diff, "*** literal content stays raw") {
+		t.Fatalf("diff missing literal stars")
 	}
 }
 
