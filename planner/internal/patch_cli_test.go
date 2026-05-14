@@ -94,7 +94,7 @@ func TestPatchAllowsEmptyVerificationSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	if parsed.Verification == nil || parsed.Verification.Summary != "" {
-		t.Fatalf("verification summary changed unexpectedly: %#v", parsed.Verification)
+	if parsed.Plan.Verification == nil || parsed.Plan.Verification.Summary != "" {
+		t.Fatalf("verification summary changed unexpectedly: %#v", parsed.Plan.Verification)
 	}
 }
