@@ -93,8 +93,10 @@ or raw stream seen by the caller. Docker build logs are always
 suppressed. Other container stderr remains pass-through today and is not
 level-filtered. Progress logs also stay in `extension-events.jsonl`.
 Wrapper-owned recovery state lives beside those files in `run-state.json`,
-`result.json`, and `vibe.log`. Vibe seeds an empty `snapshots.jsonl` for
-every run so no-op runs still have a durable snapshot log path.
+best-effort `result.json`, canonical `summary.json`, and `vibe.log`.
+Each key also maintains append-only `runs_index.jsonl` as a discovery aid,
+not the source of truth for a run. Vibe seeds an empty `snapshots.jsonl`
+for every run so no-op runs still have a durable snapshot log path.
 
 Supported stderr levels are `error`, `warn`, `info`, `debug`, and
 `trace`. Use `info` for Codex-supervised runs, because it emits compact
@@ -133,7 +135,10 @@ persisted in the artifact directory.
 Recovery notes:
 
 - `run-state.json` is the mutable checkpoint journal for one run.
-- `result.json` is the durable final result payload when wrapper emission succeeds.
+- `summary.json` is the canonical durable per-run record.
+- `runs_index.jsonl` is a best-effort lookup index that may be rebuilt.
+- `result.json` is a best-effort emitted result artifact.
+- Late persistence failures populate durable `persistence_error` fields without rewriting the execution `status`.
 - `vibe status --key ...` reads the latest readable persisted state for the normalized key.
 - `vibe status` must be run from inside the target repo checkout.
 - Latest-run lookup skips unreadable newest runs and remains compatible with legacy planner-prefixed run IDs.
@@ -151,6 +156,8 @@ Dogfood by inspecting:
 - `agent.stderr.log`
 - `extension-events.jsonl`
 - `run-state.json`
+- `summary.json`
+- `runs_index.jsonl`
 - `result.json`
 - `vibe.log`
 - `snapshots.jsonl`
