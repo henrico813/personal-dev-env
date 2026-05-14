@@ -3,12 +3,33 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
-var issueFrontmatterDateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+var (
+	issueFrontmatterDateRE    = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	errUnsupportedWrappedDoc  = errors.New("unsupported wrapped issue doc frontmatter")
+	errUnterminatedWrappedDoc = errors.New("unterminated wrapped issue doc frontmatter")
+)
+
+type markdownEnvelope struct {
+	Frontmatter string
+	Body        string
+	BodyOffset  int
+	Wrapped     bool
+}
+
+type markdownParseError struct {
+	Wrapped bool
+	Err     error
+}
+
+func (e *markdownParseError) Error() string { return e.Err.Error() }
+
+func (e *markdownParseError) Unwrap() error { return e.Err }
 
 // Span represents a byte range in the source markdown document.
 type Span struct {
@@ -44,18 +65,19 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	if strings.Contains(input, "\r") {
 		return ParseResult{}, fmt.Errorf("CRLF line endings not supported; convert to LF")
 	}
-	frontmatter, body, err := splitFrontmatter(input)
+	envelope, err := splitMarkdownEnvelope(input)
 	if err != nil {
 		return ParseResult{}, err
 	}
-	prefixLen := len(frontmatter)
+	body := envelope.Body
+	prefixLen := envelope.BodyOffset
 	if !strings.HasPrefix(body, "# ") {
-		return ParseResult{}, fmt.Errorf("missing title heading")
+		return ParseResult{}, wrapMarkdownParseError(envelope, fmt.Errorf("missing title heading"))
 	}
 
 	sectionSpans, err := findTopLevelSections(body)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	sectionSpans = offsetSpans(sectionSpans, prefixLen)
 
@@ -67,37 +89,37 @@ func ParseMarkdown(input string) (ParseResult, error) {
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Overview = strings.TrimSpace(overviewBody)
 
 	dodBody, _, err := sectionBody(input, sectionSpans["Definition of Done"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	parsedDoD, err := parseDefinitionOfDone(dodBody)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.DefinitionOfDone = parsedDoD
 
 	implBody, implBodyStart, err := sectionBody(input, sectionSpans["Implementation"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Implementation = steps
 
 	verificationBody, _, err := sectionBody(input, sectionSpans["Verification"])
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	parsedVerification, err := parseVerification(verificationBody)
 	if err != nil {
-		return ParseResult{}, err
+		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	plan.Verification = parsedVerification
 
@@ -107,55 +129,101 @@ func ParseMarkdown(input string) (ParseResult, error) {
 // splitFrontmatter strips the supported YAML frontmatter block from the start
 // of input and returns the raw consumed bytes plus the remaining body.
 func splitFrontmatter(input string) (string, string, error) {
+	envelope, err := splitMarkdownEnvelope(input)
+	if err != nil {
+		return "", "", err
+	}
+	return envelope.Frontmatter, envelope.Body, nil
+}
+
+// splitMarkdownEnvelope separates the supported vault issue wrapper from the
+// planner body while leaving plain planner markdown unchanged.
+func splitMarkdownEnvelope(input string) (markdownEnvelope, error) {
 	const fence = "---\n"
 	if strings.HasPrefix(input, "---") && !strings.HasPrefix(input, fence) {
-		return "", "", fmt.Errorf("unsupported frontmatter format")
+		return markdownEnvelope{}, errUnsupportedWrappedDoc
 	}
 	if !strings.HasPrefix(input, fence) {
-		return "", input, nil
+		return markdownEnvelope{Body: input}, nil
 	}
-	end := strings.Index(input[len(fence):], "\n---\n")
-	if end < 0 {
-		return "", "", fmt.Errorf("unterminated frontmatter")
+	lines := strings.SplitAfter(input[len(fence):], "\n")
+	prefixLen := len(fence)
+	foundClose := false
+	for _, line := range lines {
+		trimmed := strings.TrimSuffix(line, "\n")
+		if trimmed == "---" {
+			prefixLen += len(line)
+			foundClose = true
+			break
+		}
+		if strings.HasPrefix(trimmed, "# ") || strings.HasPrefix(trimmed, "## ") {
+			return markdownEnvelope{}, errUnterminatedWrappedDoc
+		}
+		prefixLen += len(line)
 	}
-	prefixLen := len(fence) + end + len("\n---\n")
+	if !foundClose {
+		return markdownEnvelope{}, errUnterminatedWrappedDoc
+	}
 	if prefixLen < len(input) && input[prefixLen] == '\n' {
 		prefixLen++
 	}
 	frontmatter := input[:prefixLen]
 	if err := validateSupportedFrontmatter(frontmatter); err != nil {
-		return "", "", err
+		return markdownEnvelope{}, err
 	}
-	return frontmatter, input[prefixLen:], nil
+	return markdownEnvelope{
+		Frontmatter: frontmatter,
+		Body:        input[prefixLen:],
+		BodyOffset:  prefixLen,
+		Wrapped:     true,
+	}, nil
+}
+
+func wrapMarkdownParseError(envelope markdownEnvelope, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &markdownParseError{Wrapped: envelope.Wrapped, Err: err}
+}
+
+func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
+	var parseErr *markdownParseError
+	if errors.As(err, &parseErr) && parseErr.Wrapped {
+		wrapped = true
+	}
+	if errors.Is(err, errUnsupportedWrappedDoc) || errors.Is(err, errUnterminatedWrappedDoc) {
+		return true, true
+	}
+	return wrapped, false
 }
 
 func validateSupportedFrontmatter(frontmatter string) error {
 	// The parser only accepts the canonical vault issue frontmatter shape.
 	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
 	if len(lines) != 11 {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	if lines[0] != "---" || lines[1] != "tags:" || lines[2] != "  - \"#Ticket\"" ||
 		lines[3] != "type: issue" || lines[5] != "template_version: 1" ||
 		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	if !strings.HasPrefix(lines[4], "status: ") {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	switch strings.TrimPrefix(lines[4], "status: ") {
 	case "open", "in-progress", "done":
 	default:
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	if !strings.HasPrefix(lines[6], "project: ") || strings.TrimPrefix(lines[6], "project: ") == "" {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	if !strings.HasPrefix(lines[7], "date_created: ") {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	if !issueFrontmatterDateRE.MatchString(strings.TrimPrefix(lines[7], "date_created: ")) {
-		return fmt.Errorf("unsupported frontmatter format")
+		return errUnsupportedWrappedDoc
 	}
 	return nil
 }
