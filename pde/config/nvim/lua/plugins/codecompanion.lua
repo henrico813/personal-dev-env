@@ -2,45 +2,7 @@ local shim_job
 local inline_model_chat
 local spinner_frames = { "-", "\\", "|", "/" }
 
-local paths_env = vim.fn.expand("~/.config/pde/paths.env")
-
-local function trim_quoted_env_value(value)
-  if type(value) ~= "string" or #value < 2 then
-    return value
-  end
-
-  local first = value:sub(1, 1)
-  local last = value:sub(-1)
-  if (first == '"' and last == '"') or (first == "'" and last == "'") then
-    return value:sub(2, -2)
-  end
-
-  return value
-end
-
-local function load_opencode_paths_env()
-  local file = io.open(paths_env, "r")
-  if not file then
-    return {}
-  end
-
-  local values = {}
-  for line in file:lines() do
-    local stripped = line:match("^%s*(.-)%s*$")
-    if stripped ~= "" and stripped:sub(1, 1) ~= "#" then
-      local key, value = stripped:match("^export%s+([A-Z0-9_]+)%s*=%s*(.-)%s*$")
-      if not key then
-        key, value = stripped:match("^([A-Z0-9_]+)%s*=%s*(.-)%s*$")
-      end
-      if key == "OPENCODE_BASE_URL" or key == "OPENCODE_INLINE_SHIM_PORT" or key == "OPENCODE_INLINE_MODEL" then
-        values[key] = trim_quoted_env_value(value)
-      end
-    end
-  end
-  file:close()
-
-  return values
-end
+local pde_paths = require("core.pde_paths")
 
 local opencode_env_keys = { "OPENCODE_BASE_URL", "OPENCODE_INLINE_SHIM_PORT", "OPENCODE_INLINE_MODEL" }
 local inherited_opencode_env = {}
@@ -50,7 +12,7 @@ for _, key in ipairs(opencode_env_keys) do
 end
 
 local function refresh_opencode_env()
-  local values = load_opencode_paths_env()
+  local values = pde_paths.read(opencode_env_keys)
   for _, key in ipairs(opencode_env_keys) do
     if not inherited_opencode_env[key] then
       if values[key] and values[key] ~= "" then
