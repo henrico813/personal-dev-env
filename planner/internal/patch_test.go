@@ -578,10 +578,10 @@ func TestSpliceImplementationScalarByIndexRejectsBadIndices(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	for _, tc := range []struct {
-		name     string
-		stepIdx  int
+		name      string
+		stepIdx   int
 		changeIdx int
-		field    string
+		field     string
 	}{
 		{name: "step_zero", stepIdx: 0, field: "summary"},
 		{name: "change_overflow", stepIdx: 1, changeIdx: 2, field: "filename"},

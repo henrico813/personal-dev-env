@@ -26,7 +26,7 @@ import (
 const patchUsage = "usage: planner patch <plan.md> [<out.md>]"
 
 var (
-	patchStepFieldSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
+	patchStepFieldSelectorRE       = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
 	patchFileChangeFieldSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]\.(filename|explanation)$`)
 )
 
