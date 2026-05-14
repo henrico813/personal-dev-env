@@ -193,7 +193,7 @@ func ValidateFilenameShape(name string) error {
 	return nil
 }
 
-// BuildPlanTemplate returns the canonical AI-authored plan skeleton.
+// BuildPlanTemplate returns the AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
 		Title:    fmt.Sprintf("<short title -- required, non-empty, max %d chars>", MaxTitleLength),

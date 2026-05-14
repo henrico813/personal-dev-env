@@ -76,7 +76,7 @@ func Run(sourcePath string, opts ReplaceOptions, patchPath string, outputPath st
 // patch from stdin without staging a temp file. Behavior is otherwise
 // identical: source read from sourcePath, output written atomically to
 // outputPath, and non-targeted bytes preserved byte-for-byte, including the
-// canonical wrapped-issue frontmatter block accepted by ParseMarkdown.
+// supported wrapped-issue frontmatter block accepted by ParseMarkdown.
 func RunFromData(sourcePath string, opts ReplaceOptions, patchRaw []byte, outputPath string) (ReplaceResult, error) {
 	out, result, err := PreviewFromData(sourcePath, opts, patchRaw)
 	if err != nil {
@@ -626,7 +626,7 @@ func applySplice(source string, updated Plan, opts ReplaceOptions, sectionSpans 
 }
 
 // renderSection re-renders the full plan and extracts the named section. This
-// avoids needing separate per-section templates while guaranteeing canonical output.
+// avoids needing separate per-section templates while guaranteeing stable output.
 func renderSection(plan Plan, section string) (string, error) {
 	full, err := RenderPlan(plan)
 	if err != nil {

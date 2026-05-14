@@ -74,7 +74,7 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 	}
 }
 
-// Canonical wrapped frontmatter remains parser-owned: keep acceptance and rejection coverage here while JSON authoring surfaces are removed elsewhere.
+// Wrapped frontmatter remains parser-owned: keep acceptance and rejection coverage here while JSON authoring surfaces are removed elsewhere.
 func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	plan := Plan{
 		Title:    "Plan",
@@ -105,7 +105,7 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
-	frontmatter := canonicalFrontmatter()
+	frontmatter := wrappedIssueFrontmatter()
 	withFrontmatter := frontmatter + md
 
 	result, err := ParseMarkdown(withFrontmatter)
@@ -134,11 +134,11 @@ func TestSplitMarkdownEnvelopePreservesCanonicalWrapperBytes(t *testing.T) {
 	if !envelope.Wrapped {
 		t.Fatal("expected wrapped envelope")
 	}
-	if envelope.Frontmatter != canonicalFrontmatter() {
-		t.Fatalf("frontmatter mismatch\nwant:\n%s\n\ngot:\n%s", canonicalFrontmatter(), envelope.Frontmatter)
+	if envelope.Frontmatter != wrappedIssueFrontmatter() {
+		t.Fatalf("frontmatter mismatch\nwant:\n%s\n\ngot:\n%s", wrappedIssueFrontmatter(), envelope.Frontmatter)
 	}
-	if envelope.BodyOffset != len(canonicalFrontmatter()) {
-		t.Fatalf("body offset = %d, want %d", envelope.BodyOffset, len(canonicalFrontmatter()))
+	if envelope.BodyOffset != len(wrappedIssueFrontmatter()) {
+		t.Fatalf("body offset = %d, want %d", envelope.BodyOffset, len(wrappedIssueFrontmatter()))
 	}
 	if !strings.HasPrefix(envelope.Body, "# Sample") {
 		t.Fatalf("body not preserved: %q", envelope.Body)
@@ -163,7 +163,7 @@ func TestSplitMarkdownEnvelopeRejectsBodyDividerClose(t *testing.T) {
 }
 
 func TestSplitMarkdownEnvelopeRejectsUnterminatedWrapper(t *testing.T) {
-	input := strings.TrimSuffix(canonicalFrontmatter(), "---\n\n") + buildPlanNoFrontmatter(t)
+	input := strings.TrimSuffix(wrappedIssueFrontmatter(), "---\n\n") + buildPlanNoFrontmatter(t)
 	_, err := splitMarkdownEnvelope(input)
 	if !errors.Is(err, errUnterminatedWrappedDoc) {
 		t.Fatalf("expected errUnterminatedWrappedDoc, got %v", err)
@@ -516,7 +516,7 @@ func buildPlanNoFrontmatter(t *testing.T) string {
 	return out
 }
 
-func canonicalFrontmatter() string {
+func wrappedIssueFrontmatter() string {
 	return "---\n" +
 		"tags:\n" +
 		"  - \"#Ticket\"\n" +
@@ -531,5 +531,5 @@ func canonicalFrontmatter() string {
 
 func buildPlanWithFrontmatter(t *testing.T) string {
 	t.Helper()
-	return canonicalFrontmatter() + buildPlanNoFrontmatter(t)
+	return wrappedIssueFrontmatter() + buildPlanNoFrontmatter(t)
 }

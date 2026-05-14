@@ -534,7 +534,7 @@ func TestStructuredBehavioralEditMalformedMarkdownJSONError(t *testing.T) {
 	dir := t.TempDir()
 	bad := dir + "/bad.md"
 	out := dir + "/out.md"
-	if err := os.WriteFile(bad, []byte("not a canonical plan"), 0o644); err != nil {
+	if err := os.WriteFile(bad, []byte("not a valid planner plan"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

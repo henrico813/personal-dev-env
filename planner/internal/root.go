@@ -155,7 +155,7 @@ func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	}
 	cliErr := newPlannerCLIError(PlannerDecodeInputError, parseErr, subject)
 	if malformedWrapper {
-		cliErr.RecoveryHint = "use the canonical vault issue frontmatter block or remove the wrapper before retrying"
+		cliErr.RecoveryHint = "use the supported vault issue frontmatter block or remove the wrapper before retrying"
 	}
 	return cliErr
 }
