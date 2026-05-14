@@ -116,6 +116,14 @@ fn finish_result(
     result
 }
 
+fn collect_changed_files(
+    worktree: &std::path::Path,
+    pre_run_commit: &str,
+    commit: Option<&str>,
+) -> Vec<String> {
+    worktree::changed_files_since(worktree, pre_run_commit, commit).unwrap_or_default()
+}
+
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(args: RunArgs) -> RunResult {
     let session = match worktree::prepare(&args.key) {
@@ -515,6 +523,12 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     }
 
+    let changed_files = if dirty_after {
+        collect_changed_files(&session.worktree, &pre_run_commit, commit.as_deref())
+    } else {
+        Vec::new()
+    };
+
     finish_result(
         &artifacts,
         &mut persisted,
@@ -527,7 +541,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 status,
                 commit,
                 snapshot_commits,
-                changed_files: Vec::new(),
+                changed_files,
                 error_message,
             },
         ),

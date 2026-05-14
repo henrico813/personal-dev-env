@@ -99,6 +99,10 @@ pub fn latest_for_key(repo_root: &Path, key: &str) -> Result<PersistedRunState, 
         return Ok(state);
     }
 
+    if let Some(state) = latest_for_key_from_runs(Path::new(&home), repo_root, &slug)? {
+        return Ok(state);
+    }
+
     for run_dir in observe::run_dirs_newest_to_oldest_in(Path::new(&home), repo_root, &slug)? {
         match read(&run_dir.join("run-state.json")) {
             Ok(state) => return Ok(state),
@@ -118,7 +122,7 @@ fn latest_for_key_from_index(
     let index = ledger::runs_index_path(home, repo_root, slug);
     let entries = match ledger::read_runs_index(&index) {
         Ok(entries) => entries,
-        Err(_) => return read_fallback(home, repo_root, slug),
+        Err(_) => return latest_for_key_from_runs(home, repo_root, slug),
     };
 
     if entries.is_empty() {
@@ -134,18 +138,22 @@ fn latest_for_key_from_index(
     Ok(None)
 }
 
-fn read_fallback(
+// UUID run ids deliberately make directory names opaque, so fallback recency
+// must come from persisted state instead of lexical directory ordering.
+fn latest_for_key_from_runs(
     home: &Path,
     repo_root: &Path,
     slug: &str,
 ) -> Result<Option<PersistedRunState>, String> {
+    let mut states = Vec::new();
     for run_dir in observe::run_dirs_newest_to_oldest_in(home, repo_root, slug)? {
         match read(&run_dir.join("run-state.json")) {
-            Ok(state) => return Ok(Some(state)),
+            Ok(state) => states.push(state),
             Err(_) => continue,
         }
     }
-    Ok(None)
+    states.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    Ok(states.into_iter().next())
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -268,6 +276,41 @@ mod tests {
         let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
 
         assert_eq!(latest.terminal_status, Some(Status::Completed));
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_for_key_falls_back_to_created_at_for_uuid_dirs() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let runs = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        std::fs::create_dir_all(runs.join("b-uuid")).expect("older run");
+        std::fs::create_dir_all(runs.join("a-uuid")).expect("newer run");
+
+        let mut older = sample_state();
+        older.created_at = 10;
+        write(&runs.join("b-uuid/run-state.json"), &older).expect("write older state");
+
+        let mut newer = sample_state();
+        newer.run_id = "newer-run".to_string();
+        newer.created_at = 20;
+        write(&runs.join("a-uuid/run-state.json"), &newer).expect("write newer state");
+
+        let latest = latest_for_key(&repo_root, "PDEV-055 demo/key").expect("latest state");
+
+        assert_eq!(latest.run_id, "newer-run");
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
