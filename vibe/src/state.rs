@@ -56,6 +56,8 @@ pub struct PersistedRunState {
     pub artifacts_dir: Option<String>,
     pub events_log_path: Option<String>,
     pub stderr_path: Option<String>,
+    #[serde(default)]
+    pub run_path: Option<String>,
     pub result_path: Option<String>,
     pub wrapper_log_path: Option<String>,
     #[serde(default)]
@@ -173,6 +175,7 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
     persisted.changed_files = result.changed_files.clone();
+    persisted.run_path = result.run_path.clone();
     persisted.error_message = result.error_message.clone();
     persisted.persistence_error = result.persistence_error.clone();
     write(&path, &persisted)
@@ -201,6 +204,7 @@ mod tests {
             artifacts_dir: Some("/tmp/run".to_string()),
             events_log_path: Some("/tmp/run/events.jsonl".to_string()),
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
+            run_path: Some("/tmp/run/run.json".to_string()),
             result_path: Some("/tmp/run/result.json".to_string()),
             wrapper_log_path: Some("/tmp/run/vibe.log".to_string()),
             summary_path: Some("/tmp/run/summary.json".to_string()),
