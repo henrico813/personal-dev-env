@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"unicode"
 )
@@ -194,7 +193,7 @@ func ValidateFilenameShape(name string) error {
 	return nil
 }
 
-// BuildPlanTemplate returns the canonical AI-authored plan skeleton.
+// BuildPlanTemplate returns the AI-authored plan skeleton.
 func BuildPlanTemplate() Plan {
 	return Plan{
 		Title:    fmt.Sprintf("<short title -- required, non-empty, max %d chars>", MaxTitleLength),
@@ -224,102 +223,6 @@ func BuildPlanTemplate() Plan {
 			Manual:    []ChecklistItem{{Text: fmt.Sprintf("<manual step, max %d chars>", MaxVerificationItemTextLength)}},
 		},
 	}
-}
-
-// MarshalSection returns the JSON shape accepted by replace for the requested
-// section, subsection, or field-level selector.
-func MarshalSection(plan Plan, section, subsection, file, field string) ([]byte, error) {
-	if field != "" {
-		if section != "implementation" {
-			return nil, fmt.Errorf("--field requires --section implementation")
-		}
-		if subsection == "" {
-			return nil, fmt.Errorf("--field requires --subsection N")
-		}
-		idx, err := strconv.Atoi(subsection)
-		if err != nil {
-			return nil, fmt.Errorf("--subsection for implementation must be a 1-based integer index, got %q", subsection)
-		}
-		if idx < 1 || idx > len(plan.Implementation) {
-			return nil, fmt.Errorf("implementation subsection %d out of range (have %d steps)", idx, len(plan.Implementation))
-		}
-		step := plan.Implementation[idx-1]
-		switch field {
-		case "title":
-			return MarshalJSONNoEscape(step.Title)
-		case "summary":
-			return MarshalJSONNoEscape(step.Summary)
-		case "filename":
-			return MarshalJSONNoEscape("<filename>")
-		case "explanation":
-			return MarshalJSONNoEscape("<explanation>")
-		default:
-			return nil, fmt.Errorf("unknown --field %q", field)
-		}
-	}
-
-	var value any
-	switch section {
-	case "title":
-		if subsection != "" || file != "" {
-			return nil, fmt.Errorf("--section title accepts no other selectors")
-		}
-		value = plan.Title
-	case "overview":
-		if subsection != "" {
-			return nil, fmt.Errorf("overview does not support subsections")
-		}
-		value = plan.Overview
-	case "definition_of_done":
-		switch subsection {
-		case "":
-			value = plan.DefinitionOfDone
-		case "narrative":
-			value = plan.DefinitionOfDone.Narrative
-		case "goals":
-			value = plan.DefinitionOfDone.Goals
-		case "current_state":
-			value = plan.DefinitionOfDone.CurrentState
-		case "module_shape":
-			value = plan.DefinitionOfDone.ModuleShape
-		default:
-			return nil, fmt.Errorf("unknown definition_of_done subsection %q", subsection)
-		}
-	case "implementation":
-		if subsection == "" {
-			value = plan.Implementation
-			break
-		}
-		idx, err := strconv.Atoi(subsection)
-		if err != nil {
-			return nil, fmt.Errorf("--subsection for implementation must be a 1-based integer index, got %q", subsection)
-		}
-		if idx < 1 || idx > len(plan.Implementation) {
-			return nil, fmt.Errorf("implementation subsection %d out of range (have %d steps)", idx, len(plan.Implementation))
-		}
-		value = plan.Implementation[idx-1]
-	case "verification":
-		switch subsection {
-		case "":
-			value = plan.Verification
-		case "summary":
-			value = plan.Verification.Summary
-		case "automated":
-			value = plan.Verification.Automated
-		case "manual":
-			value = plan.Verification.Manual
-		default:
-			return nil, fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", subsection)
-		}
-	default:
-		return nil, fmt.Errorf("unknown section %q (valid: title, overview, definition_of_done, implementation, verification)", section)
-	}
-
-	raw, err := MarshalJSONNoEscape(value)
-	if err != nil {
-		return nil, err
-	}
-	return append(raw, '\n'), nil
 }
 
 func ValidationRules() []string {

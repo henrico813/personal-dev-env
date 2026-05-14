@@ -3,7 +3,6 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"unicode/utf8"
 )
@@ -233,14 +232,6 @@ func VerifyRenderedText(rendered string, plan Plan) error {
 		}
 	}
 	return nil
-}
-
-func ReadPlanFile(path string) (Plan, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Plan{}, err
-	}
-	return DecodePlan(data)
 }
 
 // validStatus is the single source of truth for allowed runtime statuses.

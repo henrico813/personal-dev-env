@@ -34,21 +34,8 @@ func (e *existingFrontmatterError) Error() string { return e.err.Error() }
 
 func (e *existingFrontmatterError) Unwrap() error { return e.err }
 
-func CreatePlan(inputPath string, outputPath string) error {
-	plan, err := ReadPlanFile(inputPath)
-	if err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	if err := CreatePlanFromStruct(plan, outputPath); err != nil {
-		return fmt.Errorf("%s: %w", inputPath, err)
-	}
-	return nil
-}
-
-// CreatePlanFromStruct validates, renders, and atomically writes canonical
-// markdown, preserving any existing leading frontmatter on rewrite. The CLI
-// entrypoints share this path so scaffold rendering and rewrite preservation
-// stay aligned in one place.
+// CreatePlanFromStruct remains the internal safe full-rewrite helper for
+// markdown issue workflows that still need validate, render, preserve, write.
 func CreatePlanFromStruct(plan Plan, outputPath string) error {
 	if err := ValidatePlan(plan); err != nil {
 		return fmt.Errorf("validate: %w", err)
