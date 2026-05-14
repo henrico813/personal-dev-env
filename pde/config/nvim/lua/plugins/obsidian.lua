@@ -1,5 +1,16 @@
 local M = {}
 
+local pde_paths = require("core.pde_paths")
+
+local persisted_paths = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" }, {
+  path_keys = { "PDE_MAIN_VAULT", "PDE_WORK_VAULT" },
+})
+for _, key in ipairs({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" }) do
+  if (vim.env[key] == nil or vim.env[key] == "") and persisted_paths[key] and persisted_paths[key] ~= "" then
+    vim.env[key] = persisted_paths[key]
+  end
+end
+
 local main_vault = vim.env.PDE_MAIN_VAULT
 local work_vault = vim.env.PDE_WORK_VAULT
 
@@ -66,7 +77,7 @@ local function unset_msg(label)
 end
 
 local function vault_files(path, label)
-  if not path or path == "" then
+  if not path or path == "" or vim.fn.isdirectory(path) ~= 1 then
     vim.notify(unset_msg(label), vim.log.levels.WARN)
     return
   end
