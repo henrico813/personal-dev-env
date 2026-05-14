@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func TestRenderCanonicalScaffoldPassesValidation(t *testing.T) {
+	rendered, err := renderCanonicalScaffold()
+	if err != nil {
+		t.Fatalf("renderCanonicalScaffold: %v", err)
+	}
+	if _, err := ParseMarkdown(rendered); err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+}
+
 func TestRenderPlanEmitsUncheckedForPendingOrEmptyStatus(t *testing.T) {
 	plan := minimalPlan()
 	plan.DefinitionOfDone.Goals = []ChecklistItem{{Text: "pending goal"}}

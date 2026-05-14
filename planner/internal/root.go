@@ -15,13 +15,8 @@ const helpText = `planner provides markdown-first implementation-plan workflows.
 Usage:
   planner
   planner help
-  planner template --md
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
-  planner template --json [--section <s> [--subsection <x>] [--file <filename>] [--field <field>]]
-  planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
-  planner template --help
-  planner check [<plan.md|plan.json>] [--format md|json] [--stdin] [--json-errors]  Reports every violation in one run. Wrapped issue docs are supported on the markdown path.
-  planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run] [--json-errors]
+  planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner inspect <plan.md>
   planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -59,19 +54,6 @@ Markdown-first authoring flow:
   4. Run planner check plan.md --json-errors.
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
-Legacy JSON render flow:
-  1. Run planner template --json > draft.json.
-  2. Edit the draft JSON directly.
-  3. Run planner check draft.json.
-  4. Run planner create draft.json out.md.
-
-Rewrite flow (full rewrite):
-  1. Read the existing markdown issue.
-  2. Map its content into canonical JSON matching planner template --json.
-  3. Run planner check <plan.json>.
-  4. Run planner create <plan.json> <output.md>.
-  5. Compare the rendered issue with the source issue for dropped content.
-
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON.
   2. Use behavioral commands such as planner title set, planner dod goal set,
@@ -90,40 +72,7 @@ behavioral edit flags:
   --diff                           Print preview diff to stdout; additive.
   --dry-run                        Do not write the output; with --diff, exit 1 on drift.
 
-template selectors:
-  --md                             Print the canonical markdown plan with PLACEHOLDER text.
-  --json                           Print the full JSON skeleton.
-  --json --section <s>             Print a section-level JSON shape.
-  --json --section <s> --subsection <x>  Print a subsection-level JSON shape.
-  --json --section implementation --subsection N --field <field>  Print a leaf shape.
-  --help                           Walk through the create workflow and PLACEHOLDER convention.
-  Note: --section without --json or --raw is rejected with a USAGE error.
-
 Validation rules:
-`
-
-const templateHelpText = `planner template -- print plan-shape references for AI authoring.
-
-Usage:
-  planner template --md
-  planner template --json
-  planner template --raw --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
-  planner template --json --section <s> [--subsection <x>] [--file <filename>] [--field <field>]
-
-Selectors:
-  --md                  Canonical markdown plan with PLACEHOLDER text and validation hints.
-  --json                Full plan JSON skeleton; FileChange.Diff is the literal string "PLACEHOLDER".
-  --section/-s <s>      Section-level JSON shape: title, overview, definition_of_done, implementation, verification.
-  --subsection <x>      Field name for definition_of_done; 1-based step index for implementation; summary, automated, or manual for verification.
-  --file <filename>     FileChange address helper for field-level selectors.
-  --field <field>       Leaf selector: diff, title, summary, filename, explanation.
-  --raw                 Emit raw text for scalar string selectors (no JSON quoting).
-                        --field diff is the one selector that emits raw bytes and does not require --json.
-
-Reference workflow:
-  - planner new <output.md>
-  - planner template --md
-  - planner template --json or planner template --raw when you need a JSON skeleton or scalar selector
 `
 
 var jsonErrorOutput bool
@@ -142,14 +91,10 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "help", "--help", "-h":
 		printHelp(stdout)
 		return 0
-	case "template":
-		return runTemplate(args[1:], stdout, stderr)
 	case "new":
 		return runNew(args[1:], stdout, stderr)
 	case "check":
 		return runCheck("check", args[1:], stdout, stderr)
-	case "create":
-		return runCreate(args[1:], stdout, stderr)
 	case "inspect":
 		return runInspect(args[1:], stdout, stderr)
 	case "title", "overview", "dod", "implementation", "verification":
@@ -202,250 +147,6 @@ func reportError(stderr io.Writer, cmd string, err error) {
 	_, _ = fmt.Fprintf(stderr, "%s: %v\n", cmd, cliErr)
 }
 
-type templateOptions struct {
-	md         bool
-	jsonMode   bool
-	rawMode    bool
-	section    string
-	subsection string
-	file       string
-	field      string
-}
-
-func parseTemplateOptions(args []string) (templateOptions, error) {
-	opts := templateOptions{}
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--md":
-			opts.md = true
-		case "--json":
-			opts.jsonMode = true
-		case "--section", "-s":
-			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("missing value for --section")
-			}
-			opts.section = args[i]
-		case "--subsection":
-			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("missing value for --subsection")
-			}
-			opts.subsection = args[i]
-		case "--file":
-			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("missing value for --file")
-			}
-			opts.file = args[i]
-		case "--field":
-			i++
-			if i >= len(args) {
-				return opts, fmt.Errorf("missing value for --field")
-			}
-			opts.field = args[i]
-		case "--raw":
-			opts.rawMode = true
-		default:
-			return opts, fmt.Errorf("unknown flag %q", args[i])
-		}
-	}
-	if opts.md && opts.jsonMode {
-		return opts, fmt.Errorf("--md and --json are mutually exclusive")
-	}
-	if opts.rawMode && (opts.md || opts.jsonMode) {
-		return opts, fmt.Errorf("--raw is mutually exclusive with --md and --json")
-	}
-	if opts.md && (opts.section != "" || opts.subsection != "" || opts.file != "" || opts.field != "") {
-		return opts, fmt.Errorf("--md does not accept selectors")
-	}
-	if opts.rawMode && opts.section == "" {
-		return opts, fmt.Errorf("--raw requires --section")
-	}
-	if opts.subsection != "" && opts.section == "" {
-		return opts, fmt.Errorf("--subsection requires --section")
-	}
-	if opts.section != "" && !opts.jsonMode && !opts.rawMode && opts.field != "diff" {
-		return opts, fmt.Errorf("--section requires --json")
-	}
-	if !opts.md && !opts.jsonMode && !opts.rawMode && opts.field != "diff" {
-		return opts, fmt.Errorf("either --md or --json is required")
-	}
-	return opts, nil
-}
-
-// validateFieldGrammar is the shared leaf-selector validator for patch and
-// template. It keeps both commands aligned on the same section/subsection/file
-// and field combinations.
-func validateFieldGrammar(opts ReplaceOptions) error {
-	if opts.Append && opts.Section != "implementation" {
-		return fmt.Errorf("--append is only valid with --section implementation")
-	}
-	if opts.Append && opts.Subsection != "" {
-		return fmt.Errorf("--append and --subsection cannot be used together")
-	}
-	if opts.Append && opts.Field != "" {
-		return fmt.Errorf("--append cannot be used with --field")
-	}
-	if opts.Section == "title" {
-		if opts.Subsection != "" || opts.File != "" || opts.Field != "" || opts.Append {
-			return fmt.Errorf("--section title accepts no other selectors")
-		}
-		return nil
-	}
-	if opts.Section == "verification" && opts.Subsection != "" {
-		switch opts.Subsection {
-		case "summary", "automated", "manual":
-		default:
-			return fmt.Errorf("invalid verification subsection %q: valid values are summary, automated, manual", opts.Subsection)
-		}
-	}
-	if opts.Field != "" {
-		if opts.Section != "implementation" {
-			return fmt.Errorf("--field requires --section implementation")
-		}
-		if opts.Subsection == "" {
-			return fmt.Errorf("--field requires --subsection N")
-		}
-		switch opts.Field {
-		case "diff", "filename", "explanation":
-			if opts.File == "" {
-				return fmt.Errorf("--field %s requires --file F", opts.Field)
-			}
-		case "title", "summary":
-			if opts.File != "" {
-				return fmt.Errorf("--field %s does not take --file", opts.Field)
-			}
-		default:
-			return fmt.Errorf("--field %q not valid (allowed: diff, title, summary, filename, explanation)", opts.Field)
-		}
-	}
-	if opts.File != "" && opts.Field == "" {
-		return fmt.Errorf("--file requires --field")
-	}
-	return nil
-}
-
-func runTemplate(args []string, stdout io.Writer, stderr io.Writer) int {
-	for _, a := range args {
-		if a == "--help" || a == "-h" {
-			_, _ = io.WriteString(stdout, templateHelpText)
-			return 0
-		}
-	}
-
-	opts, err := parseTemplateOptions(args)
-	if err != nil {
-		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	if err := validateFieldGrammar(ReplaceOptions{
-		Section:    opts.section,
-		Subsection: opts.subsection,
-		File:       opts.file,
-		Field:      opts.field,
-	}); err != nil {
-		reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	if opts.rawMode {
-		if err := validateTemplateRawMode(opts); err != nil {
-			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-	}
-
-	if opts.md {
-		rendered, err := renderCanonicalScaffold()
-		if err != nil {
-			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
-			return 1
-		}
-		_, _ = io.WriteString(stdout, rendered)
-		return 0
-	}
-
-	plan := BuildPlanTemplate()
-	switch {
-	case opts.section == "":
-		raw, err := MarshalJSONNoEscape(plan)
-		if err != nil {
-			reportError(stderr, "template", newPlannerCLIError(PlannerRenderOutputError, err, "template JSON"))
-			return 1
-		}
-		_, _ = stdout.Write(append(raw, '\n'))
-		return 0
-	case opts.rawMode:
-		raw, err := scalarTemplateValue(plan, opts)
-		if err != nil {
-			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		_, _ = io.WriteString(stdout, raw+"\n")
-		return 0
-	case opts.field == "diff":
-		_, _ = stdout.Write([]byte("--- a/<path>\n+++ b/<path>\n@@ -1 +1 @@\n-old\n+new\n"))
-		return 0
-	default:
-		raw, err := MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
-		if err != nil {
-			reportError(stderr, "template", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		_, _ = stdout.Write(raw)
-		return 0
-	}
-}
-
-func validateTemplateRawMode(opts templateOptions) error {
-	if !isScalarTemplate(opts) {
-		return fmt.Errorf("--raw is only valid for scalar string selectors")
-	}
-	return nil
-}
-
-func isScalarTemplate(opts templateOptions) bool {
-	switch opts.section {
-	case "title", "overview":
-		return true
-	case "definition_of_done":
-		return opts.subsection == "narrative" || opts.subsection == "current_state" || opts.subsection == "module_shape"
-	case "implementation":
-		switch opts.field {
-		case "title", "summary", "filename", "explanation":
-			return true
-		}
-	case "verification":
-		return opts.subsection == "summary"
-	}
-	return false
-}
-
-func scalarTemplateValue(plan Plan, opts templateOptions) (string, error) {
-	raw, err := MarshalSection(plan, opts.section, opts.subsection, opts.file, opts.field)
-	if err != nil {
-		return "", err
-	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
-// detectFormat infers the plan format from a filename extension.
-func detectFormat(path string) string {
-	lower := strings.ToLower(path)
-	switch {
-	case strings.HasSuffix(lower, ".md"):
-		return "md"
-	case strings.HasSuffix(lower, ".json"):
-		return "json"
-	default:
-		return ""
-	}
-}
-
 func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	subject := "plan markdown"
 	wrapped, malformedWrapper := wrappedDocContext(parseErr)
@@ -454,35 +155,27 @@ func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	}
 	cliErr := newPlannerCLIError(PlannerDecodeInputError, parseErr, subject)
 	if malformedWrapper {
-		cliErr.RecoveryHint = "use the canonical vault issue frontmatter block or remove the wrapper before retrying"
+		cliErr.RecoveryHint = "use the supported vault issue frontmatter block or remove the wrapper before retrying"
 	}
 	return cliErr
 }
 
-// runCheck validates markdown or JSON plans and reports every violation.
+// runCheck validates markdown plans and reports every violation.
 func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
-	format := ""
-	rest := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--format" {
-			i++
-			if i >= len(args) {
-				reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "missing value for --format"))
-				return 2
-			}
-			format = args[i]
-			continue
+	const usage = "usage: planner check [<plan.md>] [--stdin] [--json-errors]"
+	for _, a := range args {
+		if a == "--format" {
+			reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
+			return 2
 		}
-		rest = append(rest, args[i])
 	}
-
-	positional, pf, err := splitPreviewArgs(rest, false, true)
+	positional, pf, err := splitPreviewArgs(args, false, true)
 	if err != nil {
 		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
 	if (len(positional) == 0 && !pf.stdin) || len(positional) > 1 {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "usage: planner check [<plan.md|plan.json>] [--format md|json] [--stdin]"))
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
 		return 2
 	}
 
@@ -490,43 +183,27 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 	if len(positional) == 1 {
 		path = positional[0]
 	}
-	if format == "" && path != "" {
-		format = detectFormat(path)
-	}
-	if format == "" {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "--format md|json is required for stdin or paths with no recognised extension"))
-		return 2
-	}
-	if format != "md" && format != "json" {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--format %q is not valid; use md or json", format)))
+	if path != "" && strings.HasSuffix(strings.ToLower(path), ".json") {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "planner check no longer accepts JSON plan input: "+usage))
 		return 2
 	}
 
-	var plan Plan
-	if format == "md" {
-		var raw []byte
-		if pf.stdin {
-			raw, err = io.ReadAll(os.Stdin)
-		} else {
-			raw, err = os.ReadFile(path)
-		}
-		if err != nil {
-			reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
-			return 1
-		}
-		parsed, parseErr := ParseMarkdown(string(raw))
-		if parseErr != nil {
-			reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
-			return 1
-		}
-		plan = parsed.Plan
+	var raw []byte
+	if pf.stdin {
+		raw, err = io.ReadAll(os.Stdin)
 	} else {
-		plan, err = readPlanFrom(filterNonEmpty([]string{path}), pf.stdin, stderr)
-		if err != nil {
-			reportError(stderr, cmd, err)
-			return plannerExitCode(err)
-		}
+		raw, err = os.ReadFile(path)
 	}
+	if err != nil {
+		reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
+		return 1
+	}
+	parsed, parseErr := ParseMarkdown(string(raw))
+	if parseErr != nil {
+		reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
+		return 1
+	}
+	plan := parsed.Plan
 
 	if errs := ValidatePlanAll(plan); len(errs) > 0 {
 		messages := make([]string, len(errs))
@@ -565,62 +242,6 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
 		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
-			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
-		}
-		return nil
-	}, outputPath)
-}
-
-func runCreate(args []string, stdout io.Writer, stderr io.Writer) int {
-	if len(args) >= 1 && args[0] == "step" {
-		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, nil, "planner create step is no longer supported; rewrite the full plan JSON and run planner create <plan.json> <output.md>"))
-		return 2
-	}
-	positional, pf, err := splitPreviewArgs(args, true, true)
-	if err != nil {
-		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	var inputPath, outputPath string
-	switch len(positional) {
-	case 2:
-		inputPath, outputPath = positional[0], positional[1]
-	case 1:
-		outputPath = positional[0]
-	default:
-		reportError(stderr, "create", newPlannerCLIError(PlannerUsageError, nil, "usage: planner create [<plan.json>] <output.md> [--stdin] [--diff] [--dry-run]"))
-		return 2
-	}
-	plan, err := readPlanFrom(filterNonEmpty([]string{inputPath}), pf.stdin, stderr)
-	if err != nil {
-		reportError(stderr, "create", err)
-		return plannerExitCode(err)
-	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		reportError(stderr, "create", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
-		return 1
-	}
-	if err := ValidatePlan(plan); err != nil {
-		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "plan"))
-		return 1
-	}
-	if err := VerifyRenderedText(rendered, plan); err != nil {
-		reportError(stderr, "create", newPlannerCLIError(PlannerValidateInputError, err, "rendered plan"))
-		return 1
-	}
-	finalRendered, err := preserveExistingFrontmatter(outputPath, rendered)
-	if err != nil {
-		var fmErr *existingFrontmatterError
-		if errors.As(err, &fmErr) && fmErr.kind == existingFrontmatterReadError {
-			reportError(stderr, "create", newPlannerCLIError(PlannerReadInputError, err, outputPath))
-			return 1
-		}
-		reportError(stderr, "create", newPlannerCLIError(PlannerDecodeInputError, err, "existing markdown output"))
-		return 1
-	}
-	return runPreview(stdout, stderr, pf, finalRendered, outputPath, "create", func() error {
-		if err := WriteAtomic(outputPath, []byte(finalRendered)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil
@@ -698,24 +319,6 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 	return kept, pf, nil
 }
 
-// readJSONSource returns JSON bytes for a subcommand's input and reports
-// whether repair produced replacement bytes. When --stdin is set, reads stdin.
-// When allowAutoDetect is true (validate/create only) and no path is supplied
-// and stdin is piped, reads stdin. Otherwise reads the path.
-func readJSONSource(path string, useStdin, allowAutoDetect bool, stderr io.Writer) ([]byte, bool, error) {
-	if useStdin && !stdinPiped() && !jsonErrorOutput {
-		_, _ = fmt.Fprintln(stderr, "planner: reading JSON from stdin (Ctrl-D to end)")
-	}
-	data, repaired, err := Read(path, useStdin, allowAutoDetect, os.Stdin, stdinPiped)
-	if err != nil {
-		return nil, false, err
-	}
-	if repaired && !jsonErrorOutput {
-		_, _ = fmt.Fprintln(stderr, "planner: repaired JSON input")
-	}
-	return data, repaired, nil
-}
-
 // readRawSource reads patch input as raw bytes without JSON repair. It mirrors
 // readJSONSource's stdin/path selection but preserves the byte stream exactly.
 func readRawSource(path string, useStdin bool) ([]byte, error) {
@@ -742,25 +345,6 @@ func readRawScalar(path string, useStdin bool) ([]byte, error) {
 		return data[:len(data)-1], nil
 	}
 	return data, nil
-}
-
-// readPlanFrom is the plan-decoding wrapper for runCheck/runCreate.
-// Decode errors are wrapped in typed planner CLI errors so tests can assert on
-// stable failure categories instead of raw strings.
-func readPlanFrom(positional []string, useStdin bool, stderr io.Writer) (Plan, error) {
-	path := ""
-	if len(positional) > 0 {
-		path = positional[0]
-	}
-	data, _, err := readJSONSource(path, useStdin, true, stderr)
-	if err != nil {
-		return Plan{}, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, useStdin))
-	}
-	plan, err := DecodePlan(data)
-	if err != nil {
-		return Plan{}, newPlannerCLIError(PlannerDecodeInputError, err, "plan JSON")
-	}
-	return plan, nil
 }
 
 func patchSourceLabel(path string, useStdin bool) string {
@@ -868,16 +452,4 @@ func readBaseline(path string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
-}
-
-// filterNonEmpty drops empty-string entries, used to pass an optional input
-// path to readPlanFrom without introducing an empty-string positional.
-func filterNonEmpty(ss []string) []string {
-	out := make([]string, 0, len(ss))
-	for _, s := range ss {
-		if s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }
