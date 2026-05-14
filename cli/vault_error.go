@@ -12,6 +12,7 @@ const (
 	vaultWorkNotConfigured
 	vaultDefaultMainRequiresPath
 	vaultDefaultWorkRequiresPath
+	vaultDefaultNeedsUsablePath
 	vaultReadConfigFailed
 	vaultWriteConfigFailed
 )
@@ -24,6 +25,7 @@ var vaultErrorMessages = map[vaultErrorCode]string{
 	vaultWorkNotConfigured:       "work vault not configured",
 	vaultDefaultMainRequiresPath: "default vault selector %q requires PDE_MAIN_VAULT",
 	vaultDefaultWorkRequiresPath: "default vault selector %q requires PDE_WORK_VAULT",
+	vaultDefaultNeedsUsablePath:  "default vault needs an existing PDE_WORK_VAULT or PDE_MAIN_VAULT",
 	vaultReadConfigFailed:        "read paths.env: %v",
 	vaultWriteConfigFailed:       "write paths.env: %v",
 }
