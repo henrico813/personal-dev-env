@@ -16,6 +16,7 @@ pub enum Status {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunResult {
+    pub run_id: Option<String>,
     pub status: Status,
     pub branch: Option<String>,
     pub worktree: Option<String>,
@@ -26,6 +27,8 @@ pub struct RunResult {
     pub artifacts_dir: Option<String>,
     pub events_log_path: Option<String>,
     pub stderr_path: Option<String>,
+    pub summary_path: Option<String>,
+    pub persistence_error: Option<String>,
     pub error_message: Option<String>,
 }
 
@@ -45,6 +48,7 @@ impl RunResult {
 
     pub fn setup_error(message: impl Into<String>) -> Self {
         Self {
+            run_id: None,
             status: Status::SetupError,
             branch: None,
             worktree: None,
@@ -55,6 +59,8 @@ impl RunResult {
             artifacts_dir: None,
             events_log_path: None,
             stderr_path: None,
+            summary_path: None,
+            persistence_error: None,
             error_message: Some(message.into()),
         }
     }
@@ -66,6 +72,7 @@ mod tests {
 
     fn sample_result(status: Status) -> RunResult {
         RunResult {
+            run_id: Some("run-id".to_string()),
             status,
             branch: Some("vibe/pdev-049-demo".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
@@ -76,6 +83,8 @@ mod tests {
             artifacts_dir: Some("/tmp/run".to_string()),
             events_log_path: Some("/tmp/run/events.jsonl".to_string()),
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
+            summary_path: Some("/tmp/run/summary.json".to_string()),
+            persistence_error: None,
             error_message: None,
         }
     }
@@ -104,8 +113,10 @@ mod tests {
             serde_json::to_value(sample_result(Status::AgentFailed)).expect("serialize result");
 
         assert_eq!(value["status"], "agent_failed");
+        assert_eq!(value["run_id"], "run-id");
         assert_eq!(value["artifacts_dir"], "/tmp/run");
         assert_eq!(value["pre_run_commit"], "abc");
+        assert_eq!(value["summary_path"], "/tmp/run/summary.json");
     }
 
     #[test]
@@ -113,8 +124,11 @@ mod tests {
         let value = serde_json::to_value(RunResult::setup_error("boom")).expect("serialize");
 
         assert_eq!(value["status"], "setup_error");
+        assert!(value["run_id"].is_null());
         assert!(value["branch"].is_null());
         assert!(value["artifacts_dir"].is_null());
+        assert!(value["summary_path"].is_null());
+        assert!(value["persistence_error"].is_null());
         assert_eq!(value["error_message"], "boom");
     }
 }

@@ -17,11 +17,13 @@ use crate::{
 };
 
 fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
+    let persistence_error = Some(message.clone());
     let error_message = match &result.error_message {
         Some(original) => Some(format!("{original}; persistence failed: {message}")),
         None => Some(message),
     };
     RunResult {
+        run_id: result.run_id.clone(),
         status: Status::WrapperFailed,
         branch: result.branch.clone(),
         worktree: result.worktree.clone(),
@@ -32,6 +34,8 @@ fn wrapper_failed_from(result: &RunResult, message: String) -> RunResult {
         artifacts_dir: result.artifacts_dir.clone(),
         events_log_path: result.events_log_path.clone(),
         stderr_path: result.stderr_path.clone(),
+        summary_path: result.summary_path.clone(),
+        persistence_error,
         error_message,
     }
 }

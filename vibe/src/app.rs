@@ -6,7 +6,13 @@ use crate::{
     state::{self, PersistedRunState, RunPhase},
     worktree,
 };
-use std::{fs, fs::OpenOptions, io::Write, path::Path};
+use std::{
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
 
@@ -27,9 +33,10 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
 fn wrap_wrapper_failed(mut result: RunResult, error: String) -> RunResult {
     let error_message = match result.error_message.take() {
         Some(original) => Some(format!("{original}; persistence failed: {error}")),
-        None => Some(error),
+        None => Some(error.clone()),
     };
     result.status = Status::WrapperFailed;
+    result.persistence_error = Some(error);
     result.error_message = error_message;
     result
 }
@@ -60,6 +67,7 @@ fn build_result(
     parts: ResultParts,
 ) -> RunResult {
     RunResult {
+        run_id: Some(artifacts.run_id.clone()),
         status: parts.status,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
@@ -70,6 +78,8 @@ fn build_result(
         artifacts_dir: Some(artifacts.dir.display().to_string()),
         events_log_path: Some(artifacts.events_jsonl.display().to_string()),
         stderr_path: Some(artifacts.stderr_log.display().to_string()),
+        summary_path: Some(artifacts.summary_json.display().to_string()),
+        persistence_error: None,
         error_message: parts.error_message,
     }
 }
@@ -84,6 +94,8 @@ fn finish_result(
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.summary_path = result.summary_path.clone();
+    persisted.persistence_error = result.persistence_error.clone();
     persisted.error_message = result.error_message.clone();
     if let Err(err) = state::write(&artifacts.state_json, persisted) {
         return wrap_wrapper_failed(result, format!("write run state: {err}"));
@@ -101,9 +113,15 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let mut persisted = PersistedRunState {
+        run_id: artifacts.run_id.clone(),
         key: session.key.clone(),
         slug: session.slug.clone(),
+        created_at,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
         model: Some(args.model.clone()),
@@ -117,6 +135,8 @@ pub fn execute(args: RunArgs) -> RunResult {
         stderr_path: Some(artifacts.stderr_log.display().to_string()),
         result_path: Some(artifacts.result_json.display().to_string()),
         wrapper_log_path: Some(artifacts.vibe_log.display().to_string()),
+        summary_path: Some(artifacts.summary_json.display().to_string()),
+        persistence_error: None,
         error_message: None,
     };
     if let Err(err) = state::write(&artifacts.state_json, &persisted) {

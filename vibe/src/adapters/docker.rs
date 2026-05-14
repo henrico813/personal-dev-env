@@ -501,6 +501,7 @@ mod tests {
         let worktree = temp.path().join("worktree");
         let artifacts = ArtifactPaths {
             dir: temp.path().join("artifacts"),
+            run_id: "run-id".to_string(),
             prompt_txt: temp.path().join("artifacts/prompt.txt"),
             system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
             combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
@@ -512,6 +513,8 @@ mod tests {
             stderr_log: temp.path().join("artifacts/agent.stderr.log"),
             extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
             snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+            summary_json: temp.path().join("artifacts/summary.json"),
+            runs_index_jsonl: temp.path().join("artifacts/runs_index.jsonl"),
         };
         let user = HostUser {
             uid: "1000".to_string(),
@@ -552,6 +555,7 @@ mod tests {
         let worktree = temp.path().join("worktree");
         let artifacts = ArtifactPaths {
             dir: temp.path().join("artifacts"),
+            run_id: "run-id".to_string(),
             prompt_txt: temp.path().join("artifacts/prompt.txt"),
             system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
             combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
@@ -563,6 +567,8 @@ mod tests {
             stderr_log: temp.path().join("artifacts/agent.stderr.log"),
             extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
             snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
+            summary_json: temp.path().join("artifacts/summary.json"),
+            runs_index_jsonl: temp.path().join("artifacts/runs_index.jsonl"),
         };
         let user = HostUser {
             uid: "1000".to_string(),

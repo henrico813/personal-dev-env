@@ -30,8 +30,12 @@ pub enum RunPhase {
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PersistedRunState {
+    #[serde(default)]
+    pub run_id: String,
     pub key: String,
     pub slug: String,
+    #[serde(default)]
+    pub created_at: u64,
     pub branch: Option<String>,
     pub worktree: Option<String>,
     pub model: Option<String>,
@@ -45,6 +49,8 @@ pub struct PersistedRunState {
     pub stderr_path: Option<String>,
     pub result_path: Option<String>,
     pub wrapper_log_path: Option<String>,
+    pub summary_path: Option<String>,
+    pub persistence_error: Option<String>,
     pub error_message: Option<String>,
 }
 
@@ -101,6 +107,8 @@ pub fn write_terminal_from_result(result: &RunResult) -> Result<(), String> {
     persisted.pre_run_commit = result.pre_run_commit.clone();
     persisted.commit = result.commit.clone();
     persisted.snapshot_commits = result.snapshot_commits.clone();
+    persisted.summary_path = result.summary_path.clone();
+    persisted.persistence_error = result.persistence_error.clone();
     persisted.error_message = result.error_message.clone();
     write(&path, &persisted)
 }
@@ -113,8 +121,10 @@ mod tests {
 
     fn sample_state() -> PersistedRunState {
         PersistedRunState {
+            run_id: "run-id".to_string(),
             key: "PDEV-055 demo/key".to_string(),
             slug: "pdev-055-demo-key".to_string(),
+            created_at: 1778000000,
             branch: Some("vibe/pdev-055-demo-key".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
             model: Some("openai-codex/gpt-5.4".to_string()),
@@ -128,6 +138,8 @@ mod tests {
             stderr_path: Some("/tmp/run/agent.stderr.log".to_string()),
             result_path: Some("/tmp/run/result.json".to_string()),
             wrapper_log_path: Some("/tmp/run/vibe.log".to_string()),
+            summary_path: Some("/tmp/run/summary.json".to_string()),
+            persistence_error: None,
             error_message: None,
         }
     }
