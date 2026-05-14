@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,142 +47,13 @@ func normalizeVaultReference(s string) string {
 }
 
 func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
-	paths, err := loadVaultPaths(homeDir, lookup)
+	cfg, err := loadVaultConfig(homeDir, lookup)
 	if err != nil {
 		return nil, err
 	}
-
-	mainVault := paths["PDE_MAIN_VAULT"]
-	workVault := paths["PDE_WORK_VAULT"]
-
-	switch selector {
-	case "", "default":
-		if workVault != "" {
-			return []string{workVault}, nil
-		}
-		if mainVault != "" {
-			return []string{mainVault}, nil
-		}
-		return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
-	case "any":
-		var vaults []string
-		for _, vault := range []string{mainVault, workVault} {
-			if vault != "" {
-				vaults = append(vaults, vault)
-			}
-		}
-		if len(vaults) == 0 {
-			return nil, fmt.Errorf("no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment")
-		}
-		return vaults, nil
-	case "main":
-		if mainVault == "" {
-			return nil, fmt.Errorf("main vault not configured")
-		}
-		return []string{mainVault}, nil
-	case "work":
-		if workVault == "" {
-			return nil, fmt.Errorf("work vault not configured")
-		}
-		return []string{workVault}, nil
-	default:
-		return nil, fmt.Errorf("invalid --vault value %q", selector)
-	}
+	return resolveVaultRoots(cfg, selector)
 }
 
-func loadVaultPaths(homeDir string, lookup envLookup) (map[string]string, error) {
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	fileValues, err := readVaultPathsEnv(pathsEnv)
-	if err != nil {
-		return nil, err
-	}
-
-	merged := map[string]string{}
-	for _, key := range []string{"PDE_MAIN_VAULT", "PDE_WORK_VAULT"} {
-		if value, ok := fileValues[key]; ok {
-			merged[key] = value
-		}
-	}
-	for _, key := range []string{"PDE_MAIN_VAULT", "PDE_WORK_VAULT"} {
-		if value, ok := lookup(key); ok {
-			merged[key] = value
-		}
-	}
-
-	for key, value := range merged {
-		resolved, err := resolveShellPath(value, homeDir)
-		if err != nil {
-			return nil, fmt.Errorf("resolve %s: %w", key, err)
-		}
-		merged[key] = resolved
-	}
-	return merged, nil
-}
-
-func readVaultPathsEnv(path string) (map[string]string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]string{}, nil
-		}
-		return nil, fmt.Errorf("open paths.env %s: %w", path, err)
-	}
-	defer f.Close()
-
-	values := map[string]string{}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "export ") {
-			continue
-		}
-		key, value, ok := strings.Cut(strings.TrimPrefix(line, "export "), "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		if key != "PDE_MAIN_VAULT" && key != "PDE_WORK_VAULT" {
-			continue
-		}
-		values[key] = strings.TrimSpace(value)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan paths.env %s: %w", path, err)
-	}
-	return values, nil
-}
-
-func resolveShellPath(value, homeDir string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", nil
-	}
-
-	if len(value) >= 2 {
-		if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
-			value = value[1 : len(value)-1]
-		}
-	}
-
-	value = os.ExpandEnv(value)
-	if value == "~" {
-		value = homeDir
-	} else if strings.HasPrefix(value, "~/") {
-		value = filepath.Join(homeDir, value[2:])
-	}
-
-	if value == "" {
-		return "", nil
-	}
-	if !filepath.IsAbs(value) {
-		abs, err := filepath.Abs(value)
-		if err != nil {
-			return "", err
-		}
-		value = abs
-	}
-	return value, nil
-}
 
 func validateVaultDir(path string) error {
 	info, err := os.Stat(path)
