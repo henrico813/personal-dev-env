@@ -12,16 +12,17 @@ mod worktree;
 
 use std::process;
 
-use crate::{cli::ParsedCommand, result::RunResult};
+use crate::{cli::ParsedCommand, ledger, result::RunResult};
 
 fn persist_result_json(result: &RunResult) -> Result<(), String> {
+    let Some(run_path) = result.run_path.as_deref() else {
+        return Ok(());
+    };
     let Some(dir) = result.artifacts_dir.as_deref() else {
         return Ok(());
     };
     let path = std::path::Path::new(dir).join("result.json");
-    let json =
-        serde_json::to_string_pretty(result).map_err(|e| format!("serialize result: {e}"))?;
-    std::fs::write(path, json).map_err(|e| format!("write result.json: {e}"))
+    ledger::persist_result_from_run(std::path::Path::new(run_path), &path)
 }
 
 fn emit_and_exit(result: &RunResult) -> ! {
@@ -49,11 +50,21 @@ fn main() {
                 eprintln!("vibe status requires a target repo checkout: {err}");
                 process::exit(2);
             });
-            let record = state::latest_for_key(&repo.repo_root, &args.key).unwrap_or_else(|err| {
-                eprintln!("{err}");
-                process::exit(2);
-            });
-            let json = serde_json::to_string_pretty(&record).expect("serialize record");
+            let json = if args.long {
+                let record = state::latest_record_json_for_key(&repo.repo_root, &args.key)
+                    .unwrap_or_else(|err| {
+                        eprintln!("{err}");
+                        process::exit(2);
+                    });
+                serde_json::to_string_pretty(&record).expect("serialize record")
+            } else {
+                let summary = state::latest_summary_for_key(&repo.repo_root, &args.key)
+                    .unwrap_or_else(|err| {
+                        eprintln!("{err}");
+                        process::exit(2);
+                    });
+                serde_json::to_string_pretty(&summary).expect("serialize summary")
+            };
             println!("{json}");
         }
     }

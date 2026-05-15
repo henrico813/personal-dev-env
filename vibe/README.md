@@ -93,10 +93,10 @@ or raw stream seen by the caller. Docker build logs are always
 suppressed. Other container stderr remains pass-through today and is not
 level-filtered. Progress logs also stay in `extension-events.jsonl`.
 Wrapper-owned recovery state now lives in authoritative `run.json` beside
-best-effort `result.json`, derived `summary.json`, and `vibe.log`. Each
-key also maintains append-only `runs_index.jsonl` as a discovery aid, not
-the source of truth for a run. Vibe seeds an empty `snapshots.jsonl` for
-every run so no-op runs still have a durable snapshot log path.
+derived `summary.json`, best-effort derived `result.json`, and `vibe.log`.
+Each key also maintains append-only `runs_index.jsonl` as a discovery aid,
+not the source of truth for a run. Vibe seeds an empty `snapshots.jsonl`
+for every run so no-op runs still have a durable snapshot log path.
 
 Supported stderr levels are `error`, `warn`, `info`, `debug`, and
 `trace`. Use `info` for Codex-supervised runs, because it emits compact
@@ -134,15 +134,16 @@ persisted in the artifact directory.
 
 Recovery notes:
 
-- `run.json` is the only authoritative per-run record for new runs.
-- `summary.json` is a derived terminal companion artifact.
-- `run-state.json` remains readable only for legacy runs created before 099C.
+- `run.json` is the only authoritative per-run record.
+- `summary.json` is the default status-shaped derived view.
+- `result.json` is the saved command-result view derived from `run.json`.
+- `run-state.json` is no longer part of the supported status path.
 - `runs_index.jsonl` is a best-effort lookup index that may be rebuilt.
-- `result.json` is a best-effort emitted result artifact.
 - Late persistence failures populate durable `persistence_error` fields without rewriting the execution `status`.
 - `vibe status --key ...` reads the latest readable persisted state for the normalized key.
 - `vibe status` must be run from inside the target repo checkout.
-- Latest-run lookup skips unreadable newest runs and remains compatible with legacy planner-prefixed run IDs.
+- Latest-run lookup is run.json-only.
+- `vibe status --long` shows the full saved run record.
 - New managed worktrees still branch from the resolved remote/base branch,
   not the caller's current `HEAD`.
 
@@ -162,6 +163,5 @@ Dogfood by inspecting:
 - `result.json`
 - `vibe.log`
 - `snapshots.jsonl`
-- legacy `run-state.json` when validating old runs
 - the result commit on the worktree branch
 - snapshot refs and commits under `refs/vibe/snapshots/...`
