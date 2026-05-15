@@ -26,7 +26,8 @@ pub struct RunSummary {
     pub slug: String,
     #[serde(default)]
     pub created_at: u64,
-    pub status: Status,
+    pub phase: RunPhase,
+    pub status: Option<Status>,
     pub branch: Option<String>,
     pub worktree: Option<String>,
     pub model: Option<String>,
@@ -86,7 +87,8 @@ impl RunSummary {
             key: key.to_string(),
             slug: slug.to_string(),
             created_at: 0,
-            status: result.status.clone(),
+            phase: RunPhase::Finished,
+            status: Some(result.status.clone()),
             branch: result.branch.clone(),
             worktree: result.worktree.clone(),
             model: result.model.clone(),
@@ -195,10 +197,8 @@ fn run_summary(record: &RunRecord) -> RunSummary {
         key: record.key.clone(),
         slug: record.slug.clone(),
         created_at: record.created_at,
-        status: record
-            .terminal_status
-            .clone()
-            .expect("terminal record status"),
+        phase: record.phase.clone(),
+        status: record.terminal_status.clone(),
         branch: record.branch.clone(),
         worktree: record.worktree.clone(),
         model: record.model.clone(),
@@ -310,11 +310,16 @@ fn write_summary(path: &Path, summary: &RunSummary) -> Result<(), String> {
     write_json_atomic(path, summary, "summary")
 }
 
-fn rewrite_summary_from_record(record: &RunRecord) -> Result<(), String> {
-    if record.summary_path.is_empty() || record.terminal_status.is_none() {
-        return Ok(());
-    }
-    write_summary(Path::new(&record.summary_path), &run_summary(record))
+fn summary_path_from_run_path(run_path: &Path) -> Result<PathBuf, String> {
+    let parent = run_path
+        .parent()
+        .ok_or_else(|| format!("run record path has no parent: {}", run_path.display()))?;
+    Ok(parent.join(SUMMARY_FILE))
+}
+
+fn rewrite_summary_from_run_path(run_path: &Path, record: &RunRecord) -> Result<(), String> {
+    let summary_path = summary_path_from_run_path(run_path)?;
+    write_summary(&summary_path, &run_summary(record))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -376,13 +381,16 @@ pub fn record_late_persistence_error(
 
     let mut repair_errors = Vec::new();
 
-    if let Some(state_path) = state_path_from_result(result) {
-        match read_run_record(&state_path) {
+    if let Some(run_path) = state_path_from_result(result) {
+        match read_run_record(&run_path) {
             Ok(mut record) => {
+                if let Ok(summary_path) = summary_path_from_run_path(&run_path) {
+                    record.summary_path = summary_path.display().to_string();
+                }
                 record.persistence_error = Some(merged.clone());
-                if let Err(err) = write_run_record(&state_path, &record) {
+                if let Err(err) = write_run_record(&run_path, &record) {
                     repair_errors.push(format!("write run record: {err}"));
-                } else if let Err(err) = rewrite_summary_from_record(&record) {
+                } else if let Err(err) = rewrite_summary_from_run_path(&run_path, &record) {
                     repair_errors.push(format!("write summary: {err}"));
                 }
             }
@@ -571,6 +579,41 @@ mod tests {
             repaired_summary["persistence_error"],
             "append runs_index.jsonl: boom"
         );
+        assert_eq!(
+            repaired_summary["summary_path"],
+            summary_path.display().to_string()
+        );
+    }
+
+    #[test]
+    fn late_persistence_error_rewrites_only_trusted_summary_path() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("run");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        let summary_path = artifacts_dir.join("summary.json");
+        let outside_summary_path = temp.path().join("outside-summary.json");
+        let record_path = artifacts_dir.join("run.json");
+        let mut state = sample_record(&summary_path, &artifacts_dir);
+        state.summary_path = outside_summary_path.display().to_string();
+        super::write_run_record(&record_path, &state).expect("write record");
+        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
+        let mut result = sample_result(&artifacts_dir, &summary_path);
+
+        record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
+            .expect("repair run record");
+
+        assert!(!outside_summary_path.exists());
+
+        let repaired = read_run_record(&record_path).expect("read repaired record");
+        assert_eq!(repaired.summary_path, summary_path.display().to_string());
+
+        let repaired_summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&summary_path).expect("read summary"))
+                .expect("parse summary");
+        assert_eq!(
+            repaired_summary["summary_path"],
+            summary_path.display().to_string()
+        );
     }
 
     #[test]
@@ -615,9 +658,11 @@ mod tests {
 
         let value = serde_json::to_value(summary).expect("serialize summary");
 
+        assert_eq!(value["phase"], "finished");
         assert_eq!(value["summary_path"], summary_path.display().to_string());
         assert_eq!(value["result_path"], "");
         assert_eq!(value["created_at"], 0);
+        assert_eq!(value["status"], "completed");
         assert_eq!(value["persistence_error"], "boom");
     }
 }

@@ -114,6 +114,7 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
     let entries =
         ledger::read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
     let runs_dir = ledger::runs_root(home, repo_root, slug).join("runs");
+    let canonical_runs_dir = runs_dir.canonicalize().ok();
 
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
@@ -122,7 +123,12 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
         if entry.record_path.is_empty() {
             continue;
         }
-        let path = Path::new(&entry.record_path).to_path_buf();
+        let Some(path) = trusted_run_json_candidate(
+            Path::new(&entry.record_path),
+            canonical_runs_dir.as_deref(),
+        ) else {
+            continue;
+        };
         if seen.insert(path.clone()) {
             candidates.push(path);
         }
@@ -135,7 +141,12 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
             if !run_dir.is_dir() {
                 continue;
             }
-            let path = run_dir.join("run.json");
+            let Some(path) = trusted_run_json_candidate(
+                &run_dir.join("run.json"),
+                canonical_runs_dir.as_deref(),
+            ) else {
+                continue;
+            };
             if seen.insert(path.clone()) {
                 candidates.push(path);
             }
@@ -158,6 +169,18 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
         )
         .map(|(_, path)| path)
         .ok_or_else(|| format!("no run.json artifacts found for key {slug}"))
+}
+
+fn trusted_run_json_candidate(path: &Path, canonical_runs_dir: Option<&Path>) -> Option<PathBuf> {
+    if path.file_name()? != "run.json" || !path.exists() {
+        return None;
+    }
+
+    let canonical_path = path.canonicalize().ok()?;
+    let canonical_runs_dir = canonical_runs_dir?;
+    canonical_path
+        .starts_with(canonical_runs_dir)
+        .then_some(canonical_path)
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -266,7 +289,8 @@ mod tests {
         let summary =
             latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
         assert_eq!(summary.run_id, "run-id");
-        assert_eq!(summary.status, Status::Completed);
+        assert_eq!(summary.phase, RunPhase::Finished);
+        assert_eq!(summary.status, Some(Status::Completed));
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
@@ -318,6 +342,62 @@ mod tests {
         let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
             .expect("latest record json");
         assert_eq!(latest["run_id"], "newer-run");
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_summary_reports_in_progress_run_without_panicking() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let runs = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let parent = runs.join("a-uuid");
+        std::fs::create_dir_all(&parent).expect("run dir");
+        std::fs::write(
+            parent.join("run.json"),
+            serde_json::json!({
+                "run_id": "in-progress-run",
+                "key": "PDEV-055 demo/key",
+                "slug": "pdev-055-demo-key",
+                "created_at": 1778000002_u64,
+                "phase": "running_agent",
+                "terminal_status": null,
+                "branch": "vibe/pdev-055-demo-key",
+                "worktree": "/tmp/worktree",
+                "model": "openai-codex/gpt-5.4",
+                "pre_run_commit": null,
+                "commit": null,
+                "snapshot_commits": [],
+                "changed_files": [],
+                "artifacts_dir": "/tmp/run",
+                "run_path": "/tmp/run/run.json",
+                "summary_path": "/tmp/run/summary.json",
+                "result_path": "/tmp/run/result.json",
+                "events_log_path": "/tmp/run/events.jsonl",
+                "stderr_path": "/tmp/run/agent.stderr.log",
+                "error_message": null,
+                "persistence_error": null
+            })
+            .to_string(),
+        )
+        .expect("write run json");
+
+        let summary =
+            latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
+        assert_eq!(summary.run_id, "in-progress-run");
+        assert_eq!(summary.phase, RunPhase::RunningAgent);
+        assert_eq!(summary.status, None);
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
@@ -382,6 +462,46 @@ mod tests {
         let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
             .expect("latest record json");
         assert_eq!(latest["run_id"], "created-later");
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_record_json_ignores_index_path_outside_runs_root() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let slug_root = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key");
+        let runs = slug_root.join("runs");
+        let trusted_run = runs.join("1778000000-42/run.json");
+        let untrusted_run = temp.path().join("escaped/run.json");
+        write_run_json(&trusted_run, "trusted-run", 1778000000);
+        write_run_json(&untrusted_run, "untrusted-run", 1778000001);
+        std::fs::write(
+            slug_root.join("runs_index.jsonl"),
+            format!(
+                "{{\"run_id\":\"trusted-run\",\"created_at\":1778000000,\"state_path\":\"\",\"record_path\":\"{}\",\"summary_path\":\"{}\"}}\n{{\"run_id\":\"untrusted-run\",\"created_at\":1778000001,\"state_path\":\"\",\"record_path\":\"{}\",\"summary_path\":\"{}\"}}\n",
+                trusted_run.display(),
+                runs.join("1778000000-42/summary.json").display(),
+                untrusted_run.display(),
+                temp.path().join("escaped/summary.json").display(),
+            ),
+        )
+        .expect("write runs index");
+
+        let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
+            .expect("latest record json");
+        assert_eq!(latest["run_id"], "trusted-run");
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
