@@ -288,7 +288,8 @@ mod tests {
     #[test]
     fn parses_long_status_arguments() {
         let ParsedCommand::Status(args) =
-            try_parse_from(["vibe", "status", "--key", "demo", "--long"]).expect("parse status args")
+            try_parse_from(["vibe", "status", "--key", "demo", "--long"])
+                .expect("parse status args")
         else {
             panic!("expected status args");
         };

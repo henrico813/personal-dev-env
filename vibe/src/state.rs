@@ -98,7 +98,10 @@ pub fn latest_summary_for_key(repo_root: &Path, key: &str) -> Result<RunSummary,
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn latest_record_json_for_key(repo_root: &Path, key: &str) -> Result<serde_json::Value, String> {
+pub fn latest_record_json_for_key(
+    repo_root: &Path,
+    key: &str,
+) -> Result<serde_json::Value, String> {
     let slug = worktree::slugify(key);
     let path = latest_run_json_for_key(repo_root, &slug)?;
     ledger::record_json_from_path(&path)
@@ -108,7 +111,8 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let home = Path::new(&home);
     let index = ledger::runs_index_path(home, repo_root, slug);
-    let entries = ledger::read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
+    let entries =
+        ledger::read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
 
     for entry in entries.into_iter().rev() {
         if !entry.record_path.is_empty() {
@@ -133,7 +137,10 @@ pub fn write_terminal_from_result(_result: &RunResult) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{latest_record_json_for_key, latest_summary_for_key, read, write, PersistedRunState, RunPhase};
+    use super::{
+        latest_record_json_for_key, latest_summary_for_key, read, write, PersistedRunState,
+        RunPhase,
+    };
     use crate::result::Status;
     use tempfile::tempdir;
 
@@ -221,7 +228,8 @@ mod tests {
         )
         .expect("write run json");
 
-        let summary = latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
+        let summary =
+            latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
         assert_eq!(summary.run_id, "run-id");
         assert_eq!(summary.status, Status::Completed);
 
@@ -300,7 +308,8 @@ mod tests {
         )
         .expect("write run json");
 
-        let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key").expect("latest record json");
+        let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
+            .expect("latest record json");
         assert_eq!(latest["run_id"], "newer-run");
 
         if let Some(saved_home) = saved_home {

@@ -180,7 +180,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -193,7 +192,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -206,7 +204,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -215,15 +212,9 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    if let Err(err) = persist_phase(
-        &artifacts,
-        
-        RunPhase::CheckingDirty,
-        "check dirty",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::CheckingDirty, "check dirty") {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -235,7 +226,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -247,13 +237,11 @@ pub fn execute(args: RunArgs) -> RunResult {
 
     if let Err(err) = persist_phase(
         &artifacts,
-        
         RunPhase::ReadingPreRunCommit,
         "read pre-run commit",
     ) {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -267,7 +255,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -288,15 +275,9 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    if let Err(err) = persist_phase(
-        &artifacts,
-        
-        RunPhase::PreparingSandbox,
-        "prepare sandbox",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::PreparingSandbox, "prepare sandbox") {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -315,7 +296,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -331,15 +311,9 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     };
     let mounts = session.sandbox_mounts();
-    if let Err(err) = persist_phase(
-        &artifacts,
-        
-        RunPhase::RunningAgent,
-        "run agent",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -365,7 +339,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -383,7 +356,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -398,15 +370,9 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
 
-    if let Err(err) = persist_phase(
-        &artifacts,
-        
-        RunPhase::ReadingSnapshots,
-        "read snapshots",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::ReadingSnapshots, "read snapshots") {
         return finish_result(
             &artifacts,
-            
             build_result(
                 &session,
                 &artifacts,
@@ -425,7 +391,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -445,7 +410,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,
@@ -469,15 +433,9 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut error_message = None;
 
     if dirty_after {
-        if let Err(err) = persist_phase(
-            &artifacts,
-            
-            RunPhase::CommittingResult,
-            "commit result",
-        ) {
+        if let Err(err) = persist_phase(&artifacts, RunPhase::CommittingResult, "commit result") {
             return finish_result(
                 &artifacts,
-                
                 build_result(
                     &session,
                     &artifacts,

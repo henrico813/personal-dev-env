@@ -229,6 +229,9 @@ fn record_run_persistence_error(
     write_run_record(run_path, &record)
 }
 
+// The wrapper already has these values separately at run start, so keep the
+// ledger entrypoint flat instead of creating a one-off transport struct.
+#[allow(clippy::too_many_arguments)]
 pub fn start_run(
     artifacts: &ArtifactPaths,
     key: &str,
@@ -341,11 +344,12 @@ pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
 }
 
 fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
-    result
-        .run_path
-        .as_deref()
-        .map(PathBuf::from)
-        .or_else(|| result.artifacts_dir.as_deref().map(|dir| Path::new(dir).join("run.json")))
+    result.run_path.as_deref().map(PathBuf::from).or_else(|| {
+        result
+            .artifacts_dir
+            .as_deref()
+            .map(|dir| Path::new(dir).join("run.json"))
+    })
 }
 
 fn merge_persistence_error(existing: Option<&str>, next: &str) -> String {
@@ -384,7 +388,10 @@ pub fn record_late_persistence_error(
     }
 }
 
-pub fn persist_terminal_run(artifacts: &ArtifactPaths, result: &mut RunResult) -> Result<(), String> {
+pub fn persist_terminal_run(
+    artifacts: &ArtifactPaths,
+    result: &mut RunResult,
+) -> Result<(), String> {
     let mut record = read_run_record(&artifacts.run_json)?;
     record.phase = RunPhase::Finished;
     record.terminal_status = Some(result.status.clone());

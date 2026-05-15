@@ -12,7 +12,7 @@ mod worktree;
 
 use std::process;
 
-use crate::{cli::ParsedCommand, ledger, result::RunResult};
+use crate::{cli::ParsedCommand, result::RunResult};
 
 fn persist_result_json(result: &RunResult) -> Result<(), String> {
     let Some(run_path) = result.run_path.as_deref() else {
