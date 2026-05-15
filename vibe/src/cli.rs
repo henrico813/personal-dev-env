@@ -77,6 +77,10 @@ pub struct StatusArgs {
     /// Stable identifier for the managed Vibe worktree.
     #[arg(long)]
     pub key: String,
+
+    /// Print the full run record instead of the derived summary.
+    #[arg(long, short = 'l')]
+    pub long: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -278,5 +282,19 @@ mod tests {
         };
 
         assert_eq!(args.key, "PDEV-055 demo/key");
+        assert!(!args.long);
+    }
+
+    #[test]
+    fn parses_long_status_arguments() {
+        let ParsedCommand::Status(args) =
+            try_parse_from(["vibe", "status", "--key", "demo", "--long"])
+                .expect("parse status args")
+        else {
+            panic!("expected status args");
+        };
+
+        assert_eq!(args.key, "demo");
+        assert!(args.long);
     }
 }

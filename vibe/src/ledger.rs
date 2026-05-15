@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     observe::ArtifactPaths,
     result::{RunResult, Status},
-    state::{self, PersistedRunState, RunPhase},
+    state::RunPhase,
 };
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -26,7 +26,8 @@ pub struct RunSummary {
     pub slug: String,
     #[serde(default)]
     pub created_at: u64,
-    pub status: Status,
+    pub phase: RunPhase,
+    pub status: Option<Status>,
     pub branch: Option<String>,
     pub worktree: Option<String>,
     pub model: Option<String>,
@@ -45,29 +46,30 @@ pub struct RunSummary {
     pub persistence_error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 struct RunRecord {
-    run_id: String,
-    key: String,
-    slug: String,
-    created_at: u64,
-    phase: RunPhase,
-    terminal_status: Option<Status>,
-    branch: Option<String>,
-    worktree: Option<String>,
-    model: Option<String>,
-    pre_run_commit: Option<String>,
-    commit: Option<String>,
-    snapshot_commits: Vec<String>,
-    changed_files: Vec<String>,
-    artifacts_dir: String,
-    run_path: String,
-    summary_path: String,
-    result_path: String,
-    events_log_path: String,
-    stderr_path: String,
-    error_message: Option<String>,
-    persistence_error: Option<String>,
+    pub run_id: String,
+    pub key: String,
+    pub slug: String,
+    pub created_at: u64,
+    pub phase: RunPhase,
+    pub terminal_status: Option<Status>,
+    pub branch: Option<String>,
+    pub worktree: Option<String>,
+    pub model: Option<String>,
+    pub pre_run_commit: Option<String>,
+    pub commit: Option<String>,
+    pub snapshot_commits: Vec<String>,
+    pub changed_files: Vec<String>,
+    pub artifacts_dir: String,
+    pub run_path: String,
+    pub summary_path: String,
+    pub result_path: String,
+    pub events_log_path: String,
+    pub stderr_path: String,
+    pub error_message: Option<String>,
+    pub persistence_error: Option<String>,
 }
 
 impl RunSummary {
@@ -85,7 +87,8 @@ impl RunSummary {
             key: key.to_string(),
             slug: slug.to_string(),
             created_at: 0,
-            status: result.status.clone(),
+            phase: RunPhase::Finished,
+            status: Some(result.status.clone()),
             branch: result.branch.clone(),
             worktree: result.worktree.clone(),
             model: result.model.clone(),
@@ -109,7 +112,10 @@ impl RunSummary {
 pub struct RunIndexEntry {
     pub run_id: String,
     pub created_at: u64,
+    #[serde(default)]
     pub state_path: String,
+    #[serde(default)]
+    pub record_path: String,
     pub summary_path: String,
 }
 
@@ -152,6 +158,15 @@ pub fn run_record_path(artifacts_dir: &Path) -> PathBuf {
     artifacts_dir.join(RUN_RECORD_FILE)
 }
 
+fn read_run_record(path: &Path) -> Result<RunRecord, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("read run record: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("parse run record: {e}"))
+}
+
+fn write_run_record(path: &Path, record: &RunRecord) -> Result<(), String> {
+    write_json_atomic(path, record, "run")
+}
+
 pub fn read_runs_index(path: &Path) -> Result<Vec<RunIndexEntry>, String> {
     if !path.exists() {
         return Ok(Vec::new());
@@ -176,46 +191,14 @@ fn append_log(path: &Path, message: &str) -> Result<(), String> {
     writeln!(log, "{message}").map_err(|e| format!("write log for index append: {e}"))
 }
 
-fn run_record(
-    artifacts: &ArtifactPaths,
-    persisted: &PersistedRunState,
-    result: &RunResult,
-) -> RunRecord {
-    RunRecord {
-        run_id: persisted.run_id.clone(),
-        key: persisted.key.clone(),
-        slug: persisted.slug.clone(),
-        created_at: persisted.created_at,
-        phase: RunPhase::Finished,
-        terminal_status: Some(result.status.clone()),
-        branch: persisted.branch.clone(),
-        worktree: persisted.worktree.clone(),
-        model: persisted.model.clone(),
-        pre_run_commit: result.pre_run_commit.clone(),
-        commit: result.commit.clone(),
-        snapshot_commits: result.snapshot_commits.clone(),
-        changed_files: result.changed_files.clone(),
-        artifacts_dir: artifacts.dir.display().to_string(),
-        run_path: artifacts.run_json.display().to_string(),
-        summary_path: artifacts.summary_json.display().to_string(),
-        result_path: artifacts.result_json.display().to_string(),
-        events_log_path: artifacts.events_jsonl.display().to_string(),
-        stderr_path: artifacts.stderr_log.display().to_string(),
-        error_message: result.error_message.clone(),
-        persistence_error: result.persistence_error.clone(),
-    }
-}
-
 fn run_summary(record: &RunRecord) -> RunSummary {
     RunSummary {
         run_id: record.run_id.clone(),
         key: record.key.clone(),
         slug: record.slug.clone(),
         created_at: record.created_at,
-        status: record
-            .terminal_status
-            .clone()
-            .expect("terminal record status"),
+        phase: record.phase.clone(),
+        status: record.terminal_status.clone(),
         branch: record.branch.clone(),
         worktree: record.worktree.clone(),
         model: record.model.clone(),
@@ -233,35 +216,77 @@ fn run_summary(record: &RunRecord) -> RunSummary {
     }
 }
 
-fn terminal_state(persisted: &PersistedRunState, record: &RunRecord) -> PersistedRunState {
-    let mut state_copy = persisted.clone();
-    state_copy.phase = record.phase.clone();
-    state_copy.terminal_status = record.terminal_status.clone();
-    state_copy.pre_run_commit = record.pre_run_commit.clone();
-    state_copy.commit = record.commit.clone();
-    state_copy.snapshot_commits = record.snapshot_commits.clone();
-    state_copy.changed_files = record.changed_files.clone();
-    state_copy.run_path = Some(record.run_path.clone());
-    state_copy.summary_path = Some(record.summary_path.clone());
-    state_copy.result_path = Some(record.result_path.clone());
-    state_copy.events_log_path = Some(record.events_log_path.clone());
-    state_copy.stderr_path = Some(record.stderr_path.clone());
-    state_copy.error_message = record.error_message.clone();
-    state_copy.persistence_error = record.persistence_error.clone();
-    state_copy
-}
-
-fn record_state_persistence_error(
+fn record_run_persistence_error(
     result: &mut RunResult,
-    state_path: &Path,
+    run_path: &Path,
     message: String,
 ) -> Result<(), String> {
     let merged = merge_persistence_error(result.persistence_error.as_deref(), &message);
     result.persistence_error = Some(merged.clone());
 
-    let mut persisted = state::read(state_path)?;
-    persisted.persistence_error = Some(merged);
-    state::write(state_path, &persisted)
+    let mut record = read_run_record(run_path)?;
+    record.persistence_error = Some(merged);
+    write_run_record(run_path, &record)
+}
+
+// The wrapper already has these values separately at run start, so keep the
+// ledger entrypoint flat instead of creating a one-off transport struct.
+#[allow(clippy::too_many_arguments)]
+pub fn start_run(
+    artifacts: &ArtifactPaths,
+    key: &str,
+    slug: &str,
+    branch: &str,
+    worktree: &Path,
+    model: &str,
+    created_at: u64,
+    run_id: String,
+) -> Result<(), String> {
+    let record = RunRecord {
+        run_id,
+        key: key.to_string(),
+        slug: slug.to_string(),
+        created_at,
+        phase: RunPhase::PreparingArtifacts,
+        terminal_status: None,
+        branch: Some(branch.to_string()),
+        worktree: Some(worktree.display().to_string()),
+        model: Some(model.to_string()),
+        pre_run_commit: None,
+        commit: None,
+        snapshot_commits: Vec::new(),
+        changed_files: Vec::new(),
+        artifacts_dir: artifacts.dir.display().to_string(),
+        run_path: artifacts.run_json.display().to_string(),
+        summary_path: artifacts.summary_json.display().to_string(),
+        result_path: artifacts.result_json.display().to_string(),
+        events_log_path: artifacts.events_jsonl.display().to_string(),
+        stderr_path: artifacts.stderr_log.display().to_string(),
+        error_message: None,
+        persistence_error: None,
+    };
+    write_run_record(&artifacts.run_json, &record)
+}
+
+pub fn persist_phase(path: &Path, phase: RunPhase) -> Result<(), String> {
+    let mut record = read_run_record(path)?;
+    record.phase = phase;
+    write_run_record(path, &record)
+}
+
+pub fn persist_pre_run_commit(path: &Path, pre_run_commit: &str) -> Result<(), String> {
+    let mut record = read_run_record(path)?;
+    record.pre_run_commit = Some(pre_run_commit.to_string());
+    write_run_record(path, &record)
+}
+
+pub fn status_summary_from_path(path: &Path) -> Result<RunSummary, String> {
+    read_run_record(path).map(|record| run_summary(&record))
+}
+
+pub fn record_json_from_path(path: &Path) -> Result<serde_json::Value, String> {
+    let record = read_run_record(path)?;
+    serde_json::to_value(record).map_err(|e| format!("serialize run record: {e}"))
 }
 
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<(), String> {
@@ -283,6 +308,18 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T, label: &str) -> Resul
 
 fn write_summary(path: &Path, summary: &RunSummary) -> Result<(), String> {
     write_json_atomic(path, summary, "summary")
+}
+
+fn summary_path_from_run_path(run_path: &Path) -> Result<PathBuf, String> {
+    let parent = run_path
+        .parent()
+        .ok_or_else(|| format!("run record path has no parent: {}", run_path.display()))?;
+    Ok(parent.join(SUMMARY_FILE))
+}
+
+fn rewrite_summary_from_run_path(run_path: &Path, record: &RunRecord) -> Result<(), String> {
+    let summary_path = summary_path_from_run_path(run_path)?;
+    write_summary(&summary_path, &run_summary(record))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -319,29 +356,12 @@ pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
 }
 
 fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
-    result
-        .summary_path
-        .as_deref()
-        .and_then(|path| state_path_from_summary(Path::new(path)).map(PathBuf::from))
-        .or_else(|| {
-            result
-                .run_path
-                .as_deref()
-                .map(Path::new)
-                .and_then(Path::parent)
-                .map(|dir| dir.join("run-state.json"))
-        })
-        .or_else(|| {
-            result
-                .artifacts_dir
-                .as_deref()
-                .map(|dir| Path::new(dir).join("run-state.json"))
-        })
-}
-
-fn read_summary(path: &Path) -> Result<RunSummary, String> {
-    let text = fs::read_to_string(path).map_err(|e| format!("read summary: {e}"))?;
-    serde_json::from_str(&text).map_err(|e| format!("parse summary: {e}"))
+    result.run_path.as_deref().map(PathBuf::from).or_else(|| {
+        result
+            .artifacts_dir
+            .as_deref()
+            .map(|dir| Path::new(dir).join("run.json"))
+    })
 }
 
 fn merge_persistence_error(existing: Option<&str>, next: &str) -> String {
@@ -361,24 +381,16 @@ pub fn record_late_persistence_error(
 
     let mut repair_errors = Vec::new();
 
-    if let Some(state_path) = state_path_from_result(result) {
-        match state::read(&state_path) {
-            Ok(mut persisted) => {
-                persisted.persistence_error = Some(merged.clone());
-                if let Err(err) = state::write(&state_path, &persisted) {
-                    repair_errors.push(format!("write run state: {err}"));
+    if let Some(run_path) = state_path_from_result(result) {
+        match read_run_record(&run_path) {
+            Ok(mut record) => {
+                if let Ok(summary_path) = summary_path_from_run_path(&run_path) {
+                    record.summary_path = summary_path.display().to_string();
                 }
-            }
-            Err(err) => repair_errors.push(format!("read run state: {err}")),
-        }
-    }
-
-    if let Some(summary_path) = result.summary_path.as_deref() {
-        let summary_path = Path::new(summary_path);
-        match read_summary(summary_path) {
-            Ok(mut summary) => {
-                summary.persistence_error = Some(merged.clone());
-                if let Err(err) = write_summary(summary_path, &summary) {
+                record.persistence_error = Some(merged.clone());
+                if let Err(err) = write_run_record(&run_path, &record) {
+                    repair_errors.push(format!("write run record: {err}"));
+                } else if let Err(err) = rewrite_summary_from_run_path(&run_path, &record) {
                     repair_errors.push(format!("write summary: {err}"));
                 }
             }
@@ -395,30 +407,32 @@ pub fn record_late_persistence_error(
 
 pub fn persist_terminal_run(
     artifacts: &ArtifactPaths,
-    persisted: &mut PersistedRunState,
     result: &mut RunResult,
 ) -> Result<(), String> {
-    let record = run_record(artifacts, persisted, result);
-    let state_copy = terminal_state(persisted, &record);
-    state::write(&artifacts.state_json, &state_copy)?;
-    *persisted = state_copy;
+    let mut record = read_run_record(&artifacts.run_json)?;
+    record.phase = RunPhase::Finished;
+    record.terminal_status = Some(result.status.clone());
+    record.pre_run_commit = result.pre_run_commit.clone();
+    record.commit = result.commit.clone();
+    record.snapshot_commits = result.snapshot_commits.clone();
+    record.changed_files = result.changed_files.clone();
+    record.error_message = result.error_message.clone();
+    record.persistence_error = result.persistence_error.clone();
+    write_run_record(&artifacts.run_json, &record)?;
 
     let summary = run_summary(&record);
     if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
-        record_state_persistence_error(
-            result,
-            &artifacts.state_json,
-            format!("write summary: {err}"),
-        )?;
+        record_run_persistence_error(result, &artifacts.run_json, format!("write summary: {err}"))?;
         return Ok(());
     }
 
     if let Err(err) = append_run_index(
         &artifacts.runs_index_jsonl,
         &RunIndexEntry {
-            run_id: persisted.run_id.clone(),
-            created_at: persisted.created_at,
-            state_path: artifacts.state_json.display().to_string(),
+            run_id: record.run_id.clone(),
+            created_at: record.created_at,
+            state_path: String::new(),
+            record_path: artifacts.run_json.display().to_string(),
             summary_path: artifacts.summary_json.display().to_string(),
         },
         &artifacts.vibe_log,
@@ -429,12 +443,38 @@ pub fn persist_terminal_run(
     Ok(())
 }
 
+pub fn persist_result_from_run(path: &Path, result_path: &Path) -> Result<(), String> {
+    let record = read_run_record(path)?;
+    let result = RunResult {
+        run_id: Some(record.run_id),
+        status: record.terminal_status.expect("terminal record status"),
+        branch: record.branch,
+        worktree: record.worktree,
+        model: record.model,
+        pre_run_commit: record.pre_run_commit,
+        commit: record.commit,
+        snapshot_commits: record.snapshot_commits,
+        artifacts_dir: Some(record.artifacts_dir),
+        events_log_path: Some(record.events_log_path),
+        stderr_path: Some(record.stderr_path),
+        run_path: Some(record.run_path),
+        summary_path: Some(record.summary_path),
+        changed_files: record.changed_files,
+        persistence_error: record.persistence_error,
+        error_message: record.error_message,
+    };
+    write_json_atomic(result_path, &result, "result")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{persist_terminal_run, record_late_persistence_error, ArtifactPaths, RunSummary};
+    use super::{
+        persist_terminal_run, read_run_record, record_late_persistence_error, ArtifactPaths,
+        RunRecord, RunSummary,
+    };
     use crate::{
         result::{RunResult, Status},
-        state::{self, PersistedRunState, RunPhase},
+        state::RunPhase,
     };
     use tempfile::tempdir;
 
@@ -459,11 +499,8 @@ mod tests {
         }
     }
 
-    fn sample_state(
-        summary_path: &std::path::Path,
-        artifacts_dir: &std::path::Path,
-    ) -> PersistedRunState {
-        PersistedRunState {
+    fn sample_record(summary_path: &std::path::Path, artifacts_dir: &std::path::Path) -> RunRecord {
+        RunRecord {
             run_id: "run-id".to_string(),
             key: "pdev-099b".to_string(),
             slug: "pdev-099b".to_string(),
@@ -476,13 +513,12 @@ mod tests {
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
-            artifacts_dir: Some(artifacts_dir.display().to_string()),
-            events_log_path: Some(artifacts_dir.join("events.jsonl").display().to_string()),
-            stderr_path: Some(artifacts_dir.join("agent.stderr.log").display().to_string()),
-            run_path: Some(artifacts_dir.join("run.json").display().to_string()),
-            result_path: Some(artifacts_dir.join("result.json").display().to_string()),
-            wrapper_log_path: Some(artifacts_dir.join("vibe.log").display().to_string()),
-            summary_path: Some(summary_path.display().to_string()),
+            artifacts_dir: artifacts_dir.display().to_string(),
+            run_path: artifacts_dir.join("run.json").display().to_string(),
+            summary_path: summary_path.display().to_string(),
+            result_path: artifacts_dir.join("result.json").display().to_string(),
+            events_log_path: artifacts_dir.join("events.jsonl").display().to_string(),
+            stderr_path: artifacts_dir.join("agent.stderr.log").display().to_string(),
             changed_files: vec!["vibe/src/ledger.rs".to_string()],
             error_message: None,
             persistence_error: None,
@@ -511,30 +547,72 @@ mod tests {
     }
 
     #[test]
-    fn late_persistence_error_updates_run_state_when_summary_is_missing() {
+    fn late_persistence_error_updates_run_record() {
         let temp = tempdir().expect("tempdir");
         let artifacts_dir = temp.path().join("run");
         std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
         let summary_path = artifacts_dir.join("summary.json");
-        let state_path = artifacts_dir.join("run-state.json");
-        let state = sample_state(&summary_path, &artifacts_dir);
-        state::write(&state_path, &state).expect("write state");
+        let record_path = artifacts_dir.join("run.json");
+        let state = sample_record(&summary_path, &artifacts_dir);
+        super::write_run_record(&record_path, &state).expect("write record");
+        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
-        let err =
-            record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
-                .expect_err("missing summary should still report repair error");
+        record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
+            .expect("repair run record");
 
-        assert!(err.starts_with("read summary:"));
         assert_eq!(
             result.persistence_error.as_deref(),
             Some("append runs_index.jsonl: boom")
         );
 
-        let repaired = state::read(&state_path).expect("read repaired state");
+        let repaired = read_run_record(&record_path).expect("read repaired record");
         assert_eq!(
             repaired.persistence_error.as_deref(),
             Some("append runs_index.jsonl: boom")
+        );
+
+        let repaired_summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&summary_path).expect("read summary"))
+                .expect("parse summary");
+        assert_eq!(
+            repaired_summary["persistence_error"],
+            "append runs_index.jsonl: boom"
+        );
+        assert_eq!(
+            repaired_summary["summary_path"],
+            summary_path.display().to_string()
+        );
+    }
+
+    #[test]
+    fn late_persistence_error_rewrites_only_trusted_summary_path() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("run");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        let summary_path = artifacts_dir.join("summary.json");
+        let outside_summary_path = temp.path().join("outside-summary.json");
+        let record_path = artifacts_dir.join("run.json");
+        let mut state = sample_record(&summary_path, &artifacts_dir);
+        state.summary_path = outside_summary_path.display().to_string();
+        super::write_run_record(&record_path, &state).expect("write record");
+        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
+        let mut result = sample_result(&artifacts_dir, &summary_path);
+
+        record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
+            .expect("repair run record");
+
+        assert!(!outside_summary_path.exists());
+
+        let repaired = read_run_record(&record_path).expect("read repaired record");
+        assert_eq!(repaired.summary_path, summary_path.display().to_string());
+
+        let repaired_summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&summary_path).expect("read summary"))
+                .expect("parse summary");
+        assert_eq!(
+            repaired_summary["summary_path"],
+            summary_path.display().to_string()
         );
     }
 
@@ -546,13 +624,13 @@ mod tests {
         std::fs::create_dir_all(artifacts_dir.join("summary.json")).expect("block summary file");
         let artifacts = sample_artifacts(&artifacts_dir);
         let summary_path = artifacts.summary_json.clone();
-        let mut persisted = sample_state(&summary_path, &artifacts_dir);
+        let persisted = sample_record(&summary_path, &artifacts_dir);
+        super::write_run_record(&artifacts.run_json, &persisted).expect("write record");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
-        persist_terminal_run(&artifacts, &mut persisted, &mut result)
-            .expect("persist terminal run");
+        persist_terminal_run(&artifacts, &mut result).expect("persist terminal run");
 
-        let repaired = state::read(&artifacts.state_json).expect("read repaired state");
+        let repaired = read_run_record(&artifacts.run_json).expect("read repaired record");
         assert_eq!(repaired.phase, RunPhase::Finished);
         assert_eq!(repaired.terminal_status, Some(Status::Completed));
         assert_eq!(repaired.commit.as_deref(), Some("def"));
@@ -580,9 +658,11 @@ mod tests {
 
         let value = serde_json::to_value(summary).expect("serialize summary");
 
+        assert_eq!(value["phase"], "finished");
         assert_eq!(value["summary_path"], summary_path.display().to_string());
         assert_eq!(value["result_path"], "");
         assert_eq!(value["created_at"], 0);
+        assert_eq!(value["status"], "completed");
         assert_eq!(value["persistence_error"], "boom");
     }
 }
