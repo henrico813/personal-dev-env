@@ -310,6 +310,13 @@ fn write_summary(path: &Path, summary: &RunSummary) -> Result<(), String> {
     write_json_atomic(path, summary, "summary")
 }
 
+fn rewrite_summary_from_record(record: &RunRecord) -> Result<(), String> {
+    if record.summary_path.is_empty() || record.terminal_status.is_none() {
+        return Ok(());
+    }
+    write_summary(Path::new(&record.summary_path), &run_summary(record))
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn append_run_index(path: &Path, entry: &RunIndexEntry, log_path: &Path) -> Result<(), String> {
     let existing = read_runs_index(path)?;
@@ -375,6 +382,8 @@ pub fn record_late_persistence_error(
                 record.persistence_error = Some(merged.clone());
                 if let Err(err) = write_run_record(&state_path, &record) {
                     repair_errors.push(format!("write run record: {err}"));
+                } else if let Err(err) = rewrite_summary_from_record(&record) {
+                    repair_errors.push(format!("write summary: {err}"));
                 }
             }
             Err(err) => repair_errors.push(err),
@@ -538,6 +547,7 @@ mod tests {
         let record_path = artifacts_dir.join("run.json");
         let state = sample_record(&summary_path, &artifacts_dir);
         super::write_run_record(&record_path, &state).expect("write record");
+        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
@@ -552,6 +562,15 @@ mod tests {
         assert_eq!(
             repaired.persistence_error.as_deref(),
             Some("append runs_index.jsonl: boom")
+        );
+
+        let repaired_summary: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&summary_path).expect("read summary"),
+        )
+        .expect("parse summary");
+        assert_eq!(
+            repaired_summary["persistence_error"],
+            "append runs_index.jsonl: boom"
         );
     }
 

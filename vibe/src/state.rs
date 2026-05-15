@@ -1,11 +1,11 @@
 use crate::{
     ledger::{self, RunSummary},
-    observe,
     result::{RunResult, Status},
     worktree,
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -113,21 +113,49 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
     let index = ledger::runs_index_path(home, repo_root, slug);
     let entries =
         ledger::read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
+    let runs_dir = ledger::runs_root(home, repo_root, slug).join("runs");
 
-    for entry in entries.into_iter().rev() {
-        if !entry.record_path.is_empty() {
-            return Ok(Path::new(&entry.record_path).to_path_buf());
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    for entry in entries {
+        if entry.record_path.is_empty() {
+            continue;
+        }
+        let path = Path::new(&entry.record_path).to_path_buf();
+        if seen.insert(path.clone()) {
+            candidates.push(path);
         }
     }
 
-    for run_dir in observe::run_dirs_newest_to_oldest_in(home, repo_root, slug)? {
-        let run_path = run_dir.join("run.json");
-        if run_path.exists() {
-            return Ok(run_path);
+    if runs_dir.exists() {
+        for entry in fs::read_dir(&runs_dir).map_err(|err| format!("read runs dir: {err}"))? {
+            let entry = entry.map_err(|err| format!("read runs entry: {err}"))?;
+            let run_dir = entry.path();
+            if !run_dir.is_dir() {
+                continue;
+            }
+            let path = run_dir.join("run.json");
+            if seen.insert(path.clone()) {
+                candidates.push(path);
+            }
         }
     }
 
-    Err(format!("no run.json artifacts found for key {slug}"))
+    candidates
+        .into_iter()
+        .filter_map(|path| {
+            let record = ledger::record_json_from_path(&path).ok()?;
+            let created_at = record.get("created_at")?.as_u64()?;
+            Some((created_at, path))
+        })
+        .max_by(|(left_created_at, left_path), (right_created_at, right_path)| {
+            left_created_at
+                .cmp(right_created_at)
+                .then_with(|| left_path.cmp(right_path))
+        })
+        .map(|(_, path)| path)
+        .ok_or_else(|| format!("no run.json artifacts found for key {slug}"))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -171,6 +199,39 @@ mod tests {
         }
     }
 
+    fn write_run_json(path: &std::path::Path, run_id: &str, created_at: u64) {
+        let parent = path.parent().expect("run dir");
+        std::fs::create_dir_all(parent).expect("run dir");
+        std::fs::write(
+            path,
+            serde_json::json!({
+                "run_id": run_id,
+                "key": "PDEV-055 demo/key",
+                "slug": "pdev-055-demo-key",
+                "created_at": created_at,
+                "phase": "finished",
+                "terminal_status": "completed",
+                "branch": "vibe/pdev-055-demo-key",
+                "worktree": "/tmp/worktree",
+                "model": "openai-codex/gpt-5.4",
+                "pre_run_commit": null,
+                "commit": null,
+                "snapshot_commits": [],
+                "changed_files": [],
+                "artifacts_dir": "/tmp/run",
+                "run_path": "/tmp/run/run.json",
+                "summary_path": "/tmp/run/summary.json",
+                "result_path": "/tmp/run/result.json",
+                "events_log_path": "/tmp/run/events.jsonl",
+                "stderr_path": "/tmp/run/agent.stderr.log",
+                "error_message": null,
+                "persistence_error": null
+            })
+            .to_string(),
+        )
+        .expect("write run json");
+    }
+
     #[test]
     fn state_round_trips_through_atomic_write() {
         let temp = tempdir().expect("tempdir");
@@ -197,36 +258,8 @@ mod tests {
         let runs = temp
             .path()
             .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
-        std::fs::create_dir_all(runs.join("1778000000-42")).expect("run dir");
-
-        let run_json = serde_json::json!({
-            "run_id": "run-id",
-            "key": "PDEV-055 demo/key",
-            "slug": "pdev-055-demo-key",
-            "created_at": 1778000000_u64,
-            "phase": "finished",
-            "terminal_status": "completed",
-            "branch": "vibe/pdev-055-demo-key",
-            "worktree": "/tmp/worktree",
-            "model": "openai-codex/gpt-5.4",
-            "pre_run_commit": "abc",
-            "commit": null,
-            "snapshot_commits": ["snap"],
-            "changed_files": [],
-            "artifacts_dir": "/tmp/run",
-            "run_path": "/tmp/run/run.json",
-            "summary_path": "/tmp/run/summary.json",
-            "result_path": "/tmp/run/result.json",
-            "events_log_path": "/tmp/run/events.jsonl",
-            "stderr_path": "/tmp/run/agent.stderr.log",
-            "error_message": null,
-            "persistence_error": null
-        });
-        std::fs::write(
-            runs.join("1778000000-42/run.json"),
-            serde_json::to_string_pretty(&run_json).expect("serialize run json"),
-        )
-        .expect("write run json");
+        let run_path = runs.join("1778000000-42/run.json");
+        write_run_json(&run_path, "run-id", 1778000000);
 
         let summary =
             latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
@@ -278,39 +311,75 @@ mod tests {
         let runs = temp
             .path()
             .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
-        std::fs::create_dir_all(runs.join("a-uuid")).expect("run dir");
-        std::fs::write(
-            runs.join("a-uuid/run.json"),
-            serde_json::json!({
-                "run_id": "newer-run",
-                "key": "PDEV-055 demo/key",
-                "slug": "pdev-055-demo-key",
-                "created_at": 20,
-                "phase": "finished",
-                "terminal_status": "completed",
-                "branch": "vibe/pdev-055-demo-key",
-                "worktree": "/tmp/worktree",
-                "model": "openai-codex/gpt-5.4",
-                "pre_run_commit": null,
-                "commit": null,
-                "snapshot_commits": [],
-                "changed_files": [],
-                "artifacts_dir": "/tmp/run",
-                "run_path": "/tmp/run/run.json",
-                "summary_path": "/tmp/run/summary.json",
-                "result_path": "/tmp/run/result.json",
-                "events_log_path": "/tmp/run/events.jsonl",
-                "stderr_path": "/tmp/run/agent.stderr.log",
-                "error_message": null,
-                "persistence_error": null
-            })
-            .to_string(),
-        )
-        .expect("write run json");
+        write_run_json(&runs.join("a-uuid/run.json"), "newer-run", 20);
 
         let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
             .expect("latest record json");
         assert_eq!(latest["run_id"], "newer-run");
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_summary_skips_broken_newest_index_entry() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let slug_root = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key");
+        let runs = slug_root.join("runs");
+        let older_run = runs.join("1778000000-42/run.json");
+        write_run_json(&older_run, "older-run", 1778000000);
+        std::fs::write(
+            slug_root.join("runs_index.jsonl"),
+            format!(
+                "{{\"run_id\":\"older-run\",\"created_at\":1778000000,\"state_path\":\"\",\"record_path\":\"{}\",\"summary_path\":\"{}\"}}\n{{\"run_id\":\"broken-run\",\"created_at\":1778000001,\"state_path\":\"\",\"record_path\":\"{}\",\"summary_path\":\"{}\"}}\n",
+                older_run.display(),
+                runs.join("1778000000-42/summary.json").display(),
+                runs.join("1778000001-43/run.json").display(),
+                runs.join("1778000001-43/summary.json").display(),
+            ),
+        )
+        .expect("write runs index");
+
+        let summary =
+            latest_summary_for_key(&repo_root, "PDEV-055 demo/key").expect("latest summary");
+        assert_eq!(summary.run_id, "older-run");
+
+        if let Some(saved_home) = saved_home {
+            std::env::set_var("HOME", saved_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn latest_record_json_uses_created_at_over_uuid_path_order() {
+        let _guard = super::home_env_lock().lock().expect("lock HOME env");
+        let temp = tempdir().expect("tempdir");
+        let saved_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", temp.path());
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+
+        let runs = temp
+            .path()
+            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        write_run_json(&runs.join("z-uuid/run.json"), "lexically-later", 10);
+        write_run_json(&runs.join("a-uuid/run.json"), "created-later", 20);
+
+        let latest = latest_record_json_for_key(&repo_root, "PDEV-055 demo/key")
+            .expect("latest record json");
+        assert_eq!(latest["run_id"], "created-later");
 
         if let Some(saved_home) = saved_home {
             std::env::set_var("HOME", saved_home);
