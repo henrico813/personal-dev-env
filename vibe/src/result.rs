@@ -124,6 +124,7 @@ mod tests {
         assert_eq!(value["pre_run_commit"], "abc");
         assert_eq!(value["run_path"], "/tmp/run/run.json");
         assert_eq!(value["summary_path"], "/tmp/run/summary.json");
+        assert_eq!(value["changed_files"], serde_json::json!([]));
     }
 
     #[test]

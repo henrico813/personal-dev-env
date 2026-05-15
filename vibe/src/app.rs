@@ -3,7 +3,7 @@ use crate::{
     ledger, observe, prompts,
     result::{RunResult, Status},
     sandbox, snapshot,
-    state::{self, PersistedRunState, RunPhase},
+    state::RunPhase,
     worktree,
 };
 use std::{fs, fs::OpenOptions, io::Write, path::Path};
@@ -26,12 +26,10 @@ fn append_wrapper_log(path: &Path, message: &str) -> Result<(), String> {
 
 fn persist_phase(
     artifacts: &observe::ArtifactPaths,
-    persisted: &mut PersistedRunState,
     phase: RunPhase,
     note: &str,
 ) -> Result<(), String> {
-    persisted.phase = phase;
-    state::write(&artifacts.state_json, persisted)?;
+    ledger::persist_phase(&artifacts.run_json, phase)?;
     append_wrapper_log(&artifacts.vibe_log, note)
 }
 
@@ -88,12 +86,8 @@ fn build_result(
     }
 }
 
-fn finish_result(
-    artifacts: &observe::ArtifactPaths,
-    persisted: &mut PersistedRunState,
-    mut result: RunResult,
-) -> RunResult {
-    if let Err(err) = ledger::persist_terminal_run(artifacts, persisted, &mut result) {
+fn finish_result(artifacts: &observe::ArtifactPaths, mut result: RunResult) -> RunResult {
+    if let Err(err) = ledger::persist_terminal_run(artifacts, &mut result) {
         let _ = ledger::record_late_persistence_error(&mut result, err);
     }
     result
@@ -142,31 +136,16 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
-    let mut persisted = PersistedRunState {
-        run_id,
-        key: session.key.clone(),
-        slug: session.slug.clone(),
+    if let Err(err) = ledger::start_run(
+        &artifacts,
+        &session.key,
+        &session.slug,
+        &session.branch,
+        &session.worktree,
+        &args.model,
         created_at,
-        branch: Some(session.branch.clone()),
-        worktree: Some(session.worktree.display().to_string()),
-        model: Some(args.model.clone()),
-        phase: RunPhase::PreparingArtifacts,
-        terminal_status: None,
-        pre_run_commit: None,
-        commit: None,
-        snapshot_commits: Vec::new(),
-        artifacts_dir: Some(artifacts.dir.display().to_string()),
-        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-        stderr_path: Some(artifacts.stderr_log.display().to_string()),
-        run_path: Some(artifacts.run_json.display().to_string()),
-        result_path: Some(artifacts.result_json.display().to_string()),
-        wrapper_log_path: Some(artifacts.vibe_log.display().to_string()),
-        summary_path: Some(artifacts.summary_json.display().to_string()),
-        changed_files: Vec::new(),
-        error_message: None,
-        persistence_error: None,
-    };
-    if let Err(err) = state::write(&artifacts.state_json, &persisted) {
+        run_id,
+    ) {
         return build_result(
             &session,
             &artifacts,
@@ -177,7 +156,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared") {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -186,15 +164,9 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    if let Err(err) = persist_phase(
-        &artifacts,
-        &mut persisted,
-        RunPhase::CopyingPrompt,
-        "copy prompt",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::CopyingPrompt, "copy prompt") {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -208,7 +180,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -221,7 +192,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -234,7 +204,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -243,15 +212,9 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    if let Err(err) = persist_phase(
-        &artifacts,
-        &mut persisted,
-        RunPhase::CheckingDirty,
-        "check dirty",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::CheckingDirty, "check dirty") {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -263,7 +226,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -275,13 +237,11 @@ pub fn execute(args: RunArgs) -> RunResult {
 
     if let Err(err) = persist_phase(
         &artifacts,
-        &mut persisted,
         RunPhase::ReadingPreRunCommit,
         "read pre-run commit",
     ) {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -295,7 +255,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -305,16 +264,20 @@ pub fn execute(args: RunArgs) -> RunResult {
             )
         }
     };
-    persisted.pre_run_commit = Some(pre_run_commit.clone());
-    if let Err(err) = persist_phase(
-        &artifacts,
-        &mut persisted,
-        RunPhase::PreparingSandbox,
-        "prepare sandbox",
-    ) {
+    if let Err(err) = ledger::persist_pre_run_commit(&artifacts.run_json, &pre_run_commit) {
         return finish_result(
             &artifacts,
-            &mut persisted,
+            build_result(
+                &session,
+                &artifacts,
+                &args.model,
+                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
+            ),
+        );
+    }
+    if let Err(err) = persist_phase(&artifacts, RunPhase::PreparingSandbox, "prepare sandbox") {
+        return finish_result(
+            &artifacts,
             build_result(
                 &session,
                 &artifacts,
@@ -333,7 +296,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -349,15 +311,9 @@ pub fn execute(args: RunArgs) -> RunResult {
         }
     };
     let mounts = session.sandbox_mounts();
-    if let Err(err) = persist_phase(
-        &artifacts,
-        &mut persisted,
-        RunPhase::RunningAgent,
-        "run agent",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -383,7 +339,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -401,7 +356,6 @@ pub fn execute(args: RunArgs) -> RunResult {
     if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -416,15 +370,9 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
 
-    if let Err(err) = persist_phase(
-        &artifacts,
-        &mut persisted,
-        RunPhase::ReadingSnapshots,
-        "read snapshots",
-    ) {
+    if let Err(err) = persist_phase(&artifacts, RunPhase::ReadingSnapshots, "read snapshots") {
         return finish_result(
             &artifacts,
-            &mut persisted,
             build_result(
                 &session,
                 &artifacts,
@@ -443,7 +391,6 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -458,13 +405,11 @@ pub fn execute(args: RunArgs) -> RunResult {
             );
         }
     };
-    persisted.snapshot_commits = snapshot_commits.clone();
     let dirty_after = match worktree::is_dirty(&session.worktree) {
         Ok(dirty) => dirty,
         Err(err) => {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -488,15 +433,9 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut error_message = None;
 
     if dirty_after {
-        if let Err(err) = persist_phase(
-            &artifacts,
-            &mut persisted,
-            RunPhase::CommittingResult,
-            "commit result",
-        ) {
+        if let Err(err) = persist_phase(&artifacts, RunPhase::CommittingResult, "commit result") {
             return finish_result(
                 &artifacts,
-                &mut persisted,
                 build_result(
                     &session,
                     &artifacts,
@@ -551,7 +490,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         },
     );
     result.persistence_error = persistence_error;
-    finish_result(&artifacts, &mut persisted, result)
+    finish_result(&artifacts, result)
 }
 
 #[cfg(test)]
