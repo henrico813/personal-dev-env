@@ -149,11 +149,13 @@ fn latest_run_json_for_key(repo_root: &Path, slug: &str) -> Result<PathBuf, Stri
             let created_at = record.get("created_at")?.as_u64()?;
             Some((created_at, path))
         })
-        .max_by(|(left_created_at, left_path), (right_created_at, right_path)| {
-            left_created_at
-                .cmp(right_created_at)
-                .then_with(|| left_path.cmp(right_path))
-        })
+        .max_by(
+            |(left_created_at, left_path), (right_created_at, right_path)| {
+                left_created_at
+                    .cmp(right_created_at)
+                    .then_with(|| left_path.cmp(right_path))
+            },
+        )
         .map(|(_, path)| path)
         .ok_or_else(|| format!("no run.json artifacts found for key {slug}"))
 }

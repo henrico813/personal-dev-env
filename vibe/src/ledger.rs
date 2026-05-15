@@ -564,10 +564,9 @@ mod tests {
             Some("append runs_index.jsonl: boom")
         );
 
-        let repaired_summary: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&summary_path).expect("read summary"),
-        )
-        .expect("parse summary");
+        let repaired_summary: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&summary_path).expect("read summary"))
+                .expect("parse summary");
         assert_eq!(
             repaired_summary["persistence_error"],
             "append runs_index.jsonl: boom"
