@@ -74,13 +74,14 @@ func TestWriteConfig(t *testing.T) {
 		},
 		{
 			name:  "existingcfg",
-			seed:  "{\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n",
+			seed:  "{\n  \"opencode_base_url\": \"http://127.0.0.1:4199\",\n  \"custom_key\": \"keep-me\"\n}\n",
 			state: VaultState{MainPath: "/vaults/main", WorkPath: "/vaults/work", Default: "work"},
 			wantChecks: []string{
 				`"main_vault": "/vaults/main"`,
 				`"work_vault": "/vaults/work"`,
 				`"default_vault": "work"`,
 				`"opencode_base_url": "http://127.0.0.1:4199"`,
+				`"custom_key": "keep-me"`,
 			},
 		},
 		{

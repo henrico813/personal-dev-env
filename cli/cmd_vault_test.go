@@ -252,20 +252,9 @@ func TestLocateDefaultRejectsBrokenWork(t *testing.T) {
 	}
 }
 
-func TestLocateAnyStaysStrict(t *testing.T) {
+func TestLocateRejectsAnySelector(t *testing.T) {
 	clearVaultEnv(t)
 	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	if err := os.MkdirAll(mainVault, 0o755); err != nil {
-		t.Fatalf("mkdir main vault: %v", err)
-	}
-	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
-	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
-		t.Fatalf("mkdir config parent: %v", err)
-	}
-	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
-	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"work_vault\": \""+workVault+"\"\n}\n", 0o644)
 	t.Setenv("HOME", homeDir)
 
 	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "--vault", "any", "--json", "--query", "needle")
@@ -279,8 +268,8 @@ func TestLocateAnyStaysStrict(t *testing.T) {
 	if result.Status != "error" {
 		t.Fatalf("unexpected status %q", result.Status)
 	}
-	if !strings.Contains(result.Error, workVault) {
-		t.Fatalf("expected work vault error, got %q", result.Error)
+	if !strings.Contains(result.Error, `invalid --vault value "any"`) {
+		t.Fatalf("expected invalid selector error, got %q", result.Error)
 	}
 }
 

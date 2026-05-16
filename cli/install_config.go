@@ -60,16 +60,39 @@ func preflightManagedSharedConfigSources(links []configLink) error {
 
 func writePDEPathsEnv(cfg *Config, existingLines map[string]string, runner Runner) error {
 	pathsEnv := filepath.Join(cfg.PDEConfigDir, "config.json")
-	content, err := json.MarshalIndent(pdeJSONConfig{
-		InstallPath:            cfg.RepoRoot,
-		Profile:                existingLines["PDE_PROFILE"],
-		MainVault:              existingLines["PDE_MAIN_VAULT"],
-		WorkVault:              existingLines["PDE_WORK_VAULT"],
-		DefaultVault:           existingLines[defaultVaultEnvKey],
-		OpenCodeBaseURL:        existingLines["OPENCODE_BASE_URL"],
-		OpenCodeInlineShimPort: existingLines["OPENCODE_INLINE_SHIM_PORT"],
-		OpenCodeInlineModel:    existingLines["OPENCODE_INLINE_MODEL"],
-	}, "", "  ")
+	configJSON := map[string]any{}
+	if info, err := os.Stat(pathsEnv); err == nil && info.Mode().IsRegular() {
+		configJSON, err = readPDEConfig(pathsEnv)
+		if err != nil {
+			return err
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("stat existing PDE config file %s: %w", pathsEnv, err)
+	}
+	configJSON["install_path"] = cfg.RepoRoot
+	if profile := existingLines["PDE_PROFILE"]; profile != "" {
+		configJSON["profile"] = profile
+	}
+	if mainVault := existingLines["PDE_MAIN_VAULT"]; mainVault != "" {
+		configJSON["main_vault"] = mainVault
+	}
+	if workVault := existingLines["PDE_WORK_VAULT"]; workVault != "" {
+		configJSON["work_vault"] = workVault
+	}
+	if defaultVault := existingLines[defaultVaultEnvKey]; defaultVault != "" {
+		configJSON["default_vault"] = defaultVault
+	}
+	if baseURL := existingLines["OPENCODE_BASE_URL"]; baseURL != "" {
+		configJSON["opencode_base_url"] = baseURL
+	}
+	if port := existingLines["OPENCODE_INLINE_SHIM_PORT"]; port != "" {
+		configJSON["opencode_inline_shim_port"] = port
+	}
+	if model := existingLines["OPENCODE_INLINE_MODEL"]; model != "" {
+		configJSON["opencode_inline_model"] = model
+	}
+
+	content, err := json.MarshalIndent(configJSON, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -100,31 +123,45 @@ func existingPDEPathsEnvLines(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read existing PDE config file %s: %w", path, err)
 	}
-	var cfg pdeJSONConfig
+	var cfg map[string]any
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
 	}
 	lines := map[string]string{}
-	if cfg.Profile != "" {
-		lines["PDE_PROFILE"] = cfg.Profile
+	if profile, err := readConfigStringField(cfg, "profile"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if profile != "" {
+		lines["PDE_PROFILE"] = profile
 	}
-	if cfg.MainVault != "" {
-		lines["PDE_MAIN_VAULT"] = cfg.MainVault
+	if mainVault, err := readConfigStringField(cfg, "main_vault"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if mainVault != "" {
+		lines["PDE_MAIN_VAULT"] = mainVault
 	}
-	if cfg.WorkVault != "" {
-		lines["PDE_WORK_VAULT"] = cfg.WorkVault
+	if workVault, err := readConfigStringField(cfg, "work_vault"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if workVault != "" {
+		lines["PDE_WORK_VAULT"] = workVault
 	}
-	if cfg.DefaultVault != "" {
-		lines[defaultVaultEnvKey] = cfg.DefaultVault
+	if defaultVault, err := readConfigStringField(cfg, "default_vault"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if defaultVault != "" {
+		lines[defaultVaultEnvKey] = defaultVault
 	}
-	if cfg.OpenCodeBaseURL != "" {
-		lines["OPENCODE_BASE_URL"] = cfg.OpenCodeBaseURL
+	if baseURL, err := readConfigStringField(cfg, "opencode_base_url"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if baseURL != "" {
+		lines["OPENCODE_BASE_URL"] = baseURL
 	}
-	if cfg.OpenCodeInlineShimPort != "" {
-		lines["OPENCODE_INLINE_SHIM_PORT"] = cfg.OpenCodeInlineShimPort
+	if port, err := readConfigStringField(cfg, "opencode_inline_shim_port"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if port != "" {
+		lines["OPENCODE_INLINE_SHIM_PORT"] = port
 	}
-	if cfg.OpenCodeInlineModel != "" {
-		lines["OPENCODE_INLINE_MODEL"] = cfg.OpenCodeInlineModel
+	if model, err := readConfigStringField(cfg, "opencode_inline_model"); err != nil {
+		return nil, fmt.Errorf("decode existing PDE config file %s: %w", path, err)
+	} else if model != "" {
+		lines["OPENCODE_INLINE_MODEL"] = model
 	}
 	return lines, nil
 }

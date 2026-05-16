@@ -213,11 +213,12 @@ func TestInstallConfigPreserveExisting(t *testing.T) {
 	}{
 		{
 			name: "vault opencode",
-			seed: "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n",
+			seed: "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\",\n  \"custom_key\": \"keep-me\"\n}\n",
 			wantContains: []string{
 				`"main_vault": "/vaults/main"`,
 				`"work_vault": "/vaults/work"`,
 				`"opencode_base_url": "http://127.0.0.1:4199"`,
+				`"custom_key": "keep-me"`,
 			},
 		},
 		{

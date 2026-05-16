@@ -1,10 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const defaultVaultEnvKey = "PDE_DEFAULT_VAULT"
@@ -28,21 +29,26 @@ type pdeJSONConfig struct {
 
 func readVaultState(homeDir string) (VaultState, error) {
 	path := filepath.Join(homeDir, ".config", "pde", "config.json")
-	data, err := os.ReadFile(path)
+	cfg, err := readPDEConfig(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return VaultState{}, nil
-		}
 		return VaultState{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
-	var cfg pdeJSONConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	mainPath, err := readConfigStringField(cfg, "main_vault")
+	if err != nil {
 		return VaultState{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
-	if cfg.DefaultVault != "" && cfg.DefaultVault != "main" && cfg.DefaultVault != "work" {
-		return VaultState{}, newVaultError(vaultInvalidPersistedSelector, nil, cfg.DefaultVault)
+	workPath, err := readConfigStringField(cfg, "work_vault")
+	if err != nil {
+		return VaultState{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
-	return VaultState{MainPath: cfg.MainVault, WorkPath: cfg.WorkVault, Default: cfg.DefaultVault}, nil
+	defaultVault, err := readConfigStringField(cfg, "default_vault")
+	if err != nil {
+		return VaultState{}, newVaultError(vaultReadConfigFailed, err, err)
+	}
+	if defaultVault != "" && defaultVault != "main" && defaultVault != "work" {
+		return VaultState{}, newVaultError(vaultInvalidPersistedSelector, nil, defaultVault)
+	}
+	return VaultState{MainPath: mainPath, WorkPath: workPath, Default: defaultVault}, nil
 }
 
 func writeVaultState(homeDir string, state VaultState) error {
@@ -51,21 +57,19 @@ func writeVaultState(homeDir string, state VaultState) error {
 	}
 
 	path := filepath.Join(homeDir, ".config", "pde", "config.json")
-	content, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
+	cfg, err := readPDEConfig(path)
+	if err != nil {
 		return newVaultError(vaultReadConfigFailed, err, err)
 	}
-	if err == nil {
-		var existing pdeJSONConfig
-		if err := json.Unmarshal(content, &existing); err != nil {
-			return newVaultError(vaultReadConfigFailed, err, err)
-		}
-		if existing.DefaultVault != "" && existing.DefaultVault != "main" && existing.DefaultVault != "work" {
-			return newVaultError(vaultInvalidPersistedSelector, nil, existing.DefaultVault)
-		}
+	existingDefault, err := readConfigStringField(cfg, "default_vault")
+	if err != nil {
+		return newVaultError(vaultReadConfigFailed, err, err)
+	}
+	if existingDefault != "" && existingDefault != "main" && existingDefault != "work" {
+		return newVaultError(vaultInvalidPersistedSelector, nil, existingDefault)
 	}
 
-	updated, err := writeHelper(string(content), state)
+	updated, err := writeHelper(cfg, state)
 	if err != nil {
 		return newVaultError(vaultReadConfigFailed, err, err)
 	}
@@ -82,21 +86,52 @@ func writeVaultState(homeDir string, state VaultState) error {
 	return nil
 }
 
-func writeHelper(content string, state VaultState) (string, error) {
-	cfg := pdeJSONConfig{}
-	if strings.TrimSpace(content) != "" {
-		if err := json.Unmarshal([]byte(content), &cfg); err != nil {
-			return "", err
+func readPDEConfig(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]any{}, nil
 		}
+		return nil, err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return map[string]any{}, nil
+	}
+
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return map[string]any{}, nil
+	}
+	return cfg, nil
+}
+
+func readConfigStringField(cfg map[string]any, key string) (string, error) {
+	value, ok := cfg[key]
+	if !ok || value == nil {
+		return "", nil
+	}
+	text, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("config key %q must be a string", key)
+	}
+	return text, nil
+}
+
+func writeHelper(cfg map[string]any, state VaultState) (string, error) {
+	if cfg == nil {
+		cfg = map[string]any{}
 	}
 	if state.MainPath != "" {
-		cfg.MainVault = state.MainPath
+		cfg["main_vault"] = state.MainPath
 	}
 	if state.WorkPath != "" {
-		cfg.WorkVault = state.WorkPath
+		cfg["work_vault"] = state.WorkPath
 	}
 	if state.Default != "" {
-		cfg.DefaultVault = state.Default
+		cfg["default_vault"] = state.Default
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")

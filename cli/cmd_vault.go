@@ -186,7 +186,7 @@ func newVaultLocateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any; default follows config.json")
+	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default; default follows config.json")
 	cmd.Flags().StringVar(&opts.Filename, "filename", "", "Exact note filename to locate")
 	cmd.Flags().StringVar(&opts.Query, "query", "", "Search query to locate")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Emit JSON output")

@@ -75,7 +75,7 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. If the user references a vault-style path, resolve it with `pde vault locate --json --vault default "<reference>"`. If that returns `error` because no default vault is configured, treat it as a PDE setup issue and stop. If it returns `not_found`, retry once with `--vault any "<reference>"`. Treat `ambiguous`, other `error` results, and a final `not_found` as stop-and-ask states. Use the vault helper for lookup only; do not use it to create destination paths. Use `--query` only when you explicitly want note-content search.
+3. If the user references a vault-style path, resolve it with `pde vault locate --json --vault default "<reference>"`. If that returns `error` because no default vault is configured, treat it as a PDE setup issue and stop. Treat `not_found`, `ambiguous`, and other `error` results as stop-and-ask states. Use the vault helper for lookup only; do not use it to create destination paths. Use `--query` only when you explicitly want note-content search.
 4. If the request is repo-backed, let `<artifact-dir>` be a unique per-plan temp artifact directory under `/tmp/opencode/`, then scaffold a structured surveil task at `<artifact-dir>` before broad repo research.
 5. Build the task using these mechanical rules:
    - Populate `<artifact-dir>/task.md` after scaffolding it.

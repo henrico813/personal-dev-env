@@ -67,14 +67,6 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 			return nil, err
 		}
 		return []string{workPath}, nil
-	case "any":
-		if err := requireVaultDir(mainPath, "PDE_MAIN_VAULT"); err != nil {
-			return nil, err
-		}
-		if err := requireVaultDir(workPath, "PDE_WORK_VAULT"); err != nil {
-			return nil, err
-		}
-		return []string{mainPath, workPath}, nil
 	default:
 		return nil, fmt.Errorf("invalid --vault value %q", selector)
 	}

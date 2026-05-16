@@ -47,6 +47,7 @@ function M.read(keys, opts)
 
   local decoded_ok, data = pcall(vim.fn.json_decode, content)
   if not decoded_ok or type(data) ~= "table" then
+    vim.notify_once("Invalid ~/.config/pde/config.json", vim.log.levels.WARN)
     return {}
   end
 
