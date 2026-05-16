@@ -253,7 +253,7 @@ func TestInstallConfigPreserveExisting(t *testing.T) {
 	}
 }
 
-func TestExistingPDEPathsEnvLinesReturnsErrorForUnexpectedStatFailure(t *testing.T) {
+func TestConfigReadStatError(t *testing.T) {
 	path := "bad\x00path"
 
 	_, err := existingPDEPathsEnvLines(path)
