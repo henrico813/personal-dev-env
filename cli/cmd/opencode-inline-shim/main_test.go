@@ -14,45 +14,67 @@ import (
 	"time"
 )
 
-func TestLoadConfigReadsPDEJSON(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("{\n  \"opencode_base_url\": \"http://127.0.0.1:5000\",\n  \"opencode_inline_shim_port\": \"5151\",\n  \"opencode_inline_model\": \"openai-codex/gpt-5.4-mini\"\n}\n"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	cfg, err := loadConfig()
-	if err != nil {
-		t.Fatalf("loadConfig() error = %v", err)
-	}
-	if cfg.port != "5151" {
-		t.Fatalf("port = %q", cfg.port)
-	}
-	if cfg.opencodeBaseURL != "http://127.0.0.1:5000" {
-		t.Fatalf("opencodeBaseURL = %q", cfg.opencodeBaseURL)
-	}
-	if cfg.inlineModel != "openai-codex/gpt-5.4-mini" {
-		t.Fatalf("inlineModel = %q", cfg.inlineModel)
-	}
-}
-
-func TestLoadConfigRejectsMalformedJSON(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("{\n  \"opencode_base_url\": \"oops\"\n"), 0o644); err != nil {
-		t.Fatalf("write malformed config: %v", err)
+func TestLoadConfigFromPDEJSON(t *testing.T) {
+	tests := []struct {
+		name        string
+		configBody  string
+		wantErr     bool
+		wantPort    string
+		wantBaseURL string
+		wantModel   string
+	}{
+		{
+			name: "reads persisted values",
+			configBody: "{\n" +
+				"  \"opencode_base_url\": \"http://127.0.0.1:5000\",\n" +
+				"  \"opencode_inline_shim_port\": \"5151\",\n" +
+				"  \"opencode_inline_model\": \"openai-codex/gpt-5.4-mini\"\n" +
+				"}\n",
+			wantPort:    "5151",
+			wantBaseURL: "http://127.0.0.1:5000",
+			wantModel:   "openai-codex/gpt-5.4-mini",
+		},
+		{
+			name: "rejects malformed json",
+			configBody: "{\n" +
+				"  \"opencode_base_url\": \"oops\"\n",
+			wantErr: true,
+		},
 	}
 
-	if _, err := loadConfig(); err == nil {
-		t.Fatal("expected loadConfig to fail on malformed JSON")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			homeDir := t.TempDir()
+			t.Setenv("HOME", homeDir)
+
+			configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
+			if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+				t.Fatalf("mkdir config dir: %v", err)
+			}
+			if err := os.WriteFile(configPath, []byte(tt.configBody), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfg, err := loadConfig()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected loadConfig to fail")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("loadConfig() error = %v", err)
+			}
+			if cfg.port != tt.wantPort {
+				t.Fatalf("port = %q", cfg.port)
+			}
+			if cfg.opencodeBaseURL != tt.wantBaseURL {
+				t.Fatalf("opencodeBaseURL = %q", cfg.opencodeBaseURL)
+			}
+			if cfg.inlineModel != tt.wantModel {
+				t.Fatalf("inlineModel = %q", cfg.inlineModel)
+			}
+		})
 	}
 }
 

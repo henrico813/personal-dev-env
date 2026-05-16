@@ -59,7 +59,9 @@ func TestWriteConfig(t *testing.T) {
 		name       string
 		seed       string
 		state      VaultState
+		wantErr    bool
 		wantChecks []string
+		wantExact  string
 	}{
 		{
 			name:  "missingcfg",
@@ -81,6 +83,13 @@ func TestWriteConfig(t *testing.T) {
 				`"opencode_base_url": "http://127.0.0.1:4199"`,
 			},
 		},
+		{
+			name:      "rejects malformed existing json",
+			seed:      "{\n",
+			state:     VaultState{MainPath: "/vaults/main"},
+			wantErr:   true,
+			wantExact: "{\n",
+		},
 	}
 
 	for _, tt := range tests {
@@ -94,7 +103,17 @@ func TestWriteConfig(t *testing.T) {
 				mustWriteFile(t, configJSON, tt.seed, 0o644)
 			}
 
-			if err := writeVaultState(homeDir, tt.state); err != nil {
+			err := writeVaultState(homeDir, tt.state)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected write vault state to fail")
+				}
+				if content := mustFileContents(t, configJSON, ""); content != tt.wantExact {
+					t.Fatalf("expected config to remain unchanged, got:\n%s", content)
+				}
+				return
+			}
+			if err != nil {
 				t.Fatalf("write vault state: %v", err)
 			}
 
@@ -105,21 +124,5 @@ func TestWriteConfig(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestWriteConfigRejectsMalformedExistingJSON(t *testing.T) {
-	homeDir := t.TempDir()
-	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
-	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
-		t.Fatalf("mkdir config parent: %v", err)
-	}
-	mustWriteFile(t, configJSON, "{\n", 0o644)
-
-	if err := writeVaultState(homeDir, VaultState{MainPath: "/vaults/main"}); err == nil {
-		t.Fatal("expected malformed config to fail")
-	}
-	if content := mustFileContents(t, configJSON, ""); content != "{\n" {
-		t.Fatalf("expected malformed config to remain unchanged, got:\n%s", content)
 	}
 }

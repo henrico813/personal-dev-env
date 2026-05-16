@@ -103,111 +103,154 @@ func TestLinkConfigBacksUpExistingDirectoryBeforeLinking(t *testing.T) {
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "directory contents")
 }
 
-func TestInstallConfigBacksUpConfigJSONRegularFileAndPreservesProfile(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
+func TestInstallConfigBackup(t *testing.T) {
+	tests := []struct {
+		name   string
+		seed   func(t *testing.T, cfg *Config, configJSON string)
+		assert func(t *testing.T, cfg *Config, configJSON string)
+	}{
+		{
+			name: "regular file",
+			seed: func(t *testing.T, _ *Config, configJSON string) {
+				mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
+			},
+			assert: func(t *testing.T, _ *Config, configJSON string) {
+				content := mustFileContents(t, configJSON, "")
+				if !strings.Contains(content, `"profile": "shared"`) {
+					t.Fatalf("expected profile field to be preserved, got:\n%s", content)
+				}
+				if !strings.Contains(content, `"install_path":`) {
+					t.Fatalf("expected generated install path, got:\n%s", content)
+				}
+				backup := mustSingleBackup(t, configJSON)
+				mustFileContents(t, backup, "{\n  \"profile\": \"shared\"\n}\n")
+			},
+		},
+		{
+			name: "readable symlink",
+			seed: func(t *testing.T, cfg *Config, configJSON string) {
+				seed := filepath.Join(cfg.HomeDir, "seed-config.json")
+				mustWriteFile(t, seed, "{\n  \"profile\": \"minimal\"\n}\n", 0o644)
+				if err := os.Symlink(seed, configJSON); err != nil {
+					t.Fatalf("seed symlink config.json: %v", err)
+				}
+			},
+			assert: func(t *testing.T, cfg *Config, configJSON string) {
+				content := mustFileContents(t, configJSON, "")
+				if !strings.Contains(content, `"profile": "minimal"`) {
+					t.Fatalf("expected preserved profile field, got:\n%s", content)
+				}
+				backup := mustSingleBackup(t, configJSON)
+				mustSymlinkTarget(t, backup, filepath.Join(cfg.HomeDir, "seed-config.json"))
+			},
+		},
+		{
+			name: "symlink dir",
+			seed: func(t *testing.T, cfg *Config, configJSON string) {
+				seedDir := filepath.Join(cfg.HomeDir, "config-json-dir")
+				if err := os.MkdirAll(seedDir, 0o755); err != nil {
+					t.Fatalf("mkdir seed dir: %v", err)
+				}
+				if err := os.Symlink(seedDir, configJSON); err != nil {
+					t.Fatalf("seed symlink config.json: %v", err)
+				}
+			},
+			assert: func(t *testing.T, cfg *Config, configJSON string) {
+				mustFileContents(t, configJSON, "")
+				backup := mustSingleBackup(t, configJSON)
+				mustSymlinkTarget(t, backup, filepath.Join(cfg.HomeDir, "config-json-dir"))
+			},
+		},
+		{
+			name: "directory",
+			seed: func(t *testing.T, _ *Config, configJSON string) {
+				if err := os.MkdirAll(filepath.Join(configJSON, "nested"), 0o755); err != nil {
+					t.Fatalf("mkdir config.json dir: %v", err)
+				}
+				mustWriteFile(t, filepath.Join(configJSON, "nested", "keep.txt"), "dir contents", 0o644)
+			},
+			assert: func(t *testing.T, _ *Config, configJSON string) {
+				mustFileContents(t, configJSON, "")
+				backup := mustSingleBackup(t, configJSON)
+				mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "dir contents")
+			},
+		},
+		{
+			name: "broken symlink",
+			seed: func(t *testing.T, cfg *Config, configJSON string) {
+				brokenTarget := filepath.Join(cfg.HomeDir, "missing-config.json")
+				if err := os.Symlink(brokenTarget, configJSON); err != nil {
+					t.Fatalf("seed broken symlink: %v", err)
+				}
+			},
+			assert: func(t *testing.T, cfg *Config, configJSON string) {
+				mustFileContents(t, configJSON, "")
+				backup := mustSingleBackup(t, configJSON)
+				mustSymlinkTarget(t, backup, filepath.Join(cfg.HomeDir, "missing-config.json"))
+			},
+		},
+	}
 
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, configJSON := newInstallConfigFixture(t)
+			tt.seed(t, cfg, configJSON)
+
+			if err := installConfig(cfg, Runner{}); err != nil {
+				t.Fatalf("install config: %v", err)
+			}
+
+			tt.assert(t, cfg, configJSON)
+		})
 	}
-	content := mustFileContents(t, configJSON, "")
-	if !strings.Contains(content, `"profile": "shared"`) {
-		t.Fatalf("expected profile field to be preserved, got:\n%s", content)
-	}
-	if !strings.Contains(content, `"install_path":`) {
-		t.Fatalf("expected generated install path, got:\n%s", content)
-	}
-	backup := mustSingleBackup(t, configJSON)
-	mustFileContents(t, backup, "{\n  \"profile\": \"shared\"\n}\n")
 }
 
-func TestInstallConfigBacksUpConfigJSONSymlinkToReadableFileAndPreservesProfile(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	seed := filepath.Join(cfg.HomeDir, "seed-config.json")
-	mustWriteFile(t, seed, "{\n  \"profile\": \"minimal\"\n}\n", 0o644)
-	if err := os.Symlink(seed, configJSON); err != nil {
-		t.Fatalf("seed symlink config.json: %v", err)
+func TestInstallConfigPreserveExisting(t *testing.T) {
+	tests := []struct {
+		name         string
+		seed         string
+		wantContains []string
+	}{
+		{
+			name: "vault opencode",
+			seed: "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n",
+			wantContains: []string{
+				`"main_vault": "/vaults/main"`,
+				`"work_vault": "/vaults/work"`,
+				`"opencode_base_url": "http://127.0.0.1:4199"`,
+			},
+		},
+		{
+			name: "default vault",
+			seed: "{\n  \"default_vault\": \"main\"\n}\n",
+			wantContains: []string{
+				`"default_vault": "main"`,
+			},
+		},
 	}
 
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
-	}
-	content := mustFileContents(t, configJSON, "")
-	if !strings.Contains(content, `"profile": "minimal"`) {
-		t.Fatalf("expected preserved profile field, got:\n%s", content)
-	}
-	backup := mustSingleBackup(t, configJSON)
-	mustSymlinkTarget(t, backup, seed)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, configJSON := newInstallConfigFixture(t)
+			mustWriteFile(t, configJSON, tt.seed, 0o644)
+			deprecated := filepath.Join(cfg.PDEConfigDir, "paths.env")
+			mustWriteFile(t, deprecated, "export PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
 
-func TestInstallConfigPreservesVaultAndOpencodeJSONFields(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n", 0o644)
+			if err := installConfig(cfg, Runner{}); err != nil {
+				t.Fatalf("install config: %v", err)
+			}
 
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
+			content := mustFileContents(t, configJSON, "")
+			for _, want := range tt.wantContains {
+				if !strings.Contains(content, want) {
+					t.Fatalf("expected %q in output, got:\n%s", want, content)
+				}
+			}
+			if _, err := os.Stat(deprecated); !os.IsNotExist(err) {
+				t.Fatalf("expected deprecated paths.env to be removed, got err=%v", err)
+			}
+		})
 	}
-	content := mustFileContents(t, configJSON, "")
-	if !strings.Contains(content, `"main_vault": "/vaults/main"`) {
-		t.Fatalf("expected main vault field to be preserved, got:\n%s", content)
-	}
-	if !strings.Contains(content, `"work_vault": "/vaults/work"`) {
-		t.Fatalf("expected work vault field to be preserved, got:\n%s", content)
-	}
-	if !strings.Contains(content, `"opencode_base_url": "http://127.0.0.1:4199"`) {
-		t.Fatalf("expected opencode base URL to be preserved, got:\n%s", content)
-	}
-}
-
-func TestInstallConfigRemovesDeprecatedPathsEnv(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	mustWriteFile(t, configJSON, "{\n  \"default_vault\": \"main\"\n}\n", 0o644)
-	deprecated := filepath.Join(cfg.PDEConfigDir, "paths.env")
-	mustWriteFile(t, deprecated, "export PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
-
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
-	}
-	if _, err := os.Stat(deprecated); !os.IsNotExist(err) {
-		t.Fatalf("expected deprecated paths.env to be removed, got err=%v", err)
-	}
-}
-
-func TestInstallConfigBacksUpConfigJSONSymlinkToDirectoryWithoutProfile(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	seedDir := filepath.Join(cfg.HomeDir, "config-json-dir")
-	if err := os.MkdirAll(seedDir, 0o755); err != nil {
-		t.Fatalf("mkdir seed dir: %v", err)
-	}
-	if err := os.Symlink(seedDir, configJSON); err != nil {
-		t.Fatalf("seed symlink config.json: %v", err)
-	}
-
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
-	}
-	mustFileContents(t, configJSON, "")
-	backup := mustSingleBackup(t, configJSON)
-	if info, err := os.Lstat(backup); err != nil {
-		t.Fatalf("lstat backup: %v", err)
-	} else if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("expected backup to remain symlink")
-	}
-}
-
-func TestInstallConfigBacksUpConfigJSONDirectoryWithoutProfile(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	if err := os.MkdirAll(filepath.Join(configJSON, "nested"), 0o755); err != nil {
-		t.Fatalf("mkdir config.json dir: %v", err)
-	}
-	mustWriteFile(t, filepath.Join(configJSON, "nested", "keep.txt"), "dir contents", 0o644)
-
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
-	}
-	mustFileContents(t, configJSON, "")
-	backup := mustSingleBackup(t, configJSON)
-	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "dir contents")
 }
 
 func TestExistingPDEPathsEnvLinesReturnsErrorForUnexpectedStatFailure(t *testing.T) {
@@ -222,35 +265,38 @@ func TestExistingPDEPathsEnvLinesReturnsErrorForUnexpectedStatFailure(t *testing
 	}
 }
 
-func TestInstallConfigBacksUpBrokenConfigJSONSymlinkWithoutProfile(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	brokenTarget := filepath.Join(cfg.HomeDir, "missing-config.json")
-	if err := os.Symlink(brokenTarget, configJSON); err != nil {
-		t.Fatalf("seed broken symlink: %v", err)
+func TestInstallConfigMissing(t *testing.T) {
+	tests := []struct {
+		name       string
+		arrange    func(t *testing.T, cfg *Config, configJSON string)
+		wantConfig string
+	}{
+		{
+			name: "managed source",
+			arrange: func(t *testing.T, cfg *Config, configJSON string) {
+				mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
+				if err := os.Remove(filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml")); err != nil {
+					t.Fatalf("remove managed source: %v", err)
+				}
+			},
+			wantConfig: "{\n  \"profile\": \"shared\"\n}\n",
+		},
 	}
 
-	if err := installConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install config: %v", err)
-	}
-	mustFileContents(t, configJSON, "")
-	backup := mustSingleBackup(t, configJSON)
-	mustSymlinkTarget(t, backup, brokenTarget)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, configJSON := newInstallConfigFixture(t)
+			tt.arrange(t, cfg, configJSON)
 
-func TestInstallConfigMissingManagedSourceFailsBeforeMutatingConfigOrLinks(t *testing.T) {
-	cfg, configJSON := newInstallConfigFixture(t)
-	mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
-	if err := os.Remove(filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml")); err != nil {
-		t.Fatalf("remove managed source: %v", err)
-	}
-
-	if err := installConfig(cfg, Runner{}); err == nil {
-		t.Fatal("expected error for missing managed source")
-	}
-	mustFileContents(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n")
-	mustNoBackups(t, configJSON)
-	if _, err := os.Lstat(filepath.Join(cfg.HomeDir, ".zshrc")); !os.IsNotExist(err) {
-		t.Fatalf("expected home link to remain untouched, got err=%v", err)
+			if err := installConfig(cfg, Runner{}); err == nil {
+				t.Fatal("expected error for missing managed source")
+			}
+			mustFileContents(t, configJSON, tt.wantConfig)
+			mustNoBackups(t, configJSON)
+			if _, err := os.Lstat(filepath.Join(cfg.HomeDir, ".zshrc")); !os.IsNotExist(err) {
+				t.Fatalf("expected home link to remain untouched, got err=%v", err)
+			}
+		})
 	}
 }
 
