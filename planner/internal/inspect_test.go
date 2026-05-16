@@ -147,6 +147,13 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	}
 }
 
+func TestTopicList(t *testing.T) {
+	input := wrappedIssueFrontmatterWithTopics([]string{"planner", "cli", "parsing"}) + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+}
+
 func TestSplitMarkdownEnvelopePreservesCanonicalWrapperBytes(t *testing.T) {
 	input := buildPlanWithFrontmatter(t)
 	envelope, err := splitMarkdownEnvelope(input)
@@ -219,19 +226,56 @@ func TestParseMarkdownRejectsMalformedDateCreated(t *testing.T) {
 	}
 }
 
-func TestParseMarkdownRejectsLegacyFrontmatterOrder(t *testing.T) {
+func TestParseMarkdownRejectsReorderedFields(t *testing.T) {
 	input := "---\n" +
 		"tags:\n" +
 		"  - \"#Ticket\"\n" +
 		"type: issue\n" +
 		"template_version: 1\n" +
-		"topics: []\n" +
 		"status: open\n" +
 		"project: PDEV-083\n" +
 		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
 		"---\n\n" + buildPlanNoFrontmatter(t)
 	if _, err := ParseMarkdown(input); err == nil {
-		t.Fatal("expected legacy frontmatter order to fail")
+		t.Fatal("expected reordered frontmatter to fail")
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsEmptyTopicsBlock(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"template_version: 1\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"topics:\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected empty topics block to fail")
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsDuplicateScalarField(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"status: done\n" +
+		"template_version: 1\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected duplicate scalar field to fail")
 	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -539,16 +583,31 @@ func buildPlanNoFrontmatter(t *testing.T) string {
 }
 
 func wrappedIssueFrontmatter() string {
-	return "---\n" +
-		"tags:\n" +
-		"  - \"#Ticket\"\n" +
-		"type: issue\n" +
-		"status: open\n" +
-		"template_version: 1\n" +
-		"project: PDEV-083\n" +
-		"date_created: 2026-05-12\n" +
-		"topics: []\n" +
-		"---\n\n"
+	return wrappedIssueFrontmatterWithTopics(nil)
+}
+
+func wrappedIssueFrontmatterWithTopics(topics []string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("tags:\n")
+	b.WriteString("  - \"#Ticket\"\n")
+	b.WriteString("type: issue\n")
+	b.WriteString("status: open\n")
+	b.WriteString("template_version: 1\n")
+	b.WriteString("project: PDEV-083\n")
+	b.WriteString("date_created: 2026-05-12\n")
+	if len(topics) == 0 {
+		b.WriteString("topics: []\n")
+	} else {
+		b.WriteString("topics:\n")
+		for _, topic := range topics {
+			b.WriteString("  - ")
+			b.WriteString(topic)
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("---\n\n")
+	return b.String()
 }
 
 func buildPlanWithFrontmatter(t *testing.T) string {
