@@ -45,7 +45,7 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 			}
 			return []string{workPath}, nil
 		default:
-			return nil, fmt.Errorf("PDE_DEFAULT_VAULT must be set to main or work")
+			return nil, newVaultError(vaultInvalidPersistedSelector, nil, defaultSelector)
 		}
 	case "main":
 		if err := requireVaultDir(mainPath, "PDE_MAIN_VAULT"); err != nil {

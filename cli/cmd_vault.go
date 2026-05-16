@@ -15,6 +15,97 @@ func newVaultCmd() *cobra.Command {
 		Short: "Manage persisted PDE vault selection and lookup",
 	}
 	cmd.AddCommand(newVaultDefaultCmd())
+
+	mainCmd := &cobra.Command{Use: "main", Short: "Manage the persisted main vault path"}
+	mainCmd.AddCommand(&cobra.Command{
+		Use:           "set <path>",
+		Short:         "Persist the main vault path",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			path, err := normalizeVaultPath(args[0])
+			if err != nil {
+				return err
+			}
+			usable, err := isUsableDefaultFallbackRoot(path)
+			if err != nil {
+				return err
+			}
+			if !usable {
+				return fmt.Errorf("vault %s is not a directory", path)
+			}
+			if err := writeVaultState(homeDir, VaultState{MainPath: path}); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), path)
+			return err
+		},
+	})
+
+	workCmd := &cobra.Command{Use: "work", Short: "Manage the persisted work vault path"}
+	workCmd.AddCommand(&cobra.Command{
+		Use:           "set <path>",
+		Short:         "Persist the work vault path",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			path, err := normalizeVaultPath(args[0])
+			if err != nil {
+				return err
+			}
+			usable, err := isUsableDefaultFallbackRoot(path)
+			if err != nil {
+				return err
+			}
+			if !usable {
+				return fmt.Errorf("vault %s is not a directory", path)
+			}
+			if err := writeVaultState(homeDir, VaultState{WorkPath: path}); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), path)
+			return err
+		},
+	})
+
+	cmd.AddCommand(mainCmd)
+	cmd.AddCommand(workCmd)
+	cmd.AddCommand(&cobra.Command{
+		Use:           "path [default|main|work]",
+		Short:         "Print the resolved vault root",
+		Args:          cobra.MaximumNArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			selector := "default"
+			if len(args) == 1 {
+				selector = args[0]
+			}
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			vaults, err := resolveVaultPaths(homeDir, selector)
+			if err != nil {
+				return err
+			}
+			if len(vaults) != 1 {
+				return fmt.Errorf("vault path requires a single resolved vault")
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), vaults[0])
+			return err
+		},
+	})
 	cmd.AddCommand(newVaultLocateCmd())
 	return cmd
 }
@@ -95,7 +186,7 @@ func newVaultLocateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any; default follows PDE_DEFAULT_VAULT")
+	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any; default follows config.json")
 	cmd.Flags().StringVar(&opts.Filename, "filename", "", "Exact note filename to locate")
 	cmd.Flags().StringVar(&opts.Query, "query", "", "Search query to locate")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Emit JSON output")

@@ -56,9 +56,9 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	homeDir := t.TempDir()
 	mainVault := filepath.Join(homeDir, "main")
 	workVault := filepath.Join(homeDir, "work")
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
 	}
 	if err := os.MkdirAll(mainVault, 0o755); err != nil {
 		t.Fatalf("mkdir main vault: %v", err)
@@ -66,7 +66,7 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	if err := os.MkdirAll(workVault, 0o755); err != nil {
 		t.Fatalf("mkdir work vault: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"work_vault\": \""+workVault+"\"\n}\n", 0o644)
 	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
 	mustWriteFile(t, filepath.Join(workVault, "work.md"), "needle", 0o644)
 
