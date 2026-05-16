@@ -1,28 +1,12 @@
 local M = {}
 
-local paths_env = vim.fn.expand("~/.config/pde/paths.env")
+local config_json = vim.fn.expand("~/.config/pde/config.json")
 
 local function trim_quoted_env_value(value)
-  if type(value) ~= "string" or #value < 2 then
-    return value
-  end
-
-  local first = value:sub(1, 1)
-  local last = value:sub(-1)
-  if (first == '"' and last == '"') or (first == "'" and last == "'") then
-    return value:sub(2, -2)
-  end
-
   return value
 end
 
 local function expand_env(value)
-  value = value:gsub("%${([A-Za-z_][A-Za-z0-9_]*)}", function(name)
-    return vim.env[name] or ""
-  end)
-  value = value:gsub("%$([A-Za-z_][A-Za-z0-9_]*)", function(name)
-    return vim.env[name] or ""
-  end)
   return value
 end
 
@@ -53,29 +37,41 @@ function M.read(keys, opts)
     path_keys[key] = true
   end
 
-  local file = io.open(paths_env, "r")
+  local file = io.open(config_json, "r")
   if not file then
     return {}
   end
 
+  local content = file:read("*a")
+  file:close()
+
+  local decoded_ok, data = pcall(vim.fn.json_decode, content)
+  if not decoded_ok or type(data) ~= "table" then
+    vim.notify_once("Invalid ~/.config/pde/config.json", vim.log.levels.WARN)
+    return {}
+  end
+
+  local raw = {
+    PDE_INSTALL_PATH = data.install_path,
+    PDE_PROFILE = data.profile,
+    PDE_MAIN_VAULT = data.main_vault,
+    PDE_WORK_VAULT = data.work_vault,
+    PDE_DEFAULT_VAULT = data.default_vault,
+    OPENCODE_BASE_URL = data.opencode_base_url,
+    OPENCODE_INLINE_SHIM_PORT = data.opencode_inline_shim_port,
+    OPENCODE_INLINE_MODEL = data.opencode_inline_model,
+  }
+
   local values = {}
-  for line in file:lines() do
-    local stripped = line:match("^%s*(.-)%s*$")
-    if stripped ~= "" and stripped:sub(1, 1) ~= "#" then
-      local key, value = stripped:match("^export%s+([A-Z0-9_]+)%s*=%s*(.-)%s*$")
-      if not key then
-        key, value = stripped:match("^([A-Z0-9_]+)%s*=%s*(.-)%s*$")
-      end
-      if key and wanted[key] then
-        if path_keys[key] then
-          values[key] = normalize_path_value(value)
-        else
-          values[key] = trim_quoted_env_value(value)
-        end
+  for key, value in pairs(raw) do
+    if wanted[key] then
+      if path_keys[key] then
+        values[key] = normalize_path_value(value)
+      else
+        values[key] = trim_quoted_env_value(value)
       end
     end
   end
-  file:close()
 
   return values
 end

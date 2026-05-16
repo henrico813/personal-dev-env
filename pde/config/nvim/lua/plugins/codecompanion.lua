@@ -12,6 +12,7 @@ for _, key in ipairs(opencode_env_keys) do
 end
 
 local function refresh_opencode_env()
+  -- Neovim still injects OPENCODE_* into its child processes from config.json.
   local values = pde_paths.read(opencode_env_keys)
   for _, key in ipairs(opencode_env_keys) do
     if not inherited_opencode_env[key] then

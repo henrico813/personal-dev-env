@@ -31,7 +31,7 @@ func TestInstallCmdRunsMinimal(t *testing.T) {
 	dryRun := stdout.String()
 	markers := []string{
 		"DRY-RUN: run legacy minimal base",
-		"DRY-RUN: write PDE paths.env",
+		"DRY-RUN: write PDE config.json",
 		"DRY-RUN: install obsidian.nvim",
 		"DRY-RUN: verify cargo",
 	}

@@ -103,20 +103,7 @@ check_file ~/.config/nvim/init.lua "PDE nvim config"
 check_dir ~/.config/nvim/pack/plugins/start "PDE nvim plugin pack"
 check_link ~/.config/nvim "pde/config/nvim"
 
-# PDE config
-check_file ~/.config/pde/paths.env "PDE paths.env"
-
-if grep -Fxq 'export PDE_MAIN_VAULT=""' ~/.config/pde/paths.env; then
-    pass "PDE_MAIN_VAULT placeholder"
-else
-    fail "PDE_MAIN_VAULT placeholder missing from ~/.config/pde/paths.env"
-fi
-
-if grep -Fxq 'export PDE_WORK_VAULT=""' ~/.config/pde/paths.env; then
-    pass "PDE_WORK_VAULT placeholder"
-else
-    fail "PDE_WORK_VAULT placeholder missing from ~/.config/pde/paths.env"
-fi
+# PDE config is owned by the Go CLI; installer smoke tests stay runtime-focused.
 
 # Config symlinks (match the config suffix so both standalone and combined repo installs pass)
 check_link ~/.zshrc "pde/config/zsh/zshrc"

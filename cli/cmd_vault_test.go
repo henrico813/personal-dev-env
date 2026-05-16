@@ -32,6 +32,17 @@ func TestRootCmdRegistersVaultLocate(t *testing.T) {
 	if findSubcommand(defaultCmd, "set") == nil {
 		t.Fatal("expected vault default set command to be registered")
 	}
+	mainCmd := findSubcommand(vault, "main")
+	if mainCmd == nil || findSubcommand(mainCmd, "set") == nil {
+		t.Fatal("expected vault main set command to be registered")
+	}
+	workCmd := findSubcommand(vault, "work")
+	if workCmd == nil || findSubcommand(workCmd, "set") == nil {
+		t.Fatal("expected vault work set command to be registered")
+	}
+	if findSubcommand(vault, "path") == nil {
+		t.Fatal("expected vault path command to be registered")
+	}
 }
 
 func TestVaultLocateDefaultsToSelectorDefault(t *testing.T) {
@@ -52,11 +63,11 @@ func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workVault, "projects", "alpha"), 0o755); err != nil {
 		t.Fatalf("mkdir work vault: %v", err)
 	}
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"work\"\n", 0o644)
+	mustWriteFile(t, configJSON, "{\n  \"work_vault\": \""+workVault+"\",\n  \"default_vault\": \"work\"\n}\n", 0o644)
 	mustWriteFile(t, filepath.Join(workVault, "projects", "alpha", "note.md"), "needle", 0o644)
 	t.Setenv("HOME", homeDir)
 
@@ -149,15 +160,15 @@ func TestVaultDefaultGetPrintsUnsetWhenNotPersisted(t *testing.T) {
 func TestVaultDefaultSetPersistsSelectorAndGetPrintsIt(t *testing.T) {
 	clearVaultEnv(t)
 	homeDir := t.TempDir()
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
 	}
 	mainVault := filepath.Join(homeDir, "main")
 	if err := os.MkdirAll(mainVault, 0o755); err != nil {
 		t.Fatalf("mkdir main vault: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "# existing\nexport PDE_MAIN_VAULT=\""+mainVault+"\"\nexport OPENCODE_BASE_URL=\"http://127.0.0.1:4199\"\n", 0o644)
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n", 0o644)
 	t.Setenv("HOME", homeDir)
 
 	stdout, stderr, err := executeVaultLocate(t, "vault", "default", "set", "main")
@@ -171,12 +182,12 @@ func TestVaultDefaultSetPersistsSelectorAndGetPrintsIt(t *testing.T) {
 		t.Fatalf("unexpected output %q", got)
 	}
 
-	content := mustFileContents(t, pathsEnv, "")
-	if !strings.Contains(content, "export PDE_DEFAULT_VAULT=\"main\"") {
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"default_vault": "main"`) {
 		t.Fatalf("expected default selector to be written, got:\n%s", content)
 	}
-	if !strings.Contains(content, "export OPENCODE_BASE_URL=\"http://127.0.0.1:4199\"") {
-		t.Fatalf("expected unrelated lines to be preserved, got:\n%s", content)
+	if !strings.Contains(content, `"opencode_base_url": "http://127.0.0.1:4199"`) {
+		t.Fatalf("expected unrelated config to be preserved, got:\n%s", content)
 	}
 
 	stdout, stderr, err = executeVaultLocate(t, "vault", "default", "get")
@@ -217,12 +228,12 @@ func TestLocateDefaultRejectsBrokenWork(t *testing.T) {
 	if err := os.MkdirAll(mainVault, 0o755); err != nil {
 		t.Fatalf("mkdir main vault: %v", err)
 	}
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
 	}
 	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
-	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"work\"\n", 0o644)
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"work_vault\": \""+workVault+"\",\n  \"default_vault\": \"work\"\n}\n", 0o644)
 	t.Setenv("HOME", homeDir)
 
 	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "--json", "--query", "needle")
@@ -241,20 +252,9 @@ func TestLocateDefaultRejectsBrokenWork(t *testing.T) {
 	}
 }
 
-func TestLocateAnyStaysStrict(t *testing.T) {
+func TestLocateRejectsAnySelector(t *testing.T) {
 	clearVaultEnv(t)
 	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	if err := os.MkdirAll(mainVault, 0o755); err != nil {
-		t.Fatalf("mkdir main vault: %v", err)
-	}
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
-	}
-	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
-	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
 	t.Setenv("HOME", homeDir)
 
 	stdout, stderr, err := executeVaultLocate(t, "vault", "locate", "--vault", "any", "--json", "--query", "needle")
@@ -268,8 +268,98 @@ func TestLocateAnyStaysStrict(t *testing.T) {
 	if result.Status != "error" {
 		t.Fatalf("unexpected status %q", result.Status)
 	}
-	if !strings.Contains(result.Error, workVault) {
-		t.Fatalf("expected work vault error, got %q", result.Error)
+	if !strings.Contains(result.Error, `invalid --vault value "any"`) {
+		t.Fatalf("expected invalid selector error, got %q", result.Error)
+	}
+}
+
+func TestVaultMainSetAndPathCommands(t *testing.T) {
+	clearVaultEnv(t)
+	homeDir := t.TempDir()
+	mainVault := filepath.Join(homeDir, "main")
+	if err := os.MkdirAll(mainVault, 0o755); err != nil {
+		t.Fatalf("mkdir main vault: %v", err)
+	}
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
+	}
+	mustWriteFile(t, configJSON, "{\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n", 0o644)
+	t.Setenv("HOME", homeDir)
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "main", "set", mainVault)
+	if err != nil {
+		t.Fatalf("execute vault main set: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if got := stdout.String(); got != mainVault+"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"main_vault": "`+mainVault+`"`) {
+		t.Fatalf("expected main vault to be written, got:\n%s", content)
+	}
+	if !strings.Contains(content, `"opencode_base_url": "http://127.0.0.1:4199"`) {
+		t.Fatalf("expected unrelated config to be preserved, got:\n%s", content)
+	}
+
+	stdout, stderr, err = executeVaultLocate(t, "vault", "path", "main")
+	if err != nil {
+		t.Fatalf("execute vault path main: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if got := stdout.String(); got != mainVault+"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+}
+
+func TestVaultWorkSetAndPathCommands(t *testing.T) {
+	clearVaultEnv(t)
+	homeDir := t.TempDir()
+	workVault := filepath.Join(homeDir, "work")
+	if err := os.MkdirAll(workVault, 0o755); err != nil {
+		t.Fatalf("mkdir work vault: %v", err)
+	}
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
+	}
+	mustWriteFile(t, configJSON, "{\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n", 0o644)
+	t.Setenv("HOME", homeDir)
+
+	stdout, stderr, err := executeVaultLocate(t, "vault", "work", "set", workVault)
+	if err != nil {
+		t.Fatalf("execute vault work set: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if got := stdout.String(); got != workVault+"\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"work_vault": "`+workVault+`"`) {
+		t.Fatalf("expected work vault to be written, got:\n%s", content)
+	}
+	if !strings.Contains(content, `"opencode_base_url": "http://127.0.0.1:4199"`) {
+		t.Fatalf("expected unrelated config to be preserved, got:\n%s", content)
+	}
+
+	stdout, stderr, err = executeVaultLocate(t, "vault", "path", "work")
+	if err != nil {
+		t.Fatalf("execute vault path work: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr, got %q", stderr.String())
+	}
+	if got := stdout.String(); got != workVault+"\n" {
+		t.Fatalf("unexpected output %q", got)
 	}
 }
 
