@@ -198,31 +198,73 @@ func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
 }
 
 func validateSupportedFrontmatter(frontmatter string) error {
-	// The parser only accepts the canonical vault issue frontmatter shape.
+	// Accept only the canonical wrapped issue frontmatter shape.
 	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
-	if len(lines) != 11 {
+	i := 0
+	consume := func(expected string) bool {
+		if i < len(lines) && lines[i] == expected {
+			i++
+			return true
+		}
+		return false
+	}
+	consumePrefix := func(prefix string) (string, bool) {
+		if i < len(lines) && strings.HasPrefix(lines[i], prefix) {
+			value := strings.TrimPrefix(lines[i], prefix)
+			i++
+			return value, true
+		}
+		return "", false
+	}
+
+	if !consume("---") || !consume("tags:") || !consume("  - \"#Ticket\"") {
 		return errUnsupportedWrappedDoc
 	}
-	if lines[0] != "---" || lines[1] != "tags:" || lines[2] != "  - \"#Ticket\"" ||
-		lines[3] != "type: issue" || lines[5] != "template_version: 1" ||
-		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
+	if value, ok := consumePrefix("type: "); !ok || value != "issue" {
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[4], "status: ") {
+	if value, ok := consumePrefix("status: "); !ok {
+		return errUnsupportedWrappedDoc
+	} else {
+		switch value {
+		case "open", "in-progress", "done":
+		default:
+			return errUnsupportedWrappedDoc
+		}
+	}
+	if !consume("template_version: 1") {
 		return errUnsupportedWrappedDoc
 	}
-	switch strings.TrimPrefix(lines[4], "status: ") {
-	case "open", "in-progress", "done":
-	default:
+	if value, ok := consumePrefix("project: "); !ok || strings.TrimSpace(value) == "" {
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[6], "project: ") || strings.TrimPrefix(lines[6], "project: ") == "" {
+	if value, ok := consumePrefix("date_created: "); !ok || !issueFrontmatterDateRE.MatchString(value) {
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[7], "date_created: ") {
+	if consume("topics: []") {
+		// Canonical empty topic list.
+	} else if consume("topics:") {
+		count := 0
+		for i < len(lines) && lines[i] != "---" {
+			if !strings.HasPrefix(lines[i], "  - ") {
+				return errUnsupportedWrappedDoc
+			}
+			if strings.TrimSpace(strings.TrimPrefix(lines[i], "  - ")) == "" {
+				return errUnsupportedWrappedDoc
+			}
+			count++
+			i++
+		}
+		if count == 0 {
+			return errUnsupportedWrappedDoc
+		}
+	} else {
 		return errUnsupportedWrappedDoc
 	}
-	if !issueFrontmatterDateRE.MatchString(strings.TrimPrefix(lines[7], "date_created: ")) {
+	if !consume("---") {
+		return errUnsupportedWrappedDoc
+	}
+	if i != len(lines) && !(i == len(lines)-1 && lines[i] == "") {
 		return errUnsupportedWrappedDoc
 	}
 	return nil
