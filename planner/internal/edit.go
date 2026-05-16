@@ -199,7 +199,7 @@ func readPlanForEdit(path string) (Plan, error) {
 	}
 	p, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return Plan{}, newPlannerCLIError(PlannerDecodeInputError, err, path)
+		return Plan{}, plannerMarkdownDecodeError(raw, err)
 	}
 	return p.Plan, nil
 }

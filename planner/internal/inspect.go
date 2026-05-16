@@ -197,35 +197,108 @@ func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
 	return wrapped, false
 }
 
+type issueFrontmatterState struct {
+	tags            []string
+	typeValue       string
+	status          string
+	templateVersion string
+	project         string
+	dateCreated     string
+	topics          []string
+	section         string
+	seenTags        bool
+	seenTopics      bool
+}
+
 func validateSupportedFrontmatter(frontmatter string) error {
-	// The parser only accepts the canonical vault issue frontmatter shape.
 	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
-	if len(lines) != 11 {
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) < 3 || lines[0] != "---" || lines[len(lines)-1] != "---" {
 		return errUnsupportedWrappedDoc
 	}
-	if lines[0] != "---" || lines[1] != "tags:" || lines[2] != "  - \"#Ticket\"" ||
-		lines[3] != "type: issue" || lines[5] != "template_version: 1" ||
-		lines[8] != "topics: []" || lines[9] != "---" || lines[10] != "" {
+
+	state := issueFrontmatterState{}
+	for _, line := range lines[1 : len(lines)-1] {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "  - ") {
+			value := strings.TrimSpace(strings.TrimPrefix(line, "  - "))
+			value = strings.Trim(value, "\"")
+			if value == "" {
+				return errUnsupportedWrappedDoc
+			}
+			switch state.section {
+			case "tags":
+				state.tags = append(state.tags, value)
+			case "topics":
+				state.topics = append(state.topics, value)
+			default:
+				return errUnsupportedWrappedDoc
+			}
+			continue
+		}
+
+		state.section = ""
+		switch {
+		case line == "tags:":
+			state.seenTags = true
+			state.section = "tags"
+		case line == "topics:":
+			state.seenTopics = true
+			state.section = "topics"
+		case line == "topics: []":
+			state.seenTopics = true
+		case strings.HasPrefix(line, "type: "):
+			state.typeValue = strings.TrimSpace(strings.TrimPrefix(line, "type: "))
+		case strings.HasPrefix(line, "status: "):
+			state.status = strings.TrimSpace(strings.TrimPrefix(line, "status: "))
+		case strings.HasPrefix(line, "template_version: "):
+			state.templateVersion = strings.TrimSpace(strings.TrimPrefix(line, "template_version: "))
+		case strings.HasPrefix(line, "project: "):
+			state.project = strings.TrimSpace(strings.TrimPrefix(line, "project: "))
+		case strings.HasPrefix(line, "date_created: "):
+			state.dateCreated = strings.TrimSpace(strings.TrimPrefix(line, "date_created: "))
+		default:
+			return errUnsupportedWrappedDoc
+		}
+	}
+
+	if !state.seenTags || !containsString(state.tags, "#Ticket") {
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[4], "status: ") {
+	if state.typeValue != "issue" {
 		return errUnsupportedWrappedDoc
 	}
-	switch strings.TrimPrefix(lines[4], "status: ") {
+	switch state.status {
 	case "open", "in-progress", "done":
 	default:
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[6], "project: ") || strings.TrimPrefix(lines[6], "project: ") == "" {
+	if state.templateVersion != "1" {
 		return errUnsupportedWrappedDoc
 	}
-	if !strings.HasPrefix(lines[7], "date_created: ") {
+	if state.project == "" {
 		return errUnsupportedWrappedDoc
 	}
-	if !issueFrontmatterDateRE.MatchString(strings.TrimPrefix(lines[7], "date_created: ")) {
+	if !issueFrontmatterDateRE.MatchString(state.dateCreated) {
+		return errUnsupportedWrappedDoc
+	}
+	if !state.seenTopics {
 		return errUnsupportedWrappedDoc
 	}
 	return nil
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 // offsetSpans shifts all span values in a section map by offset bytes, making
