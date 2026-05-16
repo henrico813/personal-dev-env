@@ -21,6 +21,17 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 		selector = "default"
 	}
 
+	defaultSelector := normalizeVaultSelector(state.Default)
+	if selector == "default" {
+		switch defaultSelector {
+		case "":
+			return nil, newVaultError(vaultDefaultNotConfigured, nil)
+		case "main", "work":
+		default:
+			return nil, newVaultError(vaultInvalidPersistedSelector, nil, defaultSelector)
+		}
+	}
+
 	mainPath, err := normalizeVaultPath(state.MainPath)
 	if err != nil {
 		return nil, fmt.Errorf("normalize PDE_MAIN_VAULT: %w", err)
@@ -29,7 +40,6 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("normalize PDE_WORK_VAULT: %w", err)
 	}
-	defaultSelector := normalizeVaultSelector(state.Default)
 
 	switch selector {
 	case "default":

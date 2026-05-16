@@ -7,6 +7,7 @@ type vaultErrorCode int
 const (
 	vaultInvalidSelector vaultErrorCode = iota + 1
 	vaultInvalidPersistedSelector
+	vaultDefaultNotConfigured
 	vaultNoVaultConfigured
 	vaultMainNotConfigured
 	vaultWorkNotConfigured
@@ -17,6 +18,7 @@ const (
 var vaultErrorMessages = map[vaultErrorCode]string{
 	vaultInvalidSelector:         "invalid default vault %q; expected main or work",
 	vaultInvalidPersistedSelector: "invalid default vault %q in ~/.config/pde/config.json",
+	vaultDefaultNotConfigured:    "default vault not configured; run pde vault default set <main|work>",
 	vaultNoVaultConfigured:       "no vault configured; run pde vault main set <path> or pde vault work set <path>",
 	vaultMainNotConfigured:       "main vault not configured; run pde vault main set <path>",
 	vaultWorkNotConfigured:       "work vault not configured; run pde vault work set <path>",

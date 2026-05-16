@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -83,5 +84,27 @@ func TestRunVaultLocateRejectsWhitespaceOnlyQuery(t *testing.T) {
 	var out bytes.Buffer
 	if err := runVaultLocate(&out, t.TempDir(), vaultLocateOptions{Vault: "default", Query: "   "}); err == nil {
 		t.Fatal("expected whitespace query to be rejected")
+	}
+}
+
+func TestResolveVaultsDefaultRequiresExplicitSelector(t *testing.T) {
+	homeDir := t.TempDir()
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
+	}
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\"\n}\n", 0o644)
+
+	_, err := resolveVaultPaths(homeDir, "default")
+	if err == nil {
+		t.Fatal("expected missing default vault to fail")
+	}
+
+	var vaultErr *vaultError
+	if !errors.As(err, &vaultErr) {
+		t.Fatalf("expected vaultError, got %T", err)
+	}
+	if vaultErr.Code != vaultDefaultNotConfigured {
+		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }

@@ -65,7 +65,10 @@ func writeVaultState(homeDir string, state VaultState) error {
 		}
 	}
 
-	updated := writeHelper(string(content), state)
+	updated, err := writeHelper(string(content), state)
+	if err != nil {
+		return newVaultError(vaultReadConfigFailed, err, err)
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return newVaultError(vaultWriteConfigFailed, err, err)
@@ -79,10 +82,12 @@ func writeVaultState(homeDir string, state VaultState) error {
 	return nil
 }
 
-func writeHelper(content string, state VaultState) string {
+func writeHelper(content string, state VaultState) (string, error) {
 	cfg := pdeJSONConfig{}
 	if strings.TrimSpace(content) != "" {
-		_ = json.Unmarshal([]byte(content), &cfg)
+		if err := json.Unmarshal([]byte(content), &cfg); err != nil {
+			return "", err
+		}
 	}
 	if state.MainPath != "" {
 		cfg.MainVault = state.MainPath
@@ -94,9 +99,12 @@ func writeHelper(content string, state VaultState) string {
 		cfg.DefaultVault = state.Default
 	}
 
-	data, _ := json.MarshalIndent(cfg, "", "  ")
-	if len(data) == 0 {
-		return ""
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return "", err
 	}
-	return string(append(data, '\n'))
+	if len(data) == 0 {
+		return "", nil
+	}
+	return string(append(data, '\n')), nil
 }

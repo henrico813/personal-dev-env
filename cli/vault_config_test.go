@@ -59,7 +59,7 @@ func TestWriteConfig(t *testing.T) {
 		name       string
 		seed       string
 		state      VaultState
-		wantChecks  []string
+		wantChecks []string
 	}{
 		{
 			name:  "missingcfg",
@@ -105,5 +105,21 @@ func TestWriteConfig(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWriteConfigRejectsMalformedExistingJSON(t *testing.T) {
+	homeDir := t.TempDir()
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
+	}
+	mustWriteFile(t, configJSON, "{\n", 0o644)
+
+	if err := writeVaultState(homeDir, VaultState{MainPath: "/vaults/main"}); err == nil {
+		t.Fatal("expected malformed config to fail")
+	}
+	if content := mustFileContents(t, configJSON, ""); content != "{\n" {
+		t.Fatalf("expected malformed config to remain unchanged, got:\n%s", content)
 	}
 }
