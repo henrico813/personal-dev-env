@@ -103,90 +103,91 @@ func TestLinkConfigBacksUpExistingDirectoryBeforeLinking(t *testing.T) {
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "directory contents")
 }
 
-func TestInstallConfigBacksUpPathsEnvRegularFileAndPreservesProfile(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	mustWriteFile(t, pathsEnv, "# existing\nexport PDE_PROFILE=\"shared\"\n", 0o644)
+func TestInstallConfigBacksUpConfigJSONRegularFileAndPreservesProfile(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if !strings.Contains(content, "export PDE_PROFILE=\"shared\"") {
-		t.Fatalf("expected profile line to be preserved, got:\n%s", content)
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"profile": "shared"`) {
+		t.Fatalf("expected profile field to be preserved, got:\n%s", content)
 	}
-	if !strings.Contains(content, "export PDE_INSTALL_PATH=") {
+	if !strings.Contains(content, `"install_path":`) {
 		t.Fatalf("expected generated install path, got:\n%s", content)
 	}
-	backup := mustSingleBackup(t, pathsEnv)
-	mustFileContents(t, backup, "# existing\nexport PDE_PROFILE=\"shared\"\n")
+	backup := mustSingleBackup(t, configJSON)
+	mustFileContents(t, backup, "{\n  \"profile\": \"shared\"\n}\n")
 }
 
-func TestInstallConfigBacksUpPathsEnvSymlinkToReadableFileAndPreservesProfile(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	seed := filepath.Join(cfg.HomeDir, "seed-paths.env")
-	mustWriteFile(t, seed, "export PDE_PROFILE=\"minimal\"\n", 0o644)
-	if err := os.Symlink(seed, pathsEnv); err != nil {
-		t.Fatalf("seed symlink paths.env: %v", err)
+func TestInstallConfigBacksUpConfigJSONSymlinkToReadableFileAndPreservesProfile(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	seed := filepath.Join(cfg.HomeDir, "seed-config.json")
+	mustWriteFile(t, seed, "{\n  \"profile\": \"minimal\"\n}\n", 0o644)
+	if err := os.Symlink(seed, configJSON); err != nil {
+		t.Fatalf("seed symlink config.json: %v", err)
 	}
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if !strings.Contains(content, "export PDE_PROFILE=\"minimal\"") {
-		t.Fatalf("expected preserved profile line, got:\n%s", content)
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"profile": "minimal"`) {
+		t.Fatalf("expected preserved profile field, got:\n%s", content)
 	}
-	backup := mustSingleBackup(t, pathsEnv)
+	backup := mustSingleBackup(t, configJSON)
 	mustSymlinkTarget(t, backup, seed)
 }
 
-func TestInstallConfigPreservesMainAndWorkVaultLines(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\"/vaults/main\"\nexport PDE_WORK_VAULT=\"/vaults/work\"\n", 0o644)
+func TestInstallConfigPreservesVaultAndOpencodeJSONFields(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\",\n  \"opencode_base_url\": \"http://127.0.0.1:4199\"\n}\n", 0o644)
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if !strings.Contains(content, "export PDE_MAIN_VAULT=\"/vaults/main\"") {
-		t.Fatalf("expected main vault line to be preserved, got:\n%s", content)
+	content := mustFileContents(t, configJSON, "")
+	if !strings.Contains(content, `"main_vault": "/vaults/main"`) {
+		t.Fatalf("expected main vault field to be preserved, got:\n%s", content)
 	}
-	if !strings.Contains(content, "export PDE_WORK_VAULT=\"/vaults/work\"") {
-		t.Fatalf("expected work vault line to be preserved, got:\n%s", content)
+	if !strings.Contains(content, `"work_vault": "/vaults/work"`) {
+		t.Fatalf("expected work vault field to be preserved, got:\n%s", content)
+	}
+	if !strings.Contains(content, `"opencode_base_url": "http://127.0.0.1:4199"`) {
+		t.Fatalf("expected opencode base URL to be preserved, got:\n%s", content)
 	}
 }
 
-func TestInstallConfigPreservesDefaultVaultLine(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	mustWriteFile(t, pathsEnv, "export PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
+func TestInstallConfigRemovesDeprecatedPathsEnv(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	mustWriteFile(t, configJSON, "{\n  \"default_vault\": \"main\"\n}\n", 0o644)
+	deprecated := filepath.Join(cfg.PDEConfigDir, "paths.env")
+	mustWriteFile(t, deprecated, "export PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if !strings.Contains(content, "export PDE_DEFAULT_VAULT=\"main\"") {
-		t.Fatalf("expected default selector line to be preserved, got:\n%s", content)
+	if _, err := os.Stat(deprecated); !os.IsNotExist(err) {
+		t.Fatalf("expected deprecated paths.env to be removed, got err=%v", err)
 	}
 }
 
-func TestInstallConfigBacksUpPathsEnvSymlinkToDirectoryWithoutProfile(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	seedDir := filepath.Join(cfg.HomeDir, "paths-env-dir")
+func TestInstallConfigBacksUpConfigJSONSymlinkToDirectoryWithoutProfile(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	seedDir := filepath.Join(cfg.HomeDir, "config-json-dir")
 	if err := os.MkdirAll(seedDir, 0o755); err != nil {
 		t.Fatalf("mkdir seed dir: %v", err)
 	}
-	if err := os.Symlink(seedDir, pathsEnv); err != nil {
-		t.Fatalf("seed symlink paths.env: %v", err)
+	if err := os.Symlink(seedDir, configJSON); err != nil {
+		t.Fatalf("seed symlink config.json: %v", err)
 	}
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if strings.Contains(content, "PDE_PROFILE") {
-		t.Fatalf("did not expect profile preservation for symlink-to-dir paths.env, got:\n%s", content)
-	}
-	backup := mustSingleBackup(t, pathsEnv)
+	mustFileContents(t, configJSON, "")
+	backup := mustSingleBackup(t, configJSON)
 	if info, err := os.Lstat(backup); err != nil {
 		t.Fatalf("lstat backup: %v", err)
 	} else if info.Mode()&os.ModeSymlink == 0 {
@@ -194,21 +195,18 @@ func TestInstallConfigBacksUpPathsEnvSymlinkToDirectoryWithoutProfile(t *testing
 	}
 }
 
-func TestInstallConfigBacksUpPathsEnvDirectoryWithoutProfile(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	if err := os.MkdirAll(filepath.Join(pathsEnv, "nested"), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env dir: %v", err)
+func TestInstallConfigBacksUpConfigJSONDirectoryWithoutProfile(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	if err := os.MkdirAll(filepath.Join(configJSON, "nested"), 0o755); err != nil {
+		t.Fatalf("mkdir config.json dir: %v", err)
 	}
-	mustWriteFile(t, filepath.Join(pathsEnv, "nested", "keep.txt"), "dir contents", 0o644)
+	mustWriteFile(t, filepath.Join(configJSON, "nested", "keep.txt"), "dir contents", 0o644)
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if strings.Contains(content, "PDE_PROFILE") {
-		t.Fatalf("did not expect profile preservation for directory paths.env, got:\n%s", content)
-	}
-	backup := mustSingleBackup(t, pathsEnv)
+	mustFileContents(t, configJSON, "")
+	backup := mustSingleBackup(t, configJSON)
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "dir contents")
 }
 
@@ -224,27 +222,24 @@ func TestExistingPDEPathsEnvLinesReturnsErrorForUnexpectedStatFailure(t *testing
 	}
 }
 
-func TestInstallConfigBacksUpBrokenPathsEnvSymlinkWithoutProfile(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	brokenTarget := filepath.Join(cfg.HomeDir, "missing-paths.env")
-	if err := os.Symlink(brokenTarget, pathsEnv); err != nil {
+func TestInstallConfigBacksUpBrokenConfigJSONSymlinkWithoutProfile(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	brokenTarget := filepath.Join(cfg.HomeDir, "missing-config.json")
+	if err := os.Symlink(brokenTarget, configJSON); err != nil {
 		t.Fatalf("seed broken symlink: %v", err)
 	}
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
-	content := mustFileContents(t, pathsEnv, "")
-	if strings.Contains(content, "PDE_PROFILE") {
-		t.Fatalf("did not expect profile preservation for broken symlink paths.env, got:\n%s", content)
-	}
-	backup := mustSingleBackup(t, pathsEnv)
+	mustFileContents(t, configJSON, "")
+	backup := mustSingleBackup(t, configJSON)
 	mustSymlinkTarget(t, backup, brokenTarget)
 }
 
-func TestInstallConfigMissingManagedSourceFailsBeforeMutatingPathsEnvOrLinks(t *testing.T) {
-	cfg, pathsEnv := newInstallConfigFixture(t)
-	mustWriteFile(t, pathsEnv, "export PDE_PROFILE=\"shared\"\n", 0o644)
+func TestInstallConfigMissingManagedSourceFailsBeforeMutatingConfigOrLinks(t *testing.T) {
+	cfg, configJSON := newInstallConfigFixture(t)
+	mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
 	if err := os.Remove(filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml")); err != nil {
 		t.Fatalf("remove managed source: %v", err)
 	}
@@ -252,8 +247,8 @@ func TestInstallConfigMissingManagedSourceFailsBeforeMutatingPathsEnvOrLinks(t *
 	if err := installConfig(cfg, Runner{}); err == nil {
 		t.Fatal("expected error for missing managed source")
 	}
-	mustFileContents(t, pathsEnv, "export PDE_PROFILE=\"shared\"\n")
-	mustNoBackups(t, pathsEnv)
+	mustFileContents(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n")
+	mustNoBackups(t, configJSON)
 	if _, err := os.Lstat(filepath.Join(cfg.HomeDir, ".zshrc")); !os.IsNotExist(err) {
 		t.Fatalf("expected home link to remain untouched, got err=%v", err)
 	}
@@ -267,9 +262,9 @@ func newInstallConfigFixture(t *testing.T) (*Config, string) {
 	if err := os.MkdirAll(pdeConfigDir, 0o755); err != nil {
 		t.Fatalf("mkdir pde config dir: %v", err)
 	}
-	pathsEnv := filepath.Join(pdeConfigDir, "paths.env")
+	configJSON := filepath.Join(pdeConfigDir, "config.json")
 	createManagedSources(t, repoRoot, "")
-	return &Config{RepoRoot: repoRoot, HomeDir: homeDir, PDEConfigDir: pdeConfigDir}, pathsEnv
+	return &Config{RepoRoot: repoRoot, HomeDir: homeDir, PDEConfigDir: pdeConfigDir}, configJSON
 }
 
 func createManagedSources(t *testing.T, repoRoot, missingRel string) {
