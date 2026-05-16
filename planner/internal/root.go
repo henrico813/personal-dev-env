@@ -325,7 +325,7 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		reportError(stderr, "inspect", newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown"))
+		reportError(stderr, "inspect", plannerMarkdownDecodeError(raw, err))
 		return 1
 	}
 
@@ -429,7 +429,7 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 	case ReplaceReadSourceError:
 		return newPlannerCLIError(PlannerReadInputError, err, sourcePath)
 	case ReplaceParseSourceError:
-		return newPlannerCLIError(PlannerDecodeInputError, err, "plan markdown")
+		return plannerMarkdownDecodeError(nil, err)
 	case ReplaceDecodePatchError:
 		return newPlannerCLIError(PlannerDecodeInputError, err, "patch JSON")
 	case ReplaceRenderResultError:
@@ -468,16 +468,16 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 }
 
 type InspectPlan struct {
-	Title            string        `json:"title"`
-	Overview         string        `json:"overview"`
+	Title            string           `json:"title"`
+	Overview         string           `json:"overview"`
 	DefinitionOfDone DefinitionOfDone `json:"definition_of_done"`
-	Implementation   []InspectStep `json:"implementation"`
-	Verification     *Verification  `json:"verification"`
+	Implementation   []InspectStep    `json:"implementation"`
+	Verification     *Verification    `json:"verification"`
 }
 
 type InspectStep struct {
-	Title       string             `json:"title"`
-	Summary     string             `json:"summary"`
+	Title       string              `json:"title"`
+	Summary     string              `json:"summary"`
 	FileChanges []InspectFileChange `json:"file_changes"`
 }
 

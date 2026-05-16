@@ -9,6 +9,203 @@ import (
 	"testing"
 )
 
+func TestWrappedCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		fixture  string
+		wantExit int
+		wantCode string
+	}{
+		{name: "empty_topics", fixture: "wrapped_issue_empty_topics.md", wantExit: 0},
+		{name: "topic_list", fixture: "wrapped_issue_topics.md", wantExit: 0},
+		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			path := copyFixture(t, tc.fixture)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			args := []string{"check", path}
+			if tc.wantCode != "" {
+				args = []string{"check", "--json-errors", path}
+			}
+			if exit := Execute(args, &stdout, &stderr); exit != tc.wantExit {
+				t.Fatalf("exit=%d want %d stderr=%q", exit, tc.wantExit, stderr.String())
+			}
+			if tc.wantCode == "" {
+				if !strings.Contains(stdout.String(), "OK") {
+					t.Fatalf("stdout=%q want OK", stdout.String())
+				}
+				return
+			}
+			assertPlannerJSONError(t, &stderr, tc.wantCode, "supported vault issue frontmatter block")
+		})
+	}
+}
+
+func TestWrappedInspect(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		fixture  string
+		wantExit int
+		wantCode string
+	}{
+		{name: "topic_list", fixture: "wrapped_issue_topics.md", wantExit: 0},
+		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			path := copyFixture(t, tc.fixture)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			args := []string{"inspect", path}
+			if tc.wantCode != "" {
+				args = []string{"inspect", "--json-errors", path}
+			}
+			if exit := Execute(args, &stdout, &stderr); exit != tc.wantExit {
+				t.Fatalf("exit=%d want %d stderr=%q", exit, tc.wantExit, stderr.String())
+			}
+			if tc.wantCode != "" {
+				assertPlannerJSONError(t, &stderr, tc.wantCode, "supported vault issue frontmatter block")
+				return
+			}
+			if strings.Contains(stdout.String(), `"tags"`) || strings.Contains(stdout.String(), `"topics"`) {
+				t.Fatalf("inspect leaked frontmatter: %q", stdout.String())
+			}
+			var view InspectPlan
+			if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+				t.Fatalf("inspect output: %v", err)
+			}
+			if view.Title != "Sample Wrapped Plan" {
+				t.Fatalf("title=%q", view.Title)
+			}
+		})
+	}
+}
+
+func TestWrappedEdit(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(*testing.T, string)
+	}{
+		{
+			name: "patch_same_path",
+			run: func(t *testing.T, path string) {
+				t.Helper()
+				patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
+				withStdin(t, patch, func() {
+					var stdout bytes.Buffer
+					var stderr bytes.Buffer
+					if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+						t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+					}
+				})
+			},
+		},
+		{
+			name: "overview_same_path",
+			run: func(t *testing.T, path string) {
+				t.Helper()
+				runPlannerOK(t, []string{"overview", "set", path, path, "Updated overview"}, nil)
+			},
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			path := copyFixture(t, "wrapped_issue_topics.md")
+			beforeRaw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.run(t, path)
+			afterRaw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
+				t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
+			}
+			if !strings.Contains(string(afterRaw), "Updated overview") {
+				t.Fatalf("overview not updated:\n%s", string(afterRaw))
+			}
+		})
+	}
+}
+
+func TestWrappedDecodeFailures(t *testing.T) {
+	fixtures := []string{
+		"wrapped_issue_bad_tag.md",
+		"wrapped_issue_empty_topics_block.md",
+		"wrapped_issue_reordered_fields.md",
+		"wrapped_issue_duplicate_status.md",
+	}
+	commands := []struct {
+		name string
+		run  func(*testing.T, string) (int, string)
+	}{
+		{
+			name: "check",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "inspect",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"inspect", "--json-errors", path}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "patch",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
+				exit := 0
+				withStdin(t, patch, func() {
+					exit = Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr)
+				})
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "overview_same_path",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"--json-errors", "overview", "set", path, path, "Updated overview"}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+	}
+
+	for _, fixture := range fixtures {
+		fixture := fixture
+		for _, command := range commands {
+			command := command
+			t.Run(fixture+"/"+command.name, func(t *testing.T) {
+				path := copyFixture(t, fixture)
+				exit, stderrText := command.run(t, path)
+				if exit != 1 {
+					t.Fatalf("exit=%d want 1 stderr=%q", exit, stderrText)
+				}
+				stderr := bytes.NewBufferString(stderrText)
+				assertPlannerJSONError(t, stderr, "DECODE_INPUT", "supported vault issue frontmatter block")
+			})
+		}
+	}
+}
+
 func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
@@ -1066,4 +1263,25 @@ func assertPlannerJSONError(t *testing.T, stderr *bytes.Buffer, wantCode, wantHi
 	if !strings.Contains(got.RecoveryHint, wantHint) {
 		t.Fatalf("recovery hint %q missing %q", got.RecoveryHint, wantHint)
 	}
+}
+
+func copyFixture(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("ReadFile(fixture): %v", err)
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("WriteFile(fixture): %v", err)
+	}
+	return path
+}
+
+func wrappedPrefix(input string) string {
+	frontmatter, _, err := splitFrontmatter(input)
+	if err != nil {
+		return ""
+	}
+	return frontmatter
 }
