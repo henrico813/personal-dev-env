@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+type envLookup func(string) (string, bool)
+
 type vaultConfig struct {
 	MainPath        string
 	WorkPath        string
@@ -94,17 +96,6 @@ func persistDefaultVaultSelector(homeDir, selector string) error {
 
 func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
 	return selectVaultPaths(VaultState{MainPath: cfg.MainPath, WorkPath: cfg.WorkPath, Default: cfg.DefaultSelector}, selector)
-}
-
-func normalizeShellValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
-		value = value[1 : len(value)-1]
-	}
-	return value
 }
 
 func resolveShellPath(value, homeDir string) (string, error) {

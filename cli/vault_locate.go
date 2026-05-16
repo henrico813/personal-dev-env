@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-type envLookup func(string) (string, bool)
 
 type vaultLocateOptions struct {
 	Vault     string
@@ -42,18 +41,3 @@ func normalizeVaultReference(s string) string {
 	return filepath.ToSlash(filepath.Clean(s))
 }
 
-func resolveVaultPaths(homeDir string, selector string) ([]string, error) {
-	state, err := readVaultState(homeDir)
-	if err != nil {
-		return nil, err
-	}
-	return selectVaultPaths(state, selector)
-}
-
-func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
-	return resolveVaultPaths(homeDir, selector)
-}
-
-func locateVaultMatches(vaults []string, filename, reference, query string) ([]string, error) {
-	return findVaultNotes(vaults, filename, reference, query)
-}

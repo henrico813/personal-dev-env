@@ -55,7 +55,7 @@ func TestResolveVaultsDefaultHonorsPersistedSelector(t *testing.T) {
 	}
 	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"main\"\n", 0o644)
 
-	vaults, err := resolveVaults(homeDir, func(string) (string, bool) { return "", false }, "default")
+	vaults, err := resolveVaultPaths(homeDir, "default")
 	if err != nil {
 		t.Fatalf("resolve default vaults: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	mustWriteFile(t, filepath.Join(vault, "note.txt"), "needle", 0o644)
 	mustWriteFile(t, filepath.Join(vault, "other.md"), "needle in markdown", 0o644)
 
-	matches, err := locateVaultMatches([]string{vault}, "note", "", "")
+	matches, err := findVaultNotes([]string{vault}, "note", "", "")
 	if err != nil {
 		t.Fatalf("locate filename: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 		t.Fatalf("unexpected filename matches: %#v", matches)
 	}
 
-	matches, err = locateVaultMatches([]string{vault}, "", "", "needle")
+	matches, err = findVaultNotes([]string{vault}, "", "", "needle")
 	if err != nil {
 		t.Fatalf("locate query: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestLocateVaultMatchesNestedReferenceVariants(t *testing.T) {
 	mustWriteFile(t, want, "needle", 0o644)
 
 	for _, reference := range []string{"projects/alpha/note.md", "projects/alpha/note"} {
-		matches, err := locateVaultMatches([]string{vault}, "", reference, "")
+		matches, err := findVaultNotes([]string{vault}, "", reference, "")
 		if err != nil {
 			t.Fatalf("locate reference %q: %v", reference, err)
 		}

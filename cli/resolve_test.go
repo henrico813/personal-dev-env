@@ -26,10 +26,11 @@ func TestVaultPaths(t *testing.T) {
 		want     []string
 		wantErr  bool
 	}{
-		{name: "defaultmain", state: VaultState{MainPath: `"$HOME/main"`, WorkPath: `"$HOME/work"`, Default: `"main"`}, selector: "default", want: []string{mainVault}},
-		{name: "defaultwork", state: VaultState{MainPath: `"$HOME/main"`, WorkPath: `"~/work"`, Default: `"work"`}, selector: "default", want: []string{workVault}},
-		{name: "any", state: VaultState{MainPath: `"$HOME/main"`, WorkPath: `"$HOME/work"`, Default: `"main"`}, selector: "any", want: []string{mainVault, workVault}},
-		{name: "invalidpath", state: VaultState{MainPath: `"$HOME/main"`, WorkPath: `"$HOME/missing"`, Default: `"main"`}, selector: "any", wantErr: true},
+		{name: "defaultmain", state: VaultState{MainPath: `"~/main"`, WorkPath: `"~/work"`, Default: `"main"`}, selector: "default", want: []string{mainVault}},
+		{name: "defaultwork", state: VaultState{MainPath: `"~/main"`, WorkPath: `"~/work"`, Default: `"work"`}, selector: "default", want: []string{workVault}},
+		{name: "any", state: VaultState{MainPath: `"~/main"`, WorkPath: `"~/work"`, Default: `"main"`}, selector: "any", want: []string{mainVault, workVault}},
+		{name: "invalidselector", state: VaultState{MainPath: `"~/main"`, WorkPath: `"~/work"`, Default: `"main"`}, selector: "bogus", wantErr: true},
+		{name: "invalidpath", state: VaultState{MainPath: `"~/main"`, WorkPath: `"$HOME/missing"`, Default: `"main"`}, selector: "any", wantErr: true},
 	}
 
 	for _, tt := range tests {
