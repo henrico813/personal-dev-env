@@ -21,6 +21,17 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 		selector = "default"
 	}
 
+	defaultSelector := normalizeVaultSelector(state.Default)
+	if selector == "default" {
+		switch defaultSelector {
+		case "":
+			return nil, newVaultError(vaultDefaultNotConfigured, nil)
+		case "main", "work":
+		default:
+			return nil, newVaultError(vaultInvalidPersistedSelector, nil, defaultSelector)
+		}
+	}
+
 	mainPath, err := normalizeVaultPath(state.MainPath)
 	if err != nil {
 		return nil, fmt.Errorf("normalize PDE_MAIN_VAULT: %w", err)
@@ -29,7 +40,6 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("normalize PDE_WORK_VAULT: %w", err)
 	}
-	defaultSelector := normalizeVaultSelector(state.Default)
 
 	switch selector {
 	case "default":
@@ -45,7 +55,7 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 			}
 			return []string{workPath}, nil
 		default:
-			return nil, fmt.Errorf("PDE_DEFAULT_VAULT must be set to main or work")
+			return nil, newVaultError(vaultInvalidPersistedSelector, nil, defaultSelector)
 		}
 	case "main":
 		if err := requireVaultDir(mainPath, "PDE_MAIN_VAULT"); err != nil {
@@ -57,14 +67,6 @@ func selectVaultPaths(state VaultState, selector string) ([]string, error) {
 			return nil, err
 		}
 		return []string{workPath}, nil
-	case "any":
-		if err := requireVaultDir(mainPath, "PDE_MAIN_VAULT"); err != nil {
-			return nil, err
-		}
-		if err := requireVaultDir(workPath, "PDE_WORK_VAULT"); err != nil {
-			return nil, err
-		}
-		return []string{mainPath, workPath}, nil
 	default:
 		return nil, fmt.Errorf("invalid --vault value %q", selector)
 	}
@@ -111,6 +113,17 @@ func normalizeVaultPath(path string) (string, error) {
 		path = abs
 	}
 	return path, nil
+}
+
+func isUsableDefaultFallbackRoot(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat vault %s: %w", path, err)
+	}
+	return info.IsDir(), nil
 }
 
 func requireVaultDir(path, key string) error {
