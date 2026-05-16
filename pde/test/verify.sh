@@ -67,7 +67,6 @@ check_cmd rustc ~/.cargo/bin/rustc
 check_cmd cargo-binstall ~/.cargo/bin/cargo-binstall
 check_cmd eza ~/.cargo/bin/eza
 check_cmd zoxide ~/.cargo/bin/zoxide
-check_cmd btm ~/.cargo/bin/btm
 check_cmd fzf
 check_cmd rg
 check_cmd bat /usr/bin/batcat
@@ -147,13 +146,6 @@ if /usr/local/bin/nvim --version &>/dev/null; then
     pass "nvim runs"
 else
     fail "nvim fails to run"
-fi
-
-# Test btm launches with tracked config
-if btm --version &>/dev/null; then
-    pass "btm runs"
-else
-    fail "btm fails to run"
 fi
 
 # Full profile extras

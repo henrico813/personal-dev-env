@@ -53,6 +53,18 @@ if [[ -f "${HOME}/.config/pde/paths.env" ]]; then
     source "${HOME}/.config/pde/paths.env"
 fi
 
+case "${PDE_DEFAULT_VAULT:-}" in
+    main)
+        export VAULT="${PDE_MAIN_VAULT:-}"
+        ;;
+    work)
+        export VAULT="${PDE_WORK_VAULT:-}"
+        ;;
+    *)
+        unset VAULT
+        ;;
+esac
+
 # PATH
 # nvim path may help git use nvim
 export PATH="$PATH:/usr/local/bin"
