@@ -226,19 +226,58 @@ func TestParseMarkdownRejectsMalformedDateCreated(t *testing.T) {
 	}
 }
 
-func TestParseMarkdownAllowsReorderedFields(t *testing.T) {
+func TestParseMarkdownRejectsReorderedFields(t *testing.T) {
 	input := "---\n" +
 		"tags:\n" +
 		"  - \"#Ticket\"\n" +
 		"type: issue\n" +
 		"template_version: 1\n" +
-		"topics: []\n" +
 		"status: open\n" +
 		"project: PDEV-083\n" +
 		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
 		"---\n\n" + buildPlanNoFrontmatter(t)
-	if _, err := ParseMarkdown(input); err != nil {
-		t.Fatalf("ParseMarkdown: %v", err)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected reordered frontmatter to fail")
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsEmptyTopicsBlock(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"template_version: 1\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"topics:\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected empty topics block to fail")
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsDuplicateScalarField(t *testing.T) {
+	input := "---\n" +
+		"tags:\n" +
+		"  - \"#Ticket\"\n" +
+		"type: issue\n" +
+		"status: open\n" +
+		"status: done\n" +
+		"template_version: 1\n" +
+		"project: PDEV-083\n" +
+		"date_created: 2026-05-12\n" +
+		"topics: []\n" +
+		"---\n\n" + buildPlanNoFrontmatter(t)
+	if _, err := ParseMarkdown(input); err == nil {
+		t.Fatal("expected duplicate scalar field to fail")
+	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

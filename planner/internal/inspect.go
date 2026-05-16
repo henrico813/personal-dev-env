@@ -197,108 +197,77 @@ func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
 	return wrapped, false
 }
 
-type issueFrontmatterState struct {
-	tags            []string
-	typeValue       string
-	status          string
-	templateVersion string
-	project         string
-	dateCreated     string
-	topics          []string
-	section         string
-	seenTags        bool
-	seenTopics      bool
-}
-
 func validateSupportedFrontmatter(frontmatter string) error {
+	// Accept only the canonical wrapped issue frontmatter shape.
 	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
+	i := 0
+	consume := func(expected string) bool {
+		if i < len(lines) && lines[i] == expected {
+			i++
+			return true
+		}
+		return false
 	}
-	if len(lines) < 3 || lines[0] != "---" || lines[len(lines)-1] != "---" {
+	consumePrefix := func(prefix string) (string, bool) {
+		if i < len(lines) && strings.HasPrefix(lines[i], prefix) {
+			value := strings.TrimPrefix(lines[i], prefix)
+			i++
+			return value, true
+		}
+		return "", false
+	}
+
+	if !consume("---") || !consume("tags:") || !consume("  - \"#Ticket\"") {
 		return errUnsupportedWrappedDoc
 	}
-
-	state := issueFrontmatterState{}
-	for _, line := range lines[1 : len(lines)-1] {
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "  - ") {
-			value := strings.TrimSpace(strings.TrimPrefix(line, "  - "))
-			value = strings.Trim(value, "\"")
-			if value == "" {
-				return errUnsupportedWrappedDoc
-			}
-			switch state.section {
-			case "tags":
-				state.tags = append(state.tags, value)
-			case "topics":
-				state.topics = append(state.topics, value)
-			default:
-				return errUnsupportedWrappedDoc
-			}
-			continue
-		}
-
-		state.section = ""
-		switch {
-		case line == "tags:":
-			state.seenTags = true
-			state.section = "tags"
-		case line == "topics:":
-			state.seenTopics = true
-			state.section = "topics"
-		case line == "topics: []":
-			state.seenTopics = true
-		case strings.HasPrefix(line, "type: "):
-			state.typeValue = strings.TrimSpace(strings.TrimPrefix(line, "type: "))
-		case strings.HasPrefix(line, "status: "):
-			state.status = strings.TrimSpace(strings.TrimPrefix(line, "status: "))
-		case strings.HasPrefix(line, "template_version: "):
-			state.templateVersion = strings.TrimSpace(strings.TrimPrefix(line, "template_version: "))
-		case strings.HasPrefix(line, "project: "):
-			state.project = strings.TrimSpace(strings.TrimPrefix(line, "project: "))
-		case strings.HasPrefix(line, "date_created: "):
-			state.dateCreated = strings.TrimSpace(strings.TrimPrefix(line, "date_created: "))
+	if value, ok := consumePrefix("type: "); !ok || value != "issue" {
+		return errUnsupportedWrappedDoc
+	}
+	if value, ok := consumePrefix("status: "); !ok {
+		return errUnsupportedWrappedDoc
+	} else {
+		switch value {
+		case "open", "in-progress", "done":
 		default:
 			return errUnsupportedWrappedDoc
 		}
 	}
-
-	if !state.seenTags || !containsString(state.tags, "#Ticket") {
+	if !consume("template_version: 1") {
 		return errUnsupportedWrappedDoc
 	}
-	if state.typeValue != "issue" {
+	if value, ok := consumePrefix("project: "); !ok || strings.TrimSpace(value) == "" {
 		return errUnsupportedWrappedDoc
 	}
-	switch state.status {
-	case "open", "in-progress", "done":
-	default:
+	if value, ok := consumePrefix("date_created: "); !ok || !issueFrontmatterDateRE.MatchString(value) {
 		return errUnsupportedWrappedDoc
 	}
-	if state.templateVersion != "1" {
+	if consume("topics: []") {
+		// Canonical empty topic list.
+	} else if consume("topics:") {
+		count := 0
+		for i < len(lines) && lines[i] != "---" {
+			if !strings.HasPrefix(lines[i], "  - ") {
+				return errUnsupportedWrappedDoc
+			}
+			if strings.TrimSpace(strings.TrimPrefix(lines[i], "  - ")) == "" {
+				return errUnsupportedWrappedDoc
+			}
+			count++
+			i++
+		}
+		if count == 0 {
+			return errUnsupportedWrappedDoc
+		}
+	} else {
 		return errUnsupportedWrappedDoc
 	}
-	if state.project == "" {
+	if !consume("---") {
 		return errUnsupportedWrappedDoc
 	}
-	if !issueFrontmatterDateRE.MatchString(state.dateCreated) {
-		return errUnsupportedWrappedDoc
-	}
-	if !state.seenTopics {
+	if i != len(lines) && !(i == len(lines)-1 && lines[i] == "") {
 		return errUnsupportedWrappedDoc
 	}
 	return nil
-}
-
-func containsString(items []string, want string) bool {
-	for _, item := range items {
-		if item == want {
-			return true
-		}
-	}
-	return false
 }
 
 // offsetSpans shifts all span values in a section map by offset bytes, making

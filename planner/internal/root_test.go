@@ -132,6 +132,80 @@ func TestWrappedEdit(t *testing.T) {
 	}
 }
 
+func TestWrappedDecodeFailures(t *testing.T) {
+	fixtures := []string{
+		"wrapped_issue_bad_tag.md",
+		"wrapped_issue_empty_topics_block.md",
+		"wrapped_issue_reordered_fields.md",
+		"wrapped_issue_duplicate_status.md",
+	}
+	commands := []struct {
+		name string
+		run  func(*testing.T, string) (int, string)
+	}{
+		{
+			name: "check",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "inspect",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"inspect", "--json-errors", path}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "patch",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
+				exit := 0
+				withStdin(t, patch, func() {
+					exit = Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr)
+				})
+				return exit, stderr.String()
+			},
+		},
+		{
+			name: "overview_same_path",
+			run: func(t *testing.T, path string) (int, string) {
+				t.Helper()
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				exit := Execute([]string{"--json-errors", "overview", "set", path, path, "Updated overview"}, &stdout, &stderr)
+				return exit, stderr.String()
+			},
+		},
+	}
+
+	for _, fixture := range fixtures {
+		fixture := fixture
+		for _, command := range commands {
+			command := command
+			t.Run(fixture+"/"+command.name, func(t *testing.T) {
+				path := copyFixture(t, fixture)
+				exit, stderrText := command.run(t, path)
+				if exit != 1 {
+					t.Fatalf("exit=%d want 1 stderr=%q", exit, stderrText)
+				}
+				stderr := bytes.NewBufferString(stderrText)
+				assertPlannerJSONError(t, stderr, "DECODE_INPUT", "supported vault issue frontmatter block")
+			})
+		}
+	}
+}
+
 func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
