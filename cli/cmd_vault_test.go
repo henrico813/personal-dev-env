@@ -194,7 +194,6 @@ func TestVaultDefaultSetPersistsSelectorAndGetPrintsIt(t *testing.T) {
 func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
 	clearVaultEnv(t)
 	homeDir := t.TempDir()
-	t.Setenv("PDE_MAIN_VAULT", filepath.Join(homeDir, "env-main"))
 
 	err := runVaultDefaultSet(io.Discard, homeDir, "main")
 	if err == nil {
