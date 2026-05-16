@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -56,9 +57,9 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	homeDir := t.TempDir()
 	mainVault := filepath.Join(homeDir, "main")
 	workVault := filepath.Join(homeDir, "work")
-	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
-	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
-		t.Fatalf("mkdir paths.env parent: %v", err)
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
 	}
 	if err := os.MkdirAll(mainVault, 0o755); err != nil {
 		t.Fatalf("mkdir main vault: %v", err)
@@ -66,7 +67,7 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	if err := os.MkdirAll(workVault, 0o755); err != nil {
 		t.Fatalf("mkdir work vault: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+mainVault+"\"\nexport PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"work_vault\": \""+workVault+"\"\n}\n", 0o644)
 	mustWriteFile(t, filepath.Join(mainVault, "main.md"), "needle", 0o644)
 	mustWriteFile(t, filepath.Join(workVault, "work.md"), "needle", 0o644)
 
@@ -83,5 +84,27 @@ func TestRunVaultLocateRejectsWhitespaceOnlyQuery(t *testing.T) {
 	var out bytes.Buffer
 	if err := runVaultLocate(&out, t.TempDir(), vaultLocateOptions{Vault: "default", Query: "   "}); err == nil {
 		t.Fatal("expected whitespace query to be rejected")
+	}
+}
+
+func TestResolveVaultsDefaultRequiresExplicitSelector(t *testing.T) {
+	homeDir := t.TempDir()
+	configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+		t.Fatalf("mkdir config parent: %v", err)
+	}
+	mustWriteFile(t, configJSON, "{\n  \"main_vault\": \"/vaults/main\",\n  \"work_vault\": \"/vaults/work\"\n}\n", 0o644)
+
+	_, err := resolveVaultPaths(homeDir, "default")
+	if err == nil {
+		t.Fatal("expected missing default vault to fail")
+	}
+
+	var vaultErr *vaultError
+	if !errors.As(err, &vaultErr) {
+		t.Fatalf("expected vaultError, got %T", err)
+	}
+	if vaultErr.Code != vaultDefaultNotConfigured {
+		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }

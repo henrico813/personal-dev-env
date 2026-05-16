@@ -20,14 +20,11 @@ Optional and composed PDE commands live in the Go CLI:
 cd cli && go build -o ~/.local/bin/pde .
 pde install minimal
 pde install config
-pde vault default get
-# after configuring PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env
-pde vault default set main
-pde vault locate --json --vault default "<reference>"
+pde vault --help
 pde install obsidian
 ```
 
-`pde vault default get` prints the persisted selector (`main`, `work`, or `unset`), `pde vault default set <main|work>` updates it after the matching vault path is already configured in `paths.env`, and `pde vault locate --vault default` follows that selector before the legacy fallback. Use `--query` only when you explicitly want note-content search.
+`pde install config` now writes `~/.config/pde/config.json`. The `pde vault` CLI is self-documenting and owns vault setup plus lookup from there. This cutover does not migrate `paths.env`; existing setups must be reconfigured manually.
 
 See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 
