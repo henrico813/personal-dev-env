@@ -13,7 +13,7 @@ When given a plan path:
 - Read the plan completely and check for any existing checkmarks (- [x])
 - Read the original ticket and all files mentioned in the plan
 - **Read files fully** - never use limit/offset parameters, you need complete context
-- For exact filename lookups, start with `pde vault locate --json --vault default "<reference>"` and widen to `--vault any "<reference>"` only after a `not_found` result. Treat `ambiguous`, `error`, and a final `not_found` as stop-and-ask states. Use `--query` only when you explicitly want note-content search.
+- For exact filename lookups, start with `pde vault locate --json --vault default "<reference>"`. If that returns `error` because no default vault is configured, treat it as a PDE setup issue and stop. Widen to `--vault any "<reference>"` only after a `not_found` result. Treat `ambiguous`, other `error` results, and a final `not_found` as stop-and-ask states. Use `--query` only when you explicitly want note-content search.
 - Think deeply about how the pieces fit together
 - Create a todo list to track your progress
 - By default, create a new branch and new worktree for your work, unless the plan specifies otherwise.
