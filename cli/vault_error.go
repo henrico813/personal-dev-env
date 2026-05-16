@@ -10,9 +10,6 @@ const (
 	vaultNoVaultConfigured
 	vaultMainNotConfigured
 	vaultWorkNotConfigured
-	vaultDefaultMainRequiresPath
-	vaultDefaultWorkRequiresPath
-	vaultDefaultNeedsUsablePath
 	vaultReadConfigFailed
 	vaultWriteConfigFailed
 )
@@ -20,12 +17,9 @@ const (
 var vaultErrorMessages = map[vaultErrorCode]string{
 	vaultInvalidSelector:         "invalid default vault %q; expected main or work",
 	vaultInvalidPersistedSelector: "invalid PDE_DEFAULT_VAULT %q; expected main or work",
-	vaultNoVaultConfigured:       "no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env or the environment",
+	vaultNoVaultConfigured:       "no vault configured; set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env",
 	vaultMainNotConfigured:       "main vault not configured",
 	vaultWorkNotConfigured:       "work vault not configured",
-	vaultDefaultMainRequiresPath: "default vault selector %q requires PDE_MAIN_VAULT",
-	vaultDefaultWorkRequiresPath: "default vault selector %q requires PDE_WORK_VAULT",
-	vaultDefaultNeedsUsablePath:  "default vault needs an existing PDE_WORK_VAULT or PDE_MAIN_VAULT",
 	vaultReadConfigFailed:        "read paths.env: %v",
 	vaultWriteConfigFailed:       "write paths.env: %v",
 }

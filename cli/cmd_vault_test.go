@@ -56,7 +56,7 @@ func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
 		t.Fatalf("mkdir paths.env parent: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"work\"\n", 0o644)
 	mustWriteFile(t, filepath.Join(workVault, "projects", "alpha", "note.md"), "needle", 0o644)
 	t.Setenv("HOME", homeDir)
 
@@ -194,7 +194,6 @@ func TestVaultDefaultSetPersistsSelectorAndGetPrintsIt(t *testing.T) {
 func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
 	clearVaultEnv(t)
 	homeDir := t.TempDir()
-	t.Setenv("PDE_MAIN_VAULT", filepath.Join(homeDir, "env-main"))
 
 	err := runVaultDefaultSet(io.Discard, homeDir, "main")
 	if err == nil {
@@ -205,7 +204,7 @@ func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
 	if !errors.As(err, &vaultErr) {
 		t.Fatalf("expected vaultError, got %T", err)
 	}
-	if vaultErr.Code != vaultDefaultMainRequiresPath {
+	if vaultErr.Code != vaultMainNotConfigured {
 		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }
