@@ -130,25 +130,28 @@ func loadConfig() (config, error) {
 		return cfg, nil
 	}
 
-	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "pde", "config.json"))
+	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
+
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return config{}, fmt.Errorf("read ~/.config/pde/config.json: %w", err)
+		if os.IsNotExist(err) {
+			return cfg, nil
 		}
-	} else {
-		var persisted pdeJSONConfig
-		if err := json.Unmarshal(data, &persisted); err != nil {
-			return config{}, fmt.Errorf("decode ~/.config/pde/config.json: %w", err)
-		}
-		if value := strings.TrimSpace(persisted.OpenCodeInlineShimPort); value != "" {
-			cfg.port = value
-		}
-		if value := strings.TrimSpace(persisted.OpenCodeBaseURL); value != "" {
-			cfg.opencodeBaseURL = strings.TrimRight(value, "/")
-		}
-		if value := strings.TrimSpace(persisted.OpenCodeInlineModel); value != "" {
-			cfg.inlineModel = value
-		}
+		return config{}, fmt.Errorf("read %s: %w", configPath, err)
+	}
+
+	var persisted pdeJSONConfig
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		return config{}, fmt.Errorf("decode %s: %w", configPath, err)
+	}
+	if value := strings.TrimSpace(persisted.OpenCodeInlineShimPort); value != "" {
+		cfg.port = value
+	}
+	if value := strings.TrimSpace(persisted.OpenCodeBaseURL); value != "" {
+		cfg.opencodeBaseURL = strings.TrimRight(value, "/")
+	}
+	if value := strings.TrimSpace(persisted.OpenCodeInlineModel); value != "" {
+		cfg.inlineModel = value
 	}
 
 	return cfg, nil
