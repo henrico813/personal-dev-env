@@ -205,7 +205,7 @@ func TestVaultDefaultSetRequiresPersistedTargetPath(t *testing.T) {
 	if !errors.As(err, &vaultErr) {
 		t.Fatalf("expected vaultError, got %T", err)
 	}
-	if vaultErr.Code != vaultDefaultMainRequiresPath {
+	if vaultErr.Code != vaultMainNotConfigured {
 		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }
