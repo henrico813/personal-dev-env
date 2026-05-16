@@ -73,7 +73,7 @@ end
 local fzf = require("fzf-lua")
 
 local function unset_msg(label)
-  return label .. " not configured. Set " .. label .. " in ~/.config/pde/paths.env"
+  return label .. " not configured. Run pde vault " .. label:gsub("PDE_", ""):gsub("_VAULT", ""):lower() .. " set <path>"
 end
 
 local function vault_files(path, label)
@@ -89,7 +89,7 @@ map("<leader>oo", function()
   if is_configured(vaults.main) then table.insert(dirs, vaults.main.path) end
   if is_configured(vaults.work) then table.insert(dirs, vaults.work.path) end
   if #dirs == 0 then
-    vim.notify("No vaults configured. Set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env", vim.log.levels.WARN)
+    vim.notify("No vaults configured. Run pde vault main set <path> or pde vault work set <path>", vim.log.levels.WARN)
   elseif #dirs == 1 then
     fzf.files({ cwd = dirs[1] })
   else
@@ -216,7 +216,7 @@ map("<leader>os", function()
     end
   end
   if not any then
-    vim.notify("No vaults configured. Set PDE_MAIN_VAULT or PDE_WORK_VAULT in ~/.config/pde/paths.env", vim.log.levels.WARN)
+    vim.notify("No vaults configured. Run pde vault main set <path> or pde vault work set <path>", vim.log.levels.WARN)
   end
 end, "sync vaults")
 

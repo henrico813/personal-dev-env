@@ -8,7 +8,7 @@
 
 ## Planning Docs
 
-- Plans, issues, design docs, and research docs belong in `$VAULT`.
+- Plans, issues, design docs, and research docs belong in the default PDE vault resolved through `pde vault path default` or `pde vault locate`.
 - Read `Projects/AGENTS.md` before writing to the vault.
 - Implementation plans are issues, not design docs.
 - Back up managed config before replacing it.
