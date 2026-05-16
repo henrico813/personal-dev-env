@@ -6,11 +6,55 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestLoadConfigReadsPDEJSON(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("{\n  \"opencode_base_url\": \"http://127.0.0.1:5000\",\n  \"opencode_inline_shim_port\": \"5151\",\n  \"opencode_inline_model\": \"openai-codex/gpt-5.4-mini\"\n}\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig() error = %v", err)
+	}
+	if cfg.port != "5151" {
+		t.Fatalf("port = %q", cfg.port)
+	}
+	if cfg.opencodeBaseURL != "http://127.0.0.1:5000" {
+		t.Fatalf("opencodeBaseURL = %q", cfg.opencodeBaseURL)
+	}
+	if cfg.inlineModel != "openai-codex/gpt-5.4-mini" {
+		t.Fatalf("inlineModel = %q", cfg.inlineModel)
+	}
+}
+
+func TestLoadConfigRejectsMalformedJSON(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("{\n  \"opencode_base_url\": \"oops\"\n"), 0o644); err != nil {
+		t.Fatalf("write malformed config: %v", err)
+	}
+
+	if _, err := loadConfig(); err == nil {
+		t.Fatal("expected loadConfig to fail on malformed JSON")
+	}
+}
 
 func TestDecodeChatRequestAllowsOpenAICompatibleFields(t *testing.T) {
 	body := io.NopCloser(strings.NewReader(`{

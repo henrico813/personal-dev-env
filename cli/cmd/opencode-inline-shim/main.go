@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +41,12 @@ type config struct {
 	inlineModel     string
 	inlineAgent     string
 	timeout         time.Duration
+}
+
+type pdeJSONConfig struct {
+	OpenCodeBaseURL        string `json:"opencode_base_url"`
+	OpenCodeInlineShimPort string `json:"opencode_inline_shim_port"`
+	OpenCodeInlineModel    string `json:"opencode_inline_model"`
 }
 
 type chatRequest struct {
@@ -87,7 +94,11 @@ func main() {
 	flag.BoolVar(&showHelp, "help", false, "Show usage")
 	flag.Parse()
 
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	if showHelp {
 		fmt.Fprintf(os.Stdout, "opencode-inline-shim serves /healthz, /v1/models, and /v1/chat/completions on 127.0.0.1:%s\n", cfg.port)
 		return
@@ -105,14 +116,42 @@ func main() {
 	}
 }
 
-func loadConfig() config {
-	return config{
-		port:            getenv("OPENCODE_INLINE_SHIM_PORT", defaultPort),
-		opencodeBaseURL: strings.TrimRight(getenv("OPENCODE_BASE_URL", defaultOpenCodeBaseURL), "/"),
-		inlineModel:     getenv("OPENCODE_INLINE_MODEL", ""),
+func loadConfig() (config, error) {
+	cfg := config{
+		port:            defaultPort,
+		opencodeBaseURL: defaultOpenCodeBaseURL,
+		inlineModel:     "",
 		inlineAgent:     getenv("OPENCODE_INLINE_AGENT", defaultAgent),
 		timeout:         defaultTimeout,
 	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return cfg, nil
+	}
+
+	data, err := os.ReadFile(filepath.Join(homeDir, ".config", "pde", "config.json"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return config{}, fmt.Errorf("read ~/.config/pde/config.json: %w", err)
+		}
+	} else {
+		var persisted pdeJSONConfig
+		if err := json.Unmarshal(data, &persisted); err != nil {
+			return config{}, fmt.Errorf("decode ~/.config/pde/config.json: %w", err)
+		}
+		if value := strings.TrimSpace(persisted.OpenCodeInlineShimPort); value != "" {
+			cfg.port = value
+		}
+		if value := strings.TrimSpace(persisted.OpenCodeBaseURL); value != "" {
+			cfg.opencodeBaseURL = strings.TrimRight(value, "/")
+		}
+		if value := strings.TrimSpace(persisted.OpenCodeInlineModel); value != "" {
+			cfg.inlineModel = value
+		}
+	}
+
+	return cfg, nil
 }
 
 func getenv(name, fallback string) string {

@@ -113,6 +113,17 @@ func normalizeVaultPath(path string) (string, error) {
 	return path, nil
 }
 
+func isUsableDefaultFallbackRoot(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat vault %s: %w", path, err)
+	}
+	return info.IsDir(), nil
+}
+
 func requireVaultDir(path, key string) error {
 	if path == "" {
 		switch key {
