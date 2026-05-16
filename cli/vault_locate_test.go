@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestLoadVaultPathsEnvOverridesFile(t *testing.T) {
+func TestLoadVaultPathsUsesPersistedFile(t *testing.T) {
 	homeDir := t.TempDir()
 	pathsEnv := filepath.Join(homeDir, ".config", "pde", "paths.env")
 	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
@@ -18,25 +18,21 @@ func TestLoadVaultPathsEnvOverridesFile(t *testing.T) {
 	fileWork := filepath.Join(homeDir, "file-work")
 	mustWriteFile(t, pathsEnv, "export PDE_MAIN_VAULT=\""+fileMain+"\"\nexport PDE_WORK_VAULT=\""+fileWork+"\"\n", 0o644)
 
-	envMain := filepath.Join(homeDir, "env-main")
-	if err := os.MkdirAll(envMain, 0o755); err != nil {
-		t.Fatalf("mkdir env vault: %v", err)
-	}
 	if err := os.MkdirAll(fileWork, 0o755); err != nil {
 		t.Fatalf("mkdir file work vault: %v", err)
 	}
 
 	paths, err := loadVaultPaths(homeDir, func(key string) (string, bool) {
 		if key == "PDE_MAIN_VAULT" {
-			return envMain, true
+			return filepath.Join(homeDir, "ignored-env-main"), true
 		}
 		return "", false
 	})
 	if err != nil {
 		t.Fatalf("load vault paths: %v", err)
 	}
-	if got := paths["PDE_MAIN_VAULT"]; got != envMain {
-		t.Fatalf("unexpected main vault %q want %q", got, envMain)
+	if got := paths["PDE_MAIN_VAULT"]; got != fileMain {
+		t.Fatalf("unexpected main vault %q want %q", got, fileMain)
 	}
 	if got := paths["PDE_WORK_VAULT"]; got != fileWork {
 		t.Fatalf("unexpected work vault %q want %q", got, fileWork)
@@ -149,16 +145,7 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 	mustWriteFile(t, filepath.Join(workVault, "work.md"), "needle", 0o644)
 
 	var out bytes.Buffer
-	if err := runVaultLocate(&out, homeDir, func(key string) (string, bool) {
-		switch key {
-		case "PDE_MAIN_VAULT":
-			return mainVault, true
-		case "PDE_WORK_VAULT":
-			return workVault, true
-		default:
-			return "", false
-		}
-	}, vaultLocateOptions{Vault: "main", Query: "needle"}); err != nil {
+	if err := runVaultLocate(&out, homeDir, vaultLocateOptions{Vault: "main", Query: "needle"}); err != nil {
 		t.Fatalf("run vault locate: %v", err)
 	}
 	if got := out.String(); got != filepath.Join(mainVault, "main.md")+"\n" {
@@ -168,7 +155,7 @@ func TestRunVaultLocateSelectorMainSearchesMainVault(t *testing.T) {
 
 func TestRunVaultLocateRejectsWhitespaceOnlyQuery(t *testing.T) {
 	var out bytes.Buffer
-	if err := runVaultLocate(&out, t.TempDir(), func(string) (string, bool) { return "", false }, vaultLocateOptions{Vault: "default", Query: "   "}); err == nil {
+	if err := runVaultLocate(&out, t.TempDir(), vaultLocateOptions{Vault: "default", Query: "   "}); err == nil {
 		t.Fatal("expected whitespace query to be rejected")
 	}
 }

@@ -56,7 +56,7 @@ func TestVaultLocatePositionalReferenceLookup(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(pathsEnv), 0o755); err != nil {
 		t.Fatalf("mkdir paths.env parent: %v", err)
 	}
-	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\n", 0o644)
+	mustWriteFile(t, pathsEnv, "export PDE_WORK_VAULT=\""+workVault+"\"\nexport PDE_DEFAULT_VAULT=\"work\"\n", 0o644)
 	mustWriteFile(t, filepath.Join(workVault, "projects", "alpha", "note.md"), "needle", 0o644)
 	t.Setenv("HOME", homeDir)
 

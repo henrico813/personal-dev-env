@@ -42,12 +42,16 @@ func normalizeVaultReference(s string) string {
 	return filepath.ToSlash(filepath.Clean(s))
 }
 
-func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
-	cfg, err := loadVaultConfig(homeDir, lookup)
+func resolveVaultPaths(homeDir string, selector string) ([]string, error) {
+	state, err := readVaultState(homeDir)
 	if err != nil {
 		return nil, err
 	}
-	return selectVaultPaths(VaultState{MainPath: cfg.MainPath, WorkPath: cfg.WorkPath, Default: cfg.DefaultSelector}, selector)
+	return selectVaultPaths(state, selector)
+}
+
+func resolveVaults(homeDir string, lookup envLookup, selector string) ([]string, error) {
+	return resolveVaultPaths(homeDir, selector)
 }
 
 func locateVaultMatches(vaults []string, filename, reference, query string) ([]string, error) {

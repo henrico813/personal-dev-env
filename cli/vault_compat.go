@@ -32,20 +32,11 @@ func loadVaultConfig(homeDir string, lookup envLookup) (vaultConfig, error) {
 		return vaultConfig{}, err
 	}
 
-	rawMain := persisted.MainPath
-	if value, ok := lookup("PDE_MAIN_VAULT"); ok {
-		rawMain = value
-	}
-	rawWork := persisted.WorkPath
-	if value, ok := lookup("PDE_WORK_VAULT"); ok {
-		rawWork = value
-	}
-
-	mainPath, err := resolveShellPath(rawMain, homeDir)
+	mainPath, err := resolveShellPath(persisted.MainPath, homeDir)
 	if err != nil {
 		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
-	workPath, err := resolveShellPath(rawWork, homeDir)
+	workPath, err := resolveShellPath(persisted.WorkPath, homeDir)
 	if err != nil {
 		return vaultConfig{}, newVaultError(vaultReadConfigFailed, err, err)
 	}
