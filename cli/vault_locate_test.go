@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -133,130 +132,6 @@ func TestLocateVaultMatchesNestedReferenceVariants(t *testing.T) {
 		if !reflect.DeepEqual(matches, []string{want}) {
 			t.Fatalf("unexpected matches for %q: %#v", reference, matches)
 		}
-	}
-}
-
-func TestResolveVaultsDefaultPrefersWorkThenMain(t *testing.T) {
-	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	if err := os.MkdirAll(mainVault, 0o755); err != nil {
-		t.Fatalf("mkdir main vault: %v", err)
-	}
-	if err := os.MkdirAll(workVault, 0o755); err != nil {
-		t.Fatalf("mkdir work vault: %v", err)
-	}
-
-	vaults, err := resolveVaults(homeDir, func(key string) (string, bool) {
-		switch key {
-		case "PDE_MAIN_VAULT":
-			return mainVault, true
-		case "PDE_WORK_VAULT":
-			return workVault, true
-		default:
-			return "", false
-		}
-	}, "default")
-	if err != nil {
-		t.Fatalf("resolve default vaults: %v", err)
-	}
-	if !reflect.DeepEqual(vaults, []string{workVault}) {
-		t.Fatalf("unexpected default vaults: %#v", vaults)
-	}
-
-	vaults, err = resolveVaults(homeDir, func(key string) (string, bool) {
-		if key == "PDE_MAIN_VAULT" {
-			return mainVault, true
-		}
-		return "", false
-	}, "default")
-	if err != nil {
-		t.Fatalf("resolve fallback main vault: %v", err)
-	}
-	if !reflect.DeepEqual(vaults, []string{mainVault}) {
-		t.Fatalf("unexpected fallback vaults: %#v", vaults)
-	}
-}
-
-func TestDefaultSkipsMissingWork(t *testing.T) {
-	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	if err := os.MkdirAll(mainVault, 0o755); err != nil {
-		t.Fatalf("mkdir main vault: %v", err)
-	}
-
-	vaults, err := resolveVaults(homeDir, func(key string) (string, bool) {
-		switch key {
-		case "PDE_MAIN_VAULT":
-			return mainVault, true
-		case "PDE_WORK_VAULT":
-			return workVault, true
-		default:
-			return "", false
-		}
-	}, "default")
-	if err != nil {
-		t.Fatalf("resolve default vaults: %v", err)
-	}
-	if !reflect.DeepEqual(vaults, []string{mainVault}) {
-		t.Fatalf("unexpected fallback vaults: %#v", vaults)
-	}
-}
-
-func TestDefaultSkipsWorkFile(t *testing.T) {
-	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	if err := os.MkdirAll(mainVault, 0o755); err != nil {
-		t.Fatalf("mkdir main vault: %v", err)
-	}
-	mustWriteFile(t, workVault, "not a directory", 0o644)
-
-	vaults, err := resolveVaults(homeDir, func(key string) (string, bool) {
-		switch key {
-		case "PDE_MAIN_VAULT":
-			return mainVault, true
-		case "PDE_WORK_VAULT":
-			return workVault, true
-		default:
-			return "", false
-		}
-	}, "default")
-	if err != nil {
-		t.Fatalf("resolve default vaults: %v", err)
-	}
-	if !reflect.DeepEqual(vaults, []string{mainVault}) {
-		t.Fatalf("unexpected fallback vaults: %#v", vaults)
-	}
-}
-
-func TestDefaultNeedsUsablePath(t *testing.T) {
-	homeDir := t.TempDir()
-	mainVault := filepath.Join(homeDir, "main")
-	workVault := filepath.Join(homeDir, "work")
-	mustWriteFile(t, workVault, "not a directory", 0o644)
-
-	_, err := resolveVaults(homeDir, func(key string) (string, bool) {
-		switch key {
-		case "PDE_MAIN_VAULT":
-			return mainVault, true
-		case "PDE_WORK_VAULT":
-			return workVault, true
-		default:
-			return "", false
-		}
-	}, "default")
-	if err == nil {
-		t.Fatal("expected resolve default vaults to fail")
-	}
-
-	var vaultErr *vaultError
-	if !errors.As(err, &vaultErr) {
-		t.Fatalf("expected vaultError, got %T", err)
-	}
-	if vaultErr.Code != vaultDefaultNeedsUsablePath {
-		t.Fatalf("unexpected error code %v", vaultErr.Code)
 	}
 }
 

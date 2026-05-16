@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,82 +102,7 @@ func persistDefaultVaultSelector(homeDir, selector string) error {
 }
 
 func resolveVaultRoots(cfg vaultConfig, selector string) ([]string, error) {
-	selector = normalizeVaultSelector(selector)
-
-	switch selector {
-	case "", "default":
-		switch cfg.DefaultSelector {
-		case "main":
-			if cfg.MainPath == "" {
-				return nil, newVaultError(vaultDefaultMainRequiresPath, nil, cfg.DefaultSelector)
-			}
-			return []string{cfg.MainPath}, nil
-		case "work":
-			if cfg.WorkPath == "" {
-				return nil, newVaultError(vaultDefaultWorkRequiresPath, nil, cfg.DefaultSelector)
-			}
-			return []string{cfg.WorkPath}, nil
-		case "":
-			return resolveDefaultFallbackRoot(cfg)
-		default:
-			return nil, newVaultError(vaultInvalidPersistedSelector, nil, cfg.DefaultSelector)
-		}
-	case "any":
-		var vaults []string
-		for _, vault := range []string{cfg.MainPath, cfg.WorkPath} {
-			if vault != "" {
-				vaults = append(vaults, vault)
-			}
-		}
-		if len(vaults) == 0 {
-			return nil, newVaultError(vaultNoVaultConfigured, nil)
-		}
-		return vaults, nil
-	case "main":
-		if cfg.MainPath == "" {
-			return nil, newVaultError(vaultMainNotConfigured, nil)
-		}
-		return []string{cfg.MainPath}, nil
-	case "work":
-		if cfg.WorkPath == "" {
-			return nil, newVaultError(vaultWorkNotConfigured, nil)
-		}
-		return []string{cfg.WorkPath}, nil
-	default:
-		return nil, fmt.Errorf("invalid --vault value %q", selector)
-	}
-}
-
-func resolveDefaultFallbackRoot(cfg vaultConfig) ([]string, error) {
-	configured := false
-	for _, vault := range []string{cfg.WorkPath, cfg.MainPath} {
-		if vault == "" {
-			continue
-		}
-		configured = true
-		usable, err := isUsableDefaultFallbackRoot(vault)
-		if err != nil {
-			return nil, err
-		}
-		if usable {
-			return []string{vault}, nil
-		}
-	}
-	if !configured {
-		return nil, newVaultError(vaultNoVaultConfigured, nil)
-	}
-	return nil, newVaultError(vaultDefaultNeedsUsablePath, nil)
-}
-
-func isUsableDefaultFallbackRoot(path string) (bool, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("stat vault %s: %w", path, err)
-	}
-	return info.IsDir(), nil
+	return selectVaultPaths(VaultState{MainPath: cfg.MainPath, WorkPath: cfg.WorkPath, Default: cfg.DefaultSelector}, selector)
 }
 
 func normalizeShellValue(value string) string {
@@ -190,10 +114,6 @@ func normalizeShellValue(value string) string {
 		value = value[1 : len(value)-1]
 	}
 	return value
-}
-
-func normalizeVaultSelector(s string) string {
-	return strings.ToLower(normalizeShellValue(s))
 }
 
 func resolveShellPath(value, homeDir string) (string, error) {
