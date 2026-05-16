@@ -12,7 +12,7 @@ import (
 func newVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
-		Short: "Manage PDE vault tooling",
+		Short: "Manage persisted PDE vault selection and lookup",
 	}
 	cmd.AddCommand(newVaultDefaultCmd())
 	cmd.AddCommand(newVaultLocateCmd())
@@ -22,7 +22,7 @@ func newVaultCmd() *cobra.Command {
 func newVaultDefaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "default",
-		Short:         "Get or set the persisted default vault selector",
+		Short:         "Get or set the persisted main/work selector",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -42,7 +42,7 @@ func newVaultDefaultCmd() *cobra.Command {
 func newVaultDefaultGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "get",
-		Short:         "Print the persisted default vault selector",
+		Short:         "Print the persisted main/work selector",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -59,7 +59,7 @@ func newVaultDefaultGetCmd() *cobra.Command {
 func newVaultDefaultSetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "set <main|work>",
-		Short:         "Persist the default vault selector",
+		Short:         "Persist the main/work selector",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -78,7 +78,7 @@ func newVaultLocateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "locate [reference]",
-		Short:         "Locate a note in a PDE vault",
+		Short:         "Locate a note in the selected PDE vault",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -91,18 +91,18 @@ func newVaultLocateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runVaultLocate(cmd.OutOrStdout(), homeDir, os.LookupEnv, opts)
+			return runVaultLocate(cmd.OutOrStdout(), homeDir, opts)
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any")
+	cmd.Flags().StringVar(&opts.Vault, "vault", "default", "Vault selector: main|work|default|any; default follows PDE_DEFAULT_VAULT")
 	cmd.Flags().StringVar(&opts.Filename, "filename", "", "Exact note filename to locate")
 	cmd.Flags().StringVar(&opts.Query, "query", "", "Search query to locate")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Emit JSON output")
 	return cmd
 }
 
-func runVaultLocate(out io.Writer, homeDir string, lookup envLookup, opts vaultLocateOptions) error {
+func runVaultLocate(out io.Writer, homeDir string, opts vaultLocateOptions) error {
 	opts.Filename = normalizeQueryInput(opts.Filename)
 	opts.Reference = normalizeVaultReference(opts.Reference)
 	opts.Query = normalizeQueryInput(opts.Query)
@@ -118,12 +118,12 @@ func runVaultLocate(out io.Writer, homeDir string, lookup envLookup, opts vaultL
 		return writeVaultLocateError(out, opts.JSON, errors.New("--filename and --query are mutually exclusive"))
 	}
 
-	vaults, err := resolveVaults(homeDir, lookup, opts.Vault)
+	vaults, err := resolveVaultPaths(homeDir, opts.Vault)
 	if err != nil {
 		return writeVaultLocateError(out, opts.JSON, err)
 	}
 
-	matches, err := locateVaultMatches(vaults, opts.Filename, opts.Reference, opts.Query)
+	matches, err := findVaultNotes(vaults, opts.Filename, opts.Reference, opts.Query)
 	if err != nil {
 		return writeVaultLocateError(out, opts.JSON, err)
 	}
@@ -172,10 +172,11 @@ func writeVaultLocateStatus(out io.Writer, jsonMode bool, result vaultLocateResu
 }
 
 func runVaultDefaultGet(out io.Writer, homeDir string) error {
-	selector, err := storedDefaultVaultSelector(homeDir)
+	state, err := readVaultState(homeDir)
 	if err != nil {
 		return err
 	}
+	selector := state.Default
 	if selector == "" {
 		selector = "unset"
 	}
@@ -184,9 +185,21 @@ func runVaultDefaultGet(out io.Writer, homeDir string) error {
 }
 
 func runVaultDefaultSet(out io.Writer, homeDir, selector string) error {
-	if err := persistDefaultVaultSelector(homeDir, selector); err != nil {
+	selector = normalizeVaultSelector(selector)
+	if selector != "main" && selector != "work" {
+		return newVaultError(vaultInvalidSelector, nil, selector)
+	}
+	state, err := readVaultState(homeDir)
+	if err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(out, normalizeVaultSelector(selector))
+	state.Default = selector
+	if _, err := selectVaultPaths(state, "default"); err != nil {
+		return err
+	}
+	if err := writeVaultState(homeDir, state); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, selector)
 	return err
 }
