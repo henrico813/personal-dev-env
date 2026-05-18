@@ -75,7 +75,7 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. Resolve plan, issue, doc, and vault references using the Planning Docs contract in `ai/AGENTS.md`.
+3. Resolve plan, issue, doc, and vault references using the Planning Docs guidance in `ai/AGENTS.md`.
    - Use existing filesystem paths directly.
    - For existing plans, docs, and notes, use `pde vault locate --json --vault <selector> "<reference>"`.
    - Use `pde vault path <selector>` only when determining the destination root for a new plan or when the user explicitly asks for a vault root.

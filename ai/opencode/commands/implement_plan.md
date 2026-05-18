@@ -12,7 +12,7 @@ When given a plan reference:
 - Read the plan completely and check for any existing checkmarks (- [x])
 - Read the original ticket and all files mentioned in the plan
 - **Read files fully** - never use limit/offset parameters, you need complete context
-- Resolve the plan reference using the Planning Docs contract in `ai/AGENTS.md`.
+- Resolve the plan reference using the Planning Docs guidance in `ai/AGENTS.md`.
 - Use existing filesystem paths directly.
 - Otherwise resolve the plan file with `pde vault locate --json --vault <selector> "<reference>"`.
 - If the request only identifies a vault root, ask for the actual plan reference instead of treating the directory as a plan.
@@ -45,7 +45,7 @@ as `setup_error`, not a generic agent failure.
 Read the plan fully, then run one unchecked implementation step at a time.
 Scaffold a structured task prompt with `surveil new task /tmp/opencode/implement-plan-task`.
 Populate `/tmp/opencode/implement-plan-task/task.md` with the exact current plan step content verbatim, then invoke the `vibe` CLI
-directly with the current run contract:
+directly with the current run flow:
 
 ```bash
 vibe run --key "$KEY" --prompt-file /tmp/opencode/implement-plan-task/task.md --model "$MODEL"

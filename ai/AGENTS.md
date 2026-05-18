@@ -1,6 +1,15 @@
 # AI Workflow Defaults
 
 - Never use emojis.
+- Never use the words canonical or contract.
+
+## Testing
+
+- Tests must use the production API whenever possible
+- Avoid mocks whenever possible
+- Test names must be 7 words or less
+- If writing Go, refer to `CLI Error Types Guide.md` in the vault, use table tests whenever possible
+- If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
 - Keep code comments and docstrings concise.
 - Prefer examples over prose.
 - Use conventional commits.
@@ -12,7 +21,7 @@
 - Read `Projects/AGENTS.md` before writing to the vault.
 - Implementation plans are issues, not design docs.
 - Back up managed config before replacing it.
-- Resolve plan and vault references with this contract:
+- Resolve plan and vault references with this guidance:
 - 1. If the user-provided reference is an existing filesystem path, use it directly.
 - 2. Track any explicit vault selector from the request: `default`, `main`, or `work`.
 - 3. For existing plans, docs, and notes, resolve with `pde vault locate --json --vault <selector> "<reference>"`.
