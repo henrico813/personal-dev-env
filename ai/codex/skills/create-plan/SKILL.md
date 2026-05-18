@@ -75,7 +75,11 @@ If any repo-backed trigger is present, do not fall back to manual-first research
 
 1. Read all files mentioned by the user fully.
 2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. If the user references a vault-style path, resolve it with `pde vault locate --json --vault default "<reference>"`. If that returns `error` because no default vault is configured, treat it as a PDE setup issue and stop. Treat `not_found`, `ambiguous`, and other `error` results as stop-and-ask states. Use the vault helper for lookup only; do not use it to create destination paths. Use `--query` only when you explicitly want note-content search.
+3. Resolve plan, issue, doc, and vault references using the Planning Docs contract in `ai/AGENTS.md`.
+   - Use existing filesystem paths directly.
+   - For existing plans, docs, and notes, use `pde vault locate --json --vault <selector> "<reference>"`.
+   - Use `pde vault path <selector>` only when determining the destination root for a new plan or when the user explicitly asks for a vault root.
+   - Ask only on `ambiguous`, `not_found`, or setup `error`.
 4. If the request is repo-backed, let `<artifact-dir>` be a unique per-plan temp artifact directory under `/tmp/opencode/`, then scaffold a structured surveil task at `<artifact-dir>` before broad repo research.
 5. Build the task using these mechanical rules:
    - Populate `<artifact-dir>/task.md` after scaffolding it.
@@ -240,11 +244,10 @@ Make sure the implementation and verification sections include explicit,
    - Ask "why" and "what about"
    - Don't assume - verify with code
 
-2. **Be Interactive**:
-   - Don't write the full plan in one shot
-   - Get buy-in at each major step
-   - Allow course corrections
-   - Work collaboratively
+2. **Be Directed**:
+   - Begin research immediately when enough information is present to resolve inputs
+   - Ask clarifying questions only when missing information would materially change implementation, sequencing, or verification
+   - Do not pause for approval on plan structure or intermediate research updates
 
 3. **Be Thorough**:
    - Read all context files COMPLETELY before planning

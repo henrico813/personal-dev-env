@@ -8,11 +8,14 @@ You are tasked with implementing an approved design document. These plans contai
 
 ## Getting Started
 
-When given a plan path:
+When given a plan reference:
 - Read the plan completely and check for any existing checkmarks (- [x])
 - Read the original ticket and all files mentioned in the plan
 - **Read files fully** - never use limit/offset parameters, you need complete context
-- For exact filename lookups, start with `pde vault locate --json --vault default "<reference>"`. If that returns `error` because no default vault is configured, treat it as a PDE setup issue and stop. Treat `not_found`, `ambiguous`, and other `error` results as stop-and-ask states. Use `--query` only when you explicitly want note-content search.
+- Resolve the plan reference using the Planning Docs contract in `ai/AGENTS.md`.
+- Use existing filesystem paths directly.
+- Otherwise resolve the plan file with `pde vault locate --json --vault <selector> "<reference>"`.
+- If the request only identifies a vault root, ask for the actual plan reference instead of treating the directory as a plan.
 - Think deeply about how the pieces fit together
 - Create a todo list to track your progress
 - By default, create a new branch and new worktree for your work, unless the plan specifies otherwise.
@@ -20,7 +23,7 @@ When given a plan path:
 - The default worktree path should be `./worktrees/name`, where name is derived from the plan title first, then the branch name otherwise. If the plan specifies a worktree path, use that instead.
 - Start implementing if you understand what needs to be done
 
-If no plan path provided, ask for one.
+If no plan reference is provided, ask for one.
 
 ## Detailed Implementation Strategy
 
