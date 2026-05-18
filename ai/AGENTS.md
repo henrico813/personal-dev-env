@@ -2,6 +2,10 @@
 
 - Never use emojis.
 - Never use the words canonical or contract.
+- Keep code comments and docstrings concise.
+- Prefer examples over prose.
+- Use conventional commits.
+- Do not add AI attribution to commits.
 
 ## Testing
 
@@ -10,10 +14,6 @@
 - Test names must be 7 words or less
 - If writing Go, refer to `CLI Error Types Guide.md` in the vault, use table tests whenever possible
 - If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
-- Keep code comments and docstrings concise.
-- Prefer examples over prose.
-- Use conventional commits.
-- Do not add AI attribution to commits.
 
 ## Planning Docs
 
