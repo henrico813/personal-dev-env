@@ -37,19 +37,80 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	}
 }
 
-func TestLocateVaultMatchesNestedReferenceVariants(t *testing.T) {
-	vault := t.TempDir()
-	want := filepath.Join(vault, "projects", "alpha", "note.md")
-	mustWriteFile(t, want, "needle", 0o644)
+func TestFindVaultNotesReferenceMatching(t *testing.T) {
+	tests := []struct {
+		name      string
+		files     map[string]string
+		reference string
+		want      []string
+	}{
+		{
+			name: "case-insensitive issue id",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
+			},
+			reference: "pdev-113",
+			want:      []string{"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md"},
+		},
+		{
+			name: "normalized title",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
+			},
+			reference: "simplify ai vault resolution and markdown wrap",
+			want:      []string{"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md"},
+		},
+		{
+			name: "backup ignored by default",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md":                   "one",
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.backup-2026-05-18.md": "two",
+			},
+			reference: "PDEV-113",
+			want:      []string{"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md"},
+		},
+		{
+			name: "explicit backup reference",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.backup-2026-05-18.md": "two",
+			},
+			reference: "PDEV-113 Simplify AI vault resolution and markdown wrap.backup-2026-05-18.md",
+			want:      []string{"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.backup-2026-05-18.md"},
+		},
+		{
+			name: "ambiguous normalized title",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md":   "one",
+				"archive/PDEV-214 Simplify AI vault resolution and markdown wrap.md": "two",
+			},
+			reference: "simplify ai vault resolution and markdown wrap",
+			want: []string{
+				"archive/PDEV-214 Simplify AI vault resolution and markdown wrap.md",
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+			},
+		},
+	}
 
-	for _, reference := range []string{"projects/alpha/note.md", "projects/alpha/note"} {
-		matches, err := findVaultNotes([]string{vault}, "", reference, "")
-		if err != nil {
-			t.Fatalf("locate reference %q: %v", reference, err)
-		}
-		if !reflect.DeepEqual(matches, []string{want}) {
-			t.Fatalf("unexpected matches for %q: %#v", reference, matches)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vault := t.TempDir()
+			for rel, content := range tt.files {
+				mustWriteFile(t, filepath.Join(vault, rel), content, 0o644)
+			}
+
+			matches, err := findVaultNotes([]string{vault}, "", tt.reference, "")
+			if err != nil {
+				t.Fatalf("locate reference %q: %v", tt.reference, err)
+			}
+
+			want := make([]string, 0, len(tt.want))
+			for _, rel := range tt.want {
+				want = append(want, filepath.Join(vault, rel))
+			}
+			if !reflect.DeepEqual(matches, want) {
+				t.Fatalf("unexpected matches: %#v", matches)
+			}
+		})
 	}
 }
 
