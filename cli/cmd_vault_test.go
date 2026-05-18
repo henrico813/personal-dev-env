@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -137,6 +138,110 @@ func TestVaultLocateJSONConfigFailure(t *testing.T) {
 	}
 	if result.Error == "" {
 		t.Fatal("expected config error in JSON output")
+	}
+}
+
+func TestVaultLocateJSONReferenceResults(t *testing.T) {
+	tests := []struct {
+		name        string
+		selector    string
+		reference   string
+		files       map[string]string
+		wantStatus  string
+		wantPath    string
+		wantMatches []string
+	}{
+		{
+			name:      "found by issue id on default selector",
+			selector:  "default",
+			reference: "pdev-113",
+			files: map[string]string{
+				"PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
+			},
+			wantStatus: "found",
+			wantPath:    "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+		},
+		{
+			name:      "ambiguous normalized title on default selector",
+			selector:  "default",
+			reference: "simplify ai vault resolution and markdown wrap",
+			files: map[string]string{
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md":   "one",
+				"archive/PDEV-214 Simplify AI vault resolution and markdown wrap.md": "two",
+			},
+			wantStatus: "ambiguous",
+			wantMatches: []string{
+				"archive/PDEV-214 Simplify AI vault resolution and markdown wrap.md",
+				"plans/PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+			},
+		},
+		{
+			name:       "not found on default selector",
+			selector:   "default",
+			reference:  "PDEV-999",
+			files:      map[string]string{},
+			wantStatus: "not_found",
+		},
+		{
+			name:      "found by issue id on main selector",
+			selector:  "main",
+			reference: "pdev-113",
+			files: map[string]string{
+				"PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
+			},
+			wantStatus: "found",
+			wantPath:    "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearVaultEnv(t)
+			homeDir := t.TempDir()
+			mainVault := filepath.Join(homeDir, "main")
+			configJSON := filepath.Join(homeDir, ".config", "pde", "config.json")
+			if err := os.MkdirAll(filepath.Dir(configJSON), 0o755); err != nil {
+				t.Fatalf("mkdir config parent: %v", err)
+			}
+			if err := os.MkdirAll(mainVault, 0o755); err != nil {
+				t.Fatalf("mkdir main vault: %v", err)
+			}
+			mustWriteFile(t, configJSON, "{\n  \"main_vault\": \""+mainVault+"\",\n  \"default_vault\": \"main\"\n}\n", 0o644)
+			for rel, content := range tt.files {
+				mustWriteFile(t, filepath.Join(mainVault, rel), content, 0o644)
+			}
+			t.Setenv("HOME", homeDir)
+
+			args := []string{"vault", "locate", "--json"}
+			if tt.selector != "default" {
+				args = append(args, "--vault", tt.selector)
+			}
+			args = append(args, tt.reference)
+
+			stdout, stderr, err := executeVaultLocate(t, args...)
+			if err != nil {
+				t.Fatalf("execute locate: %v", err)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected no stderr, got %q", stderr.String())
+			}
+			result := mustDecodeVaultLocateResult(t, stdout.Bytes())
+			if result.Status != tt.wantStatus {
+				t.Fatalf("unexpected status %q", result.Status)
+			}
+			if tt.wantPath != "" && result.Path != filepath.Join(mainVault, tt.wantPath) {
+				t.Fatalf("unexpected path %q", result.Path)
+			}
+			if tt.wantMatches != nil {
+				wantMatches := make([]string, 0, len(tt.wantMatches))
+				for _, rel := range tt.wantMatches {
+					wantMatches = append(wantMatches, filepath.Join(mainVault, rel))
+				}
+				if !reflect.DeepEqual(result.Matches, wantMatches) {
+					t.Fatalf("unexpected matches %#v", result.Matches)
+				}
+			}
+		})
 	}
 }
 

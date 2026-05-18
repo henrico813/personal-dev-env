@@ -231,7 +231,7 @@ func runVaultLocate(out io.Writer, homeDir string, opts vaultLocateOptions) erro
 		for _, match := range matches {
 			fmt.Fprintln(out, match)
 		}
-		return fmt.Errorf("ambiguous match")
+		return nil
 	}
 }
 
@@ -248,14 +248,14 @@ func writeVaultLocateStatus(out io.Writer, jsonMode bool, result vaultLocateResu
 		case "found":
 			fmt.Fprintln(out, result.Path)
 		case "not_found":
-			return fmt.Errorf("no match found")
+			return nil
 		case "ambiguous":
 			for _, match := range result.Matches {
 				fmt.Fprintln(out, match)
 			}
-			return fmt.Errorf("ambiguous match")
+			return nil
 		case "error":
-			return fmt.Errorf(result.Error)
+			return errors.New(result.Error)
 		}
 		return nil
 	}
