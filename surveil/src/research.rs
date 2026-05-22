@@ -1,5 +1,7 @@
 use crate::index;
-use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
+use crate::schema::{
+    Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION,
+};
 use crate::source::{self, SourceFile};
 use std::collections::{BTreeSet, HashSet};
 use std::error::Error;
@@ -24,8 +26,13 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let mut result = Vec::with_capacity(gather.query.len());
 
     for query in &gather.query {
-        let (findings, negative_evidence) =
-            answer_question_from_corpus(query, &gather.terms, &gather.search_areas, &corpus, &mut trace)?;
+        let (findings, negative_evidence) = answer_question_from_corpus(
+            query,
+            &gather.terms,
+            &gather.search_areas,
+            &corpus,
+            &mut trace,
+        )?;
         if findings.is_empty() {
             trace.unmatched_questions.push(query.clone());
         }
@@ -116,7 +123,10 @@ fn answer_question_from_corpus(
         let mut file_findings = Vec::new();
         for line in &file.lines {
             let line_text = &file.text[line.start..line.end];
-            if let Some(matched_from) = tokens.iter().find(|token| line.lower_text.contains(token.as_str())) {
+            if let Some(matched_from) = tokens
+                .iter()
+                .find(|token| line.lower_text.contains(token.as_str()))
+            {
                 if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
                     file_findings.push(MatchedFinding {
                         finding: Finding {
@@ -170,7 +180,10 @@ fn answer_question_from_corpus(
         .collect();
 
     let negative_evidence = if findings.is_empty() {
-        vec![format!("searched declared areas: {}", search_areas.join(", "))]
+        vec![format!(
+            "searched declared areas: {}",
+            search_areas.join(", ")
+        )]
     } else {
         Vec::new()
     };
@@ -195,7 +208,9 @@ fn load_candidate_text(
     match fs::read_to_string(file) {
         Ok(text) => Some(text),
         Err(_) => {
-            trace.skipped_paths.push(source::display_path(repo_root, file));
+            trace
+                .skipped_paths
+                .push(source::display_path(repo_root, file));
             None
         }
     }
@@ -207,7 +222,12 @@ fn load_candidate_files(
     explicit_files: &[ExplicitFile],
     trace: &mut TraceState,
 ) -> Result<Vec<LoadedFile>, Box<dyn Error>> {
-    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
+    let candidates = source::collect_candidate_files(
+        repo_root,
+        search_areas,
+        explicit_files,
+        &mut trace.skipped_paths,
+    )?;
     let cache = index::open(repo_root).ok().flatten();
     let mut loaded_files = Vec::with_capacity(candidates.len());
 
@@ -308,8 +328,17 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
     if matches!(
         extension.as_deref(),
         Some(
-            "md" | "markdown" | "rst" | "txt" | "toml" | "json" | "yaml" | "yml" | "ini"
-                | "cfg" | "conf" | "env"
+            "md" | "markdown"
+                | "rst"
+                | "txt"
+                | "toml"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "ini"
+                | "cfg"
+                | "conf"
+                | "env"
         )
     ) {
         return false;
@@ -353,7 +382,11 @@ fn enrich_symbol_metadata(text: &str, findings: &mut [MatchedFinding]) {
     }
 }
 
-fn attach_symbol_metadata(text: &str, tree: &tree_sitter::Tree, findings: &mut [MatchedFinding]) -> bool {
+fn attach_symbol_metadata(
+    text: &str,
+    tree: &tree_sitter::Tree,
+    findings: &mut [MatchedFinding],
+) -> bool {
     let mut attached = false;
     for hit in findings {
         if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
@@ -379,7 +412,8 @@ fn enclosing_symbol(
     source: &[u8],
     byte_offset: usize,
 ) -> Option<SymbolInfo> {
-    let mut node = root.descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
+    let mut node = root
+        .descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
     loop {
         if is_symbol_node(node) {
             let name_node = symbol_name_node(node)?;
@@ -396,7 +430,8 @@ fn enclosing_symbol(
 }
 
 fn symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    node.child_by_field_name("name").or_else(|| node.named_child(0))
+    node.child_by_field_name("name")
+        .or_else(|| node.named_child(0))
 }
 
 fn is_symbol_node(node: tree_sitter::Node) -> bool {
@@ -463,7 +498,10 @@ fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
                 return None;
             }
             let variants = token_variants(&token);
-            if variants.iter().any(|variant| question_token_set.contains(variant)) {
+            if variants
+                .iter()
+                .any(|variant| question_token_set.contains(variant))
+            {
                 Some(token)
             } else {
                 None
@@ -536,22 +574,58 @@ fn push_token(tokens: &mut Vec<String>, token: &str) {
 fn is_generic_question_token(token: &str) -> bool {
     matches!(
         token,
-        "what" | "where" | "when" | "why" | "how" | "who" | "whom" | "which" | "whose"
-            | "should" | "would" | "could" | "can" | "may" | "might" | "do" | "does"
-            | "did" | "is" | "are" | "was" | "were" | "be" | "been" | "being" | "the"
-            | "a" | "an" | "to" | "of" | "and" | "or" | "for" | "in" | "on" | "at"
-            | "by" | "with" | "from" | "into" | "this" | "that" | "these" | "those"
+        "what"
+            | "where"
+            | "when"
+            | "why"
+            | "how"
+            | "who"
+            | "whom"
+            | "which"
+            | "whose"
+            | "should"
+            | "would"
+            | "could"
+            | "can"
+            | "may"
+            | "might"
+            | "do"
+            | "does"
+            | "did"
+            | "is"
+            | "are"
+            | "was"
+            | "were"
+            | "be"
+            | "been"
+            | "being"
+            | "the"
+            | "a"
+            | "an"
+            | "to"
+            | "of"
+            | "and"
+            | "or"
+            | "for"
+            | "in"
+            | "on"
+            | "at"
+            | "by"
+            | "with"
+            | "from"
+            | "into"
+            | "this"
+            | "that"
+            | "these"
+            | "those"
     )
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::{answer_question, run, TraceState};
     use crate::index;
-    use crate::schema::{
-        ExplicitFile, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION,
-    };
+    use crate::schema::{ExplicitFile, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
@@ -580,7 +654,11 @@ mod tests {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).expect("create parent dirs");
         }
-        fs::write(path, serde_json::to_vec(context).expect("serialize context")).expect("write context");
+        fs::write(
+            path,
+            serde_json::to_vec(context).expect("serialize context"),
+        )
+        .expect("write context");
     }
 
     fn parse_report_from_stdout(stdout: &str) -> ResearchOutput {
@@ -595,7 +673,10 @@ mod tests {
     fn skips_generated_repo_relative_output_and_prefers_declared_terms() {
         let repo = temp_repo("research");
         write_file(&repo.join("surveil/src/lib.rs"), "// tree-sitter attach\n");
-        write_file(&repo.join("surveil/target/generated.rs"), "// tree-sitter attach\n");
+        write_file(
+            &repo.join("surveil/target/generated.rs"),
+            "// tree-sitter attach\n",
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -611,7 +692,10 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "surveil/src/lib.rs");
         assert_eq!(findings[0].matched_from, "tree-sitter");
-        assert!(trace.skipped_paths.iter().any(|path| path.contains("surveil/target")));
+        assert!(trace
+            .skipped_paths
+            .iter()
+            .any(|path| path.contains("surveil/target")));
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -749,7 +833,10 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].path, "surveil/src/lib.rs");
         assert!(trace.files_considered.len() > 0);
-        assert!(trace.skipped_paths.iter().all(|path| !path.contains("worktrees/repo/surveil")));
+        assert!(trace
+            .skipped_paths
+            .iter()
+            .all(|path| !path.contains("worktrees/repo/surveil")));
 
         let _ = fs::remove_dir_all(repo.parent().expect("parent"));
     }
@@ -784,10 +871,7 @@ mod tests {
     #[test]
     fn ranks_explicit_files_ahead_of_broad_lexical_hits() {
         let repo = temp_repo("ranking");
-        write_file(
-            &repo.join("notes/design.md"),
-            "// tree-sitter attach\n",
-        );
+        write_file(&repo.join("notes/design.md"), "// tree-sitter attach\n");
         write_file(
             &repo.join("surveil/src/lib.rs"),
             "// tree-sitter attach one\n// tree-sitter attach two\n// tree-sitter attach three\n// tree-sitter attach four\n",
@@ -809,7 +893,9 @@ mod tests {
 
         assert_eq!(findings[0].path, "notes/design.md");
         assert_eq!(findings[0].source, "explicit_file");
-        assert!(findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+        assert!(findings
+            .iter()
+            .any(|finding| finding.path == "surveil/src/lib.rs"));
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -860,8 +946,14 @@ mod tests {
         assert_eq!(scan.1, indexed.1);
         assert_eq!(indexed.0[0].path, "notes/design.md");
         assert_eq!(indexed.0[1].path, "surveil/src/a.rs");
-        assert_eq!(indexed_trace.files_considered.len(), scan_trace.files_considered.len());
-        assert_eq!(indexed_trace.files_matched.len(), scan_trace.files_matched.len());
+        assert_eq!(
+            indexed_trace.files_considered.len(),
+            scan_trace.files_considered.len()
+        );
+        assert_eq!(
+            indexed_trace.files_matched.len(),
+            scan_trace.files_matched.len()
+        );
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -886,7 +978,13 @@ mod tests {
         .expect("research answer");
 
         assert_eq!(findings.len(), 3);
-        assert_eq!(findings.iter().filter(|finding| finding.path == "surveil/src/lib.rs").count(), 3);
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|finding| finding.path == "surveil/src/lib.rs")
+                .count(),
+            3
+        );
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -912,7 +1010,10 @@ mod tests {
         .expect("research answer");
 
         assert!(findings.is_empty());
-        assert!(trace.skipped_paths.iter().any(|path| path == "surveil/src/lib.rs"));
+        assert!(trace
+            .skipped_paths
+            .iter()
+            .any(|path| path == "surveil/src/lib.rs"));
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -942,7 +1043,10 @@ mod tests {
     #[test]
     fn parseable_markdown_docs_remain_lexical_only() {
         let repo = temp_repo("markdown-symbols");
-        write_file(&repo.join("docs/notes.md"), "fn attach() { // tree-sitter attach }\n");
+        write_file(
+            &repo.join("docs/notes.md"),
+            "fn attach() { // tree-sitter attach }\n",
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -968,7 +1072,10 @@ mod tests {
     #[test]
     fn parseable_root_readme_remains_lexical_only() {
         let repo = temp_repo("readme-symbols");
-        write_file(&repo.join("README"), "fn attach() { // tree-sitter attach }\n");
+        write_file(
+            &repo.join("README"),
+            "fn attach() { // tree-sitter attach }\n",
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -994,8 +1101,14 @@ mod tests {
     #[test]
     fn parseable_root_env_dotfiles_remain_lexical_only() {
         let repo = temp_repo("env-symbols");
-        write_file(&repo.join(".env"), "fn attach() { // tree-sitter attach }\n");
-        write_file(&repo.join(".env.local"), "fn attach() { // tree-sitter attach }\n");
+        write_file(
+            &repo.join(".env"),
+            "fn attach() { // tree-sitter attach }\n",
+        );
+        write_file(
+            &repo.join(".env.local"),
+            "fn attach() { // tree-sitter attach }\n",
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -1010,7 +1123,10 @@ mod tests {
 
         assert_eq!(findings.len(), 2);
         for path in [".env", ".env.local"] {
-            let finding = findings.iter().find(|finding| finding.path == path).expect("finding");
+            let finding = findings
+                .iter()
+                .find(|finding| finding.path == path)
+                .expect("finding");
             assert_eq!(finding.symbol_kind, None);
             assert_eq!(finding.symbol_name, None);
             assert_eq!(finding.symbol_start_line, None);
@@ -1023,7 +1139,10 @@ mod tests {
     #[test]
     fn parseable_extensionless_source_file_remains_lexical_only() {
         let repo = temp_repo("extensionless-source");
-        write_file(&repo.join("surveil/src/lib"), "fn attach() { // tree-sitter attach }\n");
+        write_file(
+            &repo.join("surveil/src/lib"),
+            "fn attach() { // tree-sitter attach }\n",
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -1136,11 +1255,13 @@ mod tests {
 
         run(&context, &trace).expect("research run");
 
-        let trace_output: TraceOutput = serde_json::from_str(
-            &fs::read_to_string(&trace).expect("read trace"),
-        )
-        .expect("parse trace");
-        assert_eq!(trace_output.skipped_paths, vec![".surveil/index.sqlite".to_string()]);
+        let trace_output: TraceOutput =
+            serde_json::from_str(&fs::read_to_string(&trace).expect("read trace"))
+                .expect("parse trace");
+        assert_eq!(
+            trace_output.skipped_paths,
+            vec![".surveil/index.sqlite".to_string()]
+        );
 
         let _ = fs::remove_dir_all(repo);
     }
@@ -1172,7 +1293,11 @@ mod tests {
                     "How should attach be verified?".to_string(),
                     "Where should missing live?".to_string(),
                 ],
-                terms: vec!["tree-sitter".to_string(), "attach".to_string(), "missing".to_string()],
+                terms: vec![
+                    "tree-sitter".to_string(),
+                    "attach".to_string(),
+                    "missing".to_string(),
+                ],
                 blockers: Vec::new(),
             },
         );
@@ -1214,15 +1339,23 @@ mod tests {
             .arg("--nocapture")
             .output()
             .expect("spawn test binary");
-        assert!(output.status.success(), "child test failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "child test failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
-        let report = parse_report_from_stdout(&String::from_utf8(output.stdout).expect("utf8 stdout"));
+        let report =
+            parse_report_from_stdout(&String::from_utf8(output.stdout).expect("utf8 stdout"));
 
         assert_eq!(report.result.len(), 3);
         for answer in &report.result[..2] {
             assert_eq!(answer.findings[0].path, "notes/design.md");
             assert_eq!(answer.findings[0].source, "explicit_file");
-            assert!(answer.findings.iter().any(|finding| finding.path == "surveil/src/lib.rs"));
+            assert!(answer
+                .findings
+                .iter()
+                .any(|finding| finding.path == "surveil/src/lib.rs"));
             assert!(answer.negative_evidence.is_empty());
         }
 
@@ -1233,8 +1366,15 @@ mod tests {
             .collect();
         assert_eq!(rust_findings.len(), 3);
         assert_eq!(
-            rust_findings.iter().map(|finding| finding.excerpt.as_str()).collect::<Vec<_>>(),
-            vec!["fn attach() {", "// tree-sitter attach one", "// tree-sitter attach two"]
+            rust_findings
+                .iter()
+                .map(|finding| finding.excerpt.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "fn attach() {",
+                "// tree-sitter attach one",
+                "// tree-sitter attach two"
+            ]
         );
         for finding in &rust_findings {
             assert_eq!(finding.symbol_kind.as_deref(), Some("function"));
@@ -1248,7 +1388,10 @@ mod tests {
             report.result[2].negative_evidence,
             vec!["searched declared areas: surveil/".to_string()]
         );
-        assert_eq!(report.open_questions, vec!["Where should missing live?".to_string()]);
+        assert_eq!(
+            report.open_questions,
+            vec!["Where should missing live?".to_string()]
+        );
     }
 
     #[test]
@@ -1258,9 +1401,16 @@ mod tests {
             .arg("--nocapture")
             .output()
             .expect("spawn test binary");
-        assert!(output.status.success(), "child test failed: {}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "child test failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
-        assert!(stdout.contains("\"schema_version\":\"surveil.v5\""), "stdout: {stdout}");
+        assert!(
+            stdout.contains("\"schema_version\":\"surveil.v5\""),
+            "stdout: {stdout}"
+        );
         assert!(!stdout.contains("\"surveil_version\""), "stdout: {stdout}");
     }
 }

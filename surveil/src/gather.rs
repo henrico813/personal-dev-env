@@ -54,10 +54,18 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
 
         if let Some(section) = heading_name(trimmed) {
             if !is_allowed_section(&section) {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("unexpected section: {section}")).into());
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("unexpected section: {section}"),
+                )
+                .into());
             }
             if sections.contains_key(&section) {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, format!("duplicate section: {section}")).into());
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("duplicate section: {section}"),
+                )
+                .into());
             }
             sections.insert(section.clone(), Vec::new());
             current = Some(section);
@@ -68,8 +76,16 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
             continue;
         }
 
-        let section = current.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "content found before any section"))?;
-        sections.get_mut(section).expect("section exists").push(line.to_string());
+        let section = current.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "content found before any section",
+            )
+        })?;
+        sections
+            .get_mut(section)
+            .expect("section exists")
+            .push(line.to_string());
     }
 
     let summary = take_text_section(&sections, "Summary")?;
@@ -77,7 +93,11 @@ fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
     let search_areas = take_list_section(&sections, "Search Areas")?;
     let query = take_list_section(&sections, "Query")?;
     if query.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Query section is required and must not be empty").into());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Query section is required and must not be empty",
+        )
+        .into());
     }
     let terms = take_optional_list_section(&sections, "Terms");
 
@@ -100,20 +120,43 @@ fn heading_name(line: &str) -> Option<String> {
 }
 
 fn is_allowed_section(section: &str) -> bool {
-    matches!(section, "Summary" | "Explicit Files" | "Search Areas" | "Query" | "Terms")
+    matches!(
+        section,
+        "Summary" | "Explicit Files" | "Search Areas" | "Query" | "Terms"
+    )
 }
 
-fn take_text_section(sections: &HashMap<String, Vec<String>>, name: &str) -> Result<String, Box<dyn Error>> {
-    let lines = sections.get(name).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, format!("missing required section: {name}")))?;
+fn take_text_section(
+    sections: &HashMap<String, Vec<String>>,
+    name: &str,
+) -> Result<String, Box<dyn Error>> {
+    let lines = sections.get(name).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("missing required section: {name}"),
+        )
+    })?;
     let text = lines.join("\n").trim().to_string();
     if text.is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("section is empty: {name}")).into());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("section is empty: {name}"),
+        )
+        .into());
     }
     Ok(text)
 }
 
-fn take_list_section(sections: &HashMap<String, Vec<String>>, name: &str) -> Result<Vec<String>, Box<dyn Error>> {
-    let lines = sections.get(name).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, format!("missing required section: {name}")))?;
+fn take_list_section(
+    sections: &HashMap<String, Vec<String>>,
+    name: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let lines = sections.get(name).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("missing required section: {name}"),
+        )
+    })?;
     Ok(parse_items(lines))
 }
 
@@ -168,13 +211,20 @@ fn strip_numbered_prefix(value: &str) -> Option<&str> {
     Some(rest.trim_start())
 }
 
-fn validate_explicit_files(repo_root: &Path, files: &[String]) -> Result<Vec<ExplicitFile>, Box<dyn Error>> {
+fn validate_explicit_files(
+    repo_root: &Path,
+    files: &[String],
+) -> Result<Vec<ExplicitFile>, Box<dyn Error>> {
     let mut explicit_files = Vec::with_capacity(files.len());
 
     for path in files {
         let resolved = source::resolve_path(repo_root, path);
         if source::is_skipped_path(repo_root, &resolved) || !resolved.is_file() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, format!("explicit file not found: {path}")).into());
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("explicit file not found: {path}"),
+            )
+            .into());
         }
 
         explicit_files.push(ExplicitFile {
@@ -190,12 +240,15 @@ fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<()
     for area in search_areas {
         let resolved = source::resolve_path(repo_root, area);
         if source::is_skipped_path(repo_root, &resolved) || !resolved.exists() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, format!("search area not found: {area}")).into());
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("search area not found: {area}"),
+            )
+            .into());
         }
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -226,7 +279,13 @@ investigate attachment points
         let parsed = parse_task(task).expect("task parses");
         assert_eq!(parsed.summary, "investigate attachment points");
         assert_eq!(parsed.search_areas, vec!["src/"]);
-        assert_eq!(parsed.query, vec!["Where should Tree-sitter attach?", "What still needs verification?"]);
+        assert_eq!(
+            parsed.query,
+            vec![
+                "Where should Tree-sitter attach?",
+                "What still needs verification?"
+            ]
+        );
         assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
     }
 }

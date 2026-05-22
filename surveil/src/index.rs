@@ -77,7 +77,8 @@ fn rebuild_index(repo_root: &Path, conn: &mut Connection) -> Result<(), Box<dyn 
 
     let mut skipped_paths = Vec::new();
     let search_areas = [".".to_string()];
-    let candidates = source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
+    let candidates =
+        source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
     for source in candidates {
         let text = match fs::read_to_string(source.path()) {
             Ok(text) => text,
@@ -87,12 +88,7 @@ fn rebuild_index(repo_root: &Path, conn: &mut Connection) -> Result<(), Box<dyn 
         let modified = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_nanos() as i64;
         tx.execute(
             "INSERT INTO files(path, mtime_ns, size_bytes, text) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                source.display_path(),
-                modified,
-                metadata.len() as i64,
-                text,
-            ],
+            params![source.display_path(), modified, metadata.len() as i64, text,],
         )?;
     }
 
@@ -108,7 +104,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_repo(name: &str) -> PathBuf {
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("surveil-index-{name}-{stamp}"));
         fs::create_dir_all(&path).unwrap();
         path
@@ -124,7 +123,9 @@ mod tests {
 
         assert!(repo.join(INDEX_PATH).is_file());
         let conn = open(&repo).unwrap().unwrap();
-        let cached = load_text(&conn, &repo, &repo.join("notes/design.md")).unwrap().unwrap();
+        let cached = load_text(&conn, &repo, &repo.join("notes/design.md"))
+            .unwrap()
+            .unwrap();
         assert_eq!(cached.text, "attach index here\n");
         assert!(is_fresh(&repo.join("notes/design.md"), &cached).unwrap());
 
@@ -143,13 +144,17 @@ mod tests {
 
         let conn = open(&repo).unwrap().unwrap();
         let stored: Vec<String> = {
-            let mut stmt = conn.prepare("SELECT path FROM files ORDER BY path").unwrap();
+            let mut stmt = conn
+                .prepare("SELECT path FROM files ORDER BY path")
+                .unwrap();
             let rows = stmt.query_map([], |row| row.get(0)).unwrap();
             rows.map(|row| row.unwrap()).collect()
         };
 
         assert_eq!(stored, vec!["notes/design.md".to_string()]);
-        assert!(load_text(&conn, &repo, &repo.join(".surveil/ignored.md")).unwrap().is_none());
+        assert!(load_text(&conn, &repo, &repo.join(".surveil/ignored.md"))
+            .unwrap()
+            .is_none());
 
         let _ = fs::remove_dir_all(repo);
     }

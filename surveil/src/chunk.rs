@@ -74,7 +74,12 @@ pub(super) fn line_starts(text: &str) -> Vec<usize> {
     line_starts
 }
 
-pub(super) fn slice_lines(text: &str, line_starts: &[usize], start_line: u32, end_line: u32) -> String {
+pub(super) fn slice_lines(
+    text: &str,
+    line_starts: &[usize],
+    start_line: u32,
+    end_line: u32,
+) -> String {
     let start = line_starts[start_line as usize - 1];
     let end = if (end_line as usize) < line_starts.len() {
         line_starts[end_line as usize]
