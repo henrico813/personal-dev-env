@@ -256,71 +256,127 @@ mod tests {
     }
 
     #[test]
-    fn symbol_chunks_leave_coverage_for_fallback_windows() {
-        let repo = temp_repo("coverage");
-        let path = repo.join("src/lib.rs");
-        let content = "fn alpha() {\n}\n\nfn beta() {\n}\n";
-        write_file(&path, content);
-
-        let source = SourceFile::new(&repo, path, false);
-        let chunks = build_chunks(&source, content);
-
-        let symbol_chunks: Vec<_> = chunks
-            .iter()
-            .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
-            .collect();
-        let fallback_chunks: Vec<_> = chunks
-            .iter()
-            .filter(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow)
-            .collect();
-
-        assert!(!symbol_chunks.is_empty());
-        assert!(!fallback_chunks.is_empty());
-
-        for fallback in &fallback_chunks {
-            for symbol in &symbol_chunks {
-                assert!(
-                    fallback.end_line < symbol.start_line || fallback.start_line > symbol.end_line,
-                    "fallback {:?} overlaps symbol {:?}",
-                    fallback,
-                    symbol
-                );
-            }
+    fn build_chunks_emits_expected_primary_chunks() {
+        struct ExpectedPrimary<'a> {
+            kind: ChunkKind,
+            start_line: u32,
+            end_line: u32,
+            language: Option<&'a str>,
+            symbol_name: Option<&'a str>,
         }
 
-        let line_count = content.lines().count() as u32;
-        let mut covered = vec![false; line_count as usize + 1];
-        for chunk in &chunks {
-            for line in chunk.start_line..=chunk.end_line {
-                covered[line as usize] = true;
-            }
-        }
-        assert!(covered[1..].iter().all(|covered| *covered));
-
-        let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn fallback_cases_emit_code_windows() {
         struct Case<'a> {
             name: &'a str,
             file_name: &'a str,
             content: &'a str,
-            expected_language: Option<&'a str>,
+            expected: Vec<ExpectedPrimary<'a>>,
         }
 
         let cases = [
             Case {
-                name: "parse failure keeps language",
-                file_name: "surveil/src/lib.rs",
-                content: "fn attach( {\n    broken\n}\n",
-                expected_language: Some("rust"),
+                name: "rust_symbols_with_gap",
+                file_name: "src/lib.rs",
+                content: "fn alpha() {\n}\n\nfn beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("rust"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("rust"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
             },
             Case {
-                name: "unsupported extension has no language",
-                file_name: "surveil/src/lib.coffee",
-                content: "attach one\nattach two\n",
-                expected_language: None,
+                name: "go_symbols_with_gap",
+                file_name: "src/lib.go",
+                content: "package demo\n\nfunc alpha() {\n}\n\nfunc beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 3,
+                        end_line: 4,
+                        language: Some("go"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 6,
+                        end_line: 7,
+                        language: Some("go"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "python_symbols_with_gap",
+                file_name: "src/lib.py",
+                content: "def alpha():\n    pass\n\ndef beta():\n    pass\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("python"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("python"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "typescript_symbols_with_gap",
+                file_name: "src/lib.ts",
+                content: "function alpha() {\n}\n\nfunction beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("typescript"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("typescript"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "tsx_symbols_with_gap",
+                file_name: "src/lib.tsx",
+                content: "function Alpha() {\n    return <div />;\n}\n\nfunction Beta() {\n    return <span />;\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 3,
+                        language: Some("tsx"),
+                        symbol_name: Some("Alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 5,
+                        end_line: 7,
+                        language: Some("tsx"),
+                        symbol_name: Some("Beta"),
+                    },
+                ],
             },
         ];
 
@@ -330,11 +386,113 @@ mod tests {
             write_file(&path, case.content);
 
             let source = SourceFile::new(&repo, path, false);
-            let chunks = build_chunks(&source, &fs::read_to_string(source.path()).expect("read text"));
+            let chunks = build_chunks(&source, case.content);
 
-            assert_eq!(chunks.len(), 1, "case: {}", case.name);
-            assert_eq!(chunks[0].kind, ChunkKind::CodeFallbackWindow, "case: {}", case.name);
-            assert_eq!(chunks[0].language.as_deref(), case.expected_language, "case: {}", case.name);
+            let primary: Vec<_> = chunks
+                .into_iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
+                .collect();
+
+            assert_eq!(primary.len(), case.expected.len(), "case: {}", case.name);
+
+            for (chunk, expected) in primary.iter().zip(case.expected.iter()) {
+                assert_eq!(chunk.kind, expected.kind, "case: {}", case.name);
+                assert_eq!(chunk.start_line, expected.start_line, "case: {}", case.name);
+                assert_eq!(chunk.end_line, expected.end_line, "case: {}", case.name);
+                assert_eq!(chunk.language.as_deref(), expected.language, "case: {}", case.name);
+                assert_eq!(chunk.symbol_name.as_deref(), expected.symbol_name, "case: {}", case.name);
+            }
+
+            let _ = fs::remove_dir_all(repo);
+        }
+    }
+
+    #[test]
+    fn build_chunks_emits_expected_fallback_chunks() {
+        struct ExpectedFallback<'a> {
+            start_line: u32,
+            end_line: u32,
+            language: Option<&'a str>,
+        }
+
+        struct Case<'a> {
+            name: &'a str,
+            file_name: &'a str,
+            content: &'a str,
+            expected: Vec<ExpectedFallback<'a>>,
+        }
+
+        let cases = [
+            Case {
+                name: "gap_between_rust_symbols",
+                file_name: "src/lib.rs",
+                content: "fn alpha() {\n}\n\nfn beta() {\n}\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 3,
+                    end_line: 3,
+                    language: Some("rust"),
+                }],
+            },
+            Case {
+                name: "parse_failure_full_file_fallback",
+                file_name: "src/lib.rs",
+                content: "fn attach( {\n    broken\n}\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 1,
+                    end_line: 3,
+                    language: Some("rust"),
+                }],
+            },
+            Case {
+                name: "unsupported_extension_full_file_fallback",
+                file_name: "src/lib.coffee",
+                content: "attach one\nattach two\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 1,
+                    end_line: 2,
+                    language: None,
+                }],
+            },
+        ];
+
+        for case in cases {
+            let repo = temp_repo(case.name);
+            let path = repo.join(case.file_name);
+            write_file(&path, case.content);
+
+            let source = SourceFile::new(&repo, path, false);
+            let chunks = build_chunks(&source, case.content);
+
+            let primary: Vec<_> = chunks
+                .iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
+                .collect();
+            let fallbacks: Vec<_> = chunks
+                .iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow)
+                .collect();
+
+            assert_eq!(fallbacks.len(), case.expected.len(), "case: {}", case.name);
+
+            for (chunk, expected) in fallbacks.iter().zip(case.expected.iter()) {
+                assert_eq!(chunk.start_line, expected.start_line, "case: {}", case.name);
+                assert_eq!(chunk.end_line, expected.end_line, "case: {}", case.name);
+                assert_eq!(chunk.language.as_deref(), expected.language, "case: {}", case.name);
+                assert_eq!(chunk.symbol_name, None, "case: {}", case.name);
+            }
+
+            for fallback in &fallbacks {
+                for symbol in &primary {
+                    assert!(
+                        fallback.end_line < symbol.start_line
+                            || fallback.start_line > symbol.end_line,
+                        "case: {} fallback {:?} overlaps symbol {:?}",
+                        case.name,
+                        fallback,
+                        symbol
+                    );
+                }
+            }
 
             let _ = fs::remove_dir_all(repo);
         }
