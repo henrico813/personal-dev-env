@@ -37,7 +37,7 @@ pub(crate) struct RankedChunk {
 }
 
 const CODE_WINDOW_LINES: u32 = 20;
-const CONFIG_WINDOW_LINES: u32 = 16;
+const CONFIG_WINDOW_LINES: u32 = 40;
 
 pub(crate) fn build_chunks(source: &SourceFile, text: &str) -> Vec<Chunk> {
     if text.is_empty() {
@@ -147,8 +147,6 @@ fn build_config_chunks(
     }
     .unwrap_or_default();
 
-    let window_lines = CONFIG_WINDOW_LINES;
-
     if chunks.is_empty() {
         return build_fixed_windows(
             source,
@@ -157,33 +155,10 @@ fn build_config_chunks(
             &full_file,
             ChunkKind::GenericFallbackWindow,
             None,
-            window_lines,
+            CONFIG_WINDOW_LINES,
         );
     }
 
-    chunks.sort_by_key(|chunk| (chunk.start_line, chunk.end_line));
-
-    let mut uncovered = Vec::new();
-    let mut next_start = 1;
-    for chunk in &chunks {
-        if next_start < chunk.start_line {
-            uncovered.push((next_start, chunk.start_line - 1));
-        }
-        next_start = chunk.end_line + 1;
-    }
-    if next_start <= total_lines {
-        uncovered.push((next_start, total_lines));
-    }
-
-    chunks.extend(build_fixed_windows(
-        source,
-        text,
-        line_starts,
-        &uncovered,
-        ChunkKind::GenericFallbackWindow,
-        None,
-        window_lines,
-    ));
     chunks.sort_by_key(|chunk| (chunk.start_line, chunk.end_line));
     chunks
 }
@@ -1176,18 +1151,41 @@ mod tests {
                     "bad16\n",
                     "bad17\n",
                     "bad18\n",
+                    "bad19\n",
+                    "bad20\n",
+                    "bad21\n",
+                    "bad22\n",
+                    "bad23\n",
+                    "bad24\n",
+                    "bad25\n",
+                    "bad26\n",
+                    "bad27\n",
+                    "bad28\n",
+                    "bad29\n",
+                    "bad30\n",
+                    "bad31\n",
+                    "bad32\n",
+                    "bad33\n",
+                    "bad34\n",
+                    "bad35\n",
+                    "bad36\n",
+                    "bad37\n",
+                    "bad38\n",
+                    "bad39\n",
+                    "bad40\n",
+                    "bad41\n",
                 ),
                 expected: vec![
                     ExpectedConfig {
                         kind: ChunkKind::GenericFallbackWindow,
                         start_line: 1,
-                        end_line: 16,
+                        end_line: 40,
                         key_path: None,
                     },
                     ExpectedConfig {
                         kind: ChunkKind::GenericFallbackWindow,
-                        start_line: 17,
-                        end_line: 18,
+                        start_line: 41,
+                        end_line: 41,
                         key_path: None,
                     },
                 ],
