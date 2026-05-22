@@ -166,11 +166,111 @@ mod tests {
         }
 
         let cases = [
-            Case { name: "rust_symbols_with_gap", file_name: "src/lib.rs", content: "fn alpha() {\n}\n\nfn beta() {\n}\n", expected: vec![ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 1, end_line: 2, language: Some("rust"), symbol_name: Some("alpha") }, ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 4, end_line: 5, language: Some("rust"), symbol_name: Some("beta") }] },
-            Case { name: "go_symbols_with_gap", file_name: "src/lib.go", content: "package demo\n\nfunc alpha() {\n}\n\nfunc beta() {\n}\n", expected: vec![ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 3, end_line: 4, language: Some("go"), symbol_name: Some("alpha") }, ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 6, end_line: 7, language: Some("go"), symbol_name: Some("beta") }] },
-            Case { name: "python_symbols_with_gap", file_name: "src/lib.py", content: "def alpha():\n    pass\n\ndef beta():\n    pass\n", expected: vec![ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 1, end_line: 2, language: Some("python"), symbol_name: Some("alpha") }, ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 4, end_line: 5, language: Some("python"), symbol_name: Some("beta") }] },
-            Case { name: "typescript_symbols_with_gap", file_name: "src/lib.ts", content: "function alpha() {\n}\n\nfunction beta() {\n}\n", expected: vec![ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 1, end_line: 2, language: Some("typescript"), symbol_name: Some("alpha") }, ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 4, end_line: 5, language: Some("typescript"), symbol_name: Some("beta") }] },
-            Case { name: "tsx_symbols_with_gap", file_name: "src/lib.tsx", content: "function Alpha() {\n    return <div />;\n}\n\nfunction Beta() {\n    return <span />;\n}\n", expected: vec![ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 1, end_line: 3, language: Some("tsx"), symbol_name: Some("Alpha") }, ExpectedPrimary { kind: ChunkKind::CodeSymbol, start_line: 5, end_line: 7, language: Some("tsx"), symbol_name: Some("Beta") }] },
+            Case {
+                name: "rust_symbols_with_gap",
+                file_name: "src/lib.rs",
+                content: "fn alpha() {\n}\n\nfn beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("rust"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("rust"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "go_symbols_with_gap",
+                file_name: "src/lib.go",
+                content: "package demo\n\nfunc alpha() {\n}\n\nfunc beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 3,
+                        end_line: 4,
+                        language: Some("go"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 6,
+                        end_line: 7,
+                        language: Some("go"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "python_symbols_with_gap",
+                file_name: "src/lib.py",
+                content: "def alpha():\n    pass\n\ndef beta():\n    pass\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("python"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("python"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "typescript_symbols_with_gap",
+                file_name: "src/lib.ts",
+                content: "function alpha() {\n}\n\nfunction beta() {\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 2,
+                        language: Some("typescript"),
+                        symbol_name: Some("alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 4,
+                        end_line: 5,
+                        language: Some("typescript"),
+                        symbol_name: Some("beta"),
+                    },
+                ],
+            },
+            Case {
+                name: "tsx_symbols_with_gap",
+                file_name: "src/lib.tsx",
+                content: "function Alpha() {\n    return <div />;\n}\n\nfunction Beta() {\n    return <span />;\n}\n",
+                expected: vec![
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 1,
+                        end_line: 3,
+                        language: Some("tsx"),
+                        symbol_name: Some("Alpha"),
+                    },
+                    ExpectedPrimary {
+                        kind: ChunkKind::CodeSymbol,
+                        start_line: 5,
+                        end_line: 7,
+                        language: Some("tsx"),
+                        symbol_name: Some("Beta"),
+                    },
+                ],
+            },
         ];
 
         for case in cases {
