@@ -265,8 +265,28 @@ mod tests {
         let source = SourceFile::new(&repo, path, false);
         let chunks = build_chunks(&source, content);
 
-        assert!(chunks.iter().any(|chunk| chunk.kind == ChunkKind::CodeSymbol));
-        assert!(chunks.iter().any(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow));
+        let symbol_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
+            .collect();
+        let fallback_chunks: Vec<_> = chunks
+            .iter()
+            .filter(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow)
+            .collect();
+
+        assert!(!symbol_chunks.is_empty());
+        assert!(!fallback_chunks.is_empty());
+
+        for fallback in &fallback_chunks {
+            for symbol in &symbol_chunks {
+                assert!(
+                    fallback.end_line < symbol.start_line || fallback.start_line > symbol.end_line,
+                    "fallback {:?} overlaps symbol {:?}",
+                    fallback,
+                    symbol
+                );
+            }
+        }
 
         let line_count = content.lines().count() as u32;
         let mut covered = vec![false; line_count as usize + 1];
