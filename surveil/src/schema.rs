@@ -88,5 +88,4 @@ mod tests {
         let err = serde_json::from_str::<GatherOutput>(&json).expect_err("unknown field rejected");
         assert!(err.to_string().contains("unexpected"));
     }
-
 }

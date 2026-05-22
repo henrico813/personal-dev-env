@@ -2,18 +2,27 @@ use super::{build_fixed_windows, make_chunk, slice_lines, Chunk, ChunkKind, CODE
 use crate::source::SourceFile;
 use tree_sitter::{Node, Parser};
 
-pub(super) fn build_code_chunks(source: &SourceFile, text: &str, line_starts: &[usize]) -> Vec<Chunk> {
+pub(super) fn build_code_chunks(
+    source: &SourceFile,
+    text: &str,
+    line_starts: &[usize],
+) -> Vec<Chunk> {
     let total_lines = line_starts.len() as u32;
     let full_file = [(1, total_lines)];
 
-    let Some((language_name, language)) = (match source.path().extension().and_then(|ext| ext.to_str()) {
-        Some("rs") => Some(("rust", tree_sitter_rust::LANGUAGE.into())),
-        Some("go") => Some(("go", tree_sitter_go::LANGUAGE.into())),
-        Some("py") => Some(("python", tree_sitter_python::LANGUAGE.into())),
-        Some("ts") => Some(("typescript", tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())),
-        Some("tsx") => Some(("tsx", tree_sitter_typescript::LANGUAGE_TSX.into())),
-        _ => None,
-    }) else {
+    let Some((language_name, language)) =
+        (match source.path().extension().and_then(|ext| ext.to_str()) {
+            Some("rs") => Some(("rust", tree_sitter_rust::LANGUAGE.into())),
+            Some("go") => Some(("go", tree_sitter_go::LANGUAGE.into())),
+            Some("py") => Some(("python", tree_sitter_python::LANGUAGE.into())),
+            Some("ts") => Some((
+                "typescript",
+                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            )),
+            Some("tsx") => Some(("tsx", tree_sitter_typescript::LANGUAGE_TSX.into())),
+            _ => None,
+        })
+    else {
         return build_fixed_windows(
             source,
             text,
@@ -106,7 +115,10 @@ fn collect_symbol_chunks(
             continue;
         }
 
-        let Some(name_node) = node.child_by_field_name("name").or_else(|| node.named_child(0)) else {
+        let Some(name_node) = node
+            .child_by_field_name("name")
+            .or_else(|| node.named_child(0))
+        else {
             continue;
         };
         let Ok(symbol_name) = name_node.utf8_text(text.as_bytes()) else {
@@ -167,14 +179,27 @@ mod tests {
             write_file(&path, case.content);
             let source = SourceFile::new(&repo, path, false);
             let chunks = build_chunks(&source, case.content);
-            let primary: Vec<_> = chunks.into_iter().filter(|chunk| chunk.kind == ChunkKind::CodeSymbol).collect();
+            let primary: Vec<_> = chunks
+                .into_iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
+                .collect();
             assert_eq!(primary.len(), case.expected.len(), "case: {}", case.name);
             for (chunk, expected) in primary.iter().zip(case.expected.iter()) {
                 assert_eq!(chunk.kind, expected.kind, "case: {}", case.name);
                 assert_eq!(chunk.start_line, expected.start_line, "case: {}", case.name);
                 assert_eq!(chunk.end_line, expected.end_line, "case: {}", case.name);
-                assert_eq!(chunk.language.as_deref(), expected.language, "case: {}", case.name);
-                assert_eq!(chunk.symbol_name.as_deref(), expected.symbol_name, "case: {}", case.name);
+                assert_eq!(
+                    chunk.language.as_deref(),
+                    expected.language,
+                    "case: {}",
+                    case.name
+                );
+                assert_eq!(
+                    chunk.symbol_name.as_deref(),
+                    expected.symbol_name,
+                    "case: {}",
+                    case.name
+                );
             }
             let _ = fs::remove_dir_all(repo);
         }
@@ -182,12 +207,48 @@ mod tests {
 
     #[test]
     fn build_chunks_emits_expected_fallback_chunks() {
-        struct ExpectedFallback<'a> { start_line: u32, end_line: u32, language: Option<&'a str> }
-        struct Case<'a> { name: &'a str, file_name: &'a str, content: &'a str, expected: Vec<ExpectedFallback<'a>> }
+        struct ExpectedFallback<'a> {
+            start_line: u32,
+            end_line: u32,
+            language: Option<&'a str>,
+        }
+        struct Case<'a> {
+            name: &'a str,
+            file_name: &'a str,
+            content: &'a str,
+            expected: Vec<ExpectedFallback<'a>>,
+        }
         let cases = [
-            Case { name: "gap_between_rust_symbols", file_name: "src/lib.rs", content: "fn alpha() {\n}\n\nfn beta() {\n}\n", expected: vec![ExpectedFallback { start_line: 3, end_line: 3, language: Some("rust") }] },
-            Case { name: "parse_failure_full_file_fallback", file_name: "src/lib.rs", content: "fn attach( {\n    broken\n}\n", expected: vec![ExpectedFallback { start_line: 1, end_line: 3, language: Some("rust") }] },
-            Case { name: "unsupported_extension_full_file_fallback", file_name: "src/lib.coffee", content: "attach one\nattach two\n", expected: vec![ExpectedFallback { start_line: 1, end_line: 2, language: None }] },
+            Case {
+                name: "gap_between_rust_symbols",
+                file_name: "src/lib.rs",
+                content: "fn alpha() {\n}\n\nfn beta() {\n}\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 3,
+                    end_line: 3,
+                    language: Some("rust"),
+                }],
+            },
+            Case {
+                name: "parse_failure_full_file_fallback",
+                file_name: "src/lib.rs",
+                content: "fn attach( {\n    broken\n}\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 1,
+                    end_line: 3,
+                    language: Some("rust"),
+                }],
+            },
+            Case {
+                name: "unsupported_extension_full_file_fallback",
+                file_name: "src/lib.coffee",
+                content: "attach one\nattach two\n",
+                expected: vec![ExpectedFallback {
+                    start_line: 1,
+                    end_line: 2,
+                    language: None,
+                }],
+            },
         ];
         for case in cases {
             let repo = temp_repo(case.name);
@@ -195,18 +256,36 @@ mod tests {
             write_file(&path, case.content);
             let source = SourceFile::new(&repo, path, false);
             let chunks = build_chunks(&source, case.content);
-            let primary: Vec<_> = chunks.iter().filter(|chunk| chunk.kind == ChunkKind::CodeSymbol).collect();
-            let fallbacks: Vec<_> = chunks.iter().filter(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow).collect();
+            let primary: Vec<_> = chunks
+                .iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeSymbol)
+                .collect();
+            let fallbacks: Vec<_> = chunks
+                .iter()
+                .filter(|chunk| chunk.kind == ChunkKind::CodeFallbackWindow)
+                .collect();
             assert_eq!(fallbacks.len(), case.expected.len(), "case: {}", case.name);
             for (chunk, expected) in fallbacks.iter().zip(case.expected.iter()) {
                 assert_eq!(chunk.start_line, expected.start_line, "case: {}", case.name);
                 assert_eq!(chunk.end_line, expected.end_line, "case: {}", case.name);
-                assert_eq!(chunk.language.as_deref(), expected.language, "case: {}", case.name);
+                assert_eq!(
+                    chunk.language.as_deref(),
+                    expected.language,
+                    "case: {}",
+                    case.name
+                );
                 assert_eq!(chunk.symbol_name, None, "case: {}", case.name);
             }
             for fallback in &fallbacks {
                 for symbol in &primary {
-                    assert!(fallback.end_line < symbol.start_line || fallback.start_line > symbol.end_line, "case: {} fallback {:?} overlaps symbol {:?}", case.name, fallback, symbol);
+                    assert!(
+                        fallback.end_line < symbol.start_line
+                            || fallback.start_line > symbol.end_line,
+                        "case: {} fallback {:?} overlaps symbol {:?}",
+                        case.name,
+                        fallback,
+                        symbol
+                    );
                 }
             }
             let _ = fs::remove_dir_all(repo);

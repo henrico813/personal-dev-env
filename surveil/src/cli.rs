@@ -3,8 +3,8 @@ mod gather;
 mod index;
 mod research;
 mod schema;
-mod taskfile;
 mod source;
+mod taskfile;
 
 use clap::{Args, Parser, Subcommand};
 use std::error::Error;
@@ -88,8 +88,8 @@ fn run() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::{Cli, Command, NewCommand};
-    use clap::Parser;
     use clap::error::ErrorKind;
+    use clap::Parser;
     use std::path::PathBuf;
 
     #[test]
