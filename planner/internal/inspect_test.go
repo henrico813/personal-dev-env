@@ -199,12 +199,48 @@ func TestSplitMarkdownEnvelopeRejectsUnterminatedWrapper(t *testing.T) {
 	}
 }
 
-func TestParseMarkdownRejectsBadTagValue(t *testing.T) {
-	input := strings.Replace(buildPlanWithFrontmatter(t), "\"#Ticket\"", "\"#ticket\"", 1)
-	if _, err := ParseMarkdown(input); err == nil {
-		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
-		t.Fatalf("unexpected error: %v", err)
+func TestParseMarkdownTicketTagForms(t *testing.T) {
+	cases := []struct {
+		name    string
+		replace string
+		with    string
+		wantErr bool
+	}{
+		{
+			name:    "quoted ticket tag",
+			replace: "  - \"#Ticket\"",
+			with:    "  - \"#Ticket\"",
+		},
+		{
+			name:    "unquoted ticket tag",
+			replace: "  - \"#Ticket\"",
+			with:    "  - #Ticket",
+		},
+		{
+			name:    "lowercase ticket tag",
+			replace: "\"#Ticket\"",
+			with:    "\"#ticket\"",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := strings.Replace(buildPlanWithFrontmatter(t), tc.replace, tc.with, 1)
+			_, err := ParseMarkdown(input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected unsupported frontmatter to fail")
+				}
+				if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseMarkdown: %v", err)
+			}
+		})
 	}
 }
 
