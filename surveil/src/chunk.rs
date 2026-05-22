@@ -56,14 +56,14 @@ fn build_code_chunks(source: &SourceFile, text: &str, line_starts: &[usize]) -> 
     let total_lines = line_starts.len() as u32;
     let full_file = [(1, total_lines)];
 
-    let Some((language_name, language)) = match source.path().extension().and_then(|ext| ext.to_str()) {
+    let Some((language_name, language)) = (match source.path().extension().and_then(|ext| ext.to_str()) {
         Some("rs") => Some(("rust", tree_sitter_rust::LANGUAGE.into())),
         Some("go") => Some(("go", tree_sitter_go::LANGUAGE.into())),
         Some("py") => Some(("python", tree_sitter_python::LANGUAGE.into())),
         Some("ts") => Some(("typescript", tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())),
         Some("tsx") => Some(("tsx", tree_sitter_typescript::LANGUAGE_TSX.into())),
         _ => None,
-    } else {
+    }) else {
         return build_fixed_windows(
             source,
             text,
@@ -123,7 +123,7 @@ fn collect_symbol_chunks(
     tree: &tree_sitter::Tree,
     language_name: &str,
 ) -> Vec<Chunk> {
-    fn collect_nodes(node: Node, out: &mut Vec<Node>) {
+    fn collect_nodes<'tree>(node: Node<'tree>, out: &mut Vec<Node<'tree>>) {
         let kind = node.kind();
         if node.child_by_field_name("name").is_some()
             && (kind.ends_with("_item")
@@ -142,7 +142,7 @@ fn collect_symbol_chunks(
 
     let slice_lines = |start_line: u32, end_line: u32| {
         let start = line_starts[start_line as usize - 1];
-        let end = if end_line as usize < line_starts.len() {
+        let end = if (end_line as usize) < line_starts.len() {
             line_starts[end_line as usize]
         } else {
             text.len()
@@ -197,7 +197,7 @@ fn build_fixed_windows(
 ) -> Vec<Chunk> {
     let slice_lines = |start_line: u32, end_line: u32| {
         let start = line_starts[start_line as usize - 1];
-        let end = if end_line as usize < line_starts.len() {
+        let end = if (end_line as usize) < line_starts.len() {
             line_starts[end_line as usize]
         } else {
             text.len()
