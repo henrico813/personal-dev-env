@@ -169,8 +169,48 @@ mod tests {
             expected: Vec<ExpectedMarkdown<'a>>,
         }
         let cases = [
-            Case { name: "paragraph_list_and_fence_blocks", content: "# Title\n\n## Setup\nFirst paragraph.\n\n- one\n- two\n\n```rust\nfn attach() {}\n```\n", expected: vec![ExpectedMarkdown { start_line: 4, end_line: 4, text: "First paragraph.\n", section_path: &["Title", "Setup"] }, ExpectedMarkdown { start_line: 6, end_line: 7, text: "- one\n- two\n", section_path: &["Title", "Setup"] }, ExpectedMarkdown { start_line: 9, end_line: 11, text: "```rust\nfn attach() {}\n```\n", section_path: &["Title", "Setup"] }] },
-            Case { name: "headings_split_paragraphs_without_heading_chunks", content: "# One\nalpha\n\n## Two\nbeta\n", expected: vec![ExpectedMarkdown { start_line: 2, end_line: 2, text: "alpha\n", section_path: &["One"] }, ExpectedMarkdown { start_line: 5, end_line: 5, text: "beta\n", section_path: &["One", "Two"] }] },
+            Case {
+                name: "paragraph_list_and_fence_blocks",
+                content: "# Title\n\n## Setup\nFirst paragraph.\n\n- one\n- two\n\n```rust\nfn attach() {}\n```\n",
+                expected: vec![
+                    ExpectedMarkdown {
+                        start_line: 4,
+                        end_line: 4,
+                        text: "First paragraph.\n",
+                        section_path: &["Title", "Setup"],
+                    },
+                    ExpectedMarkdown {
+                        start_line: 6,
+                        end_line: 7,
+                        text: "- one\n- two\n",
+                        section_path: &["Title", "Setup"],
+                    },
+                    ExpectedMarkdown {
+                        start_line: 9,
+                        end_line: 11,
+                        text: "```rust\nfn attach() {}\n```\n",
+                        section_path: &["Title", "Setup"],
+                    },
+                ],
+            },
+            Case {
+                name: "headings_split_paragraphs_without_heading_chunks",
+                content: "# One\nalpha\n\n## Two\nbeta\n",
+                expected: vec![
+                    ExpectedMarkdown {
+                        start_line: 2,
+                        end_line: 2,
+                        text: "alpha\n",
+                        section_path: &["One"],
+                    },
+                    ExpectedMarkdown {
+                        start_line: 5,
+                        end_line: 5,
+                        text: "beta\n",
+                        section_path: &["One", "Two"],
+                    },
+                ],
+            },
         ];
         for case in cases {
             let repo = temp_repo(case.name);
