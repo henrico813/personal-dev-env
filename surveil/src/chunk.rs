@@ -126,6 +126,7 @@ fn config_format(path: &Path) -> Option<ConfigFormat> {
         Some("json") => Some(ConfigFormat::Json),
         Some("yaml" | "yml") => Some(ConfigFormat::Yaml),
         Some("ini" | "cfg" | "conf") => Some(ConfigFormat::Ini),
+        Some("env") => Some(ConfigFormat::Env),
         _ => None,
     }
 }
@@ -1115,6 +1116,25 @@ mod tests {
                         start_line: 2,
                         end_line: 2,
                         key_path: Some("SECRET_KEY"),
+                    },
+                ],
+            },
+            Case {
+                name: "env_extension_keys",
+                file_name: "config/settings.env",
+                content: "APP_HOST=localhost\nAPP_PORT=8080\n",
+                expected: vec![
+                    ExpectedConfig {
+                        kind: ChunkKind::ConfigStanza,
+                        start_line: 1,
+                        end_line: 1,
+                        key_path: Some("APP_HOST"),
+                    },
+                    ExpectedConfig {
+                        kind: ChunkKind::ConfigStanza,
+                        start_line: 2,
+                        end_line: 2,
+                        key_path: Some("APP_PORT"),
                     },
                 ],
             },
