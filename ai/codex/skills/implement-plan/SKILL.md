@@ -138,20 +138,9 @@ After implementing a phase:
 - Update goals and verification checkboxes as work completes; do not add checkboxes to implementation steps
 - Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI
 - After plan updates, run `planner check <plan.md> --json-errors`
-- **Pause for human verification**: After completing all automated verification for a phase, pause and inform the human that the phase is ready for manual testing. Use this format:
-  ```
-  Phase [N] Complete - Ready for Manual Verification
+- **Human verification**: Do not pause by default. If a step matches the plan and verification passes, continue. Perform manual verification yourself when feasible.
 
-  Automated verification passed:
-  - [List automated checks that passed]
-
-  Please perform the manual verification steps listed in the plan:
-  - [List manual verification items from the plan]
-
-  Let me know when manual testing is complete so I can proceed to Phase [N+1].
-  ```
-
-If instructed to execute multiple phases consecutively, skip the pause until the last phase. Otherwise, assume you are just doing one phase.
+Pause only if something went wrong, a required manual check is not feasible for the agent, or the user explicitly asked for a stop or custom condition. User-provided execution instructions override this default.
 
 do not check off items in the manual testing steps until confirmed by the user.
 
