@@ -193,9 +193,7 @@ mod tests {
         let files = collect_files(&repo, &repo, &mut skipped_paths).expect("collect files");
 
         assert!(files.iter().any(|path| path.ends_with("src/lib.rs")));
-        assert!(!files
-            .iter()
-            .any(|path| path.to_string_lossy().contains(".surveil")));
+        assert!(!files.iter().any(|path| path.to_string_lossy().contains(".surveil")));
         assert!(skipped_paths.iter().any(|path| path == ".surveil"));
         assert!(is_skipped_path(&repo, &repo.join(".surveil/index.sqlite")));
 
@@ -211,9 +209,7 @@ mod tests {
         )
         .expect("collect candidates");
         assert!(candidates.is_empty());
-        assert!(candidate_skips
-            .iter()
-            .any(|path| path == ".surveil/index.sqlite"));
+        assert!(candidate_skips.iter().any(|path| path == ".surveil/index.sqlite"));
 
         let _ = fs::remove_dir_all(repo);
     }
