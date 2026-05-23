@@ -1,5 +1,5 @@
-use crate::chunk::{build_chunks, Chunk, ChunkKind};
-use crate::source::{self, SourceFile};
+use crate::chunk::{build_chunks, ChunkKind};
+use crate::source::{self};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
@@ -87,10 +87,10 @@ fn build_repo_chunk_documents(
     fields: &schema::IndexFields,
     writer: &mut tantivy::IndexWriter,
 ) -> Result<(), Box<dyn Error>> {
-    let mut _skipped_paths = Vec::new();
+    let mut skipped_paths = Vec::new();
     let search_areas = [".".to_string()];
     let candidates =
-        source::collect_candidate_files(repo_root, &search_areas, &[], &mut _skipped_paths)?;
+        source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
 
     for source in candidates {
         let text = match fs::read_to_string(source.path()) {
@@ -127,10 +127,10 @@ fn read_index_metadata(repo_root: &Path) -> Result<IndexBuildInfo, Box<dyn Error
 }
 
 fn compute_repo_fingerprint(repo_root: &Path) -> Result<u64, Box<dyn Error>> {
-    let mut _skipped_paths = Vec::new();
+    let mut skipped_paths = Vec::new();
     let search_areas = [".".to_string()];
     let candidates =
-        source::collect_candidate_files(repo_root, &search_areas, &[], &mut _skipped_paths)?;
+        source::collect_candidate_files(repo_root, &search_areas, &[], &mut skipped_paths)?;
     let mut hasher = DefaultHasher::new();
 
     for source in candidates {
@@ -189,12 +189,14 @@ mod schema {
     pub(super) struct IndexFields {
         pub(super) path: tantivy::schema::Field,
         pub(super) kind: tantivy::schema::Field,
-        pub(super) language: tantivy::schema::Field,
-        pub(super) symbol_name: tantivy::schema::Field,
-        pub(super) section_path: tantivy::schema::Field,
-        pub(super) key_path: tantivy::schema::Field,
         pub(super) start_line: tantivy::schema::Field,
         pub(super) end_line: tantivy::schema::Field,
+        pub(super) language: tantivy::schema::Field,
+        pub(super) symbol_name: tantivy::schema::Field,
+        pub(super) section_path_full: tantivy::schema::Field,
+        pub(super) section_path_segment: tantivy::schema::Field,
+        pub(super) key_path_full: tantivy::schema::Field,
+        pub(super) key_path_segment: tantivy::schema::Field,
         pub(super) text: tantivy::schema::Field,
     }
 
@@ -204,12 +206,14 @@ mod schema {
 
         builder.add_text_field("path", STRING | STORED);
         builder.add_text_field("kind", STRING | STORED);
+        builder.add_u64_field("start_line", numeric.clone());
+        builder.add_u64_field("end_line", numeric);
         builder.add_text_field("language", STRING | STORED);
         builder.add_text_field("symbol_name", STRING | STORED);
-        builder.add_text_field("section_path", TEXT | STORED);
-        builder.add_text_field("key_path", TEXT | STORED);
-        builder.add_u64_field("start_line", numeric);
-        builder.add_u64_field("end_line", numeric);
+        builder.add_text_field("section_path_full", STRING | STORED);
+        builder.add_text_field("section_path_segment", TEXT | STORED);
+        builder.add_text_field("key_path_full", STRING | STORED);
+        builder.add_text_field("key_path_segment", TEXT | STORED);
         builder.add_text_field("text", TEXT | STORED);
         builder.build()
     }
@@ -219,12 +223,22 @@ mod schema {
             Self {
                 path: schema.get_field("path").expect("missing path field"),
                 kind: schema.get_field("kind").expect("missing kind field"),
-                language: schema.get_field("language").expect("missing language field"),
-                symbol_name: schema.get_field("symbol_name").expect("missing symbol_name field"),
-                section_path: schema.get_field("section_path").expect("missing section_path field"),
-                key_path: schema.get_field("key_path").expect("missing key_path field"),
                 start_line: schema.get_field("start_line").expect("missing start_line field"),
                 end_line: schema.get_field("end_line").expect("missing end_line field"),
+                language: schema.get_field("language").expect("missing language field"),
+                symbol_name: schema.get_field("symbol_name").expect("missing symbol_name field"),
+                section_path_full: schema
+                    .get_field("section_path_full")
+                    .expect("missing section_path_full field"),
+                section_path_segment: schema
+                    .get_field("section_path_segment")
+                    .expect("missing section_path_segment field"),
+                key_path_full: schema
+                    .get_field("key_path_full")
+                    .expect("missing key_path_full field"),
+                key_path_segment: schema
+                    .get_field("key_path_segment")
+                    .expect("missing key_path_segment field"),
                 text: schema.get_field("text").expect("missing text field"),
             }
         }
@@ -241,7 +255,7 @@ mod encode {
         fields: &schema::IndexFields,
         source: &SourceFile,
         chunk: &Chunk,
-    ) -> tantivy::Document {
+    ) -> tantivy::TantivyDocument {
         let mut document = doc!(
             fields.path => source.display_path().to_string(),
             fields.kind => chunk_kind_name(chunk.kind),
@@ -257,10 +271,16 @@ mod encode {
             document.add_text(fields.symbol_name, symbol_name);
         }
         if !chunk.section_path.is_empty() {
-            document.add_text(fields.section_path, chunk.section_path.join(" / "));
+            document.add_text(fields.section_path_full, chunk.section_path.join(" / "));
+            for section in &chunk.section_path {
+                document.add_text(fields.section_path_segment, section);
+            }
         }
         if let Some(key_path) = chunk.key_path.as_deref() {
-            document.add_text(fields.key_path, key_path);
+            document.add_text(fields.key_path_full, key_path);
+            for segment in key_path.split('.').filter(|segment| !segment.is_empty()) {
+                document.add_text(fields.key_path_segment, segment);
+            }
         }
 
         document
@@ -268,82 +288,198 @@ mod encode {
 }
 
 #[cfg(test)]
+fn tantivy_meta_exists(repo_root: &Path) -> bool {
+    repo_root.join(INDEX_DIR).join("meta.json").is_file()
+}
+
+#[cfg(test)]
+fn build_info_exists(repo_root: &Path) -> bool {
+    repo_root.join(BUILD_INFO_PATH).is_file()
+}
+
+#[cfg(test)]
+fn overwrite_build_info(repo_root: &Path, contents: &str) {
+    fs::write(repo_root.join(BUILD_INFO_PATH), contents).expect("write build info");
+}
+
+#[cfg(test)]
+fn write_note(repo_root: &Path, relative: &str, text: &str) {
+    let path = repo_root.join(relative);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent dirs");
+    }
+    fs::write(path, text).expect("write file");
+}
+
+#[cfg(test)]
+fn temp_repo(name: &str) -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("time")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("surveil-index-{name}-{stamp}"));
+    fs::create_dir_all(&path).expect("create temp repo");
+    path
+}
+
+#[cfg(test)]
 mod tests {
-    use super::{build_chunk_index, inspect_chunk_index, IndexState, BUILD_INFO_PATH, INDEX_DIR};
+    use super::{
+        build_chunk_index, build_info_exists, inspect_chunk_index, overwrite_build_info,
+        tantivy_meta_exists, temp_repo, write_note, IndexState, BUILD_INFO_PATH, INDEX_DIR,
+    };
     use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::path::Path;
+    use tantivy::Index;
 
-    fn temp_repo(name: &str) -> PathBuf {
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let path = std::env::temp_dir().join(format!("surveil-index-{name}-{stamp}"));
-        fs::create_dir_all(&path).unwrap();
-        path
+    fn seed_repo(repo: &Path) {
+        write_note(repo, "notes/design.md", "attach index here\n");
     }
 
-    fn write_note(repo: &PathBuf, path: &str, content: &str) {
-        let file_path = repo.join(path);
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(file_path, content).unwrap();
+    fn build_index(repo: &Path) {
+        build_chunk_index(repo).expect("build index");
     }
 
-    fn overwrite_build_info(repo: &PathBuf, contents: &str) {
-        fs::write(repo.join(BUILD_INFO_PATH), contents).unwrap();
+    fn remove_build_info(repo: &Path) {
+        fs::remove_file(repo.join(BUILD_INFO_PATH)).expect("remove build info");
     }
 
-    #[test]
-    fn builds_chunk_index_and_inspects_as_usable() {
-        let repo = temp_repo("builds");
-        write_note(&repo, "notes/design.md", "attach index here\n");
-
-        build_chunk_index(&repo).unwrap();
-
-        assert!(repo.join(INDEX_DIR).is_dir());
-        assert_eq!(inspect_chunk_index(&repo).unwrap(), IndexState::Usable);
-
-        let _ = fs::remove_dir_all(repo);
+    fn rewrite_repo_file(repo: &Path) {
+        write_note(repo, "notes/design.md", "attach changed text\n");
     }
 
-    #[test]
-    fn reports_missing_when_index_directory_is_absent() {
-        let repo = temp_repo("missing");
-
-        assert_eq!(inspect_chunk_index(&repo).unwrap(), IndexState::Missing);
-
-        let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn reports_incompatible_for_wrong_metadata_version() {
-        let repo = temp_repo("incompatible");
-        write_note(&repo, "notes/design.md", "attach index here\n");
-        build_chunk_index(&repo).unwrap();
+    fn overwrite_incompatible_build_info(repo: &Path) {
         overwrite_build_info(
+            repo,
+            "{\n  \"format_version\": 1,\n  \"schema_version\": 99,\n  \"chunk_layout_version\": 1,\n  \"repo_fingerprint\": 1\n}\n",
+        );
+    }
+
+    fn overwrite_invalid_build_info(repo: &Path) {
+        overwrite_build_info(repo, "{not json\n");
+    }
+
+    fn remove_tantivy_meta(repo: &Path) {
+        fs::remove_file(repo.join(INDEX_DIR).join("meta.json")).expect("remove tantivy meta");
+    }
+
+    #[test]
+    fn state_transitions_match_expected_status() {
+        struct Case {
+            name: &'static str,
+            setup: fn(&Path),
+            mutate: Option<fn(&Path)>,
+            expected: IndexState,
+            expect_index_files: bool,
+        }
+
+        let cases = [
+            Case {
+                name: "missing_without_build",
+                setup: seed_repo,
+                mutate: None,
+                expected: IndexState::Missing,
+                expect_index_files: false,
+            },
+            Case {
+                name: "usable_after_build",
+                setup: seed_repo,
+                mutate: Some(build_index),
+                expected: IndexState::Usable,
+                expect_index_files: true,
+            },
+            Case {
+                name: "corrupt_when_build_info_missing",
+                setup: seed_repo,
+                mutate: Some(|repo| {
+                    build_index(repo);
+                    remove_build_info(repo);
+                }),
+                expected: IndexState::Corrupt,
+                expect_index_files: false,
+            },
+            Case {
+                name: "stale_after_repo_change",
+                setup: seed_repo,
+                mutate: Some(|repo| {
+                    build_index(repo);
+                    rewrite_repo_file(repo);
+                }),
+                expected: IndexState::Stale,
+                expect_index_files: true,
+            },
+            Case {
+                name: "incompatible_after_shape_change",
+                setup: seed_repo,
+                mutate: Some(|repo| {
+                    build_index(repo);
+                    overwrite_incompatible_build_info(repo);
+                }),
+                expected: IndexState::Incompatible,
+                expect_index_files: false,
+            },
+            Case {
+                name: "corrupt_after_build_info_damage",
+                setup: seed_repo,
+                mutate: Some(|repo| {
+                    build_index(repo);
+                    overwrite_invalid_build_info(repo);
+                }),
+                expected: IndexState::Corrupt,
+                expect_index_files: false,
+            },
+            Case {
+                name: "corrupt_after_tantivy_damage",
+                setup: seed_repo,
+                mutate: Some(|repo| {
+                    build_index(repo);
+                    remove_tantivy_meta(repo);
+                }),
+                expected: IndexState::Corrupt,
+                expect_index_files: false,
+            },
+        ];
+
+        for case in cases {
+            let repo = temp_repo(case.name);
+            (case.setup)(&repo);
+            if let Some(mutate) = case.mutate {
+                mutate(&repo);
+            }
+
+            assert_eq!(
+                inspect_chunk_index(&repo).expect("inspect chunk index"),
+                case.expected,
+                "case: {}",
+                case.name,
+            );
+
+            if case.expect_index_files {
+                assert!(repo.join(INDEX_DIR).is_dir(), "case: {}", case.name);
+                assert!(tantivy_meta_exists(&repo), "case: {}", case.name);
+                assert!(build_info_exists(&repo), "case: {}", case.name);
+            }
+
+            let _ = fs::remove_dir_all(repo);
+        }
+    }
+
+    #[test]
+    fn chunk_index_contains_tantivy_documents() {
+        let repo = temp_repo("documents");
+        seed_repo(&repo);
+        write_note(
             &repo,
-            &serde_json::json!({
-                "format_version": 999,
-                "schema_version": 1,
-                "chunk_layout_version": 1,
-                "repo_fingerprint": 0
-            })
-            .to_string(),
+            "src/lib.rs",
+            "fn attach() {\n    // tree-sitter attach\n}\n",
         );
 
-        assert_eq!(inspect_chunk_index(&repo).unwrap(), IndexState::Incompatible);
+        build_chunk_index(&repo).expect("build chunk index");
 
-        let _ = fs::remove_dir_all(repo);
-    }
-
-    #[test]
-    fn reports_stale_when_repository_changes() {
-        let repo = temp_repo("stale");
-        write_note(&repo, "notes/design.md", "old text\n");
-        build_chunk_index(&repo).unwrap();
-        write_note(&repo, "notes/design.md", "new text\n");
-
-        assert_eq!(inspect_chunk_index(&repo).unwrap(), IndexState::Stale);
+        let index = Index::open_in_dir(repo.join(INDEX_DIR)).expect("open tantivy index");
+        let reader = index.reader().expect("index reader");
+        assert!(reader.searcher().num_docs() > 0);
+        assert!(repo.join(BUILD_INFO_PATH).is_file());
 
         let _ = fs::remove_dir_all(repo);
     }

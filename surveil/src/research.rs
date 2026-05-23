@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::index;
 use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
 use crate::source::{self, SourceFile};
 use std::collections::{BTreeSet, HashSet};
