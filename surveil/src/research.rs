@@ -1,6 +1,9 @@
+use crate::chunk::SearchQuery;
+use crate::index;
 use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
 use crate::source::{self, SourceFile};
-use std::collections::{BTreeSet, HashSet};
+use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
@@ -13,18 +16,25 @@ pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
 
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
-    let loaded_files = load_candidate_files(
+    let candidates = collect_candidate_sources(
         &repo_root,
         &gather.search_areas,
         &gather.explicit_files,
         &mut trace,
     )?;
-    let corpus = build_corpus(loaded_files);
+    let mut live_cache = LiveFileCache::new();
     let mut result = Vec::with_capacity(gather.query.len());
 
     for query in &gather.query {
-        let (findings, negative_evidence) =
-            answer_question_from_corpus(query, &gather.terms, &gather.search_areas, &corpus, &mut trace)?;
+        let (findings, negative_evidence) = answer_question_from_sources(
+            &repo_root,
+            query,
+            &gather.terms,
+            &gather.search_areas,
+            &candidates,
+            &mut live_cache,
+            &mut trace,
+        )?;
         if findings.is_empty() {
             trace.unmatched_questions.push(query.clone());
         }
@@ -76,19 +86,16 @@ struct TraceState {
 }
 
 const MAX_FINDINGS_PER_FILE: usize = 3;
+const RANKED_FILE_LIMIT: usize = 8;
 
 struct RankedFileFindings {
     display_path: String,
     explicit: bool,
+    best_chunk_score: Option<f32>,
     findings: Vec<Finding>,
 }
 
 struct LoadedFile {
-    source: SourceFile,
-    text: String,
-}
-
-struct CorpusFile {
     source: SourceFile,
     text: String,
     lines: Vec<CorpusLine>,
@@ -101,60 +108,68 @@ struct CorpusLine {
     lower_text: String,
 }
 
-fn answer_question_from_corpus(
+type LiveFileCache = HashMap<PathBuf, LoadedFile>;
+
+fn answer_question_from_sources(
+    repo_root: &Path,
     question: &str,
     terms: &[String],
     search_areas: &[String],
-    corpus: &[CorpusFile],
+    candidates: &[SourceFile],
+    live_cache: &mut LiveFileCache,
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
+    let ranking_usable = index::inspect_chunk_index(repo_root)? == index::IndexState::Usable;
+    let ranked_scores = if ranking_usable {
+        rank_candidate_files(repo_root, candidates, &tokens)?
+    } else {
+        HashMap::new()
+    };
+    let ordered_candidates = if ranking_usable {
+        ordered_query_candidates(candidates, &ranked_scores)
+    } else {
+        candidates.to_vec()
+    };
     let mut ranked_files = Vec::new();
+    let mut loaded_for_query = HashSet::new();
 
-    for file in corpus {
-        let mut file_findings = Vec::new();
-        for line in &file.lines {
-            let line_text = &file.text[line.start..line.end];
-            if let Some(matched_from) = tokens.iter().find(|token| line.lower_text.contains(token.as_str())) {
-                if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
-                    file_findings.push(MatchedFinding {
-                        finding: Finding {
-                            path: file.source.display_path().to_string(),
-                            line: line.number,
-                            excerpt: line_text.trim().to_string(),
-                            source: if file.source.is_explicit() {
-                                "explicit_file".to_string()
-                            } else {
-                                "lexical".to_string()
-                            },
-                            matched_from: matched_from.clone(),
-                            symbol_kind: None,
-                            symbol_name: None,
-                            symbol_start_line: None,
-                            symbol_end_line: None,
-                        },
-                        byte_offset: line.start + match_offset,
-                    });
-                }
-            }
+    for source in ordered_candidates {
+        loaded_for_query.insert(source.path().to_path_buf());
+        if let Some(file_findings) = collect_file_findings(
+            repo_root,
+            &source,
+            &tokens,
+            ranked_scores.get(source.path()).copied(),
+            live_cache,
+            trace,
+        ) {
+            ranked_files.push(file_findings);
         }
+    }
 
-        if !file_findings.is_empty() {
-            if should_enrich_symbol_metadata(file.source.path()) {
-                enrich_symbol_metadata(&file.text, &mut file_findings);
+    if ranked_files.is_empty() {
+        for source in candidates {
+            if loaded_for_query.contains(source.path()) {
+                continue;
             }
-            trace.files_matched.insert(file.source.path().to_path_buf());
-            ranked_files.push(RankedFileFindings {
-                display_path: file.source.display_path().to_string(),
-                explicit: file.source.is_explicit(),
-                findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
-            });
+            if let Some(file_findings) = collect_file_findings(
+                repo_root,
+                source,
+                &tokens,
+                ranked_scores.get(source.path()).copied(),
+                live_cache,
+                trace,
+            ) {
+                ranked_files.push(file_findings);
+            }
         }
     }
 
     ranked_files.sort_by(|a, b| {
         b.explicit
             .cmp(&a.explicit)
+            .then_with(|| compare_best_chunk_score(b.best_chunk_score, a.best_chunk_score))
             .then_with(|| b.findings.len().cmp(&a.findings.len()))
             .then_with(|| a.display_path.cmp(&b.display_path))
     });
@@ -177,6 +192,161 @@ fn answer_question_from_corpus(
     Ok((findings, negative_evidence))
 }
 
+fn collect_candidate_sources(
+    repo_root: &Path,
+    search_areas: &[String],
+    explicit_files: &[ExplicitFile],
+    trace: &mut TraceState,
+) -> Result<Vec<SourceFile>, Box<dyn Error>> {
+    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
+    for source in &candidates {
+        trace.files_considered.insert(source.path().to_path_buf());
+    }
+    Ok(candidates)
+}
+
+fn rank_candidate_files(
+    repo_root: &Path,
+    candidates: &[SourceFile],
+    tokens: &[String],
+) -> Result<HashMap<PathBuf, f32>, Box<dyn Error>> {
+    let ranked_chunks = index::search_chunk_index(
+        repo_root,
+        candidates,
+        &SearchQuery {
+            tokens: tokens.to_vec(),
+            limit: RANKED_FILE_LIMIT,
+        },
+    )?;
+    let mut ranked_scores = HashMap::new();
+
+    for ranked in ranked_chunks {
+        ranked_scores
+            .entry(ranked.chunk.source.path().to_path_buf())
+            .and_modify(|score| {
+                if ranked.score > *score {
+                    *score = ranked.score;
+                }
+            })
+            .or_insert(ranked.score);
+    }
+
+    Ok(ranked_scores)
+}
+
+fn ordered_query_candidates(
+    candidates: &[SourceFile],
+    ranked_scores: &HashMap<PathBuf, f32>,
+) -> Vec<SourceFile> {
+    let mut ordered: Vec<SourceFile> = candidates
+        .iter()
+        .filter(|source| source.is_explicit())
+        .cloned()
+        .collect();
+    let mut ranked: Vec<(SourceFile, f32)> = candidates
+        .iter()
+        .filter(|source| !source.is_explicit())
+        .filter_map(|source| {
+            ranked_scores
+                .get(source.path())
+                .copied()
+                .map(|score| (source.clone(), score))
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.display_path().cmp(b.0.display_path()))
+    });
+
+    ordered.extend(ranked.into_iter().map(|(source, _)| source));
+    ordered
+}
+
+fn collect_file_findings(
+    repo_root: &Path,
+    source: &SourceFile,
+    tokens: &[String],
+    best_chunk_score: Option<f32>,
+    live_cache: &mut LiveFileCache,
+    trace: &mut TraceState,
+) -> Option<RankedFileFindings> {
+    let file = load_live_file(repo_root, source, live_cache, trace)?;
+    let mut file_findings = Vec::new();
+
+    for line in &file.lines {
+        let line_text = &file.text[line.start..line.end];
+        if let Some(matched_from) = tokens.iter().find(|token| line.lower_text.contains(token.as_str())) {
+            if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
+                file_findings.push(MatchedFinding {
+                    finding: Finding {
+                        path: file.source.display_path().to_string(),
+                        line: line.number,
+                        excerpt: line_text.trim().to_string(),
+                        source: if file.source.is_explicit() {
+                            "explicit_file".to_string()
+                        } else {
+                            "lexical".to_string()
+                        },
+                        matched_from: matched_from.clone(),
+                        symbol_kind: None,
+                        symbol_name: None,
+                        symbol_start_line: None,
+                        symbol_end_line: None,
+                    },
+                    byte_offset: line.start + match_offset,
+                });
+            }
+        }
+    }
+
+    if file_findings.is_empty() {
+        return None;
+    }
+
+    if should_enrich_symbol_metadata(file.source.path()) {
+        enrich_symbol_metadata(&file.text, &mut file_findings);
+    }
+    trace.files_matched.insert(file.source.path().to_path_buf());
+    Some(RankedFileFindings {
+        display_path: file.source.display_path().to_string(),
+        explicit: file.source.is_explicit(),
+        best_chunk_score,
+        findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
+    })
+}
+
+fn load_live_file<'a>(
+    repo_root: &Path,
+    source: &SourceFile,
+    live_cache: &'a mut LiveFileCache,
+    trace: &mut TraceState,
+) -> Option<&'a LoadedFile> {
+    if !live_cache.contains_key(source.path()) {
+        let text = load_candidate_text(repo_root, source.path(), trace)?;
+        live_cache.insert(
+            source.path().to_path_buf(),
+            LoadedFile {
+                source: source.clone(),
+                lines: prepare_lines(&text),
+                text,
+            },
+        );
+    }
+
+    live_cache.get(source.path())
+}
+
+fn compare_best_chunk_score(left: Option<f32>, right: Option<f32>) -> Ordering {
+    match (left, right) {
+        (Some(left), Some(right)) => left.partial_cmp(&right).unwrap_or(Ordering::Equal),
+        (Some(_), None) => Ordering::Greater,
+        (None, Some(_)) => Ordering::Less,
+        (None, None) => Ordering::Equal,
+    }
+}
+
 fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) -> Option<String> {
     match fs::read_to_string(file) {
         Ok(text) => Some(text),
@@ -185,39 +355,6 @@ fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) ->
             None
         }
     }
-}
-
-fn load_candidate_files(
-    repo_root: &Path,
-    search_areas: &[String],
-    explicit_files: &[ExplicitFile],
-    trace: &mut TraceState,
-) -> Result<Vec<LoadedFile>, Box<dyn Error>> {
-    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
-    let mut loaded_files = Vec::with_capacity(candidates.len());
-
-    for source in candidates {
-        trace.files_considered.insert(source.path().to_path_buf());
-        let text = match load_candidate_text(repo_root, source.path(), trace) {
-            Some(text) => text,
-            None => continue,
-        };
-
-        loaded_files.push(LoadedFile { source, text });
-    }
-
-    Ok(loaded_files)
-}
-
-fn build_corpus(loaded_files: Vec<LoadedFile>) -> Vec<CorpusFile> {
-    loaded_files
-        .into_iter()
-        .map(|file| CorpusFile {
-            lines: prepare_lines(&file.text),
-            source: file.source,
-            text: file.text,
-        })
-        .collect()
 }
 
 fn prepare_lines(text: &str) -> Vec<CorpusLine> {
@@ -261,9 +398,17 @@ fn answer_question(
     explicit_files: &[ExplicitFile],
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
-    let loaded_files = load_candidate_files(repo_root, search_areas, explicit_files, trace)?;
-    let corpus = build_corpus(loaded_files);
-    answer_question_from_corpus(question, terms, search_areas, &corpus, trace)
+    let candidates = collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
+    let mut live_cache = LiveFileCache::new();
+    answer_question_from_sources(
+        repo_root,
+        question,
+        terms,
+        search_areas,
+        &candidates,
+        &mut live_cache,
+        trace,
+    )
 }
 
 #[derive(Debug)]
@@ -1247,5 +1392,60 @@ mod tests {
         let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
         assert!(stdout.contains("\"schema_version\":\"surveil.v5\""), "stdout: {stdout}");
         assert!(!stdout.contains("\"surveil_version\""), "stdout: {stdout}");
+    }
+
+    #[test]
+    fn ranked_query_prefers_code_chunk_before_long_docs() {
+        let repo = temp_repo("ranked-code");
+        write_file(
+            &repo.join("docs/guide.md"),
+            "attach attach attach attach\nattach attach attach attach\n",
+        );
+        write_file(
+            &repo.join("src/lib.rs"),
+            "fn attach_handler() {\n    // attach handler\n}\n",
+        );
+        index::build_chunk_index(&repo).expect("build index");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where should attach handler live?",
+            &["attach".to_string(), "handler".to_string()],
+            &["src/".to_string(), "docs/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings[0].path, "src/lib.rs");
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn ranked_query_prefers_config_chunk_before_docs() {
+        let repo = temp_repo("ranked-config");
+        write_file(&repo.join("docs/config.md"), "server port server port\n");
+        write_file(
+            &repo.join("config/settings.toml"),
+            "[server]\nport = 8080\n",
+        );
+        index::build_chunk_index(&repo).expect("build index");
+
+        let mut trace = TraceState::default();
+        let (findings, _) = answer_question(
+            &repo,
+            "Where is server port configured?",
+            &["server".to_string(), "port".to_string()],
+            &["config/".to_string(), "docs/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("research answer");
+
+        assert_eq!(findings[0].path, "config/settings.toml");
+
+        let _ = fs::remove_dir_all(repo);
     }
 }
