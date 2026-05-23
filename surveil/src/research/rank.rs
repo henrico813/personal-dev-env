@@ -91,3 +91,83 @@ fn ordered_query_candidates(
     ordered.extend(ranked.into_iter().map(|(source, _)| source));
     ordered
 }
+
+#[cfg(test)]
+mod tests {
+    use super::rank_query_candidates;
+    use crate::chunk::{temp_repo, write_file};
+    use crate::index;
+    use crate::source;
+    use std::fs;
+
+    struct RankCase {
+        name: &'static str,
+        files: Vec<(&'static str, &'static str)>,
+        build_index: bool,
+        search_areas: Vec<&'static str>,
+        terms: Vec<&'static str>,
+        expected_order: Vec<&'static str>,
+    }
+
+    #[test]
+    fn rank_case_tables() {
+        let cases = vec![
+            RankCase {
+                name: "fallback-scope-order",
+                files: vec![("src/a.rs", "attach\n"), ("src/b.rs", "attach\n")],
+                build_index: false,
+                search_areas: vec!["src/"],
+                terms: vec!["attach"],
+                expected_order: vec!["src/a.rs", "src/b.rs"],
+            },
+            RankCase {
+                name: "ranked-code-before-docs",
+                files: vec![
+                    (
+                        "docs/guide.md",
+                        "attach attach attach attach\nattach attach attach attach\n",
+                    ),
+                    (
+                        "src/lib.rs",
+                        "fn attach_handler() {\n    // attach handler\n}\n",
+                    ),
+                ],
+                build_index: true,
+                search_areas: vec!["src/", "docs/"],
+                terms: vec!["attach", "handler"],
+                expected_order: vec!["src/lib.rs", "docs/guide.md"],
+            },
+        ];
+
+        for case in &cases {
+            let repo = temp_repo(case.name);
+            for (path, content) in &case.files {
+                write_file(&repo.join(path), content);
+            }
+            if case.build_index {
+                index::build_chunk_index(&repo).expect("build index");
+            }
+
+            let mut skipped_paths = Vec::new();
+            let search_areas = case
+                .search_areas
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>();
+            let candidates = source::collect_candidate_files(&repo, &search_areas, &[], &mut skipped_paths)
+                .expect("collect candidates");
+
+            let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+            let (_, ordered) = rank_query_candidates(&repo, &candidates, &terms).expect("rank candidates");
+
+            assert_eq!(
+                ordered.iter().map(|item| item.display_path()).collect::<Vec<_>>(),
+                case.expected_order,
+                "case: {}",
+                case.name
+            );
+
+            let _ = fs::remove_dir_all(repo);
+        }
+    }
+}

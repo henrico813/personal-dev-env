@@ -363,3 +363,111 @@ fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
             .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::prepare_lines;
+    use crate::chunk::{temp_repo, write_file};
+    use crate::index;
+    use crate::research::{output, TraceState};
+    use std::fs;
+
+    struct ScanCase {
+        name: &'static str,
+        files: Vec<(&'static str, &'static str)>,
+        build_index: bool,
+        search_areas: Vec<&'static str>,
+        terms: Vec<&'static str>,
+        query: &'static str,
+        expected_paths: Vec<&'static str>,
+    }
+
+    #[test]
+    fn scan_case_tables() {
+        let cases = vec![
+            ScanCase {
+                name: "caps-findings-per-file",
+                files: vec![(
+                    "surveil/src/lib.rs",
+                    "// tree-sitter attach one\n// tree-sitter attach two\n// tree-sitter attach three\n// tree-sitter attach four\n",
+                )],
+                build_index: false,
+                search_areas: vec!["surveil/"],
+                terms: vec!["tree-sitter"],
+                query: "Where should Tree-sitter attach?",
+                expected_paths: vec!["surveil/src/lib.rs", "surveil/src/lib.rs", "surveil/src/lib.rs"],
+            },
+            ScanCase {
+                name: "ranked-fallback-keeps-live-findings",
+                files: vec![("notes/design.md", "attach here\n")],
+                build_index: false,
+                search_areas: vec!["notes/"],
+                terms: vec!["attach"],
+                query: "Where should attach live?",
+                expected_paths: vec!["notes/design.md"],
+            },
+        ];
+
+        for case in &cases {
+            let repo = temp_repo(case.name);
+            for (path, content) in &case.files {
+                write_file(&repo.join(path), content);
+            }
+            if case.build_index {
+                index::build_chunk_index(&repo).expect("build index");
+            }
+
+            let mut trace = TraceState::default();
+            let search_areas = case
+                .search_areas
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>();
+            let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+            let (findings, _) = output::answer_question_for_test(
+                &repo,
+                case.query,
+                &terms,
+                &search_areas,
+                &[],
+                &mut trace,
+            )
+            .expect("scan findings");
+
+            assert_eq!(
+                findings.iter().map(|item| item.path.as_str()).collect::<Vec<_>>(),
+                case.expected_paths,
+                "case: {}",
+                case.name
+            );
+
+            let _ = fs::remove_dir_all(repo);
+        }
+    }
+
+    #[test]
+    fn prepare_lines_case_tables() {
+        struct LineCase {
+            name: &'static str,
+            text: &'static str,
+            expected_count: usize,
+        }
+
+        let cases = vec![
+            LineCase {
+                name: "single-line",
+                text: "attach",
+                expected_count: 1,
+            },
+            LineCase {
+                name: "crlf-lines",
+                text: "a\r\nb\r\n",
+                expected_count: 2,
+            },
+        ];
+
+        for case in &cases {
+            assert_eq!(prepare_lines(case.text).len(), case.expected_count, "case: {}", case.name);
+        }
+    }
+}

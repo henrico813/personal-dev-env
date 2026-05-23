@@ -137,3 +137,41 @@ fn is_generic_question_token(token: &str) -> bool {
             | "those"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::search_tokens;
+
+    struct TokenCase {
+        name: &'static str,
+        terms: Vec<&'static str>,
+        question: &'static str,
+        expected_tokens: Vec<&'static str>,
+    }
+
+    #[test]
+    fn token_case_tables() {
+        let cases = vec![
+            TokenCase {
+                name: "declared-term-wins",
+                terms: vec!["tree-sitter", "attach"],
+                question: "Where should Tree-sitter attach?",
+                expected_tokens: vec!["tree-sitter", "tree_sitter"],
+            },
+            TokenCase {
+                name: "fallback-question-token",
+                terms: vec!["build"],
+                question: "Where should Tree-sitter attach?",
+                expected_tokens: vec!["tree-sitter", "tree_sitter", "attach"],
+            },
+        ];
+
+        for case in &cases {
+            let tokens = search_tokens(
+                &case.terms.iter().map(|term| term.to_string()).collect::<Vec<_>>(),
+                case.question,
+            );
+            assert_eq!(tokens, case.expected_tokens, "case: {}", case.name);
+        }
+    }
+}
