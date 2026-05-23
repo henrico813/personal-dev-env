@@ -1,14 +1,8 @@
-use crate::chunk::SearchQuery;
-use crate::index;
-use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
-use crate::source::{self, SourceFile};
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use crate::schema::{ExplicitFile, Finding};
+use crate::source::SourceFile;
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
-use std::fs;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use tree_sitter::Parser;
 
 mod output;
 mod rank;
@@ -16,321 +10,40 @@ mod scan;
 mod setup;
 mod tokenize;
 
-pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
-    output::run(context, trace_out)
-}
+pub(crate) use output::run;
 
 #[derive(Default)]
-struct TraceState {
-    files_considered: BTreeSet<PathBuf>,
-    files_matched: BTreeSet<PathBuf>,
-    skipped_paths: Vec<String>,
-    unmatched_questions: Vec<String>,
+pub(super) struct TraceState {
+    pub(super) files_considered: BTreeSet<PathBuf>,
+    pub(super) files_matched: BTreeSet<PathBuf>,
+    pub(super) skipped_paths: Vec<String>,
+    pub(super) unmatched_questions: Vec<String>,
 }
 
-const MAX_FINDINGS_PER_FILE: usize = 3;
-const RANKED_FILE_LIMIT: usize = 8;
+pub(super) const MAX_FINDINGS_PER_FILE: usize = 3;
+pub(super) const RANKED_FILE_LIMIT: usize = 8;
 
-struct RankedFileFindings {
-    display_path: String,
-    explicit: bool,
-    best_chunk_score: Option<f32>,
-    findings: Vec<Finding>,
+pub(super) struct RankedFileFindings {
+    pub(super) display_path: String,
+    pub(super) explicit: bool,
+    pub(super) best_chunk_score: Option<f32>,
+    pub(super) findings: Vec<Finding>,
 }
 
-struct LoadedFile {
-    source: SourceFile,
-    text: String,
-    lines: Vec<CorpusLine>,
+pub(super) struct LoadedFile {
+    pub(super) source: SourceFile,
+    pub(super) text: String,
+    pub(super) lines: Vec<CorpusLine>,
 }
 
-struct CorpusLine {
-    number: u32,
-    start: usize,
-    end: usize,
-    lower_text: String,
+pub(super) struct CorpusLine {
+    pub(super) number: u32,
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) lower_text: String,
 }
 
-type LiveFileCache = HashMap<PathBuf, LoadedFile>;
-
-fn answer_question_from_sources(
-    repo_root: &Path,
-    question: &str,
-    terms: &[String],
-    search_areas: &[String],
-    candidates: &[SourceFile],
-    live_cache: &mut LiveFileCache,
-    trace: &mut TraceState,
-) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
-    let tokens = search_tokens(terms, question);
-    let ranking_usable = index::inspect_chunk_index(repo_root)? == index::IndexState::Usable;
-    let ranked_scores = if ranking_usable {
-        rank_candidate_files(repo_root, candidates, &tokens)?
-    } else {
-        HashMap::new()
-    };
-    let ordered_candidates = if ranking_usable {
-        ordered_query_candidates(candidates, &ranked_scores)
-    } else {
-        candidates.to_vec()
-    };
-    let mut ranked_files = Vec::new();
-    let mut loaded_for_query = HashSet::new();
-
-    for source in ordered_candidates {
-        loaded_for_query.insert(source.path().to_path_buf());
-        if let Some(file_findings) = collect_file_findings(
-            repo_root,
-            &source,
-            &tokens,
-            ranked_scores.get(source.path()).copied(),
-            live_cache,
-            trace,
-        ) {
-            ranked_files.push(file_findings);
-        }
-    }
-
-    if ranked_files.is_empty() {
-        for source in candidates {
-            if loaded_for_query.contains(source.path()) {
-                continue;
-            }
-            if let Some(file_findings) = collect_file_findings(
-                repo_root,
-                source,
-                &tokens,
-                ranked_scores.get(source.path()).copied(),
-                live_cache,
-                trace,
-            ) {
-                ranked_files.push(file_findings);
-            }
-        }
-    }
-
-    ranked_files.sort_by(|a, b| {
-        b.explicit
-            .cmp(&a.explicit)
-            .then_with(|| compare_best_chunk_score(b.best_chunk_score, a.best_chunk_score))
-            .then_with(|| b.findings.len().cmp(&a.findings.len()))
-            .then_with(|| a.display_path.cmp(&b.display_path))
-    });
-
-    let findings: Vec<Finding> = ranked_files
-        .into_iter()
-        .flat_map(|mut file| {
-            file.findings.sort_by_key(|finding| finding.line);
-            file.findings.truncate(MAX_FINDINGS_PER_FILE);
-            file.findings
-        })
-        .collect();
-
-    let negative_evidence = if findings.is_empty() {
-        vec![format!("searched declared areas: {}", search_areas.join(", "))]
-    } else {
-        Vec::new()
-    };
-
-    Ok((findings, negative_evidence))
-}
-
-fn collect_candidate_sources(
-    repo_root: &Path,
-    search_areas: &[String],
-    explicit_files: &[ExplicitFile],
-    trace: &mut TraceState,
-) -> Result<Vec<SourceFile>, Box<dyn Error>> {
-    let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
-    for source in &candidates {
-        trace.files_considered.insert(source.path().to_path_buf());
-    }
-    Ok(candidates)
-}
-
-fn rank_candidate_files(
-    repo_root: &Path,
-    candidates: &[SourceFile],
-    tokens: &[String],
-) -> Result<HashMap<PathBuf, f32>, Box<dyn Error>> {
-    let ranked_chunks = index::search_chunk_index(
-        repo_root,
-        candidates,
-        &SearchQuery {
-            tokens: tokens.to_vec(),
-            limit: RANKED_FILE_LIMIT,
-        },
-    )?;
-    let mut ranked_scores = HashMap::new();
-
-    for ranked in ranked_chunks {
-        ranked_scores
-            .entry(ranked.chunk.source.path().to_path_buf())
-            .and_modify(|score| {
-                if ranked.score > *score {
-                    *score = ranked.score;
-                }
-            })
-            .or_insert(ranked.score);
-    }
-
-    Ok(ranked_scores)
-}
-
-fn ordered_query_candidates(
-    candidates: &[SourceFile],
-    ranked_scores: &HashMap<PathBuf, f32>,
-) -> Vec<SourceFile> {
-    let mut ordered: Vec<SourceFile> = candidates
-        .iter()
-        .filter(|source| source.is_explicit())
-        .cloned()
-        .collect();
-    let mut ranked: Vec<(SourceFile, f32)> = candidates
-        .iter()
-        .filter(|source| !source.is_explicit())
-        .filter_map(|source| {
-            ranked_scores
-                .get(source.path())
-                .copied()
-                .map(|score| (source.clone(), score))
-        })
-        .collect();
-
-    ranked.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| a.0.display_path().cmp(b.0.display_path()))
-    });
-
-    ordered.extend(ranked.into_iter().map(|(source, _)| source));
-    ordered
-}
-
-fn collect_file_findings(
-    repo_root: &Path,
-    source: &SourceFile,
-    tokens: &[String],
-    best_chunk_score: Option<f32>,
-    live_cache: &mut LiveFileCache,
-    trace: &mut TraceState,
-) -> Option<RankedFileFindings> {
-    let file = load_live_file(repo_root, source, live_cache, trace)?;
-    let mut file_findings = Vec::new();
-
-    for line in &file.lines {
-        let line_text = &file.text[line.start..line.end];
-        if let Some(matched_from) = tokens.iter().find(|token| line.lower_text.contains(token.as_str())) {
-            if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
-                file_findings.push(MatchedFinding {
-                    finding: Finding {
-                        path: file.source.display_path().to_string(),
-                        line: line.number,
-                        excerpt: line_text.trim().to_string(),
-                        source: if file.source.is_explicit() {
-                            "explicit_file".to_string()
-                        } else {
-                            "lexical".to_string()
-                        },
-                        matched_from: matched_from.clone(),
-                        symbol_kind: None,
-                        symbol_name: None,
-                        symbol_start_line: None,
-                        symbol_end_line: None,
-                    },
-                    byte_offset: line.start + match_offset,
-                });
-            }
-        }
-    }
-
-    if file_findings.is_empty() {
-        return None;
-    }
-
-    if should_enrich_symbol_metadata(file.source.path()) {
-        enrich_symbol_metadata(&file.text, &mut file_findings);
-    }
-    trace.files_matched.insert(file.source.path().to_path_buf());
-    Some(RankedFileFindings {
-        display_path: file.source.display_path().to_string(),
-        explicit: file.source.is_explicit(),
-        best_chunk_score,
-        findings: file_findings.into_iter().map(|hit| hit.finding).collect(),
-    })
-}
-
-fn load_live_file<'a>(
-    repo_root: &Path,
-    source: &SourceFile,
-    live_cache: &'a mut LiveFileCache,
-    trace: &mut TraceState,
-) -> Option<&'a LoadedFile> {
-    if !live_cache.contains_key(source.path()) {
-        let text = load_candidate_text(repo_root, source.path(), trace)?;
-        live_cache.insert(
-            source.path().to_path_buf(),
-            LoadedFile {
-                source: source.clone(),
-                lines: prepare_lines(&text),
-                text,
-            },
-        );
-    }
-
-    live_cache.get(source.path())
-}
-
-fn compare_best_chunk_score(left: Option<f32>, right: Option<f32>) -> Ordering {
-    match (left, right) {
-        (Some(left), Some(right)) => left.partial_cmp(&right).unwrap_or(Ordering::Equal),
-        (Some(_), None) => Ordering::Greater,
-        (None, Some(_)) => Ordering::Less,
-        (None, None) => Ordering::Equal,
-    }
-}
-
-fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) -> Option<String> {
-    match fs::read_to_string(file) {
-        Ok(text) => Some(text),
-        Err(_) => {
-            trace.skipped_paths.push(source::display_path(repo_root, file));
-            None
-        }
-    }
-}
-
-fn prepare_lines(text: &str) -> Vec<CorpusLine> {
-    let mut lines = Vec::new();
-    let mut line_start = 0usize;
-    let mut line_number = 1u32;
-
-    while line_start <= text.len() {
-        let line_end = text[line_start..]
-            .find('\n')
-            .map(|offset| line_start + offset)
-            .unwrap_or(text.len());
-        let mut content_end = line_end;
-        if content_end > line_start && text.as_bytes()[content_end - 1] == b'\r' {
-            content_end -= 1;
-        }
-
-        lines.push(CorpusLine {
-            number: line_number,
-            start: line_start,
-            end: content_end,
-            lower_text: text[line_start..content_end].to_lowercase(),
-        });
-
-        if line_end == text.len() {
-            break;
-        }
-        line_start = line_end + 1;
-        line_number += 1;
-    }
-
-    lines
-}
+pub(super) type LiveFileCache = HashMap<PathBuf, LoadedFile>;
 
 #[cfg(test)]
 fn answer_question(
@@ -341,280 +54,26 @@ fn answer_question(
     explicit_files: &[ExplicitFile],
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
-    let candidates = collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
+    let candidates = setup::collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
     let mut live_cache = LiveFileCache::new();
-    answer_question_from_sources(
+    let tokens = tokenize::search_tokens(terms, question);
+    let (ranked_scores, ordered_candidates) = rank::rank_query_candidates(repo_root, &candidates, &tokens)?;
+    scan::answer_question_from_sources(
         repo_root,
-        question,
-        terms,
         search_areas,
+        &ordered_candidates,
         &candidates,
+        &tokens,
+        &ranked_scores,
         &mut live_cache,
         trace,
     )
 }
 
 #[derive(Debug)]
-struct MatchedFinding {
-    finding: Finding,
-    byte_offset: usize,
-}
-
-fn should_enrich_symbol_metadata(path: &Path) -> bool {
-    if path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with('.'))
-    {
-        return false;
-    }
-
-    if path.extension().is_none() {
-        return false;
-    }
-
-    let extension = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_ascii_lowercase());
-
-    if matches!(
-        extension.as_deref(),
-        Some(
-            "md" | "markdown" | "rst" | "txt" | "toml" | "json" | "yaml" | "yml" | "ini"
-                | "cfg" | "conf" | "env"
-        )
-    ) {
-        return false;
-    }
-
-    if path.components().any(|component| {
-        let component = component.as_os_str().to_string_lossy();
-        matches!(
-            component.as_ref(),
-            "docs" | "doc" | "config" | "configs" | "configuration"
-        )
-    }) {
-        return false;
-    }
-
-    true
-}
-
-fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
-    let mut parser = Parser::new();
-    parser.set_language(&language).ok()?;
-    parser.parse(text, None)
-}
-
-fn enrich_symbol_metadata(text: &str, findings: &mut [MatchedFinding]) {
-    for language in [
-        tree_sitter_rust::LANGUAGE.into(),
-        tree_sitter_go::LANGUAGE.into(),
-        tree_sitter_python::LANGUAGE.into(),
-        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        tree_sitter_typescript::LANGUAGE_TSX.into(),
-    ] {
-        if let Some(tree) = parse_tree(text, language) {
-            if tree.root_node().has_error() {
-                continue;
-            }
-            if attach_symbol_metadata(text, &tree, findings) {
-                return;
-            }
-        }
-    }
-}
-
-fn attach_symbol_metadata(text: &str, tree: &tree_sitter::Tree, findings: &mut [MatchedFinding]) -> bool {
-    let mut attached = false;
-    for hit in findings {
-        if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
-            hit.finding.symbol_kind = Some(symbol.kind);
-            hit.finding.symbol_name = Some(symbol.name);
-            hit.finding.symbol_start_line = Some(symbol.start_line);
-            hit.finding.symbol_end_line = Some(symbol.end_line);
-            attached = true;
-        }
-    }
-    attached
-}
-
-struct SymbolInfo {
-    kind: String,
-    name: String,
-    start_line: u32,
-    end_line: u32,
-}
-
-fn enclosing_symbol(
-    root: tree_sitter::Node,
-    source: &[u8],
-    byte_offset: usize,
-) -> Option<SymbolInfo> {
-    let mut node = root.descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
-    loop {
-        if is_symbol_node(node) {
-            let name_node = symbol_name_node(node)?;
-            let name = name_node.utf8_text(source).ok()?.to_string();
-            return Some(SymbolInfo {
-                kind: normalized_symbol_kind(node.kind()).to_string(),
-                name,
-                start_line: node.start_position().row as u32 + 1,
-                end_line: node.end_position().row as u32 + 1,
-            });
-        }
-        node = node.parent()?;
-    }
-}
-
-fn symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    node.child_by_field_name("name").or_else(|| node.named_child(0))
-}
-
-fn is_symbol_node(node: tree_sitter::Node) -> bool {
-    let kind = node.kind();
-    node.child_by_field_name("name").is_some()
-        && (kind.ends_with("_item")
-            || kind.ends_with("_declaration")
-            || kind.ends_with("_definition")
-            || kind.ends_with("_declarator"))
-}
-
-fn normalized_symbol_kind(kind: &str) -> &'static str {
-    if kind.contains("function") {
-        "function"
-    } else if kind.contains("method") {
-        "method"
-    } else if kind.contains("class")
-        || kind.contains("struct")
-        || kind.contains("enum")
-        || kind.contains("trait")
-        || kind.contains("interface")
-        || kind.contains("type")
-    {
-        "type"
-    } else if kind.contains("module") || kind.contains("mod") || kind.contains("package") {
-        "module"
-    } else {
-        "symbol"
-    }
-}
-
-fn dedupe_in_place(values: &mut Vec<String>) {
-    let mut seen = HashSet::new();
-    values.retain(|value| seen.insert(value.clone()));
-}
-
-fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
-    let line_bytes = line.as_bytes();
-    let needle_bytes = needle.as_bytes();
-    if needle_bytes.is_empty() || needle_bytes.len() > line_bytes.len() {
-        return None;
-    }
-
-    line_bytes.windows(needle_bytes.len()).position(|window| {
-        window
-            .iter()
-            .zip(needle_bytes.iter())
-            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
-    })
-}
-
-fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
-    let question_tokens = question_tokens(question);
-    let question_token_set: HashSet<String> = question_tokens
-        .iter()
-        .flat_map(|token| token_variants(token))
-        .collect();
-
-    let matching_terms: Vec<String> = terms
-        .iter()
-        .filter_map(|term| {
-            let token = term.trim().to_lowercase();
-            if token.is_empty() {
-                return None;
-            }
-            let variants = token_variants(&token);
-            if variants.iter().any(|variant| question_token_set.contains(variant)) {
-                Some(token)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let source = if matching_terms.is_empty() {
-        question_tokens
-    } else {
-        matching_terms
-    };
-
-    let mut tokens = Vec::new();
-    for token in source {
-        push_token(&mut tokens, &token);
-        if token.contains('-') {
-            push_token(&mut tokens, &token.replace('-', "_"));
-        } else if token.contains('_') {
-            push_token(&mut tokens, &token.replace('_', "-"));
-        }
-    }
-
-    tokens
-}
-
-fn question_tokens(question: &str) -> Vec<String> {
-    question
-        .split_whitespace()
-        .filter_map(|raw| {
-            let token = raw
-                .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_')
-                .to_lowercase();
-            if token.is_empty() || is_generic_question_token(&token) {
-                None
-            } else {
-                Some(token)
-            }
-        })
-        .collect()
-}
-
-fn token_variants(token: &str) -> Vec<String> {
-    let mut variants = vec![token.to_string()];
-
-    if token.contains('-') {
-        let variant = token.replace('-', "_");
-        if variant != token {
-            variants.push(variant);
-        }
-    } else if token.contains('_') {
-        let variant = token.replace('_', "-");
-        if variant != token {
-            variants.push(variant);
-        }
-    }
-
-    variants
-}
-
-fn push_token(tokens: &mut Vec<String>, token: &str) {
-    if token.len() < 3 {
-        return;
-    }
-    if !tokens.iter().any(|existing| existing == token) {
-        tokens.push(token.to_string());
-    }
-}
-
-fn is_generic_question_token(token: &str) -> bool {
-    matches!(
-        token,
-        "what" | "where" | "when" | "why" | "how" | "who" | "whom" | "which" | "whose"
-            | "should" | "would" | "could" | "can" | "may" | "might" | "do" | "does"
-            | "did" | "is" | "are" | "was" | "were" | "be" | "been" | "being" | "the"
-            | "a" | "an" | "to" | "of" | "and" | "or" | "for" | "in" | "on" | "at"
-            | "by" | "with" | "from" | "into" | "this" | "that" | "these" | "those"
-    )
+pub(super) struct MatchedFinding {
+    pub(super) finding: Finding,
+    pub(super) byte_offset: usize,
 }
 
 
