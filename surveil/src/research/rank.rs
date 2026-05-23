@@ -97,6 +97,7 @@ mod tests {
     use super::rank_query_candidates;
     use crate::chunk::{temp_repo, write_file};
     use crate::index;
+    use crate::schema::ExplicitFile;
     use crate::source;
     use std::fs;
 
@@ -105,6 +106,7 @@ mod tests {
         files: Vec<(&'static str, &'static str)>,
         build_index: bool,
         search_areas: Vec<&'static str>,
+        explicit_files: Vec<&'static str>,
         terms: Vec<&'static str>,
         expected_order: Vec<&'static str>,
     }
@@ -117,7 +119,29 @@ mod tests {
                 files: vec![("src/a.rs", "attach\n"), ("src/b.rs", "attach\n")],
                 build_index: false,
                 search_areas: vec!["src/"],
+                explicit_files: vec![],
                 terms: vec!["attach"],
+                expected_order: vec!["src/a.rs", "src/b.rs"],
+            },
+            RankCase {
+                name: "explicit-file-stays-first",
+                files: vec![
+                    ("notes/design.md", "tree-sitter attach\n"),
+                    ("src/lib.rs", "tree-sitter attach\n"),
+                ],
+                build_index: true,
+                search_areas: vec!["src/"],
+                explicit_files: vec!["notes/design.md"],
+                terms: vec!["tree-sitter"],
+                expected_order: vec!["notes/design.md", "src/lib.rs"],
+            },
+            RankCase {
+                name: "ranked-tie-breaker-stays-deterministic",
+                files: vec![("src/b.rs", "attach handler\n"), ("src/a.rs", "attach handler\n")],
+                build_index: true,
+                search_areas: vec!["src/"],
+                explicit_files: vec![],
+                terms: vec!["attach", "handler"],
                 expected_order: vec!["src/a.rs", "src/b.rs"],
             },
             RankCase {
@@ -134,6 +158,7 @@ mod tests {
                 ],
                 build_index: true,
                 search_areas: vec!["src/", "docs/"],
+                explicit_files: vec![],
                 terms: vec!["attach", "handler"],
                 expected_order: vec!["src/lib.rs", "docs/guide.md"],
             },
@@ -154,8 +179,21 @@ mod tests {
                 .iter()
                 .map(|item| item.to_string())
                 .collect::<Vec<_>>();
-            let candidates = source::collect_candidate_files(&repo, &search_areas, &[], &mut skipped_paths)
-                .expect("collect candidates");
+            let explicit_files = case
+                .explicit_files
+                .iter()
+                .map(|path| ExplicitFile {
+                    path: path.to_string(),
+                    found: true,
+                })
+                .collect::<Vec<_>>();
+            let candidates = source::collect_candidate_files(
+                &repo,
+                &search_areas,
+                &explicit_files,
+                &mut skipped_paths,
+            )
+            .expect("collect candidates");
 
             let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
             let (_, ordered) = rank_query_candidates(&repo, &candidates, &terms).expect("rank candidates");

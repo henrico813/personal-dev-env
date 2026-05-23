@@ -371,6 +371,7 @@ mod tests {
     use crate::index;
     use crate::research::{output, TraceState};
     use std::fs;
+    use std::path::Path;
 
     struct ScanCase {
         name: &'static str,
@@ -380,6 +381,18 @@ mod tests {
         terms: Vec<&'static str>,
         query: &'static str,
         expected_paths: Vec<&'static str>,
+        expected_sources: Vec<&'static str>,
+        expected_excerpts: Vec<&'static str>,
+        expected_symbol_kind: Option<&'static str>,
+        expected_symbol_name: Option<&'static str>,
+        expected_skipped_paths: Vec<&'static str>,
+    }
+
+    fn write_bytes(path: &Path, content: &[u8]) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        fs::write(path, content).expect("write file bytes");
     }
 
     #[test]
@@ -396,6 +409,60 @@ mod tests {
                 terms: vec!["tree-sitter"],
                 query: "Where should Tree-sitter attach?",
                 expected_paths: vec!["surveil/src/lib.rs", "surveil/src/lib.rs", "surveil/src/lib.rs"],
+                expected_sources: vec!["lexical", "lexical", "lexical"],
+                expected_excerpts: vec![
+                    "// tree-sitter attach one",
+                    "// tree-sitter attach two",
+                    "// tree-sitter attach three",
+                ],
+                expected_symbol_kind: None,
+                expected_symbol_name: None,
+                expected_skipped_paths: vec![],
+            },
+            ScanCase {
+                name: "crlf-symbol-attachment",
+                files: vec![(
+                    "surveil/src/lib.rs",
+                    "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
+                )],
+                build_index: true,
+                search_areas: vec!["surveil/"],
+                terms: vec!["tree-sitter"],
+                query: "Where should Tree-sitter attach?",
+                expected_paths: vec!["surveil/src/lib.rs"],
+                expected_sources: vec!["lexical"],
+                expected_excerpts: vec!["let cafe\u{0301} = 1; // tree-sitter attach"],
+                expected_symbol_kind: Some("function"),
+                expected_symbol_name: Some("attach"),
+                expected_skipped_paths: vec![],
+            },
+            ScanCase {
+                name: "parse-error-stays-lexical-only",
+                files: vec![("surveil/src/lib.rs", "// tree-sitter attach\nfn attach() {\n    let x = ;\n}\n")],
+                build_index: false,
+                search_areas: vec!["surveil/"],
+                terms: vec!["tree-sitter"],
+                query: "Where should Tree-sitter attach?",
+                expected_paths: vec!["surveil/src/lib.rs"],
+                expected_sources: vec!["lexical"],
+                expected_excerpts: vec!["// tree-sitter attach"],
+                expected_symbol_kind: None,
+                expected_symbol_name: None,
+                expected_skipped_paths: vec![],
+            },
+            ScanCase {
+                name: "docs-stay-lexical-only",
+                files: vec![("docs/notes.md", "fn attach() { // tree-sitter attach }\n")],
+                build_index: false,
+                search_areas: vec!["docs/"],
+                terms: vec!["tree-sitter"],
+                query: "Where should Tree-sitter attach?",
+                expected_paths: vec!["docs/notes.md"],
+                expected_sources: vec!["lexical"],
+                expected_excerpts: vec!["fn attach() { // tree-sitter attach }"],
+                expected_symbol_kind: None,
+                expected_symbol_name: None,
+                expected_skipped_paths: vec![],
             },
             ScanCase {
                 name: "ranked-fallback-keeps-live-findings",
@@ -405,6 +472,11 @@ mod tests {
                 terms: vec!["attach"],
                 query: "Where should attach live?",
                 expected_paths: vec!["notes/design.md"],
+                expected_sources: vec!["lexical"],
+                expected_excerpts: vec!["attach here"],
+                expected_symbol_kind: None,
+                expected_symbol_name: None,
+                expected_skipped_paths: vec![],
             },
         ];
 
@@ -440,6 +512,37 @@ mod tests {
                 "case: {}",
                 case.name
             );
+            assert_eq!(
+                findings.iter().map(|item| item.source.as_str()).collect::<Vec<_>>(),
+                case.expected_sources,
+                "case: {}",
+                case.name
+            );
+            assert_eq!(
+                findings.iter().map(|item| item.excerpt.as_str()).collect::<Vec<_>>(),
+                case.expected_excerpts,
+                "case: {}",
+                case.name
+            );
+            if let Some(expected_kind) = case.expected_symbol_kind {
+                assert_eq!(findings[0].symbol_kind.as_deref(), Some(expected_kind), "case: {}", case.name);
+            } else if !findings.is_empty() {
+                assert_eq!(findings[0].symbol_kind, None, "case: {}", case.name);
+            }
+            if let Some(expected_name) = case.expected_symbol_name {
+                assert_eq!(findings[0].symbol_name.as_deref(), Some(expected_name), "case: {}", case.name);
+            } else if !findings.is_empty() {
+                assert_eq!(findings[0].symbol_name, None, "case: {}", case.name);
+            }
+            assert_eq!(
+                trace.skipped_paths,
+                case.expected_skipped_paths
+                    .iter()
+                    .map(|path| path.to_string())
+                    .collect::<Vec<_>>(),
+                "case: {}",
+                case.name
+            );
 
             let _ = fs::remove_dir_all(repo);
         }
@@ -469,5 +572,27 @@ mod tests {
         for case in &cases {
             assert_eq!(prepare_lines(case.text).len(), case.expected_count, "case: {}", case.name);
         }
+    }
+
+    #[test]
+    fn non_utf8_case_tables() {
+        let repo = temp_repo("non-utf8");
+        write_bytes(&repo.join("surveil/src/lib.rs"), &[0xff_u8, 0xfe_u8, 0xfd_u8]);
+
+        let mut trace = TraceState::default();
+        let (findings, _) = output::answer_question_for_test(
+            &repo,
+            "Where should Tree-sitter attach?",
+            &["tree-sitter".to_string()],
+            &["surveil/".to_string()],
+            &[],
+            &mut trace,
+        )
+        .expect("scan findings");
+
+        assert!(findings.is_empty());
+        assert_eq!(trace.skipped_paths, vec!["surveil/src/lib.rs".to_string()]);
+
+        let _ = fs::remove_dir_all(repo);
     }
 }

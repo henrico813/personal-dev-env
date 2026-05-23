@@ -53,6 +53,7 @@ pub(super) struct MatchedFinding {
 #[cfg(test)]
 mod tests {
     use super::output;
+    use crate::index;
     use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
     use std::fs;
     use std::io::Write;
@@ -81,8 +82,13 @@ mod tests {
     struct RunCase {
         name: &'static str,
         files: Vec<(&'static str, &'static str)>,
+        build_index: bool,
+        rewrite_files: Vec<(&'static str, &'static str)>,
         context: GatherOutput,
-        expected_result_count: usize,
+        expected_first_paths: Vec<&'static str>,
+        expected_first_sources: Vec<&'static str>,
+        expected_first_excerpts: Vec<&'static str>,
+        expected_negative_evidence: Vec<Vec<&'static str>>,
         expected_open_questions: Vec<&'static str>,
         expected_skipped_paths: Vec<&'static str>,
     }
@@ -92,12 +98,57 @@ mod tests {
         for (path, content) in &case.files {
             write_file(&repo.join(path), content);
         }
+        if case.build_index {
+            index::build_chunk_index(&repo).expect("build index");
+        }
+        for (path, content) in &case.rewrite_files {
+            write_file(&repo.join(path), content);
+        }
 
         let mut gather = case.context.clone();
         gather.repo_root = repo.to_string_lossy().into_owned();
         let (report, trace) = output::run_for_test(gather).expect("run for test");
 
-        assert_eq!(report.result.len(), case.expected_result_count);
+        assert_eq!(report.schema_version, SCHEMA_VERSION);
+        assert_eq!(trace.schema_version, SCHEMA_VERSION);
+        assert_eq!(report.result.len(), case.expected_first_paths.len());
+        for (index, answer) in report.result.iter().enumerate() {
+            if case.expected_first_paths[index].is_empty() {
+                assert!(answer.findings.is_empty(), "case: {} answer: {}", case.name, index);
+            } else {
+                assert_eq!(
+                    answer.findings[0].path,
+                    case.expected_first_paths[index],
+                    "case: {} answer: {}",
+                    case.name,
+                    index
+                );
+                assert_eq!(
+                    answer.findings[0].source,
+                    case.expected_first_sources[index],
+                    "case: {} answer: {}",
+                    case.name,
+                    index
+                );
+                assert_eq!(
+                    answer.findings[0].excerpt,
+                    case.expected_first_excerpts[index],
+                    "case: {} answer: {}",
+                    case.name,
+                    index
+                );
+            }
+            assert_eq!(
+                answer.negative_evidence,
+                case.expected_negative_evidence[index]
+                    .iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>(),
+                "case: {} answer: {}",
+                case.name,
+                index
+            );
+        }
         assert_eq!(
             report.open_questions,
             case.expected_open_questions
@@ -122,6 +173,8 @@ mod tests {
             RunCase {
                 name: "trace-dedupes-skipped-paths",
                 files: vec![("surveil/src/lib.rs", "// tree-sitter verified\n")],
+                build_index: false,
+                rewrite_files: vec![],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
                     repo_root: String::new(),
@@ -144,9 +197,34 @@ mod tests {
                     terms: vec!["tree-sitter".to_string(), "verified".to_string()],
                     blockers: Vec::new(),
                 },
-                expected_result_count: 2,
+                expected_first_paths: vec!["surveil/src/lib.rs", "surveil/src/lib.rs"],
+                expected_first_sources: vec!["lexical", "lexical"],
+                expected_first_excerpts: vec!["// tree-sitter verified", "// tree-sitter verified"],
+                expected_negative_evidence: vec![vec![], vec![]],
                 expected_open_questions: vec![],
                 expected_skipped_paths: vec![".surveil/index.sqlite"],
+            },
+            RunCase {
+                name: "stale-index-falls-back-to-live-text",
+                files: vec![("notes/design.md", "old text\n")],
+                build_index: true,
+                rewrite_files: vec![("notes/design.md", "attach here\n")],
+                context: GatherOutput {
+                    schema_version: SCHEMA_VERSION.to_string(),
+                    repo_root: String::new(),
+                    summary: "summary".to_string(),
+                    explicit_files: vec![],
+                    search_areas: vec!["notes/".to_string()],
+                    query: vec!["Where should attach live?".to_string()],
+                    terms: vec!["attach".to_string()],
+                    blockers: Vec::new(),
+                },
+                expected_first_paths: vec!["notes/design.md"],
+                expected_first_sources: vec!["lexical"],
+                expected_first_excerpts: vec!["attach here"],
+                expected_negative_evidence: vec![vec![]],
+                expected_open_questions: vec![],
+                expected_skipped_paths: vec![],
             },
             RunCase {
                 name: "multi-query-parity",
@@ -157,6 +235,8 @@ mod tests {
                         "fn attach() {\r\n    // tree-sitter attach one\r\n    // tree-sitter attach two\r\n    // tree-sitter attach three\r\n    // tree-sitter attach four\r\n}\r\n",
                     ),
                 ],
+                build_index: false,
+                rewrite_files: vec![],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
                     repo_root: String::new(),
@@ -178,7 +258,14 @@ mod tests {
                     ],
                     blockers: Vec::new(),
                 },
-                expected_result_count: 3,
+                expected_first_paths: vec!["notes/design.md", "notes/design.md", ""],
+                expected_first_sources: vec!["explicit_file", "explicit_file", ""],
+                expected_first_excerpts: vec!["// tree-sitter attach", "// tree-sitter attach", ""],
+                expected_negative_evidence: vec![
+                    vec![],
+                    vec![],
+                    vec!["searched declared areas: surveil/"],
+                ],
                 expected_open_questions: vec!["Where should missing live?"],
                 expected_skipped_paths: vec![],
             },

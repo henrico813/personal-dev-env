@@ -159,6 +159,12 @@ mod tests {
                 expected_tokens: vec!["tree-sitter", "tree_sitter", "attach"],
             },
             TokenCase {
+                name: "matching-term-order-stays-stable",
+                terms: vec!["attach", "tree-sitter"],
+                question: "Where should Tree-sitter attach?",
+                expected_tokens: vec!["attach", "tree-sitter", "tree_sitter"],
+            },
+            TokenCase {
                 name: "fallback-question-token",
                 terms: vec!["build"],
                 question: "Where should Tree-sitter attach?",
