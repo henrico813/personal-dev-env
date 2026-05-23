@@ -49,8 +49,8 @@ Research results are grouped by query:
 - each answer has `query`, `findings`, and `negative_evidence`
 - `findings` include `path`, `line`, `excerpt`, `source`, `matched_from`, and optional `symbol_kind`, `symbol_name`, `symbol_start_line`, and `symbol_end_line`
 
-`research` remains lexical-first: it loads candidate file text directly from the live repo once per run, prepares normalized line metadata in memory, and answers each query from that shared corpus before best-effort Tree-sitter enrichment. It still searches only declared `Explicit Files` plus `Search Areas`, still uses the current substring matcher to build findings, and still fills symbol fields only when best-effort Tree-sitter enrichment succeeds.
+`research` remains lexical-first in its final output: it still derives every visible `Finding` from live file text and still fills symbol fields only when best-effort Tree-sitter enrichment succeeds.
 
-A prebuilt `.surveil/index/` directory is now disposable backend state for chunk retrieval preparation. If that index is missing, stale, incompatible, or corrupt, `research` behavior in this slice stays unchanged because ranked chunk retrieval has not been integrated yet.
+A prebuilt `.surveil/index/` directory now participates in query-time ranking. For each query, `research` keeps matching explicit files first, asks the Tantivy chunk index for the top scoped chunk hits, scans those files first, and expands to the rest of scope only when the first pass finds nothing. If the index is missing, stale, incompatible, or corrupt, `research` bypasses ranking and falls back to the full scoped lexical scan.
 
-`research` still prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
+`research` still emits only a small number of snippets per file, and the public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
