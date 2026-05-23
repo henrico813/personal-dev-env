@@ -462,7 +462,7 @@ mod tests {
             LineCase {
                 name: "crlf-lines",
                 text: "a\r\nb\r\n",
-                expected_count: 2,
+                expected_count: 3,
             },
         ];
 

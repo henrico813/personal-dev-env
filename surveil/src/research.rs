@@ -44,6 +44,12 @@ pub(super) struct CorpusLine {
 
 pub(super) type LiveFileCache = HashMap<PathBuf, LoadedFile>;
 
+#[derive(Debug)]
+pub(super) struct MatchedFinding {
+    pub(super) finding: Finding,
+    pub(super) byte_offset: usize,
+}
+
 #[cfg(test)]
 mod tests {
     use super::output;

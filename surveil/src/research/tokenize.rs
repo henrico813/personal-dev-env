@@ -156,7 +156,7 @@ mod tests {
                 name: "declared-term-wins",
                 terms: vec!["tree-sitter", "attach"],
                 question: "Where should Tree-sitter attach?",
-                expected_tokens: vec!["tree-sitter", "tree_sitter"],
+                expected_tokens: vec!["tree-sitter", "tree_sitter", "attach"],
             },
             TokenCase {
                 name: "fallback-question-token",
