@@ -38,7 +38,7 @@ Notes:
 ## Commands
 
 - `surveil new task <output-dir>` writes a blank `task.md` stub at `<output-dir>/task.md` and fails if that file already exists.
-- `surveil index --repo <repo>` builds `.surveil/index.sqlite` from readable UTF-8 files under the same repo skip policy used by `research`.
+- `surveil index --repo <repo>` builds a disposable Tantivy chunk index under `.surveil/index/` from readable UTF-8 files under the same repo skip policy used by `research`.
 - `surveil gather --repo <repo> --task-file <task.md>` emits a versioned `GatherOutput` JSON context with `schema_version`.
 - `surveil research --context <context.json> --trace-out <trace.json>` emits a versioned `ResearchOutput` JSON report with `schema_version` and writes a shallow `TraceOutput` JSON file.
 
@@ -49,6 +49,8 @@ Research results are grouped by query:
 - each answer has `query`, `findings`, and `negative_evidence`
 - `findings` include `path`, `line`, `excerpt`, `source`, `matched_from`, and optional `symbol_kind`, `symbol_name`, `symbol_start_line`, and `symbol_end_line`
 
-`research` remains lexical-first: it loads candidate file text once per run, prepares normalized line metadata in memory, and answers each query from that shared corpus before best-effort Tree-sitter enrichment. This run-local corpus is distinct from any repo-local on-disk cache. It still searches only declared `Explicit Files` plus `Search Areas`, still uses the current substring matcher to build findings, and still fills symbol fields only when best-effort Tree-sitter enrichment succeeds. When `.surveil/index.sqlite` is present and fresh for a candidate file, `research` may load cached text from it instead of rereading the file. If the cache is missing, stale, or invalid, `research` falls back to direct file reads.
+`research` remains lexical-first: it loads candidate file text directly from the live repo once per run, prepares normalized line metadata in memory, and answers each query from that shared corpus before best-effort Tree-sitter enrichment. It still searches only declared `Explicit Files` plus `Search Areas`, still uses the current substring matcher to build findings, and still fills symbol fields only when best-effort Tree-sitter enrichment succeeds.
 
-`research` prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The public result contract is versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
+A prebuilt `.surveil/index/` directory is now disposable backend state for chunk retrieval preparation. If that index is missing, stale, incompatible, or corrupt, `research` behavior in this slice stays unchanged because ranked chunk retrieval has not been integrated yet.
+
+`research` still prefers declared `Explicit Files`, ranks candidate files before flattening findings, and emits only a small number of snippets per file. The public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
