@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::index;
 use crate::schema::{Answer, ExplicitFile, Finding, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
 use crate::source::{self, SourceFile};
@@ -178,20 +179,7 @@ fn answer_question_from_corpus(
     Ok((findings, negative_evidence))
 }
 
-fn load_candidate_text(
-    repo_root: &Path,
-    file: &Path,
-    cache: Option<&rusqlite::Connection>,
-    trace: &mut TraceState,
-) -> Option<String> {
-    if let Some(cache) = cache {
-        if let Ok(Some(cached)) = index::load_text(cache, repo_root, file) {
-            if index::is_fresh(file, &cached).ok() == Some(true) {
-                return Some(cached.text);
-            }
-        }
-    }
-
+fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) -> Option<String> {
     match fs::read_to_string(file) {
         Ok(text) => Some(text),
         Err(_) => {
@@ -208,12 +196,11 @@ fn load_candidate_files(
     trace: &mut TraceState,
 ) -> Result<Vec<LoadedFile>, Box<dyn Error>> {
     let candidates = source::collect_candidate_files(repo_root, search_areas, explicit_files, &mut trace.skipped_paths)?;
-    let cache = index::open(repo_root).ok().flatten();
     let mut loaded_files = Vec::with_capacity(candidates.len());
 
     for source in candidates {
         trace.files_considered.insert(source.path().to_path_buf());
-        let text = match load_candidate_text(repo_root, source.path(), cache.as_ref(), trace) {
+        let text = match load_candidate_text(repo_root, source.path(), trace) {
             Some(text) => text,
             None => continue,
         };
@@ -657,7 +644,7 @@ mod tests {
         )
         .expect("scan result");
 
-        index::run(&repo).expect("build index");
+        index::build_chunk_index(&repo).expect("build index");
 
         let mut indexed_trace = TraceState::default();
         let indexed = answer_question(
@@ -680,7 +667,7 @@ mod tests {
     fn stale_index_falls_back_to_current_file_text() {
         let repo = temp_repo("stale-index");
         write_file(&repo.join("notes/design.md"), "old text\n");
-        index::run(&repo).expect("build index");
+        index::build_chunk_index(&repo).expect("build index");
         write_file(&repo.join("notes/design.md"), "attach here\n");
 
         let mut trace = TraceState::default();
@@ -708,7 +695,7 @@ mod tests {
             &repo.join("surveil/src/lib.rs"),
             "fn attach() {\r\n    let cafe\u{0301} = 1; // tree-sitter attach\r\n}\r\n",
         );
-        index::run(&repo).expect("build index");
+        index::build_chunk_index(&repo).expect("build index");
 
         let mut trace = TraceState::default();
         let (findings, _) = answer_question(
@@ -843,7 +830,7 @@ mod tests {
         )
         .expect("scan result");
 
-        index::run(&repo).expect("build index");
+        index::build_chunk_index(&repo).expect("build index");
 
         let mut indexed_trace = TraceState::default();
         let indexed = answer_question(

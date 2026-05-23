@@ -80,7 +80,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         Command::New(args) => match args.command {
             NewCommand::Task(args) => taskfile::run(&args.output_dir).map_err(Into::into),
         },
-        Command::Index(args) => index::run(&args.repo),
+        Command::Index(args) => index::build_chunk_index(&args.repo),
         Command::Research(args) => research::run(&args.context, &args.trace_out),
     }
 }
