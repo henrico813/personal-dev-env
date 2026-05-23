@@ -1,12 +1,15 @@
-use crate::chunk::{build_chunks, ChunkKind};
-use crate::source::{self};
+use crate::chunk::{build_chunks, Chunk, ChunkKind, RankedChunk, SearchQuery};
+use crate::source::{self, SourceFile};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use tantivy::collector::TopDocs;
+use tantivy::query::QueryParser;
 use tantivy::Index;
 
 pub const INDEX_DIR: &str = ".surveil/index";
@@ -42,6 +45,69 @@ pub fn build_chunk_index(repo_root: &Path) -> Result<(), Box<dyn Error>> {
     writer.wait_merging_threads()?;
     build_index_metadata(repo_root)?;
     Ok(())
+}
+
+pub(crate) fn search_chunk_index(
+    repo_root: &Path,
+    scoped_files: &[SourceFile],
+    query: &SearchQuery,
+) -> Result<Vec<RankedChunk>, Box<dyn Error>> {
+    if query.tokens.is_empty() || query.limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    if inspect_chunk_index(repo_root)? != IndexState::Usable {
+        return Ok(Vec::new());
+    }
+
+    let index = open_existing_chunk_index(repo_root)?;
+    let schema = index.schema();
+    let fields = schema::IndexFields::from_schema(&schema);
+    let source_by_path: HashMap<String, SourceFile> = scoped_files
+        .iter()
+        .cloned()
+        .map(|source| (source.display_path().to_string(), source))
+        .collect();
+    let allowed_paths: HashSet<String> = source_by_path.keys().cloned().collect();
+
+    let reader = index.reader()?;
+    let searcher = reader.searcher();
+    let parser = QueryParser::for_index(
+        &index,
+        vec![
+            fields.text,
+            fields.symbol_name,
+            fields.section_path_segment,
+            fields.key_path_segment,
+            fields.language,
+        ],
+    );
+    let parsed = parser.parse_query(&query.tokens.join(" "))?;
+    let overfetch_limit = query.limit.saturating_mul(8).max(query.limit);
+    let top_docs = searcher.search(&parsed, &TopDocs::with_limit(overfetch_limit))?;
+
+    let mut ranked = Vec::new();
+    for (score, address) in top_docs {
+        let document: tantivy::TantivyDocument = searcher.doc(address)?;
+        let Some(path) = read_text_field(&document, fields.path) else {
+            continue;
+        };
+        if !allowed_paths.contains(&path) {
+            continue;
+        }
+        let Some(source) = source_by_path.get(&path).cloned() else {
+            continue;
+        };
+        let Some(chunk) = decode_ranked_chunk(&document, &fields, source, score) else {
+            continue;
+        };
+        ranked.push(chunk);
+        if ranked.len() == query.limit {
+            break;
+        }
+    }
+
+    Ok(ranked)
 }
 
 pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dyn Error>> {
@@ -171,6 +237,67 @@ fn check_index_compatibility(
 
 fn open_existing_chunk_index(repo_root: &Path) -> Result<Index, Box<dyn Error>> {
     Ok(Index::open_in_dir(repo_root.join(INDEX_DIR))?)
+}
+
+fn parse_chunk_kind(value: &str) -> Option<ChunkKind> {
+    match value {
+        "code_symbol" => Some(ChunkKind::CodeSymbol),
+        "code_fallback_window" => Some(ChunkKind::CodeFallbackWindow),
+        "markdown_block" => Some(ChunkKind::MarkdownBlock),
+        "config_stanza" => Some(ChunkKind::ConfigStanza),
+        "generic_fallback_window" => Some(ChunkKind::GenericFallbackWindow),
+        _ => None,
+    }
+}
+
+fn read_text_field(
+    document: &tantivy::TantivyDocument,
+    field: tantivy::schema::Field,
+) -> Option<String> {
+    document
+        .get_first(field)
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+}
+
+fn read_u64_field(
+    document: &tantivy::TantivyDocument,
+    field: tantivy::schema::Field,
+) -> Option<u64> {
+    document.get_first(field).and_then(|value| value.as_u64())
+}
+
+fn decode_ranked_chunk(
+    document: &tantivy::TantivyDocument,
+    fields: &schema::IndexFields,
+    source: SourceFile,
+    score: f32,
+) -> Option<RankedChunk> {
+    let kind = parse_chunk_kind(&read_text_field(document, fields.kind)?)?;
+    let start_line = read_u64_field(document, fields.start_line)? as u32;
+    let end_line = read_u64_field(document, fields.end_line)? as u32;
+    let text = read_text_field(document, fields.text)?;
+    let language = read_text_field(document, fields.language);
+    let symbol_name = read_text_field(document, fields.symbol_name);
+    let section_path = read_text_field(document, fields.section_path_full)
+        .map(|path| path.split(" / ").map(str::to_string).collect())
+        .unwrap_or_default();
+    let key_path = read_text_field(document, fields.key_path_full);
+
+    Some(RankedChunk {
+        chunk: Chunk {
+            source,
+            kind,
+            start_line,
+            end_line,
+            text,
+            language,
+            symbol_name,
+            section_path,
+            key_path,
+        },
+        score,
+    })
 }
 
 fn chunk_kind_name(kind: ChunkKind) -> &'static str {
@@ -326,8 +453,11 @@ fn temp_repo(name: &str) -> std::path::PathBuf {
 mod tests {
     use super::{
         build_chunk_index, build_info_exists, inspect_chunk_index, overwrite_build_info,
-        tantivy_meta_exists, temp_repo, write_note, IndexState, BUILD_INFO_PATH, INDEX_DIR,
+        search_chunk_index, tantivy_meta_exists, temp_repo, write_note, IndexState,
+        BUILD_INFO_PATH, INDEX_DIR,
     };
+    use crate::chunk::SearchQuery;
+    use crate::source;
     use std::fs;
     use std::path::Path;
     use tantivy::Index;
@@ -480,6 +610,44 @@ mod tests {
         let reader = index.reader().expect("index reader");
         assert!(reader.searcher().num_docs() > 0);
         assert!(repo.join(BUILD_INFO_PATH).is_file());
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn search_chunk_index_returns_scoped_ranked_chunks() {
+        let repo = temp_repo("search-scope");
+        write_note(&repo, "docs/guide.md", "attach attach attach attach\n");
+        write_note(
+            &repo,
+            "src/lib.rs",
+            "fn attach_handler() {\n    // attach handler\n}\n",
+        );
+
+        build_chunk_index(&repo).expect("build chunk index");
+
+        let mut skipped_paths = Vec::new();
+        let scoped = source::collect_candidate_files(
+            &repo,
+            &["src/".to_string()],
+            &[],
+            &mut skipped_paths,
+        )
+        .expect("collect scoped files");
+        let ranked = search_chunk_index(
+            &repo,
+            &scoped,
+            &SearchQuery {
+                tokens: vec!["attach".to_string(), "handler".to_string()],
+                limit: 4,
+            },
+        )
+        .expect("search chunk index");
+
+        assert!(!ranked.is_empty());
+        assert!(ranked
+            .iter()
+            .all(|item| item.chunk.source.display_path() == "src/lib.rs"));
 
         let _ = fs::remove_dir_all(repo);
     }
