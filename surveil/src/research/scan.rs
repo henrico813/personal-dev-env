@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tree_sitter::Parser;
 
-pub(super) fn answer_question_from_sources(
+pub(super) fn create_answer_from_sources(
     repo_root: &Path,
     search_areas: &[String],
     ordered_candidates: &[SourceFile],
@@ -99,7 +99,7 @@ fn collect_file_findings(
             .iter()
             .find(|token| line.lower_text.contains(token.as_str()))
         {
-            if let Some(match_offset) = case_insensitive_byte_offset(line_text, matched_from) {
+            if let Some(match_offset) = find_case_insensitive_byte_offset(line_text, matched_from) {
                 file_findings.push(MatchedFinding {
                     finding: Finding {
                         path: file.source.display_path().to_string(),
@@ -126,7 +126,7 @@ fn collect_file_findings(
         return None;
     }
 
-    if should_enrich_symbol_metadata(file.source.path()) {
+    if check_symbol_metadata_enrichment(file.source.path()) {
         enrich_symbol_metadata(&file.text, &mut file_findings);
     }
     trace.files_matched.insert(file.source.path().to_path_buf());
@@ -150,7 +150,7 @@ fn load_live_file<'a>(
             source.path().to_path_buf(),
             LoadedFile {
                 source: source.clone(),
-                lines: prepare_lines(&text),
+                lines: create_corpus_lines(&text),
                 text,
             },
         );
@@ -169,7 +169,7 @@ fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) ->
     }
 }
 
-fn prepare_lines(text: &str) -> Vec<CorpusLine> {
+fn create_corpus_lines(text: &str) -> Vec<CorpusLine> {
     let mut lines = Vec::new();
     let mut line_start = 0usize;
     let mut line_number = 1u32;
@@ -201,7 +201,7 @@ fn prepare_lines(text: &str) -> Vec<CorpusLine> {
     lines
 }
 
-fn should_enrich_symbol_metadata(path: &Path) -> bool {
+fn check_symbol_metadata_enrichment(path: &Path) -> bool {
     if path
         .file_name()
         .and_then(|name| name.to_str())
@@ -242,7 +242,7 @@ fn should_enrich_symbol_metadata(path: &Path) -> bool {
     true
 }
 
-fn parse_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
+fn parse_syntax_tree(text: &str, language: tree_sitter::Language) -> Option<tree_sitter::Tree> {
     let mut parser = Parser::new();
     parser.set_language(&language).ok()?;
     parser.parse(text, None)
@@ -256,7 +256,7 @@ fn enrich_symbol_metadata(text: &str, findings: &mut [MatchedFinding]) {
         tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         tree_sitter_typescript::LANGUAGE_TSX.into(),
     ] {
-        if let Some(tree) = parse_tree(text, language) {
+        if let Some(tree) = parse_syntax_tree(text, language) {
             if tree.root_node().has_error() {
                 continue;
             }
@@ -274,7 +274,7 @@ fn attach_symbol_metadata(
 ) -> bool {
     let mut attached = false;
     for hit in findings {
-        if let Some(symbol) = enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
+        if let Some(symbol) = find_enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
             hit.finding.symbol_kind = Some(symbol.kind);
             hit.finding.symbol_name = Some(symbol.name);
             hit.finding.symbol_start_line = Some(symbol.start_line);
@@ -292,7 +292,7 @@ struct SymbolInfo {
     end_line: u32,
 }
 
-fn enclosing_symbol(
+fn find_enclosing_symbol(
     root: tree_sitter::Node,
     source: &[u8],
     byte_offset: usize,
@@ -302,11 +302,11 @@ fn enclosing_symbol(
         byte_offset.saturating_add(1).min(source.len()),
     )?;
     loop {
-        if is_symbol_node(node) {
-            let name_node = symbol_name_node(node)?;
+        if check_symbol_node(node) {
+            let name_node = find_symbol_name_node(node)?;
             let name = name_node.utf8_text(source).ok()?.to_string();
             return Some(SymbolInfo {
-                kind: normalized_symbol_kind(node.kind()).to_string(),
+                kind: normalize_symbol_kind(node.kind()).to_string(),
                 name,
                 start_line: node.start_position().row as u32 + 1,
                 end_line: node.end_position().row as u32 + 1,
@@ -316,11 +316,11 @@ fn enclosing_symbol(
     }
 }
 
-fn symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+fn find_symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
     node.child_by_field_name("name").or_else(|| node.named_child(0))
 }
 
-fn is_symbol_node(node: tree_sitter::Node) -> bool {
+fn check_symbol_node(node: tree_sitter::Node) -> bool {
     let kind = node.kind();
     node.child_by_field_name("name").is_some()
         && (kind.ends_with("_item")
@@ -329,7 +329,7 @@ fn is_symbol_node(node: tree_sitter::Node) -> bool {
             || kind.ends_with("_declarator"))
 }
 
-fn normalized_symbol_kind(kind: &str) -> &'static str {
+fn normalize_symbol_kind(kind: &str) -> &'static str {
     if kind.contains("function") {
         "function"
     } else if kind.contains("method") {
@@ -349,7 +349,7 @@ fn normalized_symbol_kind(kind: &str) -> &'static str {
     }
 }
 
-fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
+fn find_case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
     let line_bytes = line.as_bytes();
     let needle_bytes = needle.as_bytes();
     if needle_bytes.is_empty() || needle_bytes.len() > line_bytes.len() {
@@ -366,7 +366,7 @@ fn case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::prepare_lines;
+    use super::create_corpus_lines;
     use crate::chunk::{temp_repo, write_file};
     use crate::index;
     use crate::research::{output, TraceState};
@@ -496,7 +496,7 @@ mod tests {
                 .map(|item| item.to_string())
                 .collect::<Vec<_>>();
             let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
-            let (findings, _) = output::answer_question_for_test(
+            let (findings, _) = output::create_test_answer(
                 &repo,
                 case.query,
                 &terms,
@@ -570,7 +570,7 @@ mod tests {
         ];
 
         for case in &cases {
-            assert_eq!(prepare_lines(case.text).len(), case.expected_count, "case: {}", case.name);
+            assert_eq!(create_corpus_lines(case.text).len(), case.expected_count, "case: {}", case.name);
         }
     }
 
@@ -580,7 +580,7 @@ mod tests {
         write_bytes(&repo.join("surveil/src/lib.rs"), &[0xff_u8, 0xfe_u8, 0xfd_u8]);
 
         let mut trace = TraceState::default();
-        let (findings, _) = output::answer_question_for_test(
+        let (findings, _) = output::create_test_answer(
             &repo,
             "Where should Tree-sitter attach?",
             &["tree-sitter".to_string()],

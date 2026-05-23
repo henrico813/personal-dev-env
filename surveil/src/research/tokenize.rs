@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
-pub(super) fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
-    let question_tokens = question_tokens(question);
+pub(super) fn create_search_tokens(terms: &[String], question: &str) -> Vec<String> {
+    let question_tokens = create_question_tokens(question);
     let question_token_set: HashSet<String> = question_tokens
         .iter()
-        .flat_map(|token| token_variants(token))
+        .flat_map(|token| create_token_variants(token))
         .collect();
 
     let matching_terms: Vec<String> = terms
@@ -14,7 +14,7 @@ pub(super) fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
             if token.is_empty() {
                 return None;
             }
-            let variants = token_variants(&token);
+            let variants = create_token_variants(&token);
             if variants
                 .iter()
                 .any(|variant| question_token_set.contains(variant))
@@ -45,14 +45,14 @@ pub(super) fn search_tokens(terms: &[String], question: &str) -> Vec<String> {
     tokens
 }
 
-fn question_tokens(question: &str) -> Vec<String> {
+fn create_question_tokens(question: &str) -> Vec<String> {
     question
         .split_whitespace()
         .filter_map(|raw| {
             let token = raw
                 .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-' && ch != '_')
                 .to_lowercase();
-            if token.is_empty() || is_generic_question_token(&token) {
+            if token.is_empty() || check_generic_question_token(&token) {
                 None
             } else {
                 Some(token)
@@ -61,7 +61,7 @@ fn question_tokens(question: &str) -> Vec<String> {
         .collect()
 }
 
-fn token_variants(token: &str) -> Vec<String> {
+fn create_token_variants(token: &str) -> Vec<String> {
     let mut variants = vec![token.to_string()];
 
     if token.contains('-') {
@@ -88,7 +88,7 @@ fn push_token(tokens: &mut Vec<String>, token: &str) {
     }
 }
 
-fn is_generic_question_token(token: &str) -> bool {
+fn check_generic_question_token(token: &str) -> bool {
     matches!(
         token,
         "what"
@@ -140,7 +140,7 @@ fn is_generic_question_token(token: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::search_tokens;
+    use super::create_search_tokens;
 
     struct TokenCase {
         name: &'static str,
@@ -173,7 +173,7 @@ mod tests {
         ];
 
         for case in &cases {
-            let tokens = search_tokens(
+            let tokens = create_search_tokens(
                 &case.terms.iter().map(|term| term.to_string()).collect::<Vec<_>>(),
                 case.question,
             );

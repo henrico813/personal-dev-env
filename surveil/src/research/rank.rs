@@ -17,7 +17,7 @@ pub(super) fn rank_query_candidates(
     }
 
     let ranked_scores = rank_candidate_files(repo_root, candidates, tokens)?;
-    let ordered_candidates = ordered_query_candidates(candidates, &ranked_scores);
+    let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
     Ok((ranked_scores, ordered_candidates))
 }
 
@@ -62,7 +62,7 @@ fn rank_candidate_files(
     Ok(ranked_scores)
 }
 
-fn ordered_query_candidates(
+fn order_query_candidates(
     candidates: &[SourceFile],
     ranked_scores: &HashMap<PathBuf, f32>,
 ) -> Vec<SourceFile> {

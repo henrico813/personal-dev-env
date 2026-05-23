@@ -9,7 +9,7 @@ mod scan;
 mod setup;
 mod tokenize;
 
-pub(crate) use output::run;
+pub(crate) use output::write_research_output as run;
 
 #[derive(Default)]
 pub(super) struct TraceState {
@@ -107,7 +107,7 @@ mod tests {
 
         let mut gather = case.context.clone();
         gather.repo_root = repo.to_string_lossy().into_owned();
-        let (report, trace) = output::run_for_test(gather).expect("run for test");
+        let (report, trace) = output::create_test_outputs(gather).expect("run for test");
 
         assert_eq!(report.schema_version, SCHEMA_VERSION);
         assert_eq!(trace.schema_version, SCHEMA_VERSION);
