@@ -10,71 +10,14 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tree_sitter::Parser;
 
+mod output;
+mod rank;
+mod scan;
+mod setup;
+mod tokenize;
+
 pub fn run(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
-    let context_text = fs::read_to_string(context)?;
-    let gather: GatherOutput = serde_json::from_str(&context_text)?;
-
-    let repo_root = Path::new(&gather.repo_root).to_path_buf();
-    let mut trace = TraceState::default();
-    let candidates = collect_candidate_sources(
-        &repo_root,
-        &gather.search_areas,
-        &gather.explicit_files,
-        &mut trace,
-    )?;
-    let mut live_cache = LiveFileCache::new();
-    let mut result = Vec::with_capacity(gather.query.len());
-
-    for query in &gather.query {
-        let (findings, negative_evidence) = answer_question_from_sources(
-            &repo_root,
-            query,
-            &gather.terms,
-            &gather.search_areas,
-            &candidates,
-            &mut live_cache,
-            &mut trace,
-        )?;
-        if findings.is_empty() {
-            trace.unmatched_questions.push(query.clone());
-        }
-        result.push(Answer {
-            query: query.clone(),
-            findings,
-            negative_evidence,
-        });
-    }
-
-    let open_questions = trace.unmatched_questions.clone();
-    let report = ResearchOutput {
-        schema_version: SCHEMA_VERSION.to_string(),
-        summary: gather.summary,
-        result,
-        blockers: gather.blockers,
-        open_questions,
-    };
-
-    dedupe_in_place(&mut trace.skipped_paths);
-    let trace_output = TraceOutput {
-        schema_version: SCHEMA_VERSION.to_string(),
-        searched_areas: gather.search_areas,
-        skipped_paths: trace.skipped_paths,
-        files_considered: trace.files_considered.len(),
-        files_matched: trace.files_matched.len(),
-        unmatched_questions: trace.unmatched_questions,
-    };
-
-    if let Some(parent) = trace_out.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let trace_file = fs::File::create(trace_out)?;
-    serde_json::to_writer(trace_file, &trace_output)?;
-
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-    serde_json::to_writer(&mut handle, &report)?;
-    handle.write_all(b"\n")?;
-    Ok(())
+    output::run(context, trace_out)
 }
 
 #[derive(Default)]
