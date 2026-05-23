@@ -120,8 +120,17 @@ fn answer_question_from_sources(
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
     let tokens = search_tokens(terms, question);
-    let ranked_scores = rank_candidate_files(repo_root, candidates, &tokens)?;
-    let ordered_candidates = ordered_query_candidates(candidates, &ranked_scores);
+    let ranking_usable = index::inspect_chunk_index(repo_root)? == index::IndexState::Usable;
+    let ranked_scores = if ranking_usable {
+        rank_candidate_files(repo_root, candidates, &tokens)?
+    } else {
+        HashMap::new()
+    };
+    let ordered_candidates = if ranking_usable {
+        ordered_query_candidates(candidates, &ranked_scores)
+    } else {
+        candidates.to_vec()
+    };
     let mut ranked_files = Vec::new();
     let mut loaded_for_query = HashSet::new();
 
@@ -355,13 +364,11 @@ fn prepare_lines(text: &str) -> Vec<CorpusLine> {
 
     while line_start <= text.len() {
         let line_end = text[line_start..]
-            .find('
-')
+            .find('\n')
             .map(|offset| line_start + offset)
             .unwrap_or(text.len());
         let mut content_end = line_end;
-        if content_end > line_start && text.as_bytes()[content_end - 1] == b'
-' {
+        if content_end > line_start && text.as_bytes()[content_end - 1] == b'\r' {
             content_end -= 1;
         }
 
