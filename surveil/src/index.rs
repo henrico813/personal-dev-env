@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use tantivy::collector::TopDocs;
 use tantivy::query::QueryParser;
+use tantivy::schema::Value;
 use tantivy::Index;
 
 pub const INDEX_DIR: &str = ".surveil/index";
