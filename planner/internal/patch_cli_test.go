@@ -31,32 +31,132 @@ func TestPatchParsesUpdateDiffEOFBody(t *testing.T) {
 	}
 }
 
-func TestPatchUpdatesDiffWithLiteralStars(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := writeBehavioralPlan(t, dir)
-	var inspectStdout bytes.Buffer
-	var inspectStderr bytes.Buffer
-	if exit := Execute([]string{"inspect", sourcePath}, &inspectStdout, &inspectStderr); exit != 0 {
-		t.Fatalf("inspect exit=%d stderr=%q", exit, inspectStderr.String())
+func TestPatchCommandStdout(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       func(string, string) []string
+		patch      func(*testing.T, string) string
+		wantExit   int
+		wantStdout []string
+		wantStderr []string
+		check      func(*testing.T, string, string)
+	}{
+		{
+			name: "title_same_path",
+			args: func(sourcePath, _ string) []string {
+				return []string{"patch", sourcePath}
+			},
+			patch: func(t *testing.T, _ string) string {
+				t.Helper()
+				return "*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n"
+			},
+			wantExit:   0,
+			wantStdout: []string{"- # T", "+ # Renamed"},
+			check: func(t *testing.T, sourcePath, _ string) {
+				t.Helper()
+				parsed := parseOutputPlan(t, sourcePath)
+				if parsed.Title != "Renamed" {
+					t.Fatalf("title=%q", parsed.Title)
+				}
+			},
+		},
+		{
+			name: "diff_body_same_path",
+			args: func(sourcePath, _ string) []string {
+				return []string{"patch", sourcePath}
+			},
+			patch: func(t *testing.T, sourcePath string) string {
+				t.Helper()
+				expect := patchDiffExpect(t, sourcePath)
+				return "*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw"
+			},
+			wantExit:   0,
+			wantStdout: []string{"+ *** literal content stays raw"},
+			check: func(t *testing.T, sourcePath, _ string) {
+				t.Helper()
+				parsed := parseOutputPlan(t, sourcePath)
+				if !strings.Contains(parsed.Implementation[0].FileChanges[0].Diff, "*** literal content stays raw") {
+					t.Fatalf("diff missing literal stars")
+				}
+			},
+		},
+		{
+			name: "title_alt_output",
+			args: func(sourcePath, outPath string) []string {
+				return []string{"patch", sourcePath, outPath}
+			},
+			patch: func(t *testing.T, _ string) string {
+				t.Helper()
+				return "*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n"
+			},
+			wantExit:   0,
+			wantStdout: []string{"- # T", "+ # Renamed"},
+			check: func(t *testing.T, sourcePath, outPath string) {
+				t.Helper()
+				if parsed := parseOutputPlan(t, sourcePath); parsed.Title != "T" {
+					t.Fatalf("source title=%q", parsed.Title)
+				}
+				if parsed := parseOutputPlan(t, outPath); parsed.Title != "Renamed" {
+					t.Fatalf("out title=%q", parsed.Title)
+				}
+			},
+		},
+		{
+			name: "flag_rejected",
+			args: func(sourcePath, _ string) []string {
+				return []string{"patch", sourcePath, "--diff"}
+			},
+			wantExit:   2,
+			wantStderr: []string{"usage: planner patch <plan.md> [<out.md>]"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			sourcePath := writeBehavioralPlan(t, dir)
+			outPath := dir + "/out.md"
+
+			var stdout, stderr bytes.Buffer
+			run := func() {
+				if exit := Execute(tc.args(sourcePath, outPath), &stdout, &stderr); exit != tc.wantExit {
+					t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+				}
+			}
+			if tc.patch != nil {
+				withStdin(t, []byte(tc.patch(t, sourcePath)), run)
+			} else {
+				run()
+			}
+
+			for _, want := range tc.wantStdout {
+				if !strings.Contains(stdout.String(), want) {
+					t.Fatalf("stdout %q missing %q", stdout.String(), want)
+				}
+			}
+			for _, want := range tc.wantStderr {
+				if !strings.Contains(stderr.String(), want) {
+					t.Fatalf("stderr %q missing %q", stderr.String(), want)
+				}
+			}
+			if tc.check != nil {
+				tc.check(t, sourcePath, outPath)
+			}
+		})
+	}
+}
+
+func patchDiffExpect(t *testing.T, sourcePath string) string {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"inspect", sourcePath}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("inspect exit=%d stderr=%q", exit, stderr.String())
 	}
 	var inspected InspectPlan
-	if err := json.Unmarshal(inspectStdout.Bytes(), &inspected); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &inspected); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	expect := inspected.Implementation[0].FileChanges[0].UpdateDiffExpect
-	patch := "*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw"
-
-	var stdout, stderr bytes.Buffer
-	withStdin(t, []byte(patch), func() {
-		if exit := Execute([]string{"patch", sourcePath}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
-		}
-	})
-
-	parsed := parseOutputPlan(t, sourcePath)
-	if !strings.Contains(parsed.Implementation[0].FileChanges[0].Diff, "*** literal content stays raw") {
-		t.Fatalf("diff missing literal stars")
-	}
+	return inspected.Implementation[0].FileChanges[0].UpdateDiffExpect
 }
 
 func TestPatchParsesImplementationStepSelector(t *testing.T) {

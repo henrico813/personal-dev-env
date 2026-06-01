@@ -339,12 +339,6 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func runPatchPlaceholder(args []string, stdout io.Writer, stderr io.Writer) int {
-	const usage = "usage: planner patch <plan.md> [<out.md>]"
-	reportError(stderr, "patch", newPlannerCLIError(PlannerUsageError, nil, usage))
-	return 2
-}
-
 // previewFlags carries the preview-state flags stripped before subcommand
 // parsing. Write is the default; --dry-run opts out of it.
 type previewFlags struct {
@@ -525,12 +519,6 @@ func buildUpdateDiffExpect(selector, filename, explanation, diffRaw string) stri
 	_, _ = io.WriteString(h, "\x00")
 	_, _ = io.WriteString(h, diffRaw)
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
-}
-
-// stdinPiped reports whether os.Stdin has piped data (not a terminal).
-func stdinPiped() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && (fi.Mode()&os.ModeCharDevice) == 0
 }
 
 // runPreview orchestrates the create preview flow. Write is the default;

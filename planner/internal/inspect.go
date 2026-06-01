@@ -220,7 +220,7 @@ func validateSupportedFrontmatter(frontmatter string) error {
 	if !consume("---") || !consume("tags:") {
 		return errUnsupportedWrappedDoc
 	}
-	if !(consume("  - \"#Ticket\"") || consume("  - #Ticket")) {
+	if !consume("  - \"#Ticket\"") && !consume("  - #Ticket") {
 		return errUnsupportedWrappedDoc
 	}
 	if value, ok := consumePrefix("type: "); !ok || value != "issue" {
@@ -267,7 +267,7 @@ func validateSupportedFrontmatter(frontmatter string) error {
 	if !consume("---") {
 		return errUnsupportedWrappedDoc
 	}
-	if i != len(lines) && !(i == len(lines)-1 && lines[i] == "") {
+	if i != len(lines) && (i != len(lines)-1 || lines[i] != "") {
 		return errUnsupportedWrappedDoc
 	}
 	return nil
