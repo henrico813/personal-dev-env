@@ -458,7 +458,7 @@ func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
 		return newPlannerCLIError(PlannerDecodeInputError, err, "structured patch")
 	case ReplacePatchSelectorError:
 		e := newPlannerCLIError(PlannerValidateInputError, err, "structured patch")
-		e.RecoveryHint = "use the documented selector grammar or fall back to a behavioral command"
+		e.RecoveryHint = "use the documented selector grammar or patch the diff with planner patch"
 		return e
 	case ReplacePatchMismatchError:
 		e := newPlannerCLIError(PlannerValidateInputError, err, "patch old value")

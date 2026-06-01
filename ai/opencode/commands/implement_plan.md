@@ -71,7 +71,7 @@ step:
 - no secrets or generated artifacts were committed
 - verification passes
 
-Use the planner CLI first for plan updates. Refresh `update_diff_expect` via `planner inspect` before any `Update Diff` edit. Update goals and verification checkboxes as work completes, but do not add checkboxes to implementation steps. Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI. After plan updates, run `planner check <plan.md> --json-errors`. If the plan cannot be parsed, stop and escalate to the user. Do not mark manual verification complete unless the user confirms it.
+Use the planner CLI first for plan updates. Refresh `update_diff_expect` via `planner inspect` before any `Update Diff` edit, and use `planner patch` for every diff-bearing change. Update goals and verification checkboxes as work completes, but do not add checkboxes to implementation steps. Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI. After plan updates, run `planner check <plan.md> --json-errors`. If the plan cannot be parsed, stop and escalate to the user. Do not mark manual verification complete unless the user confirms it.
 
 When finished, summarize:
 - steps run

@@ -50,8 +50,6 @@ func runImplementationEdit(ctx editContext) int {
 	}
 	allowed := []string{}
 	switch action {
-	case "add":
-		allowed = []string{"--title", "--summary", "--filename", "--explanation"}
 	case "remove":
 		allowed = []string{"--step"}
 	}
@@ -65,16 +63,6 @@ func runImplementationEdit(ctx editContext) int {
 	}
 	steps := append([]Step(nil), plan.Implementation...)
 	switch action {
-	case "add":
-		diff, ok := readStructuredDiff(ctx)
-		if !ok {
-			return 2
-		}
-		st, ok := buildStep(ctx, diff)
-		if !ok {
-			return 2
-		}
-		return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Append: true}, jsonBytes(st))
 	case "remove":
 		if err := rejectDiffStdin(ctx); err != nil {
 			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -96,46 +84,9 @@ func runImplementationEdit(ctx editContext) int {
 		steps = append(steps[:idx-1], steps[idx:]...)
 		return runEditPreview(ctx, ReplaceOptions{Section: "implementation"}, jsonBytes(steps))
 	default:
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step add|remove|title set|summary set|file-change ..."))
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step remove|title set|summary set|file-change ..."))
 		return 2
 	}
-}
-
-func buildStep(ctx editContext, diff string) (Step, bool) {
-	title, err := ctx.flags.stringFlag("--title")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	summary, err := ctx.flags.stringFlag("--summary")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	fn, err := ctx.flags.stringFlag("--filename")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	exp, err := ctx.flags.stringFlag("--explanation")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	return Step{Title: title, Summary: summary, FileChanges: []FileChange{{Filename: fn, Explanation: exp, Diff: diff}}}, true
-}
-
-func readStructuredDiff(ctx editContext) (string, bool) {
-	if ctx.flags.diffStdin {
-		b, err := readRawSource("", true)
-		if err != nil {
-			reportError(ctx.stderr, ctx.cmd, newPlannerCLIError(PlannerReadInputError, err, "stdin"))
-			return "", false
-		}
-		return string(b), true
-	}
-	reportError(ctx.stderr, ctx.cmd, newPlannerCLIError(PlannerUsageError, nil, "--diff-stdin is required"))
-	return "", false
 }
 
 func runFileChangeEdit(ctx editContext) int {
@@ -145,13 +96,10 @@ func runFileChangeEdit(ctx editContext) int {
 		return 2
 	}
 	action := pos[2]
-	if action == "filename" || action == "explanation" || action == "diff" {
+	if action == "filename" || action == "explanation" {
 		var text []string
 		var err error
-		maxTail := 2
-		if action != "diff" {
-			maxTail = 3
-		}
+		maxTail := 3
 		ctx, text, err = requirePositional(ctx, []string{"step", "file-change", action, "set"}, 2, maxTail)
 		if err != nil {
 			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -171,8 +119,6 @@ func runFileChangeEdit(ctx editContext) int {
 	}
 	allowed := []string{}
 	switch action {
-	case "add":
-		allowed = []string{"--step", "--filename", "--explanation"}
 	case "remove":
 		allowed = []string{"--step", "--change"}
 	}
@@ -189,22 +135,6 @@ func runFileChangeEdit(ctx editContext) int {
 		return 2
 	}
 	switch action {
-	case "add":
-		diff, ok := readStructuredDiff(ctx)
-		if !ok {
-			return 2
-		}
-		fn, err := ctx.flags.stringFlag("--filename")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		exp, err := ctx.flags.stringFlag("--explanation")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		updated.FileChanges = append(updated.FileChanges, FileChange{Filename: fn, Explanation: exp, Diff: diff})
 	case "remove":
 		if err := rejectDiffStdin(ctx); err != nil {
 			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -225,7 +155,7 @@ func runFileChangeEdit(ctx editContext) int {
 		}
 		updated.FileChanges = append(updated.FileChanges[:change-1], updated.FileChanges[change:]...)
 	default:
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step file-change add|remove|filename set|explanation set|diff set"))
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step file-change remove|filename set|explanation set"))
 		return 2
 	}
 	return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Subsection: fmt.Sprint(step)}, jsonBytes(updated))
@@ -236,11 +166,9 @@ func mutateFileChange(ctx editContext, action string, text []string) int {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	if action != "diff" {
-		if err := rejectDiffStdin(ctx); err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
+	if err := rejectDiffStdin(ctx); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
 	}
 	plan, err := readPlanForEdit(ctx.sourcePath)
 	if err != nil {
@@ -275,21 +203,6 @@ func mutateFileChange(ctx editContext, action string, text []string) int {
 			return 2
 		}
 		fc.Explanation = string(v)
-	case "diff":
-		if ctx.flags.diffStdin {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "--diff-stdin is only valid for structured add commands"))
-			return 2
-		}
-		if !ctx.flags.stdin {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "--stdin is required"))
-			return 2
-		}
-		b, err := readRawSource("", true)
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerReadInputError, err, "stdin"))
-			return 1
-		}
-		fc.Diff = string(b)
 	}
 	updated.FileChanges[change-1] = fc
 	return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Subsection: fmt.Sprint(step)}, jsonBytes(updated))

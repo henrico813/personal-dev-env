@@ -678,18 +678,23 @@ func TestPatchRejectsUnsupportedSelector(t *testing.T) {
 	}
 }
 
-func TestBehavioralFallbackStillWorks(t *testing.T) {
+func TestPatchHandlesDiffEditsWithoutBehavioralFallback(t *testing.T) {
 	path := writeBehavioralPlan(t, t.TempDir())
+	repoFile := filepath.Join(t.TempDir(), "patch-source.txt")
+	if err := os.WriteFile(repoFile, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var stdout, stderr bytes.Buffer
-	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
+	runPlannerOK(t, []string{"patch", path}, []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].filename\n-f\n+"+repoFile+"\n*** End Patch\n"))
+	expect := patchDiffExpect(t, path)
+	patch := []byte("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n*** File: " + repoFile + "\n-old\n+new\n*** End Patch\n")
 	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 1 {
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
 			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 		}
 	})
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", path, path, "--step", "1", "--change", "1", "--stdin"}, []byte("raw diff bytes"))
 	assertParsed(t, path, func(plan Plan) {
-		if plan.Implementation[0].FileChanges[0].Diff != "raw diff bytes" {
+		if !strings.Contains(plan.Implementation[0].FileChanges[0].Diff, "+new") {
 			t.Fatalf("diff=%q", plan.Implementation[0].FileChanges[0].Diff)
 		}
 	})
@@ -704,7 +709,7 @@ func TestPatchRejectsStructuralSelectorJSONErrors(t *testing.T) {
 			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 		}
 	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or patch the diff with planner patch")
 }
 
 func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
@@ -716,7 +721,7 @@ func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
 			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 		}
 	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
+	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or patch the diff with planner patch")
 }
 
 func TestPatchRejectsNestedMismatchJSONErrors(t *testing.T) {
