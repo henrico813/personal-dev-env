@@ -160,8 +160,8 @@ After research is complete:
 2. For new plans, run `planner new <output.md>`.
 3. Edit the markdown directly.
 4. For partial updates, run `planner inspect <plan.md>` to see the parsed plan JSON and `update_diff_expect` tokens.
-5. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar, checklist, and `Update Diff` edits.
-6. Use behavioral commands when the patch v1 surface does not cover the change; for same-file behavioral edits, `<out.md>` may equal `<plan.md>`.
+5. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar, checklist, `Update Diff`, and structured add-step/file-change edits.
+6. Use behavioral commands only when the patch surface does not cover the change; for same-file behavioral edits, `<out.md>` may equal `<plan.md>`.
 7. Preserve the supported wrapped-issue frontmatter on same-path edits and validate the final markdown with `planner check <output.md> --json-errors`.
 
 Do not emit freeform markdown directly when the installed helper is available.
@@ -171,8 +171,8 @@ Do not emit freeform markdown directly when the installed helper is available.
 For targeted updates to an existing plan:
 
 1. Run `planner inspect <plan.md>`
-2. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar and checklist edits.
-3. Fall back to behavioral commands such as `planner implementation step file-change add` when patch v1 does not cover the change.
+2. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar, checklist, and diff-bearing edits.
+3. Fall back to behavioral commands only for diff-free removals when patch v1 does not cover the change.
 
 Non-targeted sections are preserved byte-for-byte, including supported wrapped issue frontmatter.
 

@@ -29,15 +29,12 @@ Usage:
   planner dod goal add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
   planner dod goal set <plan.md> <out.md> --goal N <text> [--diff] [--dry-run] [--json-errors]
   planner dod goal remove <plan.md> <out.md> --goal N [--diff] [--dry-run] [--json-errors]
-  planner implementation step add <plan.md> <out.md> --title T --summary S --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
   planner implementation step remove <plan.md> <out.md> --step N [--diff] [--dry-run] [--json-errors]
   planner implementation step title set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner implementation step summary set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change add <plan.md> <out.md> --step N --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change remove <plan.md> <out.md> --step N --change N [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change filename set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change explanation set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change diff set <plan.md> <out.md> --step N --change N --stdin [--diff] [--dry-run] [--json-errors]
   planner verification summary set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner verification automated add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
   planner verification automated set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
@@ -51,17 +48,16 @@ Global flags:
 
 Markdown-first authoring flow:
   1. Run planner new plan.md.
-  2. Edit the markdown directly, or use behavioral edit commands for same-path updates.
-  3. For behavioral edit commands, <out.md> may be the same path as <plan.md>
-     for same-file updates.
+  2. Edit the markdown directly, or use planner patch for same-path updates.
+  3. For same-file updates, <out.md> may be the same path as <plan.md>.
   4. Run planner check plan.md --json-errors.
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON and update_diff_expect tokens.
-  2. Prefer planner patch <plan.md> [<out.md>] for scalar, checklist, and diff edits.
+  2. Prefer planner patch <plan.md> [<out.md>] for transactional scalar, checklist, and diff-bearing edits.
   3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
-  4. Use behavioral commands for structural edits that patch does not cover.
+  4. Use behavioral commands only for diff-free removals.
 
 planner patch:
   Reads a structured patch from stdin and applies all operations to one plan.
@@ -79,6 +75,20 @@ planner patch:
 
     *** Add Item: <selector>
     +<new checklist item>
+
+    *** Add Step: implementation
+    *** Title: <text>
+    *** Summary: <text>
+    *** Filename: <path>
+    *** Explanation: <text>
+    *** Diff:
+    <raw diff body through EOF>
+
+    *** Add File Change: implementation[N]
+    *** Filename: <path>
+    *** Explanation: <text>
+    *** Diff:
+    <raw diff body through EOF>
 
   Supported field selectors:
     title
@@ -102,12 +112,14 @@ planner patch:
 
   Notes:
     - Nested selectors use 1-based indices.
-    - Patch body lines beginning with *** start the next patch operation.
-    - Update Diff is a dedicated single-op patch form.
+    - Patch body lines beginning with *** start the next patch operation in multi-op patches; single-op patch forms consume the rest of stdin as raw text.
+    - Update Diff, Add Step, and Add File Change are single-op patch forms.
     - Update Diff tokens come from planner inspect.
+    - Add Step appends one implementation step with one file change.
+    - Add File Change appends one file change to the addressed implementation step.
     - Checklist edits must be single-line.
     - Only verification.summary may be set to an empty value.
-    - Structural edits should use behavioral commands.
+    - Structural removals should use behavioral commands.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
@@ -116,8 +128,7 @@ behavioral edit flags:
   --change N                       1-based FileChange selector within --step.
   --filename <path>                FileChange filename for structured add.
   --explanation <text>             FileChange explanation for structured add.
-  --stdin                          Read scalar values or file-change diff set from stdin.
-  --diff-stdin                     Read structured add diff body from stdin.
+  --stdin                          Read scalar values from stdin.
   --diff                           Print preview diff to stdout; additive.
   --dry-run                        Do not write the output; with --diff, exit 1 on drift.
 
@@ -532,7 +543,7 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, basePath))
 		return 1
 	}
-	d := diffLines(baseline, rendered)
+	d := generateUnifiedDiff(basePath, baseline, rendered)
 	if pf.diff && d != "" {
 		_, _ = io.WriteString(stdout, d)
 	}

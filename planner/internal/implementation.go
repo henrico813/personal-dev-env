@@ -37,25 +37,22 @@ func runImplementationEdit(ctx editContext) int {
 		}
 		return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Subsection: fmt.Sprint(step), Field: action, Raw: true}, v)
 	}
+	action := pos[1]
+	if action != "remove" {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step remove|title set|summary set|file-change ..."))
+		return 2
+	}
 	if err := rejectStdinForStructured(ctx); err != nil {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	action := pos[1]
 	var err error
 	ctx, _, err = requirePositional(ctx, []string{"step", action}, 2, 2)
 	if err != nil {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	allowed := []string{}
-	switch action {
-	case "add":
-		allowed = []string{"--title", "--summary", "--filename", "--explanation"}
-	case "remove":
-		allowed = []string{"--step"}
-	}
-	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+	if err := ctx.flags.rejectValueFlagsExcept("--step"); err != nil {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
@@ -64,41 +61,25 @@ func runImplementationEdit(ctx editContext) int {
 		return reportEditError(ctx, "implementation", err)
 	}
 	steps := append([]Step(nil), plan.Implementation...)
-	switch action {
-	case "add":
-		diff, ok := readStructuredDiff(ctx)
-		if !ok {
-			return 2
-		}
-		st, ok := buildStep(ctx, diff)
-		if !ok {
-			return 2
-		}
-		return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Append: true}, jsonBytes(st))
-	case "remove":
-		if err := rejectDiffStdin(ctx); err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		if len(steps) == 1 {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "cannot remove the final implementation step"))
-			return 2
-		}
-		idx, err := ctx.flags.index("--step")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		if idx > len(steps) {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--step %d out of range", idx)))
-			return 2
-		}
-		steps = append(steps[:idx-1], steps[idx:]...)
-		return runEditPreview(ctx, ReplaceOptions{Section: "implementation"}, jsonBytes(steps))
-	default:
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step add|remove|title set|summary set|file-change ..."))
+	if err := rejectDiffStdin(ctx); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	if len(steps) == 1 {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "cannot remove the final implementation step"))
+		return 2
+	}
+	idx, err := ctx.flags.index("--step")
+	if err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if idx > len(steps) {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--step %d out of range", idx)))
+		return 2
+	}
+	steps = append(steps[:idx-1], steps[idx:]...)
+	return runEditPreview(ctx, ReplaceOptions{Section: "implementation"}, jsonBytes(steps))
 }
 
 func buildStep(ctx editContext, diff string) (Step, bool) {
@@ -145,19 +126,19 @@ func runFileChangeEdit(ctx editContext) int {
 		return 2
 	}
 	action := pos[2]
-	if action == "filename" || action == "explanation" || action == "diff" {
+	if action == "filename" || action == "explanation" {
 		var text []string
 		var err error
-		maxTail := 2
-		if action != "diff" {
-			maxTail = 3
-		}
-		ctx, text, err = requirePositional(ctx, []string{"step", "file-change", action, "set"}, 2, maxTail)
+		ctx, text, err = requirePositional(ctx, []string{"step", "file-change", action, "set"}, 2, 3)
 		if err != nil {
 			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 			return 2
 		}
 		return mutateFileChange(ctx, action, text)
+	}
+	if action != "remove" {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step file-change remove|filename set|explanation set"))
+		return 2
 	}
 	if err := rejectStdinForStructured(ctx); err != nil {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
@@ -169,14 +150,7 @@ func runFileChangeEdit(ctx editContext) int {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	allowed := []string{}
-	switch action {
-	case "add":
-		allowed = []string{"--step", "--filename", "--explanation"}
-	case "remove":
-		allowed = []string{"--step", "--change"}
-	}
-	if err := ctx.flags.rejectValueFlagsExcept(allowed...); err != nil {
+	if err := ctx.flags.rejectValueFlagsExcept("--step", "--change"); err != nil {
 		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
@@ -188,46 +162,24 @@ func runFileChangeEdit(ctx editContext) int {
 	if !ok {
 		return 2
 	}
-	switch action {
-	case "add":
-		diff, ok := readStructuredDiff(ctx)
-		if !ok {
-			return 2
-		}
-		fn, err := ctx.flags.stringFlag("--filename")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		exp, err := ctx.flags.stringFlag("--explanation")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		updated.FileChanges = append(updated.FileChanges, FileChange{Filename: fn, Explanation: exp, Diff: diff})
-	case "remove":
-		if err := rejectDiffStdin(ctx); err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		if len(updated.FileChanges) == 1 {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "cannot remove the final file change from a step"))
-			return 2
-		}
-		change, err := ctx.flags.index("--change")
-		if err != nil {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-			return 2
-		}
-		if change > len(updated.FileChanges) {
-			reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--change %d out of range", change)))
-			return 2
-		}
-		updated.FileChanges = append(updated.FileChanges[:change-1], updated.FileChanges[change:]...)
-	default:
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "usage: planner implementation step file-change add|remove|filename set|explanation set|diff set"))
+	if err := rejectDiffStdin(ctx); err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
+	if len(updated.FileChanges) == 1 {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, "cannot remove the final file change from a step"))
+		return 2
+	}
+	change, err := ctx.flags.index("--change")
+	if err != nil {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	if change > len(updated.FileChanges) {
+		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("--change %d out of range", change)))
+		return 2
+	}
+	updated.FileChanges = append(updated.FileChanges[:change-1], updated.FileChanges[change:]...)
 	return runEditPreview(ctx, ReplaceOptions{Section: "implementation", Subsection: fmt.Sprint(step)}, jsonBytes(updated))
 }
 

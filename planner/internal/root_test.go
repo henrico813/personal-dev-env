@@ -226,7 +226,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 
 	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
+	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "planner implementation step add", "planner implementation step file-change add", "planner implementation step file-change diff set", "--write", "--diff-stdin"} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
@@ -241,9 +241,13 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"<out.md> may be the same path as <plan.md>",
 		"planner patch <plan.md> [<out.md>]",
 		"*** Update Diff: <selector>",
+		"*** Add Step: implementation",
+		"*** Add File Change: implementation[N]",
 		"*** Expect: sha256:<token>",
 		"implementation[N].file_changes[N]",
-		"Update Diff is a dedicated single-op patch form.",
+		"Update Diff, Add Step, and Add File Change are single-op patch forms.",
+		"Add Step appends one implementation step with one file change.",
+		"Add File Change appends one file change to the addressed implementation step.",
 		"implementation[N].title",
 		"implementation[N].summary",
 		"implementation[N].file_changes[N].filename",
@@ -685,10 +689,10 @@ func TestBehavioralFallbackStillWorks(t *testing.T) {
 			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 		}
 	})
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", path, path, "--step", "1", "--change", "1", "--stdin"}, []byte("raw diff bytes"))
+	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", path, path, "--step", "1", "--change", "1", "renamed.go"}, nil)
 	assertParsed(t, path, func(plan Plan) {
-		if plan.Implementation[0].FileChanges[0].Diff != "raw diff bytes" {
-			t.Fatalf("diff=%q", plan.Implementation[0].FileChanges[0].Diff)
+		if plan.Implementation[0].FileChanges[0].Filename != "renamed.go" {
+			t.Fatalf("filename=%q", plan.Implementation[0].FileChanges[0].Filename)
 		}
 	})
 }
@@ -844,15 +848,10 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 		}
 	})
 
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "g", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
 	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", out, out, "--step", "1", "--change", "2", "renamed"}, nil)
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", out, out, "--step", "1", "--change", "2", "--stdin"}, []byte("raw diff bytes"))
 	assertParsed(t, out, func(p Plan) {
 		if got := p.Implementation[0].FileChanges[1].Filename; got != "renamed" {
 			t.Fatalf("second filename=%q", got)
-		}
-		if got := p.Implementation[0].FileChanges[1].Diff; got != "raw diff bytes" {
-			t.Fatalf("second diff=%q", got)
 		}
 	})
 
