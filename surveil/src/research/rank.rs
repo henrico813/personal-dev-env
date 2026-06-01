@@ -7,18 +7,30 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-pub(super) fn rank_query_candidates(
-    repo_root: &Path,
-    candidates: &[SourceFile],
-    tokens: &[String],
-) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
-    if index::inspect_chunk_index(repo_root)? != index::IndexState::Usable {
-        return Ok((HashMap::new(), candidates.to_vec()));
-    }
+pub(super) struct RunRanker {
+    open_index: Option<index::OpenChunkIndex>,
+}
 
-    let ranked_scores = rank_candidate_files(repo_root, candidates, tokens)?;
-    let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
-    Ok((ranked_scores, ordered_candidates))
+pub(super) fn build_run_ranker(repo_root: &Path) -> Result<RunRanker, Box<dyn Error>> {
+    Ok(RunRanker {
+        open_index: index::open_chunk_index_for_run(repo_root)?,
+    })
+}
+
+impl RunRanker {
+    pub(super) fn rank_query_candidates(
+        &self,
+        candidates: &[SourceFile],
+        tokens: &[String],
+    ) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
+        let Some(open_index) = self.open_index.as_ref() else {
+            return Ok((HashMap::new(), candidates.to_vec()));
+        };
+
+        let ranked_scores = rank_candidate_files(open_index, candidates, tokens)?;
+        let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
+        Ok((ranked_scores, ordered_candidates))
+    }
 }
 
 pub(super) fn compare_best_chunk_score(
@@ -34,12 +46,12 @@ pub(super) fn compare_best_chunk_score(
 }
 
 fn rank_candidate_files(
-    repo_root: &Path,
+    open_index: &index::OpenChunkIndex,
     candidates: &[SourceFile],
     tokens: &[String],
 ) -> Result<HashMap<PathBuf, f32>, Box<dyn Error>> {
-    let ranked_chunks = index::search_chunk_index(
-        repo_root,
+    let ranked_chunks = index::search_open_chunk_index(
+        open_index,
         candidates,
         &SearchQuery {
             tokens: tokens.to_vec(),
@@ -94,7 +106,7 @@ fn order_query_candidates(
 
 #[cfg(test)]
 mod tests {
-    use super::rank_query_candidates;
+    use super::build_run_ranker;
     use crate::chunk::{temp_repo, write_file};
     use crate::index;
     use crate::schema::ExplicitFile;
@@ -196,7 +208,8 @@ mod tests {
             .expect("collect candidates");
 
             let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
-            let (_, ordered) = rank_query_candidates(&repo, &candidates, &terms).expect("rank candidates");
+            let ranker = build_run_ranker(&repo).expect("build run ranker");
+            let (_, ordered) = ranker.rank_query_candidates(&candidates, &terms).expect("rank candidates");
 
             assert_eq!(
                 ordered.iter().map(|item| item.display_path()).collect::<Vec<_>>(),
@@ -207,5 +220,31 @@ mod tests {
 
             let _ = fs::remove_dir_all(repo);
         }
+    }
+
+    #[test]
+    fn invalid_query_returns_error() {
+        let repo = temp_repo("rank-invalid-query");
+        write_file(
+            &repo.join("src/lib.rs"),
+            "fn attach_handler() {\n    // attach handler\n}\n",
+        );
+        index::build_chunk_index(&repo).expect("build index");
+
+        let mut skipped_paths = Vec::new();
+        let candidates = source::collect_candidate_files(
+            &repo,
+            &["src/".to_string()],
+            &[],
+            &mut skipped_paths,
+        )
+        .expect("collect candidates");
+        let ranker = build_run_ranker(&repo).expect("build run ranker");
+
+        assert!(ranker
+            .rank_query_candidates(&candidates, &["(".to_string()])
+            .is_err());
+
+        let _ = fs::remove_dir_all(repo);
     }
 }
