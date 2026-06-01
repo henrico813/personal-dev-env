@@ -19,9 +19,9 @@ const INDEX_FORMAT_VERSION: u32 = 1;
 const SCHEMA_VERSION: u32 = 1;
 const CHUNK_LAYOUT_VERSION: u32 = 1;
 
-#[derive(Debug)]
 pub(crate) struct OpenChunkIndex {
     index: Index,
+    reader: tantivy::IndexReader,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,29 +56,9 @@ pub fn build_chunk_index(repo_root: &Path) -> Result<(), Box<dyn Error>> {
 pub(crate) fn open_chunk_index_for_run(
     repo_root: &Path,
 ) -> Result<Option<OpenChunkIndex>, Box<dyn Error>> {
-    if inspect_chunk_index(repo_root)? != IndexState::Usable {
-        return Ok(None);
-    }
-
-    Ok(Some(OpenChunkIndex {
-        index: open_existing_chunk_index(repo_root)?,
-    }))
+    Ok(resolve_open_chunk_index(repo_root)?.1)
 }
 
-pub(crate) fn search_chunk_index(
-    repo_root: &Path,
-    scoped_files: &[SourceFile],
-    query: &SearchQuery,
-) -> Result<Vec<RankedChunk>, Box<dyn Error>> {
-    if inspect_chunk_index(repo_root)? != IndexState::Usable {
-        return Ok(Vec::new());
-    }
-
-    let open_index = OpenChunkIndex {
-        index: open_existing_chunk_index(repo_root)?,
-    };
-    search_open_chunk_index(&open_index, scoped_files, query)
-}
 
 pub(crate) fn search_open_chunk_index(
     open_index: &OpenChunkIndex,
@@ -89,8 +69,7 @@ pub(crate) fn search_open_chunk_index(
         return Ok(Vec::new());
     }
 
-    let index = &open_index.index;
-    let schema = index.schema();
+    let schema = open_index.index.schema();
     let fields = schema::IndexFields::from_schema(&schema);
     let source_by_path: HashMap<String, SourceFile> = scoped_files
         .iter()
@@ -99,10 +78,9 @@ pub(crate) fn search_open_chunk_index(
         .collect();
     let allowed_paths: HashSet<String> = source_by_path.keys().cloned().collect();
 
-    let reader = index.reader()?;
-    let searcher = reader.searcher();
+    let searcher = open_index.reader.searcher();
     let parser = QueryParser::for_index(
-        index,
+        &open_index.index,
         vec![
             fields.text,
             fields.symbol_name,
@@ -140,24 +118,36 @@ pub(crate) fn search_open_chunk_index(
 }
 
 pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dyn Error>> {
+    Ok(resolve_open_chunk_index(repo_root)?.0)
+}
+
+fn resolve_open_chunk_index(
+    repo_root: &Path,
+) -> Result<(IndexState, Option<OpenChunkIndex>), Box<dyn Error>> {
     if !repo_root.join(INDEX_DIR).is_dir() {
-        return Ok(IndexState::Missing);
+        return Ok((IndexState::Missing, None));
     }
 
     let build_info = match read_index_metadata(repo_root) {
         Ok(build_info) => build_info,
-        Err(_) => return Ok(IndexState::Corrupt),
+        Err(_) => return Ok((IndexState::Corrupt, None)),
     };
 
     let compatibility = check_index_compatibility(&build_info, repo_root)?;
     if compatibility != IndexState::Usable {
-        return Ok(compatibility);
+        return Ok((compatibility, None));
     }
 
-    match open_existing_chunk_index(repo_root) {
-        Ok(_) => Ok(IndexState::Usable),
-        Err(_) => Ok(IndexState::Corrupt),
-    }
+    let index = match open_existing_chunk_index(repo_root) {
+        Ok(index) => index,
+        Err(_) => return Ok((IndexState::Corrupt, None)),
+    };
+    let reader = match index.reader() {
+        Ok(reader) => reader,
+        Err(_) => return Ok((IndexState::Corrupt, None)),
+    };
+
+    Ok((IndexState::Usable, Some(OpenChunkIndex { index, reader })))
 }
 
 fn build_index_directory(repo_root: &Path) -> Result<(), Box<dyn Error>> {
@@ -481,9 +471,9 @@ fn temp_repo(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chunk_index, build_info_exists, inspect_chunk_index, overwrite_build_info,
-        search_chunk_index, tantivy_meta_exists, temp_repo, write_note, IndexState,
-        BUILD_INFO_PATH, INDEX_DIR,
+        build_chunk_index, build_info_exists, inspect_chunk_index, open_chunk_index_for_run,
+        overwrite_build_info, search_open_chunk_index, tantivy_meta_exists, temp_repo,
+        write_note, IndexState, BUILD_INFO_PATH, INDEX_DIR,
     };
     use crate::chunk::SearchQuery;
     use crate::source;
@@ -529,6 +519,7 @@ mod tests {
             setup: fn(&Path),
             mutate: Option<fn(&Path)>,
             expected: IndexState,
+            expect_open_index: bool,
             expect_index_files: bool,
         }
 
@@ -538,6 +529,7 @@ mod tests {
                 setup: seed_repo,
                 mutate: None,
                 expected: IndexState::Missing,
+                expect_open_index: false,
                 expect_index_files: false,
             },
             Case {
@@ -545,6 +537,7 @@ mod tests {
                 setup: seed_repo,
                 mutate: Some(build_index),
                 expected: IndexState::Usable,
+                expect_open_index: true,
                 expect_index_files: true,
             },
             Case {
@@ -555,6 +548,7 @@ mod tests {
                     remove_build_info(repo);
                 }),
                 expected: IndexState::Corrupt,
+                expect_open_index: false,
                 expect_index_files: false,
             },
             Case {
@@ -565,6 +559,7 @@ mod tests {
                     rewrite_repo_file(repo);
                 }),
                 expected: IndexState::Stale,
+                expect_open_index: false,
                 expect_index_files: true,
             },
             Case {
@@ -575,6 +570,7 @@ mod tests {
                     overwrite_incompatible_build_info(repo);
                 }),
                 expected: IndexState::Incompatible,
+                expect_open_index: false,
                 expect_index_files: false,
             },
             Case {
@@ -585,6 +581,7 @@ mod tests {
                     overwrite_invalid_build_info(repo);
                 }),
                 expected: IndexState::Corrupt,
+                expect_open_index: false,
                 expect_index_files: false,
             },
             Case {
@@ -595,6 +592,7 @@ mod tests {
                     remove_tantivy_meta(repo);
                 }),
                 expected: IndexState::Corrupt,
+                expect_open_index: false,
                 expect_index_files: false,
             },
         ];
@@ -609,6 +607,14 @@ mod tests {
             assert_eq!(
                 inspect_chunk_index(&repo).expect("inspect chunk index"),
                 case.expected,
+                "case: {}",
+                case.name,
+            );
+            assert_eq!(
+                open_chunk_index_for_run(&repo)
+                    .expect("open chunk index for run")
+                    .is_some(),
+                case.expect_open_index,
                 "case: {}",
                 case.name,
             );
@@ -644,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn search_chunk_index_returns_scoped_ranked_chunks() {
+    fn search_open_chunk_index_returns_scoped_ranked_chunks() {
         let repo = temp_repo("search-scope");
         write_note(&repo, "docs/guide.md", "attach attach attach attach\n");
         write_note(
@@ -663,15 +669,18 @@ mod tests {
             &mut skipped_paths,
         )
         .expect("collect scoped files");
-        let ranked = search_chunk_index(
-            &repo,
+        let open_index = open_chunk_index_for_run(&repo)
+            .expect("open chunk index")
+            .expect("usable index");
+        let ranked = search_open_chunk_index(
+            &open_index,
             &scoped,
             &SearchQuery {
                 tokens: vec!["attach".to_string(), "handler".to_string()],
                 limit: 4,
             },
         )
-        .expect("search chunk index");
+        .expect("search open chunk index");
 
         assert!(!ranked.is_empty());
         assert!(ranked
