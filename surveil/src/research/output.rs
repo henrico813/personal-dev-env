@@ -1,10 +1,11 @@
-use super::{rank, scan, setup, tokenize, LiveFileCache, TraceState};
-use crate::schema::{Answer, GatherOutput, ResearchOutput, TraceOutput, SCHEMA_VERSION};
-use std::collections::HashSet;
+use super::{rank, scan, setup, tokenize, LiveFileCache, SourceFile, TraceState};
+use crate::index;
+use crate::schema::{Answer, GatherOutput, QueryTrace, ResearchOutput, TraceOutput, SCHEMA_VERSION};
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) fn write_research_output(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
     let context_text = fs::read_to_string(context)?;
@@ -27,6 +28,8 @@ pub(crate) fn write_research_output(context: &Path, trace_out: &Path) -> Result<
 fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, TraceOutput), Box<dyn Error>> {
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
+    let index_state = index::inspect_chunk_index(&repo_root)?;
+    let ranking_usable = index_state == index::IndexState::Usable;
     let candidates = setup::collect_candidate_sources(
         &repo_root,
         &gather.search_areas,
@@ -36,21 +39,30 @@ fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, Trac
     let mut live_cache = LiveFileCache::new();
     let ranker = rank::build_run_ranker(&repo_root)?;
     let mut result = Vec::with_capacity(gather.query.len());
+    let mut queries = Vec::with_capacity(gather.query.len());
 
     for query in &gather.query {
         let tokens = tokenize::create_search_tokens(&gather.terms, query);
         let (ranked_scores, ordered_candidates) =
             ranker.rank_query_candidates(&candidates, &tokens)?;
-        let (findings, negative_evidence) = scan::create_answer_from_sources(
+        let ranked_files = ranked_file_paths(&ordered_candidates, &ranked_scores, ranking_usable);
+        let (findings, negative_evidence, fallback_used) = scan::create_answer_from_sources(
             &repo_root,
             &gather.search_areas,
             &ordered_candidates,
             &candidates,
             &tokens,
             &ranked_scores,
+            ranking_usable,
             &mut live_cache,
             &mut trace,
         )?;
+        queries.push(QueryTrace {
+            query: query.clone(),
+            retrieval_mode: retrieval_mode_name(ranking_usable, fallback_used).to_string(),
+            ranked_files,
+            findings_returned: findings.len(),
+        });
         if findings.is_empty() {
             trace.unmatched_questions.push(query.clone());
         }
@@ -70,14 +82,22 @@ fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, Trac
         open_questions,
     };
 
+    let mut missing_explicit_files = gather.missing_explicit_files;
+    let mut skipped_explicit_files = gather.skipped_explicit_files;
     dedupe_values_in_place(&mut trace.skipped_paths);
+    dedupe_values_in_place(&mut missing_explicit_files);
+    dedupe_values_in_place(&mut skipped_explicit_files);
     let trace_output = TraceOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         searched_areas: gather.search_areas,
         skipped_paths: trace.skipped_paths,
         files_considered: trace.files_considered.len(),
         files_matched: trace.files_matched.len(),
+        missing_explicit_files,
+        skipped_explicit_files,
+        index_state: index_state_name(&index_state).to_string(),
         unmatched_questions: trace.unmatched_questions,
+        queries,
     };
 
     Ok((report, trace_output))
@@ -86,6 +106,43 @@ fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, Trac
 fn dedupe_values_in_place(values: &mut Vec<String>) {
     let mut seen = HashSet::new();
     values.retain(|value| seen.insert(value.clone()));
+}
+
+fn index_state_name(state: &index::IndexState) -> &'static str {
+    match state {
+        index::IndexState::Usable => "usable",
+        index::IndexState::Missing => "missing",
+        index::IndexState::Stale => "stale",
+        index::IndexState::Incompatible => "incompatible",
+        index::IndexState::Corrupt => "corrupt",
+    }
+}
+
+fn retrieval_mode_name(ranking_usable: bool, fallback_used: bool) -> &'static str {
+    if !ranking_usable {
+        "full_lexical_scan"
+    } else if fallback_used {
+        "ranked_then_fallback"
+    } else {
+        "ranked_only"
+    }
+}
+
+fn ranked_file_paths(
+    ordered_candidates: &[SourceFile],
+    ranked_scores: &HashMap<PathBuf, f32>,
+    ranking_usable: bool,
+) -> Vec<String> {
+    if !ranking_usable {
+        return Vec::new();
+    }
+
+    ordered_candidates
+        .iter()
+        .filter(|source| !source.is_explicit())
+        .filter(|source| ranked_scores.contains_key(source.path()))
+        .map(|source| source.display_path().to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -101,6 +158,8 @@ pub(super) fn create_test_answer(
     let mut live_cache = LiveFileCache::new();
     let ranker = rank::build_run_ranker(repo_root)?;
     let tokens = tokenize::create_search_tokens(terms, question);
+    let index_state = index::inspect_chunk_index(repo_root)?;
+    let ranking_usable = index_state == index::IndexState::Usable;
     let (ranked_scores, ordered_candidates) =
         ranker.rank_query_candidates(&candidates, &tokens)?;
     scan::create_answer_from_sources(
@@ -110,9 +169,11 @@ pub(super) fn create_test_answer(
         &candidates,
         &tokens,
         &ranked_scores,
+        ranking_usable,
         &mut live_cache,
         trace,
     )
+    .map(|(findings, negative_evidence, _)| (findings, negative_evidence))
 }
 
 #[cfg(test)]
