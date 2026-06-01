@@ -733,7 +733,7 @@ func TestPatchRejectsNestedMismatchJSONErrors(t *testing.T) {
 
 func TestPatchRejectsStaleDiffTokenJSONErrors(t *testing.T) {
 	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:deadbeef\n@@ -1 +1 @@\n-old\n+new")
+	patch := []byte("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:deadbeef\n*** File: f\n-old\n+new\n*** End Patch\n")
 	var stdout, stderr bytes.Buffer
 	withStdin(t, patch, func() {
 		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
