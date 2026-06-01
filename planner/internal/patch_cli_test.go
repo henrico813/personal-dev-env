@@ -129,8 +129,10 @@ func TestPatchCommandStdout(t *testing.T) {
 				run()
 			}
 
+			plainStdout := stripANSI(stdout.String())
+
 			for _, want := range tc.wantStdout {
-				if !strings.Contains(stdout.String(), want) {
+				if !strings.Contains(plainStdout, want) {
 					t.Fatalf("stdout %q missing %q", stdout.String(), want)
 				}
 			}
