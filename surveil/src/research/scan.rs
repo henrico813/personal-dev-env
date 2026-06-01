@@ -18,11 +18,13 @@ pub(super) fn create_answer_from_sources(
     all_candidates: &[SourceFile],
     tokens: &[String],
     ranked_scores: &HashMap<PathBuf, f32>,
+    ranking_usable: bool,
     live_cache: &mut LiveFileCache,
     trace: &mut TraceState,
-) -> Result<(Vec<Finding>, Vec<String>), Box<dyn Error>> {
+) -> Result<(Vec<Finding>, Vec<String>, bool), Box<dyn Error>> {
     let mut ranked_files = Vec::new();
     let mut loaded_for_query = HashSet::new();
+    let mut fallback_used = false;
 
     for source in ordered_candidates {
         loaded_for_query.insert(source.path().to_path_buf());
@@ -39,6 +41,7 @@ pub(super) fn create_answer_from_sources(
     }
 
     if ranked_files.is_empty() {
+        fallback_used = ranking_usable && loaded_for_query.len() < all_candidates.len();
         for source in all_candidates {
             if loaded_for_query.contains(source.path()) {
                 continue;
@@ -79,7 +82,7 @@ pub(super) fn create_answer_from_sources(
         Vec::new()
     };
 
-    Ok((findings, negative_evidence))
+    Ok((findings, negative_evidence, fallback_used))
 }
 
 fn collect_file_findings(
