@@ -9,6 +9,15 @@ use std::path::{Path, PathBuf};
 
 pub(super) struct RunRanker {
     open_index: Option<index::OpenChunkIndex>,
+
+#[cfg(test)]
+pub(super) fn rank_query_candidates(
+    repo_root: &Path,
+    candidates: &[SourceFile],
+    tokens: &[String],
+) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
+    let ranker = build_run_ranker(repo_root)?;
+    ranker.rank_query_candidates(candidates, tokens)
 }
 
 pub(super) fn build_run_ranker(repo_root: &Path) -> Result<RunRanker, Box<dyn Error>> {
