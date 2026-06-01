@@ -26,6 +26,8 @@ local function normalize_path_value(value)
   return value
 end
 
+M.normalize_path = normalize_path_value
+
 function M.read(keys, opts)
   local wanted = {}
   for _, key in ipairs(keys or {}) do
