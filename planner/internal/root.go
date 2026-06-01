@@ -29,15 +29,12 @@ Usage:
   planner dod goal add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
   planner dod goal set <plan.md> <out.md> --goal N <text> [--diff] [--dry-run] [--json-errors]
   planner dod goal remove <plan.md> <out.md> --goal N [--diff] [--dry-run] [--json-errors]
-  planner implementation step add <plan.md> <out.md> --title T --summary S --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
   planner implementation step remove <plan.md> <out.md> --step N [--diff] [--dry-run] [--json-errors]
   planner implementation step title set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner implementation step summary set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change add <plan.md> <out.md> --step N --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change remove <plan.md> <out.md> --step N --change N [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change filename set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner implementation step file-change explanation set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change diff set <plan.md> <out.md> --step N --change N --stdin [--diff] [--dry-run] [--json-errors]
   planner verification summary set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner verification automated add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
   planner verification automated set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
@@ -59,9 +56,9 @@ Markdown-first authoring flow:
 
 Partial update flow:
   1. Run planner inspect <plan.md> to see the parsed plan JSON and update_diff_expect tokens.
-  2. Prefer planner patch <plan.md> [<out.md>] for scalar, checklist, and diff edits.
+  2. Prefer planner patch <plan.md> [<out.md>] for scalar, checklist, and all diff-bearing edits.
   3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
-  4. Use behavioral commands for structural edits that patch does not cover.
+  4. Use behavioral commands only for the remaining non-diff structural edits.
 
 planner patch:
   Reads a structured patch from stdin and applies all operations to one plan.
@@ -75,7 +72,23 @@ planner patch:
 
     *** Update Diff: <selector>
     *** Expect: sha256:<token>
-    <raw diff body through EOF>
+    *** File: <path>
+    -<old line>
+    +<new line>
+
+    *** Add File Change: implementation[N]
+    *** File: <path>
+    *** Explanation: <text>
+    -<old line>
+    +<new line>
+
+    *** Add Step: implementation
+    *** Title: <text>
+    *** Summary: <text>
+    *** File: <path>
+    *** Explanation: <text>
+    -<old line>
+    +<new line>
 
     *** Add Item: <selector>
     +<new checklist item>
@@ -103,11 +116,11 @@ planner patch:
   Notes:
     - Nested selectors use 1-based indices.
     - Patch body lines beginning with *** start the next patch operation.
-    - Update Diff is a dedicated single-op patch form.
     - Update Diff tokens come from planner inspect.
+    - Diff-bearing patch ops generate their stored unified diff.
     - Checklist edits must be single-line.
     - Only verification.summary may be set to an empty value.
-    - Structural edits should use behavioral commands.
+    - Remaining non-diff structure edits use behavioral commands.
 
 behavioral edit flags:
   --goal N                         1-based definition_of_done goal selector.
@@ -116,8 +129,7 @@ behavioral edit flags:
   --change N                       1-based FileChange selector within --step.
   --filename <path>                FileChange filename for structured add.
   --explanation <text>             FileChange explanation for structured add.
-  --stdin                          Read scalar values or file-change diff set from stdin.
-  --diff-stdin                     Read structured add diff body from stdin.
+  --stdin                          Read scalar values from stdin.
   --diff                           Print preview diff to stdout; additive.
   --dry-run                        Do not write the output; with --diff, exit 1 on drift.
 
