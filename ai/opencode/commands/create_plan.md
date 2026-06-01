@@ -145,9 +145,9 @@ Once aligned on approach:
    [1-2 sentence summary]
 
    ## Implementation Phases:
+   1. [Phase name] - [what it accomplishes]
    2. [Phase name] - [what it accomplishes]
    3. [Phase name] - [what it accomplishes]
-   4. [Phase name] - [what it accomplishes]
 
    Use the smallest scope that satisfies the request and constraints.
    ```
@@ -212,8 +212,8 @@ Examples:
 
 ### 1. [Change description]
 
-[Explicit details: code to write, config to change, commands to run, etc.
-[Each step must contain every single line of code in a diff block needed to make the change]
+[Explicit details: code to write, config to change, commands to run, etc.]
+[Each step must contain every single line of code in a diff block needed to make the change.]
 
 ### 2. [Change description]
 
@@ -223,11 +223,11 @@ Examples:
 
 [Test automation code or manual testing steps]
 
-[Include explicit details like code to write, config to change, commands to run, etc.
-[Each step must contain every single line of code in a diff block needed to make the change]
+[Include explicit details like code to write, config to change, commands to run, etc.]
+[Each step must contain every single line of code in a diff block needed to make the change.]
 ```
 
-Make sure the implementation and verification sections include explicit, 
+Make sure the implementation and verification sections include explicit, complete code and command diffs for every required change.
 
 ### Step 5: Validate And Report
 
@@ -305,7 +305,7 @@ Make sure the implementation and verification sections include explicit,
 - [ ] Performance is acceptable with 1000+ items
 - [ ] Error messages are user-friendly
 - [ ] Feature works correctly on mobile devices
-````
+```
 
 ## Common Patterns
 
