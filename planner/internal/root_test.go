@@ -796,7 +796,7 @@ func TestPatchWritesAlternateOutputPath(t *testing.T) {
 
 func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 	dir := t.TempDir()
-	planPath := writeBehavioralPlan(t, dir)
+	writeBehavioralPlan(t, dir)
 	out := dir + "/out.md"
 
 	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
