@@ -19,26 +19,15 @@ pub(super) fn build_run_ranker(repo_root: &Path) -> Result<RunRanker, Box<dyn Er
 
 impl RunRanker {
     pub(super) fn rank_query_candidates(
-        &mut self,
+        &self,
         candidates: &[SourceFile],
         tokens: &[String],
     ) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
-        // A run sticks to startup index state. If a cached search later fails,
-        // drop back to lexical ordering for the rest of the run.
-        let ranked_scores = {
-            let Some(open_index) = self.open_index.as_ref() else {
-                return Ok((HashMap::new(), candidates.to_vec()));
-            };
-            rank_candidate_files(open_index, candidates, tokens)
-        };
-        let ranked_scores = match ranked_scores {
-            Ok(ranked_scores) => ranked_scores,
-            Err(_) => {
-                self.open_index = None;
-                return Ok((HashMap::new(), candidates.to_vec()));
-            }
+        let Some(open_index) = self.open_index.as_ref() else {
+            return Ok((HashMap::new(), candidates.to_vec()));
         };
 
+        let ranked_scores = rank_candidate_files(open_index, candidates, tokens)?;
         let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
         Ok((ranked_scores, ordered_candidates))
     }
@@ -219,7 +208,7 @@ mod tests {
             .expect("collect candidates");
 
             let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
-            let mut ranker = build_run_ranker(&repo).expect("build run ranker");
+            let ranker = build_run_ranker(&repo).expect("build run ranker");
             let (_, ordered) = ranker.rank_query_candidates(&candidates, &terms).expect("rank candidates");
 
             assert_eq!(
@@ -234,8 +223,8 @@ mod tests {
     }
 
     #[test]
-    fn search_failure_disables_cached_index() {
-        let repo = temp_repo("rank-search-failure");
+    fn invalid_query_returns_error() {
+        let repo = temp_repo("rank-invalid-query");
         write_file(
             &repo.join("src/lib.rs"),
             "fn attach_handler() {\n    // attach handler\n}\n",
@@ -250,25 +239,11 @@ mod tests {
             &mut skipped_paths,
         )
         .expect("collect candidates");
-        let mut ranker = build_run_ranker(&repo).expect("build run ranker");
+        let ranker = build_run_ranker(&repo).expect("build run ranker");
 
-        let (ranked_scores, ordered) = ranker
+        assert!(ranker
             .rank_query_candidates(&candidates, &["(".to_string()])
-            .expect("degrade on search failure");
-        assert!(ranked_scores.is_empty());
-        assert_eq!(
-            ordered.iter().map(|item| item.display_path()).collect::<Vec<_>>(),
-            vec!["src/lib.rs"]
-        );
-
-        let (ranked_scores, ordered) = ranker
-            .rank_query_candidates(&candidates, &["attach".to_string(), "handler".to_string()])
-            .expect("stay degraded after failure");
-        assert!(ranked_scores.is_empty());
-        assert_eq!(
-            ordered.iter().map(|item| item.display_path()).collect::<Vec<_>>(),
-            vec!["src/lib.rs"]
-        );
+            .is_err());
 
         let _ = fs::remove_dir_all(repo);
     }
