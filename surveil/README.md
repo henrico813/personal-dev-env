@@ -51,6 +51,6 @@ Research results are grouped by query:
 
 `research` remains lexical-first in its final output: it still derives every visible `Finding` from live file text and still fills symbol fields only when best-effort Tree-sitter enrichment succeeds.
 
-A prebuilt `.surveil/index/` directory now participates in query-time ranking. For each query, `research` keeps matching explicit files first, asks the Tantivy chunk index for the top scoped chunk hits, scans those files first, and expands to the rest of scope only when the first pass finds nothing. If the index is missing, stale, incompatible, or corrupt, `research` bypasses ranking and falls back to the full scoped lexical scan.
+A prebuilt `.surveil/index/` directory now participates in query-time ranking. At run start, `research` checks whether that index is usable against the repo-wide fingerprint recorded at build time, opens it once when it is, and reuses that reader for every query in the run without revalidating freshness. Each query still keeps explicit files first, scans top ranked files next, and expands to the rest of scope only when that first pass finds nothing. If the index is missing, stale, incompatible, or corrupt at startup, or if cached-index search later fails, `research` falls back to the full scoped lexical scan.
 
 `research` still emits only a small number of snippets per file, and the public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
