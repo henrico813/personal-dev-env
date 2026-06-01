@@ -4,20 +4,22 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     let task_text = fs::read_to_string(task_file)?;
     let parsed = parse_task(&task_text)?;
 
-    let explicit_files = validate_explicit_files(repo_root, &parsed.explicit_files)?;
+    let validated_explicit_files = validate_explicit_files(repo_root, &parsed.explicit_files)?;
     validate_search_areas(repo_root, &parsed.search_areas)?;
 
     let output = GatherOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         repo_root: repo_root.to_string_lossy().into_owned(),
         summary: parsed.summary,
-        explicit_files,
+        explicit_files: validated_explicit_files.explicit_files,
+        missing_explicit_files: validated_explicit_files.missing_explicit_files,
+        skipped_explicit_files: validated_explicit_files.skipped_explicit_files,
         search_areas: parsed.search_areas,
         query: parsed.query,
         terms: parsed.terms,
@@ -37,6 +39,13 @@ struct ParsedTask {
     search_areas: Vec<String>,
     query: Vec<String>,
     terms: Vec<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ValidatedExplicitFiles {
+    explicit_files: Vec<ExplicitFile>,
+    missing_explicit_files: Vec<String>,
+    skipped_explicit_files: Vec<String>,
 }
 
 fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
@@ -168,22 +177,46 @@ fn strip_numbered_prefix(value: &str) -> Option<&str> {
     Some(rest.trim_start())
 }
 
-fn validate_explicit_files(repo_root: &Path, files: &[String]) -> Result<Vec<ExplicitFile>, Box<dyn Error>> {
+fn validate_explicit_files(repo_root: &Path, files: &[String]) -> Result<ValidatedExplicitFiles, Box<dyn Error>> {
     let mut explicit_files = Vec::with_capacity(files.len());
+    let mut missing_explicit_files = Vec::new();
+    let mut skipped_explicit_files = Vec::new();
 
     for path in files {
         let resolved = source::resolve_path(repo_root, path);
-        if source::is_skipped_path(repo_root, &resolved) || !resolved.is_file() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, format!("explicit file not found: {path}")).into());
+        if source::is_skipped_path(repo_root, &resolved) {
+            explicit_files.push(ExplicitFile {
+                path: path.clone(),
+                found: false,
+            });
+            skipped_explicit_files.push(path.clone());
+            continue;
+        }
+
+        if resolved.is_file() {
+            explicit_files.push(ExplicitFile {
+                path: path.clone(),
+                found: true,
+            });
+            continue;
+        }
+
+        if resolved.exists() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, format!("explicit path is not a file: {path}")).into());
         }
 
         explicit_files.push(ExplicitFile {
             path: path.clone(),
-            found: true,
+            found: false,
         });
+        missing_explicit_files.push(path.clone());
     }
 
-    Ok(explicit_files)
+    Ok(ValidatedExplicitFiles {
+        explicit_files,
+        missing_explicit_files,
+        skipped_explicit_files,
+    })
 }
 
 fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<(), Box<dyn Error>> {
@@ -199,7 +232,30 @@ fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::parse_task;
+    use super::{parse_task, validate_explicit_files, ValidatedExplicitFiles};
+    use crate::schema::ExplicitFile;
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_repo(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("surveil-gather-{name}-{stamp}"));
+        fs::create_dir_all(&path).expect("create temp repo");
+        path
+    }
+
+    fn write_file(path: &PathBuf, content: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        let mut file = fs::File::create(path).expect("create file");
+        file.write_all(content.as_bytes()).expect("write file");
+    }
 
     #[test]
     fn parses_structured_task_query_and_terms() {
@@ -228,5 +284,56 @@ investigate attachment points
         assert_eq!(parsed.search_areas, vec!["src/"]);
         assert_eq!(parsed.query, vec!["Where should Tree-sitter attach?", "What still needs verification?"]);
         assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
+    }
+
+    #[test]
+    fn explicit_file_validation_keeps_missing_and_skipped_paths() {
+        let repo = temp_repo("keeps-paths");
+        write_file(&repo.join("src/lib.rs"), "fn main() {}\n");
+
+        let validated = validate_explicit_files(
+            &repo,
+            &vec![
+                "docs/future.md".to_string(),
+                ".surveil/index.sqlite".to_string(),
+                "src/lib.rs".to_string(),
+            ],
+        )
+        .expect("validate explicit files");
+
+        assert_eq!(
+            validated,
+            ValidatedExplicitFiles {
+                explicit_files: vec![
+                    ExplicitFile {
+                        path: "docs/future.md".to_string(),
+                        found: false,
+                    },
+                    ExplicitFile {
+                        path: ".surveil/index.sqlite".to_string(),
+                        found: false,
+                    },
+                    ExplicitFile {
+                        path: "src/lib.rs".to_string(),
+                        found: true,
+                    },
+                ],
+                missing_explicit_files: vec!["docs/future.md".to_string()],
+                skipped_explicit_files: vec![".surveil/index.sqlite".to_string()],
+            }
+        );
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn explicit_file_validation_rejects_existing_directories() {
+        let repo = temp_repo("reject-dir");
+        fs::create_dir_all(repo.join("src")).expect("create dir");
+
+        let err = validate_explicit_files(&repo, &["src".to_string()]).expect_err("reject directory");
+        assert!(err.to_string().contains("not a file"));
+
+        let _ = fs::remove_dir_all(repo);
     }
 }

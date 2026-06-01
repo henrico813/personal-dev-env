@@ -189,6 +189,8 @@ mod tests {
                             found: true,
                         },
                     ],
+                    missing_explicit_files: Vec::new(),
+                    skipped_explicit_files: vec![".surveil/index.sqlite".to_string()],
                     search_areas: vec!["surveil/".to_string()],
                     query: vec![
                         "Where should Tree-sitter attach?".to_string(),
@@ -248,6 +250,8 @@ mod tests {
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![],
+                    missing_explicit_files: Vec::new(),
+                    skipped_explicit_files: Vec::new(),
                     search_areas: vec!["notes/".to_string()],
                     query: vec![
                         "Where should attach live?".to_string(),
@@ -282,6 +286,8 @@ mod tests {
                         path: "notes/design.md".to_string(),
                         found: true,
                     }],
+                    missing_explicit_files: Vec::new(),
+                    skipped_explicit_files: Vec::new(),
                     search_areas: vec!["surveil/".to_string()],
                     query: vec![
                         "Where should Tree-sitter attach?".to_string(),
@@ -310,6 +316,135 @@ mod tests {
 
         for case in &cases {
             run_case(case);
+        }
+    }
+
+    struct TraceCase {
+        name: &'static str,
+        files: Vec<(&'static str, &'static str)>,
+        build_index: bool,
+        context: GatherOutput,
+        expected_missing: Vec<&'static str>,
+        expected_skipped: Vec<&'static str>,
+        expected_index_state: &'static str,
+        expected_retrieval_mode: &'static str,
+        expected_ranked_files: Vec<&'static str>,
+    }
+
+    #[test]
+    fn trace_case_tables() {
+        let cases = vec![
+            TraceCase {
+                name: "records-missing-and-skipped-explicit-paths",
+                files: vec![("surveil/src/lib.rs", "// tree-sitter attach\n")],
+                build_index: false,
+                context: GatherOutput {
+                    schema_version: SCHEMA_VERSION.to_string(),
+                    repo_root: String::new(),
+                    summary: "summary".to_string(),
+                    explicit_files: vec![
+                        ExplicitFile {
+                            path: "docs/future.md".to_string(),
+                            found: false,
+                        },
+                        ExplicitFile {
+                            path: ".surveil/index.sqlite".to_string(),
+                            found: false,
+                        },
+                        ExplicitFile {
+                            path: "surveil/src/lib.rs".to_string(),
+                            found: true,
+                        },
+                    ],
+                    missing_explicit_files: vec!["docs/future.md".to_string()],
+                    skipped_explicit_files: vec![".surveil/index.sqlite".to_string()],
+                    search_areas: vec!["surveil/".to_string()],
+                    query: vec!["Where should Tree-sitter attach?".to_string()],
+                    terms: vec!["tree-sitter".to_string()],
+                    blockers: Vec::new(),
+                },
+                expected_missing: vec!["docs/future.md"],
+                expected_skipped: vec![".surveil/index.sqlite"],
+                expected_index_state: "missing",
+                expected_retrieval_mode: "full_lexical_scan",
+                expected_ranked_files: vec![],
+            },
+            TraceCase {
+                name: "records-ranked-only-query-trace",
+                files: vec![
+                    ("docs/guide.md", "attach attach attach attach\nattach attach attach attach\n"),
+                    ("src/lib.rs", "fn attach_handler() {\n    // attach handler\n}\n"),
+                ],
+                build_index: true,
+                context: GatherOutput {
+                    schema_version: SCHEMA_VERSION.to_string(),
+                    repo_root: String::new(),
+                    summary: "summary".to_string(),
+                    explicit_files: vec![],
+                    missing_explicit_files: Vec::new(),
+                    skipped_explicit_files: Vec::new(),
+                    search_areas: vec!["src/".to_string(), "docs/".to_string()],
+                    query: vec!["Where should attach handler live?".to_string()],
+                    terms: vec!["attach".to_string(), "handler".to_string()],
+                    blockers: Vec::new(),
+                },
+                expected_missing: vec![],
+                expected_skipped: vec![],
+                expected_index_state: "usable",
+                expected_retrieval_mode: "ranked_only",
+                expected_ranked_files: vec!["src/lib.rs", "docs/guide.md"],
+            },
+        ];
+
+        for case in &cases {
+            let repo = temp_repo(case.name);
+            for (path, content) in &case.files {
+                write_file(&repo.join(path), content);
+            }
+            if case.build_index {
+                index::build_chunk_index(&repo).expect("build index");
+            }
+
+            let mut gather = case.context.clone();
+            gather.repo_root = repo.to_string_lossy().into_owned();
+            let (_report, trace) = output::create_test_outputs(gather).expect("run for test");
+
+            assert_eq!(
+                trace.missing_explicit_files,
+                case.expected_missing
+                    .iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>(),
+                "case: {}",
+                case.name
+            );
+            assert_eq!(
+                trace.skipped_explicit_files,
+                case.expected_skipped
+                    .iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>(),
+                "case: {}",
+                case.name
+            );
+            assert_eq!(trace.index_state, case.expected_index_state, "case: {}", case.name);
+            assert_eq!(
+                trace.queries[0].retrieval_mode,
+                case.expected_retrieval_mode,
+                "case: {}",
+                case.name
+            );
+            assert_eq!(
+                trace.queries[0].ranked_files,
+                case.expected_ranked_files
+                    .iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>(),
+                "case: {}",
+                case.name
+            );
+
+            let _ = fs::remove_dir_all(repo);
         }
     }
 }
