@@ -108,7 +108,7 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 		reportError(stderr, "patch", cliErr)
 		return plannerExitCode(cliErr)
 	}
-	d := diffLines(string(sourceRaw), string(updatedRaw))
+	d := diffLinesForWriter(string(sourceRaw), string(updatedRaw), stdout)
 	if err := WriteAtomic(outputPath, updatedRaw); err != nil {
 		reportError(stderr, "patch", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
 		return 1

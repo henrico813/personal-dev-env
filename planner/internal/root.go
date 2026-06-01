@@ -532,7 +532,7 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, basePath))
 		return 1
 	}
-	d := diffLines(baseline, rendered)
+	d := diffLinesForWriter(baseline, rendered, stdout)
 	if pf.diff && d != "" {
 		_, _ = io.WriteString(stdout, d)
 	}
