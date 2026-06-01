@@ -84,51 +84,30 @@ func TestWrappedInspect(t *testing.T) {
 }
 
 func TestWrappedEdit(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		run  func(*testing.T, string)
-	}{
-		{
-			name: "patch_same_path",
-			run: func(t *testing.T, path string) {
-				t.Helper()
-				patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
-				withStdin(t, patch, func() {
-					var stdout bytes.Buffer
-					var stderr bytes.Buffer
-					if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-						t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-					}
-				})
-			},
-		},
-		{
-			name: "overview_same_path",
-			run: func(t *testing.T, path string) {
-				t.Helper()
-				runPlannerOK(t, []string{"overview", "set", path, path, "Updated overview"}, nil)
-			},
-		},
-	} {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			path := copyFixture(t, "wrapped_issue_topics.md")
-			beforeRaw, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tc.run(t, path)
-			afterRaw, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
-				t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
-			}
-			if !strings.Contains(string(afterRaw), "Updated overview") {
-				t.Fatalf("overview not updated:\n%s", string(afterRaw))
-			}
-		})
+	path := copyFixture(t, "wrapped_issue_topics.md")
+	beforeRaw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
+	withStdin(t, patch, func() {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
+
+	afterRaw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
+		t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
+	}
+	if !strings.Contains(string(afterRaw), "Updated overview") {
+		t.Fatalf("overview not updated:\n%s", string(afterRaw))
 	}
 }
 
@@ -174,16 +153,6 @@ func TestWrappedDecodeFailures(t *testing.T) {
 				withStdin(t, patch, func() {
 					exit = Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr)
 				})
-				return exit, stderr.String()
-			},
-		},
-		{
-			name: "overview_same_path",
-			run: func(t *testing.T, path string) (int, string) {
-				t.Helper()
-				var stdout bytes.Buffer
-				var stderr bytes.Buffer
-				exit := Execute([]string{"--json-errors", "overview", "set", path, path, "Updated overview"}, &stdout, &stderr)
 				return exit, stderr.String()
 			},
 		},
@@ -830,13 +799,6 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 	planPath := writeBehavioralPlan(t, dir)
 	out := dir + "/out.md"
 
-	runPlannerOK(t, []string{"title", "set", planPath, out, "New title"}, nil)
-	assertParsed(t, out, func(p Plan) {
-		if p.Title != "New title" {
-			t.Fatalf("title=%q", p.Title)
-		}
-	})
-
 	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
 	assertParsed(t, out, func(p Plan) {
 		if p.DefinitionOfDone.Goals[0].Text != "renamed goal" || p.DefinitionOfDone.Goals[0].Status != StatusDone {
@@ -877,7 +839,6 @@ func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
 		{"goal", []string{"dod", "goal", "remove", planPath, out, "--goal", "1"}, "cannot remove the final definition_of_done goal"},
 		{"step", []string{"implementation", "step", "remove", planPath, out, "--step", "1"}, "cannot remove the final implementation step"},
 		{"change", []string{"implementation", "step", "file-change", "remove", planPath, out, "--step", "1", "--change", "1"}, "cannot remove the final file change from a step"},
-		{"json", []string{"--json-errors", "title", "set", planPath, out, "   "}, "USAGE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -888,23 +849,6 @@ func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
 				t.Fatalf("stderr missing %q: %q", tc.want, stderr.String())
 			}
 		})
-	}
-}
-
-func TestBehavioralEditRejectsUnknownValueFlag(t *testing.T) {
-	dir := t.TempDir()
-	planPath := writeBehavioralPlan(t, dir)
-	out := dir + "/out.md"
-
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"title", "set", planPath, out, "New title", "--typo", "x"}, &stdout, &stderr); exit != 2 {
-		t.Fatalf("exit=%d want 2 stderr=%q", exit, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "unknown flag --typo") {
-		t.Fatalf("stderr missing unknown flag: %q", stderr.String())
-	}
-	if _, err := os.Stat(out); !os.IsNotExist(err) {
-		t.Fatalf("output should not be written, stat err = %v", err)
 	}
 }
 
@@ -930,7 +874,7 @@ func TestStructuredBehavioralEditMalformedMarkdownJSONError(t *testing.T) {
 	}
 }
 
-func TestOverviewSetSameFilePreservesFrontmatter(t *testing.T) {
+func TestPatchOverviewSameFilePreservesFrontmatter(t *testing.T) {
 	plan, err := DecodePlan(validPlanJSON())
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
@@ -945,7 +889,14 @@ func TestOverviewSetSameFilePreservesFrontmatter(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	runPlannerOK(t, []string{"overview", "set", path, path, "Updated overview"}, nil)
+	patch := []byte("*** Begin Patch\n*** Update Field: overview\n-O\n+Updated overview\n*** End Patch\n")
+	withStdin(t, patch, func() {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+		}
+	})
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
