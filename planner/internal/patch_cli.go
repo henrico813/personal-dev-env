@@ -23,18 +23,13 @@ import (
 //   - definition_of_done.goals
 //   - verification.automated
 //   - verification.manual
-//
-// Diff-bearing selectors:
-//   - implementation[N].file_changes[N] (Update Diff)
-//   - implementation (Add Step)
-//   - implementation[N] (Add File Change)
 const patchUsage = "usage: planner patch <plan.md> [<out.md>]"
 
 var (
-	patchStepFieldSelectorRE        = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
-	patchFileChangeFieldSelectorRE  = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]\.(filename|explanation)$`)
-	patchFileChangeSelectorRE       = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)
-	patchImplementationSelectorRE   = regexp.MustCompile(`^implementation\[(-?\d+)\]$`)
+	patchStepFieldSelectorRE       = regexp.MustCompile(`^implementation\[(-?\d+)\]\.(title|summary)$`)
+	patchFileChangeFieldSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]\.(filename|explanation)$`)
+	patchFileChangeSelectorRE      = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)
+	patchStepSelectorRE            = regexp.MustCompile(`^implementation\[(-?\d+)\]$`)
 )
 
 type patchFieldSelectorKind int
@@ -58,9 +53,9 @@ type patchOpKind int
 const (
 	patchOpUpdateField patchOpKind = iota + 1
 	patchOpUpdateDiff
-	patchOpAddItem
-	patchOpAddStep
 	patchOpAddFileChange
+	patchOpAddStep
+	patchOpAddItem
 )
 
 type patchOp struct {
@@ -69,10 +64,10 @@ type patchOp struct {
 	OldText     string
 	NewText     string
 	Expect      string
+	File        string
+	Explanation string
 	Title       string
 	Summary     string
-	Filename    string
-	Explanation string
 }
 
 func runPatch(args []string, stdout, stderr io.Writer) int {
@@ -120,7 +115,7 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 		reportError(stderr, "patch", cliErr)
 		return plannerExitCode(cliErr)
 	}
-	d := generateUnifiedDiff(sourcePath, string(sourceRaw), string(updatedRaw))
+	d := diffLines(string(sourceRaw), string(updatedRaw))
 	if err := WriteAtomic(outputPath, updatedRaw); err != nil {
 		reportError(stderr, "patch", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
 		return 1
@@ -163,14 +158,14 @@ func parsePlannerPatch(raw string) ([]patchOp, error) {
 		if err != nil {
 			return nil, err
 		}
-		if isSingleOpPatchKind(op.Kind) && len(ops) > 0 {
-			return nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("single-op patch forms must be the only patch operation"))
+		if op.Kind == patchOpUpdateDiff && len(ops) > 0 {
+			return nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff must be the only patch operation"))
 		}
 		ops = append(ops, op)
 		i = next
 	}
 
-	if len(ops) == 1 && isSingleOpPatchKind(ops[0].Kind) {
+	if len(ops) == 1 && ops[0].Kind == patchOpUpdateDiff {
 		return ops, nil
 	}
 	return nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("missing *** End Patch"))
@@ -194,58 +189,89 @@ func parsePlannerPatchOp(lines []string, start int) (patchOp, int, error) {
 		op.Kind = patchOpUpdateField
 	case "Update Diff":
 		op.Kind = patchOpUpdateDiff
-	case "Add Item":
-		op.Kind = patchOpAddItem
-	case "Add Step":
-		op.Kind = patchOpAddStep
 	case "Add File Change":
 		op.Kind = patchOpAddFileChange
+	case "Add Step":
+		op.Kind = patchOpAddStep
+	case "Add Item":
+		op.Kind = patchOpAddItem
 	default:
 		return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("unknown patch header %q", lines[start]))
 	}
 
-	switch op.Kind {
-	case patchOpUpdateDiff:
-		if start+1 >= len(lines) {
-			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff requires an Expect header"))
+	if op.Kind == patchOpUpdateDiff || op.Kind == patchOpAddFileChange || op.Kind == patchOpAddStep {
+		headersEnd := start + 1
+		for headersEnd < len(lines) {
+			line := lines[headersEnd]
+			if !strings.HasPrefix(line, "*** ") || isPatchOperationHeader(line) {
+				break
+			}
+			headersEnd++
 		}
-		expectLine := lines[start+1]
-		if !strings.HasPrefix(expectLine, "*** Expect: ") {
-			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff must place *** Expect immediately after the selector"))
-		}
-		op.Expect = strings.TrimSpace(strings.TrimPrefix(expectLine, "*** Expect: "))
-		if op.Expect == "" {
-			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff requires a non-empty Expect token"))
-		}
-		op.NewText = strings.Join(lines[start+2:], "\n")
-		return op, len(lines), nil
-	case patchOpAddStep:
-		title, summary, filename, explanation, diffBody, err := parsePatchAddStepBody(lines, start+1)
+		headers, _, err := splitPatchHeaders(lines[start+1 : headersEnd])
 		if err != nil {
 			return patchOp{}, 0, err
 		}
-		op.Title = title
-		op.Summary = summary
-		op.Filename = filename
-		op.Explanation = explanation
-		op.NewText = diffBody
-		return op, len(lines), nil
-	case patchOpAddFileChange:
-		filename, explanation, diffBody, err := parsePatchAddFileChangeBody(lines, start+1)
-		if err != nil {
-			return patchOp{}, 0, err
+		bodyEnd := len(lines)
+		for i := headersEnd; i < len(lines); i++ {
+			line := lines[i]
+			if strings.TrimSpace(line) == "*** End Patch" || isPatchOperationHeader(line) {
+				bodyEnd = i
+				break
+			}
 		}
-		op.Filename = filename
-		op.Explanation = explanation
-		op.NewText = diffBody
-		return op, len(lines), nil
+		if op.Kind == patchOpUpdateDiff && bodyEnd < len(lines) && strings.TrimSpace(lines[bodyEnd]) != "*** End Patch" {
+			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff must be the only patch operation"))
+		}
+		bodyLines := lines[headersEnd:bodyEnd]
+		switch op.Kind {
+		case patchOpUpdateDiff:
+			op.Expect = headers["Expect"]
+			op.File = headers["File"]
+			if op.Expect == "" || op.File == "" {
+				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update diff requires *** Expect and *** File headers"))
+			}
+			oldText, newText, err := parseSignedPatchBody(bodyLines, "update diff bodies")
+			if err != nil {
+				return patchOp{}, 0, err
+			}
+			op.OldText = oldText
+			op.NewText = newText
+		case patchOpAddFileChange:
+			op.File = headers["File"]
+			op.Explanation = headers["Explanation"]
+			if op.File == "" || op.Explanation == "" {
+				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add file change requires *** File and *** Explanation headers"))
+			}
+			oldText, newText, err := parseSignedPatchBody(bodyLines, "add file change bodies")
+			if err != nil {
+				return patchOp{}, 0, err
+			}
+			op.OldText = oldText
+			op.NewText = newText
+		case patchOpAddStep:
+			op.Title = headers["Title"]
+			op.Summary = headers["Summary"]
+			op.File = headers["File"]
+			op.Explanation = headers["Explanation"]
+			if op.Title == "" || op.Summary == "" || op.File == "" || op.Explanation == "" {
+				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add step requires *** Title, *** Summary, *** File, and *** Explanation headers"))
+			}
+			oldText, newText, err := parseSignedPatchBody(bodyLines, "add step bodies")
+			if err != nil {
+				return patchOp{}, 0, err
+			}
+			op.OldText = oldText
+			op.NewText = newText
+		}
+		return op, bodyEnd, nil
 	}
 
 	bodyLines := []string{}
 	next := len(lines)
 	for i := start + 1; i < len(lines); i++ {
 		line := lines[i]
-		if strings.HasPrefix(line, "*** ") {
+		if strings.TrimSpace(line) == "*** End Patch" || isPatchOperationHeader(line) {
 			next = i
 			break
 		}
@@ -254,30 +280,12 @@ func parsePlannerPatchOp(lines []string, start int) (patchOp, int, error) {
 
 	switch op.Kind {
 	case patchOpUpdateField:
-		var oldLines, newLines []string
-		minusPhase := true
-		for _, line := range bodyLines {
-			if line == "" {
-				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must prefix every line with + or -"))
-			}
-			switch line[0] {
-			case '-':
-				if !minusPhase {
-					return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must list - lines before + lines"))
-				}
-				oldLines = append(oldLines, line[1:])
-			case '+':
-				minusPhase = false
-				newLines = append(newLines, line[1:])
-			default:
-				return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies must prefix every line with + or -"))
-			}
+		oldText, newText, err := parseSignedPatchBody(bodyLines, "update field bodies")
+		if err != nil {
+			return patchOp{}, 0, err
 		}
-		if len(oldLines) == 0 || len(newLines) == 0 {
-			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("update field bodies require both - and + lines"))
-		}
-		op.OldText = strings.Join(oldLines, "\n")
-		op.NewText = strings.Join(newLines, "\n")
+		op.OldText = oldText
+		op.NewText = newText
 	case patchOpAddItem:
 		if len(bodyLines) != 1 {
 			return patchOp{}, 0, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("checklist edits must be single-line"))
@@ -307,7 +315,19 @@ func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
 			}
 			currentRaw = nextRaw
 		case patchOpUpdateDiff:
-			nextRaw, err := applyPlannerPatchDiff(currentRaw, parsed, op.Selector, op.Expect, op.NewText)
+			nextRaw, err := applyPlannerPatchGeneratedDiff(currentRaw, parsed, op)
+			if err != nil {
+				return nil, err
+			}
+			currentRaw = nextRaw
+		case patchOpAddFileChange:
+			nextRaw, err := applyPlannerPatchAddFileChange(currentRaw, parsed, op)
+			if err != nil {
+				return nil, err
+			}
+			currentRaw = nextRaw
+		case patchOpAddStep:
+			nextRaw, err := applyPlannerPatchAddStep(currentRaw, parsed, op)
 			if err != nil {
 				return nil, err
 			}
@@ -322,18 +342,6 @@ func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
 				return nil, err
 			}
 			currentRaw = nextRaw
-		case patchOpAddStep:
-			nextRaw, err := applyPlannerPatchAddStep(currentRaw, parsed, op)
-			if err != nil {
-				return nil, err
-			}
-			currentRaw = nextRaw
-		case patchOpAddFileChange:
-			nextRaw, err := applyPlannerPatchAddFileChange(currentRaw, parsed, op)
-			if err != nil {
-				return nil, err
-			}
-			currentRaw = nextRaw
 		default:
 			return nil, fmt.Errorf("unknown patch operation")
 		}
@@ -341,124 +349,130 @@ func applyPlannerPatch(sourceRaw []byte, ops []patchOp) ([]byte, error) {
 	return currentRaw, nil
 }
 
-func isSingleOpPatchKind(kind patchOpKind) bool {
-	switch kind {
-	case patchOpUpdateDiff, patchOpAddStep, patchOpAddFileChange:
+func isPatchOperationHeader(line string) bool {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(line, "*** "))
+	if trimmed == "End Patch" {
+		return true
+	}
+	verb, _, ok := strings.Cut(trimmed, ":")
+	if !ok {
+		return false
+	}
+	switch strings.TrimSpace(verb) {
+	case "Update Field", "Update Diff", "Add Item", "Add File Change", "Add Step":
 		return true
 	default:
 		return false
 	}
 }
 
-func parsePatchAddStepBody(lines []string, start int) (title, summary, filename, explanation, diffBody string, err error) {
-	if start+5 >= len(lines) {
-		return "", "", "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add step requires title, summary, filename, explanation, and diff headers"))
+func splitPatchHeaders(lines []string) (map[string]string, []string, error) {
+	headers := map[string]string{}
+	idx := 0
+	for idx < len(lines) {
+		line := lines[idx]
+		if !strings.HasPrefix(line, "*** ") {
+			break
+		}
+		nameValue := strings.TrimSpace(strings.TrimPrefix(line, "*** "))
+		name, value, ok := strings.Cut(nameValue, ":")
+		if !ok {
+			return nil, nil, newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("malformed patch header %q", line))
+		}
+		headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
+		idx++
 	}
-	title, err = parsePatchStructuredValue(lines[start], "*** Title: ", "add step title")
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	summary, err = parsePatchStructuredValue(lines[start+1], "*** Summary: ", "add step summary")
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	filename, err = parsePatchStructuredValue(lines[start+2], "*** Filename: ", "add step filename")
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	explanation, err = parsePatchStructuredValue(lines[start+3], "*** Explanation: ", "add step explanation")
-	if err != nil {
-		return "", "", "", "", "", err
-	}
-	if strings.TrimSpace(lines[start+4]) != "*** Diff:" {
-		return "", "", "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add step requires *** Diff after filename and explanation"))
-	}
-	diffBody = strings.Join(lines[start+5:], "\n")
-	if strings.TrimSpace(diffBody) == "" {
-		return "", "", "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add step requires a non-empty diff body"))
-	}
-	return title, summary, filename, explanation, diffBody, nil
+	return headers, lines[idx:], nil
 }
 
-func parsePatchAddFileChangeBody(lines []string, start int) (filename, explanation, diffBody string, err error) {
-	if start+3 >= len(lines) {
-		return "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add file change requires filename, explanation, and diff headers"))
+func parseSignedPatchBody(lines []string, subject string) (string, string, error) {
+	var oldLines, newLines []string
+	minusPhase := true
+	for _, line := range lines {
+		if line == "" {
+			return "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s must prefix every line with + or -", subject))
+		}
+		switch line[0] {
+		case '-':
+			if !minusPhase {
+				return "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s must list - lines before + lines", subject))
+			}
+			oldLines = append(oldLines, line[1:])
+		case '+':
+			minusPhase = false
+			newLines = append(newLines, line[1:])
+		default:
+			return "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s must prefix every line with + or -", subject))
+		}
 	}
-	filename, err = parsePatchStructuredValue(lines[start], "*** Filename: ", "add file change filename")
-	if err != nil {
-		return "", "", "", err
+	if len(newLines) == 0 {
+		return "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s require at least one + line", subject))
 	}
-	explanation, err = parsePatchStructuredValue(lines[start+1], "*** Explanation: ", "add file change explanation")
-	if err != nil {
-		return "", "", "", err
-	}
-	if strings.TrimSpace(lines[start+2]) != "*** Diff:" {
-		return "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add file change requires *** Diff after filename and explanation"))
-	}
-	diffBody = strings.Join(lines[start+3:], "\n")
-	if strings.TrimSpace(diffBody) == "" {
-		return "", "", "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("add file change requires a non-empty diff body"))
-	}
-	return filename, explanation, diffBody, nil
+	return strings.Join(oldLines, "\n"), strings.Join(newLines, "\n"), nil
 }
 
-func parsePatchStructuredValue(line, prefix, label string) (string, error) {
-	if !strings.HasPrefix(line, prefix) {
-		return "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s requires %s", label, prefix))
-	}
-	value := strings.TrimSpace(strings.TrimPrefix(line, prefix))
-	if value == "" {
-		return "", newReplaceError(ReplacePatchSyntaxError, fmt.Errorf("%s must not be empty", label))
-	}
-	return value, nil
-}
-
-func applyPlannerPatchAddStep(sourceRaw []byte, parsed ParseResult, op patchOp) ([]byte, error) {
-	if strings.TrimSpace(op.Selector) != "implementation" {
-		return nil, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", op.Selector))
-	}
-	plan := parsed.Plan
-	plan.Implementation = append(plan.Implementation, Step{
-		Title:   op.Title,
-		Summary: op.Summary,
-		FileChanges: []FileChange{{
-			Filename:    op.Filename,
-			Explanation: op.Explanation,
-			Diff:        op.NewText,
-		}},
-	})
-	if err := requireUniqueStepFilenames(plan); err != nil {
-		return nil, err
-	}
-	return renderPatchedPlan(sourceRaw, plan)
-}
-
-func applyPlannerPatchAddFileChange(sourceRaw []byte, parsed ParseResult, op patchOp) ([]byte, error) {
-	stepIdx, err := parsePatchImplementationSelector(op.Selector)
+func applyPlannerPatchGeneratedDiff(sourceRaw []byte, parsed ParseResult, op patchOp) ([]byte, error) {
+	stepIdx, changeIdx, err := parsePatchFileChangeSelector(op.Selector)
 	if err != nil {
 		return nil, err
 	}
 	if stepIdx > len(parsed.Plan.Implementation) {
 		return nil, patchSelectorRangeError(op.Selector, "step", stepIdx, len(parsed.Plan.Implementation))
 	}
-	plan := parsed.Plan
-	plan.Implementation[stepIdx-1].FileChanges = append(plan.Implementation[stepIdx-1].FileChanges, FileChange{
-		Filename:    op.Filename,
-		Explanation: op.Explanation,
-		Diff:        op.NewText,
-	})
-	if err := requireUniqueStepFilenames(plan); err != nil {
+	step := parsed.Plan.Implementation[stepIdx-1]
+	if changeIdx > len(step.FileChanges) {
+		return nil, patchSelectorRangeError(op.Selector, "file change", changeIdx, len(step.FileChanges))
+	}
+	change := step.FileChanges[changeIdx-1]
+	raw := rawAt(string(sourceRaw), parsed.DiffContents[stepIdx-1][changeIdx-1])
+	currentExpect := buildUpdateDiffExpect(op.Selector, change.Filename, change.Explanation, raw)
+	if op.Expect != currentExpect {
+		return nil, newReplaceError(ReplacePatchExpectMismatchError, fmt.Errorf("patch diff token mismatch for %s", op.Selector))
+	}
+	if op.File != change.Filename {
+		return nil, newReplaceError(ReplacePatchMismatchError, fmt.Errorf("patch filename mismatch for %s", op.Selector))
+	}
+	generated, err := generateUnifiedDiff(op.File, op.OldText, op.NewText)
+	if err != nil {
 		return nil, err
 	}
+	plan := parsed.Plan
+	plan.Implementation[stepIdx-1].FileChanges[changeIdx-1].Diff = generated
 	return renderPatchedPlan(sourceRaw, plan)
 }
 
-func parsePatchImplementationSelector(selector string) (int, error) {
-	match := patchImplementationSelectorRE.FindStringSubmatch(selector)
-	if match == nil {
-		return 0, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", selector))
+func applyPlannerPatchAddFileChange(sourceRaw []byte, parsed ParseResult, op patchOp) ([]byte, error) {
+	stepMatch := patchStepSelectorRE.FindStringSubmatch(op.Selector)
+	if stepMatch == nil {
+		return nil, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", op.Selector))
 	}
-	return parsePatchSelectorIndex(match[1], selector, "step")
+	stepIdx, err := parsePatchSelectorIndex(stepMatch[1], op.Selector, "step")
+	if err != nil {
+		return nil, err
+	}
+	if stepIdx > len(parsed.Plan.Implementation) {
+		return nil, patchSelectorRangeError(op.Selector, "step", stepIdx, len(parsed.Plan.Implementation))
+	}
+	generated, err := generateUnifiedDiff(op.File, op.OldText, op.NewText)
+	if err != nil {
+		return nil, err
+	}
+	plan := parsed.Plan
+	plan.Implementation[stepIdx-1].FileChanges = append(plan.Implementation[stepIdx-1].FileChanges, FileChange{Filename: op.File, Explanation: op.Explanation, Diff: generated})
+	return renderPatchedPlan(sourceRaw, plan)
+}
+
+func applyPlannerPatchAddStep(sourceRaw []byte, parsed ParseResult, op patchOp) ([]byte, error) {
+	if op.Selector != "implementation" {
+		return nil, newReplaceError(ReplacePatchSelectorError, fmt.Errorf("unsupported patch selector %q", op.Selector))
+	}
+	generated, err := generateUnifiedDiff(op.File, op.OldText, op.NewText)
+	if err != nil {
+		return nil, err
+	}
+	plan := parsed.Plan
+	plan.Implementation = append(plan.Implementation, Step{Title: op.Title, Summary: op.Summary, FileChanges: []FileChange{{Filename: op.File, Explanation: op.Explanation, Diff: generated}}})
+	return renderPatchedPlan(sourceRaw, plan)
 }
 
 func parsePatchFileChangeSelector(selector string) (int, int, error) {
@@ -475,32 +489,6 @@ func parsePatchFileChangeSelector(selector string) (int, int, error) {
 		return 0, 0, err
 	}
 	return stepIdx, changeIdx, nil
-}
-
-func applyPlannerPatchDiff(sourceRaw []byte, parsed ParseResult, selector, expect, newText string) ([]byte, error) {
-	stepIdx, changeIdx, err := parsePatchFileChangeSelector(selector)
-	if err != nil {
-		return nil, err
-	}
-	if stepIdx > len(parsed.Plan.Implementation) {
-		return nil, patchSelectorRangeError(selector, "step", stepIdx, len(parsed.Plan.Implementation))
-	}
-	step := parsed.Plan.Implementation[stepIdx-1]
-	if changeIdx > len(step.FileChanges) {
-		return nil, patchSelectorRangeError(selector, "file change", changeIdx, len(step.FileChanges))
-	}
-	change := step.FileChanges[changeIdx-1]
-	raw := rawAt(string(sourceRaw), parsed.DiffContents[stepIdx-1][changeIdx-1])
-	currentExpect := buildUpdateDiffExpect(selector, change.Filename, change.Explanation, raw)
-	if expect != currentExpect {
-		return nil, newReplaceError(ReplacePatchExpectMismatchError, fmt.Errorf("patch diff token mismatch for %s", selector))
-	}
-	opts := ReplaceOptions{Section: "implementation", Subsection: strconv.Itoa(stepIdx), Field: "diff"}
-	out, _, err := spliceImplementationDiffByIndex(string(sourceRaw), parsed.Plan, parsed.DiffContents, opts, stepIdx, changeIdx, newText)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(out), nil
 }
 
 func renderPatchedPlan(sourceRaw []byte, plan Plan) ([]byte, error) {
