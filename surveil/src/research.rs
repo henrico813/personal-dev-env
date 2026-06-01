@@ -225,6 +225,8 @@ mod tests {
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![],
+                    missing_explicit_files: Vec::new(),
+                    skipped_explicit_files: Vec::new(),
                     search_areas: vec!["docs/".to_string(), "src/".to_string()],
                     query: vec![
                         "Where should attach handler live?".to_string(),
