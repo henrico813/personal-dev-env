@@ -117,6 +117,7 @@ pub(crate) fn search_open_chunk_index(
     Ok(ranked)
 }
 
+#[cfg(test)]
 pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dyn Error>> {
     Ok(resolve_open_chunk_index(repo_root)?.0)
 }
@@ -124,6 +125,7 @@ pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dy
 fn resolve_open_chunk_index(
     repo_root: &Path,
 ) -> Result<(IndexState, Option<OpenChunkIndex>), Box<dyn Error>> {
+    // Startup inspection decides whether the whole run may use indexed ranking.
     if !repo_root.join(INDEX_DIR).is_dir() {
         return Ok((IndexState::Missing, None));
     }
@@ -686,6 +688,49 @@ mod tests {
         assert!(ranked
             .iter()
             .all(|item| item.chunk.source.display_path() == "src/lib.rs"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn search_open_chunk_index_skips_empty_queries() {
+        let repo = temp_repo("search-guards");
+        write_note(&repo, "src/lib.rs", "fn attach_handler() {\n    // attach handler\n}\n");
+
+        build_chunk_index(&repo).expect("build chunk index");
+
+        let mut skipped_paths = Vec::new();
+        let scoped = source::collect_candidate_files(
+            &repo,
+            &["src/".to_string()],
+            &[],
+            &mut skipped_paths,
+        )
+        .expect("collect scoped files");
+        let open_index = open_chunk_index_for_run(&repo)
+            .expect("open chunk index")
+            .expect("usable index");
+
+        assert!(search_open_chunk_index(
+            &open_index,
+            &scoped,
+            &SearchQuery {
+                tokens: Vec::new(),
+                limit: 4,
+            },
+        )
+        .expect("empty query")
+        .is_empty());
+        assert!(search_open_chunk_index(
+            &open_index,
+            &scoped,
+            &SearchQuery {
+                tokens: vec!["attach".to_string()],
+                limit: 0,
+            },
+        )
+        .expect("zero limit")
+        .is_empty());
 
         let _ = fs::remove_dir_all(repo);
     }
