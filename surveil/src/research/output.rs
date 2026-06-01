@@ -34,12 +34,13 @@ fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, Trac
         &mut trace,
     )?;
     let mut live_cache = LiveFileCache::new();
+    let ranker = rank::build_run_ranker(&repo_root)?;
     let mut result = Vec::with_capacity(gather.query.len());
 
     for query in &gather.query {
         let tokens = tokenize::create_search_tokens(&gather.terms, query);
         let (ranked_scores, ordered_candidates) =
-            rank::rank_query_candidates(&repo_root, &candidates, &tokens)?;
+            ranker.rank_query_candidates(&candidates, &tokens)?;
         let (findings, negative_evidence) = scan::create_answer_from_sources(
             &repo_root,
             &gather.search_areas,
@@ -98,9 +99,10 @@ pub(super) fn create_test_answer(
 ) -> Result<(Vec<crate::schema::Finding>, Vec<String>), Box<dyn Error>> {
     let candidates = setup::collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
     let mut live_cache = LiveFileCache::new();
+    let ranker = rank::build_run_ranker(repo_root)?;
     let tokens = tokenize::create_search_tokens(terms, question);
     let (ranked_scores, ordered_candidates) =
-        rank::rank_query_candidates(repo_root, &candidates, &tokens)?;
+        ranker.rank_query_candidates(&candidates, &tokens)?;
     scan::create_answer_from_sources(
         repo_root,
         search_areas,
