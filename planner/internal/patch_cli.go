@@ -491,32 +491,6 @@ func parsePatchFileChangeSelector(selector string) (int, int, error) {
 	return stepIdx, changeIdx, nil
 }
 
-func applyPlannerPatchDiff(sourceRaw []byte, parsed ParseResult, selector, expect, newText string) ([]byte, error) {
-	stepIdx, changeIdx, err := parsePatchFileChangeSelector(selector)
-	if err != nil {
-		return nil, err
-	}
-	if stepIdx > len(parsed.Plan.Implementation) {
-		return nil, patchSelectorRangeError(selector, "step", stepIdx, len(parsed.Plan.Implementation))
-	}
-	step := parsed.Plan.Implementation[stepIdx-1]
-	if changeIdx > len(step.FileChanges) {
-		return nil, patchSelectorRangeError(selector, "file change", changeIdx, len(step.FileChanges))
-	}
-	change := step.FileChanges[changeIdx-1]
-	raw := rawAt(string(sourceRaw), parsed.DiffContents[stepIdx-1][changeIdx-1])
-	currentExpect := buildUpdateDiffExpect(selector, change.Filename, change.Explanation, raw)
-	if expect != currentExpect {
-		return nil, newReplaceError(ReplacePatchExpectMismatchError, fmt.Errorf("patch diff token mismatch for %s", selector))
-	}
-	opts := ReplaceOptions{Section: "implementation", Subsection: strconv.Itoa(stepIdx), Field: "diff"}
-	out, _, err := spliceImplementationDiffByIndex(string(sourceRaw), parsed.Plan, parsed.DiffContents, opts, stepIdx, changeIdx, newText)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(out), nil
-}
-
 func renderPatchedPlan(sourceRaw []byte, plan Plan) ([]byte, error) {
 	if err := ValidatePlan(plan); err != nil {
 		return nil, newReplaceError(ReplaceValidateResultError, err)

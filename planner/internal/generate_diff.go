@@ -23,7 +23,7 @@ func renderUnifiedDiff(filename, beforeText, afterText string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	beforePath := filepath.Join(tmpDir, "before.txt")
 	afterPath := filepath.Join(tmpDir, "after.txt")

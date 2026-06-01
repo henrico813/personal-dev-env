@@ -245,7 +245,7 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 		"*** File: <path>",
 		"*** Add File Change: implementation[N]",
 		"*** Add Step: implementation",
-		"diff-bearing patch ops generate their stored unified diff.",
+		"Diff-bearing patch ops generate their stored unified diff.",
 		"implementation[N].title",
 		"implementation[N].summary",
 		"implementation[N].file_changes[N].filename",
@@ -680,10 +680,14 @@ func TestPatchRejectsUnsupportedSelector(t *testing.T) {
 
 func TestPatchHandlesDiffEditsWithoutBehavioralFallback(t *testing.T) {
 	path := writeBehavioralPlan(t, t.TempDir())
-	repoFile := filepath.Join(t.TempDir(), "patch-source.txt")
+	repoFile := filepath.Join("planner", "internal", "testdata", "patch-source.txt")
+	if err := os.MkdirAll(filepath.Dir(repoFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(repoFile, []byte("old\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = os.Remove(repoFile) })
 	var stdout, stderr bytes.Buffer
 	runPlannerOK(t, []string{"patch", path}, []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].filename\n-f\n+"+repoFile+"\n*** End Patch\n"))
 	expect := patchDiffExpect(t, path)
@@ -851,14 +855,21 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 		}
 	})
 
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "g", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
+	repoFile := filepath.Join("planner", "internal", "testdata", "behavioral-add.txt")
+	if err := os.MkdirAll(filepath.Dir(repoFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(repoFile, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(repoFile) })
+	runPlannerOK(t, []string{"patch", out}, []byte("*** Begin Patch\n*** Add File Change: implementation[1]\n*** File: "+repoFile+"\n*** Explanation: second\n-x\n+y\n*** End Patch\n"))
 	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", out, out, "--step", "1", "--change", "2", "renamed"}, nil)
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", out, out, "--step", "1", "--change", "2", "--stdin"}, []byte("raw diff bytes"))
 	assertParsed(t, out, func(p Plan) {
 		if got := p.Implementation[0].FileChanges[1].Filename; got != "renamed" {
 			t.Fatalf("second filename=%q", got)
 		}
-		if got := p.Implementation[0].FileChanges[1].Diff; got != "raw diff bytes" {
+		if got := p.Implementation[0].FileChanges[1].Diff; !strings.Contains(got, "diff --git a/") {
 			t.Fatalf("second diff=%q", got)
 		}
 	})
