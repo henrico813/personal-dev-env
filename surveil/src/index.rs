@@ -125,7 +125,6 @@ pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dy
 fn resolve_open_chunk_index(
     repo_root: &Path,
 ) -> Result<(IndexState, Option<OpenChunkIndex>), Box<dyn Error>> {
-    // Startup inspection decides whether the whole run may use indexed ranking.
     if !repo_root.join(INDEX_DIR).is_dir() {
         return Ok((IndexState::Missing, None));
     }
