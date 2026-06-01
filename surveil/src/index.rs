@@ -117,7 +117,6 @@ pub(crate) fn search_open_chunk_index(
     Ok(ranked)
 }
 
-#[cfg(test)]
 pub(crate) fn inspect_chunk_index(repo_root: &Path) -> Result<IndexState, Box<dyn Error>> {
     Ok(resolve_open_chunk_index(repo_root)?.0)
 }
