@@ -13,15 +13,7 @@ local function resolve_vault_path(key)
     return persisted
   end
 
-  local path = vim.env[key]
-  if type(path) ~= "string" or path == "" then
-    return path
-  end
-  if path == "~" or path:match("^~/") then
-    path = vim.fn.expand(path)
-  elseif not path:match("^/") then
-    path = vim.fn.fnamemodify(path, ":p")
-  end
+  local path = pde_paths.normalize_path(vim.env[key])
 
   vim.env[key] = path
   return path
