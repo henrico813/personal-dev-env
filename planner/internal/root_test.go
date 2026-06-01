@@ -1111,18 +1111,6 @@ func validPlanJSON() []byte {
 	})
 }
 
-func validPlanJSONMap(t *testing.T, kv map[string]any) []byte {
-	t.Helper()
-	var doc map[string]any
-	if err := json.Unmarshal(validPlanJSON(), &doc); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-	for key, value := range kv {
-		doc[key] = value
-	}
-	return mustJSON(doc)
-}
-
 func mustJSON(v any) []byte {
 	raw, err := json.Marshal(v)
 	if err != nil {
