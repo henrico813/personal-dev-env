@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     let task_text = fs::read_to_string(task_file)?;
@@ -286,54 +286,77 @@ investigate attachment points
         assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
     }
 
-    #[test]
-    fn explicit_file_validation_keeps_missing_and_skipped_paths() {
-        let repo = temp_repo("keeps-paths");
-        write_file(&repo.join("src/lib.rs"), "fn main() {}\n");
-
-        let validated = validate_explicit_files(
-            &repo,
-            &vec![
-                "docs/future.md".to_string(),
-                ".surveil/index.sqlite".to_string(),
-                "src/lib.rs".to_string(),
-            ],
-        )
-        .expect("validate explicit files");
-
-        assert_eq!(
-            validated,
-            ValidatedExplicitFiles {
-                explicit_files: vec![
-                    ExplicitFile {
-                        path: "docs/future.md".to_string(),
-                        found: false,
-                    },
-                    ExplicitFile {
-                        path: ".surveil/index.sqlite".to_string(),
-                        found: false,
-                    },
-                    ExplicitFile {
-                        path: "src/lib.rs".to_string(),
-                        found: true,
-                    },
-                ],
-                missing_explicit_files: vec!["docs/future.md".to_string()],
-                skipped_explicit_files: vec![".surveil/index.sqlite".to_string()],
-            }
-        );
-
-        let _ = fs::remove_dir_all(repo);
+    struct ValidationCase {
+        name: &'static str,
+        dirs: Vec<&'static str>,
+        files: Vec<(&'static str, &'static str)>,
+        explicit_files: Vec<String>,
+        expected: Result<ValidatedExplicitFiles, &'static str>,
     }
 
     #[test]
-    fn explicit_file_validation_rejects_existing_directories() {
-        let repo = temp_repo("reject-dir");
-        fs::create_dir_all(repo.join("src")).expect("create dir");
+    fn explicit_file_validation_case_tables() {
+        let cases = vec![
+            ValidationCase {
+                name: "keeps-missing-and-skipped-paths",
+                dirs: vec![],
+                files: vec![("src/lib.rs", "fn main() {}\n")],
+                explicit_files: vec![
+                    "docs/future.md".to_string(),
+                    ".surveil/index.sqlite".to_string(),
+                    "src/lib.rs".to_string(),
+                ],
+                expected: Ok(ValidatedExplicitFiles {
+                    explicit_files: vec![
+                        ExplicitFile {
+                            path: "docs/future.md".to_string(),
+                            found: false,
+                        },
+                        ExplicitFile {
+                            path: ".surveil/index.sqlite".to_string(),
+                            found: false,
+                        },
+                        ExplicitFile {
+                            path: "src/lib.rs".to_string(),
+                            found: true,
+                        },
+                    ],
+                    missing_explicit_files: vec!["docs/future.md".to_string()],
+                    skipped_explicit_files: vec![".surveil/index.sqlite".to_string()],
+                }),
+            },
+            ValidationCase {
+                name: "rejects-existing-directory",
+                dirs: vec!["src"],
+                files: vec![],
+                explicit_files: vec!["src".to_string()],
+                expected: Err("not a file"),
+            },
+        ];
 
-        let err = validate_explicit_files(&repo, &["src".to_string()]).expect_err("reject directory");
-        assert!(err.to_string().contains("not a file"));
+        for case in &cases {
+            let repo = temp_repo(case.name);
+            for dir in &case.dirs {
+                fs::create_dir_all(repo.join(dir)).expect("create dir");
+            }
+            for (path, content) in &case.files {
+                write_file(&repo.join(path), content);
+            }
 
-        let _ = fs::remove_dir_all(repo);
+            match &case.expected {
+                Ok(expected) => {
+                    let validated = validate_explicit_files(&repo, &case.explicit_files)
+                        .expect("validate explicit files");
+                    assert_eq!(&validated, expected, "case: {}", case.name);
+                }
+                Err(expected_fragment) => {
+                    let err = validate_explicit_files(&repo, &case.explicit_files)
+                        .expect_err("reject invalid explicit path");
+                    assert!(err.to_string().contains(expected_fragment), "case: {}", case.name);
+                }
+            }
+
+            let _ = fs::remove_dir_all(repo);
+        }
     }
 }
