@@ -7,18 +7,48 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
+pub(super) struct RunRanker {
+    open_index: Option<index::OpenChunkIndex>,
+}
+
+pub(super) fn build_run_ranker(repo_root: &Path) -> Result<RunRanker, Box<dyn Error>> {
+    Ok(RunRanker {
+        open_index: index::open_chunk_index_for_run(repo_root)?,
+    })
+}
+
+impl RunRanker {
+    pub(super) fn rank_query_candidates(
+        &mut self,
+        candidates: &[SourceFile],
+        tokens: &[String],
+    ) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
+        let ranked_scores = {
+            let Some(open_index) = self.open_index.as_ref() else {
+                return Ok((HashMap::new(), candidates.to_vec()));
+            };
+            rank_candidate_files(open_index, candidates, tokens)
+        };
+        let ranked_scores = match ranked_scores {
+            Ok(ranked_scores) => ranked_scores,
+            Err(_) => {
+                self.open_index = None;
+                return Ok((HashMap::new(), candidates.to_vec()));
+            }
+        };
+
+        let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
+        Ok((ranked_scores, ordered_candidates))
+    }
+}
+
 pub(super) fn rank_query_candidates(
     repo_root: &Path,
     candidates: &[SourceFile],
     tokens: &[String],
 ) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
-    if index::inspect_chunk_index(repo_root)? != index::IndexState::Usable {
-        return Ok((HashMap::new(), candidates.to_vec()));
-    }
-
-    let ranked_scores = rank_candidate_files(repo_root, candidates, tokens)?;
-    let ordered_candidates = order_query_candidates(candidates, &ranked_scores);
-    Ok((ranked_scores, ordered_candidates))
+    let mut ranker = build_run_ranker(repo_root)?;
+    ranker.rank_query_candidates(candidates, tokens)
 }
 
 pub(super) fn compare_best_chunk_score(
@@ -34,12 +64,12 @@ pub(super) fn compare_best_chunk_score(
 }
 
 fn rank_candidate_files(
-    repo_root: &Path,
+    open_index: &index::OpenChunkIndex,
     candidates: &[SourceFile],
     tokens: &[String],
 ) -> Result<HashMap<PathBuf, f32>, Box<dyn Error>> {
-    let ranked_chunks = index::search_chunk_index(
-        repo_root,
+    let ranked_chunks = index::search_open_chunk_index(
+        open_index,
         candidates,
         &SearchQuery {
             tokens: tokens.to_vec(),

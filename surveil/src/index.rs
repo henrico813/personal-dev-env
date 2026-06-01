@@ -19,6 +19,11 @@ const INDEX_FORMAT_VERSION: u32 = 1;
 const SCHEMA_VERSION: u32 = 1;
 const CHUNK_LAYOUT_VERSION: u32 = 1;
 
+#[derive(Debug)]
+pub(crate) struct OpenChunkIndex {
+    index: Index,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IndexState {
     Usable,
@@ -48,8 +53,35 @@ pub fn build_chunk_index(repo_root: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub(crate) fn open_chunk_index_for_run(
+    repo_root: &Path,
+) -> Result<Option<OpenChunkIndex>, Box<dyn Error>> {
+    if inspect_chunk_index(repo_root)? != IndexState::Usable {
+        return Ok(None);
+    }
+
+    Ok(Some(OpenChunkIndex {
+        index: open_existing_chunk_index(repo_root)?,
+    }))
+}
+
 pub(crate) fn search_chunk_index(
     repo_root: &Path,
+    scoped_files: &[SourceFile],
+    query: &SearchQuery,
+) -> Result<Vec<RankedChunk>, Box<dyn Error>> {
+    if inspect_chunk_index(repo_root)? != IndexState::Usable {
+        return Ok(Vec::new());
+    }
+
+    let open_index = OpenChunkIndex {
+        index: open_existing_chunk_index(repo_root)?,
+    };
+    search_open_chunk_index(&open_index, scoped_files, query)
+}
+
+pub(crate) fn search_open_chunk_index(
+    open_index: &OpenChunkIndex,
     scoped_files: &[SourceFile],
     query: &SearchQuery,
 ) -> Result<Vec<RankedChunk>, Box<dyn Error>> {
@@ -57,11 +89,7 @@ pub(crate) fn search_chunk_index(
         return Ok(Vec::new());
     }
 
-    if inspect_chunk_index(repo_root)? != IndexState::Usable {
-        return Ok(Vec::new());
-    }
-
-    let index = open_existing_chunk_index(repo_root)?;
+    let index = &open_index.index;
     let schema = index.schema();
     let fields = schema::IndexFields::from_schema(&schema);
     let source_by_path: HashMap<String, SourceFile> = scoped_files
@@ -74,7 +102,7 @@ pub(crate) fn search_chunk_index(
     let reader = index.reader()?;
     let searcher = reader.searcher();
     let parser = QueryParser::for_index(
-        &index,
+        index,
         vec![
             fields.text,
             fields.symbol_name,
