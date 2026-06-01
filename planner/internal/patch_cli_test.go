@@ -18,16 +18,29 @@ func TestPatchParsesTrailingNewline(t *testing.T) {
 	}
 }
 
-func TestPatchParsesUpdateDiffEOFBody(t *testing.T) {
-	ops, err := parsePlannerPatch("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:abc\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw")
+func TestPatchParsesUpdateDiffIntentBody(t *testing.T) {
+	ops, err := parsePlannerPatch("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:abc\n*** File: planner/internal/root.go\n-old\n+new\n*** End Patch\n")
 	if err != nil {
 		t.Fatalf("parsePlannerPatch: %v", err)
 	}
-	if len(ops) != 1 || ops[0].Kind != patchOpUpdateDiff || ops[0].Expect != "sha256:abc" {
+	if len(ops) != 1 || ops[0].Kind != patchOpUpdateDiff || ops[0].Expect != "sha256:abc" || ops[0].File != "planner/internal/root.go" {
 		t.Fatalf("unexpected ops: %+v", ops)
 	}
-	if !strings.Contains(ops[0].NewText, "*** literal content stays raw") {
-		t.Fatalf("raw diff body was truncated: %+v", ops[0])
+	if ops[0].OldText != "old" || ops[0].NewText != "new" {
+		t.Fatalf("unexpected body: %+v", ops)
+	}
+}
+
+func TestPatchParsesAddStepIntentBody(t *testing.T) {
+	ops, err := parsePlannerPatch("*** Begin Patch\n*** Add Step: implementation\n*** Title: T\n*** Summary: S\n*** File: f\n*** Explanation: E\n-old\n+new\n*** End Patch\n")
+	if err != nil {
+		t.Fatalf("parsePlannerPatch: %v", err)
+	}
+	if len(ops) != 1 || ops[0].Kind != patchOpAddStep || ops[0].Title != "T" || ops[0].Summary != "S" || ops[0].File != "f" {
+		t.Fatalf("unexpected ops: %+v", ops)
+	}
+	if ops[0].OldText != "old" || ops[0].NewText != "new" {
+		t.Fatalf("unexpected body: %+v", ops)
 	}
 }
 
@@ -51,7 +64,7 @@ func TestPatchCommandStdout(t *testing.T) {
 				return "*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n"
 			},
 			wantExit:   0,
-			wantStdout: []string{"--- ", "+++ ", "-# T", "+# Renamed"},
+			wantStdout: []string{"- # T", "+ # Renamed"},
 			check: func(t *testing.T, sourcePath, _ string) {
 				t.Helper()
 				parsed := parseOutputPlan(t, sourcePath)
@@ -68,15 +81,37 @@ func TestPatchCommandStdout(t *testing.T) {
 			patch: func(t *testing.T, sourcePath string) string {
 				t.Helper()
 				expect := patchDiffExpect(t, sourcePath)
-				return "*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n@@ -1 +1 @@\n-old\n+new\n*** literal content stays raw"
+				return "*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: " + expect + "\n*** File: f\n-old\n+new\n*** End Patch\n"
 			},
 			wantExit:   0,
-			wantStdout: []string{"--- ", "+++ ", "*** literal content stays raw"},
+			wantStdout: []string{"diff --git a/f b/f"},
 			check: func(t *testing.T, sourcePath, _ string) {
 				t.Helper()
 				parsed := parseOutputPlan(t, sourcePath)
-				if !strings.Contains(parsed.Implementation[0].FileChanges[0].Diff, "*** literal content stays raw") {
-					t.Fatalf("diff missing literal stars")
+				if !strings.Contains(parsed.Implementation[0].FileChanges[0].Diff, "diff --git a/f b/f") {
+					t.Fatalf("diff missing generated header")
+				}
+			},
+		},
+		{
+			name: "add_file_change_same_path",
+			args: func(sourcePath, _ string) []string {
+				return []string{"patch", sourcePath}
+			},
+			patch: func(t *testing.T, _ string) string {
+				t.Helper()
+				return "*** Begin Patch\n*** Add File Change: implementation[1]\n*** File: added.go\n*** Explanation: second change\n-x\n+y\n*** End Patch\n"
+			},
+			wantExit:   0,
+			wantStdout: []string{"diff --git a/added.go b/added.go"},
+			check: func(t *testing.T, sourcePath, _ string) {
+				t.Helper()
+				parsed := parseOutputPlan(t, sourcePath)
+				if len(parsed.Implementation[0].FileChanges) != 2 {
+					t.Fatalf("file changes=%d", len(parsed.Implementation[0].FileChanges))
+				}
+				if !strings.Contains(parsed.Implementation[0].FileChanges[1].Diff, "diff --git a/added.go b/added.go") {
+					t.Fatalf("added diff missing generated header")
 				}
 			},
 		},
@@ -90,7 +125,7 @@ func TestPatchCommandStdout(t *testing.T) {
 				return "*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n"
 			},
 			wantExit:   0,
-			wantStdout: []string{"--- ", "+++ ", "-# T", "+# Renamed"},
+			wantStdout: []string{"- # T", "+ # Renamed"},
 			check: func(t *testing.T, sourcePath, outPath string) {
 				t.Helper()
 				if parsed := parseOutputPlan(t, sourcePath); parsed.Title != "T" {
@@ -179,40 +214,6 @@ func TestPatchParsesFileChangeSelector(t *testing.T) {
 	}
 }
 
-func TestPatchParsesAddStepStructuredBody(t *testing.T) {
-	patch := "*** Begin Patch\n*** Add Step: implementation\n*** Title: New step\n*** Summary: Explain the step\n*** Filename: added.go\n*** Explanation: add the file\n*** Diff:\n@@ -1 +1 @@\n-old\n+new"
-	ops, err := parsePlannerPatch(patch)
-	if err != nil {
-		t.Fatalf("parsePlannerPatch: %v", err)
-	}
-	if len(ops) != 1 || ops[0].Kind != patchOpAddStep {
-		t.Fatalf("unexpected ops: %+v", ops)
-	}
-	if ops[0].Title != "New step" || ops[0].Summary != "Explain the step" || ops[0].Filename != "added.go" || ops[0].Explanation != "add the file" {
-		t.Fatalf("unexpected add-step metadata: %+v", ops[0])
-	}
-	if !strings.Contains(ops[0].NewText, "@@ -1 +1 @@") || !strings.Contains(ops[0].NewText, "+new") {
-		t.Fatalf("unexpected diff body: %+v", ops[0])
-	}
-}
-
-func TestPatchParsesAddFileChangeStructuredBody(t *testing.T) {
-	patch := "*** Begin Patch\n*** Add File Change: implementation[2]\n*** Filename: added.go\n*** Explanation: add another file\n*** Diff:\n@@ -1 +1 @@\n-old\n+new"
-	ops, err := parsePlannerPatch(patch)
-	if err != nil {
-		t.Fatalf("parsePlannerPatch: %v", err)
-	}
-	if len(ops) != 1 || ops[0].Kind != patchOpAddFileChange || ops[0].Selector != "implementation[2]" {
-		t.Fatalf("unexpected ops: %+v", ops)
-	}
-	if ops[0].Filename != "added.go" || ops[0].Explanation != "add another file" {
-		t.Fatalf("unexpected add-file-change metadata: %+v", ops[0])
-	}
-	if !strings.Contains(ops[0].NewText, "@@ -1 +1 @@") || !strings.Contains(ops[0].NewText, "+new") {
-		t.Fatalf("unexpected diff body: %+v", ops[0])
-	}
-}
-
 func TestPatchRejectsZeroOrMalformedSelectorIndex(t *testing.T) {
 	for _, selector := range []string{
 		"implementation[0].summary",
@@ -282,59 +283,6 @@ func TestPatchUpdatesFileChangeFields(t *testing.T) {
 	}
 	if parsed.Implementation[0].FileChanges[0].Explanation != "updated explanation" {
 		t.Fatalf("explanation=%q", parsed.Implementation[0].FileChanges[0].Explanation)
-	}
-}
-
-func TestPatchAddsImplementationStep(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := writeBehavioralPlan(t, dir)
-	patch := "*** Begin Patch\n*** Add Step: implementation\n*** Title: New step\n*** Summary: New step summary\n*** Filename: added.go\n*** Explanation: add a file\n*** Diff:\n@@ -1 +1 @@\n-old\n+new"
-
-	var stdout, stderr bytes.Buffer
-	withStdin(t, []byte(patch), func() {
-		if exit := Execute([]string{"patch", sourcePath}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
-		}
-	})
-
-	parsed := parseOutputPlan(t, sourcePath)
-	if len(parsed.Implementation) != 2 {
-		t.Fatalf("implementation steps=%d", len(parsed.Implementation))
-	}
-	last := parsed.Implementation[1]
-	if last.Title != "New step" || last.Summary != "New step summary" {
-		t.Fatalf("unexpected step: %#v", last)
-	}
-	if len(last.FileChanges) != 1 || last.FileChanges[0].Filename != "added.go" || last.FileChanges[0].Explanation != "add a file" {
-		t.Fatalf("unexpected file change: %#v", last.FileChanges)
-	}
-	if !strings.Contains(last.FileChanges[0].Diff, "+new") {
-		t.Fatalf("diff missing new content: %#v", last.FileChanges[0])
-	}
-}
-
-func TestPatchAddsImplementationFileChange(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := writeBehavioralPlan(t, dir)
-	patch := "*** Begin Patch\n*** Add File Change: implementation[1]\n*** Filename: added.go\n*** Explanation: add a file change\n*** Diff:\n@@ -1 +1 @@\n-old\n+new"
-
-	var stdout, stderr bytes.Buffer
-	withStdin(t, []byte(patch), func() {
-		if exit := Execute([]string{"patch", sourcePath}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
-		}
-	})
-
-	parsed := parseOutputPlan(t, sourcePath)
-	if len(parsed.Implementation[0].FileChanges) != 2 {
-		t.Fatalf("file changes=%d", len(parsed.Implementation[0].FileChanges))
-	}
-	last := parsed.Implementation[0].FileChanges[1]
-	if last.Filename != "added.go" || last.Explanation != "add a file change" {
-		t.Fatalf("unexpected file change: %#v", last)
-	}
-	if !strings.Contains(last.Diff, "+new") {
-		t.Fatalf("diff missing new content: %#v", last)
 	}
 }
 

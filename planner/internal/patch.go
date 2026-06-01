@@ -607,17 +607,6 @@ func spliceDiffField(source string, opts ReplaceOptions, patchRaw []byte, plan P
 	return finalizeFieldPatch(splice(source, span, string(patchRaw)), opts)
 }
 
-func spliceImplementationDiffByIndex(source string, plan Plan, diffSpans [][]Span, opts ReplaceOptions, stepIdx, changeIdx int, value string) (string, ReplaceResult, error) {
-	if stepIdx < 1 || stepIdx > len(plan.Implementation) {
-		return "", ReplaceResult{}, newReplaceError(ReplaceInvalidOptionsError, fmt.Errorf("step index %d invalid (have %d steps)", stepIdx, len(plan.Implementation)))
-	}
-	if err := requireFileChangeIndex(plan, stepIdx, changeIdx); err != nil {
-		return "", ReplaceResult{}, err
-	}
-	span := diffSpans[stepIdx-1][changeIdx-1]
-	return finalizeFieldPatch(splice(source, span, value), opts)
-}
-
 func decodePatch(patchRaw []byte, target any) error {
 	return newReplaceError(ReplaceDecodePatchError, DecodeStrict(patchRaw, target))
 }

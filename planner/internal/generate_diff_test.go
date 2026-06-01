@@ -1,28 +1,100 @@
 package internal
 
-import "testing"
+import (
+	"testing"
 
-func TestGenerateUnifiedDiffReturnsEmptyOnEqual(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		oldText string
-		newText string
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGenerateUnifiedDiffOutput(t *testing.T) {
+	diff, err := generateUnifiedDiff(
+		"planner/internal/example.go",
+		"func old() string {\n\treturn \"old\"\n}\n",
+		"func old() string {\n\treturn \"new\"\n}\n",
+	)
+	require.NoError(t, err)
+
+	assert.Contains(t, diff, "diff --git a/planner/internal/example.go b/planner/internal/example.go")
+	assert.Contains(t, diff, "--- a/planner/internal/example.go")
+	assert.Contains(t, diff, "+++ b/planner/internal/example.go")
+	assert.Contains(t, diff, "@@")
+	assert.Contains(t, diff, "-\treturn \"old\"")
+	assert.Contains(t, diff, "+\treturn \"new\"")
+}
+
+func TestGenerateUnifiedDiffErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		oldText  string
+		newText  string
+		wantErr  string
 	}{
-		{name: "same_text", oldText: "a\nb\n", newText: "a\nb\n"},
-		{name: "trailing_newline_only", oldText: "a\n", newText: "a"},
-	} {
+		{
+			name:     "invalid filename",
+			filename: "bad file name.go",
+			oldText:  "old\n",
+			newText:  "new\n",
+			wantErr:  "invalid file change filename",
+		},
+		{
+			name:     "no op change",
+			filename: "planner/internal/example.go",
+			oldText:  "same\n",
+			newText:  "same\n",
+			wantErr:  "unchanged",
+		},
+	}
+
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := generateUnifiedDiff("plan.md", tc.oldText, tc.newText); got != "" {
-				t.Fatalf("generateUnifiedDiff() = %q, want empty", got)
-			}
+			_, err := generateUnifiedDiff(tc.filename, tc.oldText, tc.newText)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
 }
 
-func TestGenerateUnifiedDiffShowsWholeFileContext(t *testing.T) {
-	got := generateUnifiedDiff("plan.md", "a\nold\nc\n", "a\nnew\nc\n")
-	want := "--- plan.md\n+++ plan.md\n@@ -1,3 +1,3 @@\n a\n-old\n+new\n c\n"
-	if got != want {
-		t.Fatalf("generateUnifiedDiff() mismatch:\n%q\nvs\n%q", got, want)
+func TestGenerateUnifiedDiffLineEndings(t *testing.T) {
+	tests := []struct {
+		name      string
+		oldText   string
+		newText   string
+		wantParts []string
+	}{
+		{
+			name:    "crlf input",
+			oldText: "line1\r\nline2\r\n",
+			newText: "line1\r\nline3\r\n",
+			wantParts: []string{
+				"-line2",
+				"+line3",
+			},
+		},
+		{
+			name:    "lf input",
+			oldText: "line1\nline2\n",
+			newText: "line1\nline3\n",
+			wantParts: []string{
+				"-line2",
+				"+line3",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			diff, err := generateUnifiedDiff(
+				"planner/internal/example.go",
+				tc.oldText,
+				tc.newText,
+			)
+			require.NoError(t, err)
+
+			for _, want := range tc.wantParts {
+				assert.Contains(t, diff, want)
+			}
+		})
 	}
 }

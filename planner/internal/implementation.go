@@ -82,43 +82,6 @@ func runImplementationEdit(ctx editContext) int {
 	return runEditPreview(ctx, ReplaceOptions{Section: "implementation"}, jsonBytes(steps))
 }
 
-func buildStep(ctx editContext, diff string) (Step, bool) {
-	title, err := ctx.flags.stringFlag("--title")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	summary, err := ctx.flags.stringFlag("--summary")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	fn, err := ctx.flags.stringFlag("--filename")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	exp, err := ctx.flags.stringFlag("--explanation")
-	if err != nil {
-		reportError(ctx.stderr, "implementation", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return Step{}, false
-	}
-	return Step{Title: title, Summary: summary, FileChanges: []FileChange{{Filename: fn, Explanation: exp, Diff: diff}}}, true
-}
-
-func readStructuredDiff(ctx editContext) (string, bool) {
-	if ctx.flags.diffStdin {
-		b, err := readRawSource("", true)
-		if err != nil {
-			reportError(ctx.stderr, ctx.cmd, newPlannerCLIError(PlannerReadInputError, err, "stdin"))
-			return "", false
-		}
-		return string(b), true
-	}
-	reportError(ctx.stderr, ctx.cmd, newPlannerCLIError(PlannerUsageError, nil, "--diff-stdin is required"))
-	return "", false
-}
-
 func runFileChangeEdit(ctx editContext) int {
 	pos := ctx.flags.positional
 	if len(pos) < 3 || pos[0] != "step" || pos[1] != "file-change" {

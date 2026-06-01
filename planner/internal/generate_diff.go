@@ -1,63 +1,55 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
-	"strings"
+	"os"
+	"os/exec"
+	"path/filepath"
 )
 
-// generateUnifiedDiff renders a single-file unified diff from the exact file
-// name plus the old and new text bodies. Callers use this to preview patch
-// output without having to guess at the output format.
-func generateUnifiedDiff(filename, oldText, newText string) string {
-	if oldText == newText || strings.TrimRight(oldText, "\n") == strings.TrimRight(newText, "\n") {
-		return ""
+func generateUnifiedDiff(filename, oldText, newText string) (string, error) {
+	if err := ValidateFilenameShape(filename); err != nil {
+		return "", err
+	}
+	if oldText == newText {
+		return "", fmt.Errorf("replacement leaves %s unchanged", filename)
+	}
+	return renderUnifiedDiff(filename, oldText, newText)
+}
+
+func renderUnifiedDiff(filename, beforeText, afterText string) (string, error) {
+	tmpDir, err := os.MkdirTemp("", "planner-generate-diff-")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	beforePath := filepath.Join(tmpDir, "before.txt")
+	afterPath := filepath.Join(tmpDir, "after.txt")
+	if err := os.WriteFile(beforePath, []byte(beforeText), 0o644); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(afterPath, []byte(afterText), 0o644); err != nil {
+		return "", err
 	}
 
-	oldLines := splitLines(oldText)
-	newLines := splitLines(newText)
-
-	head := 0
-	for head < len(oldLines) && head < len(newLines) && oldLines[head] == newLines[head] {
-		head++
+	cleanName := filepath.ToSlash(filepath.Clean(filename))
+	cmd := exec.Command(
+		"diff",
+		"-u",
+		"--label", "a/"+cleanName,
+		"--label", "b/"+cleanName,
+		beforePath,
+		afterPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return "", fmt.Errorf("diff produced no output for %s", cleanName)
 	}
-	oldTail := len(oldLines)
-	newTail := len(newLines)
-	for oldTail > head && newTail > head && oldLines[oldTail-1] == newLines[newTail-1] {
-		oldTail--
-		newTail--
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		return "", fmt.Errorf("run diff for %s: %w: %s", cleanName, err, string(out))
 	}
-
-	var out strings.Builder
-	oldStart := 1
-	if len(oldLines) == 0 {
-		oldStart = 0
-	}
-	newStart := 1
-	if len(newLines) == 0 {
-		newStart = 0
-	}
-	fmt.Fprintf(&out, "--- %s\n+++ %s\n@@ -%d,%d +%d,%d @@\n", filename, filename, oldStart, len(oldLines), newStart, len(newLines))
-
-	for i := 0; i < head; i++ {
-		out.WriteByte(' ')
-		out.WriteString(oldLines[i])
-		out.WriteByte('\n')
-	}
-	for i := head; i < oldTail; i++ {
-		out.WriteByte('-')
-		out.WriteString(oldLines[i])
-		out.WriteByte('\n')
-	}
-	for i := head; i < newTail; i++ {
-		out.WriteByte('+')
-		out.WriteString(newLines[i])
-		out.WriteByte('\n')
-	}
-	for i := oldTail; i < len(oldLines); i++ {
-		out.WriteByte(' ')
-		out.WriteString(oldLines[i])
-		out.WriteByte('\n')
-	}
-
-	return out.String()
+	return "diff --git a/" + cleanName + " b/" + cleanName + "\n" + string(out), nil
 }
