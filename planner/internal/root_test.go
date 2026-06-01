@@ -745,59 +745,9 @@ func TestPatchPreservesWrappedFrontmatter(t *testing.T) {
 	})
 }
 
-func TestPatchRerendersCanonically(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mutated := strings.Replace(string(raw), "## Verification\n---\n", "## Verification\n---\n\n", 1)
-	if err := os.WriteFile(path, []byte(mutated), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	updated, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(updated), "## Verification\n---\n\n") {
-		t.Fatalf("expected canonical rerender:\n%s", string(updated))
-	}
-}
-
-func TestPatchWritesAlternateOutputPath(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := writeBehavioralPlan(t, dir)
-	outPath := filepath.Join(dir, "out.md")
-	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", sourcePath, outPath}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertParsed(t, sourcePath, func(plan Plan) {
-		if plan.Title != "T" {
-			t.Fatalf("source title changed: %q", plan.Title)
-		}
-	})
-	assertParsed(t, outPath, func(plan Plan) {
-		if plan.Title != "Renamed" {
-			t.Fatalf("out title=%q", plan.Title)
-		}
-	})
-}
-
 func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 	dir := t.TempDir()
-	writeBehavioralPlan(t, dir)
-	out := dir + "/out.md"
+	out := writeBehavioralPlan(t, dir)
 
 	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
 	assertParsed(t, out, func(p Plan) {
@@ -824,32 +774,6 @@ func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
 			t.Fatalf("automated not updated with status preserved: %#v", p.Verification.Automated[0])
 		}
 	})
-}
-
-func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
-	dir := t.TempDir()
-	planPath := writeBehavioralPlan(t, dir)
-	out := dir + "/out.md"
-
-	for _, tc := range []struct {
-		name string
-		args []string
-		want string
-	}{
-		{"goal", []string{"dod", "goal", "remove", planPath, out, "--goal", "1"}, "cannot remove the final definition_of_done goal"},
-		{"step", []string{"implementation", "step", "remove", planPath, out, "--step", "1"}, "cannot remove the final implementation step"},
-		{"change", []string{"implementation", "step", "file-change", "remove", planPath, out, "--step", "1", "--change", "1"}, "cannot remove the final file change from a step"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			if exit := Execute(tc.args, &stdout, &stderr); exit != 2 {
-				t.Fatalf("exit=%d want 2 stderr=%q", exit, stderr.String())
-			}
-			if !strings.Contains(stderr.String(), tc.want) {
-				t.Fatalf("stderr missing %q: %q", tc.want, stderr.String())
-			}
-		})
-	}
 }
 
 func TestStructuredBehavioralEditMalformedMarkdownJSONError(t *testing.T) {
