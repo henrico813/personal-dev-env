@@ -159,11 +159,10 @@ After research is complete:
 
 1. Run `planner help` first; do not guess command shapes from memory.
 2. For new plans, run `planner new <output.md>`.
-3. Edit the markdown directly.
-4. For partial updates, run `planner inspect <plan.md>` to see the parsed plan JSON and `update_diff_expect` tokens.
-5. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar, checklist, and `Update Diff` edits.
-6. Use behavioral commands when the patch v1 surface does not cover the change; for same-file behavioral edits, `<out.md>` may equal `<plan.md>`.
-7. Preserve the supported wrapped-issue frontmatter on same-path edits and validate the final markdown with `planner check <output.md> --json-errors`.
+3. For partial updates, run `planner inspect <plan.md>` to see the parsed plan JSON and `update_diff_expect` tokens.
+4. Prefer `planner patch <plan.md> [<out.md>]` for transactional scalar, checklist, and `Update Diff` edits.
+5. Use behavioral commands when the patch v1 surface does not cover the change; for same-file behavioral edits, `<out.md>` may equal `<plan.md>`.
+6. Preserve the supported wrapped-issue frontmatter on same-path edits and validate the final markdown with `planner check <output.md> --json-errors`.
 
 Do not emit freeform markdown directly when the installed helper is available.
 
