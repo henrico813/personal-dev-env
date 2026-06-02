@@ -61,6 +61,24 @@ func TestPatchCommandStdout(t *testing.T) {
 			},
 		},
 		{
+			name: "overview_same_path",
+			args: func(sourcePath, _ string) []string {
+				return []string{"patch", sourcePath}
+			},
+			patch: func(t *testing.T, _ string) string {
+				t.Helper()
+				return "*** Begin Patch\n*** Update Field: overview\n-O\n+Updated overview\n*** End Patch\n"
+			},
+			wantExit: 0,
+			check: func(t *testing.T, sourcePath, _ string) {
+				t.Helper()
+				parsed := parseOutputPlan(t, sourcePath)
+				if parsed.Overview != "Updated overview" {
+					t.Fatalf("overview=%q", parsed.Overview)
+				}
+			},
+		},
+		{
 			name: "diff_body_same_path",
 			args: func(sourcePath, _ string) []string {
 				return []string{"patch", sourcePath}
