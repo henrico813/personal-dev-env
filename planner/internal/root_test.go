@@ -17,8 +17,10 @@ func TestWrappedCheck(t *testing.T) {
 		wantCode string
 	}{
 		{name: "empty_topics", fixture: "wrapped_issue_empty_topics.md", wantExit: 0},
+		{name: "extra_tag", fixture: "wrapped_issue_extra_tag.md", wantExit: 0},
 		{name: "topic_list", fixture: "wrapped_issue_topics.md", wantExit: 0},
 		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
+		{name: "missing_ticket_tag", fixture: "wrapped_issue_missing_ticket_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -50,8 +52,10 @@ func TestWrappedInspect(t *testing.T) {
 		wantExit int
 		wantCode string
 	}{
+		{name: "extra_tag", fixture: "wrapped_issue_extra_tag.md", wantExit: 0},
 		{name: "topic_list", fixture: "wrapped_issue_topics.md", wantExit: 0},
 		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
+		{name: "missing_ticket_tag", fixture: "wrapped_issue_missing_ticket_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,30 +88,35 @@ func TestWrappedInspect(t *testing.T) {
 }
 
 func TestWrappedEdit(t *testing.T) {
-	path := copyFixture(t, "wrapped_issue_topics.md")
-	beforeRaw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	for _, fixture := range []string{"wrapped_issue_topics.md", "wrapped_issue_extra_tag.md"} {
+		fixture := fixture
+		t.Run(fixture, func(t *testing.T) {
+			path := copyFixture(t, fixture)
+			beforeRaw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
-	withStdin(t, patch, func() {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
+			patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
+			withStdin(t, patch, func() {
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
+					t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+				}
+			})
 
-	afterRaw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
-		t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
-	}
-	if !strings.Contains(string(afterRaw), "Updated overview") {
-		t.Fatalf("overview not updated:\n%s", string(afterRaw))
+			afterRaw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
+				t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
+			}
+			if !strings.Contains(string(afterRaw), "Updated overview") {
+				t.Fatalf("overview not updated:\n%s", string(afterRaw))
+			}
+		})
 	}
 }
 
@@ -115,6 +124,7 @@ func TestWrappedDecodeFailures(t *testing.T) {
 	fixtures := []string{
 		"wrapped_issue_bad_tag.md",
 		"wrapped_issue_empty_topics_block.md",
+		"wrapped_issue_missing_ticket_tag.md",
 		"wrapped_issue_reordered_fields.md",
 		"wrapped_issue_duplicate_status.md",
 	}

@@ -217,9 +217,20 @@ func TestParseMarkdownTicketTagForms(t *testing.T) {
 			with:    "  - #Ticket",
 		},
 		{
+			name:    "multiple tags with ticket",
+			replace: "type: issue",
+			with:    "  - \"#Planner\"\ntype: issue",
+		},
+		{
 			name:    "lowercase ticket tag",
 			replace: "\"#Ticket\"",
 			with:    "\"#ticket\"",
+			wantErr: true,
+		},
+		{
+			name:    "missing ticket tag",
+			replace: "\"#Ticket\"",
+			with:    "\"#Planner\"",
 			wantErr: true,
 		},
 	}
