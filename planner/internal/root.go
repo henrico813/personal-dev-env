@@ -21,8 +21,6 @@ Usage:
   planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner inspect <plan.md>
   planner patch <plan.md> [<out.md>]
-  planner title set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner overview set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod current-state set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod module-shape set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -148,7 +146,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runInspect(args[1:], stdout, stderr)
 	case "patch":
 		return runPatch(args[1:], stdout, stderr)
-	case "title", "overview", "dod", "implementation", "verification":
+	case "dod", "implementation", "verification":
 		return runBehavioralEdit(args, stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
