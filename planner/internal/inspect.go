@@ -198,7 +198,7 @@ func wrappedDocContext(err error) (wrapped bool, malformedWrapper bool) {
 }
 
 func validateSupportedFrontmatter(frontmatter string) error {
-	// Accept only the canonical wrapped issue frontmatter shape.
+	// Accept wrapped issue frontmatter shape with a required #Ticket tag.
 	lines := strings.Split(strings.TrimSuffix(frontmatter, "\n"), "\n")
 	i := 0
 	consume := func(expected string) bool {
@@ -220,7 +220,21 @@ func validateSupportedFrontmatter(frontmatter string) error {
 	if !consume("---") || !consume("tags:") {
 		return errUnsupportedWrappedDoc
 	}
-	if !consume("  - \"#Ticket\"") && !consume("  - #Ticket") {
+	sawTicket := false
+	for i < len(lines) && !strings.HasPrefix(lines[i], "type: ") {
+		if !strings.HasPrefix(lines[i], "  - ") {
+			return errUnsupportedWrappedDoc
+		}
+		tag := strings.TrimSpace(strings.TrimPrefix(lines[i], "  - "))
+		if tag == "" {
+			return errUnsupportedWrappedDoc
+		}
+		if tag == "\"#Ticket\"" || tag == "#Ticket" {
+			sawTicket = true
+		}
+		i++
+	}
+	if !sawTicket {
 		return errUnsupportedWrappedDoc
 	}
 	if value, ok := consumePrefix("type: "); !ok || value != "issue" {
