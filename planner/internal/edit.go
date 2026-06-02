@@ -37,10 +37,6 @@ func runBehavioralEdit(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := editContext{cmd: cmdName, flags: fs, stdout: stdout, stderr: stderr}
 	switch args[0] {
-	case "title":
-		return runTitleEdit(ctx)
-	case "overview":
-		return runOverviewEdit(ctx)
 	case "dod":
 		return runDoDEdit(ctx)
 	case "implementation":
