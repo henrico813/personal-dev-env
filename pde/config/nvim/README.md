@@ -8,7 +8,9 @@ Launch it with:
 nvim
 ```
 
-The installer (`pde minimal` and `pde full`) clones all plugins into `~/.config/nvim/pack/plugins/start/` and symlinks this directory into place. The live config is a symlink back here, so edits take effect immediately — no copying, no sync step.
+The installer (`pde minimal` and `pde full`) clones plugin repos into `~/.config/nvim/pack/plugins/start/` and symlinks this directory into place. For CodeCompanion, PDE installs the maintained `henrico813/codecompanion.nvim` fork on branch `main`.
+
+The live config is a symlink back here, so edits take effect immediately — no copying, no sync step.
 
 ---
 
@@ -70,7 +72,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 | `alpha.lua` | alpha | side-by-side dashboard (image + session list) |
 | `header.ansi` | — | chafa-generated colored image used by the dashboard |
 | `render-markdown.lua` | render-markdown | markdown + CodeCompanion chat rendering |
-| `codecompanion.lua` | olimorris/codecompanion.nvim | OpenCode-backed chat UI |
+| `codecompanion.lua` | henrico813/codecompanion.nvim | OpenCode-backed chat UI |
 
 ---
 
@@ -183,8 +185,11 @@ What `lua/plugins/session.lua` customizes:
 
 CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in `opencode` ACP adapter for chat, so Neovim talks to the already-installed `opencode` CLI directly instead of launching Pi through a wrapper.
 
+PDE installs `henrico813/codecompanion.nvim` from branch `main`. If an existing `codecompanion.nvim` checkout still points at upstream, rerunning the installer replaces it with the PDE-maintained fork before chat starts.
+
 The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
 
+Chat completion now waits briefly after OpenCode `end_turn` before the forked ACP client clears the active prompt, which keeps delayed `session/update` chunks attached to the originating request instead of the next submit. Validate the fix by sending a chat turn and confirming late chunks stay on that turn; inline prompts still use the separate `opencode-inline-shim` path.
 Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `surveil`, `vibe`, and the managed OpenCode agent config.
 
 `~/.config/pde/config.json` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, `PDE_WORK_VAULT`, and `PDE_DEFAULT_VAULT`. CodeCompanion and the Obsidian plugin read that JSON directly; they do not require a PDE-managed shell to populate vault or OpenCode settings.
@@ -193,7 +198,7 @@ For the default loopback setup, the shim auto-starts `opencode serve` on demand 
 
 `<leader>pm` and `<leader>pM` both use CodeCompanion's model selector over OpenCode ACP models. That path is intentionally OpenCode-specific: chat applies the selected model to the active chat session, while inline stores a separate session override for later `<leader>pi` prompts. Inline precedence is: session override, then `OPENCODE_INLINE_MODEL`, then OpenCode's own current default when neither override exists. `<leader>pi` runs the inline prompt in normal or visual mode. Inline currently accepts thinking-suffixed ACP ids such as `provider/model/high`, but the shim strips the thinking suffix and sends only the base backend model until explicit HTTP-side thinking support is verified. `:CodeCompanionOpenCodeInlineShim` and `<leader>pI` are the explicit restart path for the shim itself, which is what you want after changing OpenCode env values or if `opencode-inline-shim --healthcheck` fails. PDE now reuses a healthy existing shim across Neovim sessions, and explicit restart replaces stale detached shim processes only after the old listener releases the shim port. Neovim only probes `opencode-inline-shim` when the binary is already available on `$PATH`, so a plain `minimal` install stays quiet until you install `ai-tools`.
 
-CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` in `pde/lib/editor.sh`. Verify `which opencode` and `which opencode-inline-shim` both return paths before opening chat or inline.
+CodeCompanion depends on `plenary.nvim` and is cloned by `install_editor()` from the PDE-maintained fork. Verify `which opencode` and `which opencode-inline-shim` both return paths before opening chat or inline.
 
 ---
 
