@@ -183,7 +183,11 @@ What `lua/plugins/session.lua` customizes:
 
 CodeCompanion provides the in-editor AI UI. The tracked config uses its built-in `opencode` ACP adapter for chat, so Neovim talks to the already-installed `opencode` CLI directly instead of launching Pi through a wrapper.
 
+PDE vendors `codecompanion.nvim` under `pde/config/nvim/pack/plugins/start`, so ACP bug fixes land in that checked-in copy instead of depending on an upstream plugin update.
+
 The chat window opens on the right and is clamped back into the old 25%-40% width band on resize so it behaves like the previous Pi side pane. The statusline also shows the active CodeCompanion adapter and model for the current or most recent chat.
+
+Chat completion now waits briefly after OpenCode `end_turn` before the vendored ACP client clears the active prompt, which keeps delayed `session/update` chunks attached to the originating request instead of the next submit. Validate the fix by sending a chat turn and confirming late chunks stay on that turn; inline prompts still use the separate `opencode-inline-shim` path.
 
 Inline editing is configured through a local OpenAI-compatible shim named `opencode-inline-shim`. Install it with `pde install ai-tools`; the same flow also installs `opencode`, `surveil`, `vibe`, and the managed OpenCode agent config.
 
