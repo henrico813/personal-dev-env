@@ -27,6 +27,10 @@ install_editor() {
     local pack_dir="$config_dir/pack/plugins/start"
     mkdir -p "$pack_dir"
 
+    local codecompanion_url="https://github.com/henrico813/codecompanion.nvim"
+    local codecompanion_branch="main"
+    local codecompanion_dir="$pack_dir/codecompanion.nvim"
+
     local plugins=(
         "https://github.com/folke/tokyonight.nvim"
         "https://github.com/nvim-lualine/lualine.nvim"
@@ -35,7 +39,6 @@ install_editor() {
         "https://github.com/nvim-lua/plenary.nvim"
         "https://github.com/Saghen/blink.cmp"
         "https://github.com/Saghen/blink.lib"
-        "https://github.com/olimorris/codecompanion.nvim"
         "https://github.com/folke/which-key.nvim"
         "https://github.com/lewis6991/gitsigns.nvim"
         "https://github.com/folke/trouble.nvim"
@@ -60,6 +63,26 @@ install_editor() {
             log "$name already installed"
         fi
     done
+
+    # Re-clone when an existing checkout still points at upstream.
+    if [[ -d "$codecompanion_dir/.git" ]]; then
+        local codecompanion_origin
+        codecompanion_origin=$(git -C "$codecompanion_dir" remote get-url origin 2>/dev/null || true)
+        if [[ "$codecompanion_origin" != "$codecompanion_url" ]]; then
+            log "Replacing codecompanion.nvim checkout with PDE fork..."
+            rm -rf "$codecompanion_dir"
+        fi
+    elif [[ -e "$codecompanion_dir" ]]; then
+        log "Replacing non-git codecompanion.nvim directory..."
+        rm -rf "$codecompanion_dir"
+    fi
+
+    if [[ ! -d "$codecompanion_dir" ]]; then
+        log "Cloning codecompanion.nvim from PDE fork..."
+        git clone --depth=1 --branch "$codecompanion_branch" "$codecompanion_url" "$codecompanion_dir"
+    else
+        log "codecompanion.nvim already installed"
+    fi
 
     # Remove deprecated Pi runtime artifacts on re-runs.
     local user_bin="$HOME/.local/bin"
@@ -111,6 +134,7 @@ install_neovim() {
     ./nvim.appimage --appimage-extract &>/dev/null || die "Failed to extract Neovim AppImage"
 
     # Install extracted version
+    need_sudo
     sudo rm -rf /opt/nvim
     sudo mv squashfs-root /opt/nvim
     sudo ln -sf /opt/nvim/usr/bin/nvim /usr/local/bin/nvim
