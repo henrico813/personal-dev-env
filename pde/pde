@@ -30,8 +30,6 @@ EOF
 }
 
 install_minimal_base() {
-    need_sudo
-
     source "$SCRIPT_DIR/lib/shell.sh"
     source "$SCRIPT_DIR/lib/tools.sh"
     source "$SCRIPT_DIR/lib/editor.sh"
@@ -91,7 +89,6 @@ main() {
 
         full)
             section "Installing full profile"
-            need_sudo
 
             source "$SCRIPT_DIR/lib/shell.sh"
             source "$SCRIPT_DIR/lib/tools.sh"

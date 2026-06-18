@@ -13,6 +13,9 @@ installed() { dpkg -l "$1" 2>/dev/null | grep -q "^ii"; }
 
 # Sudo handling with keep-alive for long operations
 need_sudo() {
+	if [[ -n "${SUDO_KEEPALIVE_PID:-}" ]] && kill -0 "$SUDO_KEEPALIVE_PID" 2>/dev/null; then
+		return 0
+	fi
     log "Requesting sudo (may prompt for password)..."
     sudo -v || die "sudo required"
     # Keep sudo alive in background for long operations (tmux build, etc.)
@@ -29,6 +32,7 @@ install_apt() {
     done
     [[ ${#to_install[@]} -eq 0 ]] && return 0
     log "Installing: ${to_install[*]}"
+    need_sudo
     sudo apt-get update -qq
     sudo apt-get install -y "${to_install[@]}" || die "apt-get install failed"
 }
