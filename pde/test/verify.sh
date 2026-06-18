@@ -103,6 +103,23 @@ check_file ~/.config/nvim/init.lua "PDE nvim config"
 check_dir ~/.config/nvim/pack/plugins/start "PDE nvim plugin pack"
 check_link ~/.config/nvim "pde/config/nvim"
 
+codecompanion_dir=~/.config/nvim/pack/plugins/start/codecompanion.nvim
+check_dir "$codecompanion_dir" "CodeCompanion plugin"
+
+codecompanion_origin=$(git -C "$codecompanion_dir" remote get-url origin 2>/dev/null || true)
+if [[ "$codecompanion_origin" == "https://github.com/henrico813/codecompanion.nvim" ]]; then
+    pass "CodeCompanion fork remote"
+else
+    fail "CodeCompanion remote is $codecompanion_origin, expected PDE fork"
+fi
+
+codecompanion_branch=$(git -C "$codecompanion_dir" branch --show-current 2>/dev/null || true)
+if [[ "$codecompanion_branch" == "main" ]]; then
+    pass "CodeCompanion fork branch main"
+else
+    fail "CodeCompanion branch is $codecompanion_branch, expected main"
+fi
+
 # PDE config is owned by the Go CLI; installer smoke tests stay runtime-focused.
 
 # Config symlinks (match the config suffix so both standalone and combined repo installs pass)

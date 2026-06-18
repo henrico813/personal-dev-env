@@ -30,6 +30,7 @@ install_shell() {
     # Set shell to zsh
     if [[ "$SHELL" != */zsh ]]; then
         log "Changing shell to zsh..."
+        need_sudo
         sudo chsh -s "$(which zsh)" "$(whoami)"
     fi
 }
@@ -55,6 +56,7 @@ install_tmux_from_source() {
 
     ./configure --prefix=/usr/local || die "tmux configure failed"
     make -j"$(nproc)" || die "tmux build failed"
+    need_sudo
     sudo make install || die "tmux install failed"
 
     cd /
