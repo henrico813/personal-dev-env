@@ -150,6 +150,9 @@ func installRuntimeWrapper(runtimeDir string, runner Runner) error {
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 export NVM_DIR="$HOME/.nvm"
+if [[ -z "${NODE_EXTRA_CA_CERTS:-}" && -f "/etc/ssl/certs/ZscalerRootCertificate-2048-SHA256.pem" ]]; then
+  export NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ZscalerRootCertificate-2048-SHA256.pem"
+fi
 source "$NVM_DIR/nvm.sh"
 nvm use %s >/dev/null
 exec %s "$@"
