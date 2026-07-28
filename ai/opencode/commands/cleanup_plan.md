@@ -27,7 +27,8 @@ When invoked:
 Cleanup is a safety workflow, not a convenience command. Your job is to leave the repo in a predictable state without deleting unfinished work.
 
 - Prefer preserving work over aggressively removing directories.
-- Treat uncommitted or untracked implementation changes as a stop condition.
+- Treat tracked changes, or untracked files in paths that the cleanup action would change, remove, or overwrite, as a stop condition.
+- Do not infer file authorship, origin, or generated status when deciding cleanup safety. Use action scope and Git command results.
 - Treat the main checkout as a protected baseline that must be inspected before teardown.
 - Treat plan completion, main synchronization, worktree removal, and branch deletion as separate decisions.
 - Keep local branches unless the user explicitly requests deletion.
@@ -54,12 +55,42 @@ Before changing anything:
 
 Run these checks before removing a worktree:
 - If a target worktree exists, check `git status --short` inside it.
-- If a target worktree exists, check for untracked, unusual ignored, locked, detached HEAD, or submodule state that may represent unfinished work.
+- If a target worktree exists, check for tracked local changes, untracked files, unusual ignored files, locked state, detached HEAD, or submodule state that may represent unfinished work.
 - If a branch exists, check whether it has commits not present on the fetched base branch.
 - If a main checkout exists, inspect it for tracked changes, untracked files that collide with incoming paths, missing upstream, or divergence.
-- If a main checkout is clean and can fast-forward, run `git fetch <remote>` and `git pull --ff-only` from the identified main checkout after confirming its branch and upstream.
+- If a main checkout exists, use the main-sync procedure below after confirming its branch and upstream.
 - If main cannot be safely fast-forwarded, record main synchronization as blocked but continue with unrelated safe cleanup actions.
 - Check whether any docs, plans, or research notes still need status updates.
+
+Main-sync procedure:
+
+Run these commands from the main checkout:
+
+```bash
+git rev-parse --abbrev-ref --symbolic-full-name @{u}
+git status --porcelain=v1 --untracked-files=no
+git fetch <remote>
+git rev-list --left-right --count HEAD...@{u}
+```
+
+Run the commands in order. Stop at the first blocking result.
+If the upstream command fails, stop the main-sync procedure and report main synchronization as blocked.
+
+Interpret the results:
+
+| Result | Cleanup action |
+| --- | --- |
+| No upstream | Block main synchronization |
+| Status command prints output | Block main synchronization |
+| Fetch fails | Block main synchronization and report the reason |
+| Left count is nonzero, with or without right-side commits | Block main synchronization |
+| Both counts are zero | Main already matches upstream |
+| Only right count is nonzero | Run `git merge --ff-only @{u}` |
+| Merge succeeds | Main synchronization is complete |
+| Merge fails | Block main synchronization and report the reason |
+
+Unrelated untracked files do not block main synchronization when the status command is clean and the fast-forward update succeeds.
+- Do not delete, move, stash, or overwrite files to make main synchronization succeed unless the user explicitly approves that exact action.
 
 Only stop the whole cleanup for blockers that make the relevant destructive action unsafe. Main-sync-only blockers should be reported while unrelated safe cleanup continues.
 
@@ -77,6 +108,27 @@ Required next action:
 ```
 
 Do not remove the worktree until the blocker is resolved or the user explicitly approves a different action.
+
+Worktree-removal procedure:
+
+Run these commands from the target worktree:
+
+```bash
+git status --porcelain=v1 --untracked-files=all
+git status --porcelain=v1 --ignored
+```
+
+Interpret the result:
+
+| Result | Cleanup action |
+| --- | --- |
+| First command prints output | Block worktree removal |
+| Ignored output looks unusual | Block worktree removal |
+| No blocking output | Worktree removal may continue |
+| User approves a specific follow-up action | Follow only that approved action |
+
+Files with tracked local changes or untracked status are blockers if removing the worktree would delete them.
+Untracked files outside the artifact being updated or removed do not block unrelated cleanup actions unless that action would overwrite or remove them.
 
 ### 3. Finish housekeeping
 
@@ -124,7 +176,9 @@ When an action is blocked, report the blocker clearly and stop only the unsafe a
 
 ## Important Guidelines
 
-1. Never remove a worktree that still contains uncommitted or unexplained files.
-2. Never assume plan or documentation status is already correct; check it.
-3. Prefer explicit verification over inference.
-4. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
+1. Never remove a worktree that still contains tracked local changes or untracked files unless the user explicitly approves removing it despite those paths.
+2. Do not infer file authorship, origin, or generated status when deciding cleanup safety.
+3. Do not let unrelated untracked files block a fast-forward update if `git merge --ff-only @{u}` succeeds.
+4. Never assume plan or documentation status is already correct; check it.
+5. Prefer explicit verification over inference.
+6. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
