@@ -33,10 +33,7 @@ impl RunRanker {
     }
 }
 
-pub(super) fn compare_best_chunk_score(
-    left: Option<f32>,
-    right: Option<f32>,
-) -> Ordering {
+pub(super) fn compare_best_chunk_score(left: Option<f32>, right: Option<f32>) -> Ordering {
     match (left, right) {
         (Some(left), Some(right)) => left.partial_cmp(&right).unwrap_or(Ordering::Equal),
         (Some(_), None) => Ordering::Greater,
@@ -149,7 +146,10 @@ mod tests {
             },
             RankCase {
                 name: "ranked-tie-breaker-stays-deterministic",
-                files: vec![("src/b.rs", "attach handler\n"), ("src/a.rs", "attach handler\n")],
+                files: vec![
+                    ("src/b.rs", "attach handler\n"),
+                    ("src/a.rs", "attach handler\n"),
+                ],
                 build_index: true,
                 search_areas: vec!["src/"],
                 explicit_files: vec![],
@@ -207,12 +207,21 @@ mod tests {
             )
             .expect("collect candidates");
 
-            let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+            let terms = case
+                .terms
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>();
             let ranker = build_run_ranker(&repo).expect("build run ranker");
-            let (_, ordered) = ranker.rank_query_candidates(&candidates, &terms).expect("rank candidates");
+            let (_, ordered) = ranker
+                .rank_query_candidates(&candidates, &terms)
+                .expect("rank candidates");
 
             assert_eq!(
-                ordered.iter().map(|item| item.display_path()).collect::<Vec<_>>(),
+                ordered
+                    .iter()
+                    .map(|item| item.display_path())
+                    .collect::<Vec<_>>(),
                 case.expected_order,
                 "case: {}",
                 case.name
@@ -232,13 +241,9 @@ mod tests {
         index::build_chunk_index(&repo).expect("build index");
 
         let mut skipped_paths = Vec::new();
-        let candidates = source::collect_candidate_files(
-            &repo,
-            &["src/".to_string()],
-            &[],
-            &mut skipped_paths,
-        )
-        .expect("collect candidates");
+        let candidates =
+            source::collect_candidate_files(&repo, &["src/".to_string()], &[], &mut skipped_paths)
+                .expect("collect candidates");
         let ranker = build_run_ranker(&repo).expect("build run ranker");
 
         assert!(ranker

@@ -174,7 +174,11 @@ mod tests {
 
         for case in &cases {
             let tokens = create_search_tokens(
-                &case.terms.iter().map(|term| term.to_string()).collect::<Vec<_>>(),
+                &case
+                    .terms
+                    .iter()
+                    .map(|term| term.to_string())
+                    .collect::<Vec<_>>(),
                 case.question,
             );
             assert_eq!(tokens, case.expected_tokens, "case: {}", case.name);

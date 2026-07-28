@@ -23,7 +23,10 @@ pub fn create_task_file(output_dir: &Path) -> io::Result<PathBuf> {
         fs::create_dir_all(parent)?;
     }
 
-    let mut file = OpenOptions::new().write(true).create_new(true).open(&task_path)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&task_path)?;
     file.write_all(DEFAULT_TASK_TEMPLATE.as_bytes())?;
 
     Ok(task_path)
@@ -53,7 +56,10 @@ mod tests {
         let task_path = create_task_file(&root).expect("create task file");
 
         assert_eq!(task_path, root.join("task.md"));
-        assert_eq!(fs::read_to_string(&task_path).expect("read task file"), DEFAULT_TASK_TEMPLATE);
+        assert_eq!(
+            fs::read_to_string(&task_path).expect("read task file"),
+            DEFAULT_TASK_TEMPLATE
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

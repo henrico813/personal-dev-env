@@ -1,13 +1,18 @@
 use super::{rank, scan, setup, tokenize, LiveFileCache, SourceFile, TraceState};
 use crate::index;
-use crate::schema::{Answer, GatherOutput, QueryTrace, ResearchOutput, TraceOutput, SCHEMA_VERSION};
+use crate::schema::{
+    Answer, GatherOutput, QueryTrace, ResearchOutput, TraceOutput, SCHEMA_VERSION,
+};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-pub(crate) fn write_research_output(context: &Path, trace_out: &Path) -> Result<(), Box<dyn Error>> {
+pub(crate) fn write_research_output(
+    context: &Path,
+    trace_out: &Path,
+) -> Result<(), Box<dyn Error>> {
     let context_text = fs::read_to_string(context)?;
     let gather: GatherOutput = serde_json::from_str(&context_text)?;
     let (report, trace_output) = create_research_outputs(gather)?;
@@ -25,7 +30,9 @@ pub(crate) fn write_research_output(context: &Path, trace_out: &Path) -> Result<
     Ok(())
 }
 
-fn create_research_outputs(gather: GatherOutput) -> Result<(ResearchOutput, TraceOutput), Box<dyn Error>> {
+fn create_research_outputs(
+    gather: GatherOutput,
+) -> Result<(ResearchOutput, TraceOutput), Box<dyn Error>> {
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
     let index_state = index::inspect_chunk_index(&repo_root)?;
@@ -154,14 +161,14 @@ pub(super) fn create_test_answer(
     explicit_files: &[crate::schema::ExplicitFile],
     trace: &mut TraceState,
 ) -> Result<(Vec<crate::schema::Finding>, Vec<String>), Box<dyn Error>> {
-    let candidates = setup::collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
+    let candidates =
+        setup::collect_candidate_sources(repo_root, search_areas, explicit_files, trace)?;
     let mut live_cache = LiveFileCache::new();
     let ranker = rank::build_run_ranker(repo_root)?;
     let tokens = tokenize::create_search_tokens(terms, question);
     let index_state = index::inspect_chunk_index(repo_root)?;
     let ranking_usable = index_state == index::IndexState::Usable;
-    let (ranked_scores, ordered_candidates) =
-        ranker.rank_query_candidates(&candidates, &tokens)?;
+    let (ranked_scores, ordered_candidates) = ranker.rank_query_candidates(&candidates, &tokens)?;
     scan::create_answer_from_sources(
         repo_root,
         search_areas,
