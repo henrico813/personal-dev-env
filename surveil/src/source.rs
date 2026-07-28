@@ -11,6 +11,31 @@ pub(crate) struct SourceFile {
     explicit: bool,
 }
 
+const SKIPPED_PATH_SEGMENTS: &[&str] = &[
+    "target",
+    "node_modules",
+    "dist",
+    "build",
+    "pack",
+    ".git",
+    ".surveil",
+    ".spendscope",
+    "worktrees",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    "htmlcov",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+];
+
 impl SourceFile {
     pub(crate) fn new(repo_root: &Path, path: PathBuf, explicit: bool) -> Self {
         Self {
@@ -142,10 +167,7 @@ pub fn is_skipped_path(repo_root: &Path, path: &Path) -> bool {
         matches!(
             component,
             std::path::Component::Normal(name)
-                if matches!(
-                    name.to_string_lossy().as_ref(),
-                    "target" | "node_modules" | "dist" | "build" | "pack" | ".git" | ".surveil"
-                )
+                if SKIPPED_PATH_SEGMENTS.contains(&name.to_string_lossy().as_ref())
         )
     })
 }
@@ -193,7 +215,9 @@ mod tests {
         let files = collect_files(&repo, &repo, &mut skipped_paths).expect("collect files");
 
         assert!(files.iter().any(|path| path.ends_with("src/lib.rs")));
-        assert!(!files.iter().any(|path| path.to_string_lossy().contains(".surveil")));
+        assert!(!files
+            .iter()
+            .any(|path| path.to_string_lossy().contains(".surveil")));
         assert!(skipped_paths.iter().any(|path| path == ".surveil"));
         assert!(is_skipped_path(&repo, &repo.join(".surveil/index.sqlite")));
 
@@ -209,7 +233,77 @@ mod tests {
         )
         .expect("collect candidates");
         assert!(candidates.is_empty());
-        assert!(candidate_skips.iter().any(|path| path == ".surveil/index.sqlite"));
+        assert!(candidate_skips
+            .iter()
+            .any(|path| path == ".surveil/index.sqlite"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn skips_noisy_directory_segments() {
+        let repo = temp_repo("source-noisy-dirs");
+        let skipped_dirs = [
+            "worktrees/feature/src/lib.rs",
+            ".spendscope/report.json",
+            ".venv/lib/python/site.py",
+            "venv/lib/python/site.py",
+            "__pycache__/module.pyc",
+            ".pytest_cache/v/cache/nodeids",
+            ".mypy_cache/3.12/module.data.json",
+            ".ruff_cache/content",
+            ".tox/py312/log.txt",
+            ".nox/session/log.txt",
+            "htmlcov/index.html",
+            ".next/server/app.js",
+            ".nuxt/types.d.ts",
+            ".svelte-kit/output/server.js",
+            ".turbo/cache.bin",
+        ];
+        for path in skipped_dirs {
+            write_file(&repo.join(path), "noise\n");
+        }
+        write_file(&repo.join("src/worktrees.rs"), "pub fn keep() {}\n");
+
+        let mut skipped_paths = Vec::new();
+        let files = collect_files(&repo, &repo, &mut skipped_paths).expect("collect files");
+
+        assert_eq!(files, vec![repo.join("src/worktrees.rs")]);
+        for path in skipped_dirs {
+            assert!(
+                is_skipped_path(&repo, &repo.join(path)),
+                "{path} was not skipped"
+            );
+        }
+        assert!(skipped_paths.iter().any(|path| path == "worktrees"));
+        assert!(skipped_paths.iter().any(|path| path == ".spendscope"));
+        assert!(skipped_paths.iter().any(|path| path == ".venv"));
+
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn skips_explicit_noisy_files() {
+        let repo = temp_repo("source-explicit-noisy");
+        write_file(
+            &repo.join("worktrees/feature/src/lib.rs"),
+            "fn stale() {}\n",
+        );
+
+        let mut skipped_paths = Vec::new();
+        let candidates = collect_candidate_files(
+            &repo,
+            &[],
+            &[ExplicitFile {
+                path: "worktrees/feature/src/lib.rs".into(),
+                found: true,
+            }],
+            &mut skipped_paths,
+        )
+        .expect("collect candidates");
+
+        assert!(candidates.is_empty());
+        assert_eq!(skipped_paths, vec!["worktrees/feature/src/lib.rs"]);
 
         let _ = fs::remove_dir_all(repo);
     }
