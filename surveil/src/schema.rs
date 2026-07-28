@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const SCHEMA_VERSION: &str = "surveil.v6";
+pub const EVIDENCE_SCHEMA_VERSION: &str = "surveil.evidence.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,6 +55,63 @@ pub struct Finding {
     pub symbol_name: Option<String>,
     pub symbol_start_line: Option<u32>,
     pub symbol_end_line: Option<u32>,
+}
+
+/// A deterministic collection of evidence from labeled research reports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct EvidencePack {
+    pub(crate) schema_version: String,
+    pub(crate) reports: Vec<EvidenceReport>,
+    pub(crate) findings: Vec<EvidenceFinding>,
+    pub(crate) negative_evidence: Vec<QueryEvidenceNote>,
+    pub(crate) blockers: Vec<ReportEvidenceNote>,
+    pub(crate) open_questions: Vec<ReportEvidenceNote>,
+}
+
+/// Summary metadata for one input report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct EvidenceReport {
+    pub(crate) perspective: String,
+    pub(crate) summary: String,
+}
+
+/// One exact finding, identified by path, line, and excerpt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct EvidenceFinding {
+    pub(crate) path: String,
+    pub(crate) line: u32,
+    pub(crate) excerpt: String,
+    /// Each occurrence explains where this duplicate finding appeared.
+    pub(crate) occurrences: Vec<FindingOccurrence>,
+}
+
+/// The report and query position where a finding appeared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct FindingOccurrence {
+    pub(crate) perspective: String,
+    pub(crate) query: String,
+    pub(crate) rank: u64,
+    pub(crate) source: String,
+    pub(crate) matched_from: String,
+    pub(crate) symbol_kind: Option<String>,
+    pub(crate) symbol_name: Option<String>,
+    pub(crate) symbol_start_line: Option<u32>,
+    pub(crate) symbol_end_line: Option<u32>,
+}
+
+/// Negative evidence tied to its report perspective and query.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct QueryEvidenceNote {
+    pub(crate) perspective: String,
+    pub(crate) query: String,
+    pub(crate) text: String,
+}
+
+/// A blocker or question tied to its report perspective.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ReportEvidenceNote {
+    pub(crate) perspective: String,
+    pub(crate) text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

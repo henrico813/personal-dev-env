@@ -48,7 +48,8 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - Determine the final output path before running `planner new <output.md>` or scaffolding `surveil`.
 - Write the final plan to its real destination, not a transient temp path.
 - If the user says a legacy surface is being phased out, treat that surface as out of scope unless they explicitly request changes there.
-- Use a unique per-plan temp artifact directory under `/tmp/opencode/`; do not reuse shared temp paths.
+- Use a run-specific temp root derived from the repo and branch; do not reuse shared temp paths.
+- Avoid dependency, virtualenv, worktree, generated output, and cache directories unless explicitly requested.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
 - Do not add extra sections unless the user explicitly asks for them.
 - Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
@@ -80,18 +81,33 @@ If any repo-backed trigger is present, do not fall back to manual-first research
    - For existing plans, docs, and notes, use `pde vault locate --json --vault <selector> "<reference>"`.
    - Use `pde vault path <selector>` only when determining the destination root for a new plan or when the user explicitly asks for a vault root.
    - Ask only on `ambiguous`, `not_found`, or setup `error`.
-4. If the request is repo-backed, let `<artifact-dir>` be a unique per-plan temp artifact directory under `/tmp/opencode/`, then scaffold a structured surveil task at `<artifact-dir>` before broad repo research.
-5. Build the task using these mechanical rules:
-   - Populate `<artifact-dir>/task.md` after scaffolding it.
+4. If the request is repo-backed, create `<temp-root>` before broad repo research.
+   - Use `/tmp/<repo>-<branch>/` for `<temp-root>` after making the name safe for filesystem use.
+5. Build each task using these rules:
+   - Populate each `<task-dir>/task.md` after running `surveil new task <task-dir>`.
    - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
    - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
-   - `Search Areas`: if explicit files exist, derive parent directories from them, collapse nested directories to the shortest covering paths, preserve order, and cap the list at three; otherwise use only literal repo directories named in the request, or `.` if none are named.
-   - `Query`: use this fixed ordered set of planning prompts:
-     - `What is the current behavior in this area of the repo?`
-     - `Where are the integration points or callers that would need to change?`
-     - `What tests or test patterns already cover this area?`
-     - `What docs, config, or commands affect this area?`
-     - `How should this change be verified?`
+   - `Search Areas`: use the smallest repo directories that cover the task perspective. Prefer directories or parent directories named in the request, source doc, or explicit files. Use `.` only when no narrower area is available.
+   - `Query`: use the ordered query set for the task's perspective.
+     Do not reuse one query set across all three tasks.
+     - **Architecture:**
+       - `How does the current command or request flow through this area?`
+       - `Which modules own this behavior, and where are their boundaries?`
+       - `Which callers and integration points would need to change?`
+       - `What orchestration or dependency direction must be preserved?`
+       - `Which files define the complete implementation path?`
+     - **Interfaces / Data / State:**
+       - `Which structs, types, functions, and fields define this behavior?`
+       - `How does data enter, change, and leave this area?`
+       - `Which validation rules and invariants must be preserved?`
+       - `Which persistence, environment, filesystem, process, or API boundaries are involved?`
+       - `Which compatibility or migration concerns apply?`
+     - **Tests / Verification:**
+       - `Which existing tests and fixtures cover this behavior?`
+       - `Which test helpers and patterns should new coverage follow?`
+       - `Which docs, config, commands, and CI targets affect this change?`
+       - `Which automated checks verify the implementation?`
+       - `Which behavior requires manual verification?`
    - `Terms`: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
 6. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
 
@@ -103,17 +119,47 @@ For requests that are not repo-backed, skip `surveil` and research the relevant 
 
 Capture artifacts with this fixed command pattern:
 
-- `surveil new task <artifact-dir>`
-- Populate `<artifact-dir>/task.md` using the mechanical rules above.
-- `surveil gather --repo <repo> --task-file <artifact-dir>/task.md > <artifact-dir>/context.json`
-- `surveil research --context <artifact-dir>/context.json --trace-out <artifact-dir>/trace.json > <artifact-dir>/report.json`
+- Create a unique top-level search directory under `<temp-root>/<unique-search-name>/`.
+- Create three task directories:
+  - `<search-dir>/architecture/`
+  - `<search-dir>/interfaces-data-state/`
+  - `<search-dir>/tests-verification/`
+- Run `surveil new task <task-dir>` for each task directory.
+- Populate each `<task-dir>/task.md` using the rules above, scoped to that task's perspective.
+- Run `surveil gather --repo <repo> --task-file <task-dir>/task.md > <task-dir>/context.json` for each task.
+- Run `surveil research --context <task-dir>/context.json --trace-out <task-dir>/trace.json > <task-dir>/report.json` for each task.
 
-If `surveil` is unavailable, fails to run, or emits invalid artifacts, stop and ask the user how to proceed instead of silently reverting to broad manual repo research.
+When doing `surveil` based research, follow these instructions:
+
+1. Run `surveil index --repo <repo>`.
+2. Based on the user's prompt, decompose it into three `surveil` tasks:
+	   - **Architecture:** command flow, package boundaries, relevant dirs callers, integration points, ownership, orchestration.
+	   - **Interfaces / Data / State:** structs, types, dependency seams, data models, persisted state, env/filesystem/process boundaries.
+	   - **Tests / Verification:** existing tests, fixtures, test seams, config targets, commands, docs, validation paths.
+3. Create the following directory structure for `surveil` operations:
+	1. Make a top-level directory for this search under `<temp-root>/<search-name>/`.
+	2. Make a unique artifact directory for each task under `<temp-root>/<search-name>/<task-name>/`.
+	3. Then run `surveil gather` for each task and save each result as that task's `context.json`.
+4. After all gathers complete, run `surveil research` for the three tasks in parallel and save each result as that task's `report.json`.
+5. Read all `report.json` files before manual repo research.
+6. Based on `surveil` results, create three subagents that each will do a manual search:
+    - Use the **codebase-locator** agent to find WHERE files and components live
+    - Use the **codebase-analyzer** agent to understand HOW specific code works (without critiquing it)
+	- Use the **codebase-pattern-finder** agent to find examples of existing patterns (without evaluating them)
+7. Reconcile evidence before drafting:
+    - If `surveil` and manual search conflict, trust direct file reads.
+    - If a key identifier from the prompt or plan does not appear in a focused report, search it manually.
+    - If a category has no matching evidence after focused search, record that absence as evidence.
+    - Do not draft the plan until architecture, interfaces/data/state, and tests/verification all have evidence or recorded absence.
+8. If any `surveil` step fails after one retry, record the failure and continue with focused manual repo research instead of retrying indefinitely.
 
 Consume artifacts in this order:
 
-1. Read `<artifact-dir>/report.json` first and treat `result` as the default evidence outline.
-2. Read `<artifact-dir>/trace.json` only when `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
+1. Read all three reports first and treat their `result` values as the default evidence outline:
+   - `<search-dir>/architecture/report.json`
+   - `<search-dir>/interfaces-data-state/report.json`
+   - `<search-dir>/tests-verification/report.json`
+2. Read the corresponding `<task-dir>/trace.json` only when that task's `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
 3. Preserve `negative_evidence` and `open_questions` as planning inputs instead of smoothing them away.
 
 Bound follow-up reading after `surveil`:
