@@ -2,10 +2,6 @@
 set -euo pipefail
 
 mkdir -p "$HOME"
-if [[ -n "${VIBE_AUTH_FILE:-}" && -f "${VIBE_AUTH_FILE}" ]]; then
-  mkdir -p "$HOME/.pi/agent"
-  cp "${VIBE_AUTH_FILE}" "$HOME/.pi/agent/auth.json"
-fi
 
 git config --global --add safe.directory "$(pwd)"
 git config --global --add safe.directory "${VIBE_REPO_ROOT}"
@@ -46,11 +42,4 @@ fi
 export VIBE_EVENTS_LOG=/artifacts/events.jsonl
 export VIBE_STDERR_LEVEL="${VIBE_STDERR_LEVEL:-info}"
 
-case "${VIBE_STDERR_LEVEL}" in
-  trace)
-    pi "${PI_ARGS[@]}" "${PROMPT}" | tee /artifacts/events.jsonl >&2
-    ;;
-  *)
-    pi "${PI_ARGS[@]}" "${PROMPT}" | node /opt/vibe/extensions/stderr-progress.mjs
-    ;;
-esac
+pi "${PI_ARGS[@]}" "${PROMPT}" | node /opt/vibe/extensions/stderr-progress.mjs

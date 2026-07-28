@@ -129,8 +129,11 @@ uses the trimmed first line from that artifact for snapshot commits when
 present, and falls back to `chore: snapshot changes` when the file is
 missing or empty.
 
-Auth is copied into an ephemeral container home for the run and is not
-persisted in the artifact directory.
+The host Pi agent directory is mounted writable at `$HOME/.pi/agent` inside
+the container. This lets Pi persist rotated OAuth credentials and share its
+refresh lock across host and Vibe processes. Auth is never copied into the run
+artifact directory. Prefer provider API keys for disposable or concurrent
+automation.
 
 Recovery notes:
 
