@@ -2,6 +2,7 @@
 set -euo pipefail
 
 mkdir -p "$HOME"
+mkdir -p "${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
 
 git config --global --add safe.directory "$(pwd)"
 git config --global --add safe.directory "${VIBE_REPO_ROOT}"
