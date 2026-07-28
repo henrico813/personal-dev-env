@@ -1,10 +1,13 @@
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @mariozechner/pi-coding-agent@0.71.1
+
+ENV NPM_CONFIG_PREFIX=/vibe-home/.npm-global
+ENV PATH=/vibe-home/.npm-global/bin:$PATH
 
 COPY extensions /opt/vibe/extensions
 COPY hooks /opt/vibe/hooks
