@@ -41,6 +41,7 @@ Notes:
 - `surveil index --repo <repo>` builds a disposable Tantivy chunk index under `.surveil/index/` from readable UTF-8 files under the same repo skip policy used by `research`.
 - `surveil gather --repo <repo> --task-file <task.md>` emits a versioned `GatherOutput` JSON context with `schema_version`.
 - `surveil research --context <context.json> --trace-out <trace.json>` emits a versioned `ResearchOutput` JSON report with `schema_version` and writes a shallow `TraceOutput` JSON file.
+- `surveil merge <perspective>=<report.json>...` validates one or more `surveil.v6` reports and emits one `surveil.evidence.v1` evidence pack.
 
 Default skipped path segments are `target`, `node_modules`, `dist`, `build`, `pack`, `.git`, `.surveil`, `.spendscope`, `worktrees`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox`, `htmlcov`, `.next`, `.nuxt`, `.svelte-kit`, and `.turbo`. The same skip policy applies to `index`, `gather`, and `research`.
 
@@ -56,3 +57,7 @@ Research results are grouped by query:
 A prebuilt `.surveil/index/` directory now participates in query-time ranking. At run start, `research` checks whether that index is usable against the repo-wide fingerprint recorded at build time, opens it once when it is, and reuses that reader for every query in the run without revalidating freshness. Each query still keeps explicit files first, scans top ranked files next, and expands to the rest of scope only when that first pass finds nothing. If the index is missing, stale, incompatible, or corrupt at startup, `research` falls back to the full scoped lexical scan.
 
 `research` still emits only a small number of snippets per file, and the public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
+
+Merged reports, findings, occurrences, negative evidence, blockers, and open questions retain first-seen order. Findings with the exact same `path`, `line`, and `excerpt` share one entry; ordered `occurrences` describe each distinct report and query appearance with a one-based rank. Exact duplicate notes and occurrences are omitted, and input report paths are never copied into output.
+
+`merge` validates JSON shape and schema version, but reports do not identify a repository revision. Callers are responsible for supplying reports produced from the same source snapshot. This issue also differentiates planning queries; automatically invoking `merge` remains a follow-up.
