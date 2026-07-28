@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
 };
@@ -98,14 +98,22 @@ fn host_user() -> Result<HostUser, String> {
     })
 }
 
-fn auth_file_from_home(home: Option<&str>) -> Option<String> {
-    let path = home.map(|home| format!("{home}/.pi/agent/auth.json"))?;
-    let metadata = std::fs::metadata(&path).ok()?;
+fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
+    let pi_agent_dir = PathBuf::from(home?).join(".pi/agent");
+    let auth_file = pi_agent_dir.join("auth.json");
+    let metadata = std::fs::metadata(&auth_file).ok()?;
     if !metadata.is_file() {
         return None;
     }
-    File::open(&path).ok()?;
-    Some(path)
+    File::open(auth_file).ok()?;
+
+    // Pi rotates OAuth tokens and writes refresh locks beside auth.json.
+    // Fail before Docker if that shared state cannot be updated.
+    let probe = pi_agent_dir.join(".vibe-write-check");
+    File::create(&probe).ok()?;
+    let _ = std::fs::remove_file(probe);
+
+    Some(pi_agent_dir)
 }
 
 fn env_var_is_set(key: &str) -> bool {
@@ -122,7 +130,7 @@ fn has_provider_env() -> bool {
 }
 
 fn auth_is_configured(home: Option<&str>) -> bool {
-    has_provider_env() || auth_file_from_home(home).is_some()
+    has_provider_env() || pi_agent_dir_with_auth(home).is_some()
 }
 
 pub fn require_auth() -> Result<(), String> {
@@ -145,6 +153,7 @@ struct DockerRunArgs<'a> {
     insecure_tls: bool,
     snapshot_ref: &'a str,
     user: &'a HostUser,
+    pi_agent_dir: Option<&'a Path>,
 }
 
 /// Keep prompt/env wiring pure so tests can lock the Docker seam.
@@ -159,6 +168,7 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         insecure_tls,
         snapshot_ref,
         user,
+        pi_agent_dir,
     } = args;
 
     let mut run_args = vec![
@@ -204,6 +214,14 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         "-e".to_string(),
         format!("VIBE_REPO_ROOT={}", repo_root.display()),
     ];
+    if let Some(pi_agent_dir) = pi_agent_dir {
+        // Pi rotates OAuth tokens and locks beside auth.json, so the
+        // directory must stay writable and shared across runs.
+        run_args.extend([
+            "-v".to_string(),
+            format!("{}:/vibe-home/.pi/agent:rw", pi_agent_dir.display()),
+        ]);
+    }
     if *insecure_tls {
         run_args.push("-e".to_string());
         run_args.push("NODE_TLS_REJECT_UNAUTHORIZED=0".to_string());
@@ -230,7 +248,7 @@ pub fn run_task(
             .unwrap_or("run")
     );
     let user = host_user()?;
-    let auth_file = auth_file_from_home(std::env::var("HOME").ok().as_deref());
+    let pi_agent_dir = pi_agent_dir_with_auth(std::env::var("HOME").ok().as_deref());
 
     // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
     if insecure_tls {
@@ -248,6 +266,7 @@ pub fn run_task(
         insecure_tls,
         snapshot_ref: &snapshot_ref,
         user: &user,
+        pi_agent_dir: pi_agent_dir.as_deref(),
     }));
     for key in AUTH_VARS {
         if let Ok(value) = std::env::var(key) {
@@ -265,10 +284,6 @@ pub fn run_task(
                 cmd.args(["-e", &format!("{env_key}={value}")]);
             }
         }
-    }
-    if let Some(path) = auth_file.as_deref() {
-        cmd.args(["-v", &format!("{path}:/vibe-auth/auth.json:ro")]);
-        cmd.args(["-e", "VIBE_AUTH_FILE=/vibe-auth/auth.json"]);
     }
     let mut child = cmd
         .arg(IMAGE)
@@ -324,11 +339,11 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_file_from_home, auth_is_configured, docker_run_args, require_auth, ArtifactPaths,
+        auth_is_configured, docker_run_args, pi_agent_dir_with_auth, require_auth, ArtifactPaths,
         DockerRunArgs, HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
-    use std::{ffi::OsString, fs};
+    use std::{ffi::OsString, fs, path::Path};
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
 
@@ -361,6 +376,28 @@ mod tests {
     fn clear_auth_env() {
         for key in AUTH_VARS {
             std::env::remove_var(key);
+        }
+    }
+
+    fn test_artifacts(dir: &Path) -> ArtifactPaths {
+        let artifacts = dir.join("artifacts");
+        ArtifactPaths {
+            dir: artifacts.clone(),
+            run_id: "run-id".to_string(),
+            prompt_txt: artifacts.join("prompt.txt"),
+            system_prompt_txt: artifacts.join("system-prompt.txt"),
+            combined_prompt_txt: artifacts.join("combined-prompt.txt"),
+            system_prompt_versions_txt: artifacts.join("system-prompt-versions.txt"),
+            state_json: artifacts.join("run.json"),
+            result_json: artifacts.join("result.json"),
+            run_json: artifacts.join("run.json"),
+            vibe_log: artifacts.join("vibe.log"),
+            events_jsonl: artifacts.join("events.jsonl"),
+            stderr_log: artifacts.join("agent.stderr.log"),
+            extension_jsonl: artifacts.join("extension-events.jsonl"),
+            snapshots_jsonl: artifacts.join("snapshots.jsonl"),
+            summary_json: artifacts.join("summary.json"),
+            runs_index_jsonl: dir.join("runs_index.jsonl"),
         }
     }
 
@@ -495,24 +532,7 @@ mod tests {
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
         let worktree = temp.path().join("worktree");
-        let artifacts = ArtifactPaths {
-            dir: temp.path().join("artifacts"),
-            run_id: "run-id".to_string(),
-            prompt_txt: temp.path().join("artifacts/prompt.txt"),
-            system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
-            combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
-            system_prompt_versions_txt: temp.path().join("artifacts/system-prompt-versions.txt"),
-            state_json: temp.path().join("artifacts/run.json"),
-            result_json: temp.path().join("artifacts/result.json"),
-            run_json: temp.path().join("artifacts/run.json"),
-            vibe_log: temp.path().join("artifacts/vibe.log"),
-            events_jsonl: temp.path().join("artifacts/events.jsonl"),
-            stderr_log: temp.path().join("artifacts/agent.stderr.log"),
-            extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
-            snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
-            summary_json: temp.path().join("artifacts/summary.json"),
-            runs_index_jsonl: temp.path().join("runs_index.jsonl"),
-        };
+        let artifacts = test_artifacts(temp.path());
         let user = HostUser {
             uid: "1000".to_string(),
             gid: "1001".to_string(),
@@ -528,6 +548,7 @@ mod tests {
             insecure_tls: false,
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
+            pi_agent_dir: None,
         });
 
         assert!(args
@@ -550,24 +571,7 @@ mod tests {
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
         let worktree = temp.path().join("worktree");
-        let artifacts = ArtifactPaths {
-            dir: temp.path().join("artifacts"),
-            run_id: "run-id".to_string(),
-            prompt_txt: temp.path().join("artifacts/prompt.txt"),
-            system_prompt_txt: temp.path().join("artifacts/system-prompt.txt"),
-            combined_prompt_txt: temp.path().join("artifacts/combined-prompt.txt"),
-            system_prompt_versions_txt: temp.path().join("artifacts/system-prompt-versions.txt"),
-            state_json: temp.path().join("artifacts/run.json"),
-            result_json: temp.path().join("artifacts/result.json"),
-            run_json: temp.path().join("artifacts/run.json"),
-            vibe_log: temp.path().join("artifacts/vibe.log"),
-            events_jsonl: temp.path().join("artifacts/events.jsonl"),
-            stderr_log: temp.path().join("artifacts/agent.stderr.log"),
-            extension_jsonl: temp.path().join("artifacts/extension-events.jsonl"),
-            snapshots_jsonl: temp.path().join("artifacts/snapshots.jsonl"),
-            summary_json: temp.path().join("artifacts/summary.json"),
-            runs_index_jsonl: temp.path().join("runs_index.jsonl"),
-        };
+        let artifacts = test_artifacts(temp.path());
         let user = HostUser {
             uid: "1000".to_string(),
             gid: "1001".to_string(),
@@ -583,6 +587,7 @@ mod tests {
             insecure_tls: true,
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
+            pi_agent_dir: None,
         });
 
         assert!(args
@@ -591,18 +596,69 @@ mod tests {
     }
 
     #[test]
-    fn auth_file_from_home_rejects_directory_auth_json() {
+    fn mounts_pi_agent_dir_writable() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        let git_common_dir = temp.path().join("git");
+        let worktree = temp.path().join("worktree");
+        let pi_agent_dir = temp.path().join(".pi/agent");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: &repo_root,
+            git_common_dir: &git_common_dir,
+            worktree: &worktree,
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: Some(&pi_agent_dir),
+        });
+
+        // This checks Vibe's mount only; Pi owns refresh behavior.
+        let expected_mount = format!("{}:/vibe-home/.pi/agent:rw", pi_agent_dir.display());
+        assert!(args.iter().any(|arg| arg == &expected_mount));
+    }
+
+    #[test]
+    fn pi_agent_dir_rejects_auth_directory() {
         let home = tempfile::tempdir().expect("tempdir");
         let auth_path = home.path().join(".pi/agent/auth.json");
         fs::create_dir_all(&auth_path).expect("mkdir fake auth dir");
 
-        assert!(auth_file_from_home(home.path().to_str()).is_none());
+        assert!(pi_agent_dir_with_auth(home.path().to_str()).is_none());
     }
 
     #[test]
-    fn auth_file_from_home_rejects_missing_auth_json() {
+    fn pi_agent_dir_rejects_missing_auth() {
         let home = tempfile::tempdir().expect("tempdir");
 
-        assert!(auth_file_from_home(home.path().to_str()).is_none());
+        assert!(pi_agent_dir_with_auth(home.path().to_str()).is_none());
+    }
+
+    #[test]
+    fn pi_agent_dir_rejects_unwritable_dir() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let auth_dir = home.path().join(".pi/agent");
+        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
+        fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
+
+        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&auth_dir, permissions).expect("readonly auth dir");
+
+        let result = pi_agent_dir_with_auth(home.path().to_str());
+
+        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(&auth_dir, permissions).expect("restore auth dir");
+
+        assert!(result.is_none());
     }
 }
