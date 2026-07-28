@@ -1,8 +1,8 @@
 use crate::chunk::{build_chunks, Chunk, ChunkKind, RankedChunk, SearchQuery};
 use crate::source::{self, SourceFile};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -58,7 +58,6 @@ pub(crate) fn open_chunk_index_for_run(
 ) -> Result<Option<OpenChunkIndex>, Box<dyn Error>> {
     Ok(resolve_open_chunk_index(repo_root)?.1)
 }
-
 
 pub(crate) fn search_open_chunk_index(
     open_index: &OpenChunkIndex,
@@ -369,10 +368,18 @@ mod schema {
             Self {
                 path: schema.get_field("path").expect("missing path field"),
                 kind: schema.get_field("kind").expect("missing kind field"),
-                start_line: schema.get_field("start_line").expect("missing start_line field"),
-                end_line: schema.get_field("end_line").expect("missing end_line field"),
-                language: schema.get_field("language").expect("missing language field"),
-                symbol_name: schema.get_field("symbol_name").expect("missing symbol_name field"),
+                start_line: schema
+                    .get_field("start_line")
+                    .expect("missing start_line field"),
+                end_line: schema
+                    .get_field("end_line")
+                    .expect("missing end_line field"),
+                language: schema
+                    .get_field("language")
+                    .expect("missing language field"),
+                symbol_name: schema
+                    .get_field("symbol_name")
+                    .expect("missing symbol_name field"),
                 section_path_full: schema
                     .get_field("section_path_full")
                     .expect("missing section_path_full field"),
@@ -472,8 +479,8 @@ fn temp_repo(name: &str) -> std::path::PathBuf {
 mod tests {
     use super::{
         build_chunk_index, build_info_exists, inspect_chunk_index, open_chunk_index_for_run,
-        overwrite_build_info, search_open_chunk_index, tantivy_meta_exists, temp_repo,
-        write_note, IndexState, BUILD_INFO_PATH, INDEX_DIR,
+        overwrite_build_info, search_open_chunk_index, tantivy_meta_exists, temp_repo, write_note,
+        IndexState, BUILD_INFO_PATH, INDEX_DIR,
     };
     use crate::chunk::SearchQuery;
     use crate::source;
@@ -662,13 +669,9 @@ mod tests {
         build_chunk_index(&repo).expect("build chunk index");
 
         let mut skipped_paths = Vec::new();
-        let scoped = source::collect_candidate_files(
-            &repo,
-            &["src/".to_string()],
-            &[],
-            &mut skipped_paths,
-        )
-        .expect("collect scoped files");
+        let scoped =
+            source::collect_candidate_files(&repo, &["src/".to_string()], &[], &mut skipped_paths)
+                .expect("collect scoped files");
         let open_index = open_chunk_index_for_run(&repo)
             .expect("open chunk index")
             .expect("usable index");
@@ -693,18 +696,18 @@ mod tests {
     #[test]
     fn search_open_chunk_index_skips_empty_queries() {
         let repo = temp_repo("search-guards");
-        write_note(&repo, "src/lib.rs", "fn attach_handler() {\n    // attach handler\n}\n");
+        write_note(
+            &repo,
+            "src/lib.rs",
+            "fn attach_handler() {\n    // attach handler\n}\n",
+        );
 
         build_chunk_index(&repo).expect("build chunk index");
 
         let mut skipped_paths = Vec::new();
-        let scoped = source::collect_candidate_files(
-            &repo,
-            &["src/".to_string()],
-            &[],
-            &mut skipped_paths,
-        )
-        .expect("collect scoped files");
+        let scoped =
+            source::collect_candidate_files(&repo, &["src/".to_string()], &[], &mut skipped_paths)
+                .expect("collect scoped files");
         let open_index = open_chunk_index_for_run(&repo)
             .expect("open chunk index")
             .expect("usable index");

@@ -114,28 +114,27 @@ mod tests {
         assert_eq!(report.result.len(), case.expected_first_paths.len());
         for (index, answer) in report.result.iter().enumerate() {
             if case.expected_first_paths[index].is_empty() {
-                assert!(answer.findings.is_empty(), "case: {} answer: {}", case.name, index);
+                assert!(
+                    answer.findings.is_empty(),
+                    "case: {} answer: {}",
+                    case.name,
+                    index
+                );
             } else {
                 assert_eq!(
-                    answer.findings[0].path,
-                    case.expected_first_paths[index],
+                    answer.findings[0].path, case.expected_first_paths[index],
                     "case: {} answer: {}",
-                    case.name,
-                    index
+                    case.name, index
                 );
                 assert_eq!(
-                    answer.findings[0].source,
-                    case.expected_first_sources[index],
+                    answer.findings[0].source, case.expected_first_sources[index],
                     "case: {} answer: {}",
-                    case.name,
-                    index
+                    case.name, index
                 );
                 assert_eq!(
-                    answer.findings[0].excerpt,
-                    case.expected_first_excerpts[index],
+                    answer.findings[0].excerpt, case.expected_first_excerpts[index],
                     "case: {} answer: {}",
-                    case.name,
-                    index
+                    case.name, index
                 );
             }
             assert_eq!(
@@ -374,8 +373,14 @@ mod tests {
             TraceCase {
                 name: "records-ranked-only-query-trace",
                 files: vec![
-                    ("docs/guide.md", "attach attach attach attach\nattach attach attach attach\n"),
-                    ("src/lib.rs", "fn attach_handler() {\n    // attach handler\n}\n"),
+                    (
+                        "docs/guide.md",
+                        "attach attach attach attach\nattach attach attach attach\n",
+                    ),
+                    (
+                        "src/lib.rs",
+                        "fn attach_handler() {\n    // attach handler\n}\n",
+                    ),
                 ],
                 build_index: true,
                 context: GatherOutput {
@@ -429,10 +434,13 @@ mod tests {
                 "case: {}",
                 case.name
             );
-            assert_eq!(trace.index_state, case.expected_index_state, "case: {}", case.name);
             assert_eq!(
-                trace.queries[0].retrieval_mode,
-                case.expected_retrieval_mode,
+                trace.index_state, case.expected_index_state,
+                "case: {}",
+                case.name
+            );
+            assert_eq!(
+                trace.queries[0].retrieval_mode, case.expected_retrieval_mode,
                 "case: {}",
                 case.name
             );

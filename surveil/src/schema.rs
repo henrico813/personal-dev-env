@@ -82,7 +82,7 @@ pub struct TraceOutput {
 
 #[cfg(test)]
 mod tests {
-    use super::{GatherOutput, QueryTrace, SCHEMA_VERSION, TraceOutput};
+    use super::{GatherOutput, QueryTrace, TraceOutput, SCHEMA_VERSION};
 
     struct GatherSchemaCase {
         name: &'static str,
@@ -143,7 +143,11 @@ mod tests {
                 Some(expected_error) => {
                     let err = serde_json::from_str::<GatherOutput>(&case.json)
                         .expect_err("unknown field rejected");
-                    assert!(err.to_string().contains(expected_error), "case: {}", case.name);
+                    assert!(
+                        err.to_string().contains(expected_error),
+                        "case: {}",
+                        case.name
+                    );
                 }
                 None => {
                     let gather = serde_json::from_str::<GatherOutput>(&case.json)
@@ -244,7 +248,11 @@ mod tests {
                 Some(expected_error) => {
                     let err = serde_json::from_str::<TraceOutput>(&case.json)
                         .expect_err("unknown field rejected");
-                    assert!(err.to_string().contains(expected_error), "case: {}", case.name);
+                    assert!(
+                        err.to_string().contains(expected_error),
+                        "case: {}",
+                        case.name
+                    );
                 }
                 None => {
                     let trace = serde_json::from_str::<TraceOutput>(&case.json)
