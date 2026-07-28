@@ -47,9 +47,11 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	surveilLink := strings.Index(dryRun, "DRY-RUN: link surveil")
 	surveilVerify := strings.Index(dryRun, "DRY-RUN: verify surveil")
 	vibe := strings.Index(dryRun, "DRY-RUN: install vibe")
-	node := strings.Index(dryRun, "DRY-RUN: install Node 22")
+	node := strings.Index(dryRun, "DRY-RUN: install Node "+aiNodeVersion)
+	stagePi := strings.Index(dryRun, "DRY-RUN: activate pi runtime")
+	stagedPiRuntime := filepath.Join(cfg.AIRuntimeDir, "pi") + ".tmp"
 
-	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || vibe == -1 || node == -1 {
+	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || vibe == -1 || node == -1 || stagePi == -1 {
 		t.Fatalf("missing expected dry-run output:\n%s", dryRun)
 	}
 	if cargo > backup || cargo > plannerBuild || cargo > shimBuild || cargo > surveilBuild {
@@ -66,6 +68,18 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	}
 	if vibe > node {
 		t.Fatalf("vibe install should run before Node setup:\n%s", dryRun)
+	}
+	if node > stagePi {
+		t.Fatalf("Node setup should run before Pi activation:\n%s", dryRun)
+	}
+	if !strings.Contains(dryRun, "@earendil-works/pi-coding-agent@latest") {
+		t.Fatalf("dry-run should install maintained Pi package:\n%s", dryRun)
+	}
+	if !strings.Contains(dryRun, "npm install --prefix "+shellQuote(stagedPiRuntime)) {
+		t.Fatalf("dry-run should install into staged Pi runtime:\n%s", dryRun)
+	}
+	if strings.Contains(dryRun, "@mariozechner/pi-coding-agent") {
+		t.Fatalf("dry-run should not install deprecated Pi package:\n%s", dryRun)
 	}
 }
 
