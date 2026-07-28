@@ -72,7 +72,7 @@ In OpenCode, type `/command_name` to invoke. These are the same commands install
 | `/create_plan` | Produce a surveil-backed implementation plan |
 | `/review_plan` | Validate a plan for architecture, bugs, and completeness |
 | `/implement_plan` | Execute plan phases with verification |
-| `/cleanup_plan` | Tear down completed plan worktrees and finish cleanup |
+| `/cleanup_plan` | Clean completed plan, worktree, branch, PR evidence, and main state |
 | `/research_codebase` | Document how the codebase works (read-only) |
 | `/document_codebase` | Diagnose documentation gaps and fix them at the right level |
 
@@ -86,7 +86,7 @@ Codex skills are prompt-triggered, not slash commands. Use them by asking natura
 | `design-doc` | Draft a technical design document | "Use design-doc to design the new caching layer" |
 | `document-codebase` | Audit and improve project documentation | "Use document-codebase to review docs under pde/" |
 | `implement-plan` | Execute an approved plan with verification | "Use implement-plan on docs/PDEV-006.md" |
-| `cleanup-plan` | Clean up a completed plan worktree safely | "Use cleanup-plan for the finished auth refactor worktree" |
+| `cleanup-plan` | Clean completed plan, worktree, branch, PR evidence, and main state | "Use cleanup-plan for the merged auth refactor branch" |
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde install ai-tools works" |
 | `review-plan` | Review a plan for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
