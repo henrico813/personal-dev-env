@@ -42,6 +42,8 @@ Notes:
 - `surveil gather --repo <repo> --task-file <task.md>` emits a versioned `GatherOutput` JSON context with `schema_version`.
 - `surveil research --context <context.json> --trace-out <trace.json>` emits a versioned `ResearchOutput` JSON report with `schema_version` and writes a shallow `TraceOutput` JSON file.
 
+Default skipped path segments are `target`, `node_modules`, `dist`, `build`, `pack`, `.git`, `.surveil`, `.spendscope`, `worktrees`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox`, `htmlcov`, `.next`, `.nuxt`, `.svelte-kit`, and `.turbo`. The same skip policy applies to `index`, `gather`, and `research`.
+
 ## Output shape
 
 Research results are grouped by query:
