@@ -1,7 +1,7 @@
 use super::rank::compare_best_chunk_score;
 use super::{
-    CorpusLine, LiveFileCache, LoadedFile, MatchedFinding, RankedFileFindings,
-    TraceState, MAX_FINDINGS_PER_FILE,
+    CorpusLine, LiveFileCache, LoadedFile, MatchedFinding, RankedFileFindings, TraceState,
+    MAX_FINDINGS_PER_FILE,
 };
 use crate::schema::Finding;
 use crate::source::{self, SourceFile};
@@ -77,7 +77,10 @@ pub(super) fn create_answer_from_sources(
         .collect();
 
     let negative_evidence = if findings.is_empty() {
-        vec![format!("searched declared areas: {}", search_areas.join(", "))]
+        vec![format!(
+            "searched declared areas: {}",
+            search_areas.join(", ")
+        )]
     } else {
         Vec::new()
     };
@@ -166,7 +169,9 @@ fn load_candidate_text(repo_root: &Path, file: &Path, trace: &mut TraceState) ->
     match fs::read_to_string(file) {
         Ok(text) => Some(text),
         Err(_) => {
-            trace.skipped_paths.push(source::display_path(repo_root, file));
+            trace
+                .skipped_paths
+                .push(source::display_path(repo_root, file));
             None
         }
     }
@@ -225,8 +230,17 @@ fn check_symbol_metadata_enrichment(path: &Path) -> bool {
     if matches!(
         extension.as_deref(),
         Some(
-            "md" | "markdown" | "rst" | "txt" | "toml" | "json" | "yaml" | "yml" | "ini"
-                | "cfg" | "conf" | "env"
+            "md" | "markdown"
+                | "rst"
+                | "txt"
+                | "toml"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "ini"
+                | "cfg"
+                | "conf"
+                | "env"
         )
     ) {
         return false;
@@ -277,7 +291,9 @@ fn attach_symbol_metadata(
 ) -> bool {
     let mut attached = false;
     for hit in findings {
-        if let Some(symbol) = find_enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset) {
+        if let Some(symbol) =
+            find_enclosing_symbol(tree.root_node(), text.as_bytes(), hit.byte_offset)
+        {
             hit.finding.symbol_kind = Some(symbol.kind);
             hit.finding.symbol_name = Some(symbol.name);
             hit.finding.symbol_start_line = Some(symbol.start_line);
@@ -300,10 +316,8 @@ fn find_enclosing_symbol(
     source: &[u8],
     byte_offset: usize,
 ) -> Option<SymbolInfo> {
-    let mut node = root.descendant_for_byte_range(
-        byte_offset,
-        byte_offset.saturating_add(1).min(source.len()),
-    )?;
+    let mut node = root
+        .descendant_for_byte_range(byte_offset, byte_offset.saturating_add(1).min(source.len()))?;
     loop {
         if check_symbol_node(node) {
             let name_node = find_symbol_name_node(node)?;
@@ -320,7 +334,8 @@ fn find_enclosing_symbol(
 }
 
 fn find_symbol_name_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    node.child_by_field_name("name").or_else(|| node.named_child(0))
+    node.child_by_field_name("name")
+        .or_else(|| node.named_child(0))
 }
 
 fn check_symbol_node(node: tree_sitter::Node) -> bool {
@@ -498,7 +513,11 @@ mod tests {
                 .iter()
                 .map(|item| item.to_string())
                 .collect::<Vec<_>>();
-            let terms = case.terms.iter().map(|item| item.to_string()).collect::<Vec<_>>();
+            let terms = case
+                .terms
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>();
             let (findings, _) = output::create_test_answer(
                 &repo,
                 case.query,
@@ -510,30 +529,49 @@ mod tests {
             .expect("scan findings");
 
             assert_eq!(
-                findings.iter().map(|item| item.path.as_str()).collect::<Vec<_>>(),
+                findings
+                    .iter()
+                    .map(|item| item.path.as_str())
+                    .collect::<Vec<_>>(),
                 case.expected_paths,
                 "case: {}",
                 case.name
             );
             assert_eq!(
-                findings.iter().map(|item| item.source.as_str()).collect::<Vec<_>>(),
+                findings
+                    .iter()
+                    .map(|item| item.source.as_str())
+                    .collect::<Vec<_>>(),
                 case.expected_sources,
                 "case: {}",
                 case.name
             );
             assert_eq!(
-                findings.iter().map(|item| item.excerpt.as_str()).collect::<Vec<_>>(),
+                findings
+                    .iter()
+                    .map(|item| item.excerpt.as_str())
+                    .collect::<Vec<_>>(),
                 case.expected_excerpts,
                 "case: {}",
                 case.name
             );
             if let Some(expected_kind) = case.expected_symbol_kind {
-                assert_eq!(findings[0].symbol_kind.as_deref(), Some(expected_kind), "case: {}", case.name);
+                assert_eq!(
+                    findings[0].symbol_kind.as_deref(),
+                    Some(expected_kind),
+                    "case: {}",
+                    case.name
+                );
             } else if !findings.is_empty() {
                 assert_eq!(findings[0].symbol_kind, None, "case: {}", case.name);
             }
             if let Some(expected_name) = case.expected_symbol_name {
-                assert_eq!(findings[0].symbol_name.as_deref(), Some(expected_name), "case: {}", case.name);
+                assert_eq!(
+                    findings[0].symbol_name.as_deref(),
+                    Some(expected_name),
+                    "case: {}",
+                    case.name
+                );
             } else if !findings.is_empty() {
                 assert_eq!(findings[0].symbol_name, None, "case: {}", case.name);
             }
@@ -573,14 +611,22 @@ mod tests {
         ];
 
         for case in &cases {
-            assert_eq!(create_corpus_lines(case.text).len(), case.expected_count, "case: {}", case.name);
+            assert_eq!(
+                create_corpus_lines(case.text).len(),
+                case.expected_count,
+                "case: {}",
+                case.name
+            );
         }
     }
 
     #[test]
     fn non_utf8_case_tables() {
         let repo = temp_repo("non-utf8");
-        write_bytes(&repo.join("surveil/src/lib.rs"), &[0xff_u8, 0xfe_u8, 0xfd_u8]);
+        write_bytes(
+            &repo.join("surveil/src/lib.rs"),
+            &[0xff_u8, 0xfe_u8, 0xfd_u8],
+        );
 
         let mut trace = TraceState::default();
         let (findings, _) = output::create_test_answer(
