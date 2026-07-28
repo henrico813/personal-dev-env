@@ -1,6 +1,7 @@
 mod chunk;
 mod gather;
 mod index;
+mod merge;
 mod research;
 mod schema;
 mod source;
@@ -22,6 +23,7 @@ enum Command {
     Gather(GatherArgs),
     New(NewArgs),
     Index(IndexArgs),
+    Merge(MergeArgs),
     Research(ResearchArgs),
 }
 
@@ -57,6 +59,12 @@ struct IndexArgs {
 }
 
 #[derive(Args)]
+struct MergeArgs {
+    #[arg(required = true, num_args = 1.., value_name = "PERSPECTIVE=REPORT")]
+    reports: Vec<String>,
+}
+
+#[derive(Args)]
 struct ResearchArgs {
     #[arg(long)]
     context: PathBuf,
@@ -81,6 +89,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             NewCommand::Task(args) => taskfile::run(&args.output_dir).map_err(Into::into),
         },
         Command::Index(args) => index::build_chunk_index(&args.repo),
+        Command::Merge(args) => merge::run(&args.reports),
         Command::Research(args) => research::run(&args.context, &args.trace_out),
     }
 }
@@ -110,6 +119,36 @@ mod tests {
     #[test]
     fn new_task_requires_output_dir() {
         match Cli::try_parse_from(["surveil", "new", "task"]) {
+            Ok(_) => panic!("expected missing argument error"),
+            Err(err) => assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument),
+        }
+    }
+
+    #[test]
+    fn parses_merge_reports() {
+        let cli = Cli::try_parse_from([
+            "surveil",
+            "merge",
+            "architecture=/tmp/architecture.json",
+            "tests=/tmp/tests.json",
+        ])
+        .expect("parse merge command");
+
+        match cli.command {
+            Command::Merge(args) => assert_eq!(
+                args.reports,
+                vec![
+                    "architecture=/tmp/architecture.json",
+                    "tests=/tmp/tests.json",
+                ]
+            ),
+            _ => panic!("expected merge command"),
+        }
+    }
+
+    #[test]
+    fn merge_requires_report() {
+        match Cli::try_parse_from(["surveil", "merge"]) {
             Ok(_) => panic!("expected missing argument error"),
             Err(err) => assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument),
         }
