@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	aiNodeVersion = "22"
+	aiNodeVersion = "22.19.0"
 	aiNVMVersion  = "v0.40.0"
 )
 
@@ -192,7 +192,7 @@ func ensureNodeToolchain(cfg *Config, runner Runner) error {
 		}
 	}
 
-	return runner.Bash("install Node 22", fmt.Sprintf(
+	return runner.Bash("install Node "+aiNodeVersion, fmt.Sprintf(
 		"set -euo pipefail; export NVM_DIR=%s; source %s; nvm install %s >/dev/null",
 		shellQuote(nvmDir),
 		shellQuote(nvmScript),
@@ -200,13 +200,55 @@ func ensureNodeToolchain(cfg *Config, runner Runner) error {
 	))
 }
 
+func activateStagedRuntime(name, runtimeDir, stagedRuntimeDir string, runner Runner) error {
+	backupRuntimeDir := runtimeDir + ".bak"
+	if err := runner.RemoveAll("remove stale "+name+" runtime backup", backupRuntimeDir); err != nil {
+		return err
+	}
+
+	hasLiveRuntime := false
+	if _, err := os.Lstat(runtimeDir); err == nil {
+		hasLiveRuntime = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	if hasLiveRuntime {
+		if err := runner.Rename("stash "+name+" runtime", runtimeDir, backupRuntimeDir); err != nil {
+			return err
+		}
+	}
+
+	if err := runner.Rename("activate "+name+" runtime", stagedRuntimeDir, runtimeDir); err != nil {
+		if !hasLiveRuntime {
+			return err
+		}
+		if restoreErr := runner.Rename("restore "+name+" runtime", backupRuntimeDir, runtimeDir); restoreErr != nil {
+			return fmt.Errorf("activate %s runtime: %w; restore previous runtime: %v", name, err, restoreErr)
+		}
+		return err
+	}
+
+	if !hasLiveRuntime {
+		return nil
+	}
+	return runner.RemoveAll("remove "+name+" runtime backup", backupRuntimeDir)
+}
+
 // installNodeTool installs an npm-backed binary into a PDE-owned runtime and writes a stable launcher.
 func installNodeTool(cfg *Config, runner Runner, name, pkg string) error {
 	runtimeDir := filepath.Join(cfg.AIRuntimeDir, name)
+	stagedRuntimeDir := runtimeDir + ".tmp"
 	nvmDir := filepath.Join(cfg.HomeDir, ".nvm")
 	nvmScript := filepath.Join(nvmDir, "nvm.sh")
 
-	if err := runner.MkdirAll("create AI runtime dir", runtimeDir, 0o755); err != nil {
+	if err := runner.MkdirAll("create AI runtime parent dir", filepath.Dir(runtimeDir), 0o755); err != nil {
+		return err
+	}
+	if err := runner.RemoveAll("remove stale "+name+" runtime temp dir", stagedRuntimeDir); err != nil {
+		return err
+	}
+	if err := runner.MkdirAll("create staged "+name+" runtime dir", stagedRuntimeDir, 0o755); err != nil {
 		return err
 	}
 	if err := runner.Bash(fmt.Sprintf("install %s", name), fmt.Sprintf(
@@ -214,9 +256,17 @@ func installNodeTool(cfg *Config, runner Runner, name, pkg string) error {
 		shellQuote(nvmDir),
 		shellQuote(nvmScript),
 		shellQuote(aiNodeVersion),
-		shellQuote(runtimeDir),
+		shellQuote(stagedRuntimeDir),
 		shellQuote(pkg+"@latest"),
 	)); err != nil {
+		if cleanupErr := runner.RemoveAll("remove failed "+name+" runtime temp dir", stagedRuntimeDir); cleanupErr != nil {
+			return fmt.Errorf("install %s runtime: %w; remove staged runtime: %v", name, err, cleanupErr)
+		}
+		return err
+	}
+	if err := runner.Do("activate "+name+" runtime", func() error {
+		return activateStagedRuntime(name, runtimeDir, stagedRuntimeDir, runner)
+	}); err != nil {
 		return err
 	}
 
