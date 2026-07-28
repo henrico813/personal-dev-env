@@ -56,7 +56,7 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := installNodeTool(cfg, runner, "opencode", "opencode-ai"); err != nil {
 		return err
 	}
-	if err := installNodeTool(cfg, runner, "pi", "@mariozechner/pi-coding-agent"); err != nil {
+	if err := installNodeTool(cfg, runner, "pi", "@earendil-works/pi-coding-agent"); err != nil {
 		return err
 	}
 
