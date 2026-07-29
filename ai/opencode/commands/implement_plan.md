@@ -54,12 +54,13 @@ For this workflow, <evidence-review-agent> is the OpenCode `codebase-analyzer` a
    - After root creation succeeds, run `rm -f "$failure_file"` and then `failure_file="$search_dir/failure.md"`.
    - Run `surveil new task --root "$search_dir" --task interfaces-data-state`.
    - Run `surveil new task --root "$search_dir" --task tests-verification`.
-2. Populate `$search_dir/architecture/task.md`, `$search_dir/interfaces-data-state/task.md`, and `$search_dir/tests-verification/task.md` from <task-context>:
-   - Use the task-context title as `Summary`; if it has no title, use its first sentence verbatim.
-   - Include only literal paths named by the task context as `Explicit Files`, preserving first-seen order and removing exact duplicates.
-   - Use the smallest repo directories covering those paths and each task's focus as `Search Areas`; use `.` only when no narrower area is available.
-   - Copy literal identifiers, filenames, path segments, commands, and feature names into `Terms`, de-duplicate case-insensitively, and do not invent synonyms.
-3. Populate each task's `Query` field with its ordered questions. Do not omit, reorder, combine, reword, or reuse question sets across tasks.
+2. Populate `$search_dir/architecture/task.json`, `$search_dir/interfaces-data-state/task.json`, and `$search_dir/tests-verification/task.json` from <task-context>:
+   - Set `summary` to the task-context title; if it has no title, use its first sentence verbatim.
+   - Set `explicit_files` to only literal paths named by the task context, preserving first-seen order and removing exact duplicates.
+   - Set `search_areas` to the smallest repo directories covering those paths and each task's focus; use `.` only when the intended scope is the repository root.
+   - Treat every relative `explicit_files` and `search_areas` value as relative to the exact <repo> passed to `--repo`; recalculate them if <repo> changes.
+   - Set `terms` to literal identifiers, filenames, path segments, commands, and feature names, de-duplicate case-insensitively, and do not invent synonyms.
+3. Populate each task's `query` array with its ordered questions. Do not omit, reorder, combine, reword, or reuse question sets across tasks.
    - `architecture`:
      1. `How does the current command or request flow through this area?`
      2. `Which modules own this behavior, and where are their boundaries?`
@@ -80,14 +81,14 @@ For this workflow, <evidence-review-agent> is the OpenCode `codebase-analyzer` a
      5. `Which behavior requires manual verification?`
 4. Run `surveil index --repo <repo>`.
 5. Run all three gather commands:
-   - `surveil gather --repo <repo> --task-file "$search_dir/architecture/task.md" > "$search_dir/architecture/context.json"`
-   - `surveil gather --repo <repo> --task-file "$search_dir/interfaces-data-state/task.md" > "$search_dir/interfaces-data-state/context.json"`
-   - `surveil gather --repo <repo> --task-file "$search_dir/tests-verification/task.md" > "$search_dir/tests-verification/context.json"`
+   - `surveil gather --repo <repo> --task-file "$search_dir/architecture/task.json" > "$search_dir/architecture/context.json"`
+   - `surveil gather --repo <repo> --task-file "$search_dir/interfaces-data-state/task.json" > "$search_dir/interfaces-data-state/context.json"`
+   - `surveil gather --repo <repo> --task-file "$search_dir/tests-verification/task.json" > "$search_dir/tests-verification/context.json"`
 6. Launch all three research commands through parallel tool calls and wait for all three:
    - `surveil research --context "$search_dir/architecture/context.json" --trace-out "$search_dir/architecture/trace.json" > "$search_dir/architecture/report.json"`
    - `surveil research --context "$search_dir/interfaces-data-state/context.json" --trace-out "$search_dir/interfaces-data-state/trace.json" > "$search_dir/interfaces-data-state/report.json"`
    - `surveil research --context "$search_dir/tests-verification/context.json" --trace-out "$search_dir/tests-verification/trace.json" > "$search_dir/tests-verification/report.json"`
-7. Continue only after the index, gather, and research commands succeed for all three tasks.
+7. Proceed to step 8 only after all three tasks succeed; otherwise follow step 12.
 8. Merge the reports directly with `surveil merge "$search_dir/architecture/report.json" "$search_dir/interfaces-data-state/report.json" "$search_dir/tests-verification/report.json" > "$search_dir/evidence.json"`.
 9. Read `$search_dir/evidence.json` before additional repository research.
 10. After successful evidence, run one <evidence-review-agent>:
@@ -98,15 +99,15 @@ For this workflow, <evidence-review-agent> is the OpenCode `codebase-analyzer` a
     - Require read-only research with concrete `file:line` references and findings not already present in the evidence.
     - Save its final response verbatim as `$search_dir/manual-review.md`.
 11. Verify new or conflicting findings from <evidence-review-agent> with direct file reads before continuing.
-12. If any Surveil command fails, retry it once. If it still fails, write the failed stage to `$failure_file`, skip steps 8-9 only, run one <evidence-review-agent> using all step 10 review instructions with <task-context>, <repo>, and any available artifacts, save its response beside `$failure_file`, and verify new or conflicting fallback findings with direct file reads before continuing.
+12. If task JSON or search-area validation fails, correct the input and rerun gather; input corrections do not consume the operational retry. If any other Surveil command fails, retry it once. If it still fails, write the failed stage to `$failure_file`, skip steps 8-9 only, run one <evidence-review-agent> using all step 10 review instructions with <task-context>, <repo>, and any available artifacts, save its response beside `$failure_file`, and verify new or conflicting fallback findings with direct file reads before continuing.
 
 Read the plan fully, then run one unchecked implementation step at a time.
-Create a unique prompt directory for that step with `task_dir="$(mktemp -d "${TMPDIR:-/tmp}/implement-plan-task.XXXXXX")"`.
-Run `surveil new task "$task_dir"` and populate `"$task_dir/task.md"` with the exact current plan step content verbatim, then invoke the `vibe` CLI
+Create a unique prompt directory for that step with `prompt_dir="$(mktemp -d "${TMPDIR:-/tmp}/implement-plan-prompt.XXXXXX")"`.
+Write the exact current plan step verbatim as raw Markdown to `"$prompt_dir/prompt.md"`, then invoke the `vibe` CLI
 directly with the current run flow:
 
 ```bash
-vibe run --key "$KEY" --prompt-file "$task_dir/task.md" --model "$MODEL"
+vibe run --key "$KEY" --prompt-file "$prompt_dir/prompt.md" --model "$MODEL"
 ```
 
 The skill owns step selection and prompt preparation. Vibe owns worktree

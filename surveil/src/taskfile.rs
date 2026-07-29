@@ -1,19 +1,23 @@
+use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const DEFAULT_TASK_FILENAME: &str = "task.md";
+pub const DEFAULT_TASK_FILENAME: &str = "task.json";
 const MANAGED_ROOT_MARKER: &str = ".surveil-managed";
-pub const DEFAULT_TASK_TEMPLATE: &str = concat!(
-    "# Task\n\n",
-    "## Summary\n\n",
-    "## Explicit Files\n\n",
-    "## Search Areas\n\n",
-    "## Query\n\n",
-    "## Terms\n",
-);
+
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TaskFile {
+    pub(crate) summary: String,
+    pub(crate) explicit_files: Vec<String>,
+    pub(crate) search_areas: Vec<String>,
+    pub(crate) query: Vec<String>,
+    pub(crate) terms: Vec<String>,
+}
 
 pub fn run(output_dir: &Path) -> io::Result<()> {
     create_task_file(output_dir).map(|_| ())
@@ -30,9 +34,44 @@ pub fn create_task_file(output_dir: &Path) -> io::Result<PathBuf> {
         .write(true)
         .create_new(true)
         .open(&task_path)?;
-    file.write_all(DEFAULT_TASK_TEMPLATE.as_bytes())?;
+    serde_json::to_writer_pretty(&mut file, &TaskFile::default())
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    file.write_all(b"\n")?;
 
     Ok(task_path)
+}
+
+pub(crate) fn parse_task_file(text: &str) -> Result<TaskFile, serde_json::Error> {
+    serde_json::from_str(text)
+}
+
+pub(crate) fn validate_task_file(task: &TaskFile) -> io::Result<()> {
+    if task.summary.trim().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "task summary must not be empty",
+        ));
+    }
+    if task.search_areas.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "task search_areas must contain at least one path",
+        ));
+    }
+    if task.query.is_empty() || task.query.iter().any(|query| query.trim().is_empty()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "task query must contain only nonempty questions",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn read_task_file(path: &Path) -> Result<TaskFile, Box<dyn Error>> {
+    let text = fs::read_to_string(path)?;
+    let task = parse_task_file(&text)?;
+    validate_task_file(&task)?;
+    Ok(task)
 }
 
 pub fn create_managed_task(state_root: &Path, task: &str) -> io::Result<PathBuf> {
@@ -168,7 +207,7 @@ pub(crate) fn validate_task_name(task: &str) -> io::Result<()> {
 mod tests {
     use super::{
         append_managed_task, create_managed_root_at, create_managed_task, create_task_file,
-        state_root_from, validate_task_name, DEFAULT_TASK_TEMPLATE,
+        parse_task_file, state_root_from, validate_task_file, validate_task_name, TaskFile,
     };
     use std::ffi::OsStr;
     use std::fs;
@@ -185,19 +224,84 @@ mod tests {
     }
 
     #[test]
-    fn creates_task_file_with_default_template() {
+    fn test_taskfile_parsing() {
         let root = temp_root("template");
         fs::create_dir_all(&root).expect("create root");
 
         let task_path = create_task_file(&root).expect("create task file");
-
-        assert_eq!(task_path, root.join("task.md"));
+        let generated = fs::read_to_string(&task_path).expect("read task file");
+        assert_eq!(task_path, root.join("task.json"));
         assert_eq!(
-            fs::read_to_string(&task_path).expect("read task file"),
-            DEFAULT_TASK_TEMPLATE
+            parse_task_file(&generated).expect("parse generated task"),
+            TaskFile::default(),
         );
 
+        let populated = r#"{
+  "summary": "summary",
+  "explicit_files": ["src/lib.rs"],
+  "search_areas": ["src"],
+  "query": ["Where?"],
+  "terms": ["task"]
+}"#;
+        assert_eq!(
+            parse_task_file(populated)
+                .expect("parse populated task")
+                .summary,
+            "summary",
+        );
+
+        for invalid in [
+            "{",
+            r#"{"summary":"","explicit_files":[],"search_areas":[],"query":[],"terms":[],"unexpected":true}"#,
+            r#"{"summary":[],"explicit_files":[],"search_areas":[],"query":[],"terms":[]}"#,
+        ] {
+            assert!(
+                parse_task_file(invalid).is_err(),
+                "task should fail: {invalid}"
+            );
+        }
+
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_taskfile_contract() {
+        let cases = [
+            (
+                r#"{"summary":"summary","explicit_files":[],"search_areas":["."],"query":["Where?"],"terms":[]}"#,
+                None,
+            ),
+            (
+                r#"{"summary":" ","explicit_files":[],"search_areas":["."],"query":["Where?"],"terms":[]}"#,
+                Some("summary"),
+            ),
+            (
+                r#"{"summary":"summary","explicit_files":[],"search_areas":[],"query":["Where?"],"terms":[]}"#,
+                Some("search_areas"),
+            ),
+            (
+                r#"{"summary":"summary","explicit_files":[],"search_areas":["."],"query":[],"terms":[]}"#,
+                Some("query"),
+            ),
+            (
+                r#"{"summary":"summary","explicit_files":[],"search_areas":["."],"query":[" "],"terms":[]}"#,
+                Some("query"),
+            ),
+        ];
+
+        for (json, expected_error) in cases {
+            let task = parse_task_file(json).expect("parse task");
+            match expected_error {
+                Some(fragment) => assert!(
+                    validate_task_file(&task)
+                        .expect_err("reject task")
+                        .to_string()
+                        .contains(fragment),
+                    "case: {json}",
+                ),
+                None => validate_task_file(&task).expect("validate task"),
+            }
+        }
     }
 
     #[test]
@@ -208,7 +312,7 @@ mod tests {
         let task_path = create_task_file(&output_dir).expect("create task file");
 
         assert!(task_path.exists());
-        assert_eq!(task_path, output_dir.join("task.md"));
+        assert_eq!(task_path, output_dir.join("task.json"));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -217,7 +321,7 @@ mod tests {
     fn fails_when_task_file_already_exists() {
         let root = temp_root("exists");
         fs::create_dir_all(&root).expect("create root");
-        fs::write(root.join("task.md"), "existing").expect("seed task file");
+        fs::write(root.join("task.json"), "existing").expect("seed task file");
 
         let err = create_task_file(&root).expect_err("expected create failure");
 
@@ -241,8 +345,8 @@ mod tests {
         let root = create_managed_task(&state_root, "architecture").expect("create task");
         append_managed_task(&root, "tests verification").expect("append task");
         assert!(root.join(".surveil-managed").is_file());
-        assert!(root.join("architecture/task.md").exists());
-        assert!(root.join("tests verification/task.md").exists());
+        assert!(root.join("architecture/task.json").exists());
+        assert!(root.join("tests verification/task.json").exists());
         assert_eq!(
             append_managed_task(&root, "architecture")
                 .expect_err("existing task")
