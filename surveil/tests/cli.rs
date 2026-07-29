@@ -34,6 +34,17 @@ fn run_managed_create(state_home: &Path, task: &str) -> Output {
         .expect("run managed create")
 }
 
+fn run_gather(repo: &Path, task_file: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_surveil"))
+        .arg("gather")
+        .arg("--repo")
+        .arg(repo)
+        .arg("--task-file")
+        .arg(task_file)
+        .output()
+        .expect("run gather")
+}
+
 fn stdout_path(output: &Output) -> PathBuf {
     PathBuf::from(
         String::from_utf8(output.stdout.clone())
@@ -188,7 +199,7 @@ fn managed_create_prints_xdg_root() {
     let root = stdout_path(&output);
     assert!(root.starts_with(state_home.join("surveil/runs")));
     assert!(root.join(".surveil-managed").is_file());
-    assert!(root.join("architecture/task.md").is_file());
+    assert!(root.join("architecture/task.json").is_file());
     let _ = fs::remove_dir_all(state_home);
 }
 
@@ -206,7 +217,7 @@ fn managed_append_creates_task() {
         .expect("run managed append");
     assert!(output.status.success());
     assert_eq!(stdout_path(&output), root);
-    assert!(root.join("tests verification/task.md").is_file());
+    assert!(root.join("tests verification/task.json").is_file());
     let _ = fs::remove_dir_all(state_home);
 }
 
@@ -224,7 +235,7 @@ fn managed_duplicate_fails_cleanly() {
         .expect("run duplicate append");
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
-    assert!(root.join("architecture/task.md").is_file());
+    assert!(root.join("architecture/task.json").is_file());
     let _ = fs::remove_dir_all(state_home);
 }
 
@@ -258,7 +269,58 @@ fn explicit_mode_stays_unchanged() {
     assert!(output.status.success());
     assert!(output.stdout.is_empty());
     assert!(output.stderr.is_empty());
-    assert!(output_dir.join("task.md").is_file());
+    assert!(output_dir.join("task.json").is_file());
     assert!(!root.join(".surveil-managed").exists());
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn test_e2e_taskfile_generation() {
+    let state_home = temp_root("task-e2e-state");
+    let repo = temp_root("task-e2e-repo");
+    fs::create_dir_all(repo.join("src")).expect("create repo source");
+    fs::write(repo.join("src/lib.rs"), "fn main() {}\n").expect("write source");
+
+    let created = run_managed_create(&state_home, "architecture");
+    assert!(created.status.success());
+    let root = stdout_path(&created);
+    let task_file = root.join("architecture/task.json");
+    let generated: Value =
+        serde_json::from_slice(&fs::read(&task_file).expect("read generated task"))
+            .expect("parse generated task");
+    assert_eq!(
+        generated,
+        json!({
+            "summary": "",
+            "explicit_files": [],
+            "search_areas": [],
+            "query": [],
+            "terms": []
+        }),
+    );
+
+    fs::write(
+        &task_file,
+        serde_json::to_vec_pretty(&json!({
+            "summary": "architecture",
+            "explicit_files": ["src/lib.rs"],
+            "search_areas": ["src"],
+            "query": ["Where is the implementation?"],
+            "terms": ["implementation"]
+        }))
+        .expect("serialize task"),
+    )
+    .expect("populate task");
+
+    let gathered = run_gather(&repo, &task_file);
+    assert!(gathered.status.success());
+    assert!(gathered.stderr.is_empty());
+    let context: Value = serde_json::from_slice(&gathered.stdout).expect("parse gather output");
+    assert_eq!(context["task_name"], "architecture");
+    assert_eq!(context["summary"], "architecture");
+    assert_eq!(context["search_areas"], json!(["src"]));
+    assert_eq!(context["explicit_files"][0]["found"], true);
+
+    let _ = fs::remove_dir_all(state_home);
+    let _ = fs::remove_dir_all(repo);
 }

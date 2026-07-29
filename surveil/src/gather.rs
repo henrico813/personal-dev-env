@@ -1,33 +1,32 @@
 use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
 use crate::source;
-use crate::taskfile::{validate_task_name, DEFAULT_TASK_FILENAME};
-use std::collections::HashMap;
+use crate::taskfile::{read_task_file, validate_task_name, DEFAULT_TASK_FILENAME};
 use std::error::Error;
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     let task_file = fs::canonicalize(task_file)?;
     let task_name = task_name_from_resolved(&task_file)?;
-    let task_text = fs::read_to_string(&task_file)?;
-    let parsed = parse_task(&task_text)?;
+    let task = read_task_file(&task_file)?;
 
-    let validated_explicit_files = validate_explicit_files(repo_root, &parsed.explicit_files)?;
-    validate_search_areas(repo_root, &parsed.search_areas)?;
+    let validated_explicit_files = validate_explicit_files(repo_root, &task.explicit_files)?;
+    validate_search_areas(repo_root, &task.search_areas)?;
 
     let output = GatherOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         task_name,
         repo_root: repo_root.to_string_lossy().into_owned(),
-        summary: parsed.summary,
+        summary: task.summary,
         explicit_files: validated_explicit_files.explicit_files,
         missing_explicit_files: validated_explicit_files.missing_explicit_files,
         skipped_explicit_files: validated_explicit_files.skipped_explicit_files,
-        search_areas: parsed.search_areas,
-        query: parsed.query,
-        terms: parsed.terms,
+        search_areas: task.search_areas,
+        query: task.query,
+        terms: task.terms,
         blockers: Vec::new(),
     };
 
@@ -42,7 +41,7 @@ fn task_name_from_resolved(task_file: &Path) -> io::Result<String> {
     if task_file.file_name() != Some(OsStr::new(DEFAULT_TASK_FILENAME)) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "task file must be named task.md",
+            "task file must be named task.json",
         ));
     }
     let task_name = task_file
@@ -52,19 +51,11 @@ fn task_name_from_resolved(task_file: &Path) -> io::Result<String> {
         .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                "task.md parent must have a UTF-8 task name",
+                "task.json parent must have a UTF-8 task name",
             )
         })?;
     validate_task_name(task_name)?;
     Ok(task_name.to_string())
-}
-
-struct ParsedTask {
-    summary: String,
-    explicit_files: Vec<String>,
-    search_areas: Vec<String>,
-    query: Vec<String>,
-    terms: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -72,178 +63,6 @@ struct ValidatedExplicitFiles {
     explicit_files: Vec<ExplicitFile>,
     missing_explicit_files: Vec<String>,
     skipped_explicit_files: Vec<String>,
-}
-
-fn parse_task(text: &str) -> Result<ParsedTask, Box<dyn Error>> {
-    let mut sections: HashMap<String, Vec<String>> = HashMap::new();
-    let mut current: Option<String> = None;
-
-    for raw_line in text.lines() {
-        let line = raw_line.trim_end();
-        let trimmed = line.trim();
-
-        if trimmed == "# Task" {
-            current = None;
-            continue;
-        }
-
-        if let Some(section) = heading_name(trimmed) {
-            if !is_allowed_section(&section) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("unexpected section: {section}"),
-                )
-                .into());
-            }
-            if sections.contains_key(&section) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("duplicate section: {section}"),
-                )
-                .into());
-            }
-            sections.insert(section.clone(), Vec::new());
-            current = Some(section);
-            continue;
-        }
-
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let section = current.as_ref().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "content found before any section",
-            )
-        })?;
-        sections
-            .get_mut(section)
-            .expect("section exists")
-            .push(line.to_string());
-    }
-
-    let summary = take_text_section(&sections, "Summary")?;
-    let explicit_files = take_list_section(&sections, "Explicit Files")?;
-    let search_areas = take_list_section(&sections, "Search Areas")?;
-    let query = take_list_section(&sections, "Query")?;
-    if query.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Query section is required and must not be empty",
-        )
-        .into());
-    }
-    let terms = take_optional_list_section(&sections, "Terms");
-
-    Ok(ParsedTask {
-        summary,
-        explicit_files,
-        search_areas,
-        query,
-        terms,
-    })
-}
-
-fn heading_name(line: &str) -> Option<String> {
-    let without_hashes = line.strip_prefix("##")?;
-    let name = without_hashes.trim().to_string();
-    if name.is_empty() {
-        return None;
-    }
-    Some(name)
-}
-
-fn is_allowed_section(section: &str) -> bool {
-    matches!(
-        section,
-        "Summary" | "Explicit Files" | "Search Areas" | "Query" | "Terms"
-    )
-}
-
-fn take_text_section(
-    sections: &HashMap<String, Vec<String>>,
-    name: &str,
-) -> Result<String, Box<dyn Error>> {
-    let lines = sections.get(name).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("missing required section: {name}"),
-        )
-    })?;
-    let text = lines.join("\n").trim().to_string();
-    if text.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("section is empty: {name}"),
-        )
-        .into());
-    }
-    Ok(text)
-}
-
-fn take_list_section(
-    sections: &HashMap<String, Vec<String>>,
-    name: &str,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let lines = sections.get(name).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("missing required section: {name}"),
-        )
-    })?;
-    Ok(parse_items(lines))
-}
-
-fn take_optional_list_section(sections: &HashMap<String, Vec<String>>, name: &str) -> Vec<String> {
-    sections
-        .get(name)
-        .map(|lines| parse_items(lines))
-        .unwrap_or_default()
-}
-
-fn parse_items(lines: &[String]) -> Vec<String> {
-    lines.iter().filter_map(|line| parse_item(line)).collect()
-}
-
-fn parse_item(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let item = trimmed
-        .strip_prefix("- ")
-        .or_else(|| trimmed.strip_prefix("* "))
-        .or_else(|| trimmed.strip_prefix("+ "))
-        .or_else(|| strip_numbered_prefix(trimmed))
-        .unwrap_or(trimmed)
-        .trim();
-
-    if item.is_empty() {
-        None
-    } else {
-        Some(item.to_string())
-    }
-}
-
-fn strip_numbered_prefix(value: &str) -> Option<&str> {
-    let mut digits = 0;
-    for ch in value.chars() {
-        if ch.is_ascii_digit() {
-            digits += 1;
-        } else {
-            break;
-        }
-    }
-
-    if digits == 0 {
-        return None;
-    }
-
-    let rest = &value[digits..];
-    let rest = rest.strip_prefix('.').or_else(|| rest.strip_prefix(')'))?;
-    Some(rest.trim_start())
 }
 
 fn validate_explicit_files(
@@ -295,16 +114,62 @@ fn validate_explicit_files(
     })
 }
 
-fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<(), Box<dyn Error>> {
-    for area in search_areas {
-        let resolved = source::resolve_path(repo_root, area);
-        if source::is_skipped_path(repo_root, &resolved) || !resolved.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("search area not found: {area}"),
-            )
-            .into());
+#[derive(Debug, PartialEq, Eq)]
+enum SearchAreaError {
+    Empty,
+    Malformed(String),
+    NotFound { area: String, resolved: PathBuf },
+    Skipped { area: String, resolved: PathBuf },
+}
+
+impl fmt::Display for SearchAreaError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("search area must not be empty"),
+            Self::Malformed(area) => write!(formatter, "search area contains a NUL byte: {area:?}"),
+            Self::NotFound { area, resolved } => write!(
+                formatter,
+                "search area {area:?} resolved as {}, but that path does not exist; relative search areas resolve against --repo and '.' selects the repository root",
+                resolved.display(),
+            ),
+            Self::Skipped { area, resolved } => write!(
+                formatter,
+                "search area {area:?} resolved as {}, but that path is excluded by the Surveil skip policy",
+                resolved.display(),
+            ),
         }
+    }
+}
+
+impl Error for SearchAreaError {}
+
+fn validate_search_area(repo_root: &Path, area: &str) -> Result<PathBuf, SearchAreaError> {
+    if area.trim().is_empty() {
+        return Err(SearchAreaError::Empty);
+    }
+    if area.contains('\0') {
+        return Err(SearchAreaError::Malformed(area.to_string()));
+    }
+
+    let resolved = source::resolve_path(repo_root, area);
+    if !resolved.exists() {
+        return Err(SearchAreaError::NotFound {
+            area: area.to_string(),
+            resolved,
+        });
+    }
+    if source::is_skipped_path(repo_root, &resolved) {
+        return Err(SearchAreaError::Skipped {
+            area: area.to_string(),
+            resolved,
+        });
+    }
+    Ok(resolved)
+}
+
+fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<(), SearchAreaError> {
+    for area in search_areas {
+        validate_search_area(repo_root, area)?;
     }
     Ok(())
 }
@@ -312,7 +177,8 @@ fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_task, task_name_from_resolved, validate_explicit_files, ValidatedExplicitFiles,
+        task_name_from_resolved, validate_explicit_files, validate_search_area, SearchAreaError,
+        ValidatedExplicitFiles,
     };
     use crate::schema::ExplicitFile;
     use std::fs;
@@ -336,41 +202,6 @@ mod tests {
         }
         let mut file = fs::File::create(path).expect("create file");
         file.write_all(content.as_bytes()).expect("write file");
-    }
-
-    #[test]
-    fn parses_structured_task_query_and_terms() {
-        let task = r#"
-# Task
-
-## Summary
-investigate attachment points
-
-## Explicit Files
-
-## Search Areas
-- src/
-
-## Query
-- Where should Tree-sitter attach?
-- What still needs verification?
-
-## Terms
-- tree-sitter
-- attach
-"#;
-
-        let parsed = parse_task(task).expect("task parses");
-        assert_eq!(parsed.summary, "investigate attachment points");
-        assert_eq!(parsed.search_areas, vec!["src/"]);
-        assert_eq!(
-            parsed.query,
-            vec![
-                "Where should Tree-sitter attach?",
-                "What still needs verification?"
-            ]
-        );
-        assert_eq!(parsed.terms, vec!["tree-sitter", "attach"]);
     }
 
     struct ValidationCase {
@@ -452,20 +283,62 @@ investigate attachment points
     }
 
     #[test]
-    fn derives_task_names_from_task_md() {
+    fn derives_task_names_from_task_json() {
         let repo = temp_repo("task-name");
-        let task_file = repo.join("architecture/task.md");
+        let task_file = repo.join("architecture/task.json");
         write_file(
             &task_file,
-            "# Task\n\n## Summary\nsummary\n\n## Explicit Files\n\n## Search Areas\n\n## Query\n- Where?\n",
+            r#"{"summary":"summary","explicit_files":[],"search_areas":["."],"query":["Where?"],"terms":[]}"#,
         );
         let resolved = fs::canonicalize(&task_file).expect("resolve task file");
         assert_eq!(
             task_name_from_resolved(&resolved).expect("task name"),
             "architecture"
         );
-        assert!(task_name_from_resolved(Path::new("/task.md")).is_err());
-        assert!(task_name_from_resolved(Path::new("/line\nbreak/task.md")).is_err());
+        assert!(task_name_from_resolved(Path::new("/task.json")).is_err());
+        assert!(task_name_from_resolved(Path::new("/line\nbreak/task.json")).is_err());
+        let _ = fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn test_validate_search_area() {
+        let repo = temp_repo("search-area");
+        fs::create_dir_all(repo.join("src")).expect("create relative area");
+        fs::create_dir_all(repo.join(".surveil")).expect("create skipped area");
+
+        assert_eq!(
+            validate_search_area(&repo, "src").expect("relative path"),
+            repo.join("src"),
+        );
+        let absolute = repo.join("src");
+        assert_eq!(
+            validate_search_area(&repo, absolute.to_str().expect("UTF-8 path"))
+                .expect("absolute path"),
+            absolute,
+        );
+        assert_eq!(
+            validate_search_area(&repo, ".").expect("repo root"),
+            repo.join("."),
+        );
+        for area in ["", "   "] {
+            assert_eq!(
+                validate_search_area(&repo, area).expect_err("empty path"),
+                SearchAreaError::Empty,
+            );
+        }
+        assert!(matches!(
+            validate_search_area(&repo, "bad\0path").expect_err("malformed path"),
+            SearchAreaError::Malformed(_),
+        ));
+        assert!(matches!(
+            validate_search_area(&repo, "missing").expect_err("missing path"),
+            SearchAreaError::NotFound { .. },
+        ));
+        assert!(matches!(
+            validate_search_area(&repo, ".surveil").expect_err("skipped path"),
+            SearchAreaError::Skipped { .. },
+        ));
+
         let _ = fs::remove_dir_all(repo);
     }
 }
