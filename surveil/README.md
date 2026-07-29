@@ -1,6 +1,6 @@
 # surveil
 
-`surveil` works with structured task documents.
+`surveil` works with strict JSON task documents.
 
 ## Install
 
@@ -8,40 +8,32 @@
 
 ## Task format
 
-```md
-# Task
-
-## Summary
-short summary text
-
-## Explicit Files
-- path/to/file.rs
-
-## Search Areas
-- src/
-- docs/
-
-## Query
-- What changed?
-- What still needs verification?
-
-## Terms
-- optional keywords
+```json
+{
+  "summary": "short summary text",
+  "explicit_files": ["path/to/file.rs"],
+  "search_areas": ["src", "docs"],
+  "query": ["What changed?", "What still needs verification?"],
+  "terms": ["optional", "keywords"]
+}
 ```
 
 Notes:
-- `# Task` is the title and is ignored by the parser.
-- Only the `##` sections above are interpreted.
-- `## Query` is required.
-- `## Terms` is optional.
+- Unknown, missing, null, or incorrectly typed fields are rejected.
+- `summary` must not be blank.
+- `search_areas` must contain at least one path.
+- `query` must contain at least one nonblank question.
+- `explicit_files` and `terms` may be empty arrays.
+- Relative explicit files and search areas resolve against `--repo`; use `.` for the repository root.
+- Absolute paths are used unchanged, and search areas may name files or directories.
 
 ## Commands
 
-- `surveil new task <output-dir>` writes a blank `task.md` stub at `<output-dir>/task.md` and fails if that file already exists.
-- `surveil new task --task <name>` collision-safely reserves a unique managed root, writes `<name>/task.md`, and prints the root path after the command completes.
-- `surveil new task --root <root> --task <name>` collision-safely reserves a new task leaf in an existing absolute Surveil-managed root, writes `task.md`, and prints that root after completion. Duplicate task names fail without changing the existing task; failed writes remove the newly reserved leaf.
+- `surveil new task <output-dir>` writes a task JSON stub with all five fields at `<output-dir>/task.json` and fails if that file already exists.
+- `surveil new task --task <name>` collision-safely reserves a unique managed root, writes `<name>/task.json`, and prints the root path after the command completes.
+- `surveil new task --root <root> --task <name>` collision-safely reserves a new task leaf in an existing absolute Surveil-managed root, writes `task.json`, and prints that root after completion. Duplicate task names fail without changing the existing task; failed writes remove the newly reserved leaf.
 - `surveil index --repo <repo>` builds a disposable Tantivy chunk index under `.surveil/index/` from readable UTF-8 files under the same repo skip policy used by `research`.
-- `surveil gather --repo <repo> --task-file <task.md>` emits a `surveil.v7` `GatherOutput` JSON context. Its required `task_name` is the UTF-8 name of the resolved `task.md` parent directory.
+- `surveil gather --repo <repo> --task-file <task.json>` emits a `surveil.v7` `GatherOutput` JSON context. Its required `task_name` is the UTF-8 name of the resolved `task.json` parent directory.
 - `surveil research --context <context.json> --trace-out <trace.json>` requires a `surveil.v7` context, propagates `task_name` into a `surveil.v7` report, and writes a shallow `TraceOutput` JSON file.
 - `surveil merge <task-report>...` accepts positional report paths, validates `surveil.v7` task reports, rejects invalid or duplicate `task_name` values, and emits one `surveil.evidence.v2` evidence pack.
 
@@ -49,7 +41,7 @@ Task names may contain ordinary spaces and Unicode, but must not be empty or whi
 
 Managed roots live under `$XDG_STATE_HOME/surveil/runs` when `XDG_STATE_HOME` is absolute. Otherwise Surveil uses `$HOME/.local/state/surveil/runs`, which requires an absolute `HOME`. Environment paths retain their native operating-system representation. Managed roots remain until a caller removes them; Surveil does not prune them automatically.
 
-The `.surveil-managed` marker prevents accidental append to unrelated directories. It is misuse prevention, not protection against a hostile filesystem. Root and task directories are reserved with `create_dir`, but a complete task is published only when the creating command successfully writes `task.md`.
+The `.surveil-managed` marker prevents accidental append to unrelated directories. It is misuse prevention, not protection against a hostile filesystem. Root and task directories are reserved with `create_dir`, but a complete task is published only when the creating command successfully writes `task.json`.
 
 Report v7 and evidence v2 intentionally replace v6 and v1. Research rejects non-v7 gather contexts, and merge rejects older reports rather than upgrading either format.
 
