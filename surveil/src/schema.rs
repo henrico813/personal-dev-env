@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA_VERSION: &str = "surveil.v6";
-pub const EVIDENCE_SCHEMA_VERSION: &str = "surveil.evidence.v1";
+pub const SCHEMA_VERSION: &str = "surveil.v7";
+pub const EVIDENCE_SCHEMA_VERSION: &str = "surveil.evidence.v2";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatherOutput {
     pub schema_version: String,
+    pub task_name: String,
     pub repo_root: String,
     pub summary: String,
     pub explicit_files: Vec<ExplicitFile>,
@@ -29,6 +30,7 @@ pub struct ExplicitFile {
 #[serde(deny_unknown_fields)]
 pub struct ResearchOutput {
     pub schema_version: String,
+    pub task_name: String,
     pub summary: String,
     pub result: Vec<Answer>,
     pub blockers: Vec<String>,
@@ -57,7 +59,7 @@ pub struct Finding {
     pub symbol_end_line: Option<u32>,
 }
 
-/// A deterministic collection of evidence from labeled research reports.
+/// A deterministic collection of evidence from task reports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct EvidencePack {
     pub(crate) schema_version: String,
@@ -68,10 +70,10 @@ pub(crate) struct EvidencePack {
     pub(crate) open_questions: Vec<ReportEvidenceNote>,
 }
 
-/// Summary metadata for one input report.
+/// Summary metadata for one task report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct EvidenceReport {
-    pub(crate) perspective: String,
+    pub(crate) task_name: String,
     pub(crate) summary: String,
 }
 
@@ -85,10 +87,10 @@ pub(crate) struct EvidenceFinding {
     pub(crate) occurrences: Vec<FindingOccurrence>,
 }
 
-/// The report and query position where a finding appeared.
+/// The task report and query position where a finding appeared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct FindingOccurrence {
-    pub(crate) perspective: String,
+    pub(crate) task_name: String,
     pub(crate) query: String,
     pub(crate) rank: u64,
     pub(crate) source: String,
@@ -99,18 +101,18 @@ pub(crate) struct FindingOccurrence {
     pub(crate) symbol_end_line: Option<u32>,
 }
 
-/// Negative evidence tied to its report perspective and query.
+/// Negative evidence tied to its task report and query.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct QueryEvidenceNote {
-    pub(crate) perspective: String,
+    pub(crate) task_name: String,
     pub(crate) query: String,
     pub(crate) text: String,
 }
 
-/// A blocker or question tied to its report perspective.
+/// A blocker or question tied to its task report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ReportEvidenceNote {
-    pub(crate) perspective: String,
+    pub(crate) task_name: String,
     pub(crate) text: String,
 }
 
@@ -158,6 +160,7 @@ mod tests {
                 json: format!(
                     r#"{{
                         "schema_version":"{SCHEMA_VERSION}",
+                        "task_name":"architecture",
                         "repo_root":"/repo",
                         "summary":"summary",
                         "explicit_files":[],
@@ -178,6 +181,7 @@ mod tests {
                 json: format!(
                     r#"{{
                         "schema_version":"{SCHEMA_VERSION}",
+                        "task_name":"architecture",
                         "repo_root":"/repo",
                         "summary":"summary",
                         "explicit_files":[],
@@ -201,11 +205,7 @@ mod tests {
                 Some(expected_error) => {
                     let err = serde_json::from_str::<GatherOutput>(&case.json)
                         .expect_err("unknown field rejected");
-                    assert!(
-                        err.to_string().contains(expected_error),
-                        "case: {}",
-                        case.name
-                    );
+                    assert!(err.to_string().contains(expected_error), "case: {}", case.name);
                 }
                 None => {
                     let gather = serde_json::from_str::<GatherOutput>(&case.json)
@@ -306,11 +306,7 @@ mod tests {
                 Some(expected_error) => {
                     let err = serde_json::from_str::<TraceOutput>(&case.json)
                         .expect_err("unknown field rejected");
-                    assert!(
-                        err.to_string().contains(expected_error),
-                        "case: {}",
-                        case.name
-                    );
+                    assert!(err.to_string().contains(expected_error), "case: {}", case.name);
                 }
                 None => {
                     let trace = serde_json::from_str::<TraceOutput>(&case.json)

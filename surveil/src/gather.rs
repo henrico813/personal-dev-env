@@ -1,13 +1,17 @@
 use crate::schema::{ExplicitFile, GatherOutput, SCHEMA_VERSION};
 use crate::source;
+use crate::taskfile::{validate_task_name, DEFAULT_TASK_FILENAME};
 use std::collections::HashMap;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
-    let task_text = fs::read_to_string(task_file)?;
+    let task_file = fs::canonicalize(task_file)?;
+    let task_name = task_name_from_resolved(&task_file)?;
+    let task_text = fs::read_to_string(&task_file)?;
     let parsed = parse_task(&task_text)?;
 
     let validated_explicit_files = validate_explicit_files(repo_root, &parsed.explicit_files)?;
@@ -15,6 +19,7 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
 
     let output = GatherOutput {
         schema_version: SCHEMA_VERSION.to_string(),
+        task_name,
         repo_root: repo_root.to_string_lossy().into_owned(),
         summary: parsed.summary,
         explicit_files: validated_explicit_files.explicit_files,
@@ -31,6 +36,27 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     serde_json::to_writer(&mut handle, &output)?;
     handle.write_all(b"\n")?;
     Ok(())
+}
+
+fn task_name_from_resolved(task_file: &Path) -> io::Result<String> {
+    if task_file.file_name() != Some(OsStr::new(DEFAULT_TASK_FILENAME)) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "task file must be named task.md",
+        ));
+    }
+    let task_name = task_file
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "task.md parent must have a UTF-8 task name",
+            )
+        })?;
+    validate_task_name(task_name)?;
+    Ok(task_name.to_string())
 }
 
 struct ParsedTask {
@@ -285,11 +311,13 @@ fn validate_search_areas(repo_root: &Path, search_areas: &[String]) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_task, validate_explicit_files, ValidatedExplicitFiles};
+    use super::{
+        parse_task, task_name_from_resolved, validate_explicit_files, ValidatedExplicitFiles,
+    };
     use crate::schema::ExplicitFile;
     use std::fs;
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_repo(name: &str) -> PathBuf {
@@ -421,5 +449,20 @@ investigate attachment points
 
             let _ = fs::remove_dir_all(repo);
         }
+    }
+
+    #[test]
+    fn derives_task_names_from_task_md() {
+        let repo = temp_repo("task-name");
+        let task_file = repo.join("architecture/task.md");
+        write_file(
+            &task_file,
+            "# Task\n\n## Summary\nsummary\n\n## Explicit Files\n\n## Search Areas\n\n## Query\n- Where?\n",
+        );
+        let resolved = fs::canonicalize(&task_file).expect("resolve task file");
+        assert_eq!(task_name_from_resolved(&resolved).expect("task name"), "architecture");
+        assert!(task_name_from_resolved(Path::new("/task.md")).is_err());
+        assert!(task_name_from_resolved(Path::new("/line\nbreak/task.md")).is_err());
+        let _ = fs::remove_dir_all(repo);
     }
 }

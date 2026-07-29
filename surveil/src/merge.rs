@@ -5,6 +5,7 @@ use crate::schema::{
     Answer, EvidenceFinding, EvidencePack, EvidenceReport, Finding, FindingOccurrence,
     QueryEvidenceNote, ReportEvidenceNote, ResearchOutput, EVIDENCE_SCHEMA_VERSION, SCHEMA_VERSION,
 };
+use crate::taskfile::validate_task_name;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -13,17 +14,15 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-/// A labeled report path parsed from one command argument.
+/// One task-report path parsed from a positional command argument.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ReportInput {
-    perspective: String,
+struct TaskReport {
     path: PathBuf,
 }
 
-/// A labeled report that passed version and shape validation.
+/// A task report that passed version, shape, and task-name validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LoadedReport {
-    perspective: String,
+struct LoadedTaskReport {
     report: ResearchOutput,
 }
 
@@ -63,18 +62,10 @@ impl fmt::Display for MergeError {
         match self {
             Self::InvalidArguments(message) => formatter.write_str(message),
             Self::ReadReport { path, source } => {
-                write!(
-                    formatter,
-                    "failed to read report {}: {source}",
-                    path.display()
-                )
+                write!(formatter, "failed to read report {}: {source}", path.display())
             }
             Self::ParseReport { path, source } => {
-                write!(
-                    formatter,
-                    "failed to parse report {}: {source}",
-                    path.display()
-                )
+                write!(formatter, "failed to parse report {}: {source}", path.display())
             }
             Self::UnsupportedVersion {
                 path,
@@ -99,53 +90,28 @@ impl Error for MergeError {
     }
 }
 
-pub(crate) fn run(values: &[String]) -> Result<(), Box<dyn Error>> {
-    let inputs = parse_report_args(values)?;
-    let reports = load_reports(inputs)?;
-    let pack = merge_reports(reports);
+pub(crate) fn run(paths: &[PathBuf]) -> Result<(), Box<dyn Error>> {
+    let task_reports = parse_task_reports(paths);
+    let loaded_task_reports = load_task_reports(task_reports)?;
+    let pack = merge_task_reports(loaded_task_reports);
     write_evidence_pack(&pack)?;
     Ok(())
 }
 
-/// Parses ordered `<perspective>=<path>` arguments and rejects duplicate labels.
-fn parse_report_args(values: &[String]) -> Result<Vec<ReportInput>, MergeError> {
-    let mut perspectives = HashSet::new();
-    let mut inputs = Vec::with_capacity(values.len());
-    for value in values {
-        let Some((perspective, path)) = value.split_once('=') else {
-            return Err(MergeError::InvalidArguments(format!(
-                "invalid report argument {value:?}; expected <perspective>=<path>"
-            )));
-        };
-        let perspective = perspective.trim();
-        // A filesystem path may contain spaces, so preserve it exactly.
-        if perspective.is_empty() || path.is_empty() {
-            return Err(MergeError::InvalidArguments(format!(
-                "invalid report argument {value:?}; perspective and path are required"
-            )));
-        }
-        if !perspectives.insert(perspective.to_string()) {
-            return Err(MergeError::InvalidArguments(format!(
-                "duplicate report perspective: {perspective}"
-            )));
-        }
-        inputs.push(ReportInput {
-            perspective: perspective.to_string(),
-            path: PathBuf::from(path),
-        });
-    }
-    Ok(inputs)
+/// Parses ordered positional task-report paths.
+fn parse_task_reports(paths: &[PathBuf]) -> Vec<TaskReport> {
+    paths.iter().cloned().map(|path| TaskReport { path }).collect()
 }
 
 /// Reads reports in argument order and validates version before strict shape.
-fn load_reports(inputs: Vec<ReportInput>) -> Result<Vec<LoadedReport>, MergeError> {
+fn load_task_reports(inputs: Vec<TaskReport>) -> Result<Vec<LoadedTaskReport>, MergeError> {
+    let mut task_names = HashSet::new();
     let mut reports = Vec::with_capacity(inputs.len());
     for input in inputs {
         let text = fs::read_to_string(&input.path).map_err(|source| MergeError::ReadReport {
             path: input.path.clone(),
             source,
         })?;
-        // Check the version envelope first so old formats get a stable error.
         let envelope: VersionEnvelope =
             serde_json::from_str(&text).map_err(|source| MergeError::ParseReport {
                 path: input.path.clone(),
@@ -158,34 +124,40 @@ fn load_reports(inputs: Vec<ReportInput>) -> Result<Vec<LoadedReport>, MergeErro
                 actual: envelope.schema_version,
             });
         }
-        let report = serde_json::from_str(&text).map_err(|source| MergeError::ParseReport {
-            path: input.path.clone(),
-            source,
+        let report: ResearchOutput =
+            serde_json::from_str(&text).map_err(|source| MergeError::ParseReport {
+                path: input.path.clone(),
+                source,
+            })?;
+        validate_task_name(&report.task_name).map_err(|source| {
+            MergeError::InvalidArguments(format!(
+                "invalid task_name in {}: {source}",
+                input.path.display()
+            ))
         })?;
-        reports.push(LoadedReport {
-            perspective: input.perspective,
-            report,
-        });
+        if !task_names.insert(report.task_name.clone()) {
+            return Err(MergeError::InvalidArguments(format!(
+                "duplicate task name: {}",
+                report.task_name
+            )));
+        }
+        reports.push(LoadedTaskReport { report });
     }
     Ok(reports)
 }
 
 /// Merges reports while retaining first-seen order for every output list.
-fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
+fn merge_task_reports(reports: Vec<LoadedTaskReport>) -> EvidencePack {
     let mut report_metadata = Vec::new();
     let mut findings: Vec<EvidenceFinding> = Vec::new();
-    // The map is lookup only; the vector controls deterministic output order.
     let mut finding_indexes = HashMap::new();
     let mut negative_evidence = Vec::new();
     let mut blockers = Vec::new();
     let mut open_questions = Vec::new();
 
-    for LoadedReport {
-        perspective,
-        report,
-    } in reports
-    {
+    for LoadedTaskReport { report } in reports {
         let ResearchOutput {
+            task_name,
             summary,
             result,
             blockers: report_blockers,
@@ -193,7 +165,7 @@ fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
             ..
         } = report;
         report_metadata.push(EvidenceReport {
-            perspective: perspective.clone(),
+            task_name: task_name.clone(),
             summary,
         });
         for Answer {
@@ -203,12 +175,11 @@ fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
         } in result
         {
             for (index, finding) in answer_findings.into_iter().enumerate() {
-                // enumerate is zero-based; evidence ranks are one-based.
                 let rank = index as u64 + 1;
                 add_finding(
                     &mut findings,
                     &mut finding_indexes,
-                    &perspective,
+                    &task_name,
                     &query,
                     rank,
                     finding,
@@ -218,7 +189,7 @@ fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
                 push_unique(
                     &mut negative_evidence,
                     QueryEvidenceNote {
-                        perspective: perspective.clone(),
+                        task_name: task_name.clone(),
                         query: query.clone(),
                         text,
                     },
@@ -229,7 +200,7 @@ fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
             push_unique(
                 &mut blockers,
                 ReportEvidenceNote {
-                    perspective: perspective.clone(),
+                    task_name: task_name.clone(),
                     text,
                 },
             );
@@ -238,7 +209,7 @@ fn merge_reports(reports: Vec<LoadedReport>) -> EvidencePack {
             push_unique(
                 &mut open_questions,
                 ReportEvidenceNote {
-                    perspective: perspective.clone(),
+                    task_name: task_name.clone(),
                     text,
                 },
             );
@@ -267,7 +238,7 @@ fn write_evidence_pack(pack: &EvidencePack) -> Result<(), Box<dyn Error>> {
 fn add_finding(
     findings: &mut Vec<EvidenceFinding>,
     indexes: &mut HashMap<FindingKey, usize>,
-    perspective: &str,
+    task_name: &str,
     query: &str,
     rank: u64,
     finding: Finding,
@@ -289,7 +260,7 @@ fn add_finding(
         excerpt: excerpt.clone(),
     };
     let occurrence = FindingOccurrence {
-        perspective: perspective.to_string(),
+        task_name: task_name.to_string(),
         query: query.to_string(),
         rank,
         source,
