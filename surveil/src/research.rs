@@ -110,6 +110,7 @@ mod tests {
         let (report, trace) = output::create_test_outputs(gather).expect("run for test");
 
         assert_eq!(report.schema_version, SCHEMA_VERSION);
+        assert_eq!(report.task_name, case.context.task_name);
         assert_eq!(trace.schema_version, SCHEMA_VERSION);
         assert_eq!(report.result.len(), case.expected_first_paths.len());
         for (index, answer) in report.result.iter().enumerate() {
@@ -176,6 +177,7 @@ mod tests {
                 rewrite_files: vec![],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "trace-dedupes-skipped-paths".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![
@@ -221,6 +223,7 @@ mod tests {
                 rewrite_files: vec![],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "usable-index-prefers-ranked-file-across-queries".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![],
@@ -248,6 +251,7 @@ mod tests {
                 rewrite_files: vec![("notes/design.md", "attach here\n")],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "stale-index-falls-back-across-queries".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![],
@@ -281,6 +285,7 @@ mod tests {
                 rewrite_files: vec![],
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "multi-query-parity".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![ExplicitFile {
@@ -341,6 +346,7 @@ mod tests {
                 build_index: false,
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "records-missing-and-skipped-explicit-paths".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![
@@ -385,6 +391,7 @@ mod tests {
                 build_index: true,
                 context: GatherOutput {
                     schema_version: SCHEMA_VERSION.to_string(),
+                    task_name: "records-ranked-only-query-trace".to_string(),
                     repo_root: String::new(),
                     summary: "summary".to_string(),
                     explicit_files: vec![],
@@ -456,5 +463,27 @@ mod tests {
 
             let _ = fs::remove_dir_all(repo);
         }
+    }
+
+    #[test]
+    fn rejects_v6_research_context() {
+        let gather = GatherOutput {
+            schema_version: "surveil.v6".to_string(),
+            task_name: "architecture".to_string(),
+            repo_root: "/unused".to_string(),
+            summary: "summary".to_string(),
+            explicit_files: Vec::new(),
+            missing_explicit_files: Vec::new(),
+            skipped_explicit_files: Vec::new(),
+            search_areas: Vec::new(),
+            query: Vec::new(),
+            terms: Vec::new(),
+            blockers: Vec::new(),
+        };
+        let error = output::create_test_outputs(gather).expect_err("reject v6 context");
+        assert_eq!(
+            error.to_string(),
+            "unsupported gather schema version: expected surveil.v7, got surveil.v6"
+        );
     }
 }
