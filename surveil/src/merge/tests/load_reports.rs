@@ -9,7 +9,9 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn input(name: &str) -> TaskReport {
-    TaskReport { path: fixture(name) }
+    TaskReport {
+        path: fixture(name),
+    }
 }
 
 #[test]
@@ -30,8 +32,8 @@ fn rejects_old_version_first() {
 
 #[test]
 fn rejects_unknown_report_field() {
-    let error =
-        load_task_reports(vec![input("unknown-field-report.json")]).expect_err("reject unknown field");
+    let error = load_task_reports(vec![input("unknown-field-report.json")])
+        .expect_err("reject unknown field");
     assert!(error.to_string().contains("unknown-field-report.json"));
     assert!(error.to_string().contains("unknown field `unexpected`"));
     assert!(error.source().is_some());
@@ -39,8 +41,8 @@ fn rejects_unknown_report_field() {
 
 #[test]
 fn rejects_malformed_report() {
-    let error =
-        load_task_reports(vec![input("malformed-report.json")]).expect_err("reject malformed report");
+    let error = load_task_reports(vec![input("malformed-report.json")])
+        .expect_err("reject malformed report");
     assert!(error.to_string().contains("malformed-report.json"));
     assert!(error.to_string().contains("EOF while parsing"));
     assert!(error.source().is_some());
@@ -50,10 +52,8 @@ fn rejects_malformed_report() {
 fn reports_read_source() {
     let path = std::env::temp_dir().join("surveil-missing-report.json");
     let _ = std::fs::remove_file(&path);
-    let error = load_task_reports(vec![TaskReport {
-        path: path.clone(),
-    }])
-    .expect_err("reject missing report");
+    let error = load_task_reports(vec![TaskReport { path: path.clone() }])
+        .expect_err("reject missing report");
     assert!(error.to_string().contains(path.to_string_lossy().as_ref()));
     assert!(matches!(
         error,

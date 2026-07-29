@@ -44,7 +44,10 @@ fn stdout_path(output: &Output) -> PathBuf {
 
 #[test]
 fn merges_reports_deterministically() {
-    let arguments = [fixture("architecture-report.json"), fixture("tests-report.json")];
+    let arguments = [
+        fixture("architecture-report.json"),
+        fixture("tests-report.json"),
+    ];
     let first = run_merge(&arguments);
     let second = run_merge(&arguments);
     assert!(first.status.success());
@@ -103,7 +106,10 @@ fn merges_reports_deterministically() {
     );
     assert_eq!(value["negative_evidence"][0]["text"], "no existing route");
     assert_eq!(value["blockers"][0]["text"], "strict input required");
-    assert_eq!(value["open_questions"][0]["text"], "which caller adopts this?");
+    assert_eq!(
+        value["open_questions"][0]["text"],
+        "which caller adopts this?"
+    );
     let output_text = String::from_utf8(first.stdout).expect("UTF-8 output");
     assert!(!output_text.contains(fixture("").to_string_lossy().as_ref()));
 }

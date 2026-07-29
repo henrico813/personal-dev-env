@@ -460,7 +460,10 @@ investigate attachment points
             "# Task\n\n## Summary\nsummary\n\n## Explicit Files\n\n## Search Areas\n\n## Query\n- Where?\n",
         );
         let resolved = fs::canonicalize(&task_file).expect("resolve task file");
-        assert_eq!(task_name_from_resolved(&resolved).expect("task name"), "architecture");
+        assert_eq!(
+            task_name_from_resolved(&resolved).expect("task name"),
+            "architecture"
+        );
         assert!(task_name_from_resolved(Path::new("/task.md")).is_err());
         assert!(task_name_from_resolved(Path::new("/line\nbreak/task.md")).is_err());
         let _ = fs::remove_dir_all(repo);

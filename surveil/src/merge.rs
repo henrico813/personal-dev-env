@@ -62,10 +62,18 @@ impl fmt::Display for MergeError {
         match self {
             Self::InvalidArguments(message) => formatter.write_str(message),
             Self::ReadReport { path, source } => {
-                write!(formatter, "failed to read report {}: {source}", path.display())
+                write!(
+                    formatter,
+                    "failed to read report {}: {source}",
+                    path.display()
+                )
             }
             Self::ParseReport { path, source } => {
-                write!(formatter, "failed to parse report {}: {source}", path.display())
+                write!(
+                    formatter,
+                    "failed to parse report {}: {source}",
+                    path.display()
+                )
             }
             Self::UnsupportedVersion {
                 path,
@@ -100,7 +108,11 @@ pub(crate) fn run(paths: &[PathBuf]) -> Result<(), Box<dyn Error>> {
 
 /// Parses ordered positional task-report paths.
 fn parse_task_reports(paths: &[PathBuf]) -> Vec<TaskReport> {
-    paths.iter().cloned().map(|path| TaskReport { path }).collect()
+    paths
+        .iter()
+        .cloned()
+        .map(|path| TaskReport { path })
+        .collect()
 }
 
 /// Reads reports in argument order and validates version before strict shape.

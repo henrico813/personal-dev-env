@@ -99,8 +99,8 @@ fn keeps_different_finding_excerpts() {
             .map(|finding| (finding.line, finding.excerpt.as_str()))
             .collect::<Vec<_>>(),
         vec![
-            (84, "Command::Merge(args) => merge::run(&args.reports),"),
-            (84, "mod merge;"),
+            (143, "Command::Merge(args) => merge::run(&args.reports),"),
+            (143, "mod merge;"),
         ]
     );
     assert_eq!(pack.findings[0].occurrences[0].rank, 1);

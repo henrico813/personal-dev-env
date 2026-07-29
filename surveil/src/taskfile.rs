@@ -66,13 +66,15 @@ pub fn state_root() -> io::Result<PathBuf> {
 }
 
 fn state_root_from(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> io::Result<PathBuf> {
-    if let Some(path) = xdg_state_home.map(Path::new).filter(|path| path.is_absolute()) {
+    if let Some(path) = xdg_state_home
+        .map(Path::new)
+        .filter(|path| path.is_absolute())
+    {
         return Ok(path.join("surveil").join("runs"));
     }
 
-    let home = Path::new(
-        home.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?,
-    );
+    let home =
+        Path::new(home.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?);
     if !home.is_absolute() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -80,7 +82,11 @@ fn state_root_from(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> io::
         ));
     }
 
-    Ok(home.join(".local").join("state").join("surveil").join("runs"))
+    Ok(home
+        .join(".local")
+        .join("state")
+        .join("surveil")
+        .join("runs"))
 }
 
 fn create_managed_root_at(state_root: &Path, stamp: u128, process_id: u32) -> io::Result<PathBuf> {
@@ -287,9 +293,19 @@ mod tests {
             validate_task_name(task).expect("valid task name");
         }
         for task in [
-            "", "   ", ".", "..", "nested/task", "nested\\task", "/absolute", "line\nbreak",
+            "",
+            "   ",
+            ".",
+            "..",
+            "nested/task",
+            "nested\\task",
+            "/absolute",
+            "line\nbreak",
         ] {
-            assert!(validate_task_name(task).is_err(), "task should fail: {task:?}");
+            assert!(
+                validate_task_name(task).is_err(),
+                "task should fail: {task:?}"
+            );
         }
     }
 
@@ -311,7 +327,9 @@ mod tests {
         ];
         for (xdg, home, expected) in cases {
             match expected {
-                Some(expected) => assert_eq!(state_root_from(xdg, home).expect("state root"), expected),
+                Some(expected) => {
+                    assert_eq!(state_root_from(xdg, home).expect("state root"), expected)
+                }
                 None => assert!(state_root_from(xdg, home).is_err()),
             }
         }
@@ -323,6 +341,9 @@ mod tests {
         use std::os::unix::ffi::OsStringExt;
         let xdg = std::ffi::OsString::from_vec(b"/state/\xff".to_vec());
         let expected = PathBuf::from(xdg.clone()).join("surveil").join("runs");
-        assert_eq!(state_root_from(Some(&xdg), None).expect("state root"), expected);
+        assert_eq!(
+            state_root_from(Some(&xdg), None).expect("state root"),
+            expected
+        );
     }
 }

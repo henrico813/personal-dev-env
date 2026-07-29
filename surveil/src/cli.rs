@@ -223,8 +223,13 @@ mod tests {
 
     #[test]
     fn parses_merge_reports() {
-        let cli = Cli::try_parse_from(["surveil", "merge", "/tmp/architecture.json", "/tmp/tests.json"])
-            .expect("parse merge command");
+        let cli = Cli::try_parse_from([
+            "surveil",
+            "merge",
+            "/tmp/architecture.json",
+            "/tmp/tests.json",
+        ])
+        .expect("parse merge command");
 
         match cli.command {
             Command::Merge(args) => assert_eq!(
