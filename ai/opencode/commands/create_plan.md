@@ -47,7 +47,7 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 - Determine the final output path before running `planner new <output.md>` or scaffolding `surveil`.
 - Write the final plan to its real destination, not a transient temp path.
 - If the user says a legacy surface is being phased out, treat that surface as out of scope unless they explicitly request changes there.
-- Use a run-specific temp root derived from the repo and branch; do not reuse shared temp paths.
+- Use the unique managed root printed by `surveil new task --task architecture`; do not create or reuse a shared task path.
 - Avoid dependency, virtualenv, worktree, generated output, and cache directories unless explicitly requested.
 - Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
 - Do not add extra sections unless the user explicitly asks for them.
@@ -80,35 +80,7 @@ If any repo-backed trigger is present, do not fall back to manual-first research
    - For existing plans, docs, and notes, use `pde vault locate --json --vault <selector> "<reference>"`.
    - Use `pde vault path <selector>` only when determining the destination root for a new plan or when the user explicitly asks for a vault root.
    - Ask only on `ambiguous`, `not_found`, or setup `error`.
-4. If the request is repo-backed, create `<temp-root>` before broad repo research.
-   - Use `/tmp/<repo>-<branch>/` for `<temp-root>` after making the name safe for filesystem use.
-5. Build each task using these rules:
-   - Populate each `<task-dir>/task.md` after running `surveil new task <task-dir>`.
-   - `Summary`: copy the issue or document title verbatim; if there is no title, use the user's first sentence verbatim.
-   - `Explicit Files`: include only literal file paths named by the user or directly named in the provided doc; preserve first-seen order and de-duplicate exact repeats.
-   - `Search Areas`: use the smallest repo directories that cover the task perspective. Prefer directories or parent directories named in the request, source doc, or explicit files. Use `.` only when no narrower area is available.
-   - `Query`: use the ordered query set for the task's perspective.
-     Do not reuse one query set across all three tasks.
-     - **Architecture:**
-       - `How does the current command or request flow through this area?`
-       - `Which modules own this behavior, and where are their boundaries?`
-       - `Which callers and integration points would need to change?`
-       - `What orchestration or dependency direction must be preserved?`
-       - `Which files define the complete implementation path?`
-     - **Interfaces / Data / State:**
-       - `Which structs, types, functions, and fields define this behavior?`
-       - `How does data enter, change, and leave this area?`
-       - `Which validation rules and invariants must be preserved?`
-       - `Which persistence, environment, filesystem, process, or API boundaries are involved?`
-       - `Which compatibility or migration concerns apply?`
-     - **Tests / Verification:**
-       - `Which existing tests and fixtures cover this behavior?`
-       - `Which test helpers and patterns should new coverage follow?`
-       - `Which docs, config, commands, and CI targets affect this change?`
-       - `Which automated checks verify the implementation?`
-       - `Which behavior requires manual verification?`
-   - `Terms`: include only literal identifiers, filenames, path segments, commands, and feature names copied from the request or source doc; de-duplicate case-insensitively and do not invent synonyms.
-6. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
+4. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
 
 ### Step 2: Research the Codebase
 
@@ -116,67 +88,73 @@ For repo-backed implementation plans, use `surveil` as the default research work
 
 For requests that are not repo-backed, skip `surveil` and research the relevant code, tests, config, docs, or comparative material directly using the available read-only tools before drafting.
 
-Capture artifacts with this fixed command pattern:
+For this workflow, <task-context> is the user's request and every referenced document.
 
-- Create a unique top-level search directory under `<temp-root>/<unique-search-name>/`.
-- Create three task directories:
-  - `<search-dir>/architecture/`
-  - `<search-dir>/interfaces-data-state/`
-  - `<search-dir>/tests-verification/`
-- Run `surveil new task <task-dir>` for each task directory.
-- Populate each `<task-dir>/task.md` using the rules above, scoped to that task's perspective.
-- Run `surveil gather --repo <repo> --task-file <task-dir>/task.md > <task-dir>/context.json` for each task.
-- Run `surveil research --context <task-dir>/context.json --trace-out <task-dir>/trace.json > <task-dir>/report.json` for each task.
+For this workflow, <evidence-review-agent> is the OpenCode `codebase-analyzer` agent.
 
-When doing `surveil` based research, follow these instructions:
+## Detailed Surveil Research Instructions
 
-1. Run `surveil index --repo <repo>`.
-2. Based on the user's prompt, decompose it into three `surveil` tasks:
-	   - **Architecture:** command flow, package boundaries, relevant dirs callers, integration points, ownership, orchestration.
-	   - **Interfaces / Data / State:** structs, types, dependency seams, data models, persisted state, env/filesystem/process boundaries.
-	   - **Tests / Verification:** existing tests, fixtures, test seams, config targets, commands, docs, validation paths.
-3. Create the following directory structure for `surveil` operations:
-	1. Make a top-level directory for this search under `<temp-root>/<search-name>/`.
-	2. Make a unique artifact directory for each task under `<temp-root>/<search-name>/<task-name>/`.
-	3. Then run `surveil gather` for each task and save each result as that task's `context.json`.
-4. After all gathers complete, run `surveil research` for the three tasks in parallel and save each result as that task's `report.json`.
-5. Read all `report.json` files before manual repo research.
-6. Based on `surveil` results, create three subagents that each will do a manual search:
-    - Use the **codebase-locator** agent to find WHERE files and components live
-    - Use the **codebase-analyzer** agent to understand HOW specific code works (without critiquing it)
-	- Use the **codebase-pattern-finder** agent to find examples of existing patterns (without evaluating them)
-7. Reconcile evidence before drafting:
-    - If `surveil` and manual search conflict, trust direct file reads.
-    - If a key identifier from the prompt or plan does not appear in a focused report, search it manually.
-    - If a category has no matching evidence after focused search, record that absence as evidence.
-    - Do not draft the plan until architecture, interfaces/data/state, and tests/verification all have evidence or recorded absence.
-8. If any `surveil` step fails after one retry, record the failure and continue with focused manual repo research instead of retrying indefinitely.
+1. Create the three Surveil tasks:
+   - Before any Surveil command, run `failure_file="$(mktemp "${TMPDIR:-/tmp}/surveil-research-failure.XXXXXX")"` to reserve a unique fallback failure file.
+   - Run `search_dir="$(surveil new task --task architecture)"`.
+   - After root creation succeeds, run `rm -f "$failure_file"` and then `failure_file="$search_dir/failure.md"`.
+   - Run `surveil new task --root "$search_dir" --task interfaces-data-state`.
+   - Run `surveil new task --root "$search_dir" --task tests-verification`.
+2. Populate `$search_dir/architecture/task.md`, `$search_dir/interfaces-data-state/task.md`, and `$search_dir/tests-verification/task.md` from <task-context>:
+   - Use the task-context title as `Summary`; if it has no title, use its first sentence verbatim.
+   - Include only literal paths named by the task context as `Explicit Files`, preserving first-seen order and removing exact duplicates.
+   - Use the smallest repo directories covering those paths and each task's focus as `Search Areas`; use `.` only when no narrower area is available.
+   - Copy literal identifiers, filenames, path segments, commands, and feature names into `Terms`, de-duplicate case-insensitively, and do not invent synonyms.
+3. Populate each task's `Query` field with its ordered questions. Do not omit, reorder, combine, reword, or reuse question sets across tasks.
+   - `architecture`:
+     1. `How does the current command or request flow through this area?`
+     2. `Which modules own this behavior, and where are their boundaries?`
+     3. `Which callers and integration points would need to change?`
+     4. `What orchestration or dependency direction must be preserved?`
+     5. `Which files define the complete implementation path?`
+   - `interfaces-data-state`:
+     1. `Which structs, types, functions, and fields define this behavior?`
+     2. `How does data enter, change, and leave this area?`
+     3. `Which validation rules and invariants must be preserved?`
+     4. `Which persistence, environment, filesystem, process, or API boundaries are involved?`
+     5. `Which compatibility or migration concerns apply?`
+   - `tests-verification`:
+     1. `Which existing tests and fixtures cover this behavior?`
+     2. `Which test helpers and patterns should new coverage follow?`
+     3. `Which docs, config, commands, and CI targets affect this change?`
+     4. `Which automated checks verify the implementation?`
+     5. `Which behavior requires manual verification?`
+4. Run `surveil index --repo <repo>`.
+5. Run all three gather commands:
+   - `surveil gather --repo <repo> --task-file "$search_dir/architecture/task.md" > "$search_dir/architecture/context.json"`
+   - `surveil gather --repo <repo> --task-file "$search_dir/interfaces-data-state/task.md" > "$search_dir/interfaces-data-state/context.json"`
+   - `surveil gather --repo <repo> --task-file "$search_dir/tests-verification/task.md" > "$search_dir/tests-verification/context.json"`
+6. Launch all three research commands through parallel tool calls and wait for all three:
+   - `surveil research --context "$search_dir/architecture/context.json" --trace-out "$search_dir/architecture/trace.json" > "$search_dir/architecture/report.json"`
+   - `surveil research --context "$search_dir/interfaces-data-state/context.json" --trace-out "$search_dir/interfaces-data-state/trace.json" > "$search_dir/interfaces-data-state/report.json"`
+   - `surveil research --context "$search_dir/tests-verification/context.json" --trace-out "$search_dir/tests-verification/trace.json" > "$search_dir/tests-verification/report.json"`
+7. Continue only after the index, gather, and research commands succeed for all three tasks.
+8. Merge the reports directly with `surveil merge "$search_dir/architecture/report.json" "$search_dir/interfaces-data-state/report.json" "$search_dir/tests-verification/report.json" > "$search_dir/evidence.json"`.
+9. Read `$search_dir/evidence.json` before additional repository research.
+10. After successful evidence, run one <evidence-review-agent>:
+    - Give it <task-context>, <repo>, and `$search_dir/evidence.json`.
+    - Find required files or behavior missing from the evidence and correct assumptions not supported by direct file reads.
+    - Check related callers, integration points, and existing patterns outside the searched areas.
+    - Identify missing tests, fixtures, config, commands, CI checks, or manual verification.
+    - Require read-only research with concrete `file:line` references and findings not already present in the evidence.
+    - Save its final response verbatim as `$search_dir/manual-review.md`.
+11. Verify new or conflicting findings from <evidence-review-agent> with direct file reads before continuing.
+12. If any Surveil command fails, retry it once. If it still fails, write the failed stage to `$failure_file`, skip steps 8-9 only, run one <evidence-review-agent> using all step 10 review instructions with <task-context>, <repo>, and any available artifacts, save its response beside `$failure_file`, and verify new or conflicting fallback findings with direct file reads before continuing.
+## Evidence Review Best Practices
 
-Consume artifacts in this order:
+Run one research task after reading merged evidence. Give the analyzer exact directories, require read-only tools and `file:line` references, wait for it to complete, and cross-check unexpected findings directly.
 
-1. Read all three reports first and treat their `result` values as the default evidence outline:
-   - `<search-dir>/architecture/report.json`
-   - `<search-dir>/interfaces-data-state/report.json`
-   - `<search-dir>/tests-verification/report.json`
-2. Read the corresponding `<task-dir>/trace.json` only when that task's `open_questions` is non-empty, `blockers` is non-empty, explicit files are missing from relevant findings, or the report looks noisy.
-3. Preserve `negative_evidence` and `open_questions` as planning inputs instead of smoothing them away.
+Example:
+```python
+task = Task("Review Surveil evidence", evidence_review_prompt)
+```
 
-Bound follow-up reading after `surveil`:
-
-- prefer surfaced snippets over broad repo reads
-- read full files only for the top surfaced file per query, with one extra file allowed only when the first file is insufficient for exact diff planning, capped at five total files
-- when the query is about tests, docs, config, or verification, prefer surfaced files from that class before defaulting to implementation files
-
-Do targeted follow-up investigation when `surveil` is weak or noisy, for example when:
-
-- top ranked files are mostly docs, fixtures, generated files, or plumbing
-- broad terms dominate `matched_from`
-- explicit files are not preferred for queries they should answer
-- a docs, config, or tests query returns only implementation snippets
-- `open_questions` is non-empty
-- `negative_evidence` conflicts with the expected repo surface
-
-In those cases, refine with focused reads and searches rather than skipping `surveil`, and do not draft until each required planning query has evidence or explicit follow-up results.
+Assistant: This is a repo-backed implementation plan, so I'll create three managed Surveil tasks, merge their reports, and use one <evidence-review-agent> to review the evidence before drafting.
 
 
 ### Step 3: Plan Structure Development
