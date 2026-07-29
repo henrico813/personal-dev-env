@@ -352,40 +352,6 @@ Make sure the implementation and verification sections include explicit,
 - Maintain backwards compatibility
 - Include migration strategy
 
-## Sub-task Spawning Best Practices
-
-When spawning research sub-tasks:
-
-1. **Spawn multiple tasks in parallel** for efficiency
-2. **Each task should be focused** on a specific area
-3. **Provide detailed instructions** including:
-   - Exactly what to search for
-   - Which directories to focus on
-   - What information to extract
-   - Expected output format
-4. **Be EXTREMELY specific about directories**:
-   - Specify exact directory paths based on the project structure
-   - Never use generic terms when specific paths are needed
-   - Include the full path context in your prompts
-5. **Specify read-only tools** to use
-6. **Request specific file:line references** in responses
-7. **Wait for all tasks to complete** before synthesizing
-8. **Verify sub-task results**:
-   - If a sub-task returns unexpected results, spawn follow-up tasks
-   - Cross-check findings against the actual codebase
-   - Don't accept results that seem incorrect
-
-Example of spawning multiple tasks:
-```python
-# Spawn these tasks concurrently:
-tasks = [
-    Task("Research database schema", db_research_prompt),
-    Task("Find API patterns", api_research_prompt),
-    Task("Investigate UI components", ui_research_prompt),
-    Task("Check test patterns", test_research_prompt)
-]
-```
-
 ## Example Interaction Flow
 
 ```
@@ -397,7 +363,7 @@ Assistant: Let me read that document completely first...
 
 [Reads file fully]
 
-Assistant: This is a repo-backed implementation plan, so I'll build the fixed `surveil` task, capture `context`, `report`, and `trace`, and use `result` as the baseline evidence pack before drafting.
+Assistant: This is a repo-backed implementation plan, so I'll create three managed Surveil tasks, merge their reports, and use one <evidence-review-agent> to review the evidence before drafting.
 
 [Interactive process continues...]
 ```

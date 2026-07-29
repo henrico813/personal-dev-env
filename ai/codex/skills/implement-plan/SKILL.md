@@ -45,7 +45,7 @@ as `setup_error`, not a generic agent failure.
 
 For this workflow, <task-context> is the complete plan and every document it references. For repo-backed plans, run the following research once per plan, not once per implementation step.
 
-For this workflow, <evidence-review-agent> is the OpenCode `codebase-analyzer` agent.
+For this workflow, <evidence-review-agent> is one available read-only research subagent; give it the complete evidence-review instructions embedded below.
 
 ## Detailed Surveil Research Instructions
 
