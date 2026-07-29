@@ -38,10 +38,20 @@ Notes:
 ## Commands
 
 - `surveil new task <output-dir>` writes a blank `task.md` stub at `<output-dir>/task.md` and fails if that file already exists.
+- `surveil new task --task <name>` collision-safely reserves a unique managed root, writes `<name>/task.md`, and prints the root path after the command completes.
+- `surveil new task --root <root> --task <name>` collision-safely reserves a new task leaf in an existing absolute Surveil-managed root, writes `task.md`, and prints that root after completion. Duplicate task names fail without changing the existing task; failed writes remove the newly reserved leaf.
 - `surveil index --repo <repo>` builds a disposable Tantivy chunk index under `.surveil/index/` from readable UTF-8 files under the same repo skip policy used by `research`.
-- `surveil gather --repo <repo> --task-file <task.md>` emits a versioned `GatherOutput` JSON context with `schema_version`.
-- `surveil research --context <context.json> --trace-out <trace.json>` emits a versioned `ResearchOutput` JSON report with `schema_version` and writes a shallow `TraceOutput` JSON file.
-- `surveil merge <perspective>=<report.json>...` validates one or more `surveil.v6` reports and emits one `surveil.evidence.v1` evidence pack.
+- `surveil gather --repo <repo> --task-file <task.md>` emits a `surveil.v7` `GatherOutput` JSON context. Its required `task_name` is the UTF-8 name of the resolved `task.md` parent directory.
+- `surveil research --context <context.json> --trace-out <trace.json>` requires a `surveil.v7` context, propagates `task_name` into a `surveil.v7` report, and writes a shallow `TraceOutput` JSON file.
+- `surveil merge <task-report>...` accepts positional report paths, validates `surveil.v7` task reports, rejects invalid or duplicate `task_name` values, and emits one `surveil.evidence.v2` evidence pack.
+
+Task names may contain ordinary spaces and Unicode, but must not be empty or whitespace-only and must not contain controls, path separators, or path components such as `.` and `..`. Managed creation, gather-derived identity, and merge report loading apply the same rules.
+
+Managed roots live under `$XDG_STATE_HOME/surveil/runs` when `XDG_STATE_HOME` is absolute. Otherwise Surveil uses `$HOME/.local/state/surveil/runs`, which requires an absolute `HOME`. Environment paths retain their native operating-system representation. Managed roots remain until a caller removes them; Surveil does not prune them automatically.
+
+The `.surveil-managed` marker prevents accidental append to unrelated directories. It is misuse prevention, not protection against a hostile filesystem. Root and task directories are reserved with `create_dir`, but a complete task is published only when the creating command successfully writes `task.md`.
+
+Report v7 and evidence v2 intentionally replace v6 and v1. Research rejects non-v7 gather contexts, and merge rejects older reports rather than upgrading either format.
 
 Default skipped path segments are `target`, `node_modules`, `dist`, `build`, `pack`, `.git`, `.surveil`, `.spendscope`, `worktrees`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox`, `htmlcov`, `.next`, `.nuxt`, `.svelte-kit`, and `.turbo`. The same skip policy applies to `index`, `gather`, and `research`.
 
@@ -58,6 +68,6 @@ A prebuilt `.surveil/index/` directory now participates in query-time ranking. A
 
 `research` still emits only a small number of snippets per file, and the public result shape remains versioned via `schema_version`; each `result` entry includes `query`, `findings`, and `negative_evidence`, with optional symbol metadata on source-like findings.
 
-Merged reports, findings, occurrences, negative evidence, blockers, and open questions retain first-seen order. Findings with the exact same `path`, `line`, and `excerpt` share one entry; ordered `occurrences` describe each distinct report and query appearance with a one-based rank. Exact duplicate notes and occurrences are omitted, and input report paths are never copied into output.
+Merged reports, findings, occurrences, negative evidence, blockers, and open questions retain first-seen order. Findings with the exact same `path`, `line`, and `excerpt` share one entry; ordered `occurrences` describe each distinct task report and query appearance with a one-based rank. `EvidenceReport`, `FindingOccurrence`, `QueryEvidenceNote`, and `ReportEvidenceNote` preserve the report's `task_name`. Exact duplicate notes and occurrences are omitted, and input report paths are never copied into output.
 
-`merge` validates JSON shape and schema version, but reports do not identify a repository revision. Callers are responsible for supplying reports produced from the same source snapshot. This issue also differentiates planning queries; automatically invoking `merge` remains a follow-up.
+`merge` validates JSON shape and schema version, but reports do not identify a repository revision. Callers are responsible for supplying reports produced from the same source snapshot.

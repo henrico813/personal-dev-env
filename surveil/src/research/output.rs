@@ -33,6 +33,16 @@ pub(crate) fn write_research_output(
 fn create_research_outputs(
     gather: GatherOutput,
 ) -> Result<(ResearchOutput, TraceOutput), Box<dyn Error>> {
+    if gather.schema_version != SCHEMA_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unsupported gather schema version: expected {SCHEMA_VERSION}, got {}",
+                gather.schema_version
+            ),
+        )
+        .into());
+    }
     let repo_root = Path::new(&gather.repo_root).to_path_buf();
     let mut trace = TraceState::default();
     let index_state = index::inspect_chunk_index(&repo_root)?;
@@ -83,9 +93,10 @@ fn create_research_outputs(
     let open_questions = trace.unmatched_questions.clone();
     let report = ResearchOutput {
         schema_version: SCHEMA_VERSION.to_string(),
-        summary: gather.summary,
+        task_name: gather.task_name.clone(),
+        summary: gather.summary.clone(),
         result,
-        blockers: gather.blockers,
+        blockers: gather.blockers.clone(),
         open_questions,
     };
 

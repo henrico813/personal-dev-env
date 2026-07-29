@@ -7,20 +7,21 @@ use crate::schema::{Answer, Finding, ResearchOutput, SCHEMA_VERSION};
 fn finding(source: &str) -> Finding {
     Finding {
         path: "surveil/src/cli.rs".to_string(),
-        line: 84,
+        line: 143,
         excerpt: "Command::Merge(args) => merge::run(&args.reports),".to_string(),
         source: source.to_string(),
         matched_from: "merge".to_string(),
         symbol_kind: Some("function".to_string()),
         symbol_name: Some("run".to_string()),
-        symbol_start_line: Some(75),
-        symbol_end_line: Some(86),
+        symbol_start_line: Some(120),
+        symbol_end_line: Some(146),
     }
 }
 
-fn report(query: &str, findings: Vec<Finding>) -> ResearchOutput {
+fn report(task_name: &str, query: &str, findings: Vec<Finding>) -> ResearchOutput {
     ResearchOutput {
         schema_version: SCHEMA_VERSION.to_string(),
+        task_name: task_name.to_string(),
         summary: "merge command".to_string(),
         result: vec![Answer {
             query: query.to_string(),
