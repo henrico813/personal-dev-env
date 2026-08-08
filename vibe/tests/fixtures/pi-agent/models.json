@@ -1,0 +1,25 @@
+{
+  "providers": {
+    "vibe-fixture": {
+      "api": "openai-completions",
+      "baseUrl": "https://vibe-fixture.invalid/v1",
+      "apiKey": "fixture-key",
+      "models": [
+        {
+          "id": "dynamic-model",
+          "name": "Dynamic Model",
+          "reasoning": false,
+          "input": ["text"],
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "contextWindow": 128000,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}
