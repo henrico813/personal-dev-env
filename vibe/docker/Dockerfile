@@ -4,7 +4,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends bash git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @mariozechner/pi-coding-agent@0.71.1
+RUN npm install -g @earendil-works/pi-coding-agent@0.82.1
 
 ENV NPM_CONFIG_PREFIX=/vibe-home/.npm-global
 ENV PATH=/vibe-home/.npm-global/bin:$PATH
