@@ -1,4 +1,4 @@
-.PHONY: build check test clean install
+.PHONY: build check test integration clean install
 
 build:
 	cargo build --release
@@ -13,6 +13,9 @@ check:
 test:
 	cargo test
 	node extensions/stderr-progress.test.mjs
+
+integration:
+	cargo test --test pi_model_config -- --ignored
 
 install:
 	cargo install --path . --root $(HOME)/.local

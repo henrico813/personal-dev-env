@@ -129,11 +129,13 @@ uses the trimmed first line from that artifact for snapshot commits when
 present, and falls back to `chore: snapshot changes` when the file is
 missing or empty.
 
-The host Pi agent directory is mounted writable at `$HOME/.pi/agent` inside
-the container. This lets Pi persist rotated OAuth credentials and share its
-refresh lock across host and Vibe processes. Auth is never copied into the run
-artifact directory. Prefer provider API keys for disposable or concurrent
-automation.
+Vibe's Docker image pins its own `@earendil-works/pi-coding-agent` release.
+The `--model` selector is passed unchanged to that runtime, and Vibe does not invoke the host `pi` executable.
+The host Pi agent directory is mounted writable at `$HOME/.pi/agent` inside the container.
+This lets Pi persist rotated OAuth credentials and share its refresh lock across host and Vibe processes.
+When `auth.json` supplies authentication, the same mount exposes sibling configuration such as `models.json` and `models-store.json`.
+Auth is never copied into the run artifact directory.
+Prefer provider API keys for disposable or concurrent automation.
 
 Recovery notes:
 

@@ -43,3 +43,15 @@ jobs:
         run: cargo build --release --manifest-path surveil/Cargo.toml
       - name: test
         run: cargo test --manifest-path surveil/Cargo.toml
+
+  vibe:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vibe
+    steps:
+      - uses: actions/checkout@v4
+      - name: check
+        run: make check
+      - name: integration
+        run: make integration

@@ -543,7 +543,7 @@ mod tests {
             git_common_dir: &git_common_dir,
             worktree: &worktree,
             artifacts: &artifacts,
-            model: "openai-codex/gpt-5.4",
+            model: "vibe-fixture/dynamic-model",
             stderr_level: "info",
             insecure_tls: false,
             snapshot_ref: "refs/vibe/snapshots/run",
@@ -554,6 +554,9 @@ mod tests {
         assert!(args
             .iter()
             .any(|arg| arg == "VIBE_COMBINED_PROMPT_FILE=/artifacts/combined-prompt.txt"));
+        assert!(args
+            .iter()
+            .any(|arg| arg == "VIBE_MODEL=vibe-fixture/dynamic-model"));
         assert!(!args
             .iter()
             .any(|arg| arg == "VIBE_PROMPT_FILE=/artifacts/prompt.txt"));
