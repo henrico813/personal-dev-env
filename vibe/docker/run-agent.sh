@@ -34,11 +34,7 @@ PI_ARGS=(
   -e /opt/vibe/extensions/git-snapshot.mjs
 )
 
-if [[ "${VIBE_MODEL}" == */* ]]; then
-  PI_ARGS+=(--provider "${VIBE_MODEL%%/*}" --model "${VIBE_MODEL#*/}")
-else
-  PI_ARGS+=(--model "${VIBE_MODEL}")
-fi
+PI_ARGS+=(--model "${VIBE_MODEL}")
 
 export VIBE_EVENTS_LOG=/artifacts/events.jsonl
 export VIBE_STDERR_LEVEL="${VIBE_STDERR_LEVEL:-info}"
