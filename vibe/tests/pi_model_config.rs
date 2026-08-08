@@ -1,5 +1,8 @@
 #![cfg(unix)]
 //! This test builds Vibe's Docker image and checks Pi reads models.json.
+//!
+//! The test runs Pi directly so it can check configuration loading without
+//! making a provider request.
 
 use std::process::{Command, Output};
 
@@ -7,8 +10,11 @@ struct DockerImage {
     name: String,
 }
 
+// Rust calls this automatically when the image value leaves scope.
 impl Drop for DockerImage {
     fn drop(&mut self) {
+        // Remove the temporary image even when a test assertion fails.
+        // Ignore cleanup errors so they do not hide the original failure.
         let _ = Command::new("docker")
             .args(["image", "rm", "--force", &self.name])
             .output();
@@ -35,6 +41,8 @@ fn pi_loads_injected_model_config() {
         name: format!("vibe-pi-integration-{}", std::process::id()),
     };
 
+    // Build the same Docker image that Vibe uses.
+    // Do not use a Pi installation from the developer's machine.
     let build = bash(
         r#"
 docker build \
@@ -51,6 +59,8 @@ docker build \
         String::from_utf8_lossy(&build.stderr)
     );
 
+    // Start Pi directly because this test checks whether Pi can read
+    // the mounted models.json file without calling a provider.
     let lookup = bash(
         r#"
 docker run --rm \
@@ -70,6 +80,8 @@ docker run --rm \
     );
 
     let stdout = String::from_utf8_lossy(&lookup.stdout);
+    // This provider and model only exist in the test file. Finding them in
+    // Pi's output proves that Pi read the mounted configuration.
     let loaded = stdout.lines().any(|line| {
         let mut fields = line.split_whitespace();
         fields.next() == Some("vibe-fixture") && fields.next() == Some("dynamic-model")
