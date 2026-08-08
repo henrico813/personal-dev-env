@@ -55,7 +55,8 @@ pub struct RunArgs {
     #[arg(long)]
     pub prompt_file: PathBuf,
 
-    /// Pi model identifier, for example openai-codex/gpt-5.4.
+    /// Pi model selector passed unchanged to the container runtime.
+    /// Prefer provider/model form, for example openai-codex/gpt-5.4.
     #[arg(long)]
     pub model: String,
 
