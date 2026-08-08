@@ -1,8 +1,6 @@
 #![cfg(unix)]
-//! This test builds Vibe's Docker image and checks Pi reads models.json.
-//!
-//! The test runs Pi directly so it can check configuration loading without
-//! making a provider request.
+//! This test builds Vibe's actual Docker image and checks that its Pi
+//! installation can read a custom model from models.json.
 
 use std::process::{Command, Output};
 
