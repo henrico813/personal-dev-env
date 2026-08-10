@@ -27,3 +27,8 @@ RUN useradd -m -s /bin/bash testuser \
 
 USER testuser
 WORKDIR /home/testuser
+
+# Simulate the legacy PDE Yazi location so migration cleanup is verified.
+RUN mkdir -p /home/testuser/.cargo/bin \
+    && touch /home/testuser/.cargo/bin/yazi /home/testuser/.cargo/bin/ya \
+    && chmod +x /home/testuser/.cargo/bin/yazi /home/testuser/.cargo/bin/ya
