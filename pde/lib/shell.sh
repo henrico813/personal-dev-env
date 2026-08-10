@@ -19,10 +19,6 @@ install_shell() {
     clone_or_pull "https://github.com/mattmc3/antidote.git" \
                   "$HOME/.local/share/antidote"
 
-    # Powerlevel10k theme
-    clone_or_pull "https://github.com/romkatv/powerlevel10k.git" \
-                  "$HOME/.local/share/powerlevel10k"
-
     # Tmux plugin manager
     clone_or_pull "https://github.com/tmux-plugins/tpm" \
                   "$HOME/.tmux/plugins/tpm"

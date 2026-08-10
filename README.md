@@ -11,7 +11,7 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 
 ```bash
 ./pde/pde minimal   # shell, tmux, neovim, CLI tools
-./pde/pde full      # everything above + Node, Claude Code, fonts
+./pde/pde full      # everything above + fonts and GUI config
 ```
 
 Optional and composed PDE commands live in the Go CLI:
