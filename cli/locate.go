@@ -10,11 +10,17 @@ import (
 	"unicode"
 )
 
-func findVaultNotes(vaults []string, filename, reference, query string) ([]string, error) {
+type vaultNoteSearch struct {
+	Filename  string
+	Reference string
+	Query     string
+}
+
+func findVaultNotes(vaults []string, search vaultNoteSearch) ([]string, error) {
 	exactMatches := map[string]struct{}{}
 	prefixMatches := map[string]struct{}{}
 	normalizedMatches := map[string]struct{}{}
-	normalizedReference := normalizeLookupTitle(reference)
+	normalizedReference := normalizeLookupTitle(search.Reference)
 	for _, vault := range vaults {
 		if err := filepath.WalkDir(vault, func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -30,21 +36,21 @@ func findVaultNotes(vaults []string, filename, reference, query string) ([]strin
 			base := filepath.Base(path)
 			stem := strings.TrimSuffix(base, filepath.Ext(base))
 
-			if filename != "" {
-				if base == filename || (filepath.Ext(filename) == "" && stem == filename) {
+			if search.Filename != "" {
+				if base == search.Filename || (filepath.Ext(search.Filename) == "" && stem == search.Filename) {
 					exactMatches[path] = struct{}{}
 				}
 				return nil
 			}
 
-			if reference != "" {
+			if search.Reference != "" {
 				rel, err := filepath.Rel(vault, path)
 				if err != nil {
-					return nil
+					return fmt.Errorf("relative path for %s: %w", path, err)
 				}
 				rel = filepath.ToSlash(rel)
 				relStem := strings.TrimSuffix(rel, ".md")
-				if reference == base || reference == stem || reference == rel || reference == relStem {
+				if search.Reference == base || search.Reference == stem || search.Reference == rel || search.Reference == relStem {
 					exactMatches[path] = struct{}{}
 					return nil
 				}
@@ -53,7 +59,7 @@ func findVaultNotes(vaults []string, filename, reference, query string) ([]strin
 					return nil
 				}
 
-				if referenceMatchesIssuePrefix(reference, base) || referenceMatchesIssuePrefix(reference, stem) {
+				if referenceMatchesIssuePrefix(search.Reference, base) || referenceMatchesIssuePrefix(search.Reference, stem) {
 					prefixMatches[path] = struct{}{}
 					return nil
 				}
@@ -68,7 +74,7 @@ func findVaultNotes(vaults []string, filename, reference, query string) ([]strin
 			if err != nil {
 				return err
 			}
-			if strings.Contains(string(data), query) {
+			if strings.Contains(string(data), search.Query) {
 				exactMatches[path] = struct{}{}
 			}
 			return nil

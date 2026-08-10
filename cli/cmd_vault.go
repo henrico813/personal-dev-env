@@ -214,7 +214,11 @@ func runVaultLocate(out io.Writer, homeDir string, opts vaultLocateOptions) erro
 		return writeVaultLocateError(out, opts.JSON, err)
 	}
 
-	matches, err := findVaultNotes(vaults, opts.Filename, opts.Reference, opts.Query)
+	matches, err := findVaultNotes(vaults, vaultNoteSearch{
+		Filename:  opts.Filename,
+		Reference: opts.Reference,
+		Query:     opts.Query,
+	})
 	if err != nil {
 		return writeVaultLocateError(out, opts.JSON, err)
 	}

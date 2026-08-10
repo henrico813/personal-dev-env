@@ -18,7 +18,7 @@ func managedSharedConfigLinks(cfg *Config) ([]configLink, error) {
 }
 
 func configTreeLinks(srcRoot, dstRoot string) ([]configLink, error) {
-	links := []configLink{}
+	var links []configLink
 	err := filepath.WalkDir(srcRoot, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err

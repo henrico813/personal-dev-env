@@ -102,39 +102,40 @@ func TestDecodeChatRequestAllowsOpenAICompatibleFields(t *testing.T) {
 	}
 }
 
-func TestSelectedInlineModelUsesConfiguredOverrideForAliasRequest(t *testing.T) {
-	cfg := config{inlineModel: "openai-codex/gpt-5.4-mini"}
-
-	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
+func TestSelectedInlineModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		cfg   config
+		want  *inlineModel
+	}{
+		{
+			name:  "configured override for alias",
+			model: transportModel,
+			cfg:   config{inlineModel: "openai-codex/gpt-5.4-mini"},
+			want:  &inlineModel{ProviderID: "openai-codex", ModelID: "gpt-5.4-mini"},
+		},
+		{
+			name:  "thinking suffix",
+			model: "openai/gpt-5.4-mini/high",
+			want:  &inlineModel{ProviderID: "openai", ModelID: "gpt-5.4-mini", Thinking: "high"},
+		},
+		{
+			name:  "opencode default",
+			model: transportModel,
+		},
 	}
-	if got == nil || got.ProviderID != "openai-codex" || got.ModelID != "gpt-5.4-mini" || got.Thinking != "" {
-		t.Fatalf("selectedInlineModel() = %#v", got)
-	}
-}
 
-func TestSelectedInlineModelAcceptsThinkingSuffix(t *testing.T) {
-	cfg := config{}
-
-	got, err := selectedInlineModel(chatRequest{Model: "openai/gpt-5.4-mini/high"}, cfg)
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
-	}
-	if got == nil || got.ProviderID != "openai" || got.ModelID != "gpt-5.4-mini" || got.Thinking != "high" {
-		t.Fatalf("selectedInlineModel() = %#v", got)
-	}
-}
-
-func TestSelectedInlineModelFallsBackToOpenCodeDefault(t *testing.T) {
-	cfg := config{}
-
-	got, err := selectedInlineModel(chatRequest{Model: transportModel}, cfg)
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
-	}
-	if got != nil {
-		t.Fatalf("selectedInlineModel() = %#v", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := selectedInlineModel(chatRequest{Model: tt.model}, tt.cfg)
+			if err != nil {
+				t.Fatalf("selectedInlineModel() error = %v", err)
+			}
+			if (got == nil) != (tt.want == nil) || got != nil && *got != *tt.want {
+				t.Fatalf("selectedInlineModel() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -248,7 +249,7 @@ func TestHandleChatCompletionsReturnsInlineFailureEnvelope(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
 	rec := httptest.NewRecorder()
 
-	handleChatCompletions(cfg, rec, req)
+	handleChatCompletions(&backendManager{cfg: cfg}, rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)

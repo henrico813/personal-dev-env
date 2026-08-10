@@ -184,6 +184,9 @@ func ensureNodeToolchain(cfg *Config, runner Runner) error {
 	nvmScript := filepath.Join(nvmDir, "nvm.sh")
 
 	if _, err := os.Stat(nvmScript); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("stat nvm script %s: %w", nvmScript, err)
+		}
 		if err := runner.Bash("install nvm", fmt.Sprintf(
 			"curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/%s/install.sh | bash",
 			aiNVMVersion,

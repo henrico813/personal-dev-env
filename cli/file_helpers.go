@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 )
 
@@ -26,8 +25,6 @@ func backupIfExists(path string, runner Runner) error {
 	return runner.Rename("backup existing config", path, backup)
 }
 
-var configInstallBackupSeq uint64
-
 func backupConfigInstallPath(path string, runner Runner) error {
 	if _, err := os.Lstat(path); err != nil {
 		if os.IsNotExist(err) {
@@ -42,7 +39,7 @@ func backupConfigInstallPath(path string, runner Runner) error {
 
 	for {
 		stamp := time.Now().UTC().Format("20060102_150405.000000000")
-		backup := fmt.Sprintf("%s.bak.%s.%d.%d", path, stamp, os.Getpid(), atomic.AddUint64(&configInstallBackupSeq, 1))
+		backup := fmt.Sprintf("%s.bak.%s.%d", path, stamp, os.Getpid())
 		if _, err := os.Lstat(backup); err == nil {
 			continue
 		} else if !os.IsNotExist(err) {
