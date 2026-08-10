@@ -35,10 +35,17 @@ install_aqua() {
 }
 
 install_aqua_tools() {
+    export AQUA_ROOT_DIR
+    export AQUA_GLOBAL_CONFIG="$SCRIPT_DIR/config/aqua/aqua.yaml"
+    export PATH="$AQUA_ROOT_DIR/bin:$PATH"
+
     "$AQUA_BIN" --config "$SCRIPT_DIR/config/aqua/aqua.yaml" install || die "Aqua tool installation failed"
 
     local tool
     for tool in fd fzf rg bat jq eza zoxide btm yq yazi ya; do
         [[ -x "$AQUA_ROOT_DIR/bin/$tool" ]] || die "$tool installation verification failed"
     done
+
+    # Aqua's musl Yazi replaces the legacy Cargo binary incompatible with Jammy.
+    rm -f "$HOME/.cargo/bin/yazi" "$HOME/.cargo/bin/ya"
 }
