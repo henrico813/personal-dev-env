@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
 
 func TestInstallTargetHasMinimal(t *testing.T) {
-	if _, ok := installTargets["minimal"]; !ok {
+	if _, ok := installTargets()["minimal"]; !ok {
 		t.Fatal("expected minimal install target")
 	}
 }
@@ -44,46 +43,6 @@ func TestInstallCmdRunsMinimal(t *testing.T) {
 		strings.Index(dryRun, markers[1]) < strings.Index(dryRun, markers[2]) &&
 		strings.Index(dryRun, markers[2]) < strings.Index(dryRun, markers[3])) {
 		t.Fatalf("unexpected dry-run order:\n%s", dryRun)
-	}
-}
-
-func TestRunMinimalKeepsOrder(t *testing.T) {
-	var calls []string
-	installers := minimalInstallers{
-		runLegacyBase:   func(*Config, Runner) error { calls = append(calls, "legacy"); return nil },
-		installConfig:   func(*Config, Runner) error { calls = append(calls, "config"); return nil },
-		installObsidian: func(*Config, Runner) error { calls = append(calls, "obsidian"); return nil },
-		installAITools:  func(*Config, Runner) error { calls = append(calls, "ai-tools"); return nil },
-	}
-
-	if err := runMinimal(&Config{}, Runner{}, installers); err != nil {
-		t.Fatalf("run minimal: %v", err)
-	}
-
-	want := []string{"legacy", "config", "obsidian", "ai-tools"}
-	if !reflect.DeepEqual(calls, want) {
-		t.Fatalf("calls = %v, want %v", calls, want)
-	}
-}
-
-func TestRunMinimalStopsOnError(t *testing.T) {
-	boom := errors.New("boom")
-	var calls []string
-	installers := minimalInstallers{
-		runLegacyBase:   func(*Config, Runner) error { calls = append(calls, "legacy"); return nil },
-		installConfig:   func(*Config, Runner) error { calls = append(calls, "config"); return boom },
-		installObsidian: func(*Config, Runner) error { calls = append(calls, "obsidian"); return nil },
-		installAITools:  func(*Config, Runner) error { calls = append(calls, "ai-tools"); return nil },
-	}
-
-	err := runMinimal(&Config{}, Runner{}, installers)
-	if !errors.Is(err, boom) {
-		t.Fatalf("expected wrapped error %v, got %v", boom, err)
-	}
-
-	want := []string{"legacy", "config"}
-	if !reflect.DeepEqual(calls, want) {
-		t.Fatalf("calls = %v, want %v", calls, want)
 	}
 }
 

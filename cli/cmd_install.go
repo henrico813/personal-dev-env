@@ -18,11 +18,13 @@ func (fn installerFunc) Install(cfg *Config, runner Runner) error {
 	return fn(cfg, runner)
 }
 
-var installTargets = map[string]Installer{
-	"minimal":  installerFunc(installMinimal),
-	"ai-tools": installerFunc(installAITools),
-	"config":   installerFunc(installConfig),
-	"obsidian": installerFunc(installObsidian),
+func installTargets() map[string]Installer {
+	return map[string]Installer{
+		"minimal":  installerFunc(installMinimal),
+		"ai-tools": installerFunc(installAITools),
+		"config":   installerFunc(installConfig),
+		"obsidian": installerFunc(installObsidian),
+	}
 }
 
 func newRootCmd() *cobra.Command {
@@ -38,6 +40,7 @@ func newRootCmd() *cobra.Command {
 func newInstallCmd() *cobra.Command {
 	var repoRoot string
 	var dryRun bool
+	targets := installTargets()
 
 	cmd := &cobra.Command{
 		Use:   "install <target>",
@@ -50,9 +53,9 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			targetName := args[0]
-			target, ok := installTargets[targetName]
+			target, ok := targets[targetName]
 			if !ok {
-				return fmt.Errorf("unknown install target %q (known: %s)", targetName, strings.Join(sortedInstallTargets(), ", "))
+				return fmt.Errorf("unknown install target %q (known: %s)", targetName, strings.Join(sortedInstallTargets(targets), ", "))
 			}
 
 			runner := Runner{
@@ -70,10 +73,9 @@ func newInstallCmd() *cobra.Command {
 	return cmd
 }
 
-
-func sortedInstallTargets() []string {
-	names := make([]string, 0, len(installTargets))
-	for name := range installTargets {
+func sortedInstallTargets(targets map[string]Installer) []string {
+	names := make([]string, 0, len(targets))
+	for name := range targets {
 		names = append(names, name)
 	}
 	sort.Strings(names)

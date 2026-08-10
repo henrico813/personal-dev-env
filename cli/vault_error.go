@@ -15,15 +15,27 @@ const (
 	vaultWriteConfigFailed
 )
 
-var vaultErrorMessages = map[vaultErrorCode]string{
-	vaultInvalidSelector:         "invalid default vault %q; expected main or work",
-	vaultInvalidPersistedSelector: "invalid default vault %q in ~/.config/pde/config.json",
-	vaultDefaultNotConfigured:    "default vault not configured; run pde vault default set <main|work>",
-	vaultNoVaultConfigured:       "no vault configured; run pde vault main set <path> or pde vault work set <path>",
-	vaultMainNotConfigured:       "main vault not configured; run pde vault main set <path>",
-	vaultWorkNotConfigured:       "work vault not configured; run pde vault work set <path>",
-	vaultReadConfigFailed:        "read ~/.config/pde/config.json: %v",
-	vaultWriteConfigFailed:       "write ~/.config/pde/config.json: %v",
+func vaultErrorMessage(code vaultErrorCode) string {
+	switch code {
+	case vaultInvalidSelector:
+		return "invalid default vault %q; expected main or work"
+	case vaultInvalidPersistedSelector:
+		return "invalid default vault %q in ~/.config/pde/config.json"
+	case vaultDefaultNotConfigured:
+		return "default vault not configured; run pde vault default set <main|work>"
+	case vaultNoVaultConfigured:
+		return "no vault configured; run pde vault main set <path> or pde vault work set <path>"
+	case vaultMainNotConfigured:
+		return "main vault not configured; run pde vault main set <path>"
+	case vaultWorkNotConfigured:
+		return "work vault not configured; run pde vault work set <path>"
+	case vaultReadConfigFailed:
+		return "read ~/.config/pde/config.json: %v"
+	case vaultWriteConfigFailed:
+		return "write ~/.config/pde/config.json: %v"
+	default:
+		return "unknown vault error"
+	}
 }
 
 type vaultError struct {
@@ -37,5 +49,5 @@ func (e *vaultError) Error() string { return e.Message }
 func (e *vaultError) Unwrap() error { return e.Err }
 
 func newVaultError(code vaultErrorCode, err error, args ...any) *vaultError {
-	return &vaultError{Code: code, Message: fmt.Sprintf(vaultErrorMessages[code], args...), Err: err}
+	return &vaultError{Code: code, Message: fmt.Sprintf(vaultErrorMessage(code), args...), Err: err}
 }

@@ -15,7 +15,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 	mustWriteFile(t, filepath.Join(vault, "note.txt"), "needle", 0o644)
 	mustWriteFile(t, filepath.Join(vault, "other.md"), "needle in markdown", 0o644)
 
-	matches, err := findVaultNotes([]string{vault}, "note", "", "")
+	matches, err := findVaultNotes([]string{vault}, vaultNoteSearch{Filename: "note"})
 	if err != nil {
 		t.Fatalf("locate filename: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestLocateVaultMatchesMarkdownOnly(t *testing.T) {
 		t.Fatalf("unexpected filename matches: %#v", matches)
 	}
 
-	matches, err = findVaultNotes([]string{vault}, "", "", "needle")
+	matches, err = findVaultNotes([]string{vault}, vaultNoteSearch{Query: "needle"})
 	if err != nil {
 		t.Fatalf("locate query: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestFindVaultNotesReferenceMatching(t *testing.T) {
 				mustWriteFile(t, filepath.Join(vault, rel), content, 0o644)
 			}
 
-			matches, err := findVaultNotes([]string{vault}, "", tt.reference, "")
+			matches, err := findVaultNotes([]string{vault}, vaultNoteSearch{Reference: tt.reference})
 			if err != nil {
 				t.Fatalf("locate reference %q: %v", tt.reference, err)
 			}
