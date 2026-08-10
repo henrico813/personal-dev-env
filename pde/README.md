@@ -52,7 +52,9 @@ pde install ai-tools
 
 - `pde/pde`: profile entrypoint.
 - `pde/lib/`: installer modules split by concern.
-- `pde/config/`: tracked zsh, tmux, Neovim, and terminal config.
+- `pde/config/home/`: shared config files mirrored below `$HOME`.
+- `pde/config/full-home/`: full-profile-only config files mirrored below `$HOME`.
+- `pde/config/nvim/`: tracked Neovim config and plugin pack.
 - `pde/test/`: Docker-based installer tests and verification scripts.
 
 ## What It Installs
