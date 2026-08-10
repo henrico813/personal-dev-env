@@ -12,7 +12,7 @@ install_shell() {
     # Build tmux from source (need 3.2+ for modern features)
     install_tmux_from_source
 
-    # Rust toolchain (needed for cargo-binstall tools)
+    # Rust toolchain (needed to build blink.cmp)
     install_rust
 
     # Zsh plugin manager
@@ -83,10 +83,4 @@ install_rust() {
     "$HOME/.cargo/bin/rustc" --version &>/dev/null \
         || die "Rust installation verification failed"
 
-    if ! has cargo-binstall; then
-        log "Installing cargo-binstall..."
-        curl -L --proto '=https' --tlsv1.2 -sSf \
-            https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
-            | bash || die "cargo-binstall installation failed"
-    fi
 }

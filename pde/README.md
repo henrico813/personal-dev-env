@@ -58,7 +58,7 @@ pde install ai-tools
 ## What It Installs
 
 - Shell: `zsh`, antidote, powerlevel10k, tmux.
-- Tools: `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`, `btm`.
+- Tools: Aqua-managed pinned releases for `fd`, `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`, `yq`, and `btm`; `htop`, `unzip`, and `keychain` via apt.
 - Editor: Neovim with the tracked PDE nvim config and plugins.
 - Full profile extras: Node via `nvm`, Claude Code, fonts, and Alacritty config.
 

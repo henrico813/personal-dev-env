@@ -19,6 +19,8 @@ func managedSharedConfigLinks(cfg *Config) []configLink {
 		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "tmux", "tmux.conf"), dst: filepath.Join(cfg.HomeDir, ".tmux.conf")},
 		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "p10k", "p10k.zsh"), dst: filepath.Join(cfg.HomeDir, ".p10k.zsh")},
 		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml"), dst: filepath.Join(cfg.HomeDir, ".config", "bottom", "bottom.toml")},
+		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", "aqua.yaml"), dst: filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", "aqua.yaml")},
+		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", "aqua-checksums.json"), dst: filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", "aqua-checksums.json")},
 	}
 }
 
