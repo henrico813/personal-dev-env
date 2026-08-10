@@ -13,9 +13,15 @@ const (
 	minimalLegacyInstallerNotExecutable
 )
 
-var minimalInstallErrorMessages = map[minimalInstallErrorCode]string{
-	minimalLegacyInstallerMissing:       "legacy minimal installer not found at %s",
-	minimalLegacyInstallerNotExecutable: "legacy minimal installer is not executable: %s",
+func minimalInstallErrorMessage(code minimalInstallErrorCode) string {
+	switch code {
+	case minimalLegacyInstallerMissing:
+		return "legacy minimal installer not found at %s"
+	case minimalLegacyInstallerNotExecutable:
+		return "legacy minimal installer is not executable: %s"
+	default:
+		return "unknown minimal installer error"
+	}
 }
 
 type minimalInstallError struct {
@@ -29,52 +35,28 @@ func (e *minimalInstallError) Error() string { return e.Message }
 func (e *minimalInstallError) Unwrap() error { return e.Err }
 
 func newMinimalInstallError(code minimalInstallErrorCode, err error, args ...any) *minimalInstallError {
-	return &minimalInstallError{Code: code, Message: fmt.Sprintf(minimalInstallErrorMessages[code], args...), Err: err}
-}
-
-type minimalInstallers struct {
-	runLegacyBase   func(*Config, Runner) error
-	installConfig   func(*Config, Runner) error
-	installObsidian func(*Config, Runner) error
-	installAITools  func(*Config, Runner) error
-}
-
-var defaultMinimalInstallers = minimalInstallers{
-	runLegacyBase:   runLegacyMinimalBase,
-	installConfig:   installConfig,
-	installObsidian: installObsidian,
-	installAITools:  installAITools,
+	return &minimalInstallError{Code: code, Message: fmt.Sprintf(minimalInstallErrorMessage(code), args...), Err: err}
 }
 
 func installMinimal(cfg *Config, runner Runner) error {
-	installers := defaultMinimalInstallers
+	if err := runLegacyMinimalBase(cfg, runner); err != nil {
+		return fmt.Errorf("legacy minimal base: %w", err)
+	}
+	if err := installConfig(cfg, runner); err != nil {
+		return fmt.Errorf("config: %w", err)
+	}
 	if runner.DryRun {
-		installers.installObsidian = func(cfg *Config, runner Runner) error {
-			return installObsidianWithOptions(cfg, runner, obsidianInstallOptions{
-				skipNvimPreflightOnDryRun: true,
-			})
+		if err := installObsidianWithOptions(cfg, runner, obsidianInstallOptions{
+			skipNvimPreflightOnDryRun: true,
+		}); err != nil {
+			return fmt.Errorf("obsidian: %w", err)
 		}
+	} else if err := installObsidian(cfg, runner); err != nil {
+		return fmt.Errorf("obsidian: %w", err)
 	}
-	return runMinimal(cfg, runner, installers)
-}
-
-func runMinimal(cfg *Config, runner Runner, installers minimalInstallers) error {
-	steps := []struct {
-		name string
-		run  func() error
-	}{
-		{name: "legacy minimal base", run: func() error { return installers.runLegacyBase(cfg, runner) }},
-		{name: "config", run: func() error { return installers.installConfig(cfg, runner) }},
-		{name: "obsidian", run: func() error { return installers.installObsidian(cfg, runner) }},
-		{name: "ai-tools", run: func() error { return installers.installAITools(cfg, runner) }},
+	if err := installAITools(cfg, runner); err != nil {
+		return fmt.Errorf("ai-tools: %w", err)
 	}
-
-	for _, step := range steps {
-		if err := step.run(); err != nil {
-			return fmt.Errorf("%s: %w", step.name, err)
-		}
-	}
-
 	return nil
 }
 

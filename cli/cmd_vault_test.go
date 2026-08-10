@@ -159,7 +159,7 @@ func TestVaultLocateJSONReferenceResults(t *testing.T) {
 				"PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
 			},
 			wantStatus: "found",
-			wantPath:    "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+			wantPath:   "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
 		},
 		{
 			name:      "ambiguous normalized title on default selector",
@@ -190,7 +190,7 @@ func TestVaultLocateJSONReferenceResults(t *testing.T) {
 				"PDEV-113 Simplify AI vault resolution and markdown wrap.md": "needle",
 			},
 			wantStatus: "found",
-			wantPath:    "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
+			wantPath:   "PDEV-113 Simplify AI vault resolution and markdown wrap.md",
 		},
 	}
 

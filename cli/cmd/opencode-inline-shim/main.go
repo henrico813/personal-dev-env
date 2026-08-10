@@ -31,16 +31,21 @@ const (
 	backendPollInterval    = 150 * time.Millisecond
 )
 
-var inlinePlacements = []string{"replace", "add", "before", "new"}
-
-var backendStartMu sync.Mutex
-
 type config struct {
 	port            string
 	opencodeBaseURL string
 	inlineModel     string
 	inlineAgent     string
 	timeout         time.Duration
+}
+
+type backendManager struct {
+	cfg     config
+	startMu sync.Mutex
+}
+
+func inlinePlacements() []string {
+	return []string{"replace", "add", "before", "new"}
 }
 
 type pdeJSONConfig struct {
@@ -88,6 +93,13 @@ type sessionMessageResponse struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var healthcheck bool
 	var showHelp bool
 	flag.BoolVar(&healthcheck, "healthcheck", false, "Exit 0 when the local shim is reachable")
@@ -96,24 +108,16 @@ func main() {
 
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 	if showHelp {
 		fmt.Fprintf(os.Stdout, "opencode-inline-shim serves /healthz, /v1/models, and /v1/chat/completions on 127.0.0.1:%s\n", cfg.port)
-		return
+		return nil
 	}
 	if healthcheck {
-		if err := runHealthcheck(cfg); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
+		return runHealthcheck(cfg)
 	}
-	if err := runServer(cfg); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return runServer(cfg)
 }
 
 func loadConfig() (config, error) {
@@ -127,7 +131,7 @@ func loadConfig() (config, error) {
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return cfg, nil
+		return config{}, fmt.Errorf("get user home directory: %w", err)
 	}
 
 	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
@@ -248,23 +252,23 @@ func startBackendProcess(cfg config) error {
 	return nil
 }
 
-func ensureBackendReachable(ctx context.Context, cfg config) error {
-	if err := backendReachable(ctx, cfg); err == nil {
+func (m *backendManager) ensureReachable(ctx context.Context) error {
+	if err := backendReachable(ctx, m.cfg); err == nil {
 		return nil
 	}
 
-	backendStartMu.Lock()
-	defer backendStartMu.Unlock()
+	m.startMu.Lock()
+	defer m.startMu.Unlock()
 
-	if err := backendReachable(ctx, cfg); err == nil {
+	if err := backendReachable(ctx, m.cfg); err == nil {
 		return nil
 	}
-	if err := startBackendProcess(cfg); err != nil {
+	if err := startBackendProcess(m.cfg); err != nil {
 		return err
 	}
 
 	for {
-		if err := backendReachable(ctx, cfg); err == nil {
+		if err := backendReachable(ctx, m.cfg); err == nil {
 			return nil
 		}
 		select {
@@ -276,11 +280,12 @@ func ensureBackendReachable(ctx context.Context, cfg config) error {
 }
 
 func runServer(cfg config) error {
+	backend := &backendManager{cfg: cfg}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		if err := ensureBackendReachable(ctx, cfg); err != nil {
+		if err := backend.ensureReachable(ctx); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "backend": err.Error()})
 			return
 		}
@@ -297,7 +302,7 @@ func runServer(cfg config) error {
 		})
 	})
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		handleChatCompletions(cfg, w, r)
+		handleChatCompletions(backend, w, r)
 	})
 
 	server := &http.Server{
@@ -323,7 +328,8 @@ func runServer(cfg config) error {
 	return err
 }
 
-func handleChatCompletions(cfg config, w http.ResponseWriter, r *http.Request) {
+func handleChatCompletions(backend *backendManager, w http.ResponseWriter, r *http.Request) {
+	cfg := backend.cfg
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST /v1/chat/completions")
 		return
@@ -343,7 +349,7 @@ func handleChatCompletions(cfg config, w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), cfg.timeout)
 	defer cancel()
-	if err := ensureBackendReachable(ctx, cfg); err != nil {
+	if err := backend.ensureReachable(ctx); err != nil {
 		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
 		return
 	}
@@ -408,7 +414,7 @@ func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRe
 					"language": map[string]string{"type": "string"},
 					"placement": map[string]any{
 						"type": "string",
-						"enum": inlinePlacements,
+						"enum": inlinePlacements(),
 					},
 				},
 				"additionalProperties": false,
@@ -631,7 +637,7 @@ func validateStructuredInline(value *structuredInline) error {
 }
 
 func allowedInlinePlacement(placement string) bool {
-	for _, allowed := range inlinePlacements {
+	for _, allowed := range inlinePlacements() {
 		if placement == allowed {
 			return true
 		}

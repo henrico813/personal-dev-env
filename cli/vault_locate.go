@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-
 type vaultLocateOptions struct {
 	Vault     string
 	Filename  string
@@ -40,4 +39,3 @@ func normalizeVaultReference(s string) string {
 	}
 	return filepath.ToSlash(filepath.Clean(s))
 }
-
