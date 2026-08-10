@@ -103,6 +103,21 @@ func TestLinkConfigBacksUpExistingDirectoryBeforeLinking(t *testing.T) {
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "directory contents")
 }
 
+func TestInstallConfigLinksAquaFiles(t *testing.T) {
+	cfg, _ := newInstallConfigFixture(t)
+
+	if err := installConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("install config: %v", err)
+	}
+
+	for _, name := range []string{"aqua.yaml", "aqua-checksums.json"} {
+		mustLinkTarget(t,
+			filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", name),
+			filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", name),
+		)
+	}
+}
+
 func TestInstallConfigBackup(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -322,6 +337,8 @@ func createManagedSources(t *testing.T, repoRoot, missingRel string) {
 		filepath.Join("pde", "config", "tmux", "tmux.conf"),
 		filepath.Join("pde", "config", "p10k", "p10k.zsh"),
 		filepath.Join("pde", "config", "bottom", "bottom.toml"),
+		filepath.Join("pde", "config", "aqua", "aqua.yaml"),
+		filepath.Join("pde", "config", "aqua", "aqua-checksums.json"),
 	} {
 		if rel == missingRel {
 			continue

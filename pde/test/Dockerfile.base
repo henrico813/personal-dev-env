@@ -5,11 +5,11 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Core dependencies + tmux build deps + CLI tools
+# Core dependencies + tmux build deps + OS-managed CLI tools
 RUN apt-get update && apt-get install -y \
     sudo git curl zsh \
     build-essential libevent-dev libncurses-dev bison \
-    fd-find fzf ripgrep bat jq htop unzip \
+    htop unzip keychain \
     && rm -rf /var/lib/apt/lists/*
 
 # Pre-build tmux 3.6a
