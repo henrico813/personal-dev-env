@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/lib/core.sh"
 
 # Clean up temp directories on exit
 cleanup() {
-    rm -rf /tmp/tmux-build-$$ /tmp/yazi-$$ /tmp/yq-$$ /tmp/font-*-$$ 2>/dev/null || true
+    rm -rf /tmp/tmux-build-$$ /tmp/font-*-$$ 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -22,7 +22,7 @@ Usage: pde <profile>
 
 Profiles:
   minimal   Full shell experience (any remote machine)
-  full      Everything + AI tools + fonts (GUI machines)
+  full      Everything + fonts and GUI config (GUI machines)
 
 Options:
   --help    Show this help
@@ -42,19 +42,11 @@ install_minimal_base() {
 install_configs() {
     section "Config Files"
 
-    # Create PDE config first
-    PDE_PROFILE="minimal"
-    create_pde_config
-
     link_config_tree "$SCRIPT_DIR/config/home" "$HOME"
 }
 
-install_configs_ai() {
-    section "AI Config Files"
-
-    # Update PDE config with full profile
-    PDE_PROFILE="full"
-    create_pde_config
+install_configs_full() {
+    section "Full Profile Config Files"
 
     link_config_tree "$SCRIPT_DIR/config/full-home" "$HOME"
 }
@@ -80,17 +72,15 @@ main() {
             source "$SCRIPT_DIR/lib/shell.sh"
             source "$SCRIPT_DIR/lib/tools.sh"
             source "$SCRIPT_DIR/lib/editor.sh"
-            source "$SCRIPT_DIR/lib/ai.sh"
             source "$SCRIPT_DIR/lib/fonts.sh"
 
             install_shell
             install_tools
             install_tools_full   # adds trash-cli
             install_editor
-            install_ai           # nvm, node, claude
             install_fonts
             install_configs
-            install_configs_ai   # adds full-profile config files
+            install_configs_full
             ;;
 
         --help|-h)
