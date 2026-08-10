@@ -37,17 +37,6 @@ install_apt() {
     sudo apt-get install -y "${to_install[@]}" || die "apt-get install failed"
 }
 
-install_cargo() {
-    has cargo-binstall || die "cargo-binstall not found - run install_rust first"
-    for tool in "$@"; do
-        if ! has "$tool"; then
-            log "Installing $tool via cargo-binstall..."
-            "$HOME/.cargo/bin/cargo-binstall" -y "$tool" \
-                || die "cargo-binstall $tool failed"
-        fi
-    done
-}
-
 # Config management - validates symlink points to correct source
 link_config() {
     local src="$1" dest="$2"

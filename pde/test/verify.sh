@@ -20,6 +20,17 @@ check_cmd() {
     fi
 }
 
+check_version() {
+    local cmd="$1"
+    local expected="$2"
+    local actual
+
+    actual=$("$cmd" --version 2>&1) || fail "$cmd --version failed"
+    actual="${actual%%$'\n'*}"
+    [[ "$actual" == *"$expected"* ]] || fail "$cmd version is $actual, expected $expected"
+    pass "$cmd version $expected"
+}
+
 # Check file exists
 check_file() {
     local path="$1"
@@ -61,19 +72,27 @@ check_link() {
 
 echo "--- Verification ($PROFILE profile) ---"
 
+AQUA_ROOT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua"
+AQUA_BIN="$AQUA_ROOT_DIR/bin"
+export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
+export PATH="$AQUA_BIN:$PATH"
+
 # Core tools (both profiles)
 check_cmd zsh
 check_cmd rustc ~/.cargo/bin/rustc
-check_cmd cargo-binstall ~/.cargo/bin/cargo-binstall
-check_cmd eza ~/.cargo/bin/eza
-check_cmd zoxide ~/.cargo/bin/zoxide
-check_cmd fzf
-check_cmd rg
-check_cmd bat /usr/bin/batcat
-check_cmd jq
-check_cmd yq ~/.cargo/bin/yq
-check_cmd yazi ~/.cargo/bin/yazi
-check_cmd ya ~/.cargo/bin/ya
+check_cmd aqua "$AQUA_BIN/aqua"
+check_version "$AQUA_BIN/aqua" "aqua version 2.60.1"
+check_version "$AQUA_BIN/fd" "fd 8.3.1"
+check_version "$AQUA_BIN/fzf" "0.36.0"
+check_version "$AQUA_BIN/rg" "ripgrep 14.1.1"
+check_version "$AQUA_BIN/bat" "bat 0.19.0"
+check_version "$AQUA_BIN/jq" "jq-1.7.1"
+check_version "$AQUA_BIN/eza" "eza - A modern"
+check_version "$AQUA_BIN/zoxide" "zoxide 0.9.8"
+check_version "$AQUA_BIN/btm" "bottom 0.11.4"
+check_version "$AQUA_BIN/yq" "v4.53.3"
+check_version "$AQUA_BIN/yazi" "Yazi 25.5.31"
+check_version "$AQUA_BIN/ya" "Ya 25.5.31"
 
 # Tmux: check exists before checking version
 if [[ ! -x /usr/local/bin/tmux ]]; then
@@ -102,6 +121,8 @@ check_dir ~/.tmux/plugins/tpm "tmux plugin manager"
 check_file ~/.config/nvim/init.lua "PDE nvim config"
 check_dir ~/.config/nvim/pack/plugins/start "PDE nvim plugin pack"
 check_link ~/.config/nvim "pde/config/nvim"
+check_link ~/.config/aquaproj-aqua/aqua.yaml "pde/config/aqua/aqua.yaml"
+check_link ~/.config/aquaproj-aqua/aqua-checksums.json "pde/config/aqua/aqua-checksums.json"
 
 codecompanion_dir=~/.config/nvim/pack/plugins/start/codecompanion.nvim
 check_dir "$codecompanion_dir" "CodeCompanion plugin"
