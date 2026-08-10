@@ -31,6 +31,13 @@ check_version() {
     pass "$cmd version $expected"
 }
 
+check_absent() {
+    local path="$1"
+
+    [[ ! -e "$path" && ! -L "$path" ]] || fail "$path should be absent"
+    pass "$path absent"
+}
+
 # Check file exists
 check_file() {
     local path="$1"
@@ -93,6 +100,8 @@ check_version "$AQUA_BIN/btm" "bottom 0.11.4"
 check_version "$AQUA_BIN/yq" "v4.53.3"
 check_version "$AQUA_BIN/yazi" "Yazi 25.5.31"
 check_version "$AQUA_BIN/ya" "Ya 25.5.31"
+check_absent ~/.cargo/bin/yazi
+check_absent ~/.cargo/bin/ya
 
 # Tmux: check exists before checking version
 if [[ ! -x /usr/local/bin/tmux ]]; then
