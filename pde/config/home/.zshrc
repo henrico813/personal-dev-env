@@ -50,6 +50,7 @@ export PATH="$PATH:$HOME/.local/bin"
 # add rust to path
 export PATH="$PATH:$HOME/.rustup/bin"
 export PATH="$HOME/.cargo/bin:$PATH"
+[[ -x /usr/local/go/bin/go ]] && export PATH="/usr/local/go/bin:$PATH"
 export AQUA_ROOT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua"
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
