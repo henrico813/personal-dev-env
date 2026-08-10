@@ -65,6 +65,17 @@ link_config() {
     ln -s "$src" "$dest"
 }
 
+link_config_tree() {
+    local src_root="$1" dest_root="$2" src rel
+
+    [[ -d "$src_root" ]] || die "Config tree not found: $src_root"
+
+    while IFS= read -r -d '' src; do
+        rel="${src#"$src_root"/}"
+        link_config "$src" "$dest_root/$rel"
+    done < <(find "$src_root" -type f -print0)
+}
+
 clone_or_pull() {
     local repo="$1" dest="$2"
     export GIT_TERMINAL_PROMPT=0  # Fail fast instead of prompting for creds

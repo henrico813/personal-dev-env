@@ -103,18 +103,20 @@ func TestLinkConfigBacksUpExistingDirectoryBeforeLinking(t *testing.T) {
 	mustFileContents(t, filepath.Join(backup, "nested", "keep.txt"), "directory contents")
 }
 
-func TestInstallConfigLinksAquaFiles(t *testing.T) {
+func TestInstallConfigLinksManagedFiles(t *testing.T) {
 	cfg, _ := newInstallConfigFixture(t)
+	mustWriteFile(t, filepath.Join(cfg.RepoRoot, "pde", "config", "home", ".config", "test", "nested.conf"), "nested", 0o644)
+	links, err := managedSharedConfigLinks(cfg)
+	if err != nil {
+		t.Fatalf("managed config links: %v", err)
+	}
 
 	if err := installConfig(cfg, Runner{}); err != nil {
 		t.Fatalf("install config: %v", err)
 	}
 
-	for _, name := range []string{"aqua.yaml", "aqua-checksums.json"} {
-		mustLinkTarget(t,
-			filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", name),
-			filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", name),
-		)
+	for _, link := range links {
+		mustLinkTarget(t, link.dst, link.src)
 	}
 }
 
@@ -288,11 +290,11 @@ func TestInstallConfigMissing(t *testing.T) {
 		wantConfig string
 	}{
 		{
-			name: "managed source",
+			name: "managed tree",
 			arrange: func(t *testing.T, cfg *Config, configJSON string) {
 				mustWriteFile(t, configJSON, "{\n  \"profile\": \"shared\"\n}\n", 0o644)
-				if err := os.Remove(filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml")); err != nil {
-					t.Fatalf("remove managed source: %v", err)
+				if err := os.RemoveAll(filepath.Join(cfg.RepoRoot, "pde", "config", "home")); err != nil {
+					t.Fatalf("remove managed tree: %v", err)
 				}
 			},
 			wantConfig: "{\n  \"profile\": \"shared\"\n}\n",
@@ -325,24 +327,21 @@ func newInstallConfigFixture(t *testing.T) (*Config, string) {
 		t.Fatalf("mkdir pde config dir: %v", err)
 	}
 	configJSON := filepath.Join(pdeConfigDir, "config.json")
-	createManagedSources(t, repoRoot, "")
+	createManagedSources(t, repoRoot)
 	return &Config{RepoRoot: repoRoot, HomeDir: homeDir, PDEConfigDir: pdeConfigDir}, configJSON
 }
 
-func createManagedSources(t *testing.T, repoRoot, missingRel string) {
+func createManagedSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, rel := range []string{
-		filepath.Join("pde", "config", "zsh", "zshrc"),
-		filepath.Join("pde", "config", "zsh", "zsh_plugins.txt"),
-		filepath.Join("pde", "config", "tmux", "tmux.conf"),
-		filepath.Join("pde", "config", "p10k", "p10k.zsh"),
-		filepath.Join("pde", "config", "bottom", "bottom.toml"),
-		filepath.Join("pde", "config", "aqua", "aqua.yaml"),
-		filepath.Join("pde", "config", "aqua", "aqua-checksums.json"),
+		filepath.Join("pde", "config", "home", ".zshrc"),
+		filepath.Join("pde", "config", "home", ".zsh_plugins.txt"),
+		filepath.Join("pde", "config", "home", ".tmux.conf"),
+		filepath.Join("pde", "config", "home", ".p10k.zsh"),
+		filepath.Join("pde", "config", "home", ".config", "bottom", "bottom.toml"),
+		filepath.Join("pde", "config", "home", ".config", "aquaproj-aqua", "aqua.yaml"),
+		filepath.Join("pde", "config", "home", ".config", "aquaproj-aqua", "aqua-checksums.json"),
 	} {
-		if rel == missingRel {
-			continue
-		}
 		path := filepath.Join(repoRoot, rel)
 		mustWriteFile(t, path, filepath.Base(path), 0o644)
 	}

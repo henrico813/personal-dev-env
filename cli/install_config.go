@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -12,20 +13,40 @@ type configLink struct {
 	dst string
 }
 
-func managedSharedConfigLinks(cfg *Config) []configLink {
-	return []configLink{
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "zsh", "zshrc"), dst: filepath.Join(cfg.HomeDir, ".zshrc")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "zsh", "zsh_plugins.txt"), dst: filepath.Join(cfg.HomeDir, ".zsh_plugins.txt")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "tmux", "tmux.conf"), dst: filepath.Join(cfg.HomeDir, ".tmux.conf")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "p10k", "p10k.zsh"), dst: filepath.Join(cfg.HomeDir, ".p10k.zsh")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "bottom", "bottom.toml"), dst: filepath.Join(cfg.HomeDir, ".config", "bottom", "bottom.toml")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", "aqua.yaml"), dst: filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", "aqua.yaml")},
-		{src: filepath.Join(cfg.RepoRoot, "pde", "config", "aqua", "aqua-checksums.json"), dst: filepath.Join(cfg.HomeDir, ".config", "aquaproj-aqua", "aqua-checksums.json")},
+func managedSharedConfigLinks(cfg *Config) ([]configLink, error) {
+	return configTreeLinks(filepath.Join(cfg.RepoRoot, "pde", "config", "home"), cfg.HomeDir)
+}
+
+func configTreeLinks(srcRoot, dstRoot string) ([]configLink, error) {
+	links := []configLink{}
+	err := filepath.WalkDir(srcRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("managed config source is not a regular file: %s", path)
+		}
+		rel, err := filepath.Rel(srcRoot, path)
+		if err != nil {
+			return err
+		}
+		links = append(links, configLink{src: path, dst: filepath.Join(dstRoot, rel)})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk managed config tree %s: %w", srcRoot, err)
 	}
+	return links, nil
 }
 
 func installConfig(cfg *Config, runner Runner) error {
-	links := managedSharedConfigLinks(cfg)
+	links, err := managedSharedConfigLinks(cfg)
+	if err != nil {
+		return err
+	}
 	if err := preflightManagedSharedConfigSources(links); err != nil {
 		return err
 	}
