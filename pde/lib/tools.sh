@@ -36,10 +36,10 @@ install_aqua() {
 
 install_aqua_tools() {
     export AQUA_ROOT_DIR
-    export AQUA_GLOBAL_CONFIG="$SCRIPT_DIR/config/aqua/aqua.yaml"
+    export AQUA_GLOBAL_CONFIG="$SCRIPT_DIR/config/home/.config/aquaproj-aqua/aqua.yaml"
     export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 
-    "$AQUA_BIN" --config "$SCRIPT_DIR/config/aqua/aqua.yaml" install || die "Aqua tool installation failed"
+    "$AQUA_BIN" --config "$AQUA_GLOBAL_CONFIG" install || die "Aqua tool installation failed"
 
     local tool
     for tool in fd fzf rg bat jq eza zoxide btm yq yazi ya; do
