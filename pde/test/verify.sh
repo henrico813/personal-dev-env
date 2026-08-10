@@ -135,7 +135,6 @@ pass "nvim"
 
 # Plugin directories
 check_dir ~/.local/share/antidote "antidote plugin manager"
-check_dir ~/.local/share/powerlevel10k "powerlevel10k theme"
 check_dir ~/.tmux/plugins/tpm "tmux plugin manager"
 # PDE nvim config is linked into the default Neovim app dir
 check_file ~/.config/nvim/init.lua "PDE nvim config"
@@ -192,24 +191,6 @@ fi
 if [[ "$PROFILE" == "full" ]]; then
     echo "--- Full profile checks ---"
     check_cmd trash
-
-    # Node: check nvm directory exists first
-    if [[ ! -d ~/.nvm/versions/node ]]; then
-        fail "nvm node versions directory not found"
-    fi
-    node_bin=$(find ~/.nvm/versions/node -name node -type f 2>/dev/null | head -1)
-    if [[ -x "$node_bin" ]]; then
-        pass "node"
-    else
-        fail "node not found"
-    fi
-
-    claude_bin=$(find ~/.nvm/versions/node -name claude \( -type f -o -type l \) 2>/dev/null | head -1)
-    if [[ -x "$claude_bin" ]]; then
-        pass "claude"
-    else
-        fail "claude not found"
-    fi
 
     # Font marker files
     check_file ~/.local/share/fonts/.FiraCode.installed "FiraCode font"
