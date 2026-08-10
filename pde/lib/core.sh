@@ -96,9 +96,3 @@ download() {
     log "Downloading: $url"
     curl -fsSL "$url" -o "$dest" || die "Download failed: $url"
 }
-
-# PDE config directory
-create_pde_config() {
-    mkdir -p "$HOME/.config/pde"
-    log "Created ~/.config/pde"
-}
