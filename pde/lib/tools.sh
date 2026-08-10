@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# CLI tools: apt packages + cargo-binstall tools
+# CLI tools: apt packages + Aqua-managed tools
+
+AQUA_VERSION="v2.60.1"
+AQUA_INSTALLER_VERSION="v4.0.5"
+AQUA_ROOT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua"
+AQUA_BIN="$AQUA_ROOT_DIR/bin/aqua"
 
 install_tools() {
     section "CLI Tools"
 
-    # Apt packages (available on all Ubuntu versions)
-    # Note: unzip needed for yazi installation
-    install_apt fd-find fzf ripgrep bat jq htop unzip keychain
+    # OS-integrated tools and prerequisites.
+    install_apt htop unzip keychain
 
-    # Cargo tools (not reliably available via apt)
-    install_cargo eza zoxide
-
-    # Binary downloads (not available via apt or cargo)
-    install_btm
-    install_yq
-    install_yazi
+    install_aqua
+    install_aqua_tools
 }
 
 install_tools_full() {
@@ -22,80 +21,24 @@ install_tools_full() {
     install_apt trash-cli
 }
 
-install_btm() {
-    if has btm; then
-        log "btm already installed"
+install_aqua() {
+    if [[ -x "$AQUA_BIN" ]] && [[ "$("$AQUA_BIN" --version)" == "aqua version ${AQUA_VERSION#v}"* ]]; then
+        log "Aqua $AQUA_VERSION already installed"
         return 0
     fi
 
-    has cargo-binstall || die "cargo-binstall not found - run install_rust first"
+    section "Installing Aqua $AQUA_VERSION"
+    curl -sSfL "https://raw.githubusercontent.com/aquaproj/aqua-installer/$AQUA_INSTALLER_VERSION/aqua-installer" |
+        AQUA_ROOT_DIR="$AQUA_ROOT_DIR" bash -s -- -v "$AQUA_VERSION" || die "Aqua installation failed"
 
-    log "Installing btm..."
-    "$HOME/.cargo/bin/cargo-binstall" -y bottom \
-        || die "cargo-binstall bottom failed"
-
-    [[ -x "$HOME/.cargo/bin/btm" ]] || die "btm installation verification failed"
+    [[ -x "$AQUA_BIN" ]] || die "Aqua installation verification failed"
 }
 
-install_yq() {
-    if has yq; then
-        log "yq already installed"
-        return 0
-    fi
+install_aqua_tools() {
+    "$AQUA_BIN" --config "$SCRIPT_DIR/config/aqua/aqua.yaml" install || die "Aqua tool installation failed"
 
-    section "Installing yq"
-    local arch
-    case "$(uname -m)" in
-        x86_64)  arch="amd64" ;;
-        aarch64) arch="arm64" ;;
-        *)       die "Unsupported architecture for yq: $(uname -m)" ;;
-    esac
-
-    local tmp="/tmp/yq-$$"
-    mkdir -p "$tmp"
-
-    download "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$arch" \
-             "$tmp/yq"
-
-    mkdir -p "$HOME/.cargo/bin"
-    cp "$tmp/yq" "$HOME/.cargo/bin/yq"
-    chmod +x "$HOME/.cargo/bin/yq"
-
-    rm -rf "$tmp"
-
-    [[ -x "$HOME/.cargo/bin/yq" ]] || die "yq installation verification failed"
-    log "yq installed"
-}
-
-install_yazi() {
-    if has yazi; then
-        log "yazi already installed"
-        return 0
-    fi
-
-    section "Installing yazi"
-    local arch
-    case "$(uname -m)" in
-        x86_64)  arch="x86_64-unknown-linux-gnu" ;;
-        aarch64) arch="aarch64-unknown-linux-gnu" ;;
-        *)       die "Unsupported architecture for yazi: $(uname -m)" ;;
-    esac
-
-    local tmp="/tmp/yazi-$$"
-    mkdir -p "$tmp"
-
-    download "https://github.com/sxyazi/yazi/releases/latest/download/yazi-$arch.zip" \
-             "$tmp/yazi.zip"
-
-    unzip -q "$tmp/yazi.zip" -d "$tmp" || die "Failed to extract yazi"
-
-    mkdir -p "$HOME/.cargo/bin"
-    cp "$tmp/yazi-$arch/yazi" "$tmp/yazi-$arch/ya" "$HOME/.cargo/bin/"
-    chmod +x "$HOME/.cargo/bin/yazi" "$HOME/.cargo/bin/ya"
-
-    rm -rf "$tmp"
-
-    # Verify binary exists and is executable
-    [[ -x "$HOME/.cargo/bin/yazi" ]] || die "yazi installation verification failed"
-    log "yazi installed"
+    local tool
+    for tool in fd fzf rg bat jq eza zoxide btm yq yazi ya; do
+        [[ -x "$AQUA_ROOT_DIR/bin/$tool" ]] || die "$tool installation verification failed"
+    done
 }

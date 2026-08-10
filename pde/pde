@@ -52,6 +52,10 @@ install_configs() {
     link_config "$SCRIPT_DIR/config/p10k/p10k.zsh" "$HOME/.p10k.zsh"
     link_config "$SCRIPT_DIR/config/bottom/bottom.toml" \
                 "$HOME/.config/bottom/bottom.toml"
+    link_config "$SCRIPT_DIR/config/aqua/aqua.yaml" \
+                "$HOME/.config/aquaproj-aqua/aqua.yaml"
+    link_config "$SCRIPT_DIR/config/aqua/aqua-checksums.json" \
+                "$HOME/.config/aquaproj-aqua/aqua-checksums.json"
 }
 
 install_configs_ai() {
