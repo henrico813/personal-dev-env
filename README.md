@@ -58,7 +58,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
-The config helper only manages the shared PDE config files under `~/.zshrc`, `~/.zsh_plugins.txt`, `~/.tmux.conf`, `~/.p10k.zsh`, and `~/.config/bottom/bottom.toml`.
+Shared config files live under `pde/config/home/` and mirror their destinations below `$HOME`. The config helper links every file in that tree. Full-profile-only config files use `pde/config/full-home/`.
 
 The AI installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
 

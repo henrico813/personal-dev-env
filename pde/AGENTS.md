@@ -8,7 +8,9 @@ PDE is a bash-based installer rooted in `pde/`. It is no longer an Ansible proje
 - `pde/bootstrap.sh`: bootstrap entrypoint for remote installs and upgrades.
 - `pde/lib/core.sh`: shared helpers for logging, linking, and package installs.
 - `pde/lib/shell.sh`, `tools.sh`, `editor.sh`, `ai.sh`, `fonts.sh`: profile-specific install modules.
-- `pde/config/`: tracked config files that get symlinked into the user home directory.
+- `pde/config/home/`: shared config files mirrored into the user home directory.
+- `pde/config/full-home/`: full-profile-only config files mirrored into the user home directory.
+- `pde/config/nvim/`: Neovim config linked by the editor installer.
 - `pde/test/`: Docker-based verification for installer changes.
 
 ## Working Rules

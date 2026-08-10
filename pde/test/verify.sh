@@ -5,6 +5,8 @@ set -euo pipefail
 
 PROFILE="${1:-minimal}"
 EXPECTED_TMUX="${2:-3.6a}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PDE_DIR="$(dirname "$SCRIPT_DIR")"
 
 pass() { echo "PASS: $*"; }
 fail() { echo "FAIL: $*"; exit 1; }
@@ -77,6 +79,15 @@ check_link() {
     pass "$path symlinked"
 }
 
+check_config_tree() {
+    local src_root="$1" src rel
+
+    while IFS= read -r -d '' src; do
+        rel="${src#"$src_root"/}"
+        check_link "$HOME/$rel" "$src"
+    done < <(find "$src_root" -type f -print0)
+}
+
 echo "--- Verification ($PROFILE profile) ---"
 
 AQUA_ROOT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua"
@@ -130,8 +141,6 @@ check_dir ~/.tmux/plugins/tpm "tmux plugin manager"
 check_file ~/.config/nvim/init.lua "PDE nvim config"
 check_dir ~/.config/nvim/pack/plugins/start "PDE nvim plugin pack"
 check_link ~/.config/nvim "pde/config/nvim"
-check_link ~/.config/aquaproj-aqua/aqua.yaml "pde/config/aqua/aqua.yaml"
-check_link ~/.config/aquaproj-aqua/aqua-checksums.json "pde/config/aqua/aqua-checksums.json"
 
 codecompanion_dir=~/.config/nvim/pack/plugins/start/codecompanion.nvim
 check_dir "$codecompanion_dir" "CodeCompanion plugin"
@@ -152,11 +161,8 @@ fi
 
 # PDE config is owned by the Go CLI; installer smoke tests stay runtime-focused.
 
-# Config symlinks (match the config suffix so both standalone and combined repo installs pass)
-check_link ~/.zshrc "pde/config/zsh/zshrc"
-check_link ~/.tmux.conf "pde/config/tmux/tmux.conf"
-check_link ~/.p10k.zsh "pde/config/p10k/p10k.zsh"
-check_link ~/.config/bottom/bottom.toml "pde/config/bottom/bottom.toml"
+# Shared configs mirror their destinations beneath config/home.
+check_config_tree "$PDE_DIR/config/home"
 
 # Runtime verification - actually run the tools
 echo "--- Runtime checks ---"
@@ -209,7 +215,7 @@ if [[ "$PROFILE" == "full" ]]; then
     check_file ~/.local/share/fonts/.FiraCode.installed "FiraCode font"
     check_file ~/.local/share/fonts/.JetBrainsMono.installed "JetBrainsMono font"
 
-    check_link ~/.config/alacritty/alacritty.toml ".pde/config/alacritty"
+    check_config_tree "$PDE_DIR/config/full-home"
 fi
 
 echo "--- All checks passed ---"
