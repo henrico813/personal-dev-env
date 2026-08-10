@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pd
 ## Profiles
 
 - `minimal`: shell, tmux, Rust tooling, Neovim, and shared config files.
-- `full`: everything in `minimal`, plus Node, Claude Code, fonts, and GUI-oriented extras.
+- `full`: everything in `minimal`, plus fonts and GUI-oriented extras.
 
 ## Optional Targets
 
@@ -62,7 +62,7 @@ pde install ai-tools
 - Shell: `zsh`, antidote, powerlevel10k, tmux.
 - Tools: Aqua-managed pinned releases for `fd`, `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`, `yq`, and `btm`; `htop`, `unzip`, and `keychain` via apt.
 - Editor: Neovim with the tracked PDE nvim config and plugins.
-- Full profile extras: Node via `nvm`, Claude Code, fonts, and Alacritty config.
+- Full profile extras: fonts, Alacritty config, and WezTerm config.
 
 ## Testing
 

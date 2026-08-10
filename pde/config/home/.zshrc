@@ -19,8 +19,6 @@ antidote load ${ZDOTDIR:-$HOME}/.zsh_plugins.txt
 bindkey '^R' history-incremental-search-backward
 bindkey '^S' history-incremental-search-forward
 
-# Bundle zsh plugins via antibody
-alias update-antibody='antibody bundle < $HOME/.zsh_plugins.txt > $HOME/.zsh_plugins.sh'
 # List out all globally installed npm packages
 alias list-npm-globals='npm list -g --depth=0'
 # Conditional trash alias (only if trash-cli installed)
@@ -63,10 +61,6 @@ export EDITOR=$(which nvim)
 
 # LITELLM
 # export LITELLM_MASTER_KEY=<your-litellm-master-key>
-
-# Privacy and token usage settings for Claude Code
-export CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=0
-export CLAUDE_CODE_ENABLE_TELEMETRY=0
 
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
