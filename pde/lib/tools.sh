@@ -6,7 +6,13 @@ install_tools() {
 
     # Apt packages (available on all Ubuntu versions)
     # Note: unzip needed for yazi installation
-    install_apt fd-find fzf ripgrep bat jq htop unzip keychain
+    install_apt fd-find ripgrep bat jq htop unzip keychain
+
+    # Define specific versions of tools
+    FZF_VERSION="0.36.0" # need v0.36.0 for nvim
+
+    # Install those specific versions of tools
+    install_fzf
 
     # Cargo tools (not reliably available via apt)
     install_cargo eza zoxide
@@ -20,6 +26,38 @@ install_tools() {
 install_tools_full() {
     section "CLI Tools (full additions)"
     install_apt trash-cli
+}
+
+install_fzf() {
+  local binary="/usr/local/bin/fzf"
+
+  if [[ -x "$binary" ]] && [[ "$("$binary" --version)" == "$FZF_VERSION"* ]]; then
+    log "fzf $FZF_VERSION already installed"
+    return 0
+  fi
+  log "fzf "$(fzf --version)" detected, installing fzf $FZF_VERSION"
+
+  local arch
+  case "$(uname -m)" in
+    x86_64)   arch="amd64" ;;
+    aarch64)  arch="arm64" ;;
+    * ) die "Unsupported architecture for fzf: $(uname -m)" ;;
+  esac
+
+  local tmp="/tmp/fzf-$$"
+  mkdir -p "$tmp"
+
+  download \
+    "https://github.com/junegunn/fzf/releases/download/$FZF_VERSION/fzf-$FZF_VERSION-linux_$arch.tar.gz" \
+    "$tmp/fzf.tar.gz"
+  tar -xzf "$tmp/fzf.tar.gz" -C "$tmp" || die "Failed to extract fzf"
+
+  need_sudo
+  sudo install -m 0755 "$tmp/fzf" "$binary"
+  rm -rf "$tmp"
+
+  [[ "$("$binary" --version)" == "$FZF_VERSION"* ]] ||
+    die "fzf $FZF_VERSION installation verification failed"
 }
 
 install_btm() {
