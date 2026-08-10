@@ -35,7 +35,7 @@ install_minimal_base() {
     source "$SCRIPT_DIR/lib/editor.sh"
 
     install_shell      # zsh, tmux from source, plugins
-    install_tools      # apt + cargo tools, yazi
+    install_tools      # apt + Aqua-managed tools
     install_editor     # neovim + PDE nvim config
 }
 
@@ -46,16 +46,7 @@ install_configs() {
     PDE_PROFILE="minimal"
     create_pde_config
 
-    link_config "$SCRIPT_DIR/config/zsh/zshrc" "$HOME/.zshrc"
-    link_config "$SCRIPT_DIR/config/zsh/zsh_plugins.txt" "$HOME/.zsh_plugins.txt"
-    link_config "$SCRIPT_DIR/config/tmux/tmux.conf" "$HOME/.tmux.conf"
-    link_config "$SCRIPT_DIR/config/p10k/p10k.zsh" "$HOME/.p10k.zsh"
-    link_config "$SCRIPT_DIR/config/bottom/bottom.toml" \
-                "$HOME/.config/bottom/bottom.toml"
-    link_config "$SCRIPT_DIR/config/aqua/aqua.yaml" \
-                "$HOME/.config/aquaproj-aqua/aqua.yaml"
-    link_config "$SCRIPT_DIR/config/aqua/aqua-checksums.json" \
-                "$HOME/.config/aquaproj-aqua/aqua-checksums.json"
+    link_config_tree "$SCRIPT_DIR/config/home" "$HOME"
 }
 
 install_configs_ai() {
@@ -65,15 +56,7 @@ install_configs_ai() {
     PDE_PROFILE="full"
     create_pde_config
 
-    # Alacritty
-    mkdir -p "$HOME/.config/alacritty"
-    link_config "$SCRIPT_DIR/config/alacritty/alacritty.toml" \
-                "$HOME/.config/alacritty/alacritty.toml"
-
-    # WezTerm
-    mkdir -p "$HOME/.config/wezterm"
-    link_config "$SCRIPT_DIR/config/wezterm/wezterm.lua" \
-                "$HOME/.config/wezterm/wezterm.lua"
+    link_config_tree "$SCRIPT_DIR/config/full-home" "$HOME"
 }
 
 main() {

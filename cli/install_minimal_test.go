@@ -172,7 +172,7 @@ func executeInstallCmd(t *testing.T, args ...string) (*bytes.Buffer, *bytes.Buff
 func newMinimalRepoFixture(t *testing.T) string {
 	t.Helper()
 	repoRoot := t.TempDir()
-	createManagedSources(t, repoRoot, "")
+	createManagedSources(t, repoRoot)
 	mustWriteFile(t, filepath.Join(repoRoot, "pde", "pde"), "#!/usr/bin/env bash\nexit 0\n", 0o755)
 	mustWriteFile(t, filepath.Join(repoRoot, "surveil", "Cargo.toml"), "[package]\nname = \"surveil\"\nversion = \"0.1.0\"\n", 0o644)
 	return repoRoot
