@@ -131,9 +131,9 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):       "opencode create-plan\n",
-		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):    "opencode implement-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):   "codex create-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):        "opencode create-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):     "opencode implement-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):    "codex create-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"): "codex implement-plan\n",
 	}
 
