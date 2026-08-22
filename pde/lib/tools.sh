@@ -42,7 +42,7 @@ install_aqua_tools() {
     "$AQUA_BIN" --config "$AQUA_GLOBAL_CONFIG" install || die "Aqua tool installation failed"
 
     local tool
-    for tool in fd fzf rg bat jq eza zoxide btm yq yazi ya; do
+    for tool in fd fzf rg bat jq chezmoi eza zoxide btm yq yazi ya; do
         [[ -x "$AQUA_ROOT_DIR/bin/$tool" ]] || die "$tool installation verification failed"
     done
 
