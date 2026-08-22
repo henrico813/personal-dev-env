@@ -103,6 +103,8 @@ For this workflow, <evidence-review-agent> is one available read-only research s
 12. If task JSON or search-area validation fails, correct the input and rerun gather; input corrections do not consume the operational retry. If any other Surveil command fails, retry it once. If it still fails, write the failed stage to `$failure_file`, skip steps 8-9 only, run one <evidence-review-agent> using all step 10 review instructions with <task-context>, <repo>, and any available artifacts, save its response beside `$failure_file`, and verify new or conflicting fallback findings with direct file reads before continuing.
 
 Read the plan fully, then run one unchecked implementation step at a time.
+Pass the exact plan step directly as the prompt when the command supports it.
+If the command requires a prompt file, use the following flow.
 Create a unique prompt directory for that step with `prompt_dir="$(mktemp -d "${TMPDIR:-/tmp}/implement-plan-prompt.XXXXXX")"`.
 Write the exact current plan step verbatim as raw Markdown to `"$prompt_dir/prompt.md"`, then invoke the `vibe` CLI
 directly with the current run flow:
@@ -130,6 +132,13 @@ step:
 - no unrelated files changed
 - no secrets or generated artifacts were committed
 - verification passes
+
+After every completed Vibe run, the parent `implement-plan` agent must check
+the full diff for changes that are not required by the current plan step. Do
+not ask the Vibe agent to perform this check. If there is drift, remove only
+the drift introduced by that run, run the affected verification, and create a
+separate cleanup commit that follows the commit message guidelines below. Do
+not start the next plan step until the cleanup is verified and committed.
 
 Use the planner CLI first for plan updates. Update goals and verification checkboxes as work completes, but do not add checkboxes to implementation steps. Direct checkbox edits are allowed only for the allowed checkbox cases; all other plan changes must go through the planner CLI. After plan updates, run `planner check <plan.md> --json-errors`. If the plan cannot be parsed, stop and escalate to the user. Do not mark manual verification complete unless the user confirms it.
 
