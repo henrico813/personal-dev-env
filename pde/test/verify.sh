@@ -97,6 +97,7 @@ export PATH="$AQUA_BIN:$PATH"
 
 # Core tools (both profiles)
 check_cmd zsh
+check_cmd xclip
 check_cmd rustc ~/.cargo/bin/rustc
 check_cmd aqua "$AQUA_BIN/aqua"
 check_version "$AQUA_BIN/aqua" "aqua version 2.60.1"
