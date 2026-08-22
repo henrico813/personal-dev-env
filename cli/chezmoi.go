@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"time"
 )
 
-const chezmoiConfigPath = "/dev/null"
+const _chezmoiConfigPath = "/dev/null"
 
 func ensureChezmoiTools(_ *Config, runner Runner) error {
 	for _, tool := range []string{"chezmoi", "jq"} {
@@ -38,8 +39,28 @@ func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 	}
 
 	if runner.DryRun {
+		stateDir, err := os.MkdirTemp("", "pde-chezmoi-")
+		if err != nil {
+			return fmt.Errorf("create temporary chezmoi state: %w", err)
+		}
+		defer os.RemoveAll(stateDir)
+
+		changed, err := chezmoiOpenCodeStatus(
+			cfg,
+			configPath,
+			filepath.Join(stateDir, "state.boltdb"),
+			runner,
+		)
+		if err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
 		if exists {
-			if err := runner.Bash("backup OpenCode config", "cp -p "+shellQuote(configPath)+" "+shellQuote(configPath+".bak")); err != nil {
+			backupScript := "cp -p " + shellQuote(configPath) + " " +
+				shellQuote(configPath+".bak")
+			if err := runner.Bash("backup OpenCode config", backupScript); err != nil {
 				return err
 			}
 		}
@@ -49,13 +70,27 @@ func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 	if err := runner.MkdirAll("create chezmoi state dir", filepath.Dir(chezmoiStatePath(cfg)), 0o700); err != nil {
 		return err
 	}
-	changed, err := chezmoiOpenCodeStatus(cfg, configPath, runner)
-	if err != nil || !changed {
+	changed, err := chezmoiOpenCodeStatus(
+		cfg,
+		configPath,
+		chezmoiStatePath(cfg),
+		runner,
+	)
+	if err != nil {
 		return err
 	}
+	if !changed {
+		return nil
+	}
 	if exists {
-		backupPath := fmt.Sprintf("%s.bak.%s.%d", configPath, time.Now().UTC().Format("20060102_150405.000000000"), os.Getpid())
-		if err := runner.Bash("backup OpenCode config", "cp -p "+shellQuote(configPath)+" "+shellQuote(backupPath)); err != nil {
+		backupPath := fmt.Sprintf(
+			"%s.bak.%s.%d",
+			configPath,
+			time.Now().UTC().Format("20060102_150405.000000000"),
+			os.Getpid(),
+		)
+		backupScript := "cp -p " + shellQuote(configPath) + " " + shellQuote(backupPath)
+		if err := runner.Bash("backup OpenCode config", backupScript); err != nil {
 			return err
 		}
 	}
@@ -87,24 +122,35 @@ func validateOpenCodeConfigPath(path string) (bool, os.FileMode, error) {
 	return true, info.Mode().Perm(), nil
 }
 
-func chezmoiOpenCodeStatus(cfg *Config, configPath string, runner Runner) (bool, error) {
-	cmd := exec.Command("chezmoi", append(chezmoiArgs(cfg), "status", "--path-style", "absolute", configPath)...)
+func chezmoiOpenCodeStatus(
+	cfg *Config,
+	configPath string,
+	statePath string,
+	runner Runner,
+) (bool, error) {
+	statusArgs := append(
+		chezmoiArgs(cfg, statePath),
+		"status", "--path-style", "absolute", configPath,
+	)
+	cmd := exec.Command("chezmoi", statusArgs...)
 	cmd.Env = append(os.Environ(), "PDE_SURVEIL_STATE_PATTERN="+surveilStatePattern(cfg.HomeDir))
-	cmd.Stderr = runner.stderr()
+	var stderr bytes.Buffer
+	cmd.Stderr = io.MultiWriter(runner.stderr(), &stderr)
 	output, err := cmd.Output()
 	if err != nil {
-		return false, fmt.Errorf("check Surveil OpenCode permission: %w", err)
+		return false, commandOutputError("check Surveil OpenCode permission", stderr.String(), err)
 	}
 	if len(strings.TrimSpace(string(output))) == 0 {
 		return false, nil
 	}
 
-	cmd = exec.Command("chezmoi", append(chezmoiArgs(cfg), "cat", configPath)...)
+	cmd = exec.Command("chezmoi", append(chezmoiArgs(cfg, statePath), "cat", configPath)...)
 	cmd.Env = append(os.Environ(), "PDE_SURVEIL_STATE_PATTERN="+surveilStatePattern(cfg.HomeDir))
-	cmd.Stderr = runner.stderr()
+	stderr.Reset()
+	cmd.Stderr = io.MultiWriter(runner.stderr(), &stderr)
 	target, err := cmd.Output()
 	if err != nil {
-		return false, fmt.Errorf("render Surveil OpenCode permission: %w", err)
+		return false, commandOutputError("render Surveil OpenCode permission", stderr.String(), err)
 	}
 	current, err := os.ReadFile(configPath)
 	if os.IsNotExist(err) {
@@ -117,19 +163,32 @@ func chezmoiOpenCodeStatus(cfg *Config, configPath string, runner Runner) (bool,
 }
 
 func chezmoiApplyScript(cfg *Config, configPath string) string {
-	args := append(chezmoiArgs(cfg), "apply", "--force", "--no-tty", configPath)
-	return "PDE_SURVEIL_STATE_PATTERN=" + shellQuote(surveilStatePattern(cfg.HomeDir)) + " chezmoi " + shellJoin(args)
+	args := append(
+		chezmoiArgs(cfg, chezmoiStatePath(cfg)),
+		"apply", "--force", "--no-tty", configPath,
+	)
+	return "PDE_SURVEIL_STATE_PATTERN=" +
+		shellQuote(surveilStatePattern(cfg.HomeDir)) +
+		" chezmoi " + shellJoin(args)
 }
 
-func chezmoiArgs(cfg *Config) []string {
+func chezmoiArgs(cfg *Config, statePath string) []string {
 	return []string{
-		"--config", chezmoiConfigPath,
+		"--config", _chezmoiConfigPath,
 		"--config-format", "toml",
 		"--source", filepath.Join(cfg.RepoRoot, "chezmoi"),
 		"--destination", cfg.HomeDir,
-		"--persistent-state", chezmoiStatePath(cfg),
+		"--persistent-state", statePath,
 		"--color", "false",
 	}
+}
+
+func commandOutputError(action, output string, err error) error {
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	return fmt.Errorf("%s: %s: %w", action, output, err)
 }
 
 func chezmoiStatePath(cfg *Config) string {

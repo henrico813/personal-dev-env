@@ -11,7 +11,13 @@ import (
 
 func TestChezmoiApply(t *testing.T) {
 	cfg, configPath := chezmoiTestConfig(t)
-	seed := `{"model":"provider/model","permission":{"bash":{"*":"ask"},"external_directory":{"*":"ask","/mnt/vault/**":"allow"}}}`
+	seed := `{
+  "model": "provider/model",
+  "permission": {
+    "bash": {"*": "ask"},
+    "external_directory": {"*": "ask", "/mnt/vault/**": "allow"}
+  }
+}`
 	writeChezmoiTestConfig(t, configPath, seed, 0o600)
 
 	if err := applySurveilOpenCodePermission(cfg, Runner{}); err != nil {
@@ -31,30 +37,32 @@ func TestChezmoiApply(t *testing.T) {
 	}
 }
 
-func TestChezmoiEmptyInput(t *testing.T) {
-	cfg, configPath := chezmoiTestConfig(t)
-	writeChezmoiTestConfig(t, configPath, " \n\t", 0o644)
-
-	if err := applySurveilOpenCodePermission(cfg, Runner{}); err != nil {
-		t.Fatalf("apply permission: %v", err)
+func TestChezmoiInitialConfig(t *testing.T) {
+	tests := []struct {
+		giveName   string
+		giveExists bool
+		giveJSON   string
+	}{
+		{giveName: "missing"},
+		{giveName: "empty", giveExists: true, giveJSON: " \n\t"},
 	}
-	config := readChezmoiTestConfig(t, configPath)
-	pattern := filepath.Join(cfg.HomeDir, ".local", "state", "surveil", "**")
-	if got := configString(t, config, "permission", "external_directory", pattern); got != "allow" {
-		t.Fatalf("permission = %q, want allow", got)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.giveName, func(t *testing.T) {
+			cfg, configPath := chezmoiTestConfig(t)
+			if tt.giveExists {
+				writeChezmoiTestConfig(t, configPath, tt.giveJSON, 0o644)
+			}
 
-func TestChezmoiCreatesConfig(t *testing.T) {
-	cfg, configPath := chezmoiTestConfig(t)
-
-	if err := applySurveilOpenCodePermission(cfg, Runner{}); err != nil {
-		t.Fatalf("apply permission: %v", err)
-	}
-	config := readChezmoiTestConfig(t, configPath)
-	pattern := filepath.Join(cfg.HomeDir, ".local", "state", "surveil", "**")
-	if got := configString(t, config, "permission", "external_directory", pattern); got != "allow" {
-		t.Fatalf("permission = %q, want allow", got)
+			if err := applySurveilOpenCodePermission(cfg, Runner{}); err != nil {
+				t.Fatalf("apply permission: %v", err)
+			}
+			config := readChezmoiTestConfig(t, configPath)
+			pattern := filepath.Join(cfg.HomeDir, ".local", "state", "surveil", "**")
+			got := configString(t, config, "permission", "external_directory", pattern)
+			if got != "allow" {
+				t.Fatalf("permission = %q, want allow", got)
+			}
+		})
 	}
 }
 
@@ -109,16 +117,16 @@ func TestChezmoiRerun(t *testing.T) {
 
 func TestChezmoiStatePaths(t *testing.T) {
 	tests := []struct {
-		name      string
+		giveName  string
 		giveState string
 		wantPath  string
 	}{
-		{name: "default", wantPath: "/home/test/.local/state/surveil/**"},
-		{name: "absolute", giveState: "/state", wantPath: "/state/surveil/**"},
-		{name: "relative", giveState: "state", wantPath: "/home/test/.local/state/surveil/**"},
+		{giveName: "default", wantPath: "/home/test/.local/state/surveil/**"},
+		{giveName: "absolute", giveState: "/state", wantPath: "/state/surveil/**"},
+		{giveName: "relative", giveState: "state", wantPath: "/home/test/.local/state/surveil/**"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.giveName, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", tt.giveState)
 			if got := surveilStatePattern("/home/test"); got != tt.wantPath {
 				t.Fatalf("path = %q, want %q", got, tt.wantPath)
@@ -129,20 +137,41 @@ func TestChezmoiStatePaths(t *testing.T) {
 
 func TestChezmoiRejectsConfig(t *testing.T) {
 	tests := []struct {
-		name     string
+		giveName string
 		giveJSON string
+		wantErr  string
 	}{
-		{name: "malformed", giveJSON: `{`},
-		{name: "array root", giveJSON: `[]`},
-		{name: "global deny", giveJSON: `{"permission":"deny"}`},
-		{name: "invalid external", giveJSON: `{"permission":{"external_directory":[]}}`},
+		{
+			giveName: "malformed",
+			giveJSON: `{`,
+			wantErr:  "parse error",
+		},
+		{
+			giveName: "array root",
+			giveJSON: `[]`,
+			wantErr:  "OpenCode config must be an object",
+		},
+		{
+			giveName: "global deny",
+			giveJSON: `{"permission":"deny"}`,
+			wantErr:  "permission string cannot preserve a narrow exception",
+		},
+		{
+			giveName: "invalid external",
+			giveJSON: `{"permission":{"external_directory":[]}}`,
+			wantErr:  "external_directory must be a string or object",
+		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.giveName, func(t *testing.T) {
 			cfg, configPath := chezmoiTestConfig(t)
 			writeChezmoiTestConfig(t, configPath, tt.giveJSON, 0o644)
-			if err := applySurveilOpenCodePermission(cfg, Runner{}); err == nil {
+			err := applySurveilOpenCodePermission(cfg, Runner{})
+			if err == nil {
 				t.Fatal("apply error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("apply error = %q, want substring %q", err, tt.wantErr)
 			}
 			if got := string(readChezmoiTestConfig(t, configPath)); got != tt.giveJSON {
 				t.Fatalf("config = %q, want %q", got, tt.giveJSON)
@@ -184,6 +213,26 @@ func TestChezmoiDryRun(t *testing.T) {
 	}
 }
 
+func TestChezmoiDryRunConverged(t *testing.T) {
+	cfg, configPath := chezmoiTestConfig(t)
+	writeChezmoiTestConfig(t, configPath, `{}`, 0o644)
+	if err := applySurveilOpenCodePermission(cfg, Runner{}); err != nil {
+		t.Fatalf("apply permission: %v", err)
+	}
+	var output bytes.Buffer
+
+	err := applySurveilOpenCodePermission(
+		cfg,
+		Runner{DryRun: true, Stdout: &output, Stderr: &output},
+	)
+	if err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("dry-run output = %q, want empty", output.String())
+	}
+}
+
 func chezmoiTestConfig(t *testing.T) (*Config, string) {
 	t.Helper()
 	repoRoot, err := filepath.Abs("..")
@@ -217,6 +266,23 @@ func readChezmoiTestConfig(t *testing.T, path string) []byte {
 		t.Fatalf("read config: %v", err)
 	}
 	return content
+}
+
+func createChezmoiSource(t *testing.T, repoRoot string) {
+	t.Helper()
+	sourcePath := filepath.Join("..", "chezmoi", "dot_config", "opencode", "modify_opencode.json")
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read chezmoi source: %v", err)
+	}
+	destinationPath := filepath.Join(
+		repoRoot,
+		"chezmoi",
+		"dot_config",
+		"opencode",
+		"modify_opencode.json",
+	)
+	writeChezmoiTestConfig(t, destinationPath, string(content), 0o755)
 }
 
 func configString(t *testing.T, data []byte, keys ...string) string {
