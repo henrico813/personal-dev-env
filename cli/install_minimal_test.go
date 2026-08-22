@@ -48,7 +48,9 @@ func TestInstallCmdRunsMinimal(t *testing.T) {
 
 func TestLegacyBaseCallsHiddenProfile(t *testing.T) {
 	repoRoot := t.TempDir()
-	mustWriteFile(t, filepath.Join(repoRoot, "pde", "pde"), "#!/usr/bin/env bash\nset -euo pipefail\ntest \"$1\" = \"__legacy_minimal_base\"\n", 0o755)
+	script := "#!/usr/bin/env bash\nset -euo pipefail\n" +
+		"test \"$1\" = \"__legacy_minimal_base\"\n"
+	mustWriteFile(t, filepath.Join(repoRoot, "pde", "pde"), script, 0o755)
 
 	if err := runLegacyMinimalBase(&Config{RepoRoot: repoRoot}, Runner{}); err != nil {
 		t.Fatalf("run legacy base: %v", err)
@@ -132,7 +134,14 @@ func newMinimalRepoFixture(t *testing.T) string {
 	t.Helper()
 	repoRoot := t.TempDir()
 	createManagedSources(t, repoRoot)
+	createChezmoiSource(t, repoRoot)
 	mustWriteFile(t, filepath.Join(repoRoot, "pde", "pde"), "#!/usr/bin/env bash\nexit 0\n", 0o755)
-	mustWriteFile(t, filepath.Join(repoRoot, "surveil", "Cargo.toml"), "[package]\nname = \"surveil\"\nversion = \"0.1.0\"\n", 0o644)
+	manifest := "[package]\nname = \"surveil\"\nversion = \"0.1.0\"\n"
+	mustWriteFile(
+		t,
+		filepath.Join(repoRoot, "surveil", "Cargo.toml"),
+		manifest,
+		0o644,
+	)
 	return repoRoot
 }
