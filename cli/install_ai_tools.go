@@ -93,6 +93,9 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := verifySurveilLauncher(cfg, runner); err != nil {
 		return err
 	}
+	if err := installSurveilOpenCodePermission(cfg, runner); err != nil {
+		return err
+	}
 
 	return verifyPiLauncher(cfg, runner)
 }

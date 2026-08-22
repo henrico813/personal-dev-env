@@ -46,12 +46,13 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	surveilBuild := strings.Index(dryRun, "DRY-RUN: build surveil")
 	surveilLink := strings.Index(dryRun, "DRY-RUN: link surveil")
 	surveilVerify := strings.Index(dryRun, "DRY-RUN: verify surveil")
+	surveilPermission := strings.Index(dryRun, "DRY-RUN: write Surveil OpenCode permission")
 	vibe := strings.Index(dryRun, "DRY-RUN: install vibe")
 	node := strings.Index(dryRun, "DRY-RUN: install Node "+aiNodeVersion)
 	stagePi := strings.Index(dryRun, "DRY-RUN: activate pi runtime")
 	stagedPiRuntime := filepath.Join(cfg.AIRuntimeDir, "pi") + ".tmp"
 
-	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || vibe == -1 || node == -1 || stagePi == -1 {
+	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || surveilPermission == -1 || vibe == -1 || node == -1 || stagePi == -1 {
 		t.Fatalf("missing expected dry-run output:\n%s", dryRun)
 	}
 	if cargo > backup || cargo > plannerBuild || cargo > shimBuild || cargo > surveilBuild {
@@ -65,6 +66,9 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	}
 	if surveilLink > surveilVerify {
 		t.Fatalf("surveil link should run before verify:\n%s", dryRun)
+	}
+	if surveilVerify > surveilPermission {
+		t.Fatalf("surveil permission should follow verification:\n%s", dryRun)
 	}
 	if vibe > node {
 		t.Fatalf("vibe install should run before Node setup:\n%s", dryRun)
