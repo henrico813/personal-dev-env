@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+input=$(cat)
+if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
+    input='{}'
+fi
+
+printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" '
+    if type != "object" then
+        error("OpenCode config must be an object")
+    elif has("permission") and (.permission | type) == "string" then
+        if .permission == "allow" then .
+        else error("permission string cannot preserve a narrow exception")
+        end
+    elif has("permission") and (.permission | type) != "object" then
+        error("permission must be a string or object")
+    elif (.permission | has("external_directory")) and (.permission.external_directory | type) == "string" then
+        if .permission.external_directory == "allow" then .
+        elif .permission.external_directory == "ask" or .permission.external_directory == "deny" then
+            .permission.external_directory = {"*": .permission.external_directory, ($path): "allow"}
+        else error("unsupported external_directory action")
+        end
+    elif (.permission | has("external_directory")) and (.permission.external_directory | type) != "object" then
+        error("external_directory must be a string or object")
+    else
+        .permission.external_directory |= ((. // {}) | del(.[$path]) + {($path): "allow"})
+    end
+'

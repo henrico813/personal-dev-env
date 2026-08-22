@@ -40,23 +40,25 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 
 	dryRun := output.String()
 	cargo := strings.Index(dryRun, "DRY-RUN: verify cargo")
+	chezmoi := strings.Index(dryRun, "DRY-RUN: verify chezmoi")
+	jq := strings.Index(dryRun, "DRY-RUN: verify jq")
 	backup := strings.Index(dryRun, "DRY-RUN: backup existing config")
 	plannerBuild := strings.Index(dryRun, "DRY-RUN: build planner")
 	shimBuild := strings.Index(dryRun, "DRY-RUN: build opencode inline shim")
 	surveilBuild := strings.Index(dryRun, "DRY-RUN: build surveil")
 	surveilLink := strings.Index(dryRun, "DRY-RUN: link surveil")
 	surveilVerify := strings.Index(dryRun, "DRY-RUN: verify surveil")
-	surveilPermission := strings.Index(dryRun, "DRY-RUN: write Surveil OpenCode permission")
+	surveilPermission := strings.Index(dryRun, "DRY-RUN: apply Surveil OpenCode permission")
 	vibe := strings.Index(dryRun, "DRY-RUN: install vibe")
 	node := strings.Index(dryRun, "DRY-RUN: install Node "+aiNodeVersion)
 	stagePi := strings.Index(dryRun, "DRY-RUN: activate pi runtime")
 	stagedPiRuntime := filepath.Join(cfg.AIRuntimeDir, "pi") + ".tmp"
 
-	if cargo == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || surveilPermission == -1 || vibe == -1 || node == -1 || stagePi == -1 {
+	if cargo == -1 || chezmoi == -1 || jq == -1 || backup == -1 || plannerBuild == -1 || shimBuild == -1 || surveilBuild == -1 || surveilLink == -1 || surveilVerify == -1 || surveilPermission == -1 || vibe == -1 || node == -1 || stagePi == -1 {
 		t.Fatalf("missing expected dry-run output:\n%s", dryRun)
 	}
-	if cargo > backup || cargo > plannerBuild || cargo > shimBuild || cargo > surveilBuild {
-		t.Fatalf("cargo preflight should run before mutable work:\n%s", dryRun)
+	if cargo > chezmoi || chezmoi > jq || jq > backup || jq > plannerBuild || jq > shimBuild || jq > surveilBuild {
+		t.Fatalf("tool preflight should run before mutable work:\n%s", dryRun)
 	}
 	if plannerBuild > shimBuild || shimBuild > surveilBuild {
 		t.Fatalf("build steps should stay in planner/shim/surveil order:\n%s", dryRun)

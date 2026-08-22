@@ -9,6 +9,9 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := ensureCargo(cfg, runner); err != nil {
 		return err
 	}
+	if err := ensureChezmoiTools(cfg, runner); err != nil {
+		return err
+	}
 	if err := ensureSurveilSource(cfg, runner); err != nil {
 		return err
 	}
@@ -93,7 +96,7 @@ func installAITools(cfg *Config, runner Runner) error {
 	if err := verifySurveilLauncher(cfg, runner); err != nil {
 		return err
 	}
-	if err := installSurveilOpenCodePermission(cfg, runner); err != nil {
+	if err := applySurveilOpenCodePermission(cfg, runner); err != nil {
 		return err
 	}
 
