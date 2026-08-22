@@ -10,6 +10,7 @@ import (
 )
 
 func TestChezmoiApply(t *testing.T) {
+	t.Setenv("PDE_SURVEIL_STATE_PATTERN", "/incorrect/inherited/path/**")
 	cfg, configPath := chezmoiTestConfig(t)
 	seed := `{
   "model": "provider/model",
@@ -25,6 +26,9 @@ func TestChezmoiApply(t *testing.T) {
 	}
 
 	config := readChezmoiTestConfig(t, configPath)
+	if bytes.Contains(config, []byte("/incorrect/inherited/path/**")) {
+		t.Fatal("config contains inherited Surveil path")
+	}
 	pattern := filepath.Join(cfg.HomeDir, ".local", "state", "surveil", "**")
 	if got := configString(t, config, "permission", "external_directory", pattern); got != "allow" {
 		t.Fatalf("permission = %q, want allow", got)

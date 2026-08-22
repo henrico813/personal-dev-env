@@ -13,7 +13,7 @@ import (
 
 const _chezmoiConfigPath = "/dev/null"
 
-func ensureChezmoiTools(_ *Config, runner Runner) error {
+func ensureSurveilOpenCodeTools(runner Runner) error {
 	for _, tool := range []string{"chezmoi", "jq"} {
 		tool := tool
 		if err := runner.Do("verify "+tool, func() error {
@@ -33,6 +33,7 @@ func ensureChezmoiTools(_ *Config, runner Runner) error {
 
 func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 	configPath := filepath.Join(cfg.OpenCodeConfigDir, "opencode.json")
+	env := surveilOpenCodeEnv(cfg)
 	exists, mode, err := validateOpenCodeConfigPath(configPath)
 	if err != nil {
 		return err
@@ -45,10 +46,12 @@ func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 		}
 		defer os.RemoveAll(stateDir)
 
-		changed, err := chezmoiOpenCodeStatus(
+		statePath := filepath.Join(stateDir, "state.boltdb")
+		changed, err := chezmoiTargetContentChanged(
 			cfg,
 			configPath,
-			filepath.Join(stateDir, "state.boltdb"),
+			statePath,
+			env,
 			runner,
 		)
 		if err != nil {
@@ -64,16 +67,25 @@ func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 				return err
 			}
 		}
-		return runner.Bash("apply Surveil OpenCode permission", chezmoiApplyScript(cfg, configPath))
+		return applyChezmoiTarget(
+			cfg,
+			configPath,
+			statePath,
+			env,
+			runner,
+			"apply Surveil OpenCode permission",
+		)
 	}
 
 	if err := runner.MkdirAll("create chezmoi state dir", filepath.Dir(chezmoiStatePath(cfg)), 0o700); err != nil {
 		return err
 	}
-	changed, err := chezmoiOpenCodeStatus(
+	statePath := chezmoiStatePath(cfg)
+	changed, err := chezmoiTargetContentChanged(
 		cfg,
 		configPath,
-		chezmoiStatePath(cfg),
+		statePath,
+		env,
 		runner,
 	)
 	if err != nil {
@@ -97,7 +109,14 @@ func applySurveilOpenCodePermission(cfg *Config, runner Runner) error {
 	if err := runner.MkdirAll("create OpenCode config dir", cfg.OpenCodeConfigDir, 0o755); err != nil {
 		return err
 	}
-	if err := runner.Bash("apply Surveil OpenCode permission", chezmoiApplyScript(cfg, configPath)); err != nil {
+	if err := applyChezmoiTarget(
+		cfg,
+		configPath,
+		statePath,
+		env,
+		runner,
+		"apply Surveil OpenCode permission",
+	); err != nil {
 		return err
 	}
 	if !exists {
@@ -122,37 +141,44 @@ func validateOpenCodeConfigPath(path string) (bool, os.FileMode, error) {
 	return true, info.Mode().Perm(), nil
 }
 
-func chezmoiOpenCodeStatus(
+func chezmoiTargetContentChanged(
 	cfg *Config,
-	configPath string,
+	targetPath string,
 	statePath string,
+	env []string,
 	runner Runner,
 ) (bool, error) {
-	statusArgs := append(
-		chezmoiArgs(cfg, statePath),
-		"status", "--path-style", "absolute", configPath,
+	output, err := runChezmoi(
+		cfg,
+		statePath,
+		env,
+		runner,
+		"check chezmoi target",
+		"status",
+		"--path-style",
+		"absolute",
+		targetPath,
 	)
-	cmd := exec.Command("chezmoi", statusArgs...)
-	cmd.Env = append(os.Environ(), "PDE_SURVEIL_STATE_PATTERN="+surveilStatePattern(cfg.HomeDir))
-	var stderr bytes.Buffer
-	cmd.Stderr = io.MultiWriter(runner.stderr(), &stderr)
-	output, err := cmd.Output()
 	if err != nil {
-		return false, commandOutputError("check Surveil OpenCode permission", stderr.String(), err)
+		return false, err
 	}
 	if len(strings.TrimSpace(string(output))) == 0 {
 		return false, nil
 	}
 
-	cmd = exec.Command("chezmoi", append(chezmoiArgs(cfg, statePath), "cat", configPath)...)
-	cmd.Env = append(os.Environ(), "PDE_SURVEIL_STATE_PATTERN="+surveilStatePattern(cfg.HomeDir))
-	stderr.Reset()
-	cmd.Stderr = io.MultiWriter(runner.stderr(), &stderr)
-	target, err := cmd.Output()
+	target, err := runChezmoi(
+		cfg,
+		statePath,
+		env,
+		runner,
+		"render chezmoi target",
+		"cat",
+		targetPath,
+	)
 	if err != nil {
-		return false, commandOutputError("render Surveil OpenCode permission", stderr.String(), err)
+		return false, err
 	}
-	current, err := os.ReadFile(configPath)
+	current, err := os.ReadFile(targetPath)
 	if os.IsNotExist(err) {
 		return true, nil
 	}
@@ -162,14 +188,28 @@ func chezmoiOpenCodeStatus(
 	return !bytes.Equal(current, target), nil
 }
 
-func chezmoiApplyScript(cfg *Config, configPath string) string {
-	args := append(
-		chezmoiArgs(cfg, chezmoiStatePath(cfg)),
-		"apply", "--force", "--no-tty", configPath,
-	)
-	return "PDE_SURVEIL_STATE_PATTERN=" +
-		shellQuote(surveilStatePattern(cfg.HomeDir)) +
-		" chezmoi " + shellJoin(args)
+func applyChezmoiTarget(
+	cfg *Config,
+	targetPath string,
+	statePath string,
+	env []string,
+	runner Runner,
+	action string,
+) error {
+	return runner.Do(action, func() error {
+		_, err := runChezmoi(
+			cfg,
+			statePath,
+			env,
+			runner,
+			"apply chezmoi target",
+			"apply",
+			"--force",
+			"--no-tty",
+			targetPath,
+		)
+		return err
+	})
 }
 
 func chezmoiArgs(cfg *Config, statePath string) []string {
@@ -181,6 +221,27 @@ func chezmoiArgs(cfg *Config, statePath string) []string {
 		"--persistent-state", statePath,
 		"--color", "false",
 	}
+}
+
+func runChezmoi(
+	cfg *Config,
+	statePath string,
+	env []string,
+	runner Runner,
+	action string,
+	args ...string,
+) ([]byte, error) {
+	commandArgs := append(chezmoiArgs(cfg, statePath), args...)
+	cmd := exec.Command("chezmoi", commandArgs...)
+	cmd.Env = env
+
+	var stderr bytes.Buffer
+	cmd.Stderr = io.MultiWriter(runner.stderr(), &stderr)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, commandOutputError(action, stderr.String(), err)
+	}
+	return output, nil
 }
 
 func commandOutputError(action, output string, err error) error {
@@ -195,12 +256,23 @@ func chezmoiStatePath(cfg *Config) string {
 	return filepath.Join(cfg.HomeDir, ".local", "state", "pde", "chezmoi.boltdb")
 }
 
-func shellJoin(args []string) string {
-	quoted := make([]string, len(args))
-	for i, arg := range args {
-		quoted[i] = shellQuote(arg)
+func surveilOpenCodeEnv(cfg *Config) []string {
+	return replaceEnv(
+		os.Environ(),
+		"PDE_SURVEIL_STATE_PATTERN",
+		surveilStatePattern(cfg.HomeDir),
+	)
+}
+
+func replaceEnv(env []string, key, value string) []string {
+	result := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		entryKey, _, _ := strings.Cut(entry, "=")
+		if entryKey != key {
+			result = append(result, entry)
+		}
 	}
-	return strings.Join(quoted, " ")
+	return append(result, key+"="+value)
 }
 
 func surveilStatePattern(homeDir string) string {
