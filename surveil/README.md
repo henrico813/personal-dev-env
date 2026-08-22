@@ -5,6 +5,10 @@
 ## Install
 
 `pde install ai-tools` installs `~/.local/bin/surveil`.
+It also uses a scoped chezmoi modifier to merge an `allow` rule for the complete Surveil state directory
+into `~/.config/opencode/opencode.json`, so managed research artifacts do
+not trigger external-directory prompts. The rule follows an absolute
+`XDG_STATE_HOME` and otherwise targets `~/.local/state/surveil/**`.
 
 ## Task format
 

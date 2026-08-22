@@ -52,7 +52,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 |------|--------------|----------------|-----------------|
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
-| OpenCode | `ai/opencode/` | `~/.config/opencode/{agents,commands}` | OpenCode commands and agents |
+| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
@@ -60,7 +60,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 
 Shared config files live under `pde/config/home/` and mirror their destinations below `$HOME`. The config helper links every file in that tree. Full-profile-only config files use `pde/config/full-home/`.
 
-The AI installer backs up the managed OpenCode, Codex, and Pi paths before replacement and leaves unrelated root config in place.
+The AI installer backs up the managed OpenCode, Codex, and Pi paths before replacement. A scoped chezmoi modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`, backing up that file only when the merge changes it. Other root settings remain in place.
 
 ## Using OpenCode Commands
 
