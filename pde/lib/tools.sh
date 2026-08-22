@@ -10,7 +10,7 @@ install_tools() {
     section "CLI Tools"
 
     # OS-integrated tools and prerequisites.
-    install_apt htop unzip keychain
+    install_apt htop unzip keychain xclip
 
     install_aqua
     install_aqua_tools
