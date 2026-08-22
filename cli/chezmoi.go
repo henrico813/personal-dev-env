@@ -16,8 +16,11 @@ func ensureChezmoiTools(_ *Config, runner Runner) error {
 	for _, tool := range []string{"chezmoi", "jq"} {
 		tool := tool
 		if err := runner.Do("verify "+tool, func() error {
-			if _, err := exec.LookPath(tool); err != nil {
-				return fmt.Errorf("find %s: %w", tool, err)
+			cmd := exec.Command(tool, "--version")
+			cmd.Stdout = runner.stdout()
+			cmd.Stderr = runner.stderr()
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("verify %s: %w", tool, err)
 			}
 			return nil
 		}); err != nil {
