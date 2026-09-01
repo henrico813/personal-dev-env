@@ -24,7 +24,8 @@ When invoked:
 Cleanup is a safety workflow, not a convenience command. Your job is to leave the repo in a predictable state without deleting unfinished work.
 
 - Prefer preserving work over aggressively removing directories.
-- Treat uncommitted or untracked implementation changes as a stop condition.
+- Treat tracked changes, or non-ignored untracked files in paths that the cleanup action would change, remove, or overwrite, as a stop condition.
+- Treat ignored paths that pass the ignored-file policy below as permitted generated output, not untracked blockers.
 - Treat the main checkout as a protected baseline that must be inspected before teardown.
 - Treat plan completion, main synchronization, worktree removal, and branch deletion as separate decisions.
 - Keep local branches unless the user explicitly requests deletion.
@@ -51,7 +52,7 @@ Before changing anything:
 
 Run these checks before removing a worktree:
 - If a target worktree exists, check `git status --short` inside it.
-- If a target worktree exists, check for untracked, unusual ignored, locked, detached HEAD, or submodule state that may represent unfinished work.
+- If a target worktree exists, run the worktree-removal procedure and check locked state, detached HEAD, or submodule state that may represent unfinished work.
 - If a branch exists, check whether it has commits not present on the fetched base branch.
 - If a main checkout exists, inspect it for tracked changes, untracked files that collide with incoming paths, missing upstream, or divergence.
 - If a main checkout is clean and can fast-forward, run `git fetch <remote>` and `git pull --ff-only` from the identified main checkout after confirming its branch and upstream.
@@ -60,7 +61,7 @@ Run these checks before removing a worktree:
 
 Only stop the whole cleanup for blockers that make the relevant destructive action unsafe. Main-sync-only blockers should be reported while unrelated safe cleanup continues.
 
-If you find uncommitted or unexplained work in an artifact that would be changed or removed, stop that action and report it using this format:
+If you find tracked changes, non-ignored untracked files, directory records, or ignored paths that fail the ignored-file policy in an artifact that would be changed or removed, stop that action and report it using this format:
 
 ```text
 Cleanup blocked
@@ -74,6 +75,44 @@ Required next action:
 ```
 
 Do not remove the worktree until the blocker is resolved or the user explicitly approves a different action.
+
+Worktree-removal procedure:
+
+### Ignored-file policy
+
+Run these commands from the target worktree:
+
+```bash
+git status --porcelain=v1 --untracked-files=all --ignored=no
+git ls-files --others --ignored --exclude-standard --no-directory --full-name -z
+```
+
+The first command blocks removal when it prints output. Treat each NUL-terminated
+record from the second command as one repository-relative path. A record ending
+in `/` is a directory record rather than an individual file: block worktree
+removal and do not allowlist it. If either command fails, a record is incomplete,
+a record ends in `/`, or a path cannot be classified, block worktree removal.
+
+Classify every remaining ignored file in this order:
+
+1. Block sensitive paths before allowlisted output paths. A sensitive basename
+   matches `*.key`, `*.pem`, `.env*`, `.sops`, or `secrets*`; the exact path
+   `pde/user-config.yml` is also sensitive.
+2. Allow a non-sensitive file only when it is beneath the root `.surveil/`
+   directory, root `vibe/target/` directory, root `surveil/target/` directory,
+   or any `__pycache__/` directory.
+3. Block every other ignored path.
+
+Interpret the result:
+
+| Result | Cleanup action |
+| --- | --- |
+| First command prints output | Block worktree removal |
+| Ignored-file inspection fails, is incomplete, or finds a directory record | Block worktree removal |
+| Any ignored path is sensitive or outside the allowlist | Block worktree removal and list it |
+| Every ignored path is non-sensitive and allowlisted | Worktree removal may continue |
+| No blocking output | Worktree removal may continue |
+| User approves a specific follow-up action | Follow only that approved action |
 
 ### 3. Finish housekeeping
 
@@ -121,7 +160,7 @@ When an action is blocked, report the blocker clearly and stop only the unsafe a
 
 ## Important Guidelines
 
-1. Never remove a worktree that still contains uncommitted or unexplained files.
+1. Never remove a worktree with tracked changes, non-ignored untracked files, directory records, or ignored paths that fail the ignored-file policy unless the user explicitly approves that removal.
 2. Never assume plan or documentation status is already correct; check it.
 3. Prefer explicit verification over inference.
 4. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
