@@ -24,7 +24,6 @@ When invoked:
 Cleanup is a safety workflow, not a convenience command. Your job is to leave the repo in a predictable state without deleting unfinished work.
 
 - Prefer preserving work over aggressively removing directories.
-- Treat tracked changes, or non-ignored untracked files in paths that the cleanup action would change, remove, or overwrite, as a stop condition.
 - Treat ignored paths that pass the ignored-file policy below as permitted generated output, not untracked blockers.
 - Treat the main checkout as a protected baseline that must be inspected before teardown.
 - Treat plan completion, main synchronization, worktree removal, and branch deletion as separate decisions.
