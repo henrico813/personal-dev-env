@@ -143,6 +143,7 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cfg.AIRepoDir, "codex", "skills"), 0o755); err != nil {
 		t.Fatalf("mkdir codex skills: %v", err)
 	}
+	requireFile(filepath.Join(cfg.AIRepoDir, "skills", "git-messages", "SKILL.md"), "shared git-messages\n")
 
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "create_plan.md"), "opencode create-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "implement_plan.md"), "opencode implement-plan\n")
@@ -161,6 +162,8 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):     "opencode implement-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):    "codex create-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"): "codex implement-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "skills", "git-messages", "SKILL.md"): "shared git-messages\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):    "shared git-messages\n",
 	}
 
 	for path, want := range cases {
