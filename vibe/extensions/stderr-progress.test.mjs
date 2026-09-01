@@ -3,9 +3,18 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const samplePath = fileURLToPath(new URL("../testdata/pi-events-sample.jsonl", import.meta.url));
 const formatterPath = fileURLToPath(new URL("./stderr-progress.mjs", import.meta.url));
-const sample = fs.readFileSync(samplePath, "utf8");
+
+function readFixture(name) {
+  const path = fileURLToPath(new URL(`../testdata/${name}`, import.meta.url));
+  return fs.readFileSync(path, "utf8");
+}
+
+function parseEvents(input) {
+  return input.trimEnd().split("\n").map((line) => JSON.parse(line));
+}
+
+const sample = readFixture("pi-events-sample.jsonl");
 
 function runFormatter(stderrLevel, input = sample) {
   const outDir = fs.mkdtempSync("/tmp/vibe-stderr-progress-");
@@ -64,3 +73,25 @@ const traceErrorRun = runFormatter("trace", terminalErrorEvent);
 assert.equal(traceErrorRun.result.status, 1);
 assert.equal(traceErrorRun.result.stderr, terminalErrorEvent);
 assert.equal(traceErrorRun.eventsLog, terminalErrorEvent);
+
+const cumulativeInput = readFixture("pi-events-cumulative-message-update.jsonl");
+const cumulativeEvents = parseEvents(cumulativeInput);
+const cumulativeUpdates = cumulativeEvents.filter((event) => event.type === "message_update");
+assert.equal(cumulativeUpdates.length, 3);
+for (const event of cumulativeUpdates) {
+  assert.deepEqual(event.assistantMessageEvent.partial, event.message);
+}
+const cumulativeLengths = cumulativeUpdates.map(
+  (event) => event.assistantMessageEvent.partial.content[0].arguments.partialJson.length,
+);
+assert.deepEqual(cumulativeLengths, [...cumulativeLengths].sort((a, b) => a - b));
+
+const cumulativeRun = runFormatter("info", cumulativeInput);
+assert.equal(cumulativeRun.result.status, 0);
+assert.equal(cumulativeRun.eventsLog, cumulativeInput);
+
+const truncatedInput = readFixture("pi-events-truncated.jsonl");
+const truncatedTypes = parseEvents(truncatedInput).map((event) => event.type);
+assert.ok(truncatedTypes.includes("message_update"));
+assert.ok(!truncatedTypes.includes("message_end"));
+assert.ok(!truncatedTypes.includes("agent_end"));
