@@ -22,6 +22,7 @@ func installAITools(cfg *Config, runner Runner) error {
 		filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"),
 		filepath.Join(cfg.CodexConfigDir, "skills"),
 		filepath.Join(cfg.CodexConfigDir, "AGENTS.md"),
+		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages"),
 		filepath.Join(cfg.PiAgentDir, "settings.json"),
 		filepath.Join(cfg.PiAgentDir, "AGENTS.md"),
 	} {
@@ -67,6 +68,9 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 	if err := installCodexConfig(cfg, runner); err != nil {
+		return err
+	}
+	if err := installGitMessagesSkill(cfg, runner); err != nil {
 		return err
 	}
 	if err := installPiConfig(cfg, runner); err != nil {
@@ -118,6 +122,14 @@ func installCodexConfig(cfg *Config, runner Runner) error {
 		return err
 	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.CodexConfigDir, "AGENTS.md"), runner)
+}
+
+func installGitMessagesSkill(cfg *Config, runner Runner) error {
+	source := filepath.Join(cfg.AIRepoDir, "skills", "git-messages")
+	if err := syncTree(source, filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages"), runner); err != nil {
+		return err
+	}
+	return syncTree(source, filepath.Join(cfg.CodexConfigDir, "skills", "git-messages"), runner)
 }
 
 func installPiConfig(cfg *Config, runner Runner) error {

@@ -40,6 +40,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 ## AI Source Tree
 
 - `ai/AGENTS.md` is the shared workflow default file.
+- `ai/skills/` holds shared Agent Skills-format guidance.
 - `ai/opencode/` holds OpenCode agents and commands.
 - `ai/codex/` holds Codex skills.
 - `ai/pi/agent/` holds Pi settings and package resources.
@@ -52,6 +53,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 |------|--------------|----------------|-----------------|
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
+| Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
