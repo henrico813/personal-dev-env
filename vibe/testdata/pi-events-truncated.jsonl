@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"fixture-truncated","timestamp":"2026-01-01T00:00:00.000Z","cwd":"/workspace/project"}
+{"type":"agent_start"}
+{"type":"message_start","message":{"role":"assistant","content":[]}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"unfinished","partial":{"role":"assistant","content":[{"type":"text","text":"unfinished"}]}},"message":{"role":"assistant","content":[{"type":"text","text":"unfinished"}]}}
