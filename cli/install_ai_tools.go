@@ -19,12 +19,10 @@ func installAITools(cfg *Config, runner Runner) error {
 	for _, path := range []string{
 		filepath.Join(cfg.OpenCodeConfigDir, "agents"),
 		filepath.Join(cfg.OpenCodeConfigDir, "commands"),
-		filepath.Join(cfg.OpenCodeConfigDir, "skills", "git-messages"),
 		filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"),
 		filepath.Join(cfg.CodexConfigDir, "skills"),
 		filepath.Join(cfg.CodexConfigDir, "AGENTS.md"),
 		filepath.Join(cfg.PiAgentDir, "settings.json"),
-		filepath.Join(cfg.PiAgentDir, "skills", "git-messages"),
 		filepath.Join(cfg.PiAgentDir, "AGENTS.md"),
 	} {
 		if err := backupIfExists(path, runner); err != nil {
@@ -112,9 +110,6 @@ func installOpenCodeConfig(cfg *Config, runner Runner) error {
 	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "commands"), filepath.Join(cfg.OpenCodeConfigDir, "commands"), runner); err != nil {
 		return err
 	}
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "skills", "git-messages"), filepath.Join(cfg.OpenCodeConfigDir, "skills", "git-messages"), runner); err != nil {
-		return err
-	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"), runner)
 }
 
@@ -122,17 +117,11 @@ func installCodexConfig(cfg *Config, runner Runner) error {
 	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex", "skills"), filepath.Join(cfg.CodexConfigDir, "skills"), runner); err != nil {
 		return err
 	}
-	if err := syncTreeInto(filepath.Join(cfg.AIRepoDir, "skills", "git-messages"), filepath.Join(cfg.CodexConfigDir, "skills", "git-messages"), runner); err != nil {
-		return err
-	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.CodexConfigDir, "AGENTS.md"), runner)
 }
 
 func installPiConfig(cfg *Config, runner Runner) error {
 	if err := syncTreeInto(filepath.Join(cfg.AIRepoDir, "pi", "agent"), cfg.PiAgentDir, runner); err != nil {
-		return err
-	}
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "skills", "git-messages"), filepath.Join(cfg.PiAgentDir, "skills", "git-messages"), runner); err != nil {
 		return err
 	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.PiAgentDir, "AGENTS.md"), runner)
