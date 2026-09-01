@@ -4,8 +4,9 @@
 - Never use the words canonical or contract.
 - Keep code comments and docstrings concise.
 - Prefer examples over prose.
-- Use conventional commits.
-- Do not add AI attribution to commits.
+- Before writing a commit or pull request message, load and follow the
+  `git-messages` skill.
+- Do not add AI attribution to commits or pull requests.
 
 ## Testing
 
