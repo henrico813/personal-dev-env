@@ -114,6 +114,9 @@ Interpret the result:
 | No blocking output | Worktree removal may continue |
 | User approves a specific follow-up action | Follow only that approved action |
 
+Files with tracked local changes or non-ignored untracked status are blockers if removing the worktree would delete them.
+Untracked files outside the artifact being updated or removed do not block unrelated cleanup actions unless that action would overwrite or remove them.
+
 ### 3. Finish housekeeping
 
 For each artifact that is present and safe to update:
