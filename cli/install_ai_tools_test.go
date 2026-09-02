@@ -156,8 +156,10 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "create_plan.md"), "opencode create-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "implement_plan.md"), "opencode implement-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "cleanup_plan.md"), "opencode cleanup-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "create-plan", "SKILL.md"), "codex create-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "implement-plan", "SKILL.md"), "codex implement-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "cleanup-plan", "SKILL.md"), "codex cleanup-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "skills", "git-messages", "SKILL.md"), "shared git messages\n")
 	requireFile(filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"), "other skill\n")
 
@@ -174,8 +176,10 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 	cases := map[string]string{
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):        "opencode create-plan\n",
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):     "opencode implement-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "cleanup_plan.md"):       "opencode cleanup-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):     "codex create-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"):  "codex implement-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "cleanup-plan", "SKILL.md"):    "codex cleanup-plan\n",
 		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):    "shared git messages\n",
 		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages", "SKILL.md"): "shared git messages\n",
 		filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"):       "other skill\n",
@@ -189,5 +193,89 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("%s = %q, want %q", path, string(got), want)
 		}
+	}
+}
+
+const (
+	policyStart = "### Ignored-file policy\n"
+	policyEnd   = "\n### 3. Finish housekeeping\n"
+)
+
+func cleanupPolicy(t *testing.T, source, text string) string {
+	t.Helper()
+	if strings.Count(text, policyStart) != 1 {
+		t.Fatalf("%s must contain one ignored-file policy section", source)
+	}
+	if strings.Count(text, policyEnd) != 1 {
+		t.Fatalf("%s must contain one ignored-file policy terminator", source)
+	}
+	_, afterStart, found := strings.Cut(text, policyStart)
+	if !found {
+		t.Fatalf("%s missing ignored-file policy start", source)
+	}
+	policy, _, found := strings.Cut(afterStart, policyEnd)
+	if !found {
+		t.Fatalf("%s missing ignored-file policy terminator", source)
+	}
+	return policyStart + policy
+}
+
+func TestCleanupPlanPoliciesMatch(t *testing.T) {
+	sources := []string{
+		filepath.Join("..", "ai", "opencode", "commands", "cleanup_plan.md"),
+		filepath.Join("..", "ai", "codex", "skills", "cleanup-plan", "SKILL.md"),
+	}
+	required := []string{
+		"git status --porcelain=v1 --untracked-files=all --ignored=no",
+		"git ls-files --others --ignored --exclude-standard --no-directory --full-name -z",
+		"NUL-terminated",
+		"`/` is a directory record",
+		"Block sensitive paths before allowlisted output paths.",
+		"Allow a non-sensitive file only when",
+		"`*.key`, `*.pem`, `.env*`, `.sops`, or `secrets*`",
+		"`pde/user-config.yml`",
+		"the root `.surveil/`",
+		"root `vibe/target/`",
+		"root `surveil/target/`",
+		"any `__pycache__/` directory",
+		"Block every other ignored path.",
+	}
+	rejected := []string{
+		"git status --porcelain=v1 --ignored\n",
+		"Treat uncommitted or untracked implementation changes as a stop condition.",
+		"Treat tracked changes, or untracked files in paths that the cleanup action would change, remove, or overwrite, as a stop condition.",
+		"If you find uncommitted or unexplained work in an artifact that would be changed or removed",
+		"Never remove a worktree that still contains tracked local changes or untracked files",
+		"Never remove a worktree that still contains uncommitted or unexplained files.",
+		".pytest_cache/",
+	}
+	policies := make([]string, len(sources))
+
+	for i, source := range sources {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatalf("read %s: %v", source, err)
+		}
+		text := string(data)
+		policy := cleanupPolicy(t, source, text)
+		for _, want := range required {
+			if !strings.Contains(policy, want) {
+				t.Errorf("%s policy missing %q", source, want)
+			}
+		}
+		sensitive := strings.Index(policy, "Block sensitive paths before")
+		allowlist := strings.Index(policy, "Allow a non-sensitive file only when")
+		if sensitive == -1 || allowlist == -1 || sensitive > allowlist {
+			t.Errorf("%s policy must check sensitive paths before allowlists", source)
+		}
+		for _, unwanted := range rejected {
+			if strings.Contains(text, unwanted) {
+				t.Errorf("%s contains %q", source, unwanted)
+			}
+		}
+		policies[i] = policy
+	}
+	if policies[0] != policies[1] {
+		t.Error("OpenCode and Codex ignored-file policies differ")
 	}
 }
