@@ -25,13 +25,13 @@ func Fonts() []Font {
 
 // Manager installs direct-release artifacts for one user.
 type Manager struct {
-	Home, PkgPrefix string
-	Runner          run.Runner
+	Home   string
+	Runner run.Runner
 }
 
 // New returns a direct artifact manager.
-func New(home, pkgPrefix string, runner run.Runner) Manager {
-	return Manager{Home: home, PkgPrefix: pkgPrefix, Runner: runner}
+func New(home string, runner run.Runner) Manager {
+	return Manager{Home: home, Runner: runner}
 }
 
 // Reconcile installs missing or outdated managed fonts.
@@ -151,7 +151,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return nil, journal.Revert(err)
 	}
 	tracked = true
-	if err := m.Runner.Run("refresh font cache", run.Command{Name: filepath.Join(m.PkgPrefix, "bin", "fc-cache"), Args: []string{"-f"}}); err != nil {
+	if err := m.Runner.Run("refresh font cache", run.Command{Name: "fc-cache", Args: []string{"-f"}}); err != nil {
 		return nil, journal.Revert(err)
 	}
 	return journal, nil

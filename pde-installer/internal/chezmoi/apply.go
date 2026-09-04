@@ -100,7 +100,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	} else {
 		return nil, fmt.Errorf("inspect chezmoi state: %w", err)
 	}
-	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--path-style", "absolute"), Env: m.environment()})
+	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.environment()})
 	if err != nil {
 		return nil, journal.Revert(err)
 	}
@@ -148,7 +148,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	if err := m.Runner.Run("apply repository chezmoi source", command); err != nil {
 		return nil, journal.Revert(err)
 	}
-	remaining, err := m.Runner.Query("verify chezmoi state", run.Command{Name: binary, Args: append(m.arguments(), "status", "--path-style", "absolute"), Env: m.environment()})
+	remaining, err := m.Runner.Query("verify chezmoi state", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "dirs,scripts", "--path-style", "absolute"), Env: m.environment()})
 	if err != nil {
 		return nil, journal.Revert(err)
 	}

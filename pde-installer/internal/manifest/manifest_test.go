@@ -27,17 +27,15 @@ func TestManifestIncludesRuntimeTools(t *testing.T) {
 	}
 }
 
-// Pkgsrc must install only packages assigned to it.
-func TestManifestDrivesPkgsrcOrder(t *testing.T) {
+func TestManifestIncludesSystemTools(t *testing.T) {
 	t.Parallel()
-	packages := PkgsrcPackages()
-	owned := ByOwner(Pkgsrc)
-	if len(packages) != len(owned) {
-		t.Fatalf("package count = %d, want %d", len(packages), len(owned))
-	}
-	for index := range owned {
-		if packages[index] != owned[index].Name {
-			t.Errorf("package %d = %q, want %q", index, packages[index], owned[index].Name)
+	for _, name := range []string{"zsh", "git", "xclip", "unzip", "fontconfig"} {
+		if _, ok := Find(name, Ubuntu); !ok {
+			t.Errorf("Find(%q, Ubuntu) missing", name)
 		}
+	}
+	item, ok := Find("tmux", Source)
+	if !ok || item.Version != "3.6a" {
+		t.Errorf("Find(tmux, Source) = %#v, %t", item, ok)
 	}
 }

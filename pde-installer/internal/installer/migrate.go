@@ -64,40 +64,80 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		return nil, fmt.Errorf("encode PDE config: %w", err)
 	}
 	updated = append(updated, '\n')
-	if bytes.Equal(data, updated) {
-		return &fsutil.Journal{}, nil
-	}
 	if err := fsutil.GuardHome(config.Home, directory, destination); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("create PDE config directory: %w", err)
 	}
-	stage, err := os.CreateTemp(directory, ".config-")
-	if err != nil {
-		return nil, fmt.Errorf("stage PDE config: %w", err)
-	}
-	stagePath := stage.Name()
-	removeStage := true
-	defer func() {
-		if removeStage {
-			_ = os.Remove(stagePath)
-		}
-	}()
-	if _, err := stage.Write(updated); err != nil {
-		_ = stage.Close()
-		return nil, fmt.Errorf("write staged PDE config: %w", err)
-	}
-	if err := stage.Close(); err != nil {
-		return nil, fmt.Errorf("close staged PDE config: %w", err)
-	}
 	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: config.Home})
 	if err != nil {
 		return nil, err
 	}
-	if err := journal.Activate(stagePath, destination); err != nil {
-		return nil, err
+	if !bytes.Equal(data, updated) {
+		stage, err := os.CreateTemp(directory, ".config-")
+		if err != nil {
+			return nil, fmt.Errorf("stage PDE config: %w", err)
+		}
+		stagePath := stage.Name()
+		removeStage := true
+		defer func() {
+			if removeStage {
+				_ = os.Remove(stagePath)
+			}
+		}()
+		if _, err := stage.Write(updated); err != nil {
+			_ = stage.Close()
+			return nil, fmt.Errorf("write staged PDE config: %w", err)
+		}
+		if err := stage.Close(); err != nil {
+			return nil, fmt.Errorf("close staged PDE config: %w", err)
+		}
+		if err := journal.Activate(stagePath, destination); err != nil {
+			return nil, err
+		}
+		removeStage = false
 	}
-	removeStage = false
+	if err := migrateLegacyNvim(config.Home, journal); err != nil {
+		return nil, journal.Revert(err)
+	}
 	return journal, nil
+}
+
+// migrateLegacyNvim replaces the old Neovim config link with a real directory.
+// Chezmoi needs this because it cannot safely create files inside that link.
+func migrateLegacyNvim(home string, journal *fsutil.Journal) error {
+	destination := filepath.Join(home, ".config", "nvim")
+	info, err := os.Lstat(destination)
+	if os.IsNotExist(err) || err == nil && info.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect legacy Neovim config: %w", err)
+	}
+	target, err := os.Readlink(destination)
+	if err != nil {
+		return fmt.Errorf("read legacy Neovim config: %w", err)
+	}
+	if !legacyNvimTarget(target) {
+		return fmt.Errorf("Neovim config symlink is not a legacy PDE link: %s", target)
+	}
+	stage, err := os.MkdirTemp(filepath.Dir(destination), ".nvim-")
+	if err != nil {
+		return fmt.Errorf("stage Neovim config directory: %w", err)
+	}
+	if err := journal.AddCleanup(stage); err != nil {
+		_ = os.RemoveAll(stage)
+		return err
+	}
+	if err := journal.Activate(stage, destination); err != nil {
+		return fmt.Errorf("replace legacy Neovim config symlink: %w", err)
+	}
+	return nil
+}
+
+func legacyNvimTarget(target string) bool {
+	target = filepath.Clean(target)
+	config := filepath.Dir(target)
+	return filepath.Base(target) == "nvim" && filepath.Base(config) == "config" && filepath.Base(filepath.Dir(config)) == "pde"
 }

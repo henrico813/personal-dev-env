@@ -30,7 +30,7 @@ func TestNPMLockIncludesPinnedPackages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := New(t.TempDir(), repoRoot, t.TempDir(), run.Runner{}).ValidateLock(); err != nil {
+	if err := New(t.TempDir(), repoRoot, run.Runner{}).ValidateLock(); err != nil {
 		t.Fatalf("ValidateLock() error = %v", err)
 	}
 }
@@ -42,10 +42,9 @@ func TestReconcileActivatesAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "npm.log")
 	writeNPMFixture(t, filepath.Join(home, ".local", "bin", "npm"), logPath)
-	manager := New(home, repoRoot, prefix, run.Runner{})
+	manager := New(home, repoRoot, run.Runner{})
 
 	root := manager.Root()
 	writeNPMFile(t, filepath.Join(root, "previous"), "old root\n", 0o644)

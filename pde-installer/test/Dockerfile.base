@@ -4,10 +4,12 @@ FROM ubuntu:${UBUNTU_VERSION}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-	bison build-essential bzip2 ca-certificates curl file gawk git gzip make patch tar xz-utils \
+	bison build-essential bzip2 ca-certificates curl file fontconfig gawk git gzip libevent-dev \
+	libncurses-dev make patch pkg-config python3 sudo tar unzip xclip xz-utils zsh \
 	&& rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash testuser
+RUN printf 'testuser ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/testuser
 
 USER testuser
 WORKDIR /home/testuser

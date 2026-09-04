@@ -10,7 +10,7 @@ import (
 )
 
 type config struct {
-	Home, RepoRoot, LocalBin, PkgSource, PkgPrefix, AquaRoot string
+	Home, RepoRoot, LocalBin, AquaRoot string
 }
 
 func detectConfig(flagRoot string) (config, error) {
@@ -47,10 +47,9 @@ func detectConfig(flagRoot string) (config, error) {
 	}
 	cfg := config{
 		Home: home, RepoRoot: root, LocalBin: filepath.Join(home, ".local", "bin"),
-		PkgSource: filepath.Join(home, ".local", "src", "pkgsrc-2026Q2"), PkgPrefix: filepath.Join(home, ".local", "pkg"),
 		AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"),
 	}
-	for _, destination := range []string{cfg.LocalBin, cfg.PkgSource, cfg.PkgPrefix, cfg.AquaRoot, filepath.Join(home, ".config"), filepath.Join(home, ".local", "state")} {
+	for _, destination := range []string{cfg.LocalBin, cfg.AquaRoot, filepath.Join(home, ".config"), filepath.Join(home, ".local", "state")} {
 		if !within(home, destination) {
 			return config{}, fmt.Errorf("destination outside HOME: %s", destination)
 		}
