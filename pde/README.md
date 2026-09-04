@@ -45,7 +45,8 @@ pde install ai-tools
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `surveil` and `vibe` install through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
-`ai-config` runs only the AI configuration transaction. It validates and stages
+`ai-config` runs only the AI configuration transaction. To create the Planner
+launcher, first install its runtime with `ai-tools`. It validates and stages
 OpenCode, Codex, Pi, shared instructions, and skill packages without rebuilding
 runtimes. Skill ownership is tracked by package, unrelated user packages are
 preserved, and recovery backups stay under the PDE runtime instead of harness
