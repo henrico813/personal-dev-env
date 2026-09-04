@@ -212,11 +212,6 @@ func list(config config, runner run.Runner) error {
 			if err != nil {
 				return fmt.Errorf("read %s status: %w", item.Name, err)
 			}
-		case manifest.Source:
-			installed, state, err = tmuxManager.Probe()
-			if err != nil {
-				return fmt.Errorf("read tmux status: %w", err)
-			}
 		case manifest.Aqua:
 			if item.Name == "aqua" {
 				installed, state = aquaInstalled, aquaState
@@ -249,6 +244,13 @@ func list(config config, runner run.Runner) error {
 				}
 			}
 		case manifest.Direct:
+			if item.Name == "tmux" {
+				installed, state, err = tmuxManager.Probe()
+				if err != nil {
+					return fmt.Errorf("read tmux status: %w", err)
+				}
+				break
+			}
 			isTool := false
 			for _, tool := range directTools {
 				if tool.Name == item.Name {

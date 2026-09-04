@@ -34,8 +34,8 @@ func TestManifestIncludesSystemTools(t *testing.T) {
 			t.Errorf("Find(%q, Ubuntu) missing", name)
 		}
 	}
-	item, ok := Find("tmux", Source)
+	item, ok := Find("tmux", Direct)
 	if !ok || item.Version != "3.7b" {
-		t.Errorf("Find(tmux, Source) = %#v, %t", item, ok)
+		t.Errorf("Find(tmux, Direct) = %#v, %t", item, ok)
 	}
 }
