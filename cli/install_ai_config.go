@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -31,6 +32,7 @@ type aiConfigPlan struct{ changes []aiConfigChange }
 type activatedAIConfigChange struct {
 	change    aiConfigChange
 	hadBackup bool
+	active    fs.FileInfo
 }
 type treeEntry struct {
 	mode   fs.FileMode
@@ -146,6 +148,9 @@ func planAIConfig(cfg *Config) (*aiConfigPlan, error) {
 }
 func previewAIConfig(p *aiConfigPlan, r Runner) error {
 	for _, c := range p.changes {
+		if e := validateGeneratedAIConfigLink(c); e != nil {
+			return e
+		}
 		if c.source != "" || c.data != nil {
 			if e := r.Do("stage AI config for "+c.destination, func() error { return nil }); e != nil {
 				return e
@@ -175,6 +180,7 @@ func applyAIConfigPlan(cfg *Config, p *aiConfigPlan) error {
 	}
 	stage := filepath.Join(root, ".stage")
 	if e = os.MkdirAll(stage, 0755); e != nil {
+		_ = os.RemoveAll(root)
 		return fmt.Errorf("create AI config stage: %w", e)
 	}
 	for i := range p.changes {
@@ -213,6 +219,29 @@ func stageAIConfigChange(c aiConfigChange) error {
 	if c.generatedLink == "" {
 		return nil
 	}
+	if e := validateGeneratedAIConfigLink(c); e != nil {
+		return e
+	}
+	if _, e := os.Stat(c.generatedLink); os.IsNotExist(e) {
+		return nil
+	} else if e != nil {
+		return e
+	}
+	if _, e := os.Lstat(filepath.Join(c.stagedPath, "bin")); e == nil {
+		return fmt.Errorf("generated Planner launcher path already exists in skill: %s", c.source)
+	} else if !os.IsNotExist(e) {
+		return e
+	}
+	p := filepath.Join(c.stagedPath, "bin", "planner")
+	if e := os.MkdirAll(filepath.Dir(p), 0755); e != nil {
+		return e
+	}
+	return os.Symlink(c.generatedLink, p)
+}
+func validateGeneratedAIConfigLink(c aiConfigChange) error {
+	if c.generatedLink == "" {
+		return nil
+	}
 	i, e := os.Stat(c.generatedLink)
 	if os.IsNotExist(e) {
 		return nil
@@ -223,11 +252,7 @@ func stageAIConfigChange(c aiConfigChange) error {
 	if !i.Mode().IsRegular() {
 		return fmt.Errorf("generated Planner launcher is not a regular file: %s", c.generatedLink)
 	}
-	p := filepath.Join(c.stagedPath, "bin", "planner")
-	if e := os.MkdirAll(filepath.Dir(p), 0755); e != nil {
-		return e
-	}
-	return os.Symlink(c.generatedLink, p)
+	return nil
 }
 func activateAIConfigChanges(cs []aiConfigChange) (bool, error) {
 	var a []activatedAIConfigChange
@@ -240,15 +265,22 @@ func activateAIConfigChanges(cs []aiConfigChange) (bool, error) {
 		any = any || had
 		if c.stagedPath != "" {
 			if e = os.MkdirAll(filepath.Dir(c.destination), 0755); e != nil {
-				re := restoreAIConfigChange(c, had)
+				re := restoreAIConfigChange(c, had, nil)
 				return any, rollbackAIConfig(a, combineAIConfigErrors(e, re))
 			}
-			if e = os.Rename(c.stagedPath, c.destination); e != nil {
-				re := restoreAIConfigChange(c, had)
+			if e = moveAIConfigEntry(c.stagedPath, c.destination); e != nil {
+				re := restoreAIConfigChange(c, had, nil)
 				return any, rollbackAIConfig(a, combineAIConfigErrors(e, re))
 			}
 		}
-		a = append(a, activatedAIConfigChange{c, had})
+		var active fs.FileInfo
+		if c.stagedPath != "" {
+			active, e = os.Lstat(c.destination)
+			if e != nil {
+				return any, rollbackAIConfig(a, e)
+			}
+		}
+		a = append(a, activatedAIConfigChange{c, had, active})
 	}
 	return any, nil
 }
@@ -260,13 +292,21 @@ func moveAIConfigBackup(c aiConfigChange) (bool, error) {
 	if e = os.MkdirAll(filepath.Dir(c.backupPath), 0755); e != nil {
 		return false, e
 	}
-	if e = os.Rename(c.destination, c.backupPath); e != nil {
+	if e = moveAIConfigEntry(c.destination, c.backupPath); e != nil {
 		return false, fmt.Errorf("back up %s: %w", c.destination, e)
 	}
 	return true, nil
 }
-func restoreAIConfigChange(c aiConfigChange, had bool) error {
-	if e := os.RemoveAll(c.destination); e != nil {
+func restoreAIConfigChange(c aiConfigChange, had bool, active fs.FileInfo) error {
+	current, e := os.Lstat(c.destination)
+	if e == nil {
+		if active == nil || !os.SameFile(active, current) {
+			return fmt.Errorf("refuse to restore %s: destination changed during transaction", c.destination)
+		}
+		if e = os.RemoveAll(c.destination); e != nil {
+			return e
+		}
+	} else if !os.IsNotExist(e) {
 		return e
 	}
 	if !had {
@@ -275,16 +315,63 @@ func restoreAIConfigChange(c aiConfigChange, had bool) error {
 	if e := os.MkdirAll(filepath.Dir(c.destination), 0755); e != nil {
 		return e
 	}
-	return os.Rename(c.backupPath, c.destination)
+	return moveAIConfigEntry(c.backupPath, c.destination)
 }
 func rollbackAIConfig(a []activatedAIConfigChange, cause error) error {
 	var re error
 	for i := len(a) - 1; i >= 0; i-- {
-		if e := restoreAIConfigChange(a[i].change, a[i].hadBackup); e != nil && re == nil {
+		if e := restoreAIConfigChange(a[i].change, a[i].hadBackup, a[i].active); e != nil && re == nil {
 			re = e
 		}
 	}
 	return combineAIConfigErrors(cause, re)
+}
+func moveAIConfigEntry(source, destination string) error {
+	if e := os.Rename(source, destination); e == nil {
+		return nil
+	} else if !errors.Is(e, syscall.EXDEV) {
+		return e
+	}
+	parent := filepath.Dir(destination)
+	stage, e := os.MkdirTemp(parent, ".pde-ai-config-")
+	if e != nil {
+		return e
+	}
+	if e = os.Remove(stage); e != nil {
+		return e
+	}
+	if e = copyAIConfigEntry(source, stage); e != nil {
+		return e
+	}
+	if e = os.Rename(stage, destination); e != nil {
+		_ = os.RemoveAll(stage)
+		return e
+	}
+	return os.RemoveAll(source)
+}
+func copyAIConfigEntry(source, destination string) error {
+	i, e := os.Lstat(source)
+	if e != nil {
+		return e
+	}
+	if i.IsDir() {
+		return copyTreeInto(source, destination)
+	}
+	if i.Mode()&os.ModeSymlink != 0 {
+		target, e := os.Readlink(source)
+		if e != nil {
+			return e
+		}
+		return os.Symlink(target, destination)
+	}
+	if !i.Mode().IsRegular() {
+		return fmt.Errorf("unsupported AI config entry: %s", source)
+	}
+	b, e := os.ReadFile(source)
+	if e != nil {
+		return e
+	}
+	return os.WriteFile(destination, b, i.Mode().Perm())
 }
 func combineAIConfigErrors(a, b error) error {
 	if b == nil {
