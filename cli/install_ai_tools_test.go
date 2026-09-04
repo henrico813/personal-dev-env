@@ -173,15 +173,15 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):        "opencode create-plan\n",
-		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):     "opencode implement-plan\n",
-		filepath.Join(cfg.OpenCodeConfigDir, "commands", "cleanup_plan.md"):       "opencode cleanup-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):     "---\nname: create-plan\ndescription: fixture\n---\ncodex create-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"):  "---\nname: implement-plan\ndescription: fixture\n---\ncodex implement-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "cleanup-plan", "SKILL.md"):    "---\nname: cleanup-plan\ndescription: fixture\n---\ncodex cleanup-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):    "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):          "opencode create-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):       "opencode implement-plan\n",
+		filepath.Join(cfg.OpenCodeConfigDir, "commands", "cleanup_plan.md"):         "opencode cleanup-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):      "---\nname: create-plan\ndescription: fixture\n---\ncodex create-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"):   "---\nname: implement-plan\ndescription: fixture\n---\ncodex implement-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "cleanup-plan", "SKILL.md"):     "---\nname: cleanup-plan\ndescription: fixture\n---\ncodex cleanup-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):     "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n",
 		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages", "SKILL.md"): "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n",
-		filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"):       "other skill\n",
+		filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"):        "other skill\n",
 	}
 
 	for path, want := range cases {
