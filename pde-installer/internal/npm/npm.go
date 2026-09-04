@@ -213,7 +213,15 @@ func (m Manager) ValidateLock() error {
 func (m Manager) Version(name string) (string, error) { return packageVersion(m.Root(), name) }
 
 func (m Manager) current(root string) bool {
-	return m.verify(root) == nil && m.verifyLaunchers() == nil
+	if m.verify(root) != nil || m.verifyLaunchers() != nil {
+		return false
+	}
+	wanted, err := fsutil.FileSHA256(filepath.Join(m.RepoRoot, "pde-installer", "package-lock.json"))
+	if err != nil {
+		return false
+	}
+	installed, err := fsutil.FileSHA256(filepath.Join(root, "package-lock.json"))
+	return err == nil && installed == wanted
 }
 
 func (m Manager) verify(root string) error {
