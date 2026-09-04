@@ -1,2 +1,2 @@
-// Package tmux builds and activates the pinned tmux release below HOME.
+// Package tmux installs a verified tmux binary below HOME.
 package tmux
