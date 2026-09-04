@@ -81,8 +81,7 @@ func installAITools(cfg *Config, runner Runner) error {
 	return verifyPiLauncher(cfg, runner)
 }
 
-// Legacy helpers are retained for callers that still use them directly; the
-// installer itself activates configuration through installAIConfig.
+// These helpers remain until the transaction tests replace their direct callers.
 func installOpenCodeConfig(cfg *Config, runner Runner) error {
 	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), filepath.Join(cfg.OpenCodeConfigDir, "agents"), runner); err != nil {
 		return err
@@ -107,4 +106,3 @@ func installGitMessagesSkill(cfg *Config, runner Runner) error {
 	}
 	return syncTree(source, filepath.Join(cfg.CodexConfigDir, "skills", "git-messages"), runner)
 }
-
