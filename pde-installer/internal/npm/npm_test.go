@@ -91,6 +91,17 @@ func TestReconcileActivatesAndRollsBack(t *testing.T) {
 	if !bytes.Equal(after, before) {
 		t.Fatalf("unchanged Reconcile() reran npm: before %q, after %q", before, after)
 	}
+	writeNPMFile(t, filepath.Join(root, "package-lock.json"), "changed\n", 0o644)
+	journal, err = manager.Reconcile()
+	if err != nil {
+		t.Fatalf("changed lock Reconcile() error = %v", err)
+	}
+	if len(journal.Changes) == 0 {
+		t.Fatal("changed lock did not rerun npm")
+	}
+	if err := journal.Rollback(); err != nil {
+		t.Fatalf("changed lock Rollback() error = %v", err)
+	}
 }
 
 func writeNPMFixture(t *testing.T, path, logPath string) {

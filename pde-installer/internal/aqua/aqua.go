@@ -254,7 +254,12 @@ func (m Manager) ToolStatus(name, version string) (string, string) {
 
 // ToolProbe reports a tool version without hiding probe errors.
 func (m Manager) ToolProbe(name, version string) (string, string, error) {
-	binaryNames := map[string]string{"ripgrep": "rg", "bottom": "btm"}
+	binaryNames := map[string]string{
+		"ripgrep": "rg",
+		"bottom":  "btm",
+		"jq":      "jq-linux-" + runtime.GOARCH,
+		"yq":      "yq_linux_" + runtime.GOARCH,
+	}
 	binary := name
 	if mapped := binaryNames[name]; mapped != "" {
 		binary = mapped
@@ -266,7 +271,11 @@ func (m Manager) ToolProbe(name, version string) (string, string, error) {
 	if path == "" {
 		return "", "missing", nil
 	}
-	output, err := m.runner.Query("read "+name+" version", run.Command{Name: path, Args: []string{"--version"}})
+	args := []string{"--version"}
+	if name == "gopls" {
+		args = []string{"version"}
+	}
+	output, err := m.runner.Query("read "+name+" version", run.Command{Name: path, Args: args})
 	if err != nil {
 		return "", "", err
 	}
