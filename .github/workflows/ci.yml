@@ -54,6 +54,7 @@ jobs:
           go test -race ./...
           go vet ./...
           bash -n test/*.sh
+          bash -n ../.github/scripts/build-static-tmux.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest
