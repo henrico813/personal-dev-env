@@ -1,0 +1,392 @@
+[".local/share/antidote"]
+type = "archive"
+url = "https://github.com/mattmc3/antidote/archive/db19ea3aa9ad83dbe6ac465ecce0a0afc5a752a5.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "ccfdaf7be0690816ac3f91e2bcc339694845f6213fd24d0d482ce909ca6e1d63"
+
+[".tmux/plugins/tpm"]
+type = "archive"
+url = "https://github.com/tmux-plugins/tpm/archive/e261deb1b47614eed3400089ce7197dc68acc4eb.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "72d92c512270d4857e27519ac97b92a52cf149afe4d92f26860c710f60bbbe37"
+
+[".local/share/zsh/plugins/ohmyzsh"]
+type = "archive"
+url = "https://github.com/ohmyzsh/ohmyzsh/archive/9112b53fa8b5ab556c7c893aa8be8a247ac512a0.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "b8c77c58f1cbd065738bbffb613095805cbf732dd2b5d48edb0beefe319c3cfe"
+
+[".local/share/zsh/plugins/powerlevel10k"]
+type = "archive"
+url = "https://github.com/romkatv/powerlevel10k/archive/3308262dfbd743b6e1d3956a2b5572f7a049d692.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "0a6cec61e16328b6e8c974dcfa83d0db2b3745e4e269051e938f028c44b75888"
+
+[".local/share/zsh/plugins/zsh-z"]
+type = "archive"
+url = "https://github.com/agkozak/zsh-z/archive/102fb78036ed76feedf623907483691777a1d510.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "90edc058f50447d27915accd18e022b4059fbaf1d1b34408034fb8f14eba5b9b"
+
+[".local/share/zsh/plugins/zsh-autosuggestions"]
+type = "archive"
+url = "https://github.com/zsh-users/zsh-autosuggestions/archive/85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "20665e469e720e674964a66854d5534b9af78cdfd438512746ecd1ade8e819ce"
+
+[".local/share/zsh/plugins/zsh-completions"]
+type = "archive"
+url = "https://github.com/zsh-users/zsh-completions/archive/8cd3bd78e8b1f17271cfdd8269074e5557d8d7b8.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "2500c7a3a36d2a2eeea7265e3cb323bf59f434d84134f8a4f05bc5acf525e05f"
+
+[".local/share/zsh/plugins/zsh-syntax-highlighting"]
+type = "archive"
+url = "https://github.com/zsh-users/zsh-syntax-highlighting/archive/2fc57d63067c18b1100ecdbf684fa5baf49459d1.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "ae951d550009375138c7a029f908a7cb255861ed16701a2c6ea62f17e7e7df69"
+
+[".local/share/zsh/plugins/zsh-history-substring-search"]
+type = "archive"
+url = "https://github.com/zsh-users/zsh-history-substring-search/archive/14c8d2e0ffaee98f2df9850b19944f32546fdea5.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "823ea186446669fb024b839b117122d03ee0b3b20e199c95e09e85695bd30b0f"
+
+[".tmux/plugins/tmux-sensible"]
+type = "archive"
+url = "https://github.com/tmux-plugins/tmux-sensible/archive/25cb91f42d020f675bb0a2ce3fbd3a5d96119efa.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "0af1e1eb7139ded74fe03c1ebba7fb4533f5c7d345e42b73f718a9d822d88903"
+
+[".tmux/plugins/tmux-resurrect"]
+type = "archive"
+url = "https://github.com/tmux-plugins/tmux-resurrect/archive/cff343cf9e81983d3da0c8562b01616f12e8d548.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "9f1dda18554291ee7f8a0f499e2af90bbadc2ebceb7a995bb13b76529fe0c5c9"
+
+[".config/nvim/pack/plugins/start/obsidian.nvim"]
+type = "archive"
+url = "https://github.com/obsidian-nvim/obsidian.nvim/archive/50be6d70988af31b71cd4d8675ca928e6194c4fb.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "7186179e7ae1d2d1c3559773bc3b6c49e46179a467f1bbcb14142a60c424e3ea"
+
+[".config/nvim/pack/plugins/start/tokyonight.nvim"]
+type = "archive"
+url = "https://github.com/folke/tokyonight.nvim/archive/cdc07ac78467a233fd62c493de29a17e0cf2b2b6.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "8b35026b9eda8d9e2f15e3282f91aa92e8a012932ed96c8c95168399d06ce2a8"
+
+[".config/nvim/pack/plugins/start/lualine.nvim"]
+type = "archive"
+url = "https://github.com/nvim-lualine/lualine.nvim/archive/221ce6b2d999187044529f49da6554a92f740a96.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "0bb7ae9af7c16ce56292f0fb38f57dfbdd48a071a5f08e0bff8bed6b9b02006b"
+
+[".config/nvim/pack/plugins/start/bufferline.nvim"]
+type = "archive"
+url = "https://github.com/akinsho/bufferline.nvim/archive/655133c3b4c3e5e05ec549b9f8cc2894ac6f51b3.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "54cbd0337c20c736e6b88c3fd5d288257f93304180e668f1b40016bbea9d23c4"
+
+[".config/nvim/pack/plugins/start/fzf-lua"]
+type = "archive"
+url = "https://github.com/ibhagwan/fzf-lua/archive/05e44d38de0a79c11fba5f7bf8138791b1dbdd1e.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "d188d885b78a9055b5885ddc3497f927812540f01d98c23d0d1f3f505230bdae"
+
+[".config/nvim/pack/plugins/start/plenary.nvim"]
+type = "archive"
+url = "https://github.com/nvim-lua/plenary.nvim/archive/74b06c6c75e4eeb3108ec01852001636d85a932b.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "d9e7562417b49f4c9c0bf6f7edeb1d798665d967dbfaad428b893c28f36478ba"
+
+[".config/nvim/pack/plugins/start/blink.lib"]
+type = "archive"
+url = "https://github.com/Saghen/blink.lib/archive/c8fdc12c8a2fab6cf786dd7141a283f8079f902b.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "d37b203d9687dbdfd078ffe6ca8f5201e831f63301fe2d0af1de85703ef69522"
+
+[".config/nvim/pack/plugins/start/which-key.nvim"]
+type = "archive"
+url = "https://github.com/folke/which-key.nvim/archive/3aab2147e74890957785941f0c1ad87d0a44c15a.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "d4d6d65ecf699b57d8f08519563c3ac09a34e525e55956d9eb5902327b3f6a07"
+
+[".config/nvim/pack/plugins/start/gitsigns.nvim"]
+type = "archive"
+url = "https://github.com/lewis6991/gitsigns.nvim/archive/5be654f2232c10ddcad19c1607a67b6b4b78fc29.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "66735aaa27fc52bcafc107341b90a117c2099d9cc3920abe2180263cf42efb14"
+
+[".config/nvim/pack/plugins/start/trouble.nvim"]
+type = "archive"
+url = "https://github.com/folke/trouble.nvim/archive/bd67efe408d4816e25e8491cc5ad4088e708a69a.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "bb9fdaedd978f0f79ade6fa1a4d7eef3e809cfbd9765ea0eb0d8d869c0956cb5"
+
+[".config/nvim/pack/plugins/start/grug-far.nvim"]
+type = "archive"
+url = "https://github.com/MagicDuck/grug-far.nvim/archive/11595bf747edc270bce2069d1020502ad4ae56cf.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "edd7ecfdbcb25693db702f8eb7f645a0b96703905d045f5aeae58ac7ce9ec775"
+
+[".config/nvim/pack/plugins/start/gitlinker.nvim"]
+type = "archive"
+url = "https://github.com/linrongbin16/gitlinker.nvim/archive/a1b74070bbd5e50128190c85b09f1431ea5fbd83.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "590ea6a15dc53a04683c83e229d5f31baf21700db171698d658653ef2ad44579"
+
+[".config/nvim/pack/plugins/start/persistence.nvim"]
+type = "archive"
+url = "https://github.com/folke/persistence.nvim/archive/b20b2a7887bd39c1a356980b45e03250f3dce49c.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "82ff2cfcda8001099372bbbb1d32f66cc3ed538d84f9a8278d305e0e1a6b5538"
+
+[".config/nvim/pack/plugins/start/alpha-nvim"]
+type = "archive"
+url = "https://github.com/goolord/alpha-nvim/archive/4ba26e41990c11620c96c0e1cff20eab65efde4a.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "76fdcb84cee506a8b79a8f1d73d5b1c60a676ce889fccb01bdee36322b6c2fa0"
+
+[".config/nvim/pack/plugins/start/diffview.nvim"]
+type = "archive"
+url = "https://github.com/sindrets/diffview.nvim/archive/4516612fe98ff56ae0415a259ff6361a89419b0a.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "b8270b24ac931a582105ad15d0f0151d27f235896ad18b9e9a7ec165d4ba0a12"
+
+[".config/nvim/pack/plugins/start/mason.nvim"]
+type = "archive"
+url = "https://github.com/mason-org/mason.nvim/archive/2a6940af80375532e5e9e7c1f2fc6319a1b7a69d.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "f903a4c9b77baec85ed007f4c9a31d84bd09709ba90b9911013f678b3589d764"
+
+[".config/nvim/pack/plugins/start/mason-lspconfig.nvim"]
+type = "archive"
+url = "https://github.com/mason-org/mason-lspconfig.nvim/archive/40276c4df7e6bdce6801d6c035c6227f9115a855.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "9d9162407cd820adaf1695a2aa54b1fd3e61e6a806e8496b4c3ca95ac8d20d2d"
+
+[".config/nvim/pack/plugins/start/nvim-lspconfig"]
+type = "archive"
+url = "https://github.com/neovim/nvim-lspconfig/archive/85e732c62ac59ab7c12df71ddd020baa87948390.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "caf2fdada206cc771a68677b0bdaa88c7ff973c8e7e8d7a36b1310c3310c22ba"
+
+[".config/nvim/pack/plugins/start/render-markdown.nvim"]
+type = "archive"
+url = "https://github.com/MeanderingProgrammer/render-markdown.nvim/archive/4663eb3ecd538bd5062628fb6d95bbe6bdca78f6.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "24c0938e9528d2128f877dcff046ffcd2b890076df4463908b7be51407fc2cb3"
+
+[".config/nvim/pack/plugins/start/nvim-lint"]
+type = "archive"
+url = "https://github.com/mfussenegger/nvim-lint/archive/3d55c8f67c6ae5c15e1042571e107c7a3d5c5f4e.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "ff32bb4132eb9c5ccca010c10b92bcc24a6d832b065e3db176f30bd29f308a76"
+
+# This maintained fork requires main because it has no compatible release.
+# Freeze the resolved main commit instead of following the branch.
+[".config/nvim/pack/plugins/start/codecompanion.nvim"]
+type = "archive"
+url = "https://github.com/henrico813/codecompanion.nvim/archive/2c134a3abf2f08db06e22ecfdc71960d7a19cfd0.tar.gz"
+exact = true
+stripComponents = 1
+checksum.sha256 = "894eec70433cdaf68d3f1a8f81fc87fcc3ffaa96cdf3e7201c0590a4e981291d"
+
+# Repository AI sources remain authoritative; checksummed file externals make
+# their user destinations part of the chezmoi state.
+[".config/opencode/AGENTS.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
+checksum.sha256 = "c80ebea2d07dc2136e7cb0e057006ac6230c3a268d22b533f15e8dfc0c2ba212"
+
+[".config/opencode/agents/codebase-analyzer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/codebase-analyzer.md'
+checksum.sha256 = "c44f3b5ba4bfd77515a4a0a66de473565667e5b8f8ae339bd2f53bf252f57018"
+
+[".config/opencode/agents/codebase-locator.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/codebase-locator.md'
+checksum.sha256 = "88bdba468fdebf6966351a3f86fd1902059068bbfe27ee50e7a4a122511f7789"
+
+[".config/opencode/agents/codebase-pattern-finder.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/codebase-pattern-finder.md'
+checksum.sha256 = "13ed7807b2de73818629e8989d55e3b178caf86e2e4ef5d15b9ab34fcee666b4"
+
+[".config/opencode/agents/docs-analyzer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-analyzer.md'
+checksum.sha256 = "5761cb1a7e9e32c198f05d822c953f1ed8b59e1135cfdd110209c13777a9e6b0"
+
+[".config/opencode/agents/docs-locator.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-locator.md'
+checksum.sha256 = "5b6db7631b1e21a472eca5f9fcf45872fe12d1bca82429b3ac09e3b83103937c"
+
+[".config/opencode/agents/docs-reviewer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-reviewer.md'
+checksum.sha256 = "9a55c15236d266da15ce365e7a40353b46b3ad0b614954ba79493c58c1cca87f"
+
+[".config/opencode/agents/docs-writer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-writer.md'
+checksum.sha256 = "0600d0974667bfae466d4cc6c9fc14f8b9e70b193633525de3e3cf607a2a3e12"
+
+[".config/opencode/agents/inline.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/inline.md'
+checksum.sha256 = "f0b518ffe6f6889a51d57b9eb7c4a27e6527219f242a543b4961a427ed9de65d"
+
+[".config/opencode/agents/plan-architecture-reviewer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/plan-architecture-reviewer.md'
+checksum.sha256 = "e437a86154c07d9aed7aec5dc86270c69aa293311c9d745a7c370b7519efb83e"
+
+[".config/opencode/agents/plan-bug-reviewer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/plan-bug-reviewer.md'
+checksum.sha256 = "96a693cf6b8220a006965979356dd406d6cdec1045f621fb1ef06924f83386a7"
+
+[".config/opencode/agents/plan-completeness-reviewer.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/plan-completeness-reviewer.md'
+checksum.sha256 = "b52190bb4e4e4fbdf5a42207f58fd1ea26cba6acfaf45ae2eb7857e51baf40ed"
+
+[".config/opencode/agents/README.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/README.md'
+checksum.sha256 = "8b14f50f3427d41e24ec8b595e8eeb97cec4f96ee44f9beccdc502680e99331c"
+
+[".config/opencode/agents/web-search-researcher.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/web-search-researcher.md'
+checksum.sha256 = "63afb84a1c17d9341fed4941dfa1b535fdc38c90b6bf293b2019c08e2da127c8"
+
+[".config/opencode/commands/cleanup_plan.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/cleanup_plan.md'
+checksum.sha256 = "fdc2e778aaddfffce64108f0d460aa536b0cdeabd3227ee19d69675ff6c9f006"
+
+[".config/opencode/commands/create_plan.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/create_plan.md'
+checksum.sha256 = "a6b186563af53af843a22c972247656cc740128f6e939ecbb4e60e4efba35710"
+
+[".config/opencode/commands/design_doc.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/design_doc.md'
+checksum.sha256 = "c2aea50ca13e8e0c52ba4396cdec7b2a84bdfe14d111f508f2400011e2acd130"
+
+[".config/opencode/commands/document_codebase.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/document_codebase.md'
+checksum.sha256 = "e1f3d28b133c733a25130d42f1db3a44481ded0f0cc343ec790644a891b07724"
+
+[".config/opencode/commands/implement_plan.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/implement_plan.md'
+checksum.sha256 = "b6743b997d85e56dd1f2d94b5762b1ce7a5f1b3a9b49cd71d0b37f46649c9823"
+
+[".config/opencode/commands/research_codebase.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/research_codebase.md'
+checksum.sha256 = "1330b1a0e1bcdc8e659aee1124b1762a58966571c8c4c2554c8c4071c5fe47d4"
+
+[".config/opencode/commands/review_plan.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/review_plan.md'
+checksum.sha256 = "7e7e9a64b90ccbbce08ea3bc67e76bdf1442912f47db09d257a7910e44aab78b"
+
+[".codex/AGENTS.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
+checksum.sha256 = "c80ebea2d07dc2136e7cb0e057006ac6230c3a268d22b533f15e8dfc0c2ba212"
+
+[".codex/skills/cleanup-plan/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/cleanup-plan/SKILL.md'
+checksum.sha256 = "d8177f3cf22d1c8f2464af9e70e374e36f570c8f4ea2ec5843456329196b1a3a"
+
+[".codex/skills/create-plan/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/create-plan/SKILL.md'
+checksum.sha256 = "75aad36a21e23f705074ff1a6f86dbdebd203d5acee4283d3fdf68d6cdea1f4e"
+
+[".codex/skills/design-doc/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/design-doc/SKILL.md'
+checksum.sha256 = "12b9555cc0853ab1081040d5370fbb97775080ff0346157da7dd11f914bd9ad9"
+
+[".codex/skills/document-codebase/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/document-codebase/SKILL.md'
+checksum.sha256 = "0a591383a9d5d0c9afe3fa6261d5c64dc38455701ed254fff90194f6ce438f7f"
+
+[".codex/skills/implement-plan/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/implement-plan/SKILL.md'
+checksum.sha256 = "543bff30b2f06437a8ce8a408b20bb0de9d2529e882bd04af01e60772d98a4d4"
+
+[".codex/skills/research-codebase/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/research-codebase/SKILL.md'
+checksum.sha256 = "060a6af8f645579627f9c1769a496a988df45927757426941733a509a895dc9f"
+
+[".codex/skills/review-plan/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/review-plan/SKILL.md'
+checksum.sha256 = "c6d5f704c8ca344dfa6e0efaf0c59c1e430d01e334e7ddfc30bad58d90cd461c"
+
+[".agents/skills/git-messages/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
+checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
+
+[".codex/skills/git-messages/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
+checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
+
+[".pi/agent/AGENTS.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
+checksum.sha256 = "c80ebea2d07dc2136e7cb0e057006ac6230c3a268d22b533f15e8dfc0c2ba212"
+
+[".pi/agent/settings.json"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/pi/agent/settings.json'
+checksum.sha256 = "5594fcc9d647b6445446f6b4b27bb4e1efff47a26b2a07ab41773bb06e000aa6"
