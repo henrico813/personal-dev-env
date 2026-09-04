@@ -62,7 +62,19 @@ func TestDryRunSkipsExecution(t *testing.T) {
 func writeCommand(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "command")
-	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(contents); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return path
