@@ -1,75 +1,24 @@
 # PDE
 
-PDE is the shell-based installer and config set that lives under `pde/` inside this repository.
+`pde` stores and resolves vault paths. It does not install the development
+environment. See [`pde-installer`](../pde-installer/README.md) for installation.
 
-## Quick Start
-
-Run from the repo root:
-
-```bash
-./pde/pde minimal
-./pde/pde full
-```
-
-Bootstrap directly onto a Linux machine:
+## Build
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pde/bootstrap.sh | bash -s -- minimal
+go build -C cli -o ~/.local/bin/pde .
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## Profiles
-
-- `minimal`: shell, tmux, Rust tooling, Neovim, and shared config files.
-- `full`: everything in `minimal`, plus fonts and GUI-oriented extras.
-
-## Optional Targets
-
-Some setups belong beside the base profiles, not inside them.
-
-The Go CLI also exposes `pde install minimal`, which reuses the legacy shell/tools/editor base and then applies the Go-managed `config`, `obsidian`, and `ai-tools` layers.
-
-`config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and writes `~/.config/pde/config.json`. The Go CLI owns PDE config contents; the legacy shell installer no longer does.
-
-The `obsidian`, `vault`, and `ai-tools` commands are available through the Go CLI after `minimal` provides the PDE Neovim config:
+## Vaults
 
 ```bash
-cd cli && go build -o ~/.local/bin/pde .
-pde install minimal
-pde install config
-pde install obsidian
-pde install ai-tools
+pde vault main set ~/Documents/main-vault
+pde vault work set ~/Documents/work-vault
+pde vault default set main
+pde vault path default
+pde vault locate README
 ```
 
-`obsidian` still depends on `minimal` because it uses the PDE Neovim config.
-
-`ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `surveil` and `vibe` install through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
-
-`vault` owns PDE vault setup and lookup through `~/.config/pde/config.json` only. `default_vault` must be configured explicitly; there is no fallback to another vault when it is unset. This is a breaking cutover for older shell-based setups, so existing `paths.env` state must be reconfigured manually. Prefer `pde vault --help` for the exact command surface instead of duplicating CLI usage details here.
-
-`~/.config/pde/config.json` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, `PDE_WORK_VAULT`, and `PDE_DEFAULT_VAULT`. Neovim reads that JSON directly; shell startup no longer exports PDE config. `<leader>pm` and `<leader>pM` intentionally share CodeCompanion's selector over OpenCode ACP models: chat applies to the active chat session, while inline stores a separate session override that flows through `opencode-inline-shim`. When there is no inline session override and no `OPENCODE_INLINE_MODEL`, the shim lets OpenCode choose its current default model. For the default loopback setup, `opencode-inline-shim` starts `opencode serve` on demand. Thinking-suffixed inline selections are accepted for compatibility with the shared selector, but the shim currently strips the suffix and sends only the base backend model until explicit OpenCode HTTP thinking support is verified. After changing any of those config values, restart `opencode-inline-shim` so the shim picks up the new environment.
-
-## Repository Layout
-
-- `pde/pde`: profile entrypoint.
-- `pde/lib/`: installer modules split by concern.
-- `pde/config/home/`: shared config files mirrored below `$HOME`.
-- `pde/config/full-home/`: full-profile-only config files mirrored below `$HOME`.
-- `pde/config/nvim/`: tracked Neovim config and plugin pack.
-- `pde/test/`: Docker-based installer tests and verification scripts.
-
-## What It Installs
-
-- Shell: `zsh`, antidote, powerlevel10k, tmux.
-- Tools: Aqua-managed pinned releases for `fd`, `ripgrep`, `fzf`, `bat`, `jq`, `eza`, `zoxide`, `yazi`, `yq`, and `btm`; `htop`, `unzip`, `keychain`, and `xclip` via apt.
-- Editor: Neovim with the tracked PDE nvim config and plugins.
-- Full profile extras: fonts, Alacritty config, and WezTerm config.
-
-## Testing
-
-From `pde/`:
-
-```bash
-./test/run-tests.sh minimal
-./test/run-tests.sh full
-./test/run-tests.sh idempotent
-```
+Run `pde vault --help` for all commands. State is stored in
+`~/.config/pde/config.json`.
