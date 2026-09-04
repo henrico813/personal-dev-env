@@ -6,6 +6,7 @@ Shell, editor, and AI tooling configuration. Two independent entry points:
 - **`pde install minimal`** -- Run the legacy minimal base, then apply the Go-managed config, Obsidian, and AI layers.
 - **`pde install config`** -- Migrate the shared config set with no sudo; it does not install runtimes, plugins, or profile extras.
 - **`pde install ai-tools`** -- Install AI tool configuration and binaries.
+- **`pde install ai-config`** -- Refresh managed AI configuration without rebuilding runtimes.
 
 ## PDE Quick Start
 
@@ -22,6 +23,7 @@ pde install minimal
 pde install config
 pde vault --help
 pde install obsidian
+pde install ai-config
 ```
 
 `pde install config` now writes `~/.config/pde/config.json`. The `pde vault` CLI is self-documenting and owns vault setup plus lookup from there. This cutover does not migrate `paths.env`; existing setups must be reconfigured manually.
@@ -33,6 +35,7 @@ See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
 pde install ai-tools
+pde install ai-config
 ```
 
 Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe binaries plus repo-managed AI config.
@@ -53,7 +56,7 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 |------|--------------|----------------|-----------------|
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
-| Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
+| Shared skills | `ai/skills/*/` | `~/.agents/skills/`, `~/.codex/skills/` | Portable behavior, style, and workflow guidance |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
@@ -92,7 +95,16 @@ Codex skills are prompt-triggered, not slash commands. Use them by asking natura
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde install ai-tools works" |
 | `review-plan` | Review a plan for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
-Skills are installed to `~/.codex/skills/`, and the installer copies the shared `AGENTS.md` into `~/.codex/` so the workflow defaults stay aligned with the rest of the tree.
+Skills are installed by package to `~/.codex/skills/`, and the installer copies
+the shared `AGENTS.md` into `~/.codex/` so workflow defaults stay aligned.
+PDE records owned package names under `~/.local/share/pde/ai/`, preserves
+unrelated packages, stores recovery copies outside discovery roots, and rejects
+same-name user packages whose content differs from repository source.
+
+Shared skills under `ai/skills/` are discovered automatically. Add, edit, or
+remove a package in the personal-dev-env checkout, review the diff, then run
+`pde install ai-config --repo-root <checkout>`. The `self-improvement` skill
+guides this flow without adding a dedicated command.
 
 ## Requirements
 

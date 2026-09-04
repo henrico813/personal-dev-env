@@ -30,19 +30,27 @@ The Go CLI also exposes `pde install minimal`, which reuses the legacy shell/too
 
 `config` is a standalone, no-sudo shared-config migration helper. It links the managed PDE shell files into the home directory and writes `~/.config/pde/config.json`. The Go CLI owns PDE config contents; the legacy shell installer no longer does.
 
-The `obsidian`, `vault`, and `ai-tools` commands are available through the Go CLI after `minimal` provides the PDE Neovim config:
+The `obsidian`, `vault`, `ai-config`, and `ai-tools` commands are available through the Go CLI after `minimal` provides the PDE Neovim config:
 
 ```bash
 cd cli && go build -o ~/.local/bin/pde .
 pde install minimal
 pde install config
 pde install obsidian
+pde install ai-config
 pde install ai-tools
 ```
 
 `obsidian` still depends on `minimal` because it uses the PDE Neovim config.
 
 `ai-tools` installs planner, `codex`, `opencode`, `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then copies the neutral `ai/` config tree into the user’s managed config paths. `surveil` and `vibe` install through Cargo, so `cargo` must already be available, and `vibe run` requires Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
+
+`ai-config` runs only the AI configuration transaction. It validates and stages
+OpenCode, Codex, Pi, shared instructions, and skill packages without rebuilding
+runtimes. Skill ownership is tracked by package, unrelated user packages are
+preserved, and recovery backups stay under the PDE runtime instead of harness
+skill roots. Self-improvement remains a prompt-triggered skill, not a separate
+CLI command.
 
 `vault` owns PDE vault setup and lookup through `~/.config/pde/config.json` only. `default_vault` must be configured explicitly; there is no fallback to another vault when it is unset. This is a breaking cutover for older shell-based setups, so existing `paths.env` state must be reconfigured manually. Prefer `pde vault --help` for the exact command surface instead of duplicating CLI usage details here.
 
