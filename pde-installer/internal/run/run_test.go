@@ -61,9 +61,15 @@ func TestDryRunSkipsExecution(t *testing.T) {
 
 func writeCommand(t *testing.T, contents string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "command")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	directory := t.TempDir()
+	file, err := os.CreateTemp(directory, ".command-")
 	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := file.Name()
+	defer func() { _ = os.Remove(temporary) }()
+	if err := file.Chmod(0o755); err != nil {
+		_ = file.Close()
 		t.Fatal(err)
 	}
 	if _, err := file.WriteString(contents); err != nil {
@@ -75,6 +81,10 @@ func writeCommand(t *testing.T, contents string) string {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "command")
+	if err := os.Rename(temporary, path); err != nil {
 		t.Fatal(err)
 	}
 	return path
