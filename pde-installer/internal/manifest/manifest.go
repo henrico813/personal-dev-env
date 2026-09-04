@@ -8,7 +8,6 @@ type Backend string
 // Supported ownership backends.
 const (
 	Ubuntu  Backend = "ubuntu"
-	Source  Backend = "source"
 	Aqua    Backend = "aqua"
 	NPM     Backend = "npm"
 	Local   Backend = "local"
@@ -49,7 +48,7 @@ func Items() []Item {
 		{Name: "zsh", Owner: Ubuntu}, {Name: "git", Owner: Ubuntu},
 		{Name: "xclip", Owner: Ubuntu}, {Name: "unzip", Owner: Ubuntu},
 		{Name: "fontconfig", Owner: Ubuntu},
-		{Name: "tmux", Version: "3.7b", Owner: Source},
+		{Name: "tmux", Version: "3.7b", Owner: Direct},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua},
 		{Name: "fd", Version: "v8.3.1", Owner: Aqua}, {Name: "fzf", Version: "0.36.0", Owner: Aqua},
 		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua}, {Name: "bat", Version: "v0.19.0", Owner: Aqua},
@@ -91,7 +90,7 @@ func Validate() error {
 			return fmt.Errorf("%s has owners %s and %s", item.Name, previous, item.Owner)
 		}
 		seen[item.Name] = item.Owner
-		if (item.Owner == NPM || item.Owner == Aqua || item.Owner == Direct || item.Owner == Source) && item.Version == "" {
+		if (item.Owner == NPM || item.Owner == Aqua || item.Owner == Direct) && item.Version == "" {
 			return fmt.Errorf("%s is not pinned", item.Name)
 		}
 	}
