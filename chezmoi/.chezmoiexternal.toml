@@ -22,7 +22,7 @@ checksum.sha256 = "b8c77c58f1cbd065738bbffb613095805cbf732dd2b5d48edb0beefe319c3
 [".local/share/zsh/plugins/powerlevel10k"]
 type = "archive"
 url = "https://github.com/romkatv/powerlevel10k/archive/3308262dfbd743b6e1d3956a2b5572f7a049d692.tar.gz"
-exact = true
+exact = false
 stripComponents = 1
 checksum.sha256 = "0a6cec61e16328b6e8c974dcfa83d0db2b3745e4e269051e938f028c44b75888"
 

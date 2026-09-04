@@ -13,9 +13,9 @@ import (
 
 func packages() []string {
 	return []string{
-		"bison", "build-essential", "bzip2", "ca-certificates", "curl", "file",
-		"fontconfig", "gawk", "git", "gzip", "libevent-dev", "libncurses-dev",
-		"make", "patch", "pkg-config", "python3", "tar", "unzip", "xclip",
+		"build-essential", "bzip2", "ca-certificates", "curl", "file",
+		"fontconfig", "gawk", "git", "gzip", "make", "patch", "python3",
+		"tar", "unzip", "xclip",
 		"xz-utils", "zsh",
 	}
 }

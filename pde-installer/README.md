@@ -6,7 +6,7 @@
 ## Requirements
 
 - Ubuntu 22.04 or newer
-- Linux on amd64 or arm64
+- Linux on amd64
 - An unprivileged user with `sudo` access for `apt-get`
 - Go 1.21 or newer to build the installer
 
