@@ -1,0 +1,155 @@
+# Disable terminal flow control to enable Ctrl-S for forward history search
+stty -ixon
+
+# SSH agent via keychain (lazy key loading)
+if command -v keychain &>/dev/null; then
+    eval "$(keychain --eval --agents ssh --quiet)"
+fi
+
+# Plugins are checksummed chezmoi externals and load only from local paths.
+PDE_ZSH_PLUGINS=${ZDOTDIR:-$HOME}/.local/share/zsh/plugins
+for plugin in colored-man-pages command-not-found git git-extras node; do
+    source "$PDE_ZSH_PLUGINS/ohmyzsh/plugins/$plugin/$plugin.plugin.zsh"
+done
+fpath=("$PDE_ZSH_PLUGINS/zsh-completions/src" $fpath)
+autoload -Uz compinit && compinit
+source "$PDE_ZSH_PLUGINS/powerlevel10k/powerlevel10k.zsh-theme"
+source "$PDE_ZSH_PLUGINS/zsh-z/zsh-z.plugin.zsh"
+source "$PDE_ZSH_PLUGINS/zsh-autosuggestions/zsh-autosuggestions.zsh"
+source "$PDE_ZSH_PLUGINS/zsh-history-substring-search/zsh-history-substring-search.zsh"
+source "$PDE_ZSH_PLUGINS/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+
+# Fix Ctrl-R and Ctrl-S for history search (must be after plugins load)
+bindkey '^R' history-incremental-search-backward
+bindkey '^S' history-incremental-search-forward
+
+# List out all globally installed npm packages
+alias list-npm-globals='npm list -g --depth=0'
+# use neovim instead of vim
+alias vim='nvim'
+# checkout branch using fzf
+alias gcob='git branch | fzf | xargs git checkout'
+# open vim config from anywhere
+alias vimrc='vim ${HOME}/.config/nvim/init.lua'
+# cat -> bat
+alias cat='bat'
+# colored ls output
+alias ls='eza -al'
+
+# DIRCOLORS (MacOS)
+export CLICOLOR=1
+
+# FZF
+export FZF_DEFAULT_COMMAND="rg --files --hidden --glob '!.git'"
+export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1"
+
+# PATH
+export PATH="$HOME/.local/bin:$PATH"
+export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
+export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
+export PATH="$AQUA_ROOT_DIR/bin:$PATH"
+
+export BAT_THEME="gruvbox-dark"
+
+# EDITOR
+export EDITOR=$(which nvim)
+
+# LITELLM
+# export LITELLM_MASTER_KEY=<your-litellm-master-key>
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# Increase the limit of commands held in the history and enable realtime sharing between
+# multiple zsh sessions.
+HISTFILE=~/.zsh_history
+HISTSIZE=1000000
+SAVEHIST=1000000
+
+# History options
+setopt SHARE_HISTORY          # Share history between sessions
+setopt HIST_VERIFY            # Show command before executing from history expansion
+setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
+setopt APPEND_HISTORY         # Append to history file rather than overwriting
+setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
+
+# Tmux Window - create window with VSCode-style layout
+# Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]
+# Config: Place .tw.yml in project root with keys: left, top, bottom, right
+tw() {
+    # Validate prerequisites
+    if [[ -z "$TMUX" ]]; then
+        echo "Error: tw must be run from inside a tmux session"
+        echo "Start tmux first: tmux new -s dev"
+        return 1
+    fi
+
+    # Resolve directory
+    local dir="${1:-.}"
+    dir="$(cd "$dir" 2>/dev/null && pwd)" || {
+        echo "Error: Directory not found: $1"
+        return 1
+    }
+
+    # Sanitize window name (tmux uses : . [ ] as special chars)
+    local name="$(basename "$dir" | tr ':.[]-' '_')"
+    [[ "$name" == "/" ]] && name="root"
+    [[ -z "$name" ]] && name="unnamed"
+
+    local config="$dir/.tw.yml"
+
+    # Parse commands from config or positional args
+    local cmd_left="" cmd_top="" cmd_bottom="" cmd_right=""
+
+    if [[ -f "$config" ]]; then
+        if ! command -v yq &>/dev/null; then
+            echo "Error: yq is required to parse .tw.yml but not installed"
+            echo "Run the PDE installer to install it"
+            return 1
+        fi
+        if ! yq -e '.' "$config" &>/dev/null; then
+            echo "Error: Invalid YAML in $config"
+            return 1
+        fi
+        cmd_left="$(yq -r '.left // ""' "$config")"
+        cmd_top="$(yq -r '.top // ""' "$config")"
+        cmd_bottom="$(yq -r '.bottom // ""' "$config")"
+        cmd_right="$(yq -r '.right // ""' "$config")"
+        # Handle explicit YAML null
+        [[ "$cmd_left" == "null" ]] && cmd_left=""
+        [[ "$cmd_top" == "null" ]] && cmd_top=""
+        [[ "$cmd_bottom" == "null" ]] && cmd_bottom=""
+        [[ "$cmd_right" == "null" ]] && cmd_right=""
+    elif [[ $# -gt 1 ]]; then
+        cmd_left="${2:-}"
+        cmd_top="${3:-}"
+        cmd_bottom="${4:-}"
+        cmd_right="${5:-}"
+    fi
+
+    # Create window and capture ID for robust pane targeting
+    local window_id
+    window_id=$(tmux new-window -n "$name" -c "$dir" -P -F "#{window_id}")
+
+    if [[ -z "$window_id" ]]; then
+        echo "Error: Failed to create tmux window"
+        return 1
+    fi
+
+    # Build layout: left | middle (top/bottom) | right
+    # Note: Pane indices depend on this exact split order
+    tmux split-window -t "$window_id" -hb -l 15% -c "$dir"
+    tmux select-pane -t "$window_id" -R
+    tmux split-window -t "$window_id" -h -l 18% -c "$dir"
+    tmux select-pane -t "$window_id" -L
+    tmux split-window -t "$window_id" -v -c "$dir"
+
+    # Send commands to panes (0=left, 1=top, 2=bottom, 3=right)
+    [[ -n "$cmd_left" ]] && tmux send-keys -t "${window_id}.0" "$cmd_left" C-m
+    [[ -n "$cmd_top" ]] && tmux send-keys -t "${window_id}.1" "$cmd_top" C-m
+    [[ -n "$cmd_bottom" ]] && tmux send-keys -t "${window_id}.2" "$cmd_bottom" C-m
+    [[ -n "$cmd_right" ]] && tmux send-keys -t "${window_id}.3" "$cmd_right" C-m
+
+    # Focus top-middle (main editor area)
+    tmux select-pane -t "${window_id}.1"
+}

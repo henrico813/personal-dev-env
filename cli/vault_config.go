@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,17 +15,6 @@ type VaultState struct {
 	MainPath string
 	WorkPath string
 	Default  string
-}
-
-type pdeJSONConfig struct {
-	InstallPath            string `json:"install_path"`
-	Profile                string `json:"profile"`
-	MainVault              string `json:"main_vault"`
-	WorkVault              string `json:"work_vault"`
-	DefaultVault           string `json:"default_vault"`
-	OpenCodeBaseURL        string `json:"opencode_base_url"`
-	OpenCodeInlineShimPort string `json:"opencode_inline_shim_port"`
-	OpenCodeInlineModel    string `json:"opencode_inline_model"`
 }
 
 func readVaultState(homeDir string) (VaultState, error) {
@@ -77,10 +67,14 @@ func writeVaultState(homeDir string, state VaultState) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return newVaultError(vaultWriteConfigFailed, err, err)
 	}
-	if err := backupConfigInstallPath(path, Runner{}); err != nil {
+	backup, err := backupConfigInstallPath(path)
+	if err != nil {
 		return newVaultError(vaultWriteConfigFailed, err, err)
 	}
 	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		if restoreErr := restoreConfigInstallPath(path, backup); restoreErr != nil {
+			err = errors.Join(err, fmt.Errorf("restore prior config from %s: %w", backup, restoreErr))
+		}
 		return newVaultError(vaultWriteConfigFailed, err, err)
 	}
 	return nil
