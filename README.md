@@ -30,14 +30,14 @@ pde-installer list
 pde-installer config
 ```
 
-- `install` and `update` reconcile pkgsrc, Aqua, direct releases, npm, fonts, local builds, and config in order.
+- `install` and `update` reconcile Ubuntu dependencies, tmux, Aqua, direct releases, npm, local builds, and config in order.
 - `doctor` validates host prerequisites, pins, and managed paths.
 - `list` reports ownership and installed status.
 - `config` applies only the chezmoi source.
 
-Mutating commands reject UID 0. Everything is installed below `HOME`; the
-installer never invokes apt or sudo. Use `--dry-run` to print ordered work
-without changing `HOME`.
+Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
+Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
+preview ordered work without making changes.
 
 Build the separate vault-only CLI when vault commands are needed:
 
@@ -50,7 +50,7 @@ The `config` target migrates known vault values from deprecated `paths.env`
 state before removing it. It records the selected checkout in `config.json`
 and preserves unrelated fields. Future vault changes use `pde vault`.
 
-See [`pde/README.md`](./pde/README.md) for target details and Docker tests.
+See [`pde-installer/README.md`](./pde-installer/README.md) for installer details.
 
 ## AI Tools Quick Start
 
@@ -120,8 +120,8 @@ Skills are installed to `~/.codex/skills/`, and the installer copies the shared 
 ## Requirements
 
 - An existing Git checkout and Go are required to build `pde-installer`.
-- Install host compilers, development headers, archive tools, Git, and curl or fetch before running the installer.
-- Installation is rootless and uses a source-only pkgsrc bootstrap under `~/.local`.
+- Ubuntu 22.04 or newer on Linux amd64 or arm64 is required.
+- Use an unprivileged user with `sudo` access for missing apt packages.
 - `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 
 ## Installer Tests
@@ -137,9 +137,9 @@ go vet -C pde-installer ./...
 ```
 
 These tests protect the operations most likely to damage an existing setup:
-path containment, package-state decisions, one-shot pkgsrc mutations, exact
-version checks, installer locking, durable recovery, backend activation, and
-rollback after a later failure.
+path containment, package-state decisions, exact version checks, installer
+locking, durable recovery, backend activation, and rollback after a later
+failure.
 
 Docker is still used to confirm that the command behaves as an unprivileged
 process on supported Ubuntu releases:
