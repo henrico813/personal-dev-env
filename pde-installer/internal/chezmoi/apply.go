@@ -237,13 +237,14 @@ func (m Manager) environment() []string {
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, "aqua-checksums.json"),
 		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
+		"HOME=" + m.Home,
 		"PATH=" + path,
 	}
 }
 
 // Validate checks that the chezmoi source is complete and pinned.
 func (m Manager) Validate() error {
-	for _, path := range []string{m.Source(), filepath.Join(m.Source(), ".chezmoiexternal.toml"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json")} {
+	for _, path := range []string{m.Source(), filepath.Join(m.Source(), ".chezmoiexternal.toml"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc")} {
 		if _, err := os.Stat(path); err != nil {
 			return fmt.Errorf("invalid chezmoi source %s: %w", path, err)
 		}
