@@ -64,7 +64,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		if err := check("make", run.Command{Name: "make", Args: []string{"-n", "-f", "-"}, Stdin: "all:\n\t@:\n"}, "install a host make implementation"); err != nil {
 			return err
 		}
-		for _, tool := range []string{"sh", "tar", "gzip", "bzip2", "xz", "unzip", "patch", "sed", "awk", "grep", "file", "yacc"} {
+		for _, tool := range []string{"sh", "tar", "gzip", "bzip2", "xz", "unzip", "patch", "sed", "awk", "grep", "file"} {
 			command := run.Command{Name: tool, Args: probeArgs(tool)}
 			if tool == "grep" {
 				command.Stdin = "pde\n"
@@ -122,7 +122,7 @@ func probeArgs(tool string) []string {
 		return []string{"-c", ":"}
 	case "unzip":
 		return []string{"-Z", "-h"}
-	case "tar", "gzip", "bzip2", "xz", "patch", "file", "yacc":
+	case "tar", "gzip", "bzip2", "xz", "patch", "file":
 		return []string{"--version"}
 	case "sed":
 		return []string{"-n", "1p", "/dev/null"}

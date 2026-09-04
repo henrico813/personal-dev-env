@@ -5,7 +5,7 @@ Each inventory item has one owner:
 | Owner | Responsibility |
 |---|---|
 | `ubuntu` | Missing host packages installed with apt |
-| `source` | The pinned tmux source build |
+| `source` | The pinned tmux binary |
 | `aqua` | Aqua and standalone binaries |
 | `direct` | Exact runtimes, unsupported layouts, Keychain, and fonts |
 | `npm` | npm-native command-line tools |

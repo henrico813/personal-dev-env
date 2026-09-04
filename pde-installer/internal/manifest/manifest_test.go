@@ -35,7 +35,7 @@ func TestManifestIncludesSystemTools(t *testing.T) {
 		}
 	}
 	item, ok := Find("tmux", Source)
-	if !ok || item.Version != "3.6a" {
+	if !ok || item.Version != "3.7b" {
 		t.Errorf("Find(tmux, Source) = %#v, %t", item, ok)
 	}
 }
