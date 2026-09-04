@@ -1,38 +1,61 @@
 # Personal Dev Environment
 
-Shell, editor, and AI tooling configuration. Two independent entry points:
+Shell, editor, and AI tooling configuration with two Go applications:
 
-- **`./pde/pde`** -- Install the shell environment (zsh, tmux, neovim, CLI tools).
-- **`pde install minimal`** -- Run the legacy minimal base, then apply the Go-managed config, Obsidian, and AI layers.
-- **`pde install config`** -- Migrate the shared config set with no sudo; it does not install runtimes, plugins, or profile extras.
-- **`pde install ai-tools`** -- Install AI tool configuration and binaries.
+- **`pde-installer`** installs machine, config, Obsidian, and AI tooling.
+- **`pde`** manages vault configuration and lookup only.
 
 ## PDE Quick Start
 
+Build the installer from an existing repository checkout, then reconcile the
+pinned environment:
+
 ```bash
-./pde/pde minimal   # shell, tmux, neovim, CLI tools
-./pde/pde full      # everything above + fonts and GUI config
+mkdir -p ~/.local/bin
+go build -C pde-installer -o ~/.local/bin/pde-installer .
+pde-installer install
 ```
 
-Optional and composed PDE commands live in the Go CLI:
+The installer does not clone or update the repository. Run it from anywhere
+inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set
+`PDE_REPO_ROOT`.
+
+The installer exposes five commands:
 
 ```bash
-cd cli && go build -o ~/.local/bin/pde .
-pde install minimal
-pde install config
+pde-installer install
+pde-installer update
+pde-installer doctor
+pde-installer list
+pde-installer config
+```
+
+- `install` and `update` reconcile pkgsrc, Aqua, npm, fonts, local builds, and config in order.
+- `doctor` validates host prerequisites, pins, and managed paths.
+- `list` reports ownership and installed status.
+- `config` applies only the chezmoi source.
+
+Mutating commands reject UID 0. Everything is installed below `HOME`; the
+installer never invokes apt or sudo. Use `--dry-run` to print ordered work
+without changing `HOME`.
+
+Build the separate vault-only CLI when vault commands are needed:
+
+```bash
+go build -C cli -o ~/.local/bin/pde .
 pde vault --help
-pde install obsidian
 ```
 
-`pde install config` now writes `~/.config/pde/config.json`. The `pde vault` CLI is self-documenting and owns vault setup plus lookup from there. This cutover does not migrate `paths.env`; existing setups must be reconfigured manually.
+The `config` target removes deprecated `paths.env` state while preserving
+unrelated fields in `config.json`. Existing vault paths must be configured
+through `pde vault`.
 
-See [`pde/README.md`](./pde/README.md) for profiles, bootstrap, and testing.
+See [`pde/README.md`](./pde/README.md) for target details and Docker tests.
 
 ## AI Tools Quick Start
 
 ```bash
-cd cli && go build -o ~/.local/bin/pde .
-pde install ai-tools
+pde-installer install
 ```
 
 Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe binaries plus repo-managed AI config.
@@ -60,9 +83,9 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 
-Shared config files live under `pde/config/home/` and mirror their destinations below `$HOME`. The config helper links every file in that tree. Full-profile-only config files use `pde/config/full-home/`.
+Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
-The AI installer backs up the managed OpenCode, Codex, and Pi paths before replacement. A scoped chezmoi modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`, backing up that file only when the merge changes it. Other root settings remain in place.
+The installer snapshots changed chezmoi targets before apply. A scoped modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`; unrelated settings remain in place and failures roll back the snapshot.
 
 ## Using OpenCode Commands
 
@@ -89,13 +112,28 @@ Codex skills are prompt-triggered, not slash commands. Use them by asking natura
 | `document-codebase` | Audit and improve project documentation | "Use document-codebase to review docs under pde/" |
 | `implement-plan` | Execute an approved plan with verification | "Use implement-plan on docs/PDEV-006.md" |
 | `cleanup-plan` | Clean completed plan, worktree, branch, PR evidence, and main state | "Use cleanup-plan for the merged auth refactor branch" |
-| `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde install ai-tools works" |
+| `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde-installer install works" |
 | `review-plan` | Review a plan for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 Skills are installed to `~/.codex/skills/`, and the installer copies the shared `AGENTS.md` into `~/.codex/` so the workflow defaults stay aligned with the rest of the tree.
 
 ## Requirements
 
-- Linux system with `sudo` access for PDE installs.
-- The AI installer expects `go`, `git`, `curl`, `cargo`, and `npm`/`nvm` on Linux.
+- An existing Git checkout and Go are required to build `pde-installer`.
+- Install host compilers, development headers, archive tools, Git, and curl or fetch before running the installer.
+- Installation is rootless and uses a source-only pkgsrc bootstrap under `~/.local`.
 - `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
+
+## Installer Tests
+
+Docker is required. From the repository root:
+
+```bash
+./pde-installer/test/run-tests.sh smoke
+```
+
+The smoke runs all five commands as an unprivileged user on Ubuntu 22.04 and
+24.04. It covers config transactions, including an induced chezmoi failure and
+rollback. Install and update are dry runs; Docker does not cover pkgsrc, Aqua,
+npm, or local-build rollback and does not perform a full installation. A full
+source-build installation remains a manual verification gap.
