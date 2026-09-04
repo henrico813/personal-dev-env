@@ -35,8 +35,8 @@ func packages() []packageSpec {
 
 // Manager installs Node.js tools for one installation.
 type Manager struct {
-	Home, RepoRoot, PkgPrefix string
-	Runner                    run.Runner
+	Home, RepoRoot string
+	Runner         run.Runner
 }
 
 type lockFile struct {
@@ -53,8 +53,8 @@ type lockEntry struct {
 }
 
 // New returns an npm tool manager.
-func New(home, repoRoot, pkgPrefix string, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, PkgPrefix: pkgPrefix, Runner: runner}
+func New(home, repoRoot string, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, Runner: runner}
 }
 
 // Root returns the managed npm installation prefix.
@@ -294,7 +294,7 @@ func packageVersion(root, name string) (string, error) {
 }
 
 func (m Manager) environment(cache ...string) []string {
-	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path}
 	if len(cache) > 0 {
 		environment = append(environment, "npm_config_cache="+cache[0])

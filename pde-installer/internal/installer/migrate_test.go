@@ -100,3 +100,29 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 		t.Fatalf("restored config = %q, want %q", restored, original)
 	}
 }
+
+func TestLegacyNvimLinkRollsBack(t *testing.T) {
+	home := t.TempDir()
+	destination := filepath.Join(home, ".config", "nvim")
+	target := filepath.Join(home, "personal-dev-env", "pde", "config", "nvim")
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, destination); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(destination); err != nil || !info.IsDir() {
+		t.Fatalf("migrated Neovim config = %v, %v", info, err)
+	}
+	if err := journal.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := os.Readlink(destination)
+	if err != nil || restored != target {
+		t.Fatalf("restored link = %q, %v", restored, err)
+	}
+}

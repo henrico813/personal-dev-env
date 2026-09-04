@@ -7,7 +7,8 @@ type Backend string
 
 // Supported ownership backends.
 const (
-	Pkgsrc  Backend = "pkgsrc"
+	Ubuntu  Backend = "ubuntu"
+	Source  Backend = "source"
 	Aqua    Backend = "aqua"
 	NPM     Backend = "npm"
 	Local   Backend = "local"
@@ -19,15 +20,6 @@ const (
 type Item struct {
 	Name, Version string
 	Owner         Backend
-}
-
-// PkgsrcPackages returns package paths in reconciliation order.
-func PkgsrcPackages() []string {
-	var packages []string
-	for _, item := range ByOwner(Pkgsrc) {
-		packages = append(packages, item.Name)
-	}
-	return packages
 }
 
 // ByOwner returns items assigned to one backend.
@@ -54,11 +46,10 @@ func Find(name string, owner Backend) (Item, bool) {
 // Items returns every item managed by the installer.
 func Items() []Item {
 	return []Item{
-		{Name: "pkgtools/pkg_rolling-replace", Owner: Pkgsrc},
-		{Name: "shells/zsh", Owner: Pkgsrc}, {Name: "misc/tmux", Owner: Pkgsrc},
-		{Name: "devel/git-base", Owner: Pkgsrc}, {Name: "sysutils/htop", Owner: Pkgsrc},
-		{Name: "x11/xclip", Owner: Pkgsrc},
-		{Name: "archivers/unzip", Owner: Pkgsrc}, {Name: "fonts/fontconfig", Owner: Pkgsrc},
+		{Name: "zsh", Owner: Ubuntu}, {Name: "git", Owner: Ubuntu},
+		{Name: "xclip", Owner: Ubuntu}, {Name: "unzip", Owner: Ubuntu},
+		{Name: "fontconfig", Owner: Ubuntu},
+		{Name: "tmux", Version: "3.6a", Owner: Source},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua},
 		{Name: "fd", Version: "v8.3.1", Owner: Aqua}, {Name: "fzf", Version: "0.36.0", Owner: Aqua},
 		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua}, {Name: "bat", Version: "v0.19.0", Owner: Aqua},
@@ -100,7 +91,7 @@ func Validate() error {
 			return fmt.Errorf("%s has owners %s and %s", item.Name, previous, item.Owner)
 		}
 		seen[item.Name] = item.Owner
-		if (item.Owner == NPM || item.Owner == Aqua || item.Owner == Direct) && item.Version == "" {
+		if (item.Owner == NPM || item.Owner == Aqua || item.Owner == Direct || item.Owner == Source) && item.Version == "" {
 			return fmt.Errorf("%s is not pinned", item.Name)
 		}
 	}

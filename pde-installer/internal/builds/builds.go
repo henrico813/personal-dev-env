@@ -18,8 +18,8 @@ import (
 
 // Manager builds repository binaries for one installation.
 type Manager struct {
-	Home, RepoRoot, PkgPrefix string
-	Runner                    run.Runner
+	Home, RepoRoot string
+	Runner         run.Runner
 }
 
 type buildSpec struct {
@@ -45,8 +45,8 @@ const (
 )
 
 // New returns a local build manager.
-func New(home, repoRoot, pkgPrefix string, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, PkgPrefix: pkgPrefix, Runner: runner}
+func New(home, repoRoot string, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, Runner: runner}
 }
 
 // Reconcile rebuilds binaries when their source inputs change.
@@ -328,8 +328,8 @@ func (m Manager) statePath() string {
 }
 
 func (m Manager) environment(stage ...string) []string {
-	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
-	environment := []string{"PATH=" + path, "PKG_CONFIG_PATH=" + filepath.Join(m.PkgPrefix, "lib", "pkgconfig")}
+	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	environment := []string{"PATH=" + path}
 	if len(stage) > 0 {
 		environment = append(environment, "GOCACHE="+filepath.Join(stage[0], "go-cache"), "GOMODCACHE="+filepath.Join(stage[0], "go-mod-cache"), "CARGO_HOME="+filepath.Join(stage[0], "cargo-home"))
 	}

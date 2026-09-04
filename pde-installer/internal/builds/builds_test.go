@@ -20,7 +20,7 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 	if err := os.WriteFile(blockingPath, []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := New(home, t.TempDir(), t.TempDir(), run.Runner{}).Probe("planner")
+	_, err := New(home, t.TempDir(), run.Runner{}).Probe("planner")
 	if err == nil {
 		t.Fatal("Probe() error = nil")
 	}
@@ -33,11 +33,10 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	for _, source := range []string{"planner", "cli", "surveil", "vibe"} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
-	prefix := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
-	manager := New(home, repoRoot, prefix, run.Runner{})
+	manager := New(home, repoRoot, run.Runner{})
 
 	for _, name := range []string{"planner", "opencode-inline-shim", "surveil", "vibe"} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)

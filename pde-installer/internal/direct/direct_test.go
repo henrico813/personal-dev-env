@@ -28,7 +28,7 @@ func TestFontProbeReturnsFilesystemErrors(t *testing.T) {
 	if err := os.WriteFile(blockingPath, []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := New(home, t.TempDir(), run.Runner{}).Probe(Fonts()[0])
+	_, err := New(home, run.Runner{}).Probe(Fonts()[0])
 	if err == nil {
 		t.Fatal("Probe() error = nil")
 	}
@@ -91,7 +91,7 @@ func TestToolsActivateAndRollBack(t *testing.T) {
 		Binary: "fixture", VersionPrefix: "fixture ", Links: []string{"fixture"},
 		VersionArgs: []string{"--version"}, Kind: archiveTool,
 	}
-	manager := New(home, t.TempDir(), run.Runner{})
+	manager := New(home, run.Runner{})
 	oldRoot := filepath.Join(manager.ToolsRoot(), "old")
 	oldLauncher := filepath.Join(home, ".local", "bin", "fixture")
 	writeDirectFile(t, oldRoot, "old root\n", 0o644)
@@ -116,7 +116,7 @@ func TestOfficialToolsInstall(t *testing.T) {
 	if os.Getenv("PDE_TEST_OFFICIAL_TOOLS") != "1" {
 		t.Skip("set PDE_TEST_OFFICIAL_TOOLS=1 to download release archives")
 	}
-	manager := New(t.TempDir(), t.TempDir(), run.Runner{})
+	manager := New(t.TempDir(), run.Runner{})
 	journal, err := manager.ReconcileTools()
 	if err != nil {
 		t.Fatalf("ReconcileTools() error = %v", err)

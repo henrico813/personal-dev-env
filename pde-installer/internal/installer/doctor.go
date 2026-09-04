@@ -13,8 +13,9 @@ import (
 	"pde-installer/internal/direct"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
-	"pde-installer/internal/pkgsrc"
 	"pde-installer/internal/run"
+	"pde-installer/internal/tmux"
+	"pde-installer/internal/ubuntu"
 )
 
 func doctor(config config, runner run.Runner) error {
@@ -43,77 +44,65 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		}
 		return nil
 	}
-	cc := firstExecutable("cc", "gcc", "clang")
-	if cc == "" {
-		failures = append(failures, "C compiler: install a host C compiler and libc development headers")
-	} else {
-		if err := check("C compile/link probe", run.Command{Name: cc, Args: []string{"-x", "c", "-", "-o", "/dev/null"}, Stdin: "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/types.h>\nint main(void){puts(\"ok\");return 0;}\n"}, "install working C compiler and libc development headers"); err != nil {
+	if !runner.DryRun || mode == preflightReport {
+		cc := firstExecutable("cc", "gcc", "clang")
+		if cc == "" {
+			failures = append(failures, "C compiler: install a host C compiler and libc development headers")
+		} else {
+			if err := check("C compile/link probe", run.Command{Name: cc, Args: []string{"-x", "c", "-", "-o", "/dev/null"}, Stdin: "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/types.h>\nint main(void){puts(\"ok\");return 0;}\n"}, "install working C compiler and libc development headers"); err != nil {
+				return err
+			}
+		}
+		cxx := firstExecutable("c++", "g++", "clang++")
+		if cxx == "" {
+			failures = append(failures, "C++ compiler: install a host C++ compiler and standard library headers")
+		} else {
+			if err := check("C++ compile/link probe", run.Command{Name: cxx, Args: []string{"-x", "c++", "-", "-o", "/dev/null"}, Stdin: "#include <iostream>\nint main(){std::cout << \"ok\";}\n"}, "install working C++ compiler and standard library headers"); err != nil {
+				return err
+			}
+		}
+		if err := check("make", run.Command{Name: "make", Args: []string{"-n", "-f", "-"}, Stdin: "all:\n\t@:\n"}, "install a host make implementation"); err != nil {
 			return err
 		}
-	}
-	cxx := firstExecutable("c++", "g++", "clang++")
-	if cxx == "" {
-		failures = append(failures, "C++ compiler: install a host C++ compiler and standard library headers")
-	} else {
-		if err := check("C++ compile/link probe", run.Command{Name: cxx, Args: []string{"-x", "c++", "-", "-o", "/dev/null"}, Stdin: "#include <iostream>\nint main(){std::cout << \"ok\";}\n"}, "install working C++ compiler and standard library headers"); err != nil {
-			return err
+		for _, tool := range []string{"sh", "tar", "gzip", "bzip2", "xz", "unzip", "patch", "sed", "awk", "grep", "file", "yacc"} {
+			command := run.Command{Name: tool, Args: probeArgs(tool)}
+			if tool == "grep" {
+				command.Stdin = "pde\n"
+			}
+			if err := check(tool, command, "install host "+tool); err != nil {
+				return err
+			}
 		}
-	}
-	if err := check("make", run.Command{Name: "make", Args: []string{"-n", "-f", "-"}, Stdin: "all:\n\t@:\n"}, "install a host make implementation"); err != nil {
-		return err
-	}
-	for _, tool := range []string{"sh", "tar", "gzip", "bzip2", "xz", "patch", "sed", "awk", "grep", "file", "yacc"} {
-		command := run.Command{Name: tool, Args: probeArgs(tool)}
-		if tool == "grep" {
-			command.Stdin = "pde\n"
-		}
-		if err := check(tool, command, "install host "+tool); err != nil {
-			return err
-		}
-	}
-	if firstExecutable("curl", "fetch") == "" {
-		failures = append(failures, "fetcher: install curl or fetch")
-	} else if mode == preflightReport {
-		if _, err := fmt.Fprintln(runner.Out(), "ok      curl or fetch"); err != nil {
-			return fmt.Errorf("write fetcher result: %w", err)
+		if firstExecutable("curl", "fetch") == "" {
+			failures = append(failures, "fetcher: install curl or fetch")
+		} else if mode == preflightReport {
+			if _, err := fmt.Fprintln(runner.Out(), "ok      curl or fetch"); err != nil {
+				return fmt.Errorf("write fetcher result: %w", err)
+			}
 		}
 	}
 	if err := manifest.Validate(); err != nil {
 		failures = append(failures, "ownership: "+err.Error())
 	}
+	if err := ubuntu.New(runner).Validate(); err != nil {
+		failures = append(failures, "Ubuntu release: "+err.Error())
+	}
 	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
-	if err := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner).ValidateLock(); err != nil {
+	if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
 		failures = append(failures, "npm lock: "+err.Error())
 	}
-	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	directManager := direct.New(config.Home, runner)
 	if _, err := direct.Tools(); err != nil {
 		failures = append(failures, "direct tools: "+err.Error())
 	}
-	for _, path := range []string{config.PkgSource, config.PkgPrefix, config.LocalBin, config.AquaRoot, directManager.ToolsRoot()} {
+	for _, path := range []string{config.LocalBin, config.AquaRoot, directManager.ToolsRoot(), tmux.New(config.Home, runner).ReleaseRoot()} {
 		if !within(config.Home, path) {
 			failures = append(failures, "destination outside HOME: "+path)
 		}
 		if ancestor, ok := writableAncestor(path); !ok {
 			failures = append(failures, "unwritable destination: "+path+" (fix ownership or permissions on "+ancestor+")")
-		}
-	}
-	if mode == preflightReport {
-		pkg := pkgsrc.New(config.Home, runner)
-		if _, err := os.Stat(pkg.SourceRoot); err == nil {
-			if err := pkg.ValidateBootstrap(); err != nil {
-				failures = append(failures, "pkgsrc source: "+err.Error())
-			}
-		}
-		if _, err := os.Stat(pkg.Bmake()); err == nil {
-			if _, err := fmt.Fprintf(runner.Out(), "ok      pkgsrc prefix %s\n", config.PkgPrefix); err != nil {
-				return fmt.Errorf("write pkgsrc result: %w", err)
-			}
-		} else {
-			if _, err := fmt.Fprintf(runner.Out(), "pending pkgsrc prefix %s (run install)\n", config.PkgPrefix); err != nil {
-				return fmt.Errorf("write pkgsrc result: %w", err)
-			}
 		}
 	}
 	if len(failures) > 0 {
@@ -131,6 +120,8 @@ func probeArgs(tool string) []string {
 	switch tool {
 	case "sh":
 		return []string{"-c", ":"}
+	case "unzip":
+		return []string{"-Z", "-h"}
 	case "tar", "gzip", "bzip2", "xz", "patch", "file", "yacc":
 		return []string{"--version"}
 	case "sed":
@@ -192,27 +183,20 @@ func firstExecutable(names ...string) string {
 }
 
 func list(config config, runner run.Runner) error {
-	pkgManager := pkgsrc.New(config.Home, runner)
-	pkgStatuses := map[string]pkgsrc.Status{}
-	statuses, err := pkgManager.Statuses()
-	if err != nil {
-		return fmt.Errorf("read pkgsrc status: %w", err)
-	}
-	for _, status := range statuses {
-		pkgStatuses[status.Path] = status
-	}
+	ubuntuManager := ubuntu.New(runner)
+	tmuxManager := tmux.New(config.Home, runner)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
 	if err != nil {
 		return fmt.Errorf("read Aqua status: %w", err)
 	}
-	npmManager := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
-	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	npmManager := npm.New(config.Home, config.RepoRoot, runner)
+	directManager := direct.New(config.Home, runner)
 	directTools, directToolsErr := direct.Tools()
 	if directToolsErr != nil {
 		return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 	}
-	buildManager := builds.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
@@ -223,9 +207,16 @@ func list(config config, runner run.Runner) error {
 	for _, item := range manifest.Items() {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
-		case manifest.Pkgsrc:
-			status := pkgStatuses[item.Name]
-			requested, installed, state = status.Requested, status.Installed, status.State
+		case manifest.Ubuntu:
+			installed, state, err = ubuntuManager.Probe(item.Name)
+			if err != nil {
+				return fmt.Errorf("read %s status: %w", item.Name, err)
+			}
+		case manifest.Source:
+			installed, state, err = tmuxManager.Probe()
+			if err != nil {
+				return fmt.Errorf("read tmux status: %w", err)
+			}
 		case manifest.Aqua:
 			if item.Name == "aqua" {
 				installed, state = aquaInstalled, aquaState

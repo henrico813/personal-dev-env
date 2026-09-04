@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 [[ "$(id -u)" -ne 0 ]]
-[[ ! -e /usr/bin/sudo ]]
+[[ -x /usr/bin/sudo ]]
 
 help="$(pde-installer --help)"
 for command_name in install update doctor list config; do
@@ -52,7 +52,7 @@ fi
 
 pde-installer doctor --repo-root "$REPO_ROOT"
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
-for item in shells/zsh aqua neovim go rust node keychain opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
+for item in zsh unzip tmux aqua neovim go rust node keychain opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
 	[[ "$inventory" == *$'\t'"$item"$'\t'* ]]
 done
 

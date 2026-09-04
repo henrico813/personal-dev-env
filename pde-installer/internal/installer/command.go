@@ -13,8 +13,9 @@ import (
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
-	"pde-installer/internal/pkgsrc"
 	"pde-installer/internal/run"
+	"pde-installer/internal/tmux"
+	"pde-installer/internal/ubuntu"
 )
 
 // NewCommand builds the pde-installer command tree.
@@ -89,15 +90,11 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 }
 
 func reconcile(config config, runner run.Runner) error {
+	if err := ubuntu.New(runner).Reconcile(); err != nil {
+		return fmt.Errorf("Ubuntu packages: %w", err)
+	}
 	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
 		return err
-	}
-	pkg := pkgsrc.New(config.Home, runner)
-	if err := pkg.Bootstrap(); err != nil {
-		return fmt.Errorf("pkgsrc bootstrap: %w", err)
-	}
-	if err := pkg.Reconcile(); err != nil {
-		return fmt.Errorf("pkgsrc packages: %w", err)
 	}
 	var journals []*fsutil.Journal
 	fail := func(stage string, err error) error {
@@ -109,19 +106,24 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		return fmt.Errorf("%s: %w", stage, errors.Join(failures...))
 	}
+	tmuxJournal, err := tmux.New(config.Home, runner).Reconcile()
+	if err != nil {
+		return fail("tmux", err)
+	}
+	journals = append(journals, tmuxJournal)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
 	aquaJournal, err := aquaManager.Reconcile()
 	if err != nil {
 		return fail("Aqua", err)
 	}
 	journals = append(journals, aquaJournal)
-	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	directManager := direct.New(config.Home, runner)
 	toolJournal, err := directManager.ReconcileTools()
 	if err != nil {
 		return fail("direct tools", err)
 	}
 	journals = append(journals, toolJournal)
-	npmJournal, err := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner).Reconcile()
+	npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
 	if err != nil {
 		return fail("npm", err)
 	}
@@ -131,7 +133,7 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("direct artifacts", err)
 	}
 	journals = append(journals, directJournal)
-	buildManager := builds.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	buildJournal, err := buildManager.Reconcile()
 	if err != nil {
 		return fail("local builds", err)
