@@ -118,7 +118,6 @@ func backupPlannerLaunchers(cfg *Config, runner Runner) error {
 	for _, path := range []string{
 		filepath.Join(cfg.LocalBinDir, "planner"),
 		filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner"),
-		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner"),
 	} {
 		if err := backupIfExists(path, runner); err != nil {
 			return err
@@ -135,7 +134,6 @@ func installPlannerLaunchers(cfg *Config, plannerBin string, runner Runner) erro
 	for _, dst := range []string{
 		filepath.Join(cfg.LocalBinDir, "planner"),
 		filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner"),
-		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner"),
 	} {
 		if err := linkBinary(plannerBin, dst, runner); err != nil {
 			return err
