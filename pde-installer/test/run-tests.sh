@@ -24,6 +24,7 @@ smoke() {
 	local version
 	for version in "${UBUNTU_VERSIONS[@]}"; do
 		build_image "$version"
+		docker run --rm --user root "pde-smoke:$version" sh -c 'if pde-installer doctor --repo-root /home/testuser/personal-dev-env; then exit 1; fi'
 		docker run --rm "pde-smoke:$version" ./pde-installer/test/verify.sh
 	done
 }

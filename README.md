@@ -46,9 +46,9 @@ go build -C cli -o ~/.local/bin/pde .
 pde vault --help
 ```
 
-The `config` target removes deprecated `paths.env` state while preserving
-unrelated fields in `config.json`. Existing vault paths must be configured
-through `pde vault`.
+The `config` target migrates known vault values from deprecated `paths.env`
+state before removing it. It records the selected checkout in `config.json`
+and preserves unrelated fields. Future vault changes use `pde vault`.
 
 See [`pde/README.md`](./pde/README.md) for target details and Docker tests.
 
@@ -126,14 +126,30 @@ Skills are installed to `~/.codex/skills/`, and the installer copies the shared 
 
 ## Installer Tests
 
-Docker is required. From the repository root:
+Fast Go tests use temporary homes, local HTTP servers, and small executable
+fixtures. They run the production APIs without downloading or compiling full
+toolchains:
+
+```bash
+go test -C pde-installer ./...
+go test -race -C pde-installer ./...
+go vet -C pde-installer ./...
+```
+
+These tests protect the operations most likely to damage an existing setup:
+path containment, package-state decisions, one-shot pkgsrc mutations, exact
+version checks, installer locking, durable recovery, backend activation, and
+rollback after a later failure.
+
+Docker is still used to confirm that the command behaves as an unprivileged
+process on supported Ubuntu releases:
 
 ```bash
 ./pde-installer/test/run-tests.sh smoke
 ```
 
 The smoke runs all five commands as an unprivileged user on Ubuntu 22.04 and
-24.04. It covers config transactions, including an induced chezmoi failure and
-rollback. Install and update are dry runs; Docker does not cover pkgsrc, Aqua,
-npm, or local-build rollback and does not perform a full installation. A full
-source-build installation remains a manual verification gap.
+24.04 and confirms that root execution is rejected. It covers config
+transactions, including an induced chezmoi failure and rollback. Install and
+update are dry runs. A complete source-build installation remains a manual
+real-world check because it is too expensive for hosted CI.

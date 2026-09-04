@@ -53,15 +53,17 @@ chezmoi from repository-local, checksummed file externals.
 
 ```bash
 go test -C pde-installer ./...
+go test -race -C pde-installer ./...
 go vet -C pde-installer ./...
 ./pde-installer/test/run-tests.sh smoke
 ```
 
+The Go tests exercise real installer code with temporary files and small local
+executables. They verify pkgsrc decisions, npm and local-build activation,
+chezmoi rollback, installer locking, and recovery after an interrupted change.
+They stay fast because they do not download or compile complete toolchains.
+
 The Docker smoke runs all five commands as an unprivileged user on Ubuntu 22.04
-and 24.04. It covers config transactions: a chezmoi fixture performs successful
-mutation and migration, then a temporary altered source induces a real config
-failure and verifies rollback plus removal of newly created paths. Install and
-update remain read-only dry runs. Docker does not cover pkgsrc, Aqua, npm, or
-local-build rollback, and it does not perform a full installation. A complete
-source-build installation remains an explicit manual verification gap because
-of its cost.
+and 24.04 and confirms that root execution is rejected. Install and update
+remain read-only dry runs. A complete source-build installation is a manual
+real-world check because of its cost.

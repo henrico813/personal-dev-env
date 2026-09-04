@@ -46,9 +46,12 @@ jobs:
         with:
           go-version-file: pde-installer/go.mod
           cache-dependency-path: pde-installer/go.sum
-      - name: test
+      - name: format
+        run: test -z "$(gofmt -l .)"
+      - name: test production paths
         run: |
-          go test ./...
+          go test -count=1 -coverprofile=coverage.out ./...
+          go test -race ./...
           go vet ./...
           bash -n test/*.sh
 
