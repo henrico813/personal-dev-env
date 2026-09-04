@@ -137,7 +137,7 @@ Skills are installed to `~/.codex/skills/`, and the installer copies the shared 
 ## Requirements
 
 - An existing Git checkout and Go are required to build `pde-installer`.
-- Ubuntu 22.04 or newer on Linux amd64 or arm64 is required.
+- Ubuntu 22.04 or newer on Linux amd64 is required.
 - Use an unprivileged user with `sudo` access for missing apt packages.
 - `vibe run` additionally expects Docker plus provider auth via env vars or `~/.pi/agent/auth.json`.
 

@@ -9,15 +9,12 @@ The installer assigns tools by this policy:
 4. Use npm for npm-native tools.
 5. Build repository applications locally.
 6. Use chezmoi for home configuration and external config content.
-7. Build from source only when no suitable package or binary is available.
 
 The Aqua registry also selects compatible artifacts, including Yazi's musl
 build on Ubuntu 22.04.
 
-tmux is the current source-built tool. Its pinned release is built under
-`HOME`. PDE no longer uses pkgsrc: its first source build was reported to take
-about eight hours, which was too slow for normal workstation setup. Ubuntu
-dependencies now come from apt instead.
+The installer downloads a pinned static tmux binary and verifies its checksum.
+PDE no longer builds tmux or uses pkgsrc on the target host.
 
 Users do not choose a policy during a run. The repository assigns every item an
 owner, and `install` or `update` reconciles all owners. Only `config` exposes a

@@ -11,9 +11,9 @@ import (
 
 func TestPackageSet(t *testing.T) {
 	want := []string{
-		"bison", "build-essential", "bzip2", "ca-certificates", "curl", "file",
-		"fontconfig", "gawk", "git", "gzip", "libevent-dev", "libncurses-dev",
-		"make", "patch", "pkg-config", "python3", "tar", "unzip", "xclip",
+		"build-essential", "bzip2", "ca-certificates", "curl", "file",
+		"fontconfig", "gawk", "git", "gzip", "make", "patch", "python3",
+		"tar", "unzip", "xclip",
 		"xz-utils", "zsh",
 	}
 	if strings.Join(packages(), " ") != strings.Join(want, " ") {
@@ -91,7 +91,7 @@ func TestDryRunDoesNotMutate(t *testing.T) {
 }
 
 func TestProbeFailureStopsReconcile(t *testing.T) {
-	manager, log := fixtureManager(t, map[string]string{"bison": "fail"}, false)
+	manager, log := fixtureManager(t, map[string]string{"git": "fail"}, false)
 	if err := manager.Reconcile(); err == nil {
 		t.Fatal("Reconcile() error = nil, want probe failure")
 	}
