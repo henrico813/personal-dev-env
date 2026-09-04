@@ -116,6 +116,9 @@ func TestPkgsrcResumesPartialInstall(t *testing.T) {
 	if actions := readLines(t, filepath.Join(manager.Home, "actions")); len(actions) != 0 {
 		t.Fatalf("actions = %v, want none", actions)
 	}
+	if _, err := os.Stat(filepath.Join(manager.Home, "cleaned")); err != nil {
+		t.Fatalf("work was not cleaned: %v", err)
+	}
 }
 
 // Retrying a partial package mutation can damage package state.
@@ -174,11 +177,12 @@ case "$*" in
     ;;
   *)
     case "$last" in
-    install|replace)
+	install|replace)
     printf '%s\n' "$last" >> "` + manager.Home + `/actions"
     if [ "` + boolString(failMutation) + `" = true ]; then exit 2; fi
     printf '%s\n' "` + postVersion + `" > "` + manager.Home + `/installed"
     ;;
+	clean-depends) : > "` + manager.Home + `/cleaned" ;;
     esac
     ;;
 esac

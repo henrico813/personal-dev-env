@@ -176,6 +176,12 @@ func (m Manager) Reconcile() error {
 			return err
 		}
 		if status.State == "current" && !desiredTransitioned {
+			if err := m.cleanWork(packagePath); err != nil {
+				return err
+			}
+			if err := m.ValidateExtractedSource(); err != nil {
+				return fmt.Errorf("pkgsrc source changed during cleanup: %w", err)
+			}
 			continue
 		}
 		target := "install"
@@ -191,6 +197,9 @@ func (m Manager) Reconcile() error {
 		}
 		if post.Installed != status.Requested {
 			return fmt.Errorf("verify %s after %s: installed %q, want exactly %q", packagePath, target, post.Installed, status.Requested)
+		}
+		if err := m.cleanWork(packagePath); err != nil {
+			return err
 		}
 		if err := m.ValidateExtractedSource(); err != nil {
 			return fmt.Errorf("pkgsrc source changed during %s: %w", target, err)
@@ -291,6 +300,15 @@ func (m Manager) mutate(packagePath, target string, treeTransitioned bool) error
 		if err := m.Runner.Run("repair pkgsrc reverse dependencies", run.Command{Name: recovery, Args: []string{"-u"}, Env: m.environment()}); err != nil {
 			return fmt.Errorf("pkg_rolling-replace after %s: %w", packagePath, err)
 		}
+	}
+	return nil
+}
+
+func (m Manager) cleanWork(packagePath string) error {
+	directory := filepath.Join(m.SourceRoot, packagePath)
+	command := run.Command{Name: m.Bmake(), Args: append(m.makeVariables(), "clean", "clean-depends"), Dir: directory, Env: m.environment()}
+	if err := m.Runner.Run("clean pkgsrc work for "+packagePath, command); err != nil {
+		return fmt.Errorf("clean pkgsrc work for %s: %w", packagePath, err)
 	}
 	return nil
 }
