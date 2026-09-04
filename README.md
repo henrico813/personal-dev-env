@@ -30,7 +30,7 @@ pde-installer list
 pde-installer config
 ```
 
-- `install` and `update` reconcile pkgsrc, Aqua, npm, fonts, local builds, and config in order.
+- `install` and `update` reconcile pkgsrc, Aqua, direct releases, npm, fonts, local builds, and config in order.
 - `doctor` validates host prerequisites, pins, and managed paths.
 - `list` reports ownership and installed status.
 - `config` applies only the chezmoi source.
@@ -151,5 +151,5 @@ process on supported Ubuntu releases:
 The smoke runs all five commands as an unprivileged user on Ubuntu 22.04 and
 24.04 and confirms that root execution is rejected. It covers config
 transactions, including an induced chezmoi failure and rollback. Install and
-update are dry runs. A complete source-build installation remains a manual
-real-world check because it is too expensive for hosted CI.
+update are dry runs. A complete installation remains a manual real-world check
+because it is too expensive for hosted CI.

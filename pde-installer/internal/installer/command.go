@@ -115,12 +115,18 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("Aqua", err)
 	}
 	journals = append(journals, aquaJournal)
+	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	toolJournal, err := directManager.ReconcileTools()
+	if err != nil {
+		return fail("direct tools", err)
+	}
+	journals = append(journals, toolJournal)
 	npmJournal, err := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner).Reconcile()
 	if err != nil {
 		return fail("npm", err)
 	}
 	journals = append(journals, npmJournal)
-	directJournal, err := direct.New(config.Home, config.PkgPrefix, runner).Reconcile()
+	directJournal, err := directManager.Reconcile()
 	if err != nil {
 		return fail("direct artifacts", err)
 	}

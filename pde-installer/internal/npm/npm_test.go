@@ -44,7 +44,7 @@ func TestReconcileActivatesAndRollsBack(t *testing.T) {
 	}
 	prefix := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "npm.log")
-	writeNPMFixture(t, filepath.Join(prefix, "bin", "npm"), logPath)
+	writeNPMFixture(t, filepath.Join(home, ".local", "bin", "npm"), logPath)
 	manager := New(home, repoRoot, prefix, run.Runner{})
 
 	root := manager.Root()

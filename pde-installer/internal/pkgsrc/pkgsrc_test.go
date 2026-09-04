@@ -121,6 +121,22 @@ func TestPkgsrcResumesPartialInstall(t *testing.T) {
 	}
 }
 
+func TestPkgsrcSkipsCurrentAfterOwnershipChange(t *testing.T) {
+	manager := reconcileManager(t, "tool-1", "tool-1", false)
+	state := treeState{Release: release, ArchiveSHA256: archiveSHA256, Packages: append(manifest.PkgsrcPackages(), "lang/go")}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, manager.treeStatePath(), append(data, '\n'), 0o644)
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	if actions := readLines(t, filepath.Join(manager.Home, "actions")); len(actions) != 0 {
+		t.Fatalf("actions = %v, want none", actions)
+	}
+}
+
 // Retrying a partial package mutation can damage package state.
 func TestPkgsrcDoesNotRetryMutation(t *testing.T) {
 	manager := reconcileManager(t, "", "tool-1", true)

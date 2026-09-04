@@ -65,9 +65,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := m.ValidateLock(); err != nil {
 		return nil, err
 	}
-	npmBinary := filepath.Join(m.PkgPrefix, "bin", "npm")
+	npmBinary := filepath.Join(m.Home, ".local", "bin", "npm")
 	if m.Runner.DryRun {
-		if err := m.Runner.Plan("materialize complete npm lock with pkgsrc npm ci", nil); err != nil {
+		if err := m.Runner.Plan("materialize complete npm lock with pinned npm ci", nil); err != nil {
 			return nil, err
 		}
 		if err := m.Runner.Plan("run required npm package install scripts in staging", nil); err != nil {
@@ -82,7 +82,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return &fsutil.Journal{}, nil
 	}
 	if info, err := os.Stat(npmBinary); err != nil || info.Mode()&0o111 == 0 {
-		return nil, fmt.Errorf("pkgsrc npm not found at %s; install lang/nodejs24 first", npmBinary)
+		return nil, fmt.Errorf("managed npm not found at %s; reconcile direct tools first", npmBinary)
 	}
 	parent := filepath.Dir(m.Root())
 	if err := fsutil.GuardHome(m.Home, parent, m.Root(), filepath.Join(m.Home, ".local", "bin")); err != nil {
@@ -286,7 +286,7 @@ func packageVersion(root, name string) (string, error) {
 }
 
 func (m Manager) environment(cache ...string) []string {
-	path := filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path}
 	if len(cache) > 0 {
 		environment = append(environment, "npm_config_cache="+cache[0])

@@ -19,6 +19,12 @@ func TestManifestIncludesRuntimeTools(t *testing.T) {
 			t.Errorf("Find(%q, Aqua) = %#v, %t", name, item, ok)
 		}
 	}
+	for _, name := range []string{"neovim", "go", "rust", "node", "keychain"} {
+		item, ok := Find(name, Direct)
+		if !ok || item.Version == "" {
+			t.Errorf("Find(%q, Direct) = %#v, %t", name, item, ok)
+		}
+	}
 }
 
 // Pkgsrc must install only packages assigned to it.

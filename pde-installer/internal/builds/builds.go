@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
 )
 
@@ -27,12 +28,15 @@ type buildSpec struct {
 }
 
 type buildState struct {
-	Inputs map[string]string `json:"inputs"`
+	Inputs     map[string]string `json:"inputs"`
+	Toolchains map[string]string `json:"toolchains"`
 }
 
 type blinkState struct {
 	ArchiveSHA256 string `json:"archive_sha256"`
 	TreeSHA256    string `json:"tree_sha256"`
+	RustVersion   string `json:"rust_version"`
+	NvimVersion   string `json:"nvim_version"`
 }
 
 const (
@@ -78,8 +82,8 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			_ = os.RemoveAll(stageRoot)
 		}
 	}()
-	goBinary := filepath.Join(m.PkgPrefix, "bin", "go")
-	cargo := filepath.Join(m.PkgPrefix, "bin", "cargo")
+	goBinary := filepath.Join(m.Home, ".local", "bin", "go")
+	cargo := filepath.Join(m.Home, ".local", "bin", "cargo")
 	environment := m.environment(stageRoot)
 	specs := []buildSpec{
 		{name: "planner", source: filepath.Join(m.RepoRoot, "planner"), output: filepath.Join(stageRoot, "planner"), command: run.Command{Name: goBinary, Args: []string{"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "planner"), "./main"}, Dir: filepath.Join(m.RepoRoot, "planner"), Env: environment}},
@@ -119,7 +123,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			return nil, journal.Revert(err)
 		}
 	}
-	stateData, err := json.Marshal(buildState{Inputs: inputs})
+	stateData, err := json.Marshal(buildState{Inputs: inputs, Toolchains: toolchainVersions()})
 	if err != nil {
 		return nil, journal.Revert(fmt.Errorf("encode build state: %w", err))
 	}
@@ -150,7 +154,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if data, err := os.ReadFile(statePath); err == nil {
 		var state blinkState
 		installedHash, hashErr := hashTree(destination)
-		if json.Unmarshal(data, &state) == nil && hashErr == nil && state.ArchiveSHA256 == blinkSHA256 && state.TreeSHA256 == installedHash && regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so")) {
+		if json.Unmarshal(data, &state) == nil && hashErr == nil && state.ArchiveSHA256 == blinkSHA256 && state.TreeSHA256 == installedHash && state.RustVersion == managedVersion("rust") && state.NvimVersion == managedVersion("neovim") && regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so")) {
 			return &fsutil.Journal{}, nil
 		}
 	}
@@ -190,7 +194,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 		return nil, err
 	}
 	target := filepath.Join(workspace, "target")
-	command := run.Command{Name: filepath.Join(m.PkgPrefix, "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
+	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
 	if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
 		return nil, err
 	}
@@ -200,7 +204,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if err := copyExecutable(filepath.Join(target, "release", "libblink_cmp_fuzzy.so"), filepath.Join(stage, "lib", "libblink_cmp_fuzzy.so")); err != nil {
 		return nil, err
 	}
-	nvim := filepath.Join(m.PkgPrefix, "bin", "nvim")
+	nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
 	lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
 	verify := run.Command{Name: nvim, Args: []string{"--headless", "-u", "NONE", "--cmd", "set runtimepath+=" + blinkLib, "--cmd", "set runtimepath+=" + stage, "-c", "lua " + lua, "-c", "qa"}, Env: m.environment(workspace)}
 	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
@@ -210,7 +214,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	stateData, err := json.Marshal(blinkState{ArchiveSHA256: blinkSHA256, TreeSHA256: treeHash})
+	stateData, err := json.Marshal(blinkState{ArchiveSHA256: blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
 	if err != nil {
 		return nil, err
 	}
@@ -288,14 +292,28 @@ func (m Manager) inputs() (map[string]string, error) {
 	return inputs, nil
 }
 
+func managedVersion(name string) string {
+	item, _ := manifest.Find(name, manifest.Direct)
+	return item.Version
+}
+
+func toolchainVersions() map[string]string {
+	return map[string]string{"go": managedVersion("go"), "rust": managedVersion("rust")}
+}
+
 func (m Manager) current(inputs map[string]string) bool {
 	data, err := os.ReadFile(m.statePath())
 	if err != nil {
 		return false
 	}
 	var state buildState
-	if json.Unmarshal(data, &state) != nil || len(state.Inputs) != len(inputs) {
+	if json.Unmarshal(data, &state) != nil || len(state.Inputs) != len(inputs) || len(state.Toolchains) != len(toolchainVersions()) {
 		return false
+	}
+	for name, version := range toolchainVersions() {
+		if state.Toolchains[name] != version {
+			return false
+		}
 	}
 	for name, input := range inputs {
 		if state.Inputs[name] != input || !regularExecutable(filepath.Join(m.Home, ".local", "bin", name)) {
@@ -310,7 +328,7 @@ func (m Manager) statePath() string {
 }
 
 func (m Manager) environment(stage ...string) []string {
-	path := filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "bin") + string(os.PathListSeparator) + filepath.Join(m.PkgPrefix, "sbin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path, "PKG_CONFIG_PATH=" + filepath.Join(m.PkgPrefix, "lib", "pkgconfig")}
 	if len(stage) > 0 {
 		environment = append(environment, "GOCACHE="+filepath.Join(stage[0], "go-cache"), "GOMODCACHE="+filepath.Join(stage[0], "go-mod-cache"), "CARGO_HOME="+filepath.Join(stage[0], "cargo-home"))

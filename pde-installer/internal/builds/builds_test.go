@@ -35,8 +35,8 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	prefix := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "build.log")
-	writeBuildFixture(t, filepath.Join(prefix, "bin", "go"), goFixture(logPath))
-	writeBuildFixture(t, filepath.Join(prefix, "bin", "cargo"), cargoFixture(logPath))
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
 	manager := New(home, repoRoot, prefix, run.Runner{})
 
 	for _, name := range []string{"planner", "opencode-inline-shim", "surveil", "vibe"} {

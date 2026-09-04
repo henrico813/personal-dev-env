@@ -37,13 +37,15 @@ pde-installer config
 
 All managed destinations are below `HOME`: pkgsrc source is
 `~/.local/src/pkgsrc-2026Q2`, its unprivileged prefix is `~/.local/pkg`, Aqua is
-`~/.local/share/aquaproj-aqua`, and launchers are in `~/.local/bin`.
+`~/.local/share/aquaproj-aqua`, direct releases are in
+`~/.local/share/pde/releases`, and launchers are in `~/.local/bin`.
 
-pkgsrc is bootstrapped from its pinned source archive. Aqua tools, npm packages,
-fonts, Neovim plugins, shell plugins, tmux plugins, and local repository builds
-are pinned or input-hashed. Chezmoi owns home configuration and preserves local
-fields handled by its modifier scripts. Shell and tmux plugins load only from
-checksummed local external directories.
+pkgsrc is bootstrapped from its pinned source archive. Neovim, Go, Rust,
+Node.js, and Keychain use checksum-verified upstream releases instead of source
+builds. Aqua tools, npm packages, fonts, Neovim plugins, shell plugins, tmux
+plugins, and local repository builds are pinned or input-hashed. Chezmoi owns
+home configuration and preserves local fields handled by its modifier scripts.
+Shell and tmux plugins load only from checksummed local external directories.
 
 `~/.config/pde/config.json` remains the source of truth for vault and OpenCode
 settings. All tracked AI agents, commands, skills, and settings are applied by
@@ -58,6 +60,9 @@ go vet -C pde-installer ./...
 ./pde-installer/test/run-tests.sh smoke
 ```
 
+Set `PDE_TEST_OFFICIAL_TOOLS=1` when running the direct package tests to
+download and verify the pinned Neovim, Go, Rust, Node.js, and Keychain releases.
+
 The Go tests exercise real installer code with temporary files and small local
 executables. They verify pkgsrc decisions, npm and local-build activation,
 chezmoi rollback, installer locking, and recovery after an interrupted change.
@@ -65,5 +70,4 @@ They stay fast because they do not download or compile complete toolchains.
 
 The Docker smoke runs all five commands as an unprivileged user on Ubuntu 22.04
 and 24.04 and confirms that root execution is rejected. Install and update
-remain read-only dry runs. A complete source-build installation is a manual
-real-world check because of its cost.
+remain read-only dry runs. A complete installation is a manual real-world check.
