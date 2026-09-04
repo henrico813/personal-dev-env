@@ -135,6 +135,7 @@ func newMinimalRepoFixture(t *testing.T) string {
 	repoRoot := t.TempDir()
 	createManagedSources(t, repoRoot)
 	createChezmoiSource(t, repoRoot)
+	writeAIConfigSources(t, repoRoot)
 	mustWriteFile(t, filepath.Join(repoRoot, "pde", "pde"), "#!/usr/bin/env bash\nexit 0\n", 0o755)
 	manifest := "[package]\nname = \"surveil\"\nversion = \"0.1.0\"\n"
 	mustWriteFile(

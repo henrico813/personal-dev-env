@@ -39,6 +39,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/bin" -t v2.72.0
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: format
+        run: test -z "$(gofmt -l .)"
       - name: test
         run: go test ./...
 

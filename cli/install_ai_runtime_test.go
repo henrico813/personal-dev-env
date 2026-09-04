@@ -8,6 +8,41 @@ import (
 	"testing"
 )
 
+func TestPlannerLaunchersLeaveCodexPackage(t *testing.T) {
+	root := t.TempDir()
+	cfg := &Config{
+		LocalBinDir: filepath.Join(root, "home", ".local", "bin"),
+		OpenCodeConfigDir: filepath.Join(root, "home", ".config", "opencode"),
+		CodexConfigDir: filepath.Join(root, "home", ".codex"),
+	}
+	local := filepath.Join(cfg.LocalBinDir, "planner")
+	openCode := filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner")
+	codex := filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner")
+	mustWriteFile(t, local, "old local\n", 0o755)
+	mustWriteFile(t, openCode, "old OpenCode\n", 0o755)
+	mustWriteFile(t, codex, "transaction owned\n", 0o755)
+
+	if err := backupPlannerLaunchers(cfg, Runner{}); err != nil {
+		t.Fatalf("backup Planner launchers: %v", err)
+	}
+	mustFileContents(t, codex, "transaction owned\n")
+	if _, err := os.Stat(local); !os.IsNotExist(err) {
+		t.Fatalf("local launcher remains: %v", err)
+	}
+	if _, err := os.Stat(openCode); !os.IsNotExist(err) {
+		t.Fatalf("OpenCode launcher remains: %v", err)
+	}
+
+	planner := filepath.Join(root, "runtime", "planner")
+	mustWriteFile(t, planner, "planner\n", 0o755)
+	if err := installPlannerLaunchers(cfg, planner, Runner{}); err != nil {
+		t.Fatalf("install Planner launchers: %v", err)
+	}
+	mustLinkTarget(t, local, planner)
+	mustLinkTarget(t, openCode, planner)
+	mustFileContents(t, codex, "transaction owned\n")
+}
+
 func writeStubExecutable(t *testing.T, path, expectedArg string) {
 	t.Helper()
 	script := "#!/usr/bin/env bash\n" +

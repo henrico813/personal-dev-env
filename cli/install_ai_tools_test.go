@@ -20,6 +20,7 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 		CodexConfigDir:    filepath.Join(root, "home", ".codex"),
 		PiAgentDir:        filepath.Join(root, "home", ".pi", "agent"),
 	}
+	writeAIConfigSources(t, root)
 
 	if err := os.MkdirAll(filepath.Join(root, "surveil"), 0o755); err != nil {
 		t.Fatalf("mkdir surveil dir: %v", err)
@@ -34,8 +35,8 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 		t.Fatalf("mkdir managed agents dir: %v", err)
 	}
 	sharedSkill := filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages")
-	if err := os.MkdirAll(sharedSkill, 0o755); err != nil {
-		t.Fatalf("mkdir managed shared skill: %v", err)
+	if err := copyTree(filepath.Join(cfg.AIRepoDir, "skills", "git-messages"), sharedSkill); err != nil {
+		t.Fatalf("seed managed shared skill: %v", err)
 	}
 
 	var output bytes.Buffer
@@ -49,7 +50,7 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	cargo := strings.Index(dryRun, "DRY-RUN: verify cargo")
 	chezmoi := strings.Index(dryRun, "DRY-RUN: verify chezmoi")
 	jq := strings.Index(dryRun, "DRY-RUN: verify jq")
-	backup := strings.Index(dryRun, "DRY-RUN: backup existing config")
+	configStage := strings.Index(dryRun, "DRY-RUN: stage AI config")
 	plannerBuild := strings.Index(dryRun, "DRY-RUN: build planner")
 	shimBuild := strings.Index(dryRun, "DRY-RUN: build opencode inline shim")
 	surveilBuild := strings.Index(dryRun, "DRY-RUN: build surveil")
@@ -65,7 +66,7 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 		cargo,
 		chezmoi,
 		jq,
-		backup,
+		configStage,
 		plannerBuild,
 		shimBuild,
 		surveilBuild,
@@ -81,7 +82,7 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 			t.Fatalf("missing expected dry-run output:\n%s", dryRun)
 		}
 	}
-	if cargo > chezmoi || chezmoi > jq || jq > backup || jq > plannerBuild || jq > shimBuild || jq > surveilBuild {
+	if cargo > chezmoi || chezmoi > jq || jq > plannerBuild || jq > shimBuild || jq > surveilBuild {
 		t.Fatalf("tool preflight should run before mutable work:\n%s", dryRun)
 	}
 	if plannerBuild > shimBuild || shimBuild > surveilBuild {
@@ -102,6 +103,9 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	if node > stagePi {
 		t.Fatalf("Node setup should run before Pi activation:\n%s", dryRun)
 	}
+	if stagePi > configStage {
+		t.Fatalf("runtime setup should run before config activation:\n%s", dryRun)
+	}
 	if !strings.Contains(dryRun, "@earendil-works/pi-coding-agent@latest") {
 		t.Fatalf("dry-run should install maintained Pi package:\n%s", dryRun)
 	}
@@ -111,7 +115,7 @@ func TestInstallAIToolsDryRunChecksCargoBeforeMutations(t *testing.T) {
 	if strings.Contains(dryRun, "@mariozechner/pi-coding-agent") {
 		t.Fatalf("dry-run should not install deprecated Pi package:\n%s", dryRun)
 	}
-	if !strings.Contains(dryRun, "backup existing config ("+sharedSkill+" -> "+sharedSkill+".backup.") {
+	if !strings.Contains(dryRun, "back up AI config ("+sharedSkill+" -> <ai-config-backup>/agents-skills/git-messages)") {
 		t.Fatalf("dry-run should back up the managed shared skill:\n%s", dryRun)
 	}
 }
@@ -128,6 +132,7 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 		CodexConfigDir:    filepath.Join(root, "home", ".codex"),
 		PiAgentDir:        filepath.Join(root, "home", ".pi", "agent"),
 	}
+	writeAIConfigSources(t, root)
 
 	requireFile := func(path, contents string) {
 		t.Helper()
@@ -157,31 +162,25 @@ func TestInstallAIToolsSyncsPlanDocsIntoManagedConfigDirs(t *testing.T) {
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "create_plan.md"), "opencode create-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "implement_plan.md"), "opencode implement-plan\n")
 	requireFile(filepath.Join(cfg.AIRepoDir, "opencode", "commands", "cleanup_plan.md"), "opencode cleanup-plan\n")
-	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "create-plan", "SKILL.md"), "codex create-plan\n")
-	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "implement-plan", "SKILL.md"), "codex implement-plan\n")
-	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "cleanup-plan", "SKILL.md"), "codex cleanup-plan\n")
-	requireFile(filepath.Join(cfg.AIRepoDir, "skills", "git-messages", "SKILL.md"), "shared git messages\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "create-plan", "SKILL.md"), "---\nname: create-plan\ndescription: fixture\n---\ncodex create-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "implement-plan", "SKILL.md"), "---\nname: implement-plan\ndescription: fixture\n---\ncodex implement-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "codex", "skills", "cleanup-plan", "SKILL.md"), "---\nname: cleanup-plan\ndescription: fixture\n---\ncodex cleanup-plan\n")
+	requireFile(filepath.Join(cfg.AIRepoDir, "skills", "git-messages", "SKILL.md"), "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n")
 	requireFile(filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"), "other skill\n")
 
-	if err := installOpenCodeConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install opencode config: %v", err)
-	}
-	if err := installCodexConfig(cfg, Runner{}); err != nil {
-		t.Fatalf("install codex config: %v", err)
-	}
-	if err := installGitMessagesSkill(cfg, Runner{}); err != nil {
-		t.Fatalf("install git messages skill: %v", err)
+	if err := syncAIConfig(cfg, Runner{}); err != nil {
+		t.Fatalf("sync AI config: %v", err)
 	}
 
 	cases := map[string]string{
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "create_plan.md"):        "opencode create-plan\n",
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "implement_plan.md"):     "opencode implement-plan\n",
 		filepath.Join(cfg.OpenCodeConfigDir, "commands", "cleanup_plan.md"):       "opencode cleanup-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):     "codex create-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"):  "codex implement-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "cleanup-plan", "SKILL.md"):    "codex cleanup-plan\n",
-		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):    "shared git messages\n",
-		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages", "SKILL.md"): "shared git messages\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "SKILL.md"):     "---\nname: create-plan\ndescription: fixture\n---\ncodex create-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "implement-plan", "SKILL.md"):  "---\nname: implement-plan\ndescription: fixture\n---\ncodex implement-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "cleanup-plan", "SKILL.md"):    "---\nname: cleanup-plan\ndescription: fixture\n---\ncodex cleanup-plan\n",
+		filepath.Join(cfg.CodexConfigDir, "skills", "git-messages", "SKILL.md"):    "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n",
+		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages", "SKILL.md"): "---\nname: git-messages\ndescription: fixture\n---\nshared git messages\n",
 		filepath.Join(cfg.HomeDir, ".agents", "skills", "other", "SKILL.md"):       "other skill\n",
 	}
 
