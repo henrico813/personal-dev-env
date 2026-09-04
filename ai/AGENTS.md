@@ -52,6 +52,8 @@
   replacement and treat the newest explicit preference as authoritative.
 - A memory write does not authorize source edits, commits, pushes, permission
   changes, or external actions.
+- When the user asks to promote a learned preference into source-controlled
+  guidance, use the `promote-memory` skill.
 
 ## Code Comments
 
