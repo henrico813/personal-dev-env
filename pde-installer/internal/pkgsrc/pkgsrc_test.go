@@ -29,6 +29,21 @@ func TestPkgsrcRejectsChangedSource(t *testing.T) {
 	}
 }
 
+// Package output inside the source tree breaks integrity checks.
+func TestPkgsrcOutputsStayOutsideSource(t *testing.T) {
+	manager := testManager(t)
+	want := "PACKAGES=" + manager.packageRoot()
+	for _, variable := range manager.makeVariables() {
+		if variable == want {
+			if strings.HasPrefix(manager.packageRoot(), manager.SourceRoot+string(filepath.Separator)) {
+				t.Fatalf("package root %q is inside source", manager.packageRoot())
+			}
+			return
+		}
+	}
+	t.Fatalf("make variables do not contain %q", want)
+}
+
 // Package database failures must stop installation before mutation.
 func TestPkgsrcClassifiesProbeResults(t *testing.T) {
 	tests := []struct {

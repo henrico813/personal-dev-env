@@ -71,6 +71,10 @@ func (m Manager) distDir() string {
 	return filepath.Join(m.StateDir, "pkgsrc-distfiles", release)
 }
 
+func (m Manager) packageRoot() string {
+	return filepath.Join(m.StateDir, "pkgsrc-packages", release)
+}
+
 // Bootstrap creates the pinned unprivileged pkgsrc installation.
 func (m Manager) Bootstrap() error {
 	if executable(m.Bmake()) && executable(m.pkgInfo()) && m.ValidateBootstrap() == nil {
@@ -119,7 +123,7 @@ func (m Manager) Bootstrap() error {
 		}
 	}
 	command := run.Command{Name: filepath.Join(m.SourceRoot, "bootstrap", "bootstrap"), Args: m.bootstrapArgs(), Dir: filepath.Join(m.SourceRoot, "bootstrap")}
-	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir()); err != nil {
+	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir(), m.packageRoot()); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(m.workRoot(), 0o755); err != nil {
@@ -127,6 +131,9 @@ func (m Manager) Bootstrap() error {
 	}
 	if err := os.MkdirAll(m.distDir(), 0o755); err != nil {
 		return fmt.Errorf("create pkgsrc distfiles: %w", err)
+	}
+	if err := os.MkdirAll(m.packageRoot(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc package root: %w", err)
 	}
 	if err := m.Runner.Run("bootstrap unprivileged pkgsrc", command); err != nil {
 		return err
@@ -253,7 +260,7 @@ func (m Manager) showVar(directory, variable string) (string, error) {
 func (m Manager) mutate(packagePath, target string, treeTransitioned bool) error {
 	directory := filepath.Join(m.SourceRoot, packagePath)
 	command := run.Command{Name: m.Bmake(), Args: append(m.makeVariables(), target), Dir: directory, Env: m.environment()}
-	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir()); err != nil {
+	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir(), m.packageRoot()); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(m.workRoot(), 0o755); err != nil {
@@ -261,6 +268,9 @@ func (m Manager) mutate(packagePath, target string, treeTransitioned bool) error
 	}
 	if err := os.MkdirAll(m.distDir(), 0o755); err != nil {
 		return fmt.Errorf("create pkgsrc distfiles: %w", err)
+	}
+	if err := os.MkdirAll(m.packageRoot(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc package root: %w", err)
 	}
 	backup, err := m.backupDatabase(directory)
 	if err != nil {
@@ -389,6 +399,7 @@ func (m Manager) makeVariables() []string {
 		"PKG_DBDIR=" + m.pkgDB(),
 		"WRKOBJDIR=" + filepath.Join(m.workRoot(), "packages"),
 		"DISTDIR=" + m.distDir(),
+		"PACKAGES=" + m.packageRoot(),
 	}
 }
 
