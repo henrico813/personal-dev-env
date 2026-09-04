@@ -12,8 +12,7 @@ import (
 // Backends use exit codes to distinguish absence from failure.
 func TestQueryPreservesExitStatus(t *testing.T) {
 	t.Parallel()
-	binary := writeCommand(t, "#!/bin/sh\nexit 7\n")
-	_, err := (Runner{}).Query("run fixture", Command{Name: binary})
+	_, err := (Runner{}).Query("run fixture", Command{Name: "sh", Args: []string{"-c", "exit 7"}})
 	var exitError *exec.ExitError
 	if !errors.As(err, &exitError) {
 		t.Fatalf("Query() error = %T %v", err, err)
@@ -26,10 +25,9 @@ func TestQueryPreservesExitStatus(t *testing.T) {
 // Managed tools must receive the installer's explicit environment.
 func TestRunUsesCommandEnvironment(t *testing.T) {
 	t.Parallel()
-	binary := writeCommand(t, "#!/bin/sh\nprintf '%s:%s' \"$PDE_TEST\" \"$1\"\n")
 	output, err := (Runner{}).Query("run fixture", Command{
-		Name: binary,
-		Args: []string{"argument"},
+		Name: "sh",
+		Args: []string{"-c", `printf '%s:%s' "$PDE_TEST" "$1"`, "sh", "argument"},
 		Env:  []string{"PDE_TEST=value"},
 	})
 	if err != nil {
@@ -45,10 +43,9 @@ func TestDryRunSkipsExecution(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	marker := filepath.Join(root, "marker")
-	binary := writeCommand(t, "#!/bin/sh\ntouch \"$1\"\n")
 	var output strings.Builder
 	runner := Runner{DryRun: true, Stdout: &output}
-	if err := runner.Run("create marker", Command{Name: binary, Args: []string{marker}}); err != nil {
+	if err := runner.Run("create marker", Command{Name: "sh", Args: []string{"-c", `touch "$1"`, "sh", marker}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -57,35 +54,4 @@ func TestDryRunSkipsExecution(t *testing.T) {
 	if !strings.Contains(output.String(), "DRY-RUN: create marker") {
 		t.Fatalf("dry-run output = %q", output.String())
 	}
-}
-
-func writeCommand(t *testing.T, contents string) string {
-	t.Helper()
-	directory := t.TempDir()
-	file, err := os.CreateTemp(directory, ".command-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
-	if err := file.Chmod(0o755); err != nil {
-		_ = file.Close()
-		t.Fatal(err)
-	}
-	if _, err := file.WriteString(contents); err != nil {
-		_ = file.Close()
-		t.Fatal(err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "command")
-	if err := os.Rename(temporary, path); err != nil {
-		t.Fatal(err)
-	}
-	return path
 }
