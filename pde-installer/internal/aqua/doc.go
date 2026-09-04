@@ -1,2 +1,2 @@
-// Package aqua installs pinned tools managed by Aqua.
+// Package aqua installs Aqua and its pinned standalone tools below HOME.
 package aqua

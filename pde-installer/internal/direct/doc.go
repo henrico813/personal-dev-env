@@ -1,2 +1,3 @@
-// Package direct installs artifacts fetched directly from upstream releases.
+// Package direct installs exact runtimes, applications, and fonts from verified
+// upstream releases.
 package direct
