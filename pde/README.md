@@ -6,8 +6,8 @@ configuration and lookup only.
 
 ## Quick Start
 
-Install the host compiler, development headers, archive tools, Git, and a
-fetcher first. The installer itself is rootless and never invokes a system
+Install the host compiler, development headers, `yacc`, archive tools, Git, and
+a fetcher first. The installer itself is rootless and never invokes a system
 package manager or `sudo`.
 
 ```bash
