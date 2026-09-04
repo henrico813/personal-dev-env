@@ -40,5 +40,7 @@ worktrees/
 planner/planner
 cli/pde
 cli/pde.exe
+pde-installer/pde-installer
+pde-installer/pde-installer.exe
 vibe/target/
 surveil/target/

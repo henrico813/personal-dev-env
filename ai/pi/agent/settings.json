@@ -2,8 +2,8 @@
   "defaultProvider": "openai",
   "defaultThinkingLevel": "medium",
   "packages": [
-    "npm:@heyhuynhgiabuu/pi-diff",
-    "npm:pi-powerline-footer",
-    "npm:@heyhuynhgiabuu/pi-pretty"
+    "npm:@heyhuynhgiabuu/pi-diff@0.8.1",
+    "npm:pi-powerline-footer@0.16.0",
+    "npm:@heyhuynhgiabuu/pi-pretty@0.6.25"
   ]
 }
