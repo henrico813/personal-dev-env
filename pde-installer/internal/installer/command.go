@@ -152,10 +152,8 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("blink.cmp", err)
 	}
 	journals = append(journals, blinkJournal)
-	for _, journal := range journals {
-		if err := journal.Commit(); err != nil {
-			return fmt.Errorf("clean successful backup: %w", err)
-		}
+	if err := fsutil.CommitJournals(journals...); err != nil {
+		return fmt.Errorf("clean successful backups: %w", err)
 	}
 	return nil
 }
@@ -169,8 +167,5 @@ func applyConfig(config config, runner run.Runner) error {
 	if err != nil {
 		return migrationJournal.Revert(err)
 	}
-	if err := journal.Commit(); err != nil {
-		return migrationJournal.Revert(err)
-	}
-	return migrationJournal.Commit()
+	return fsutil.CommitJournals(migrationJournal, journal)
 }

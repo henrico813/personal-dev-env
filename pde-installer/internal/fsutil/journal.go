@@ -9,7 +9,11 @@ import (
 	"strings"
 )
 
-const journalVersion = 1
+const (
+	journalVersion    = 1
+	commitGroupPrefix = ".commit-group-"
+	commitGroupSuffix = ".json"
+)
 
 // JournalConfig names the paths used for durable filesystem journals.
 type JournalConfig struct {
@@ -47,6 +51,12 @@ type journalState struct {
 	Cleanup   []string        `json:"cleanup,omitempty"`
 }
 
+type commitGroupState struct {
+	Version  int      `json:"version"`
+	Home     string   `json:"home"`
+	Journals []string `json:"journals"`
+}
+
 // Journal groups filesystem activations into a reversible operation.
 type Journal struct {
 	// Home remains public for existing struct-literal callers.
@@ -81,7 +91,16 @@ func RecoverJournals(config JournalConfig) error {
 		return fmt.Errorf("read journal directory: %w", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if entry.IsDir() || !isCommitGroup(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(directory, entry.Name())
+		if err := recoverCommitGroup(config.Home, directory, path); err != nil {
+			return fmt.Errorf("recover commit group %s: %w", path, err)
+		}
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") || isCommitGroup(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(directory, entry.Name())
@@ -186,14 +205,39 @@ func (j *Journal) Revert(cause error) error {
 
 // Commit marks success before removing backups and temporary paths.
 func (j *Journal) Commit() error {
-	if err := j.ready(); err != nil {
-		return err
-	}
-	j.state.Committed = true
-	if err := j.persist(); err != nil {
+	if err := j.markCommitted(); err != nil {
 		return err
 	}
 	return j.finishCommit()
+}
+
+// CommitJournals durably commits every journal before cleaning any backup.
+func CommitJournals(journals ...*Journal) error {
+	active, err := activeJournals(journals)
+	if err != nil {
+		return err
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	groupPath, err := writeCommitGroup(active)
+	if err != nil {
+		return fmt.Errorf("record commit group: %w", err)
+	}
+	for _, journal := range active {
+		if err := journal.markCommitted(); err != nil {
+			return fmt.Errorf("mark journal committed: %w", err)
+		}
+	}
+	if err := removeDurable(groupPath); err != nil {
+		return fmt.Errorf("remove commit group: %w", err)
+	}
+	for _, journal := range active {
+		if err := journal.finishCommit(); err != nil {
+			return fmt.Errorf("clean committed journal: %w", err)
+		}
+	}
+	return nil
 }
 
 func (j *Journal) record(change Change) error {
@@ -362,6 +406,14 @@ func (j *Journal) finishCommit() error {
 	return j.removeJournal()
 }
 
+func (j *Journal) markCommitted() error {
+	if err := j.ready(); err != nil {
+		return err
+	}
+	j.state.Committed = true
+	return j.persist()
+}
+
 func (j *Journal) cleanTracked() error {
 	for len(j.state.Cleanup) > 0 {
 		index := len(j.state.Cleanup) - 1
@@ -417,6 +469,101 @@ func journalDirectory(config JournalConfig) (string, error) {
 		return "", err
 	}
 	return directory, nil
+}
+
+func activeJournals(journals []*Journal) ([]*Journal, error) {
+	active := make([]*Journal, 0, len(journals))
+	var home, directory string
+	for _, journal := range journals {
+		if journal == nil {
+			return nil, fmt.Errorf("commit journal is nil")
+		}
+		if journal.path == "" && len(journal.Changes) == 0 && len(journal.state.Changes) == 0 && len(journal.state.Cleanup) == 0 {
+			continue
+		}
+		if err := journal.ready(); err != nil {
+			return nil, err
+		}
+		if err := journal.persist(); err != nil {
+			return nil, err
+		}
+		if len(active) == 0 {
+			home, directory = journal.Home, journal.directory
+		} else if journal.Home != home || journal.directory != directory {
+			return nil, fmt.Errorf("commit journals use different homes or directories")
+		}
+		active = append(active, journal)
+	}
+	return active, nil
+}
+
+func writeCommitGroup(journals []*Journal) (string, error) {
+	directory := journals[0].directory
+	file, err := os.CreateTemp(directory, commitGroupPrefix)
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Remove(name); err != nil {
+		return "", err
+	}
+	path := name + commitGroupSuffix
+	state := commitGroupState{Version: journalVersion, Home: journals[0].Home}
+	for _, journal := range journals {
+		state.Journals = append(state.Journals, filepath.Base(journal.path))
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return "", err
+	}
+	if err := atomicWriteJSON(path, append(data, '\n')); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func recoverCommitGroup(home, directory, path string) error {
+	if err := GuardHome(home, directory, path); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var state commitGroupState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("decode commit group: %w", err)
+	}
+	if state.Version != journalVersion || state.Home != home || len(state.Journals) == 0 {
+		return fmt.Errorf("commit group has invalid version, HOME, or members")
+	}
+	for _, name := range state.Journals {
+		if filepath.Base(name) != name || !strings.HasSuffix(name, ".json") || isCommitGroup(name) {
+			return fmt.Errorf("commit group has invalid journal name %q", name)
+		}
+		journal, err := loadJournal(home, directory, filepath.Join(directory, name))
+		if err != nil {
+			return err
+		}
+		if err := journal.markCommitted(); err != nil {
+			return err
+		}
+	}
+	return removeDurable(path)
+}
+
+func isCommitGroup(name string) bool {
+	return strings.HasPrefix(name, commitGroupPrefix) && strings.HasSuffix(name, commitGroupSuffix)
+}
+
+func removeDurable(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
 }
 
 func loadJournal(home, directory, path string) (*Journal, error) {
