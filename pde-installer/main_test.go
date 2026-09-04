@@ -64,7 +64,10 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		destination := filepath.Join(home, "active")
 		writeFile(t, filepath.Join(stage, "content"), "new\n", 0o644)
 		writeFile(t, filepath.Join(destination, "content"), "old\n", 0o644)
-		journal := &fsutil.Journal{Home: home}
+		journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if err := journal.Activate(stage, destination); err != nil {
 			t.Fatal(err)
 		}
