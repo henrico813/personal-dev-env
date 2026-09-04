@@ -45,7 +45,7 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 
 # PATH
 export PATH="$HOME/.local/bin:$HOME/.local/pkg/sbin:$HOME/.local/pkg/bin:$PATH"
-export AQUA_ROOT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua"
+export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 
