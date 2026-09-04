@@ -131,6 +131,11 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("local builds", err)
 	}
 	journals = append(journals, buildJournal)
+	migrationJournal, err := prepareLegacyConfig(config, runner)
+	if err != nil {
+		return fail("PDE config migration", err)
+	}
+	journals = append(journals, migrationJournal)
 	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
@@ -150,9 +155,16 @@ func reconcile(config config, runner run.Runner) error {
 }
 
 func applyConfig(config config, runner run.Runner) error {
-	journal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Apply()
+	migrationJournal, err := prepareLegacyConfig(config, runner)
 	if err != nil {
 		return err
 	}
-	return journal.Commit()
+	journal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Apply()
+	if err != nil {
+		return migrationJournal.Revert(err)
+	}
+	if err := journal.Commit(); err != nil {
+		return migrationJournal.Revert(err)
+	}
+	return migrationJournal.Commit()
 }
