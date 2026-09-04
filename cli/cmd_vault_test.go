@@ -16,6 +16,9 @@ import (
 
 func TestRootCmdRegistersVaultLocate(t *testing.T) {
 	root := newRootCmd()
+	if findSubcommand(root, "install") != nil {
+		t.Fatal("install command should not be registered")
+	}
 	vault := findSubcommand(root, "vault")
 	if vault == nil {
 		t.Fatal("expected vault command to be registered")

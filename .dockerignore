@@ -1,0 +1,10 @@
+.git
+.surveil
+worktrees
+planner/planner
+cli/pde
+pde-installer/pde-installer
+vibe/target
+surveil/target
+**/*.log
+**/node_modules

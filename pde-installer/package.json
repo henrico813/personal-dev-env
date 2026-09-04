@@ -1,0 +1,10 @@
+{
+  "name": "pde-managed-cli-packages",
+  "private": true,
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@openai/codex": "0.153.2",
+    "obsidian-headless": "0.0.14",
+    "opencode-ai": "1.18.27"
+  }
+}

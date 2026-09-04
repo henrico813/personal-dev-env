@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+target="$HOME/.zshrc"
+source="$PDE_REPO_ROOT/chezmoi/dot_zshrc"
+fail_marker="$PDE_REPO_ROOT/chezmoi/.pde-smoke-fail"
+action=""
+for argument in "$@"; do
+	case "$argument" in
+	status|diff|apply) action="$argument" ;;
+	esac
+done
+
+case "$action" in
+status)
+	if ! cmp -s "$source" "$target"; then
+		printf ' M %s\n' "$target"
+	fi
+	if [ -e "$HOME/.config/pde/paths.env" ]; then
+		printf ' D %s\n' "$HOME/.config/pde/paths.env"
+	fi
+	if [ -e "$fail_marker" ]; then
+		printf ' M %s\n' "$HOME/.config/opencode/transaction-marker"
+		printf ' A %s\n' "$HOME/.config/pde/smoke-created/content"
+	fi
+	;;
+diff)
+	diff -u "$target" "$source" 2>/dev/null || true
+	;;
+apply)
+	cp "$source" "$target"
+	rm -f "$HOME/.config/pde/paths.env"
+	if [ -e "$fail_marker" ]; then
+		printf 'changed\n' >"$HOME/.config/opencode/transaction-marker"
+		mkdir -p "$HOME/.config/pde/smoke-created"
+		printf 'new\n' >"$HOME/.config/pde/smoke-created/content"
+		exit 23
+	fi
+	;;
+*)
+	printf 'fixture chezmoi: unsupported command\n' >&2
+	exit 2
+	;;
+esac

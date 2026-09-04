@@ -32,7 +32,7 @@ make -C vibe test
 make -C vibe install
 ```
 
-If you already use the PDE Go CLI, `pde install ai-tools` installs the
+If you use PDE, `pde-installer install` installs the
 same `vibe` binary to `~/.local/bin`.
 
 This installs `vibe` to `~/.local/bin`.
