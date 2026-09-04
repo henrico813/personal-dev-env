@@ -80,7 +80,6 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
-| OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | `opencode-mem@2.25.0`, `~/.opencode-mem/` | Explicit correction retention |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
@@ -89,20 +88,6 @@ Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe b
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
 The installer snapshots changed chezmoi targets before apply. A scoped modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`; unrelated settings remain in place and failures roll back the snapshot.
-
-OpenCode memory stores local profile data under `~/.opencode-mem/`. When
-corrected, OpenCode saves the durable behavior as an explicit profile
-preference without requiring the user to organize memory. Automatic transcript
-capture and the plugin web server are disabled for this focused integration.
-The installer preserves unrelated strict-JSON memory settings and uses global
-`git user.email` as the stable profile identity. Commented JSONC fails safely
-instead of being overwritten, and the older `opencode-mem.json` filename must
-be migrated first. Changing the global email starts a new profile; the email
-is stored in local plugin data. This PoC assumes one correction writer at a
-time. Project or environment overrides can replace these global settings and
-void the privacy guarantees. This integration is OpenCode-only; Codex and Pi
-continue without persistent memory. OpenCode downloads the plugin and local
-embedding model on first use, which may require network access.
 
 ## Using OpenCode Commands
 
