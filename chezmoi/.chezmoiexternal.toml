@@ -375,4 +375,4 @@ checksum.sha256 = "c80ebea2d07dc2136e7cb0e057006ac6230c3a268d22b533f15e8dfc0c2ba
 [".pi/agent/settings.json"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/pi/agent/settings.json'
-checksum.sha256 = "5594fcc9d647b6445446f6b4b27bb4e1efff47a26b2a07ab41773bb06e000aa6"
+checksum.sha256 = "c398cd92341bcc2dcc2153f030222630f488ea99b5ba2ad008217591f8e2b682"
