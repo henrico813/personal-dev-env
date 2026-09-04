@@ -22,7 +22,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 3. Preview the Work
 
 ```bash
-pde-installer install --dry-run
+pde-installer install --profile terminal --dry-run
 ```
 
 The preview reads host and repository state but does not run mutating commands.
@@ -30,12 +30,26 @@ The preview reads host and repository state but does not run mutating commands.
 ## 4. Install
 
 ```bash
-pde-installer install
+pde-installer install --profile terminal
 ```
 
 Enter your sudo password if `apt-get` asks for it. The command installs missing
-Ubuntu dependencies, then reconciles every user-owned component and the chezmoi
-configuration. You cannot select individual tools or backends.
+Ubuntu runtime packages, tmux, terminal tools, and their configuration.
+
+To expand the terminal installation to the complete development environment,
+run:
+
+```bash
+pde-installer install --profile full
+```
+
+The installer saves the profile in `~/.config/pde/config.json`. A saved `full`
+profile cannot change to `terminal`.
+
+On a fresh system with no `config.json` or legacy `paths.env`, omitting
+`--profile` defaults to `full`. If either file is nonempty but has no profile,
+commands stop. Add `"profile": "full"` or `"profile": "terminal"` to
+`~/.config/pde/config.json`, then rerun the command.
 
 ## 5. Verify
 

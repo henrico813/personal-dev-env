@@ -15,6 +15,9 @@ stages in reverse order. On the next non-dry-run `install`, `update`, or
 - a committed journal finishes removing backups and temporary paths;
 - a recorded commit group finishes marking all member journals committed.
 
+The saved profile rolls back with `config.json`. A failed expansion restores
+the previous profile. Dry runs never save a profile.
+
 Recovery refuses paths outside the same `HOME` and stops on unexpected path
 identity changes. One installer lock at
 `~/.local/state/pde/installer.lock` prevents concurrent mutating runs.

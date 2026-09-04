@@ -14,11 +14,9 @@ The installer assigns tools by this policy:
 The Aqua registry also selects compatible artifacts, including Yazi's musl
 build on Ubuntu 22.04.
 
-tmux is the current source-built tool. Its pinned release is built under
-`HOME`. PDE no longer uses pkgsrc: its first source build was reported to take
-about eight hours, which was too slow for normal workstation setup. Ubuntu
-dependencies now come from apt instead.
+tmux uses a pinned, verified static release installed under `HOME`.
 
-Users do not choose a policy during a run. The repository assigns every item an
-owner, and `install` or `update` reconciles all owners. Only `config` exposes a
-supported subset.
+A profile chooses which components to install. It does not change how those
+components are installed. The full profile contains the complete development
+environment. The terminal profile leaves out editors, programming toolchains,
+graphical terminal configuration, and AI tools.
