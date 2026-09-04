@@ -81,19 +81,30 @@ func installAITools(cfg *Config, runner Runner) error {
 	return verifyPiLauncher(cfg, runner)
 }
 
-// Legacy helpers remain available to callers while activation uses installAIConfig.
+// Legacy helpers are retained for callers that still use them directly; the
+// installer itself activates configuration through installAIConfig.
 func installOpenCodeConfig(cfg *Config, runner Runner) error {
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), filepath.Join(cfg.OpenCodeConfigDir, "agents"), runner); err != nil { return err }
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "commands"), filepath.Join(cfg.OpenCodeConfigDir, "commands"), runner); err != nil { return err }
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "agents"), filepath.Join(cfg.OpenCodeConfigDir, "agents"), runner); err != nil {
+		return err
+	}
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "opencode", "commands"), filepath.Join(cfg.OpenCodeConfigDir, "commands"), runner); err != nil {
+		return err
+	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"), runner)
 }
+
 func installCodexConfig(cfg *Config, runner Runner) error {
-	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex", "skills"), filepath.Join(cfg.CodexConfigDir, "skills"), runner); err != nil { return err }
+	if err := syncTree(filepath.Join(cfg.AIRepoDir, "codex", "skills"), filepath.Join(cfg.CodexConfigDir, "skills"), runner); err != nil {
+		return err
+	}
 	return copyFile(filepath.Join(cfg.AIRepoDir, "AGENTS.md"), filepath.Join(cfg.CodexConfigDir, "AGENTS.md"), runner)
 }
+
 func installGitMessagesSkill(cfg *Config, runner Runner) error {
 	source := filepath.Join(cfg.AIRepoDir, "skills", "git-messages")
-	if err := syncTree(source, filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages"), runner); err != nil { return err }
+	if err := syncTree(source, filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages"), runner); err != nil {
+		return err
+	}
 	return syncTree(source, filepath.Join(cfg.CodexConfigDir, "skills", "git-messages"), runner)
 }
 
