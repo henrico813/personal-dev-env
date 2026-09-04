@@ -2,7 +2,7 @@
 
 This directory owns PDE home configuration and checksummed external content.
 `pde-installer install` and `update` apply it during full reconciliation.
-`pde-installer config` applies only this source.
+`pde-installer config` runs only config migration and this source.
 
 Edit files here using chezmoi source names. Add remote archives to
 `.chezmoiexternal.toml` with a SHA-256 checksum.

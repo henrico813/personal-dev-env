@@ -13,6 +13,7 @@ pinned environment:
 ```bash
 mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
+export PATH="$HOME/.local/bin:$PATH"
 pde-installer install
 ```
 
@@ -30,10 +31,10 @@ pde-installer list
 pde-installer config
 ```
 
-- `install` and `update` reconcile Ubuntu dependencies, tmux, Aqua, direct releases, npm, local builds, and config in order.
+- `install` and `update` reconcile the complete environment in dependency order.
 - `doctor` validates host prerequisites, pins, and managed paths.
 - `list` reports ownership and installed status.
-- `config` applies only the chezmoi source.
+- `config` migrates legacy state and applies the chezmoi source.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
 Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
@@ -43,6 +44,7 @@ Build the separate vault-only CLI when vault commands are needed:
 
 ```bash
 go build -C cli -o ~/.local/bin/pde .
+export PATH="$HOME/.local/bin:$PATH"
 pde vault --help
 ```
 

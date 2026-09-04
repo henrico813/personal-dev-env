@@ -1,8 +1,8 @@
 # Update Chezmoi Content
 
-1. Edit files under the repository's `chezmoi/` source directory.
+1. Edit files under the repository's `../chezmoi/` source directory.
 2. For an external archive, update its URL and SHA-256 value in
-   `chezmoi/.chezmoiexternal.toml`. Every external must have a checksum.
+   `../chezmoi/.chezmoiexternal.toml`. Every external must have a checksum.
 3. Preview only configuration changes:
 
    ```bash

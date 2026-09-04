@@ -30,7 +30,7 @@ func NewCommand() *cobra.Command {
 	root.PersistentFlags().StringVar(&repoRoot, "repo-root", "", "personal-dev-env checkout")
 	root.AddCommand(mutatingCommand("install", "Install all pinned PDE components", &repoRoot, reconcile))
 	root.AddCommand(mutatingCommand("update", "Reconcile installed components to repository pins", &repoRoot, reconcile))
-	root.AddCommand(mutatingCommand("config", "Apply only the repository chezmoi source", &repoRoot, applyConfig))
+	root.AddCommand(mutatingCommand("config", "Migrate legacy state and apply the chezmoi source", &repoRoot, applyConfig))
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	return root

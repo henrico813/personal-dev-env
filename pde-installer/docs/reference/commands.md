@@ -25,10 +25,10 @@ selector.
 
 ### `pde-installer config [--dry-run]`
 
-Migrates legacy PDE configuration and applies only the complete chezmoi source.
-It rejects UID 0. Dry run executes read-only chezmoi status and diff without
-refreshing externals or running scripts. A managed Aqua installation of chezmoi
-must already exist.
+Migrates legacy PDE configuration, then applies the complete chezmoi source
+without reconciling other backends. It rejects UID 0. Dry run executes read-only
+chezmoi status and diff without refreshing externals or running scripts. A
+managed Aqua installation of chezmoi must already exist.
 
 ### `pde-installer doctor`
 
