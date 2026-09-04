@@ -26,8 +26,8 @@ command. It does not upgrade a package that is already installed.
    `internal/manifest/manifest.go`.
 3. Run the tests and preview shown above.
 
-The installer builds tmux from the verified source archive under `HOME` because
-the required release is not taken from the host package. Source builds are the
-last choice when no suitable package or binary is available.
+The installer downloads the pinned amd64 binary from
+`mjakob-gh/build-static-tmux` and verifies its SHA-256 checksum. Do not use the
+latest-release URL. Pin a versioned asset and its checksum.
 
 There is no Ubuntu-only or tmux-only command. `update` reconciles everything.
