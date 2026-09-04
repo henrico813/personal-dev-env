@@ -14,7 +14,7 @@ pinned environment:
 mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
 export PATH="$HOME/.local/bin:$PATH"
-pde-installer install
+pde-installer install --profile terminal
 ```
 
 The installer does not clone or update the repository. Run it from anywhere
@@ -31,10 +31,20 @@ pde-installer list
 pde-installer config
 ```
 
-- `install` and `update` reconcile the complete environment in dependency order.
+- `install` selects a profile. `update` reconciles the saved profile.
 - `doctor` validates host prerequisites, pins, and managed paths.
 - `list` reports ownership and installed status.
 - `config` migrates legacy state and applies the chezmoi source.
+
+The installer saves the selected profile in `~/.config/pde/config.json`. Without
+`--profile`, it uses the saved profile. A fresh system with neither
+`config.json` nor legacy `paths.env` defaults to `full`. You can expand a
+`terminal` installation to `full`, but you cannot change a saved `full` profile
+to `terminal`. `update`, `config`, `doctor`, and `list` use the saved profile.
+
+If a nonempty `config.json` or legacy `paths.env` exists without a profile,
+commands stop and tell you to add `"profile": "full"` or
+`"profile": "terminal"` to `~/.config/pde/config.json`.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
 Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
@@ -57,10 +67,12 @@ See [`pde-installer/README.md`](./pde-installer/README.md) for installer details
 ## AI Tools Quick Start
 
 ```bash
-pde-installer install
+pde-installer install --profile full
 ```
 
-Installs planner, Codex, OpenCode, OpenCode inline shim, Pi, Surveil, and Vibe binaries plus repo-managed AI config.
+Installs the full profile, including Planner, Codex, OpenCode, Pi, Surveil,
+Vibe, and their managed configuration. If the terminal profile is already
+installed, this command expands it to full.
 
 ## AI Source Tree
 

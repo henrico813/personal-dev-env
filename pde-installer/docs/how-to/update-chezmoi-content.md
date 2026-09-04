@@ -2,7 +2,7 @@
 
 1. Edit files under the repository's `../chezmoi/` source directory.
 2. For an external archive, update its URL and SHA-256 value in
-   `../chezmoi/.chezmoiexternal.toml`. Every external must have a checksum.
+   `../chezmoi/.chezmoiexternal.toml.tmpl`. Every external must have a checksum.
 3. Preview only configuration changes:
 
    ```bash
@@ -15,9 +15,15 @@
    go run . config --repo-root ..
    ```
 
-`config` is the only supported subset operation. It migrates legacy PDE config,
-then applies the complete chezmoi source. Its dry run uses read-only status and
+`config` migrates legacy PDE config, then applies the chezmoi branch for the
+saved profile. The `terminal` branch skips full-only files and downloads. The
+`full` branch applies the complete source. A dry run uses read-only status and
 diff commands without refreshing externals or running scripts.
 
-Use `update` instead when other component metadata also changed. `update`
-reconciles every backend before applying chezmoi.
+On a fresh system with no `config.json` or legacy `paths.env`, the profile is
+`full`. If either file is nonempty but has no profile, `config` stops. Add
+`"profile": "full"` or `"profile": "terminal"` to
+`~/.config/pde/config.json`, then rerun the command.
+
+Use `update` instead when other component metadata also changed. `update` uses
+the saved profile before applying chezmoi.

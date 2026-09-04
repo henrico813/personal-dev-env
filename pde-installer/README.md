@@ -23,7 +23,7 @@ mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
 export PATH="$HOME/.local/bin:$PATH"
 pde-installer install --dry-run
-pde-installer install
+pde-installer install --profile full
 pde-installer doctor
 pde-installer list
 ```
@@ -31,9 +31,19 @@ pde-installer list
 The installer does not clone or update the checkout. It finds the checkout from
 the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
-`install` and `update` run the same full reconciliation. They do not accept a
-tool or backend selector. `config` is the only supported subset; it migrates
-legacy state and applies the repository's chezmoi content.
+## Profiles
+
+The `terminal` profile installs the shell environment, tmux, common CLI tools,
+Yazi, and configuration. Its Ubuntu packages are `ca-certificates`, `curl`,
+`file`, `git`, `gzip`, `tar`, `unzip`, `xclip`, `xz-utils`, and `zsh`.
+
+The `full` profile also installs languages, Neovim, language servers, Node
+packages, AI tools, fonts, terminal emulator configuration, and programs built
+from this repository.
+
+Only `install` accepts `--profile`. `update`, `config`, `doctor`, and `list` use
+the saved profile. See the [command reference](docs/reference/commands.md) for
+profile rules and options.
 
 ## Documentation
 

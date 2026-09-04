@@ -20,14 +20,25 @@ command. It does not upgrade a package that is already installed.
 
 ## tmux
 
-1. Update `version`, `archiveURL`, and `archiveSHA256` in
-   `internal/tmux/tmux.go`.
-2. Set the same version on the tmux entry in
-   `internal/manifest/manifest.go`.
-3. Run the tests and preview shown above.
+Updating tmux uses two pull requests so the installer only refers to an
+immutable release.
 
-The installer builds tmux from the verified source archive under `HOME` because
-the required release is not taken from the host package. Source builds are the
-last choice when no suitable package or binary is available.
+1. In the first pull request, update the tmux version, source checksum, and
+   revision marker in `.github/scripts/build-static-tmux.sh`. Update the release
+   tag and revision marker in `.github/workflows/release-static-tmux.yml`. Keep
+   the build image and every build package pinned.
+2. Merge that pull request and run the workflow from `main`. It builds Linux
+   amd64 and arm64 archives, checks that each binary is static and works, and
+   publishes a release such as `tmux-3.6a-pde.1`.
+3. Download both archives and `SHA256SUMS` into one directory. Run
+   `sha256sum -c SHA256SUMS`. Do not replace files in an existing release.
+   Increase the revision marker for another build.
+4. In the second pull request, copy each checksum exactly from its line in
+   `SHA256SUMS` into `internal/tmux/tmux.go`. Update the release URLs and set the
+   same version in `internal/manifest/manifest.go`.
+5. Run the tests and preview shown above. Confirm the installer downloads the
+   archive for the current architecture, verifies its checksum, and installs
+   the static release under `HOME`.
 
-There is no Ubuntu-only or tmux-only command. `update` reconciles everything.
+There is no Ubuntu-only or tmux-only command. `update` reconciles the saved
+profile.
