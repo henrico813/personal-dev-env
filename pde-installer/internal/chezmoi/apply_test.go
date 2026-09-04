@@ -113,6 +113,7 @@ func newApplyFixture(t *testing.T, mode string) applyFixture {
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua.yaml"), "registries: []\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode-mem.jsonc"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeExecutable(t, binary, `#!/bin/sh
 set -eu
