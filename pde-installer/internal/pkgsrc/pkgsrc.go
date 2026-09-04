@@ -155,7 +155,6 @@ func (m Manager) Reconcile() error {
 	wanted := treeState{Release: release, ArchiveSHA256: archiveSHA256, Packages: manifest.PkgsrcPackages()}
 	previous, hasPrevious := m.readTreeState()
 	treeTransitioned := hasPrevious && (previous.Release != wanted.Release || previous.ArchiveSHA256 != wanted.ArchiveSHA256)
-	desiredTransitioned := hasPrevious && (treeTransitioned || !samePackages(previous.Packages, wanted.Packages))
 	if !m.Runner.DryRun {
 		if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir); err != nil {
 			return err
@@ -175,7 +174,7 @@ func (m Manager) Reconcile() error {
 		if err != nil {
 			return err
 		}
-		if status.State == "current" && !desiredTransitioned {
+		if status.State == "current" && !treeTransitioned {
 			if err := m.cleanWork(packagePath); err != nil {
 				return err
 			}
@@ -344,18 +343,6 @@ func (m Manager) backupDatabase(packageDirectory string) (string, error) {
 
 func dependencyRepairNeeded(output string) bool {
 	return strings.Contains(output, "unsafe_depends") || strings.Contains(output, "unsafe_depends_strict")
-}
-
-func samePackages(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }
 
 func (m Manager) treeStatePath() string {

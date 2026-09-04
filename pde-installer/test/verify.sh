@@ -52,7 +52,7 @@ fi
 
 pde-installer doctor --repo-root "$REPO_ROOT"
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
-for item in shells/zsh aqua opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
+for item in shells/zsh aqua neovim go rust node keychain opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
 	[[ "$inventory" == *$'\t'"$item"$'\t'* ]]
 done
 

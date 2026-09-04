@@ -87,7 +87,11 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner).ValidateLock(); err != nil {
 		failures = append(failures, "npm lock: "+err.Error())
 	}
-	for _, path := range []string{config.PkgSource, config.PkgPrefix, config.LocalBin, config.AquaRoot} {
+	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	if _, err := direct.Tools(); err != nil {
+		failures = append(failures, "direct tools: "+err.Error())
+	}
+	for _, path := range []string{config.PkgSource, config.PkgPrefix, config.LocalBin, config.AquaRoot, directManager.ToolsRoot()} {
 		if !within(config.Home, path) {
 			failures = append(failures, "destination outside HOME: "+path)
 		}
@@ -204,6 +208,10 @@ func list(config config, runner run.Runner) error {
 	}
 	npmManager := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
 	directManager := direct.New(config.Home, config.PkgPrefix, runner)
+	directTools, directToolsErr := direct.Tools()
+	if directToolsErr != nil {
+		return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
+	}
 	buildManager := builds.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
 	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Probe()
 	if err != nil {
@@ -250,6 +258,20 @@ func list(config config, runner run.Runner) error {
 				}
 			}
 		case manifest.Direct:
+			isTool := false
+			for _, tool := range directTools {
+				if tool.Name == item.Name {
+					isTool = true
+					installed, state, err = directManager.ToolProbe(item.Name)
+					if err != nil {
+						return fmt.Errorf("read %s status: %w", item.Name, err)
+					}
+					break
+				}
+			}
+			if isTool {
+				break
+			}
 			for _, font := range direct.Fonts() {
 				if font.Name == item.Name {
 					state, err = directManager.Probe(font)

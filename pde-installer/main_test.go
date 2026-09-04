@@ -33,7 +33,7 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		if after := treeState(t, home); after != before {
 			t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", before, after)
 		}
-		ordered := []string{"bootstrap unprivileged pkgsrc", "reconcile pkgsrc package shells/zsh", "install Aqua packages", "materialize complete npm lock", "managed fonts", "activate planner", "preview chezmoi changes", "complete blink.cmp plugin tree"}
+		ordered := []string{"bootstrap unprivileged pkgsrc", "reconcile pkgsrc package shells/zsh", "install Aqua packages", "direct release tools", "materialize complete npm lock", "managed fonts", "activate planner", "preview chezmoi changes", "complete blink.cmp plugin tree"}
 		position := -1
 		for _, text := range ordered {
 			next := strings.Index(stdout[position+1:], text)
