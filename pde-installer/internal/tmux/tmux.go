@@ -1,11 +1,12 @@
 package tmux
 
 import (
+	"compress/gzip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"pde-installer/internal/fsutil"
@@ -13,12 +14,12 @@ import (
 )
 
 const (
-	version       = "3.6a"
-	archiveURL    = "https://github.com/tmux/tmux/releases/download/3.6a/tmux-3.6a.tar.gz"
-	archiveSHA256 = "b6d8d9c76585db8ef5fa00d4931902fa4b8cbe8166f528f44fc403961a3f3759"
+	version       = "3.7b"
+	archiveURL    = "https://github.com/mjakob-gh/build-static-tmux/releases/download/v3.7b/tmux.linux-amd64.stripped.gz"
+	archiveSHA256 = "92ac102a1f9b33b21d891a836b4b5b5c8c5d2eeac4bae4dfd34d565bbed598bf"
 )
 
-// Manager installs the pinned tmux source release.
+// Manager installs the pinned tmux binary.
 type Manager struct {
 	Home          string
 	Runner        run.Runner
@@ -39,8 +40,11 @@ func (m Manager) ReleaseRoot() string {
 	return filepath.Join(m.Home, ".local", "share", "pde", "tmux", version)
 }
 
-// Reconcile builds and transactionally activates the pinned tmux release.
+// Reconcile activates the pinned tmux release.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return nil, fmt.Errorf("unsupported tmux platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
 	_, status, err := m.Probe()
 	if err != nil && status != "broken" {
 		return nil, err
@@ -52,7 +56,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		if err := m.Runner.Plan("download and verify "+m.archiveURL+" sha256="+m.archiveSHA256, nil); err != nil {
 			return nil, err
 		}
-		return &fsutil.Journal{}, m.Runner.Plan("build and atomically activate tmux "+version, nil)
+		return &fsutil.Journal{}, m.Runner.Plan("atomically activate tmux "+version, nil)
 	}
 
 	root := m.ReleaseRoot()
@@ -75,10 +79,10 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 	}()
 
-	archive := filepath.Join(workspace, "tmux-"+version+".tar.gz")
-	source := filepath.Join(workspace, "source")
-	destdir := filepath.Join(workspace, "install")
-	if err := fsutil.GuardHome(m.Home, workspace, archive, source, destdir); err != nil {
+	archive := filepath.Join(workspace, "tmux.gz")
+	stage := filepath.Join(workspace, "release")
+	binary := filepath.Join(stage, "bin", "tmux")
+	if err := fsutil.GuardHome(m.Home, workspace, archive, stage, binary); err != nil {
 		return nil, err
 	}
 	if err := m.Runner.Retry("tmux download", 3, func() error {
@@ -86,25 +90,10 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}); err != nil {
 		return nil, fmt.Errorf("download tmux: %w", err)
 	}
-	if err := extractArchive(archive, source, "tmux-"+version); err != nil {
-		return nil, fmt.Errorf("extract tmux: %w", err)
+	if err := decompressBinary(archive, binary); err != nil {
+		return nil, fmt.Errorf("decompress tmux: %w", err)
 	}
-
-	environment := m.environment()
-	configure := run.Command{Name: filepath.Join(source, "configure"), Args: []string{"--prefix=" + root}, Dir: source, Env: environment}
-	if err := m.Runner.Run("configure tmux", configure); err != nil {
-		return nil, err
-	}
-	build := run.Command{Name: "make", Args: []string{"-j", strconv.Itoa(runtime.NumCPU())}, Dir: source, Env: environment}
-	if err := m.Runner.Run("build tmux", build); err != nil {
-		return nil, err
-	}
-	install := run.Command{Name: "make", Args: []string{"install", "DESTDIR=" + destdir}, Dir: source, Env: environment}
-	if err := m.Runner.Run("install tmux", install); err != nil {
-		return nil, err
-	}
-	stage := filepath.Join(destdir, strings.TrimPrefix(filepath.Clean(root), string(filepath.Separator)))
-	if err := verifyExecutable(filepath.Join(stage, "bin", "tmux")); err != nil {
+	if err := verifyExecutable(binary); err != nil {
 		return nil, err
 	}
 
@@ -136,6 +125,33 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return nil, journal.Revert(fmt.Errorf("verify tmux: %w", err))
 	}
 	return journal, nil
+}
+
+func decompressBinary(source, destination string) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	compressed, err := gzip.NewReader(input)
+	if err != nil {
+		return err
+	}
+	defer compressed.Close()
+
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return err
+	}
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(output, compressed); err != nil {
+		_ = output.Close()
+		return err
+	}
+	return output.Close()
 }
 
 // Probe reports the managed tmux version and state.

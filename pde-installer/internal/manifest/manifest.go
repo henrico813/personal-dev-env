@@ -49,7 +49,7 @@ func Items() []Item {
 		{Name: "zsh", Owner: Ubuntu}, {Name: "git", Owner: Ubuntu},
 		{Name: "xclip", Owner: Ubuntu}, {Name: "unzip", Owner: Ubuntu},
 		{Name: "fontconfig", Owner: Ubuntu},
-		{Name: "tmux", Version: "3.6a", Owner: Source},
+		{Name: "tmux", Version: "3.7b", Owner: Source},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua},
 		{Name: "fd", Version: "v8.3.1", Owner: Aqua}, {Name: "fzf", Version: "0.36.0", Owner: Aqua},
 		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua}, {Name: "bat", Version: "v0.19.0", Owner: Aqua},
