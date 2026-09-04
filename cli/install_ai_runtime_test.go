@@ -11,9 +11,9 @@ import (
 func TestPlannerLaunchersLeaveCodexPackage(t *testing.T) {
 	root := t.TempDir()
 	cfg := &Config{
-		LocalBinDir: filepath.Join(root, "home", ".local", "bin"),
+		LocalBinDir:       filepath.Join(root, "home", ".local", "bin"),
 		OpenCodeConfigDir: filepath.Join(root, "home", ".config", "opencode"),
-		CodexConfigDir: filepath.Join(root, "home", ".codex"),
+		CodexConfigDir:    filepath.Join(root, "home", ".codex"),
 	}
 	local := filepath.Join(cfg.LocalBinDir, "planner")
 	openCode := filepath.Join(cfg.OpenCodeConfigDir, "bin", "planner")
