@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -69,5 +70,33 @@ func TestLegacyConfigHandlesNull(t *testing.T) {
 	}
 	if err := journal.Commit(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A later failure must not delete the original config backup.
+func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("{\"install_path\":\"/old\"}\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, original) {
+		t.Fatalf("restored config = %q, want %q", restored, original)
 	}
 }

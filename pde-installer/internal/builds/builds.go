@@ -260,6 +260,22 @@ func (m Manager) Probe(name string) (string, error) {
 	return "missing", nil
 }
 
+// BlinkStatus reports whether the native library is usable.
+func (m Manager) BlinkStatus() (string, error) {
+	path := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp", "lib", "libblink_cmp_fuzzy.so")
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "missing", nil
+		}
+		return "", fmt.Errorf("stat blink.cmp library: %w", err)
+	}
+	if info.Mode().IsRegular() && info.Mode()&0o111 != 0 && info.Size() > 0 {
+		return "installed", nil
+	}
+	return "invalid", nil
+}
+
 func (m Manager) inputs() (map[string]string, error) {
 	inputs := map[string]string{}
 	for name, source := range map[string]string{"planner": filepath.Join(m.RepoRoot, "planner"), "opencode-inline-shim": filepath.Join(m.RepoRoot, "cli"), "surveil": filepath.Join(m.RepoRoot, "surveil"), "vibe": filepath.Join(m.RepoRoot, "vibe")} {

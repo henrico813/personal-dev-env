@@ -78,7 +78,12 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		return nil, fmt.Errorf("stage PDE config: %w", err)
 	}
 	stagePath := stage.Name()
-	defer func() { _ = os.Remove(stagePath) }()
+	removeStage := true
+	defer func() {
+		if removeStage {
+			_ = os.Remove(stagePath)
+		}
+	}()
 	if _, err := stage.Write(updated); err != nil {
 		_ = stage.Close()
 		return nil, fmt.Errorf("write staged PDE config: %w", err)
@@ -93,5 +98,6 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 	if err := journal.Activate(stagePath, destination); err != nil {
 		return nil, err
 	}
+	removeStage = false
 	return journal, nil
 }
