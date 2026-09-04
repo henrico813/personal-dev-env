@@ -180,20 +180,6 @@ exact = true
 stripComponents = 1
 checksum.sha256 = "b8270b24ac931a582105ad15d0f0151d27f235896ad18b9e9a7ec165d4ba0a12"
 
-[".config/nvim/pack/plugins/start/mason.nvim"]
-type = "archive"
-url = "https://github.com/mason-org/mason.nvim/archive/2a6940af80375532e5e9e7c1f2fc6319a1b7a69d.tar.gz"
-exact = true
-stripComponents = 1
-checksum.sha256 = "f903a4c9b77baec85ed007f4c9a31d84bd09709ba90b9911013f678b3589d764"
-
-[".config/nvim/pack/plugins/start/mason-lspconfig.nvim"]
-type = "archive"
-url = "https://github.com/mason-org/mason-lspconfig.nvim/archive/40276c4df7e6bdce6801d6c035c6227f9115a855.tar.gz"
-exact = true
-stripComponents = 1
-checksum.sha256 = "9d9162407cd820adaf1695a2aa54b1fd3e61e6a806e8496b4c3ca95ac8d20d2d"
-
 [".config/nvim/pack/plugins/start/nvim-lspconfig"]
 type = "archive"
 url = "https://github.com/neovim/nvim-lspconfig/archive/85e732c62ac59ab7c12df71ddd020baa87948390.tar.gz"

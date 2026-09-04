@@ -18,15 +18,25 @@ import (
 )
 
 func doctor(config config, runner run.Runner) error {
-	return hostPreflight(config, runner, true)
+	return hostPreflight(config, runner, preflightReport)
 }
 
-func hostPreflight(config config, runner run.Runner, report bool) error {
+type preflightMode uint8
+
+const (
+	preflightQuiet preflightMode = iota + 1
+	preflightReport
+)
+
+func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	var failures []string
+	if mode == preflightReport && os.Geteuid() == 0 {
+		failures = append(failures, "UID 0: run doctor as an unprivileged user")
+	}
 	check := func(name string, command run.Command, remediation string) error {
 		if _, err := runner.Query("check "+name, command); err != nil {
 			failures = append(failures, name+": "+remediation+" ("+err.Error()+")")
-		} else if report {
+		} else if mode == preflightReport {
 			if _, err := fmt.Fprintf(runner.Out(), "ok      %s\n", name); err != nil {
 				return fmt.Errorf("write preflight result: %w", err)
 			}
@@ -63,7 +73,7 @@ func hostPreflight(config config, runner run.Runner, report bool) error {
 	}
 	if firstExecutable("curl", "fetch") == "" {
 		failures = append(failures, "fetcher: install curl or fetch")
-	} else if report {
+	} else if mode == preflightReport {
 		if _, err := fmt.Fprintln(runner.Out(), "ok      curl or fetch"); err != nil {
 			return fmt.Errorf("write fetcher result: %w", err)
 		}
@@ -85,10 +95,10 @@ func hostPreflight(config config, runner run.Runner, report bool) error {
 			failures = append(failures, "unwritable destination: "+path+" (fix ownership or permissions on "+ancestor+")")
 		}
 	}
-	if report {
+	if mode == preflightReport {
 		pkg := pkgsrc.New(config.Home, runner)
 		if _, err := os.Stat(pkg.SourceRoot); err == nil {
-			if err := pkg.ValidateSource(true); err != nil {
+			if err := pkg.ValidateBootstrap(); err != nil {
 				failures = append(failures, "pkgsrc source: "+err.Error())
 			}
 		}
@@ -180,14 +190,25 @@ func firstExecutable(names ...string) string {
 func list(config config, runner run.Runner) error {
 	pkgManager := pkgsrc.New(config.Home, runner)
 	pkgStatuses := map[string]pkgsrc.Status{}
-	for _, status := range pkgManager.Statuses() {
+	statuses, err := pkgManager.Statuses()
+	if err != nil {
+		return fmt.Errorf("read pkgsrc status: %w", err)
+	}
+	for _, status := range statuses {
 		pkgStatuses[status.Path] = status
 	}
-	aquaInstalled, aquaState := aqua.New(config.Home, config.RepoRoot, runner).Status()
 	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
+	aquaInstalled, aquaState, err := aquaManager.Probe()
+	if err != nil {
+		return fmt.Errorf("read Aqua status: %w", err)
+	}
 	npmManager := npm.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
 	directManager := direct.New(config.Home, config.PkgPrefix, runner)
 	buildManager := builds.New(config.Home, config.RepoRoot, config.PkgPrefix, runner)
+	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Probe()
+	if err != nil {
+		return fmt.Errorf("read chezmoi status: %w", err)
+	}
 	if _, err := fmt.Fprintln(runner.Out(), "OWNER\tITEM\tREQUESTED\tINSTALLED\tSTATUS"); err != nil {
 		return fmt.Errorf("write list heading: %w", err)
 	}
@@ -201,10 +222,16 @@ func list(config config, runner run.Runner) error {
 			if item.Name == "aqua" {
 				installed, state = aquaInstalled, aquaState
 			} else {
-				installed, state = aquaManager.ToolStatus(item.Name, requested)
+				installed, state, err = aquaManager.ToolProbe(item.Name, requested)
+				if err != nil {
+					return fmt.Errorf("read %s status: %w", item.Name, err)
+				}
 			}
 		case manifest.NPM:
-			installed, _ = npmManager.Version(item.Name)
+			installed, err = npmManager.Version(item.Name)
+			if err != nil {
+				return fmt.Errorf("read %s status: %w", item.Name, err)
+			}
 			if installed == requested {
 				state = "current"
 			} else if installed != "" {
@@ -217,18 +244,22 @@ func list(config config, runner run.Runner) error {
 					state = "installed"
 				}
 			} else {
-				state = buildManager.Status(item.Name)
+				state, err = buildManager.Probe(item.Name)
+				if err != nil {
+					return fmt.Errorf("read %s status: %w", item.Name, err)
+				}
 			}
 		case manifest.Direct:
 			for _, font := range direct.Fonts() {
 				if font.Name == item.Name {
-					state = directManager.Status(font)
+					state, err = directManager.Probe(font)
+					if err != nil {
+						return fmt.Errorf("read %s status: %w", item.Name, err)
+					}
 				}
 			}
 		case manifest.Chezmoi:
-			if _, err := os.Stat(filepath.Join(config.RepoRoot, "chezmoi", ".chezmoiexternal.toml")); err == nil {
-				state = "source-present"
-			}
+			state = chezmoiState
 		}
 		if _, err := fmt.Fprintf(runner.Out(), "%s\t%s\t%s\t%s\t%s\n", item.Owner, item.Name, requested, strings.TrimSpace(installed), state); err != nil {
 			return fmt.Errorf("write list item %s: %w", item.Name, err)

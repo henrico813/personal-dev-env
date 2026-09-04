@@ -1,9 +1,13 @@
 package pkgsrc
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -51,12 +55,28 @@ func (m Manager) Bmake() string   { return filepath.Join(m.Prefix, "bin", "bmake
 func (m Manager) pkgInfo() string { return filepath.Join(m.Prefix, "sbin", "pkg_info") }
 func (m Manager) pkgDB() string   { return filepath.Join(m.Prefix, "pkgdb") }
 
+func (m Manager) bootstrapStampPath() string {
+	return filepath.Join(m.StateDir, bootstrapStamp)
+}
+
+func (m Manager) sourceDigestPath() string {
+	return filepath.Join(m.StateDir, "pkgsrc-source-"+release+".sha256")
+}
+
+func (m Manager) workRoot() string {
+	return filepath.Join(m.StateDir, "pkgsrc-work", release)
+}
+
+func (m Manager) distDir() string {
+	return filepath.Join(m.StateDir, "pkgsrc-distfiles", release)
+}
+
 // Bootstrap creates the pinned unprivileged pkgsrc installation.
 func (m Manager) Bootstrap() error {
-	if executable(m.Bmake()) && executable(m.pkgInfo()) && m.ValidateSource(true) == nil {
+	if executable(m.Bmake()) && executable(m.pkgInfo()) && m.ValidateBootstrap() == nil {
 		return nil
 	}
-	sourceCurrent := m.ValidateSource(false) == nil
+	sourceCurrent := m.ValidateExtractedSource() == nil
 	archive := filepath.Join(m.StateDir, "downloads", "pkgsrc-"+release+".tar.xz")
 	if m.Runner.DryRun {
 		if !sourceCurrent {
@@ -73,12 +93,7 @@ func (m Manager) Bootstrap() error {
 		return err
 	}
 	if !sourceCurrent {
-		if err := m.Runner.Retry("pkgsrc download", 3, func() error {
-			if err := fsutil.GuardHome(m.Home, filepath.Dir(archive), archive); err != nil {
-				return err
-			}
-			return fsutil.Download(archiveURL, archive, archiveSHA256)
-		}); err != nil {
+		if err := m.ensureArchive(archive); err != nil {
 			return err
 		}
 		if err := fsutil.GuardHome(m.Home, m.SourceRoot); err != nil {
@@ -93,21 +108,36 @@ func (m Manager) Bootstrap() error {
 		if err := m.Runner.Run("extract pkgsrc", run.Command{Name: "tar", Args: []string{"-xJf", archive, "--strip-components=2", "-C", m.SourceRoot}}); err != nil {
 			return err
 		}
-		if err := m.ValidateSource(false); err != nil {
+		if err := m.validateSourceLayout(); err != nil {
 			return fmt.Errorf("validate extracted pkgsrc: %w", err)
+		}
+		if err := m.writeSourceDigest(); err != nil {
+			return fmt.Errorf("record extracted pkgsrc digest: %w", err)
+		}
+		if err := m.ValidateExtractedSource(); err != nil {
+			return fmt.Errorf("validate extracted pkgsrc digest: %w", err)
 		}
 	}
 	command := run.Command{Name: filepath.Join(m.SourceRoot, "bootstrap", "bootstrap"), Args: m.bootstrapArgs(), Dir: filepath.Join(m.SourceRoot, "bootstrap")}
-	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix); err != nil {
+	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir()); err != nil {
 		return err
 	}
-	if err := m.Runner.Retry("pkgsrc bootstrap", 2, func() error { return m.Runner.Run("bootstrap unprivileged pkgsrc", command) }); err != nil {
+	if err := os.MkdirAll(m.workRoot(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc work root: %w", err)
+	}
+	if err := os.MkdirAll(m.distDir(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc distfiles: %w", err)
+	}
+	if err := m.Runner.Run("bootstrap unprivileged pkgsrc", command); err != nil {
 		return err
 	}
-	if err := fsutil.GuardHome(m.Home, m.SourceRoot); err != nil {
+	if err := m.ValidateExtractedSource(); err != nil {
+		return fmt.Errorf("pkgsrc source changed during bootstrap: %w", err)
+	}
+	if err := fsutil.GuardHome(m.Home, m.StateDir, m.bootstrapStampPath()); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(m.SourceRoot, bootstrapStamp), []byte(archiveSHA256+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(m.bootstrapStampPath(), []byte(archiveSHA256+"\n"), 0o644); err != nil {
 		return fmt.Errorf("write pkgsrc bootstrap stamp: %w", err)
 	}
 	return nil
@@ -122,6 +152,9 @@ func (m Manager) Reconcile() error {
 	if !m.Runner.DryRun {
 		if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir); err != nil {
 			return err
+		}
+		if err := m.ValidateExtractedSource(); err != nil {
+			return fmt.Errorf("validate pkgsrc source before reconcile: %w", err)
 		}
 	}
 	for _, packagePath := range manifest.PkgsrcPackages() {
@@ -145,6 +178,16 @@ func (m Manager) Reconcile() error {
 		if err := m.mutate(packagePath, target, treeTransitioned); err != nil {
 			return err
 		}
+		post, err := m.packageStatus(packagePath)
+		if err != nil {
+			return fmt.Errorf("verify %s after %s: %w", packagePath, target, err)
+		}
+		if post.Installed != status.Requested {
+			return fmt.Errorf("verify %s after %s: installed %q, want exactly %q", packagePath, target, post.Installed, status.Requested)
+		}
+		if err := m.ValidateExtractedSource(); err != nil {
+			return fmt.Errorf("pkgsrc source changed during %s: %w", target, err)
+		}
 	}
 	if m.Runner.DryRun {
 		return nil
@@ -153,18 +196,23 @@ func (m Manager) Reconcile() error {
 }
 
 // Statuses returns the state of each requested package.
-func (m Manager) Statuses() []Status {
+func (m Manager) Statuses() ([]Status, error) {
 	packages := manifest.PkgsrcPackages()
 	statuses := make([]Status, 0, len(packages))
+	if !executable(m.Bmake()) || !executable(m.pkgInfo()) {
+		for _, packagePath := range packages {
+			statuses = append(statuses, Status{Path: packagePath, Requested: "pkgsrc-" + release, State: "not-bootstrapped"})
+		}
+		return statuses, nil
+	}
 	for _, packagePath := range packages {
 		status, err := m.packageStatus(packagePath)
 		if err != nil {
-			statuses = append(statuses, Status{Path: packagePath, Requested: "pkgsrc-" + release, State: "not-bootstrapped"})
-			continue
+			return nil, fmt.Errorf("status %s: %w", packagePath, err)
 		}
 		statuses = append(statuses, status)
 	}
-	return statuses
+	return statuses, nil
 }
 
 func (m Manager) packageStatus(packagePath string) (Status, error) {
@@ -181,6 +229,8 @@ func (m Manager) packageStatus(packagePath string) (Status, error) {
 	installed := ""
 	if err == nil {
 		installed = strings.TrimSpace(string(output))
+	} else if !isPackageMissing(err) {
+		return Status{}, err
 	}
 	state := "missing"
 	if installed == requested {
@@ -203,35 +253,41 @@ func (m Manager) showVar(directory, variable string) (string, error) {
 func (m Manager) mutate(packagePath, target string, treeTransitioned bool) error {
 	directory := filepath.Join(m.SourceRoot, packagePath)
 	command := run.Command{Name: m.Bmake(), Args: append(m.makeVariables(), target), Dir: directory, Env: m.environment()}
-	return m.Runner.Retry(packagePath+" "+target, 2, func() error {
-		if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir); err != nil {
-			return err
-		}
-		backup, err := m.backupDatabase(directory)
-		if err != nil {
-			return err
+	if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir, m.workRoot(), m.distDir()); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(m.workRoot(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc work root: %w", err)
+	}
+	if err := os.MkdirAll(m.distDir(), 0o755); err != nil {
+		return fmt.Errorf("create pkgsrc distfiles: %w", err)
+	}
+	backup, err := m.backupDatabase(directory)
+	if err != nil {
+		return err
+	}
+	output, err := m.Runner.RunOutput(target+" "+packagePath, command)
+	if err != nil {
+		return fmt.Errorf("%w; package database backup retained at %s; recover with: cd %s && %s %s; inspect with: %s -a", err, backup, directory, m.Bmake(), target, m.pkgInfo())
+	}
+	if treeTransitioned && target == "replace" && dependencyRepairNeeded(string(output)) {
+		recovery := filepath.Join(m.Prefix, "sbin", "pkg_rolling-replace")
+		if !executable(recovery) {
+			return fmt.Errorf("%s replace requires dependency repair but %s is unavailable", packagePath, recovery)
 		}
 		if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix); err != nil {
 			return err
 		}
-		output, err := m.Runner.RunOutput(target+" "+packagePath, command)
-		if err != nil {
-			return fmt.Errorf("%w; package database backup retained at %s; recover with: cd %s && %s %s; inspect with: %s -a", err, backup, directory, m.Bmake(), target, m.pkgInfo())
+		if err := m.Runner.Run("repair pkgsrc reverse dependencies", run.Command{Name: recovery, Args: []string{"-u"}, Env: m.environment()}); err != nil {
+			return fmt.Errorf("pkg_rolling-replace after %s: %w", packagePath, err)
 		}
-		if treeTransitioned && target == "replace" && dependencyRepairNeeded(string(output)) {
-			recovery := filepath.Join(m.Prefix, "sbin", "pkg_rolling-replace")
-			if !executable(recovery) {
-				return fmt.Errorf("%s replace requires dependency repair but %s is unavailable", packagePath, recovery)
-			}
-			if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix); err != nil {
-				return err
-			}
-			if err := m.Runner.Run("repair pkgsrc reverse dependencies", run.Command{Name: recovery, Args: []string{"-u"}, Env: m.environment()}); err != nil {
-				return fmt.Errorf("pkg_rolling-replace after %s: %w", packagePath, err)
-			}
-		}
-		return nil
-	})
+	}
+	return nil
+}
+
+func isPackageMissing(err error) bool {
+	var exitError *exec.ExitError
+	return errors.As(err, &exitError) && exitError.ExitCode() == 1
 }
 
 func (m Manager) backupDatabase(packageDirectory string) (string, error) {
@@ -323,11 +379,17 @@ func (m Manager) environment() []string {
 }
 
 func (m Manager) bootstrapArgs() []string {
-	return []string{"--unprivileged", "--prefix", m.Prefix, "--pkgdbdir", m.pkgDB(), "--workdir", filepath.Join(m.SourceRoot, "bootstrap", "work")}
+	return []string{"--unprivileged", "--prefix", m.Prefix, "--pkgdbdir", m.pkgDB(), "--workdir", filepath.Join(m.workRoot(), "bootstrap")}
 }
 
 func (m Manager) makeVariables() []string {
-	return []string{"LOCALBASE=" + m.Prefix, "PREFIX=" + m.Prefix, "PKG_DBDIR=" + m.pkgDB()}
+	return []string{
+		"LOCALBASE=" + m.Prefix,
+		"PREFIX=" + m.Prefix,
+		"PKG_DBDIR=" + m.pkgDB(),
+		"WRKOBJDIR=" + filepath.Join(m.workRoot(), "packages"),
+		"DISTDIR=" + m.distDir(),
+	}
 }
 
 func executable(path string) bool {
@@ -336,12 +398,41 @@ func executable(path string) bool {
 }
 
 func (m Manager) stampCurrent() bool {
-	data, err := os.ReadFile(filepath.Join(m.SourceRoot, bootstrapStamp))
+	data, err := os.ReadFile(m.bootstrapStampPath())
 	return err == nil && strings.TrimSpace(string(data)) == archiveSHA256
 }
 
-// ValidateSource checks release metadata, package paths, and bootstrap state.
-func (m Manager) ValidateSource(requireStamp bool) error {
+// ValidateExtractedSource checks integrity so changed source is never reused.
+func (m Manager) ValidateExtractedSource() error {
+	if err := m.validateSourceLayout(); err != nil {
+		return err
+	}
+	expected, err := os.ReadFile(m.sourceDigestPath())
+	if err != nil {
+		return fmt.Errorf("read pkgsrc source digest: %w", err)
+	}
+	actual, err := sourceDigest(m.SourceRoot)
+	if err != nil {
+		return fmt.Errorf("hash pkgsrc source: %w", err)
+	}
+	if strings.TrimSpace(string(expected)) != actual {
+		return fmt.Errorf("pkgsrc source digest changed: got %s, want %s", actual, strings.TrimSpace(string(expected)))
+	}
+	return nil
+}
+
+// ValidateBootstrap requires both checks before reusing an installation.
+func (m Manager) ValidateBootstrap() error {
+	if err := m.ValidateExtractedSource(); err != nil {
+		return err
+	}
+	if !m.stampCurrent() {
+		return fmt.Errorf("pkgsrc bootstrap stamp does not match %s", archiveSHA256)
+	}
+	return nil
+}
+
+func (m Manager) validateSourceLayout() error {
 	tag, err := os.ReadFile(filepath.Join(m.SourceRoot, "CVS", "Tag"))
 	if err != nil || strings.TrimSpace(string(tag)) != "Tpkgsrc-"+release {
 		return fmt.Errorf("pkgsrc source tag is not pkgsrc-%s", release)
@@ -357,8 +448,73 @@ func (m Manager) ValidateSource(requireStamp bool) error {
 			return fmt.Errorf("pkgsrc package path is missing: %s", packagePath)
 		}
 	}
-	if requireStamp && !m.stampCurrent() {
-		return fmt.Errorf("pkgsrc bootstrap stamp does not match %s", archiveSHA256)
-	}
 	return nil
+}
+
+func (m Manager) ensureArchive(archive string) error {
+	if digest, err := fsutil.FileSHA256(archive); err == nil && strings.EqualFold(digest, archiveSHA256) {
+		return nil
+	}
+	return m.Runner.Retry("pkgsrc download", 3, func() error {
+		if err := fsutil.GuardHome(m.Home, filepath.Dir(archive), archive); err != nil {
+			return err
+		}
+		return fsutil.Download(archiveURL, archive, archiveSHA256)
+	})
+}
+
+func (m Manager) writeSourceDigest() error {
+	digest, err := sourceDigest(m.SourceRoot)
+	if err != nil {
+		return err
+	}
+	if err := fsutil.GuardHome(m.Home, m.StateDir, m.sourceDigestPath()); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(m.StateDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(m.sourceDigestPath(), []byte(digest+"\n"), 0o644)
+}
+
+func sourceDigest(root string) (string, error) {
+	hash := sha256.New()
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(hash, "%d:%s:%s\x00", len(relative), filepath.ToSlash(relative), info.Mode().String()); err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintf(hash, "%d:%s\x00", len(target), target)
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(hash, file)
+		closeErr := file.Close()
+		return errors.Join(copyErr, closeErr)
+	})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

@@ -1,12 +1,4 @@
-require("mason").setup()
-require("mason-lspconfig").setup({
-  ensure_installed = { "lua_ls", "gopls" },
-  automatic_enable = true,
-})
-
-vim.keymap.set("n", "<leader>mm", "<cmd>Mason<cr>",        { desc = "Open Mason" })
-vim.keymap.set("n", "<leader>mu", "<cmd>MasonUpdate<cr>",  { desc = "Update registry" })
-vim.keymap.set("n", "<leader>ml", "<cmd>MasonLog<cr>",     { desc = "Mason log" })
+vim.lsp.enable({ "lua_ls", "gopls" })
 
 -- LSP buffer keymaps on attach
 vim.api.nvim_create_autocmd("LspAttach", {

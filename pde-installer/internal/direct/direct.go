@@ -6,10 +6,9 @@ import (
 	"path/filepath"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
 )
-
-const nerdFontsVersion = "v3.2.1"
 
 // Font identifies a pinned Nerd Fonts release artifact.
 type Font struct {
@@ -39,7 +38,11 @@ func New(home, pkgPrefix string, runner run.Runner) Manager {
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	allCurrent := true
 	for _, font := range Fonts() {
-		if !m.current(font) {
+		current, err := m.current(font)
+		if err != nil {
+			return nil, err
+		}
+		if !current {
 			allCurrent = false
 		}
 	}
@@ -48,10 +51,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}
 	if m.Runner.DryRun {
 		for _, font := range Fonts() {
-			if m.current(font) {
+			current, err := m.current(font)
+			if err != nil {
+				return nil, err
+			}
+			if current {
 				continue
 			}
-			url := "https://github.com/ryanoasis/nerd-fonts/releases/download/" + nerdFontsVersion + "/" + font.Archive
+			item, _ := manifest.Find(font.Name, manifest.Direct)
+			url := "https://github.com/ryanoasis/nerd-fonts/releases/download/" + item.Version + "/" + font.Archive
 			if err := m.Runner.Plan("download and verify "+url+" sha256="+font.SHA256, nil); err != nil {
 				return nil, err
 			}
@@ -93,10 +101,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		return nil, err
 	}
 	for _, font := range Fonts() {
-		if m.current(font) {
+		current, err := m.current(font)
+		if err != nil {
+			return nil, err
+		}
+		if current {
 			continue
 		}
-		url := "https://github.com/ryanoasis/nerd-fonts/releases/download/" + nerdFontsVersion + "/" + font.Archive
+		item, _ := manifest.Find(font.Name, manifest.Direct)
+		url := "https://github.com/ryanoasis/nerd-fonts/releases/download/" + item.Version + "/" + font.Archive
 		archive := filepath.Join(workspace, font.Archive)
 		extracted := filepath.Join(stage, font.Name)
 		if err := fsutil.GuardHome(m.Home, workspace, archive, extracted); err != nil {
@@ -127,11 +140,16 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			return nil, err
 		}
 	}
-	journal := &fsutil.Journal{Home: m.Home}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
 	if err := journal.Activate(stage, parent); err != nil {
 		return nil, fmt.Errorf("activate fonts: %w", err)
 	}
-	journal.TrackCleanup(workspace)
+	if err := journal.AddCleanup(workspace); err != nil {
+		return nil, journal.Revert(err)
+	}
 	tracked = true
 	if err := m.Runner.Run("refresh font cache", run.Command{Name: filepath.Join(m.PkgPrefix, "bin", "fc-cache"), Args: []string{"-f"}}); err != nil {
 		return nil, journal.Revert(err)
@@ -139,15 +157,34 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-func (m Manager) current(font Font) bool {
+func (m Manager) current(font Font) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(m.Home, ".local", "share", "fonts", "pde", font.Name, ".pde-checksum"))
-	return err == nil && string(data) == font.SHA256+"\n"
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read %s checksum: %w", font.Name, err)
+	}
+	return string(data) == font.SHA256+"\n", nil
 }
 
 // Status reports whether a font matches its pinned checksum.
 func (m Manager) Status(font Font) string {
-	if m.current(font) {
-		return "current"
+	status, err := m.Probe(font)
+	if err != nil {
+		return "error"
 	}
-	return "missing"
+	return status
+}
+
+// Probe reports font state without hiding filesystem errors.
+func (m Manager) Probe(font Font) (string, error) {
+	current, err := m.current(font)
+	if err != nil {
+		return "", err
+	}
+	if current {
+		return "current", nil
+	}
+	return "missing", nil
 }

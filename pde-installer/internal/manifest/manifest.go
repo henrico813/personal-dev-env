@@ -23,12 +23,32 @@ type Item struct {
 
 // PkgsrcPackages returns package paths in reconciliation order.
 func PkgsrcPackages() []string {
-	return []string{
-		"pkgtools/pkg_rolling-replace",
-		"shells/zsh", "misc/tmux", "editors/neovim", "lang/go", "lang/rust",
-		"lang/nodejs24", "devel/git-base", "sysutils/htop", "security/keychain",
-		"x11/xclip", "archivers/unzip", "fonts/fontconfig",
+	var packages []string
+	for _, item := range ByOwner(Pkgsrc) {
+		packages = append(packages, item.Name)
 	}
+	return packages
+}
+
+// ByOwner returns items assigned to one backend.
+func ByOwner(owner Backend) []Item {
+	var owned []Item
+	for _, item := range Items() {
+		if item.Owner == owner {
+			owned = append(owned, item)
+		}
+	}
+	return owned
+}
+
+// Find returns one item assigned to a backend.
+func Find(name string, owner Backend) (Item, bool) {
+	for _, item := range Items() {
+		if item.Name == name && item.Owner == owner {
+			return item, true
+		}
+	}
+	return Item{}, false
 }
 
 // Items returns every item managed by the installer.
@@ -47,7 +67,9 @@ func Items() []Item {
 		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua}, {Name: "chezmoi", Version: "v2.72.0", Owner: Aqua},
 		{Name: "eza", Version: "v0.23.4", Owner: Aqua}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua},
 		{Name: "bottom", Version: "0.11.4", Owner: Aqua}, {Name: "yq", Version: "v4.53.3", Owner: Aqua},
-		{Name: "yazi", Version: "v25.5.31", Owner: Aqua},
+		{Name: "yazi", Version: "v25.5.31", Owner: Aqua}, {Name: "ya", Version: "v25.5.31", Owner: Aqua},
+		{Name: "gopls", Version: "v0.23.0", Owner: Aqua},
+		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua},
 		{Name: "opencode-ai", Version: "1.18.27", Owner: NPM},
 		{Name: "@openai/codex", Version: "0.153.2", Owner: NPM},
 		{Name: "@earendil-works/pi-coding-agent", Version: "0.84.4", Owner: NPM},
