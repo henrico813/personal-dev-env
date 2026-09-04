@@ -20,11 +20,11 @@ func (fn installerFunc) Install(cfg *Config, runner Runner) error {
 
 func installTargets() map[string]Installer {
 	return map[string]Installer{
-		"minimal":  installerFunc(installMinimal),
+		"minimal":   installerFunc(installMinimal),
 		"ai-config": installerFunc(installAIConfig),
-		"ai-tools": installerFunc(installAITools),
-		"config":   installerFunc(installConfig),
-		"obsidian": installerFunc(installObsidian),
+		"ai-tools":  installerFunc(installAITools),
+		"config":    installerFunc(installConfig),
+		"obsidian":  installerFunc(installObsidian),
 	}
 }
 
