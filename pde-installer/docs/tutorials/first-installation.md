@@ -4,7 +4,7 @@ This tutorial builds the installer and reconciles one user account.
 
 ## 1. Check the Host
 
-Use Ubuntu 22.04 or newer on Linux amd64 or arm64. Sign in as a regular user
+Use Ubuntu 22.04 or newer on Linux amd64. Sign in as a regular user
 that can run `sudo apt-get`. You need Go 1.21 or newer to build the installer.
 
 Clone the repository before starting. The installer does not clone it.
