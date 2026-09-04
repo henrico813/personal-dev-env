@@ -230,7 +230,15 @@ func (m Manager) environment() []string {
 		state = configured
 	}
 	path := filepath.Join(m.AquaRoot, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
-	return []string{"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"), "PDE_REPO_ROOT=" + m.RepoRoot, "PATH=" + path}
+	aquaConfig := filepath.Join(m.Source(), "dot_config", "aquaproj-aqua")
+	return []string{
+		"AQUA_ROOT_DIR=" + m.AquaRoot,
+		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, "aqua.yaml"),
+		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, "aqua-checksums.json"),
+		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
+		"PDE_REPO_ROOT=" + m.RepoRoot,
+		"PATH=" + path,
+	}
 }
 
 // Validate checks that the chezmoi source is complete and pinned.

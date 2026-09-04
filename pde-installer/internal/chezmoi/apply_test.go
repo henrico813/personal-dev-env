@@ -110,6 +110,8 @@ func newApplyFixture(t *testing.T, mode string) applyFixture {
 	binary := filepath.Join(aquaRoot, "bin", "chezmoi")
 
 	writeApplyFile(t, filepath.Join(source, ".chezmoiexternal.toml"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua.yaml"), "registries: []\n")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeExecutable(t, binary, `#!/bin/sh
@@ -127,6 +129,9 @@ while [ "$#" -gt 0 ]; do
 		*) shift ;;
 	esac
 done
+: "${AQUA_ROOT_DIR:?}"
+[ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
+[ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
 mode=$(cat "$source_dir/test-mode")
 target="$destination/.config/tool"
 case "$command" in
