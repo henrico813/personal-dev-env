@@ -1,0 +1,70 @@
+name: Release static tmux
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tmux-3.6a-pde.1
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'henrico813/personal-dev-env' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Build static archive
+        run: .github/scripts/build-static-tmux.sh "${{ matrix.arch }}" dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tmux-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: tmux-release
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: tmux-3.6a-pde.1
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: tmux-*
+          merge-multiple: true
+          path: dist
+      - name: Stop if the release or tag exists
+        run: |
+          set +e
+          response="$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>&1)"
+          status=$?
+          set -e
+          if [[ $status -eq 0 ]]; then printf 'release exists\n' >&2; exit 1; fi
+          grep -qE '^HTTP/[^ ]+ 404' <<<"$response" || { printf '%s\n' "$response" >&2; exit 1; }
+          tags="$(git ls-remote --tags \
+            "https://github.com/$GITHUB_REPOSITORY.git" "refs/tags/$TAG")"
+          [[ -z "$tags" ]]
+      - name: Write and verify checksums
+        run: |
+          test -f dist/tmux-3.6a-linux-amd64.tar.gz
+          test -f dist/tmux-3.6a-linux-arm64.tar.gz
+          test "$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)" -eq 2
+          cd dist
+          sha256sum tmux-3.6a-linux-amd64.tar.gz \
+            tmux-3.6a-linux-arm64.tar.gz > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Publish release
+        run: |
+          trap 'gh release delete "$TAG" --cleanup-tag --yes \
+            --repo "$GITHUB_REPOSITORY" || true' ERR
+          gh release create "$TAG" --draft dist/*.tar.gz dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --notes "Static tmux 3.6a for PDE."
+          gh release edit "$TAG" --draft=false \
+            --repo "$GITHUB_REPOSITORY"
+          trap - ERR
