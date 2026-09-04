@@ -13,8 +13,10 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
 ## Working Rules
 
 - Keep the exact commands `install`, `update`, `doctor`, `list`, and `config`.
-- Keep all installer destinations under HOME and reject UID 0 for mutations.
-- Keep pkgsrc source-only and unprivileged; never invoke apt or sudo.
+- Reject UID 0 for mutations.
+- Use apt for Ubuntu dependencies and sudo only for apt.
+- Keep other installer destinations under HOME.
+- Keep tmux pinned, verified, and built under HOME.
 - Keep checkout detection compatible with cwd, `--repo-root`, and `PDE_REPO_ROOT`.
 - Route mutations and external commands through `Runner`.
 - Keep `pde` dedicated to vault configuration and lookup.
