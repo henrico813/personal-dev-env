@@ -1,10 +1,8 @@
 package main
 
-import (
-	"path/filepath"
-)
+import "path/filepath"
 
-// installAITools owns the whole AI bootstrap so `pde install ai-tools` stays the only public entry point.
+// installAITools installs AI runtimes before activating their configuration.
 func installAITools(cfg *Config, runner Runner) error {
 	if err := ensureCargo(cfg, runner); err != nil {
 		return err
@@ -14,21 +12,6 @@ func installAITools(cfg *Config, runner Runner) error {
 	}
 	if err := ensureSurveilSource(cfg, runner); err != nil {
 		return err
-	}
-
-	for _, path := range []string{
-		filepath.Join(cfg.OpenCodeConfigDir, "agents"),
-		filepath.Join(cfg.OpenCodeConfigDir, "commands"),
-		filepath.Join(cfg.OpenCodeConfigDir, "AGENTS.md"),
-		filepath.Join(cfg.CodexConfigDir, "skills"),
-		filepath.Join(cfg.CodexConfigDir, "AGENTS.md"),
-		filepath.Join(cfg.HomeDir, ".agents", "skills", "git-messages"),
-		filepath.Join(cfg.PiAgentDir, "settings.json"),
-		filepath.Join(cfg.PiAgentDir, "AGENTS.md"),
-	} {
-		if err := backupIfExists(path, runner); err != nil {
-			return err
-		}
 	}
 
 	plannerBin, err := buildPlannerBinary(cfg, runner)
@@ -64,16 +47,7 @@ func installAITools(cfg *Config, runner Runner) error {
 		return err
 	}
 
-	if err := installOpenCodeConfig(cfg, runner); err != nil {
-		return err
-	}
-	if err := installCodexConfig(cfg, runner); err != nil {
-		return err
-	}
-	if err := installGitMessagesSkill(cfg, runner); err != nil {
-		return err
-	}
-	if err := installPiConfig(cfg, runner); err != nil {
+	if err := installAIConfig(cfg, runner); err != nil {
 		return err
 	}
 	if err := backupPlannerLaunchers(cfg, runner); err != nil {
