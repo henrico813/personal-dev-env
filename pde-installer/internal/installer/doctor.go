@@ -229,7 +229,7 @@ func list(config config, runner run.Runner) error {
 			}
 		case manifest.NPM:
 			installed, err = npmManager.Version(item.Name)
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("read %s status: %w", item.Name, err)
 			}
 			if installed == requested {
@@ -239,9 +239,9 @@ func list(config config, runner run.Runner) error {
 			}
 		case manifest.Local:
 			if item.Name == "blink.cmp" {
-				_, err := os.Stat(filepath.Join(config.Home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp", "lib", "libblink_cmp_fuzzy.so"))
-				if err == nil {
-					state = "installed"
+				state, err = buildManager.BlinkStatus()
+				if err != nil {
+					return fmt.Errorf("read blink.cmp status: %w", err)
 				}
 			} else {
 				state, err = buildManager.Probe(item.Name)
