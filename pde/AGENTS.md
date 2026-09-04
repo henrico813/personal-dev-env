@@ -1,30 +1,31 @@
 # PDE
 
-PDE is a bash-based installer rooted in `pde/`. It is no longer an Ansible project, so keep this guide aligned with the shell entrypoints and module layout that actually ship in the repo.
+PDE configuration is stored in `chezmoi/`; installation is owned by the
+`pde-installer/` Go module. The separate `pde` application is vault-only.
 
 ## Key Files
 
-- `pde/pde`: main installer entrypoint for `minimal` and `full`.
-- `pde/bootstrap.sh`: bootstrap entrypoint for remote installs and upgrades.
-- `pde/lib/core.sh`: shared helpers for logging, linking, and package installs.
-- `pde/lib/shell.sh`, `tools.sh`, `editor.sh`, `fonts.sh`: profile-specific install modules.
-- `pde/config/home/`: shared config files mirrored into the user home directory.
-- `pde/config/full-home/`: full-profile-only config files mirrored into the user home directory.
-- `pde/config/nvim/`: Neovim config linked by the editor installer.
-- `pde/test/`: Docker-based verification for installer changes.
+- `pde-installer/internal/installer/`: command orchestration and host checks.
+- `pde-installer/test/`: Docker-based installer tests and verification scripts.
+- `chezmoi/`: home configuration plus pinned external assets.
+- `cli/`: vault-only `pde` command.
 
 ## Working Rules
 
-- Keep both user-facing profiles working: `minimal` and `full`.
-- Keep `bootstrap.sh` aligned with the public GitHub URL and the combined repo layout.
-- Config symlinks must work both when PDE is run from a repo checkout and when it is bootstrapped into `~/.pde`.
-- When changing install behavior, prefer updating the relevant `pde/lib/*.sh` module instead of growing `pde/pde`.
-- Run `./test/run-tests.sh minimal` after installer changes. Run the broader test set when touching profile or bootstrap behavior.
+- Keep the exact commands `install`, `update`, `doctor`, `list`, and `config`.
+- Keep all installer destinations under HOME and reject UID 0 for mutations.
+- Keep pkgsrc source-only and unprivileged; never invoke apt or sudo.
+- Keep checkout detection compatible with cwd, `--repo-root`, and `PDE_REPO_ROOT`.
+- Route mutations and external commands through `Runner`.
+- Keep `pde` dedicated to vault configuration and lookup.
+- Run Go tests, vet, shell syntax checks, and `./pde-installer/test/run-tests.sh smoke` after installer changes.
 
 ## Entry Points
 
 ```bash
-./pde/pde minimal
-./pde/pde full
-curl -fsSL https://raw.githubusercontent.com/henrico813/personal-dev-env/main/pde/bootstrap.sh | bash -s -- minimal
+go build -C pde-installer -o ~/.local/bin/pde-installer .
+pde-installer install
+
+go build -C cli -o ~/.local/bin/pde .
+pde vault --help
 ```
