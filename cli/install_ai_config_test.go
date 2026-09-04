@@ -31,10 +31,23 @@ func TestAIConfigPreservesSkillBoundaries(t *testing.T) {
 	if err := syncAIConfig(cfg, Runner{}); err != nil { t.Fatalf("second sync: %v", err) }
 	for _, root := range []string{filepath.Join(cfg.HomeDir, ".agents", "skills"), filepath.Join(cfg.CodexConfigDir, "skills")} {
 		if _, err := os.Stat(filepath.Join(root, "self-improvement")); !os.IsNotExist(err) { t.Fatalf("stale skill remains: %v", err) }
+		entries, err := os.ReadDir(root)
+		if err != nil { t.Fatalf("read skill root: %v", err) }
+		for _, entry := range entries {
+			if strings.Contains(entry.Name(), ".backup.") || strings.Contains(entry.Name(), ".bak.") {
+				t.Fatalf("discoverable backup remains: %s", entry.Name())
+			}
+		}
 	}
+	backups, err := filepath.Glob(filepath.Join(cfg.AIRuntimeDir, "ai-config-backups", "*", "agents-skills", "self-improvement", "SKILL.md"))
+	if err != nil || len(backups) != 1 { t.Fatalf("stale backups = %v, err = %v", backups, err) }
 	mustFileContents(t, agents, "personal agents\n")
 	mustFileContents(t, codex, "personal codex\n")
 	mustLinkTarget(t, filepath.Join(cfg.CodexConfigDir, "skills", "create-plan", "bin", "planner"), planner)
+
+	if err := os.RemoveAll(filepath.Join(cfg.AIRepoDir, "codex", "skills", "create-plan")); err != nil { t.Fatal(err) }
+	if err := syncAIConfig(cfg, Runner{}); err != nil { t.Fatalf("remove Codex skill: %v", err) }
+	if _, err := os.Stat(filepath.Join(cfg.CodexConfigDir, "skills", "create-plan")); !os.IsNotExist(err) { t.Fatalf("stale Codex skill remains: %v", err) }
 }
 
 func TestAIConfigRejectsSkillCollisions(t *testing.T) {
@@ -138,4 +151,7 @@ func writeAIConfigSources(t *testing.T, root string) {
 	for _, pair := range []struct{ root, name string }{{filepath.Join(root,"ai","codex","skills"),"create-plan"},{filepath.Join(root,"ai","skills"),"git-messages"},{filepath.Join(root,"ai","skills"),"self-improvement"}} { writeSkillFixture(t, pair.root, pair.name) }
 	mustWriteFile(t, filepath.Join(root,"ai","skills","self-improvement","references","placement.md"), "placement\n", 0o644)
 }
-func writeSkillFixture(t *testing.T, dir, name string) { mustWriteFile(t, filepath.Join(dir,"SKILL.md"), "---\nname: "+name+"\ndescription: fixture\n---\n", 0o644) }
+func writeSkillFixture(t *testing.T, dir, name string) {
+	t.Helper()
+	mustWriteFile(t, filepath.Join(dir, name, "SKILL.md"), "---\nname: "+name+"\ndescription: fixture\n---\n", 0o644)
+}
