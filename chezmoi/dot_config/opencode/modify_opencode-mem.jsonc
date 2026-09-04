@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+input=$(cat)
+if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
+    input='{}'
+fi
+
+legacy="$HOME/.config/opencode/opencode-mem.json"
+if [ -e "$legacy" ]; then
+    printf '%s\n' "remove or migrate $legacy before enabling OpenCode memory" >&2
+    exit 1
+fi
+
+user_email=$(git config --global --get user.email || true)
+if [ -z "$user_email" ]; then
+    printf '%s\n' "global git user.email is required for OpenCode memory" >&2
+    exit 1
+fi
+
+printf '%s\n' "$input" | jq --arg email "$user_email" '
+    if type != "object" then
+        error("OpenCode memory config must be an object")
+    elif has("chatMessage") and (.chatMessage | type) != "object" then
+        error("chatMessage must be an object")
+    else
+        .userEmailOverride = $email
+        | .autoCaptureEnabled = false
+        | .webServerEnabled = false
+        | .chatMessage = ((.chatMessage // {}) + {"enabled": false})
+        | .showAutoCaptureToasts = false
+        | .showUserProfileToasts = false
+    end
+'

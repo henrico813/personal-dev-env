@@ -6,9 +6,19 @@ if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
     input='{}'
 fi
 
-printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" '
+printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "opencode-mem@2.25.0" '
+    def is_memory_plugin:
+        if type == "string" then
+            test("^opencode-mem(@.*)?$")
+        elif type == "array" and length > 0 and (.[0] | type) == "string" then
+            .[0] | test("^opencode-mem(@.*)?$")
+        else
+            false
+        end;
     if type != "object" then
         error("OpenCode config must be an object")
+    elif has("plugin") and (.plugin | type) != "array" then
+        error("plugin must be an array")
     elif has("permission") and (.permission | type) == "string" then
         if .permission == "allow" then .
         else error("permission string cannot preserve a narrow exception")
@@ -26,4 +36,5 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" '
     else
         .permission.external_directory |= ((. // {}) | del(.[$path]) + {($path): "allow"})
     end
+    | .plugin = (((.plugin // []) | map(select(is_memory_plugin | not))) + [$plugin])
 '
