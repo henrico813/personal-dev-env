@@ -29,19 +29,19 @@ func TestPkgsrcRejectsChangedSource(t *testing.T) {
 	}
 }
 
-// Package output inside the source tree breaks integrity checks.
-func TestPkgsrcOutputsStayOutsideSource(t *testing.T) {
+// Output inside source breaks integrity, and Neovim needs vim-license.
+func TestPkgsrcUsesSafeBuildVariables(t *testing.T) {
 	manager := testManager(t)
-	want := "PACKAGES=" + manager.packageRoot()
-	for _, variable := range manager.makeVariables() {
-		if variable == want {
-			if strings.HasPrefix(manager.packageRoot(), manager.SourceRoot+string(filepath.Separator)) {
-				t.Fatalf("package root %q is inside source", manager.packageRoot())
-			}
-			return
-		}
+	variables := strings.Join(manager.makeVariables(), "\n")
+	if !strings.Contains(variables, "PACKAGES="+manager.packageRoot()) {
+		t.Fatalf("make variables do not set package root:\n%s", variables)
 	}
-	t.Fatalf("make variables do not contain %q", want)
+	if strings.HasPrefix(manager.packageRoot(), manager.SourceRoot+string(filepath.Separator)) {
+		t.Fatalf("package root %q is inside source", manager.packageRoot())
+	}
+	if !strings.Contains(variables, "ACCEPTABLE_LICENSES+=vim-license") {
+		t.Fatalf("make variables do not accept vim-license:\n%s", variables)
+	}
 }
 
 // Package database failures must stop installation before mutation.
@@ -101,6 +101,20 @@ func TestPkgsrcChoosesPackageAction(t *testing.T) {
 				t.Fatalf("actions = %v, want [%s]", actions, test.action)
 			}
 		})
+	}
+}
+
+// A failed first install must not replace packages that already finished.
+func TestPkgsrcResumesPartialInstall(t *testing.T) {
+	manager := reconcileManager(t, "tool-1", "tool-1", false)
+	if err := os.Remove(manager.treeStatePath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	if actions := readLines(t, filepath.Join(manager.Home, "actions")); len(actions) != 0 {
+		t.Fatalf("actions = %v, want none", actions)
 	}
 }
 

@@ -154,8 +154,8 @@ func (m Manager) Bootstrap() error {
 func (m Manager) Reconcile() error {
 	wanted := treeState{Release: release, ArchiveSHA256: archiveSHA256, Packages: manifest.PkgsrcPackages()}
 	previous, hasPrevious := m.readTreeState()
-	treeTransitioned := !hasPrevious || previous.Release != wanted.Release || previous.ArchiveSHA256 != wanted.ArchiveSHA256
-	desiredTransitioned := treeTransitioned || !samePackages(previous.Packages, wanted.Packages)
+	treeTransitioned := hasPrevious && (previous.Release != wanted.Release || previous.ArchiveSHA256 != wanted.ArchiveSHA256)
+	desiredTransitioned := hasPrevious && (treeTransitioned || !samePackages(previous.Packages, wanted.Packages))
 	if !m.Runner.DryRun {
 		if err := fsutil.GuardHome(m.Home, m.SourceRoot, m.Prefix, m.StateDir); err != nil {
 			return err
@@ -400,6 +400,7 @@ func (m Manager) makeVariables() []string {
 		"WRKOBJDIR=" + filepath.Join(m.workRoot(), "packages"),
 		"DISTDIR=" + m.distDir(),
 		"PACKAGES=" + m.packageRoot(),
+		"ACCEPTABLE_LICENSES+=vim-license",
 	}
 }
 
