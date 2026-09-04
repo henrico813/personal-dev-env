@@ -22,7 +22,7 @@ import (
 func NewCommand() *cobra.Command {
 	var repoRoot string
 	root := &cobra.Command{
-		Use: "pde-installer", Short: "Reconcile the rootless PDE environment",
+		Use: "pde-installer", Short: "Reconcile the PDE development environment",
 		Args: cobra.NoArgs, SilenceErrors: true, SilenceUsage: true,
 		RunE: func(command *cobra.Command, _ []string) error { return command.Help() },
 	}
@@ -65,7 +65,7 @@ func mutatingCommand(name, description string, repoRoot *string, action func(con
 			return errors.Join(action(config, runner), lock.Close())
 		},
 	}
-	command.Flags().BoolVar(&dryRun, "dry-run", false, "print ordered actions using safe reads only")
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "preview ordered actions without making changes")
 	return command
 }
 
@@ -90,12 +90,14 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 }
 
 func reconcile(config config, runner run.Runner) error {
+	// APT owns system dependencies. Later stages journal changes below HOME.
 	if err := ubuntu.New(runner).Reconcile(); err != nil {
 		return fmt.Errorf("Ubuntu packages: %w", err)
 	}
 	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
 		return err
 	}
+	// Keep successful stages reversible until every stage succeeds.
 	var journals []*fsutil.Journal
 	fail := func(stage string, err error) error {
 		failures := []error{err}
@@ -111,6 +113,8 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("tmux", err)
 	}
 	journals = append(journals, tmuxJournal)
+	// Order matters: runtimes precede their package tools, and config precedes
+	// builds that use files installed by chezmoi.
 	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
 	aquaJournal, err := aquaManager.Reconcile()
 	if err != nil {
