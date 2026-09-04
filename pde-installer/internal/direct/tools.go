@@ -135,10 +135,19 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create direct tool workspace: %w", err)
 	}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		_ = os.RemoveAll(workspace)
+		return nil, err
+	}
+	if err := journal.AddCleanup(workspace); err != nil {
+		_ = os.RemoveAll(workspace)
+		return nil, err
+	}
 	tracked := false
 	defer func() {
 		if !tracked {
-			_ = os.RemoveAll(workspace)
+			_ = journal.Rollback()
 		}
 	}()
 	stage := filepath.Join(workspace, "releases")
@@ -157,15 +166,8 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 		return nil, err
 	}
 
-	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
-	if err != nil {
-		return nil, err
-	}
 	if err := journal.Activate(stage, root); err != nil {
 		return nil, fmt.Errorf("activate direct tools: %w", err)
-	}
-	if err := journal.AddCleanup(workspace); err != nil {
-		return nil, journal.Revert(err)
 	}
 	tracked = true
 	if err := os.MkdirAll(localBin, 0o755); err != nil {
