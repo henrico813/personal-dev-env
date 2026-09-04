@@ -9,9 +9,9 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
 `pde-installer install` installs planner, `codex`, `opencode`,
-`opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs
-`skills/git-messages/` to `~/.agents/skills/git-messages/` and
-`~/.codex/skills/git-messages/`. It syncs `opencode/`, `codex/`, and
+`opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
+package under `skills/` to `~/.agents/skills/<name>/` and
+`~/.codex/skills/<name>/`. It syncs `opencode/`, `codex/`, and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Surveil is installed as a standalone binary;
@@ -41,3 +41,8 @@ have higher precedence; using them voids PDE's pin and privacy guarantees.
 
 This first integration guarantees no Codex or Pi memory parity. Their shared
 instructions apply the memory workflow only when a `memory` tool is available.
+
+The `promote-memory` skill turns an explicitly requested learning into a
+reviewed source change. It targets this repository by default from any
+checkout, installs skills through checksummed chezmoi externals, and opens a
+pull request with Git author email `henryco4388@gmail.com`.
