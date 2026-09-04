@@ -2,6 +2,7 @@ package fsutil
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -285,6 +286,115 @@ func TestJournalFinishesCommittedCleanup(t *testing.T) {
 	assertNoJournals(t, config.Directory)
 }
 
+func TestJournalsCommitTogether(t *testing.T) {
+	home, config := journalTestConfig(t)
+	first := activateTestJournal(t, config, filepath.Join(home, "first"))
+	second := activateTestJournal(t, config, filepath.Join(home, "second"))
+	if err := CommitJournals(first, &Journal{}, second); err != nil {
+		t.Fatal(err)
+	}
+	assertTestFile(t, filepath.Join(home, "first"), "new")
+	assertTestFile(t, filepath.Join(home, "second"), "new")
+	assertNoJournals(t, config.Directory)
+}
+
+func TestJournalGroupRecoveryCommitsAll(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		marked int
+	}{
+		{name: "none", marked: 0},
+		{name: "partial", marked: 1},
+		{name: "all", marked: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home, config := journalTestConfig(t)
+			journals := []*Journal{
+				activateTestJournal(t, config, filepath.Join(home, "first")),
+				activateTestJournal(t, config, filepath.Join(home, "second")),
+			}
+			if _, err := writeCommitGroup(journals); err != nil {
+				t.Fatal(err)
+			}
+			for _, journal := range journals[:test.marked] {
+				if err := journal.markCommitted(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := RecoverJournals(config); err != nil {
+				t.Fatal(err)
+			}
+			assertTestFile(t, filepath.Join(home, "first"), "new")
+			assertTestFile(t, filepath.Join(home, "second"), "new")
+			assertNoJournals(t, config.Directory)
+		})
+	}
+}
+
+func TestJournalGroupResumesCleanup(t *testing.T) {
+	home, config := journalTestConfig(t)
+	first := activateTestJournal(t, config, filepath.Join(home, "first"))
+	second := activateTestJournal(t, config, filepath.Join(home, "second"))
+	groupPath, err := writeCommitGroup([]*Journal{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, journal := range []*Journal{first, second} {
+		if err := journal.markCommitted(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := removeDurable(groupPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.finishCommit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecoverJournals(config); err != nil {
+		t.Fatal(err)
+	}
+	assertTestFile(t, filepath.Join(home, "first"), "new")
+	assertTestFile(t, filepath.Join(home, "second"), "new")
+	assertNoJournals(t, config.Directory)
+}
+
+func TestJournalRecoveryRollsAllBack(t *testing.T) {
+	home, config := journalTestConfig(t)
+	activateTestJournal(t, config, filepath.Join(home, "first"))
+	activateTestJournal(t, config, filepath.Join(home, "second"))
+	if err := RecoverJournals(config); err != nil {
+		t.Fatal(err)
+	}
+	assertTestFile(t, filepath.Join(home, "first"), "old")
+	assertTestFile(t, filepath.Join(home, "second"), "old")
+	assertNoJournals(t, config.Directory)
+}
+
+func TestJournalsIgnoreEmptyEntries(t *testing.T) {
+	if err := CommitJournals(&Journal{}, &Journal{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJournalRejectsUnsafeCommitGroup(t *testing.T) {
+	home, config := journalTestConfig(t)
+	if err := os.MkdirAll(config.Directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(config.Directory, commitGroupPrefix+"unsafe"+commitGroupSuffix)
+	state := commitGroupState{Version: journalVersion, Home: home, Journals: []string{"../outside.json"}}
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicWriteJSON(path, append(data, '\n')); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecoverJournals(config); err == nil {
+		t.Fatal("recovery accepted an unsafe commit group")
+	}
+}
+
 // Stored journal data must never bypass HOME protection.
 func TestJournalRejectsOutsidePaths(t *testing.T) {
 	home, config := journalTestConfig(t)
@@ -335,6 +445,21 @@ func interruptedJournal(t *testing.T, config JournalConfig, stage, destination s
 		StageID:    stageID,
 		OriginalID: originalID,
 	})
+	return journal
+}
+
+func activateTestJournal(t *testing.T, config JournalConfig, destination string) *Journal {
+	t.Helper()
+	stage := destination + ".stage"
+	writeTestFile(t, destination, "old")
+	writeTestFile(t, stage, "new")
+	journal, err := NewJournal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Activate(stage, destination); err != nil {
+		t.Fatal(err)
+	}
 	return journal
 }
 
