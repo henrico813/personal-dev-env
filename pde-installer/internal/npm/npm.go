@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
 )
 
@@ -19,12 +20,17 @@ type packageSpec struct {
 }
 
 func packages() []packageSpec {
-	return []packageSpec{
-		{Name: "opencode-ai", Version: "1.18.27", Binary: "opencode", Integrity: "sha512-5xrG2gQEwV2sLus30SZX9GyLbPX3z57BCxddedDM0wx1bgnwlHVLOS/FD2uve7fEZlmkr7KYFbvs65ySz1rwzA=="},
-		{Name: "@openai/codex", Version: "0.153.2", Binary: "codex", Integrity: "sha512-IRocJlE+jCZGYHwIJWBja2nDswTSZY4sNddQgU5xiR/mVWxo5WcO8pqcajXJea1XDoNK9CaVzizVhUxDhFkU6g=="},
-		{Name: "@earendil-works/pi-coding-agent", Version: "0.84.4", Binary: "pi", Integrity: "sha512-jmOlrqUmvhh/siNWFRXjYLJzhKFIHNsAQaysRwzQPQFnPAaV/vhqHsLH/MBsIISA1Rjj7WTUFR3nJrpXoLx39w=="},
-		{Name: "obsidian-headless", Version: "0.0.14", Binary: "ob", Integrity: "sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw=="},
+	specs := []packageSpec{
+		{Name: "opencode-ai", Binary: "opencode", Integrity: "sha512-5xrG2gQEwV2sLus30SZX9GyLbPX3z57BCxddedDM0wx1bgnwlHVLOS/FD2uve7fEZlmkr7KYFbvs65ySz1rwzA=="},
+		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-IRocJlE+jCZGYHwIJWBja2nDswTSZY4sNddQgU5xiR/mVWxo5WcO8pqcajXJea1XDoNK9CaVzizVhUxDhFkU6g=="},
+		{Name: "@earendil-works/pi-coding-agent", Binary: "pi", Integrity: "sha512-jmOlrqUmvhh/siNWFRXjYLJzhKFIHNsAQaysRwzQPQFnPAaV/vhqHsLH/MBsIISA1Rjj7WTUFR3nJrpXoLx39w=="},
+		{Name: "obsidian-headless", Binary: "ob", Integrity: "sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw=="},
 	}
+	for index := range specs {
+		item, _ := manifest.Find(specs[index].Name, manifest.NPM)
+		specs[index].Version = item.Version
+	}
+	return specs
 }
 
 // Manager installs Node.js tools for one installation.
@@ -122,11 +128,16 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := m.verify(stage); err != nil {
 		return nil, err
 	}
-	journal := &fsutil.Journal{Home: m.Home}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
 	if err := journal.Activate(stage, m.Root()); err != nil {
 		return nil, err
 	}
-	journal.TrackCleanup(workspace)
+	if err := journal.AddCleanup(workspace); err != nil {
+		return nil, journal.Revert(err)
+	}
 	tracked = true
 	for _, pkg := range packages() {
 		destination := filepath.Join(m.Home, ".local", "bin", pkg.Binary)
@@ -213,7 +224,13 @@ func (m Manager) verify(root string) error {
 		}
 		binary := filepath.Join(root, "node_modules", ".bin", pkg.Binary)
 		info, err := os.Stat(binary)
-		if err != nil || info.Mode()&0o111 == 0 {
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("stat npm executable %s: %w", binary, err)
+			}
+			return fmt.Errorf("npm executable missing: %s", binary)
+		}
+		if info.Mode()&0o111 == 0 {
 			return fmt.Errorf("npm executable missing: %s", binary)
 		}
 		output, err := m.Runner.Query("verify "+pkg.Binary, run.Command{Name: binary, Args: []string{"--version"}, Env: m.environment()})
@@ -231,7 +248,13 @@ func (m Manager) verifyLaunchers() error {
 	for _, pkg := range packages() {
 		binary := filepath.Join(m.Home, ".local", "bin", pkg.Binary)
 		info, err := os.Stat(binary)
-		if err != nil || info.Mode()&0o111 == 0 {
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("stat npm launcher %s: %w", binary, err)
+			}
+			return fmt.Errorf("npm launcher missing: %s", binary)
+		}
+		if info.Mode()&0o111 == 0 {
 			return fmt.Errorf("npm launcher missing: %s", binary)
 		}
 		output, err := m.Runner.Query("verify "+pkg.Binary+" launcher", run.Command{Name: binary, Args: []string{"--version"}, Env: m.environment()})

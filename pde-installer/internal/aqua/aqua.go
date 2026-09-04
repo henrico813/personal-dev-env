@@ -10,10 +10,9 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/manifest"
 	"pde-installer/internal/run"
 )
-
-const version = "v2.60.1"
 
 type tool struct {
 	name    string
@@ -32,14 +31,13 @@ func checksum(architecture string) (string, bool) {
 }
 
 func tools() []tool {
-	return []tool{
-		{name: "fd", version: "v8.3.1"}, {name: "fzf", version: "0.36.0"},
-		{name: "ripgrep", version: "14.1.1"}, {name: "bat", version: "v0.19.0"},
-		{name: "jq", version: "jq-1.7.1"}, {name: "chezmoi", version: "v2.72.0"},
-		{name: "eza", version: "v0.23.4"}, {name: "zoxide", version: "v0.9.8"},
-		{name: "bottom", version: "0.11.4"}, {name: "yq", version: "v4.53.3"},
-		{name: "yazi", version: "v25.5.31"}, {name: "ya", version: "v25.5.31"},
+	var result []tool
+	for _, item := range manifest.ByOwner(manifest.Aqua) {
+		if item.Name != "aqua" {
+			result = append(result, tool{name: item.Name, version: item.Version})
+		}
 	}
+	return result
 }
 
 // Manager installs Aqua and its pinned tool set for one user.
@@ -62,6 +60,10 @@ func (m Manager) binary() string { return filepath.Join(m.root, "bin", "aqua") }
 
 // Reconcile installs the pinned Aqua release and managed tools.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
+	aqua, ok := manifest.Find("aqua", manifest.Aqua)
+	if !ok {
+		return nil, fmt.Errorf("aqua is missing from manifest")
+	}
 	checksum, ok := checksum(runtime.GOARCH)
 	if runtime.GOOS != "linux" || !ok {
 		return nil, fmt.Errorf("unsupported Aqua platform %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -77,12 +79,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	url := fmt.Sprintf("https://github.com/aquaproj/aqua/releases/download/%s/aqua_linux_%s.tar.gz", version, runtime.GOARCH)
+	url := fmt.Sprintf("https://github.com/aquaproj/aqua/releases/download/%s/aqua_linux_%s.tar.gz", aqua.Version, runtime.GOARCH)
 	if m.runner.DryRun {
 		if err := m.runner.Plan("download and verify "+url+" sha256="+checksum, nil); err != nil {
 			return nil, err
 		}
 		if err := m.runner.Plan("install Aqua packages in staging root", nil); err != nil {
+			return nil, err
+		}
+		if err := m.runner.Plan("update staged Aqua checksums", nil); err != nil {
 			return nil, err
 		}
 		if err := m.runner.Plan("atomically activate "+m.root, nil); err != nil {
@@ -94,7 +99,11 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := fsutil.GuardHome(m.home, parent, m.root); err != nil {
 		return nil, err
 	}
-	if m.current(wanted) {
+	current, err := m.current(wanted)
+	if err != nil {
+		return nil, err
+	}
+	if current {
 		return &fsutil.Journal{}, nil
 	}
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -147,6 +156,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := fsutil.GuardHome(m.home, stage); err != nil {
 		return nil, err
 	}
+	if err := m.runner.Run("update staged Aqua checksums", run.Command{Name: binary, Args: []string{"--config", stagedManifest, "update-checksum", "--all"}, Env: environment}); err != nil {
+		return nil, err
+	}
 	if err := m.runner.Run("reconcile Aqua packages", run.Command{Name: binary, Args: []string{"--config", stagedManifest, "install"}, Env: environment}); err != nil {
 		return nil, err
 	}
@@ -159,7 +171,10 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := os.WriteFile(filepath.Join(stage, ".pde-state.json"), append(stateData, '\n'), 0o644); err != nil {
 		return nil, err
 	}
-	journal := &fsutil.Journal{Home: m.home}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.home})
+	if err != nil {
+		return nil, err
+	}
 	if err := journal.Activate(stage, m.root); err != nil {
 		return nil, err
 	}
@@ -167,24 +182,27 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-func (m Manager) current(wanted state) bool {
+func (m Manager) current(wanted state) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(m.root, ".pde-state.json"))
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read Aqua state: %w", err)
 	}
 	var installed state
 	if json.Unmarshal(data, &installed) != nil || installed != wanted {
-		return false
+		return false, nil
 	}
-	if _, state := m.Status(); state != "current" {
-		return false
+	if _, status, err := m.Probe(); err != nil || status != "current" {
+		return false, err
 	}
 	for _, candidate := range tools() {
-		if _, state := m.ToolStatus(candidate.name, candidate.version); state != "current" {
-			return false
+		if _, status, err := m.ToolProbe(candidate.name, candidate.version); err != nil || status != "current" {
+			return false, err
 		}
 	}
-	return true
+	return true, nil
 }
 
 func pinState(config, checksums string) (state, error) {
@@ -201,31 +219,62 @@ func pinState(config, checksums string) (state, error) {
 
 // Status reports the installed Aqua version and state.
 func (m Manager) Status() (string, string) {
+	installed, status, err := m.Probe()
+	if err != nil {
+		return "", "error"
+	}
+	return installed, status
+}
+
+// Probe reports the Aqua version without hiding execution errors.
+func (m Manager) Probe() (string, string, error) {
+	aqua, ok := manifest.Find("aqua", manifest.Aqua)
+	if !ok {
+		return "", "", fmt.Errorf("aqua is missing from manifest")
+	}
+	if _, err := os.Stat(m.binary()); err != nil {
+		if os.IsNotExist(err) {
+			return "", "missing", nil
+		}
+		return "", "", fmt.Errorf("stat Aqua binary: %w", err)
+	}
 	output, err := m.runner.Query("read Aqua version", run.Command{Name: m.binary(), Args: []string{"--version"}})
 	if err != nil {
-		return "", "missing"
+		return "", "", err
 	}
 	installed := strings.TrimSpace(string(output))
-	if containsVersion(installed, strings.TrimPrefix(version, "v")) {
-		return installed, "current"
+	if containsVersion(installed, strings.TrimPrefix(aqua.Version, "v")) {
+		return installed, "current", nil
 	}
-	return installed, "outdated"
+	return installed, "outdated", nil
 }
 
 // ToolStatus reports the installed version and state of a managed tool.
 func (m Manager) ToolStatus(name, version string) (string, string) {
+	installed, status, err := m.ToolProbe(name, version)
+	if err != nil {
+		return "", "error"
+	}
+	return installed, status
+}
+
+// ToolProbe reports a tool version without hiding probe errors.
+func (m Manager) ToolProbe(name, version string) (string, string, error) {
 	binaryNames := map[string]string{"ripgrep": "rg", "bottom": "btm"}
 	binary := name
 	if mapped := binaryNames[name]; mapped != "" {
 		binary = mapped
 	}
-	path := m.installedBinary(binary, version)
+	path, err := m.installedBinary(binary, version)
+	if err != nil {
+		return "", "", err
+	}
 	if path == "" {
-		return "", "missing"
+		return "", "missing", nil
 	}
 	output, err := m.runner.Query("read "+name+" version", run.Command{Name: path, Args: []string{"--version"}})
 	if err != nil {
-		return "", "missing"
+		return "", "", err
 	}
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	installed := strings.TrimSpace(lines[0])
@@ -237,16 +286,16 @@ func (m Manager) ToolStatus(name, version string) (string, string) {
 				break
 			}
 		}
-		return installed, "current"
+		return installed, "current", nil
 	}
-	return installed, "outdated"
+	return installed, "outdated", nil
 }
 
-func (m Manager) installedBinary(name, version string) string {
+func (m Manager) installedBinary(name, version string) (string, error) {
 	root := filepath.Join(m.root, "pkgs")
 	wanted := string(filepath.Separator) + version + string(filepath.Separator)
 	var matches []string
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -258,10 +307,16 @@ func (m Manager) installedBinary(name, version string) string {
 		}
 		return nil
 	})
-	if len(matches) != 1 {
-		return ""
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("scan Aqua packages: %w", err)
 	}
-	return matches[0]
+	if len(matches) != 1 {
+		return "", nil
+	}
+	return matches[0], nil
 }
 
 func containsVersion(output, version string) bool {

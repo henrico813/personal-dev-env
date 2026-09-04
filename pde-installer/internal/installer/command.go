@@ -22,7 +22,7 @@ func NewCommand() *cobra.Command {
 	var repoRoot string
 	root := &cobra.Command{
 		Use: "pde-installer", Short: "Reconcile the rootless PDE environment",
-		Args: cobra.NoArgs, SilenceUsage: true,
+		Args: cobra.NoArgs, SilenceErrors: true, SilenceUsage: true,
 		RunE: func(command *cobra.Command, _ []string) error { return command.Help() },
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
@@ -50,7 +50,18 @@ func mutatingCommand(name, description string, repoRoot *string, action func(con
 			if err != nil {
 				return err
 			}
-			return action(config, run.Runner{DryRun: dryRun, ReadOnlyDryRun: dryRun && name == "config", Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()})
+			runner := run.Runner{DryRun: dryRun, ReadOnlyDryRun: dryRun && name == "config", Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}
+			if dryRun {
+				return action(config, runner)
+			}
+			lock, err := acquireInstallerLock(config.Home)
+			if err != nil {
+				return err
+			}
+			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
+				return errors.Join(err, lock.Close())
+			}
+			return errors.Join(action(config, runner), lock.Close())
 		},
 	}
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "print ordered actions using safe reads only")
@@ -78,7 +89,7 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 }
 
 func reconcile(config config, runner run.Runner) error {
-	if err := hostPreflight(config, runner, false); err != nil {
+	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
 		return err
 	}
 	pkg := pkgsrc.New(config.Home, runner)

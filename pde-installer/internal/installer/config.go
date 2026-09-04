@@ -27,11 +27,20 @@ func detectConfig(flagRoot string) (config, error) {
 		return config{}, err
 	}
 	root := ""
-	for _, candidate := range []string{flagRoot, os.Getenv("PDE_REPO_ROOT"), findRepoRoot(cwd)} {
-		if normalized, ok := repository(candidate); ok {
-			root = normalized
-			break
+	if flagRoot != "" {
+		var ok bool
+		root, ok = repository(flagRoot)
+		if !ok {
+			return config{}, fmt.Errorf("invalid --repo-root %q", flagRoot)
 		}
+	} else if environmentRoot := os.Getenv("PDE_REPO_ROOT"); environmentRoot != "" {
+		var ok bool
+		root, ok = repository(environmentRoot)
+		if !ok {
+			return config{}, fmt.Errorf("invalid PDE_REPO_ROOT %q", environmentRoot)
+		}
+	} else {
+		root = findRepoRoot(cwd)
 	}
 	if root == "" {
 		return config{}, fmt.Errorf("repository root not found; pass --repo-root, set PDE_REPO_ROOT, or run within this checkout")

@@ -42,12 +42,16 @@ func Download(url, destination, checksum string) (err error) {
 	defer func() { _ = os.Remove(name) }()
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(temporary, hash), io.LimitReader(response.Body, maxDownloadSize+1))
+	syncErr := temporary.Sync()
 	closeErr := temporary.Close()
 	if copyErr != nil {
 		return copyErr
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if syncErr != nil {
+		return syncErr
 	}
 	if written > maxDownloadSize {
 		return fmt.Errorf("download %s exceeds size limit", url)
@@ -56,7 +60,10 @@ func Download(url, destination, checksum string) (err error) {
 	if !strings.EqualFold(actual, checksum) {
 		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", url, actual, checksum)
 	}
-	return os.Rename(name, destination)
+	if err := os.Rename(name, destination); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(destination))
 }
 
 // GuardHome rejects mutation paths outside home or below symlinks.
@@ -290,130 +297,6 @@ func Rollback(destination, backup string) error {
 		return os.Rename(backup, destination)
 	}
 	return os.RemoveAll(destination)
-}
-
-// Change records enough activation state to restore one destination.
-type Change struct {
-	Destination string
-	Backup      string
-	Existed     bool
-}
-
-// Journal groups filesystem activations into a reversible operation.
-type Journal struct {
-	Home    string
-	Changes []Change
-	cleanup []string
-}
-
-// Activate records an atomic path activation in the journal.
-func (j *Journal) Activate(stage, destination string) error {
-	if j.Home != "" {
-		if err := GuardHomeAllowLeafSymlink(j.Home, stage, destination); err != nil {
-			return err
-		}
-	}
-	_, statErr := os.Lstat(destination)
-	backup, err := Activate(stage, destination)
-	if err != nil {
-		return err
-	}
-	j.Changes = append(j.Changes, Change{Destination: destination, Backup: backup, Existed: statErr == nil})
-	return nil
-}
-
-// Record adds an existing mutation to the journal.
-func (j *Journal) Record(destination, backup string, existed bool) {
-	j.Changes = append(j.Changes, Change{Destination: destination, Backup: backup, Existed: existed})
-}
-
-// TrackCleanup schedules a path for removal after commit or rollback.
-func (j *Journal) TrackCleanup(path string) {
-	j.cleanup = append(j.cleanup, path)
-}
-
-// Rollback restores all recorded destinations in reverse order.
-func (j *Journal) Rollback() error {
-	var first error
-	for i := len(j.Changes) - 1; i >= 0; i-- {
-		change := j.Changes[i]
-		if j.Home != "" {
-			if err := GuardHomeAllowLeafSymlink(j.Home, change.Destination, change.Backup); err != nil {
-				if first == nil {
-					first = err
-				}
-				continue
-			}
-		}
-		backup := ""
-		if change.Existed {
-			backup = change.Backup
-		}
-		if err := Rollback(change.Destination, backup); err != nil && first == nil {
-			first = err
-		}
-		if !change.Existed && change.Backup != "" {
-			if err := os.RemoveAll(change.Backup); err != nil && first == nil {
-				first = err
-			}
-		}
-	}
-	if err := j.cleanTracked(); err != nil && first == nil {
-		first = err
-	}
-	return first
-}
-
-// Revert joins a primary failure with any rollback failure.
-func (j *Journal) Revert(cause error) error {
-	if err := j.Rollback(); err != nil {
-		return errors.Join(cause, fmt.Errorf("rollback: %w", err))
-	}
-	return cause
-}
-
-// Commit removes backups and temporary paths after successful activation.
-func (j *Journal) Commit() error {
-	var first error
-	for _, change := range j.Changes {
-		if change.Backup != "" {
-			if j.Home != "" {
-				if err := GuardHomeAllowLeafSymlink(j.Home, change.Backup); err != nil {
-					if first == nil {
-						first = err
-					}
-					continue
-				}
-			}
-			if err := os.RemoveAll(change.Backup); err != nil && first == nil {
-				first = err
-			}
-		}
-	}
-	if err := j.cleanTracked(); err != nil && first == nil {
-		first = err
-	}
-	j.Changes = nil
-	return first
-}
-
-func (j *Journal) cleanTracked() error {
-	var first error
-	for i := len(j.cleanup) - 1; i >= 0; i-- {
-		if j.Home != "" {
-			if err := GuardHomeAllowLeafSymlink(j.Home, j.cleanup[i]); err != nil {
-				if first == nil {
-					first = err
-				}
-				continue
-			}
-		}
-		if err := os.RemoveAll(j.cleanup[i]); err != nil && first == nil {
-			first = err
-		}
-	}
-	j.cleanup = nil
-	return first
 }
 
 // CopyPath copies one regular file, directory, or symbolic link.

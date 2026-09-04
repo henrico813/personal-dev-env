@@ -95,7 +95,10 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			return nil, err
 		}
 	}
-	journal := &fsutil.Journal{Home: m.Home}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
 	for _, spec := range specs {
 		staged := filepath.Join(stageRoot, "activate-"+spec.name)
 		if err := copyExecutable(spec.output, staged); err != nil {
@@ -105,7 +108,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			return nil, journal.Revert(fmt.Errorf("activate %s: %w", spec.name, err))
 		}
 		if !tracked {
-			journal.TrackCleanup(stageRoot)
+			if err := journal.AddCleanup(stageRoot); err != nil {
+				return nil, journal.Revert(err)
+			}
 			tracked = true
 		}
 	}
@@ -213,11 +218,16 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if err := os.WriteFile(stateStage, append(stateData, '\n'), 0o644); err != nil {
 		return nil, fmt.Errorf("write blink state: %w", err)
 	}
-	journal := &fsutil.Journal{Home: m.Home}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
 	if err := journal.Activate(stage, destination); err != nil {
 		return nil, err
 	}
-	journal.TrackCleanup(workspace)
+	if err := journal.AddCleanup(workspace); err != nil {
+		return nil, journal.Revert(err)
+	}
 	tracked = true
 	if err := journal.Activate(stateStage, statePath); err != nil {
 		return nil, journal.Revert(fmt.Errorf("activate blink state: %w", err))
@@ -227,10 +237,27 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 
 // Status reports whether a built binary is installed.
 func (m Manager) Status(name string) string {
-	if regularExecutable(filepath.Join(m.Home, ".local", "bin", name)) {
-		return "installed"
+	status, err := m.Probe(name)
+	if err != nil {
+		return "error"
 	}
-	return "missing"
+	return status
+}
+
+// Probe reports build state without hiding filesystem errors.
+func (m Manager) Probe(name string) (string, error) {
+	path := filepath.Join(m.Home, ".local", "bin", name)
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "missing", nil
+		}
+		return "", fmt.Errorf("stat built binary %s: %w", name, err)
+	}
+	if info.Mode().IsRegular() && info.Mode()&0o111 != 0 && info.Size() > 0 {
+		return "installed", nil
+	}
+	return "missing", nil
 }
 
 func (m Manager) inputs() (map[string]string, error) {

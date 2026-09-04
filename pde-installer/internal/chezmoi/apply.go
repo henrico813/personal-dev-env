@@ -81,22 +81,42 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		return nil, fmt.Errorf("create chezmoi state directory: %w", err)
 	}
-	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--path-style", "absolute"), Env: m.environment()})
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
 	if err != nil {
 		return nil, err
+	}
+	stateBackup := fsutil.BackupName(statePath)
+	if _, err := os.Lstat(statePath); err == nil {
+		if err := fsutil.CopyPath(statePath, stateBackup); err != nil {
+			return nil, fmt.Errorf("back up chezmoi state: %w", err)
+		}
+		if err := journal.RecordReplaced(statePath, stateBackup); err != nil {
+			return nil, journal.Revert(err)
+		}
+	} else if os.IsNotExist(err) {
+		if err := journal.RecordCreated(statePath); err != nil {
+			return nil, journal.Revert(err)
+		}
+	} else {
+		return nil, fmt.Errorf("inspect chezmoi state: %w", err)
+	}
+	status, err := m.Runner.Query("preflight chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--path-style", "absolute"), Env: m.environment()})
+	if err != nil {
+		return nil, journal.Revert(err)
 	}
 	paths, err := m.changedPaths(string(status))
 	if err != nil {
 		return nil, err
 	}
-	journal := &fsutil.Journal{Home: m.Home}
 	for _, path := range paths {
 		if err := fsutil.GuardHomeAllowLeafSymlink(m.Home, path); err != nil {
 			return nil, journal.Revert(err)
 		}
 		info, err := os.Lstat(path)
 		if os.IsNotExist(err) {
-			journal.Record(path, "", false)
+			if err := journal.RecordCreated(path); err != nil {
+				return nil, journal.Revert(err)
+			}
 			continue
 		} else if err != nil {
 			return nil, err
@@ -113,7 +133,9 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 		if err != nil {
 			return nil, journal.Revert(fmt.Errorf("back up chezmoi target %s: %w", path, err))
 		}
-		journal.Record(path, name, true)
+		if err := journal.RecordReplaced(path, name); err != nil {
+			return nil, journal.Revert(err)
+		}
 	}
 	if err := fsutil.GuardHomeAllowLeafSymlink(m.Home, paths...); err != nil {
 		return nil, journal.Revert(err)
@@ -137,18 +159,34 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 
 // Status reports whether the managed home configuration has drifted.
 func (m Manager) Status() string {
-	binary, err := m.readOnlyBinary()
+	status, err := m.Probe()
 	if err != nil {
 		return "unavailable"
+	}
+	return status
+}
+
+// Probe reports configuration drift without hiding command failures.
+func (m Manager) Probe() (string, error) {
+	proxy := filepath.Join(m.AquaRoot, "bin", "chezmoi")
+	if _, err := os.Lstat(proxy); err != nil {
+		if os.IsNotExist(err) {
+			return "unavailable", nil
+		}
+		return "", fmt.Errorf("inspect chezmoi executable: %w", err)
+	}
+	binary, err := m.readOnlyBinary()
+	if err != nil {
+		return "", err
 	}
 	output, err := m.Runner.Query("read chezmoi status", run.Command{Name: binary, Args: append(m.arguments(), "status", "--exclude", "externals,scripts"), Env: m.environment()})
 	if err != nil {
-		return "unavailable"
+		return "", err
 	}
 	if strings.TrimSpace(string(output)) == "" {
-		return "current"
+		return "current", nil
 	}
-	return "drifted"
+	return "drifted", nil
 }
 
 func (m Manager) readOnlyBinary() (string, error) {
