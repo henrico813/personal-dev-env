@@ -32,8 +32,8 @@ The installer does not clone or update the checkout. It finds the checkout from
 the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
 `install` and `update` run the same full reconciliation. They do not accept a
-tool or backend selector. `config` is the only supported subset; it applies the
-repository's chezmoi content.
+tool or backend selector. `config` is the only supported subset; it migrates
+legacy state and applies the repository's chezmoi content.
 
 ## Documentation
 

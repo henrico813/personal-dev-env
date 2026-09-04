@@ -10,7 +10,9 @@
    checksums for the new package.
    The Yazi package supplies both `yazi` and `ya`; update both manifest entries
    when changing it.
-4. Run:
+4. When updating chezmoi, also update its version in
+   `internal/chezmoi/apply.go`.
+5. Run:
 
    ```bash
    go test ./...
@@ -19,8 +21,8 @@
 
 ## Update Aqua Itself
 
-Update the Aqua manifest version and the amd64 and arm64 archive checksums in
-`internal/aqua/aqua.go`.
+Update Aqua's version in `internal/manifest/manifest.go`. Update its amd64 and
+arm64 archive checksums in `internal/aqua/aqua.go`.
 
 The installer hashes both Aqua configuration files. A changed hash causes it to
 stage a complete Aqua root, install all pinned packages, verify versions, and

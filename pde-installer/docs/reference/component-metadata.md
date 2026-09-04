@@ -9,7 +9,7 @@ each item. It is not an uninstall list.
 | Ubuntu dependencies | `internal/ubuntu/ubuntu.go` |
 | tmux | `internal/tmux/tmux.go`; manifest version |
 | Aqua | `internal/aqua/aqua.go`; manifest version and architecture checksums |
-| Aqua tools | `chezmoi/dot_config/aquaproj-aqua/aqua.yaml`, `aqua-checksums.json`, and manifest versions |
+| Aqua tools | `../chezmoi/dot_config/aquaproj-aqua/`, manifest versions, and the chezmoi version in `internal/chezmoi/apply.go` |
 | Direct tools | `internal/direct/tools.go`; manifest versions and amd64/arm64 checksums |
 | Fonts | `internal/direct/direct.go`; manifest versions |
 | npm tools | `package.json`, `package-lock.json`, `internal/npm/npm.go`, and manifest versions |
