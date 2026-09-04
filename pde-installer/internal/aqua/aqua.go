@@ -87,9 +87,6 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		if err := m.runner.Plan("install Aqua packages in staging root", nil); err != nil {
 			return nil, err
 		}
-		if err := m.runner.Plan("update staged Aqua checksums", nil); err != nil {
-			return nil, err
-		}
 		if err := m.runner.Plan("atomically activate "+m.root, nil); err != nil {
 			return nil, err
 		}
@@ -154,9 +151,6 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}
 	environment := []string{"AQUA_ROOT_DIR=" + stage, "AQUA_GLOBAL_CONFIG=" + stagedManifest, "AQUA_CHECKSUMS_PATH=" + stagedChecksums, "PATH=" + filepath.Join(stage, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")}
 	if err := fsutil.GuardHome(m.home, stage); err != nil {
-		return nil, err
-	}
-	if err := m.runner.Run("update staged Aqua checksums", run.Command{Name: binary, Args: []string{"--config", stagedManifest, "update-checksum", "--all"}, Env: environment}); err != nil {
 		return nil, err
 	}
 	if err := m.runner.Run("reconcile Aqua packages", run.Command{Name: binary, Args: []string{"--config", stagedManifest, "install"}, Env: environment}); err != nil {

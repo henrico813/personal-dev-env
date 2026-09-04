@@ -52,3 +52,22 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		}
 	}
 }
+
+// A valid empty JSON value must not crash migration.
+func TestLegacyConfigHandlesNull(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("null\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}

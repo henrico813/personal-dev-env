@@ -106,7 +106,7 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	}
 	paths, err := m.changedPaths(string(status))
 	if err != nil {
-		return nil, err
+		return nil, journal.Revert(err)
 	}
 	for _, path := range paths {
 		if err := fsutil.GuardHomeAllowLeafSymlink(m.Home, path); err != nil {
@@ -119,22 +119,23 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 			}
 			continue
 		} else if err != nil {
-			return nil, err
+			return nil, journal.Revert(err)
 		}
 		name := fsutil.BackupName(path)
 		if err := fsutil.GuardHome(m.Home, name); err != nil {
 			return nil, journal.Revert(err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			err = os.Rename(path, name)
-		} else {
-			err = fsutil.CopyPath(path, name)
-		}
+		err = fsutil.CopyPath(path, name)
 		if err != nil {
 			return nil, journal.Revert(fmt.Errorf("back up chezmoi target %s: %w", path, err))
 		}
 		if err := journal.RecordReplaced(path, name); err != nil {
 			return nil, journal.Revert(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			if err := os.Remove(path); err != nil {
+				return nil, journal.Revert(fmt.Errorf("remove chezmoi target symlink %s: %w", path, err))
+			}
 		}
 	}
 	if err := fsutil.GuardHomeAllowLeafSymlink(m.Home, paths...); err != nil {

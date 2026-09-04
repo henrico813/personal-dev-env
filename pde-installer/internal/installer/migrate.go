@@ -39,6 +39,9 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		if err := json.Unmarshal(data, &values); err != nil {
 			return nil, fmt.Errorf("read PDE config: %w", err)
 		}
+		if values == nil {
+			values = make(map[string]any)
+		}
 	} else if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("read PDE config: %w", err)
 	}

@@ -56,7 +56,6 @@ type Journal struct {
 	directory string
 	path      string
 	state     journalState
-	err       error
 }
 
 // NewJournal creates a journal that persists when its first change is added.
@@ -135,11 +134,17 @@ func (j *Journal) Activate(stage, destination string) error {
 	if err != nil {
 		return err
 	}
+	if err := syncDirectory(filepath.Dir(destination)); err != nil {
+		return errors.Join(err, Rollback(destination, backup))
+	}
 	index := len(j.state.Changes) - 1
 	j.state.Changes[index].Backup = backup
 	j.state.Changes[index].Complete = true
 	j.Changes = append(j.Changes, j.state.Changes[index].Change)
-	return j.persist()
+	if err := j.persist(); err != nil {
+		return errors.Join(err, Rollback(destination, backup))
+	}
+	return nil
 }
 
 // RecordCreated records a destination that did not exist before mutation.
@@ -150,16 +155,6 @@ func (j *Journal) RecordCreated(destination string) error {
 // RecordReplaced records a destination and its existing backup.
 func (j *Journal) RecordReplaced(destination, backup string) error {
 	return j.record(Change{Destination: destination, Backup: backup, Existed: true})
-}
-
-// Record adds an existing mutation to the journal.
-// Deprecated: use RecordCreated or RecordReplaced so errors are handled.
-func (j *Journal) Record(destination, backup string, existed bool) {
-	if existed {
-		j.err = errors.Join(j.err, j.RecordReplaced(destination, backup))
-		return
-	}
-	j.err = errors.Join(j.err, j.RecordCreated(destination))
 }
 
 // AddCleanup schedules a path for removal after commit or rollback.
@@ -176,15 +171,9 @@ func (j *Journal) AddCleanup(path string) error {
 	return j.persist()
 }
 
-// TrackCleanup schedules a path for removal after commit or rollback.
-// Deprecated: use AddCleanup so persistence errors are handled.
-func (j *Journal) TrackCleanup(path string) {
-	j.err = errors.Join(j.err, j.AddCleanup(path))
-}
-
 // Rollback restores all recorded destinations in reverse order.
 func (j *Journal) Rollback() error {
-	return errors.Join(j.err, j.rollback())
+	return j.rollback()
 }
 
 // Revert joins a primary failure with any rollback failure.
@@ -197,9 +186,6 @@ func (j *Journal) Revert(cause error) error {
 
 // Commit marks success before removing backups and temporary paths.
 func (j *Journal) Commit() error {
-	if j.err != nil {
-		return errors.Join(j.err, j.rollback())
-	}
 	if err := j.ready(); err != nil {
 		return err
 	}
@@ -233,9 +219,6 @@ func (j *Journal) record(change Change) error {
 }
 
 func (j *Journal) ready() error {
-	if j.err != nil {
-		return j.err
-	}
 	if j.Home == "" || j.path != "" {
 		return nil
 	}
@@ -296,7 +279,10 @@ func (j *Journal) rollbackChange(change journalChange) error {
 		}
 	}
 	if change.Stage != "" {
-		return rollbackActivation(change)
+		if err := rollbackActivation(change); err != nil {
+			return err
+		}
+		return syncDirectory(filepath.Dir(change.Destination))
 	}
 	if !change.Existed {
 		if err := os.RemoveAll(change.Destination); err != nil {
