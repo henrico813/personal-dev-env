@@ -30,6 +30,18 @@ without reconciling other backends. It rejects UID 0. Dry run executes read-only
 chezmoi status and diff without refreshing externals or running scripts. A
 managed Aqua installation of chezmoi must already exist.
 
+`config` also configures Git's template directory at
+`~/.config/git/template`. Future `git init` and `git clone` operations receive
+its `commit-msg` checker. To add it to an existing repository without a
+`commit-msg` hook, run:
+
+```bash
+repository=/path/to/repository
+hook="$(git -C "$repository" rev-parse --path-format=absolute --git-path hooks/commit-msg)"
+test ! -e "$hook"
+git -C "$repository" init --template="$HOME/.config/git/template"
+```
+
 ### `pde-installer doctor`
 
 Checks the non-root user, C and C++ compilation, build and archive commands, a
