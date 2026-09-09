@@ -51,6 +51,10 @@ pub struct RunArgs {
     #[arg(long)]
     pub key: String,
 
+    /// Optional Git revision used to seed a new managed worktree.
+    #[arg(long)]
+    pub base: Option<String>,
+
     /// Prompt file to execute inside the managed worktree.
     #[arg(long)]
     pub prompt_file: PathBuf,
@@ -191,6 +195,46 @@ mod tests {
         };
 
         assert!(args.insecure_tls);
+    }
+
+    #[test]
+    fn parses_base_revision() {
+        let ParsedCommand::Run(args) = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--base",
+            "origin/feature/demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--model",
+            "model",
+        ])
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
+
+        assert_eq!(args.base.as_deref(), Some("origin/feature/demo"));
+    }
+
+    #[test]
+    fn defaults_base_to_none() {
+        let ParsedCommand::Run(args) = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--model",
+            "model",
+        ])
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
+
+        assert!(args.base.is_none());
     }
 
     #[test]

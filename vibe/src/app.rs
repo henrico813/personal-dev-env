@@ -126,7 +126,7 @@ fn finalize_changed_files(
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(args: RunArgs) -> RunResult {
-    let session = match worktree::prepare(&args.key) {
+    let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
     };
