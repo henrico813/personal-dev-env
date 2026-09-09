@@ -8,18 +8,20 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
 // Manager applies one repository's chezmoi source.
 type Manager struct {
 	Home, RepoRoot, AquaRoot string
+	Profile                  profile.Profile
 	Runner                   run.Runner
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
-func New(home, repoRoot, aquaRoot string, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Runner: runner}
+func New(home, repoRoot, aquaRoot string, selected profile.Profile, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Runner: runner}
 }
 
 // Source returns the repository's chezmoi source directory.
@@ -230,11 +232,12 @@ func (m Manager) environment() []string {
 		state = configured
 	}
 	path := filepath.Join(m.AquaRoot, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	configName, checksumsName := m.Profile.AquaFiles()
 	aquaConfig := filepath.Join(m.Source(), "dot_config", "aquaproj-aqua")
 	return []string{
 		"AQUA_ROOT_DIR=" + m.AquaRoot,
-		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, "aqua.yaml"),
-		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, "aqua-checksums.json"),
+		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, configName),
+		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
 		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,

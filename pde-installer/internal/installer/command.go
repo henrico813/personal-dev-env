@@ -13,6 +13,7 @@ import (
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/tmux"
 	"pde-installer/internal/ubuntu"
@@ -28,15 +29,18 @@ func NewCommand() *cobra.Command {
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().StringVar(&repoRoot, "repo-root", "", "personal-dev-env checkout")
-	root.AddCommand(mutatingCommand("install", "Install all pinned PDE components", &repoRoot, reconcile))
-	root.AddCommand(mutatingCommand("update", "Reconcile installed components to repository pins", &repoRoot, reconcile))
-	root.AddCommand(mutatingCommand("config", "Migrate legacy state and apply the chezmoi source", &repoRoot, applyConfig))
+	var requestedProfile string
+	install := mutatingCommand("install", "Install pinned PDE components", &repoRoot, installProfile, &requestedProfile, reconcile)
+	install.Flags().StringVar(&requestedProfile, "profile", "", "installation profile: full or terminal")
+	root.AddCommand(install)
+	root.AddCommand(mutatingCommand("update", "Reconcile installed components to repository pins", &repoRoot, requireProfile, nil, reconcile))
+	root.AddCommand(mutatingCommand("config", "Migrate legacy state and apply the chezmoi source", &repoRoot, requireProfile, nil, applyConfig))
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	return root
 }
 
-func mutatingCommand(name, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
+func mutatingCommand(name, description string, repoRoot *string, mode profileMode, requested *string, action func(config, run.Runner) error) *cobra.Command {
 	var dryRun bool
 	command := &cobra.Command{
 		Use: name, Short: description, Args: cobra.NoArgs,
@@ -53,6 +57,13 @@ func mutatingCommand(name, description string, repoRoot *string, action func(con
 			}
 			runner := run.Runner{DryRun: dryRun, ReadOnlyDryRun: dryRun && name == "config", Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}
 			if dryRun {
+				pending, err := fsutil.HasPendingJournals(fsutil.JournalConfig{Home: config.Home})
+				if err != nil { return err }
+				if pending { return fmt.Errorf("pending filesystem recovery; rerun without --dry-run") }
+				requestedValue := ""
+				if requested != nil { requestedValue = *requested }
+				config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
+				if err != nil { return err }
 				return action(config, runner)
 			}
 			lock, err := acquireInstallerLock(config.Home)
@@ -62,6 +73,10 @@ func mutatingCommand(name, description string, repoRoot *string, action func(con
 			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
 				return errors.Join(err, lock.Close())
 			}
+			requestedValue := ""
+			if requested != nil { requestedValue = *requested }
+			config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
+			if err != nil { return errors.Join(err, lock.Close()) }
 			return errors.Join(action(config, runner), lock.Close())
 		},
 	}
@@ -84,7 +99,12 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 			if err != nil {
 				return err
 			}
-			return action(config, run.Runner{Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()})
+			lock, err := acquireInstallerLock(config.Home)
+			if err != nil { return err }
+			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil { return errors.Join(err, lock.Close()) }
+			config.Profile, err = resolveProfile(config.Home, "", readProfile)
+			if err != nil { return errors.Join(err, lock.Close()) }
+			return errors.Join(action(config, run.Runner{Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}), lock.Close())
 		},
 	}
 }
@@ -115,49 +135,44 @@ func reconcile(config config, runner run.Runner) error {
 	journals = append(journals, tmuxJournal)
 	// Order matters: runtimes precede their package tools, and config precedes
 	// builds that use files installed by chezmoi.
-	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
+	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaJournal, err := aquaManager.Reconcile()
 	if err != nil {
 		return fail("Aqua", err)
 	}
 	journals = append(journals, aquaJournal)
-	directManager := direct.New(config.Home, runner)
-	toolJournal, err := directManager.ReconcileTools()
-	if err != nil {
-		return fail("direct tools", err)
+	var buildManager builds.Manager
+	if config.Profile == profile.Full {
+		directManager := direct.New(config.Home, runner)
+		toolJournal, err := directManager.ReconcileTools()
+		if err != nil { return fail("direct tools", err) }
+		journals = append(journals, toolJournal)
+		npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
+		if err != nil { return fail("npm", err) }
+		journals = append(journals, npmJournal)
+		directJournal, err := directManager.Reconcile()
+		if err != nil { return fail("direct artifacts", err) }
+		journals = append(journals, directJournal)
+		buildManager = builds.New(config.Home, config.RepoRoot, runner)
+		buildJournal, err := buildManager.Reconcile()
+		if err != nil { return fail("local builds", err) }
+		journals = append(journals, buildJournal)
 	}
-	journals = append(journals, toolJournal)
-	npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
-	if err != nil {
-		return fail("npm", err)
-	}
-	journals = append(journals, npmJournal)
-	directJournal, err := directManager.Reconcile()
-	if err != nil {
-		return fail("direct artifacts", err)
-	}
-	journals = append(journals, directJournal)
-	buildManager := builds.New(config.Home, config.RepoRoot, runner)
-	buildJournal, err := buildManager.Reconcile()
-	if err != nil {
-		return fail("local builds", err)
-	}
-	journals = append(journals, buildJournal)
 	migrationJournal, err := prepareLegacyConfig(config, runner)
 	if err != nil {
 		return fail("PDE config migration", err)
 	}
 	journals = append(journals, migrationJournal)
-	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Apply()
+	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}
 	journals = append(journals, chezmoiJournal)
-	blinkJournal, err := buildManager.BuildBlink()
-	if err != nil {
-		return fail("blink.cmp", err)
+	if config.Profile == profile.Full {
+		blinkJournal, err := buildManager.BuildBlink()
+		if err != nil { return fail("blink.cmp", err) }
+		journals = append(journals, blinkJournal)
 	}
-	journals = append(journals, blinkJournal)
 	if err := fsutil.CommitJournals(journals...); err != nil {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
@@ -169,7 +184,7 @@ func applyConfig(config config, runner run.Runner) error {
 	if err != nil {
 		return err
 	}
-	journal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Apply()
+	journal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Apply()
 	if err != nil {
 		return migrationJournal.Revert(err)
 	}

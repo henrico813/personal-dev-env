@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"pde-installer/internal/profile"
 )
 
 // Migration must preserve existing settings and legacy vault paths.
@@ -23,7 +25,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +45,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		"install_path":  "/repo",
 		"main_vault":    "/vault/main",
 		"other":         true,
+		"profile":       "full",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("config = %#v", got)
@@ -64,7 +67,7 @@ func TestLegacyConfigHandlesNull(t *testing.T) {
 	if err := os.WriteFile(path, []byte("null\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +88,7 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +114,7 @@ func TestLegacyNvimLinkRollsBack(t *testing.T) {
 	if err := os.Symlink(target, destination); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}

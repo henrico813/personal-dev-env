@@ -11,6 +11,7 @@ import (
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -43,6 +44,7 @@ func tools() []tool {
 // Manager installs Aqua and its pinned tool set for one user.
 type Manager struct {
 	home, repoRoot, root string
+	profile              profile.Profile
 	runner               run.Runner
 }
 
@@ -52,8 +54,8 @@ type state struct {
 }
 
 // New returns an Aqua manager rooted in the user's home directory.
-func New(home, repoRoot string, runner run.Runner) Manager {
-	return Manager{home: home, repoRoot: repoRoot, root: filepath.Join(home, ".local", "share", "aquaproj-aqua"), runner: runner}
+func New(home, repoRoot string, selected profile.Profile, runner run.Runner) Manager {
+	return Manager{home: home, repoRoot: repoRoot, root: filepath.Join(home, ".local", "share", "aquaproj-aqua"), profile: selected, runner: runner}
 }
 
 func (m Manager) binary() string { return filepath.Join(m.root, "bin", "aqua") }
@@ -68,8 +70,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if runtime.GOOS != "linux" || !ok {
 		return nil, fmt.Errorf("unsupported Aqua platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	config := filepath.Join(m.repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua.yaml")
-	checksumsFile := filepath.Join(filepath.Dir(config), "aqua-checksums.json")
+	configName, checksumsName := m.profile.AquaFiles()
+	config := filepath.Join(m.repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", configName)
+	checksumsFile := filepath.Join(filepath.Dir(config), checksumsName)
 	for _, path := range []string{config, checksumsFile} {
 		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("required Aqua source is not a regular file: %s", path)

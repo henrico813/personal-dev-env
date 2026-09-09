@@ -77,6 +77,19 @@ func NewJournal(config JournalConfig) (*Journal, error) {
 	return &Journal{Home: config.Home, directory: directory}, nil
 }
 
+// HasPendingJournals reports whether recovery would inspect durable journals.
+func HasPendingJournals(config JournalConfig) (bool, error) {
+	directory, err := journalDirectory(config)
+	if err != nil { return false, err }
+	entries, err := os.ReadDir(directory)
+	if os.IsNotExist(err) { return false, nil }
+	if err != nil { return false, fmt.Errorf("read journal directory: %w", err) }
+	for _, entry := range entries {
+		if !entry.IsDir() && (isCommitGroup(entry.Name()) || strings.HasSuffix(entry.Name(), ".json")) { return true, nil }
+	}
+	return false, nil
+}
+
 // RecoverJournals rolls back unfinished journals and finishes committed cleanup.
 func RecoverJournals(config JournalConfig) error {
 	directory, err := journalDirectory(config)

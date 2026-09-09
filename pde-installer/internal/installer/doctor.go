@@ -87,7 +87,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := ubuntu.New(runner).Validate(); err != nil {
 		failures = append(failures, "Ubuntu release: "+err.Error())
 	}
-	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Validate(); err != nil {
+	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
 	if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
@@ -185,7 +185,7 @@ func firstExecutable(names ...string) string {
 func list(config config, runner run.Runner) error {
 	ubuntuManager := ubuntu.New(runner)
 	tmuxManager := tmux.New(config.Home, runner)
-	aquaManager := aqua.New(config.Home, config.RepoRoot, runner)
+	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
 	if err != nil {
 		return fmt.Errorf("read Aqua status: %w", err)
@@ -197,7 +197,7 @@ func list(config config, runner run.Runner) error {
 		return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 	}
 	buildManager := builds.New(config.Home, config.RepoRoot, runner)
-	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, runner).Probe()
+	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
 	}

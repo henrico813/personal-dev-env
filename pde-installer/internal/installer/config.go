@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 )
 
 type config struct {
 	Home, RepoRoot, LocalBin, AquaRoot string
+	Profile                           profile.Profile
 }
 
 func detectConfig(flagRoot string) (config, error) {
