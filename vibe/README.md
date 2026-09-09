@@ -57,6 +57,7 @@ EOF
 
 vibe run \
   --key pdev-049-demo \
+  --base origin/feature/demo \
   --prompt-file /tmp/vibe-task.txt \
   --model openai-codex/gpt-5.4 \
   --stderr-level info \
@@ -68,6 +69,12 @@ vibe status --key pdev-049-demo
 Add `--insecure-tls` only if you need to bypass certificate verification in
 Docker; it sets `NODE_TLS_REJECT_UNAUTHORIZED=0` inside the container and
 reduces TLS security.
+
+Use `--base <revision>` to seed a new managed worktree from any Git revision,
+such as a local `feature/demo` branch or `origin/feature/demo`. Without it,
+Vibe keeps the existing behavior of fetching and branching from resolved
+remote `main`. Reusing a `--key` keeps its existing managed branch; `--base`
+does not reset or rebase it.
 
 ## Runtime model
 
@@ -149,8 +156,6 @@ Recovery notes:
 - `vibe status` must be run from inside the target repo checkout.
 - Latest-run lookup is run.json-only.
 - `vibe status --long` shows the full saved run record.
-- New managed worktrees still branch from the resolved remote/base branch,
-  not the caller's current `HEAD`.
 
 Dogfood by inspecting:
 
