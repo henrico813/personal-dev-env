@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -160,7 +161,7 @@ case "$command" in
 
 	state := filepath.Join(home, ".local", "state", "pde", "chezmoi.boltdb")
 	return applyFixture{
-		manager: New(home, repoRoot, aquaRoot, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
+		manager: New(home, repoRoot, aquaRoot, profile.Full, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
 		target:  filepath.Join(home, ".config", "tool"),
 		state:   state,
 	}

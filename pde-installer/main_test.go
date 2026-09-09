@@ -89,6 +89,30 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 	})
 }
 
+func TestDryRunRejectsPendingRecovery(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("mutating commands intentionally reject UID 0")
+	}
+	home, repo := t.TempDir(), repositoryRoot(t)
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(home, "pending")
+	writeFile(t, destination, "pending\n", 0o644)
+	if err := journal.RecordCreated(destination); err != nil {
+		t.Fatal(err)
+	}
+	before := treeState(t, home)
+	_, _, err = execute(t, home, "install", "--dry-run", "--repo-root", repo)
+	if err == nil || !strings.Contains(err.Error(), "rerun without --dry-run") {
+		t.Fatalf("pending recovery error = %v", err)
+	}
+	if after := treeState(t, home); after != before {
+		t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", before, after)
+	}
+}
+
 func TestConfigFailureRestoresContent(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
@@ -103,6 +127,7 @@ func TestConfigFailureRestoresContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			home, repo := t.TempDir(), repositoryRoot(t)
+			writeFile(t, filepath.Join(home, ".config", "pde", "config.json"), `{"profile":"full"}`+"\n", 0o644)
 			target := filepath.Join(home, ".config", "opencode", "opencode.json")
 			original := "{\"user_setting\":true}\n"
 			outside := ""

@@ -83,7 +83,7 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	original := []byte("{\"install_path\":\"/old\"}\n")
+	original := []byte("{\"install_path\":\"/old\",\"profile\":\"terminal\"}\n")
 	if err := os.WriteFile(path, original, 0o644); err != nil {
 		t.Fatal(err)
 	}

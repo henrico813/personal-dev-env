@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -21,11 +22,11 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 9\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	_, status, err := New(home, t.TempDir(), run.Runner{}).Probe()
+	_, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).Probe()
 	if err == nil || status != "" || !strings.Contains(err.Error(), "exit status 9") {
 		t.Fatalf("Probe() = _, %q, %v", status, err)
 	}
-	if _, status := New(home, t.TempDir(), run.Runner{}).Status(); status != "error" {
+	if _, status := New(home, t.TempDir(), profile.Full, run.Runner{}).Status(); status != "error" {
 		t.Fatalf("Status() state = %q", status)
 	}
 }
@@ -33,7 +34,7 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 // Missing Aqua tools must not be reported as current.
 func TestAquaProbeReportsMissingTool(t *testing.T) {
 	t.Parallel()
-	_, status, err := New(t.TempDir(), t.TempDir(), run.Runner{}).ToolProbe("fd", "v8.3.1")
+	_, status, err := New(t.TempDir(), t.TempDir(), profile.Full, run.Runner{}).ToolProbe("fd", "v8.3.1")
 	if err != nil || status != "missing" {
 		t.Fatalf("ToolProbe() = _, %q, %v", status, err)
 	}
@@ -58,7 +59,7 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 			if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			installed, status, err := New(home, t.TempDir(), run.Runner{}).ToolProbe(test.name, test.version)
+			installed, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).ToolProbe(test.name, test.version)
 			if err != nil || status != "current" || !strings.Contains(installed, test.output) {
 				t.Fatalf("ToolProbe() = %q, %q, %v", installed, status, err)
 			}
