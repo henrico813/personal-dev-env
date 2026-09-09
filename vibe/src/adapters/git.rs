@@ -134,12 +134,18 @@ pub fn ensure_worktree(
     git_common_dir: &Path,
     remote: &str,
     base_branch: &str,
+    base_revision: Option<&str>,
 ) -> Result<(), String> {
     if worktree.exists() {
         return validate_worktree(worktree, branch, git_common_dir);
     }
-    let base_ref = format!("{remote}/{base_branch}");
-    git(repo_root, &["fetch", remote, base_branch])?;
+    let base_ref = match base_revision {
+        Some(revision) => revision.to_string(),
+        None => {
+            git(repo_root, &["fetch", remote, base_branch])?;
+            format!("{remote}/{base_branch}")
+        }
+    };
     if branch_exists(repo_root, branch)? {
         git(
             repo_root,

@@ -52,7 +52,7 @@ pub fn slugify(key: &str) -> String {
     }
 }
 
-pub fn prepare(key: &str) -> Result<WorktreeSession, String> {
+pub fn prepare(key: &str, base: Option<&str>) -> Result<WorktreeSession, String> {
     let repo = git::repo_layout()?;
     let slug = slugify(key);
     let branch = format!("vibe/{slug}");
@@ -65,6 +65,7 @@ pub fn prepare(key: &str) -> Result<WorktreeSession, String> {
         &repo.git_common_dir,
         &remote,
         &base_branch,
+        base,
     )?;
     Ok(WorktreeSession {
         key: key.to_string(),
