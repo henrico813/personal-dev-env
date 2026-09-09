@@ -5,6 +5,13 @@ on:
   pull_request:
 
 jobs:
+  git-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: test
+        run: bash ai/skills/git-messages/scripts/check-message.test.sh
+
   planner:
     runs-on: ubuntu-latest
     defaults:
