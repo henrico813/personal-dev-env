@@ -112,7 +112,9 @@ pub fn resolve_base(repo_root: &Path) -> Result<(String, String), String> {
 }
 
 fn remote_exists(repo_root: &Path, name: &str) -> Result<bool, String> {
-    Ok(git(repo_root, &["remote"])?.lines().any(|remote| remote == name))
+    Ok(git(repo_root, &["remote"])?
+        .lines()
+        .any(|remote| remote == name))
 }
 
 fn resolve_new_branch_base(repo_root: &Path, base: Option<&str>) -> Result<String, String> {
@@ -378,6 +380,7 @@ mod tests {
         );
     }
 
+    // A requested remote branch may not be present in the clone yet.
     #[test]
     fn vibe_uses_requested_remote_branch() {
         let (_temp, repo, _remote) = setup_repo();
@@ -399,6 +402,7 @@ mod tests {
         );
     }
 
+    // The default remains remote main rather than the caller's HEAD.
     #[test]
     fn vibe_uses_main_without_base() {
         let (_temp, repo, _remote) = setup_repo();
@@ -421,8 +425,9 @@ mod tests {
         assert_eq!(head_sha(&worktree).expect("worktree head"), remote_main);
     }
 
+    // Reusing a key works offline because its worktree already exists.
     #[test]
-    fn vibe_reuses_existing_worktree_offline() {
+    fn vibe_reuses_existing_worktree_without_fetch() {
         let (_temp, repo, _remote) = setup_repo();
         let worktree = repo.join("worktrees/reuse");
         std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
@@ -434,8 +439,9 @@ mod tests {
             .expect("reuse worktree");
     }
 
+    // A detached managed worktree can reattach without remote access.
     #[test]
-    fn vibe_reuses_existing_branch_offline() {
+    fn vibe_reuses_existing_branch_without_fetch() {
         let (_temp, repo, _remote) = setup_repo();
         let worktree = repo.join("worktrees/reuse-branch");
         std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
