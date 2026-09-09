@@ -117,27 +117,28 @@ func TestCommandsRecoverSavedProfile(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
 	}
-	home, repo := t.TempDir(), repositoryRoot(t)
-	path := filepath.Join(home, ".config", "pde", "config.json")
-	original := []byte(`{"profile":"full"}` + "\n")
-	writeFile(t, path, string(original), 0o644)
-	stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
-	writeFile(t, stage, `{"profile":"terminal"}`+"\n", 0o644)
-	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.Activate(stage, path); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, command := range []string{"doctor", "update", "list"} {
+	repo := repositoryRoot(t)
+	for _, command := range []string{"update", "doctor", "list"} {
 		t.Run(command, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, ".config", "pde", "config.json")
+			original := []byte(`{"profile":"full"}` + "\n")
+			writeFile(t, path, string(original), 0o644)
+			stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
+			writeFile(t, stage, `{"profile":"terminal"}`+"\n", 0o644)
+			journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := journal.Activate(stage, path); err != nil {
+				t.Fatal(err)
+			}
+
 			arguments := []string{command, "--repo-root", repo}
 			if command == "update" {
 				arguments = []string{command, "--dry-run", "--repo-root", repo}
 			}
-			_, _, err := execute(t, home, arguments...)
+			_, _, err = execute(t, home, arguments...)
 			if err != nil && strings.Contains(err.Error(), "aqua-terminal.yaml") {
 				t.Fatalf("%s used the unrecovered terminal profile: %v", command, err)
 			}
