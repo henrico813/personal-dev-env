@@ -111,6 +111,35 @@ pub fn resolve_base(repo_root: &Path) -> Result<(String, String), String> {
     Ok((first.to_string(), "main".to_string()))
 }
 
+fn remote_exists(repo_root: &Path, name: &str) -> Result<bool, String> {
+    Ok(git(repo_root, &["remote"])?
+        .lines()
+        .any(|remote| remote == name))
+}
+
+fn resolve_new_branch_base(repo_root: &Path, base: Option<&str>) -> Result<String, String> {
+    let base_ref = match base {
+        Some(base) => {
+            if let Some((remote, branch)) = base.split_once('/') {
+                if remote_exists(repo_root, remote)? {
+                    git(repo_root, &["fetch", remote, branch])?;
+                }
+            }
+            base.to_string()
+        }
+        None => {
+            let (remote, branch) = resolve_base(repo_root)?;
+            git(repo_root, &["fetch", &remote, &branch])?;
+            format!("{remote}/{branch}")
+        }
+    };
+    git(
+        repo_root,
+        &["rev-parse", "--verify", &format!("{base_ref}^{{commit}}")],
+    )?;
+    Ok(base_ref)
+}
+
 fn branch_exists(repo_root: &Path, branch: &str) -> Result<bool, String> {
     let status = Command::new("git")
         .args([
@@ -132,20 +161,18 @@ pub fn ensure_worktree(
     worktree: &Path,
     branch: &str,
     git_common_dir: &Path,
-    remote: &str,
-    base_branch: &str,
+    base: Option<&str>,
 ) -> Result<(), String> {
     if worktree.exists() {
         return validate_worktree(worktree, branch, git_common_dir);
     }
-    let base_ref = format!("{remote}/{base_branch}");
-    git(repo_root, &["fetch", remote, base_branch])?;
     if branch_exists(repo_root, branch)? {
         git(
             repo_root,
             &["worktree", "add", worktree.to_str().unwrap_or(""), branch],
         )?;
     } else {
+        let base_ref = resolve_new_branch_base(repo_root, base)?;
         git(
             repo_root,
             &[
@@ -227,9 +254,70 @@ pub fn commit_all(
 
 #[cfg(test)]
 mod tests {
-    use super::changed_files_in_worktree;
+    use super::{changed_files_in_worktree, ensure_worktree, head_sha};
+    use std::path::Path;
     use std::process::Command;
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
+
+    fn run(repo: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(["-C", repo.to_str().unwrap_or(".")])
+            .args(args)
+            .output()
+            .expect("git command");
+        assert!(
+            output.status.success(),
+            "{} {}: {}",
+            repo.display(),
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn output(repo: &Path, args: &[&str]) -> String {
+        let result = Command::new("git")
+            .args(["-C", repo.to_str().unwrap_or(".")])
+            .args(args)
+            .output()
+            .expect("git command");
+        assert!(result.status.success());
+        String::from_utf8_lossy(&result.stdout).trim().to_string()
+    }
+
+    fn setup_repo() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let temp = tempdir().expect("tempdir");
+        let remote = temp.path().join("remote.git");
+        let repo = temp.path().join("repo");
+        run(temp.path(), &["init", "--bare", remote.to_str().unwrap()]);
+        let clone = Command::new("git")
+            .args(["clone", remote.to_str().unwrap(), repo.to_str().unwrap()])
+            .output()
+            .expect("git clone");
+        assert!(clone.status.success());
+        run(&repo, &["config", "user.name", "Test User"]);
+        run(&repo, &["config", "user.email", "test@example.com"]);
+        std::fs::write(repo.join("seed.txt"), "seed\n").expect("write seed");
+        run(&repo, &["add", "seed.txt"]);
+        run(&repo, &["commit", "-m", "seed"]);
+        run(&repo, &["branch", "-M", "main"]);
+        run(&repo, &["push", "-u", "origin", "main"]);
+        run(&repo, &["checkout", "-b", "feature"]);
+        std::fs::write(repo.join("feature.txt"), "feature\n").expect("write feature");
+        run(&repo, &["add", "feature.txt"]);
+        run(&repo, &["commit", "-m", "feature"]);
+        run(&repo, &["push", "origin", "feature"]);
+        run(&repo, &["checkout", "main"]);
+        run(&repo, &["update-ref", "-d", "refs/remotes/origin/feature"]);
+        (temp, repo, remote)
+    }
+
+    fn common_dir(repo: &Path) -> std::path::PathBuf {
+        repo.join(".git")
+    }
+
+    fn break_remote(repo: &Path) {
+        run(repo, &["remote", "set-url", "origin", "/missing/remote"]);
+    }
 
     #[test]
     fn changed_files_in_worktree_includes_tracked_and_untracked_files() {
@@ -290,5 +378,91 @@ mod tests {
             changed,
             vec!["tracked.txt".to_string(), "untracked.txt".to_string()]
         );
+    }
+
+    // A requested remote branch may not be present in the clone yet.
+    #[test]
+    fn vibe_uses_requested_remote_branch() {
+        let (_temp, repo, _remote) = setup_repo();
+        let worktree = repo.join("worktrees/remote-feature");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+
+        ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/remote-feature",
+            &common_dir(&repo),
+            Some("origin/feature"),
+        )
+        .expect("create worktree");
+
+        assert_eq!(
+            head_sha(&worktree).expect("worktree head"),
+            output(&repo, &["rev-parse", "origin/feature"])
+        );
+    }
+
+    // The default remains remote main rather than the caller's HEAD.
+    #[test]
+    fn vibe_uses_main_without_base() {
+        let (_temp, repo, _remote) = setup_repo();
+        let remote_main = output(&repo, &["rev-parse", "origin/main"]);
+        std::fs::write(repo.join("local.txt"), "local\n").expect("write local");
+        run(&repo, &["add", "local.txt"]);
+        run(&repo, &["commit", "-m", "local"]);
+        let worktree = repo.join("worktrees/default-main");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+
+        ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/default-main",
+            &common_dir(&repo),
+            None,
+        )
+        .expect("create worktree");
+
+        assert_eq!(head_sha(&worktree).expect("worktree head"), remote_main);
+    }
+
+    // Reusing a key works offline because its worktree already exists.
+    #[test]
+    fn vibe_reuses_existing_worktree_without_fetch() {
+        let (_temp, repo, _remote) = setup_repo();
+        let worktree = repo.join("worktrees/reuse");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+        ensure_worktree(&repo, &worktree, "vibe/reuse", &common_dir(&repo), None)
+            .expect("create worktree");
+        break_remote(&repo);
+
+        ensure_worktree(&repo, &worktree, "vibe/reuse", &common_dir(&repo), None)
+            .expect("reuse worktree");
+    }
+
+    // A detached managed worktree can reattach without remote access.
+    #[test]
+    fn vibe_reuses_existing_branch_without_fetch() {
+        let (_temp, repo, _remote) = setup_repo();
+        let worktree = repo.join("worktrees/reuse-branch");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+        ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/reuse-branch",
+            &common_dir(&repo),
+            None,
+        )
+        .expect("create worktree");
+        run(&repo, &["worktree", "remove", worktree.to_str().unwrap()]);
+        break_remote(&repo);
+
+        ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/reuse-branch",
+            &common_dir(&repo),
+            None,
+        )
+        .expect("reuse branch");
     }
 }
