@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+message_file="${1:?commit message file is required}"
+subject="$(sed -n '1p' "$message_file")"
+
+if (( ${#subject} > 50 )); then
+  printf '%s\n' 'commit subject must be 50 characters or fewer' >&2
+  exit 1
+fi
+
+if ! awk 'NR > 1 && $0 !~ /^#/ && length($0) > 72 { exit 1 }' "$message_file"; then
+  printf '%s\n' 'commit body lines must be 72 characters or fewer' >&2
+  exit 1
+fi

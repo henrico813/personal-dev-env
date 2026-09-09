@@ -360,12 +360,22 @@ checksum.sha256 = "c6d5f704c8ca344dfa6e0efaf0c59c1e430d01e334e7ddfc30bad58d90cd4
 [".agents/skills/git-messages/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
-checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
+checksum.sha256 = "97a3094af9ed2422e0aeb05e4947bcbf6c4e5fd0620e6c7e11ec71470714745c"
+
+[".agents/skills/git-messages/scripts/check-message"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/scripts/check-message'
+checksum.sha256 = "f044dea6e5e9ecf5dfd96fad7d0790f95194ac3cb842ef1604efd7a6900fabc6"
 
 [".codex/skills/git-messages/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
-checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
+checksum.sha256 = "97a3094af9ed2422e0aeb05e4947bcbf6c4e5fd0620e6c7e11ec71470714745c"
+
+[".codex/skills/git-messages/scripts/check-message"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/scripts/check-message'
+checksum.sha256 = "f044dea6e5e9ecf5dfd96fad7d0790f95194ac3cb842ef1604efd7a6900fabc6"
 
 [".agents/skills/promote-memory/SKILL.md"]
 type = "file"
