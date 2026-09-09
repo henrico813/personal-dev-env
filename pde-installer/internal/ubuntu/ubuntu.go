@@ -8,10 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
-func packages() []string {
+func packages(selected profile.Profile) []string {
+	if selected == profile.Terminal {
+		return []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}
+	}
 	return []string{
 		"build-essential", "bzip2", "ca-certificates", "curl", "file",
 		"fontconfig", "gawk", "git", "gzip", "make", "patch", "python3",
@@ -21,12 +25,13 @@ func packages() []string {
 }
 
 type Manager struct {
+	profile       profile.Profile
 	runner        run.Runner
 	osReleasePath string
 }
 
-func New(runner run.Runner) Manager {
-	return Manager{runner: runner, osReleasePath: "/etc/os-release"}
+func New(selected profile.Profile, runner run.Runner) Manager {
+	return Manager{profile: selected, runner: runner, osReleasePath: "/etc/os-release"}
 }
 
 // Validate checks whether the host can install Ubuntu packages.
@@ -47,7 +52,7 @@ func (m Manager) Reconcile() error {
 		return err
 	}
 
-	packageNames := packages()
+	packageNames := packages(m.profile)
 	missing := make([]string, 0, len(packageNames))
 	for _, name := range packageNames {
 		output, err := m.runner.Query("inspect Ubuntu package "+name, run.Command{

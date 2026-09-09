@@ -13,6 +13,7 @@ import (
 	"pde-installer/internal/direct"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/tmux"
 	"pde-installer/internal/ubuntu"
@@ -45,26 +46,29 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		return nil
 	}
 	if !runner.DryRun || mode == preflightReport {
-		cc := firstExecutable("cc", "gcc", "clang")
-		if cc == "" {
-			failures = append(failures, "C compiler: install a host C compiler and libc development headers")
-		} else {
-			if err := check("C compile/link probe", run.Command{Name: cc, Args: []string{"-x", "c", "-", "-o", "/dev/null"}, Stdin: "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/types.h>\nint main(void){puts(\"ok\");return 0;}\n"}, "install working C compiler and libc development headers"); err != nil {
+		if config.Profile == profile.Full {
+			cc := firstExecutable("cc", "gcc", "clang")
+			if cc == "" {
+				failures = append(failures, "C compiler: install a host C compiler and libc development headers")
+			} else if err := check("C compile/link probe", run.Command{Name: cc, Args: []string{"-x", "c", "-", "-o", "/dev/null"}, Stdin: "#include <stdio.h>\n#include <stdlib.h>\n#include <sys/types.h>\nint main(void){puts(\"ok\");return 0;}\n"}, "install working C compiler and libc development headers"); err != nil {
 				return err
 			}
-		}
-		cxx := firstExecutable("c++", "g++", "clang++")
-		if cxx == "" {
-			failures = append(failures, "C++ compiler: install a host C++ compiler and standard library headers")
-		} else {
-			if err := check("C++ compile/link probe", run.Command{Name: cxx, Args: []string{"-x", "c++", "-", "-o", "/dev/null"}, Stdin: "#include <iostream>\nint main(){std::cout << \"ok\";}\n"}, "install working C++ compiler and standard library headers"); err != nil {
+			cxx := firstExecutable("c++", "g++", "clang++")
+			if cxx == "" {
+				failures = append(failures, "C++ compiler: install a host C++ compiler and standard library headers")
+			} else if err := check("C++ compile/link probe", run.Command{Name: cxx, Args: []string{"-x", "c++", "-", "-o", "/dev/null"}, Stdin: "#include <iostream>\nint main(){std::cout << \"ok\";}\n"}, "install working C++ compiler and standard library headers"); err != nil {
 				return err
 			}
+			if err := check("make", run.Command{Name: "make", Args: []string{"-n", "-f", "-"}, Stdin: "all:\n\t@:\n"}, "install a host make implementation"); err != nil {
+				return err
+			}
+			for _, tool := range []string{"bzip2", "patch"} {
+				if err := check(tool, run.Command{Name: tool, Args: probeArgs(tool)}, "install host "+tool); err != nil {
+					return err
+				}
+			}
 		}
-		if err := check("make", run.Command{Name: "make", Args: []string{"-n", "-f", "-"}, Stdin: "all:\n\t@:\n"}, "install a host make implementation"); err != nil {
-			return err
-		}
-		for _, tool := range []string{"sh", "tar", "gzip", "bzip2", "xz", "unzip", "patch", "sed", "awk", "grep", "file"} {
+		for _, tool := range []string{"sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file"} {
 			command := run.Command{Name: tool, Args: probeArgs(tool)}
 			if tool == "grep" {
 				command.Stdin = "pde\n"
@@ -84,20 +88,26 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := manifest.Validate(); err != nil {
 		failures = append(failures, "ownership: "+err.Error())
 	}
-	if err := ubuntu.New(runner).Validate(); err != nil {
+	if err := ubuntu.New(config.Profile, runner).Validate(); err != nil {
 		failures = append(failures, "Ubuntu release: "+err.Error())
 	}
 	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
-	if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
-		failures = append(failures, "npm lock: "+err.Error())
+	if config.Profile == profile.Full {
+		if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
+			failures = append(failures, "npm lock: "+err.Error())
+		}
+		directManager := direct.New(config.Home, runner)
+		if _, err := direct.Tools(); err != nil {
+			failures = append(failures, "direct tools: "+err.Error())
+		}
 	}
-	directManager := direct.New(config.Home, runner)
-	if _, err := direct.Tools(); err != nil {
-		failures = append(failures, "direct tools: "+err.Error())
+	paths := []string{config.LocalBin, config.AquaRoot, tmux.New(config.Home, runner).ReleaseRoot()}
+	if config.Profile == profile.Full {
+		paths = append(paths, direct.New(config.Home, runner).ToolsRoot())
 	}
-	for _, path := range []string{config.LocalBin, config.AquaRoot, directManager.ToolsRoot(), tmux.New(config.Home, runner).ReleaseRoot()} {
+	for _, path := range paths {
 		if !within(config.Home, path) {
 			failures = append(failures, "destination outside HOME: "+path)
 		}
@@ -183,20 +193,27 @@ func firstExecutable(names ...string) string {
 }
 
 func list(config config, runner run.Runner) error {
-	ubuntuManager := ubuntu.New(runner)
+	ubuntuManager := ubuntu.New(config.Profile, runner)
 	tmuxManager := tmux.New(config.Home, runner)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
 	if err != nil {
 		return fmt.Errorf("read Aqua status: %w", err)
 	}
-	npmManager := npm.New(config.Home, config.RepoRoot, runner)
-	directManager := direct.New(config.Home, runner)
-	directTools, directToolsErr := direct.Tools()
-	if directToolsErr != nil {
-		return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
+	var npmManager npm.Manager
+	var directManager direct.Manager
+	var directTools []direct.Tool
+	var buildManager builds.Manager
+	if config.Profile == profile.Full {
+		npmManager = npm.New(config.Home, config.RepoRoot, runner)
+		directManager = direct.New(config.Home, runner)
+		var directToolsErr error
+		directTools, directToolsErr = direct.Tools()
+		if directToolsErr != nil {
+			return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
+		}
+		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 	}
-	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
@@ -204,7 +221,7 @@ func list(config config, runner run.Runner) error {
 	if _, err := fmt.Fprintln(runner.Out(), "OWNER\tITEM\tREQUESTED\tINSTALLED\tSTATUS"); err != nil {
 		return fmt.Errorf("write list heading: %w", err)
 	}
-	for _, item := range manifest.Items() {
+	for _, item := range manifest.ItemsFor(config.Profile) {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
 		case manifest.Ubuntu:

@@ -111,7 +111,7 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 
 func reconcile(config config, runner run.Runner) error {
 	// APT owns system dependencies. Later stages journal changes below HOME.
-	if err := ubuntu.New(runner).Reconcile(); err != nil {
+	if err := ubuntu.New(config.Profile, runner).Reconcile(); err != nil {
 		return fmt.Errorf("Ubuntu packages: %w", err)
 	}
 	if err := hostPreflight(config, runner, preflightQuiet); err != nil {

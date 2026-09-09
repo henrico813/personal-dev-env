@@ -31,9 +31,9 @@ func checksum(architecture string) (string, bool) {
 	}
 }
 
-func tools() []tool {
+func tools(selected profile.Profile) []tool {
 	var result []tool
-	for _, item := range manifest.ByOwner(manifest.Aqua) {
+	for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
 		if item.Name != "aqua" {
 			result = append(result, tool{name: item.Name, version: item.Version})
 		}
@@ -194,7 +194,7 @@ func (m Manager) current(wanted state) (bool, error) {
 	if _, status, err := m.Probe(); err != nil || status != "current" {
 		return false, err
 	}
-	for _, candidate := range tools() {
+	for _, candidate := range tools(m.profile) {
 		if _, status, err := m.ToolProbe(candidate.name, candidate.version); err != nil || status != "current" {
 			return false, err
 		}
