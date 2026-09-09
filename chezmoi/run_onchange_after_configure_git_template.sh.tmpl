@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+include="$HOME/.config/pde/gitconfig"
+while IFS= read -r configured; do
+  if [[ "$configured" == "$include" ]]; then
+    exit 0
+  fi
+done < <(git config --global --get-all include.path || true)
+
+git config --global --add include.path "$include"
