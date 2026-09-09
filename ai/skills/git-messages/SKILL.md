@@ -36,10 +36,6 @@ checker before presenting or committing it:
 
     bash ~/.agents/skills/git-messages/scripts/check-message /tmp/commit-message
 
-For Codex, run:
-
-    bash ~/.codex/skills/git-messages/scripts/check-message /tmp/commit-message
-
 The checker rejects subjects longer than 50 characters and non-comment body
 lines longer than 72 characters.
 
