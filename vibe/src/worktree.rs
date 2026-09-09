@@ -57,14 +57,11 @@ pub fn prepare(key: &str, base: Option<&str>) -> Result<WorktreeSession, String>
     let slug = slugify(key);
     let branch = format!("vibe/{slug}");
     let worktree = repo.repo_root.join("worktrees").join(&slug);
-    let (remote, base_branch) = git::resolve_base(&repo.repo_root)?;
     git::ensure_worktree(
         &repo.repo_root,
         &worktree,
         &branch,
         &repo.git_common_dir,
-        &remote,
-        &base_branch,
         base,
     )?;
     Ok(WorktreeSession {
