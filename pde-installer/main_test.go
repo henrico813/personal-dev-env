@@ -119,10 +119,10 @@ func TestCommandsRecoverSavedProfile(t *testing.T) {
 	}
 	home, repo := t.TempDir(), repositoryRoot(t)
 	path := filepath.Join(home, ".config", "pde", "config.json")
-	original := []byte(`{"profile":"terminal"}` + "\n")
+	original := []byte(`{"profile":"full"}` + "\n")
 	writeFile(t, path, string(original), 0o644)
 	stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
-	writeFile(t, stage, `{"profile":"full"}`+"\n", 0o644)
+	writeFile(t, stage, `{"profile":"terminal"}`+"\n", 0o644)
 	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
 	if err != nil {
 		t.Fatal(err)
@@ -138,8 +138,8 @@ func TestCommandsRecoverSavedProfile(t *testing.T) {
 				arguments = []string{command, "--dry-run", "--repo-root", repo}
 			}
 			_, _, err := execute(t, home, arguments...)
-			if err != nil && strings.Contains(err.Error(), "profile") {
-				t.Fatalf("%s resolved profile with error: %v", command, err)
+			if err != nil && strings.Contains(err.Error(), "aqua-terminal.yaml") {
+				t.Fatalf("%s used the unrecovered terminal profile: %v", command, err)
 			}
 			got, readErr := os.ReadFile(path)
 			if readErr != nil {
