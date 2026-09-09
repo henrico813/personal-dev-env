@@ -29,6 +29,16 @@ description: Use when writing commit messages or creating and updating pull requ
 
     <any risk or important limit>
 
+## Validate
+
+After drafting a commit message, write it to a temporary file and run the
+checker before presenting or committing it:
+
+    bash ~/.agents/skills/git-messages/scripts/check-message /tmp/commit-message
+
+The checker rejects subjects longer than 50 characters and non-comment body
+lines longer than 72 characters.
+
 ### Pull Requests
 
 - Use the same title rules as commits.

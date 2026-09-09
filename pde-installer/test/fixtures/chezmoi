@@ -4,6 +4,9 @@ set -eu
 target="$HOME/.zshrc"
 source="$PDE_REPO_ROOT/chezmoi/dot_zshrc"
 fail_marker="$PDE_REPO_ROOT/chezmoi/.pde-smoke-fail"
+gitconfig_source="$PDE_REPO_ROOT/chezmoi/dot_config/pde/gitconfig"
+hook_source="$PDE_REPO_ROOT/chezmoi/dot_config/git/template/hooks/executable_commit-msg"
+configure_git_template="$PDE_REPO_ROOT/chezmoi/run_onchange_after_configure_git_template.sh.tmpl"
 action=""
 for argument in "$@"; do
 	case "$argument" in
@@ -30,6 +33,10 @@ diff)
 apply)
 	cp "$source" "$target"
 	rm -f "$HOME/.config/pde/paths.env"
+	mkdir -p "$HOME/.config/pde" "$HOME/.config/git/template/hooks"
+	cp "$gitconfig_source" "$HOME/.config/pde/gitconfig"
+	install -m 0755 "$hook_source" "$HOME/.config/git/template/hooks/commit-msg"
+	bash "$configure_git_template"
 	if [ -e "$fail_marker" ]; then
 		printf 'changed\n' >"$HOME/.config/opencode/transaction-marker"
 		mkdir -p "$HOME/.config/pde/smoke-created"
