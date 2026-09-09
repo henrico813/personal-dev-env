@@ -362,10 +362,20 @@ type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
 checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
 
+[".agents/skills/git-messages/scripts/check-message"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/scripts/check-message'
+checksum.sha256 = "ebe5cbdf7e2d2009b37821a70540e461957253ccf1b2e931674ae20115ea000f"
+
 [".codex/skills/git-messages/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/SKILL.md'
 checksum.sha256 = "f05c020b29034a420bd7598916141a6e25f8bf90864c41590e3f236001d0486b"
+
+[".codex/skills/git-messages/scripts/check-message"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/git-messages/scripts/check-message'
+checksum.sha256 = "ebe5cbdf7e2d2009b37821a70540e461957253ccf1b2e931674ae20115ea000f"
 
 [".agents/skills/promote-memory/SKILL.md"]
 type = "file"
