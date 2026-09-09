@@ -113,6 +113,45 @@ func TestDryRunRejectsPendingRecovery(t *testing.T) {
 	}
 }
 
+func TestCommandsRecoverSavedProfile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("mutating commands intentionally reject UID 0")
+	}
+	home, repo := t.TempDir(), repositoryRoot(t)
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	original := []byte(`{"profile":"terminal"}` + "\n")
+	writeFile(t, path, string(original), 0o644)
+	stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
+	writeFile(t, stage, `{"profile":"full"}`+"\n", 0o644)
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Activate(stage, path); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, command := range []string{"doctor", "update", "list"} {
+		t.Run(command, func(t *testing.T) {
+			arguments := []string{command, "--repo-root", repo}
+			if command == "update" {
+				arguments = []string{command, "--dry-run", "--repo-root", repo}
+			}
+			_, _, err := execute(t, home, arguments...)
+			if err != nil && strings.Contains(err.Error(), "profile") {
+				t.Fatalf("%s resolved profile with error: %v", command, err)
+			}
+			got, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !bytes.Equal(got, original) {
+				t.Fatalf("%s did not use recovered config: %q", command, got)
+			}
+		})
+	}
+}
+
 func TestConfigFailureRestoresContent(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
