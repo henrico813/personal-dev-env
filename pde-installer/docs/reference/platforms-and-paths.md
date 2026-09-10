@@ -17,7 +17,7 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 |---|---|
 | `~/.local/bin/` | Launchers and locally built applications |
 | `~/.local/share/aquaproj-aqua/` | Aqua and Aqua packages |
-| `~/.local/share/pde/releases/` | Direct-release tools and runtimes (full only; terminal keeps only tmux) |
+| `~/.local/share/pde/releases/` | Direct-release tools and runtimes (full only) |
 | `~/.local/share/pde/npm/` | npm package prefix (full only) |
 | `~/.local/share/pde/tmux/<version>/` | Existing amd64-only direct tmux 3.7b binary |
 | `~/.local/share/fonts/pde/` | Managed fonts (full only) |
@@ -25,10 +25,9 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 | `~/.config/pde/config.json` | PDE install path and migrated vault settings |
 | `~/.config/` and other home paths | Chezmoi-managed configuration |
 
-Direct releases, the npm prefix, and managed fonts are full-only. The terminal
-profile uses only the listed paths needed for its Ubuntu packages, the existing
-amd64-only direct tmux 3.7b binary, terminal Aqua tools and configuration,
-shell/tmux configuration, state, and config. The full profile manages all paths
+Direct releases, the npm prefix, and managed fonts are full-only. The terminal profile uses only the listed paths needed for its Ubuntu packages,
+the existing amd64-only direct tmux 3.7b binary, terminal Aqua tools and
+configuration, shell/tmux configuration, state, and config. The full profile manages all paths
 in this table. The installer checks that managed destinations
 stay under `HOME`. Journal files also stay under `HOME`; `XDG_STATE_HOME` does
 not move them. An absolute `XDG_STATE_HOME` is passed only to chezmoi's Surveil

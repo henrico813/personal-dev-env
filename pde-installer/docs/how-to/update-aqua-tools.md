@@ -41,7 +41,7 @@ The installer hashes both Aqua configuration files. A changed hash causes it to
 stage a complete Aqua root, install all pinned packages, verify versions, and
 replace the old root.
 
-There is no Aqua-only update. Run the full reconciliation:
+There is no Aqua-only update. Run an update to reconcile the saved profile:
 
 ```bash
 go run . update --repo-root ..
