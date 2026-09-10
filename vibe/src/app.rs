@@ -89,6 +89,7 @@ impl ResultParts {
 fn build_result(
     session: &worktree::WorktreeSession,
     artifacts: &observe::ArtifactPaths,
+    requested_model: &str,
     model: &str,
     parts: ResultParts,
 ) -> RunResult {
@@ -97,6 +98,7 @@ fn build_result(
         status: parts.status,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
+        requested_model: Some(requested_model.to_string()),
         model: Some(model.to_string()),
         pre_run_commit: parts.pre_run_commit,
         commit: parts.commit,
@@ -178,13 +180,15 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         &session.branch,
         &session.worktree,
         &requested_model,
+        &args.model,
         created_at,
         run_id,
     ) {
         return build_result(
             &session,
             &artifacts,
-            &args.model,
+            &requested_model,
+                &args.model,
             ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
@@ -194,6 +198,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -205,6 +210,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -218,7 +224,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             );
@@ -230,6 +237,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -242,6 +250,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -253,6 +262,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -264,6 +274,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
             ),
@@ -280,6 +291,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -293,7 +305,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             )
@@ -305,6 +318,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -316,6 +330,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -334,6 +349,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -348,7 +364,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         &runtime_root,
         &mounts,
         &artifacts,
-        &args.model,
+        &requested_model,
+                &args.model,
         args.stderr_level.as_str(),
         args.insecure_tls,
     ) {
@@ -359,7 +376,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::WrapperFailed,
@@ -376,6 +394,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -393,6 +412,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -411,7 +431,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::SnapshotFailed,
@@ -430,7 +451,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit),
                         Status::WrapperFailed,
@@ -456,7 +478,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &args.model,
+                    &requested_model,
+                &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::WrapperFailed,
@@ -496,7 +519,8 @@ pub fn execute(mut args: RunArgs) -> RunResult {
     let mut result = build_result(
         &session,
         &artifacts,
-        &args.model,
+        &requested_model,
+                &args.model,
         ResultParts {
             pre_run_commit: Some(pre_run_commit),
             status,

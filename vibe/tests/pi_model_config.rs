@@ -80,10 +80,11 @@ docker run --rm \
     let stdout = String::from_utf8_lossy(&lookup.stdout);
     // This provider and model only exist in the test file. Finding them in
     // Pi's output proves that Pi read the mounted configuration.
-    let loaded = stdout.lines().any(|line| {
-        let mut fields = line.split_whitespace();
-        fields.next() == Some("vibe-fixture") && fields.next() == Some("dynamic-model")
-    });
-
-    assert!(loaded, "injected model was not loaded:\n{stdout}");
+    for provider in ["vibe-fixture", "openai-codex", "opencode-go"] {
+        let loaded = stdout.lines().any(|line| {
+            let mut fields = line.split_whitespace();
+            fields.next() == Some(provider) && fields.next() == Some("dynamic-model")
+        });
+        assert!(loaded, "{provider} model was not loaded:\n{stdout}");
+    }
 }
