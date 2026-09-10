@@ -26,14 +26,9 @@ type Item struct {
 	Terminal      bool
 }
 
-// ByOwner returns items assigned to one backend.
-func ByOwner(owner Backend) []Item {
-	return ByOwnerFor(profile.Full, owner)
-}
-
 // ItemsFor returns items selected by the installation profile.
 func ItemsFor(selected profile.Profile) []Item {
-	if selected == profile.Full {
+	if selected != profile.Terminal {
 		return Items()
 	}
 	var result []Item

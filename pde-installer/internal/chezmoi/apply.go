@@ -248,12 +248,18 @@ func (m Manager) environment() []string {
 
 // Validate checks that the chezmoi source is complete and pinned.
 func (m Manager) Validate() error {
+	if !m.Profile.Valid() {
+		return fmt.Errorf("invalid profile %q; use full or terminal", m.Profile)
+	}
+	configName, checksumsName := m.Profile.AquaFiles()
 	required := []string{
 		m.Source(),
 		filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"),
 		filepath.Join(m.Source(), ".chezmoiignore.tmpl"),
 		filepath.Join(m.Source(), "dot_zshrc.tmpl"),
 		filepath.Join(m.Source(), "dot_tmux.conf.tmpl"),
+		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", configName),
+		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", checksumsName),
 	}
 	if m.Profile == profile.Full {
 		required = append(required,

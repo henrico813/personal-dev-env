@@ -63,6 +63,9 @@ func (m Manager) binary() string { return filepath.Join(m.root, "bin", "aqua") }
 
 // Reconcile installs the pinned Aqua release and managed tools.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
+	if !m.profile.Valid() {
+		return nil, fmt.Errorf("invalid profile %q; use full or terminal", m.profile)
+	}
 	aqua, ok := manifest.Find("aqua", manifest.Aqua)
 	if !ok {
 		return nil, fmt.Errorf("aqua is missing from manifest")

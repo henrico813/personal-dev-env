@@ -12,66 +12,82 @@ import (
 	"text/template"
 )
 
-func TestProfileTemplatesRender(t *testing.T) {
-	tests := []struct {
+func TestIgnoreTemplateProfiles(t *testing.T) {
+	tests := map[string]struct {
 		profile string
-		want    map[string][]string
-		haveNot map[string][]string
+		want    []string
+		omit    []string
 	}{
-		{
-			profile: "terminal",
-			want: map[string][]string{
-				".chezmoiignore.tmpl": {".config/aquaproj-aqua/aqua.yaml", ".config/alacritty", ".config/wezterm", ".config/nvim", ".config/opencode", ".codex", ".agents", ".pi", ".config/nvim/pack/plugins/start/blink.cmp"},
-				".chezmoiexternal.toml.tmpl": {".tmux/plugins/tmux-resurrect", "type = \"archive\""},
-				"dot_zshrc.tmpl": {"aqua-terminal.yaml", "colored-man-pages", "HISTSIZE=1000000"},
-				"dot_tmux.conf.tmpl": {"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'"},
-			},
-			haveNot: map[string][]string{
-				".chezmoiexternal.toml.tmpl": {"obsidian.nvim", ".pi/agent/settings.json"},
-				"dot_zshrc.tmpl": {"keychain --eval", "node{{", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "aqua.yaml"},
-				"dot_tmux.conf.tmpl": {"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"},
-			},
-		},
-		{
-			profile: "full",
-			want: map[string][]string{
-				".chezmoiignore.tmpl": {".config/aquaproj-aqua/aqua-terminal.yaml", ".config/nvim/pack/plugins/start/blink.cmp"},
-				".chezmoiexternal.toml.tmpl": {"obsidian.nvim", ".pi/agent/settings.json", "implement-plan/SKILL.md"},
-				"dot_zshrc.tmpl": {"keychain --eval", "node", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "aqua.yaml"},
-				"dot_tmux.conf.tmpl": {"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on"},
-			},
-			haveNot: map[string][]string{
-				".chezmoiignore.tmpl": {".config/alacritty", ".config/wezterm", ".config/opencode"},
-				".chezmoiexternal.toml.tmpl": {"PDE_PROFILE must be exactly"},
-				"dot_tmux.conf.tmpl": {"@resurrect-processes 'ssh'"},
-			},
-		},
+		"terminal": {profile: "terminal", want: []string{".config/aquaproj-aqua/aqua.yaml", ".config/alacritty", ".config/wezterm", ".config/nvim", ".config/opencode", ".codex", ".agents", ".pi", ".config/nvim/pack/plugins/start/blink.cmp"}},
+		"full":     {profile: "full", want: []string{".config/aquaproj-aqua/aqua-terminal.yaml", ".config/nvim/pack/plugins/start/blink.cmp"}, omit: []string{".config/alacritty", ".config/wezterm", ".config/opencode"}},
 	}
+	assertProfileTemplates(t, ".chezmoiignore.tmpl", tests)
+}
 
-	for _, test := range tests {
-		t.Run(test.profile, func(t *testing.T) {
-			for name, want := range test.want {
-				text := renderProfileTemplate(t, name, test.profile)
-				for _, value := range want {
-					if !strings.Contains(text, value) {
-						t.Errorf("%s omits %q", name, value)
-					}
-				}
-				for _, value := range test.haveNot[name] {
-					if strings.Contains(text, value) {
-						t.Errorf("%s contains %q", name, value)
-					}
-				}
+func TestExternalTemplateProfiles(t *testing.T) {
+	tests := map[string]struct {
+		profile string
+		want    []string
+		omit    []string
+	}{
+		"terminal": {profile: "terminal", want: []string{".tmux/plugins/tmux-resurrect", "type = \"archive\""}, omit: []string{"obsidian.nvim", ".pi/agent/settings.json"}},
+		"full":     {profile: "full", want: []string{"obsidian.nvim", ".pi/agent/settings.json", "implement-plan/SKILL.md"}, omit: []string{"PDE_PROFILE must be exactly"}},
+	}
+	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
+}
+
+func TestZshTemplateProfiles(t *testing.T) {
+	tests := map[string]struct {
+		profile string
+		want    []string
+		omit    []string
+	}{
+		"terminal": {profile: "terminal", want: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json", "colored-man-pages", "HISTSIZE=1000000"}, omit: []string{"keychain --eval", "node{{", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}},
+		"full":     {profile: "full", want: []string{"keychain --eval", "node", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}, omit: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json"}},
+	}
+	assertProfileTemplates(t, "dot_zshrc.tmpl", tests)
+}
+
+func TestTmuxTemplateProfiles(t *testing.T) {
+	tests := map[string]struct {
+		profile string
+		want    []string
+		omit    []string
+	}{
+		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
+		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on"}, omit: []string{"@resurrect-processes 'ssh'"}},
+	}
+	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
+}
+
+func TestTemplatesRejectInvalidProfiles(t *testing.T) {
+	for name, selected := range map[string]string{"missing": "", "unknown": "desktop"} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := renderTemplate(t, ".chezmoiignore.tmpl", selected); err == nil {
+				t.Fatal("render succeeded")
 			}
 		})
 	}
 }
 
-func TestProfileTemplateRejectsMissingProfile(t *testing.T) {
-	for _, profile := range []string{"", "desktop"} {
-		t.Run(profile, func(t *testing.T) {
-			if _, err := renderTemplate(t, ".chezmoiignore.tmpl", profile); err == nil {
-				t.Fatal("render succeeded")
+func assertProfileTemplates(t *testing.T, templateName string, tests map[string]struct {
+	profile string
+	want    []string
+	omit    []string
+}) {
+	t.Helper()
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			text := renderProfileTemplate(t, templateName, test.profile)
+			for _, value := range test.want {
+				if !strings.Contains(text, value) {
+					t.Errorf("%s omits %q", templateName, value)
+				}
+			}
+			for _, value := range test.omit {
+				if strings.Contains(text, value) {
+					t.Errorf("%s contains %q", templateName, value)
+				}
 			}
 		})
 	}

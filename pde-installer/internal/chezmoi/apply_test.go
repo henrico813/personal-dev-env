@@ -101,7 +101,7 @@ type applyFixture struct {
 	state   string
 }
 
-func TestApplyExpandsTerminalToFull(t *testing.T) {
+func TestFullApplyPreservesTerminalFiles(t *testing.T) {
 	fixture := newApplyFixture(t, "unchanged")
 	terminalConfig := filepath.Join(fixture.manager.Home, ".config", "aquaproj-aqua", "aqua-terminal.yaml")
 	terminalChecksums := filepath.Join(fixture.manager.Home, ".config", "aquaproj-aqua", "aqua-terminal-checksums.json")
@@ -157,7 +157,7 @@ esac
 	assertApplyFile(t, fullTarget, "managed by full\n")
 }
 
-func TestApplyUsesProfileEnvironment(t *testing.T) {
+func TestApplySetsProfileEnvironment(t *testing.T) {
 	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
 		t.Run(string(selected), func(t *testing.T) {
 			fixture := newApplyFixtureForProfile(t, "unchanged", selected)
@@ -168,7 +168,7 @@ func TestApplyUsesProfileEnvironment(t *testing.T) {
 	}
 }
 
-func TestApplyValidatesRequiredTemplates(t *testing.T) {
+func TestApplyRejectsMissingTemplates(t *testing.T) {
 	for _, name := range []string{".chezmoiignore.tmpl", "dot_zshrc.tmpl", "dot_tmux.conf.tmpl"} {
 		t.Run(name, func(t *testing.T) {
 			fixture := newApplyFixture(t, "success")
@@ -182,6 +182,41 @@ func TestApplyValidatesRequiredTemplates(t *testing.T) {
 				t.Fatalf("fake apply ran; state stat error = %v", err)
 			}
 		})
+	}
+}
+
+func TestApplyRejectsMissingAquaInputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  profile.Profile
+		filename string
+	}{
+		{name: "full manifest", profile: profile.Full, filename: "aqua.yaml"},
+		{name: "full checksums", profile: profile.Full, filename: "aqua-checksums.json"},
+		{name: "terminal manifest", profile: profile.Terminal, filename: "aqua-terminal.yaml"},
+		{name: "terminal checksums", profile: profile.Terminal, filename: "aqua-terminal-checksums.json"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newApplyFixtureForProfile(t, "success", test.profile)
+			path := filepath.Join(fixture.manager.Source(), "dot_config", "aquaproj-aqua", test.filename)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), path) {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			if _, err := os.Stat(fixture.state); !os.IsNotExist(err) {
+				t.Fatalf("fake apply ran; state stat error = %v", err)
+			}
+		})
+	}
+}
+
+func TestApplyRejectsInvalidProfile(t *testing.T) {
+	fixture := newApplyFixtureForProfile(t, "success", profile.Profile("desktop"))
+	if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
+		t.Fatalf("Apply() error = %v", err)
 	}
 }
 

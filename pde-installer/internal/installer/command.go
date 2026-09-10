@@ -58,12 +58,20 @@ func mutatingCommand(name, description string, repoRoot *string, mode profileMod
 			runner := run.Runner{DryRun: dryRun, ReadOnlyDryRun: dryRun && name == "config", Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}
 			if dryRun {
 				pending, err := fsutil.HasPendingJournals(fsutil.JournalConfig{Home: config.Home})
-				if err != nil { return err }
-				if pending { return fmt.Errorf("pending filesystem recovery; rerun without --dry-run") }
+				if err != nil {
+					return err
+				}
+				if pending {
+					return fmt.Errorf("pending filesystem recovery; rerun without --dry-run")
+				}
 				requestedValue := ""
-				if requested != nil { requestedValue = *requested }
+				if requested != nil {
+					requestedValue = *requested
+				}
 				config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				return action(config, runner)
 			}
 			lock, err := acquireInstallerLock(config.Home)
@@ -74,9 +82,13 @@ func mutatingCommand(name, description string, repoRoot *string, mode profileMod
 				return errors.Join(err, lock.Close())
 			}
 			requestedValue := ""
-			if requested != nil { requestedValue = *requested }
+			if requested != nil {
+				requestedValue = *requested
+			}
 			config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
-			if err != nil { return errors.Join(err, lock.Close()) }
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			return errors.Join(action(config, runner), lock.Close())
 		},
 	}
@@ -100,16 +112,25 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 				return err
 			}
 			lock, err := acquireInstallerLock(config.Home)
-			if err != nil { return err }
-			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil { return errors.Join(err, lock.Close()) }
+			if err != nil {
+				return err
+			}
+			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			config.Profile, err = resolveProfile(config.Home, "", readProfile)
-			if err != nil { return errors.Join(err, lock.Close()) }
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			return errors.Join(action(config, run.Runner{Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}), lock.Close())
 		},
 	}
 }
 
 func reconcile(config config, runner run.Runner) error {
+	if err := config.validateProfile(); err != nil {
+		return err
+	}
 	// APT owns system dependencies. Later stages journal changes below HOME.
 	if err := ubuntu.New(config.Profile, runner).Reconcile(); err != nil {
 		return fmt.Errorf("Ubuntu packages: %w", err)
@@ -145,17 +166,25 @@ func reconcile(config config, runner run.Runner) error {
 	if config.Profile == profile.Full {
 		directManager := direct.New(config.Home, runner)
 		toolJournal, err := directManager.ReconcileTools()
-		if err != nil { return fail("direct tools", err) }
+		if err != nil {
+			return fail("direct tools", err)
+		}
 		journals = append(journals, toolJournal)
 		npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
-		if err != nil { return fail("npm", err) }
+		if err != nil {
+			return fail("npm", err)
+		}
 		journals = append(journals, npmJournal)
 		directJournal, err := directManager.Reconcile()
-		if err != nil { return fail("direct artifacts", err) }
+		if err != nil {
+			return fail("direct artifacts", err)
+		}
 		journals = append(journals, directJournal)
 		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 		buildJournal, err := buildManager.Reconcile()
-		if err != nil { return fail("local builds", err) }
+		if err != nil {
+			return fail("local builds", err)
+		}
 		journals = append(journals, buildJournal)
 	}
 	migrationJournal, err := prepareLegacyConfig(config, runner)
@@ -170,7 +199,9 @@ func reconcile(config config, runner run.Runner) error {
 	journals = append(journals, chezmoiJournal)
 	if config.Profile == profile.Full {
 		blinkJournal, err := buildManager.BuildBlink()
-		if err != nil { return fail("blink.cmp", err) }
+		if err != nil {
+			return fail("blink.cmp", err)
+		}
 		journals = append(journals, blinkJournal)
 	}
 	if err := fsutil.CommitJournals(journals...); err != nil {
@@ -180,6 +211,9 @@ func reconcile(config config, runner run.Runner) error {
 }
 
 func applyConfig(config config, runner run.Runner) error {
+	if err := config.validateProfile(); err != nil {
+		return err
+	}
 	migrationJournal, err := prepareLegacyConfig(config, runner)
 	if err != nil {
 		return err

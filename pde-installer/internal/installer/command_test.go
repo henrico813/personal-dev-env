@@ -104,7 +104,7 @@ func writeCommandTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestProfileFlagOnlyInstall(t *testing.T) {
+func TestUpdateRejectsProfileFlag(t *testing.T) {
 	command := NewCommand()
 	command.SetArgs([]string{"update", "--profile", "terminal"})
 	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
@@ -112,7 +112,7 @@ func TestProfileFlagOnlyInstall(t *testing.T) {
 	}
 }
 
-func TestFullProfileDowngradeDoesNotWrite(t *testing.T) {
+func TestInstallPreservesFullProfile(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
 	}

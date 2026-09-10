@@ -15,7 +15,7 @@ func TestPackageSet(t *testing.T) {
 		profile profile.Profile
 		want    []string
 	}{
-		"full": {profile: profile.Full, want: []string{"build-essential", "bzip2", "ca-certificates", "curl", "file", "fontconfig", "gawk", "git", "gzip", "make", "patch", "python3", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
+		"full":     {profile: profile.Full, want: []string{"build-essential", "bzip2", "ca-certificates", "curl", "file", "fontconfig", "gawk", "git", "gzip", "make", "patch", "python3", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
 		"terminal": {profile: profile.Terminal, want: []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
 	}
 	for name, test := range tests {
@@ -25,6 +25,13 @@ func TestPackageSet(t *testing.T) {
 				t.Fatalf("packages = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestValidateRejectsInvalidProfile(t *testing.T) {
+	manager := New(profile.Profile("desktop"), run.Runner{})
+	if err := manager.Validate(); err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

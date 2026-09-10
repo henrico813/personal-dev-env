@@ -54,8 +54,10 @@ export PATH="$HOME/.local/bin:$PATH"
 export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
 {{- if eq (env "PDE_PROFILE") "terminal" }}
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-terminal.yaml"
+export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-terminal-checksums.json"
 {{- else }}
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
+export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-checksums.json"
 {{- end }}
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 

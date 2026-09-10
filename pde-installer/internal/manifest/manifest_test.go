@@ -32,15 +32,40 @@ func TestManifestIncludesRuntimeTools(t *testing.T) {
 	}
 }
 
+// Terminal membership is explicit so new components do not silently expand it.
 func TestTerminalInventory(t *testing.T) {
-	want := []string{"zsh", "git", "xclip", "unzip", "tmux", "aqua", "fd", "fzf", "ripgrep", "bat", "jq", "chezmoi", "eza", "zoxide", "bottom", "yq", "yazi", "ya", "repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}
+	wantByBackend := []struct {
+		owner Backend
+		names []string
+	}{
+		{owner: Ubuntu, names: []string{"zsh", "git", "xclip", "unzip"}},
+		{owner: Direct, names: []string{"tmux"}},
+		{owner: Aqua, names: []string{"aqua", "fd", "fzf", "ripgrep", "bat", "jq", "chezmoi", "eza", "zoxide", "bottom", "yq", "yazi", "ya"}},
+		{owner: Chezmoi, names: []string{"repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}},
+	}
+	type inventoryItem struct {
+		name  string
+		owner Backend
+	}
+	var want []inventoryItem
+	for _, group := range wantByBackend {
+		for _, name := range group.names {
+			want = append(want, inventoryItem{name: name, owner: group.owner})
+		}
+	}
 	items := ItemsFor(profile.Terminal)
-	got := make([]string, 0, len(items))
+	got := make([]inventoryItem, 0, len(items))
 	for _, item := range items {
-		got = append(got, item.Name)
+		got = append(got, inventoryItem{name: item.Name, owner: item.Owner})
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("terminal items = %v, want %v", got, want)
+	}
+}
+
+func TestInvalidProfileUsesFullInventory(t *testing.T) {
+	if got, want := ItemsFor(profile.Profile("desktop")), Items(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("invalid profile items = %v, want full inventory", got)
 	}
 }
 

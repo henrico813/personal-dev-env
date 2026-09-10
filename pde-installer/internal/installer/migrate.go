@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
-	"pde-installer/internal/run"
 	"pde-installer/internal/profile"
+	"pde-installer/internal/run"
 )
 
 var legacyConfigKeys = map[string]string{

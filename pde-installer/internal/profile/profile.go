@@ -12,10 +12,15 @@ const (
 
 func Parse(value string) (Profile, error) {
 	selected := Profile(value)
-	if selected != Full && selected != Terminal {
+	if !selected.Valid() {
 		return "", fmt.Errorf("invalid profile %q; use full or terminal", value)
 	}
 	return selected, nil
+}
+
+// Valid reports whether the profile selects a supported component set.
+func (selected Profile) Valid() bool {
+	return selected == Full || selected == Terminal
 }
 
 func (selected Profile) AquaFiles() (string, string) {

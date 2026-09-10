@@ -36,6 +36,9 @@ func New(selected profile.Profile, runner run.Runner) Manager {
 
 // Validate checks whether the host can install Ubuntu packages.
 func (m Manager) Validate() error {
+	if !m.profile.Valid() {
+		return fmt.Errorf("invalid profile %q; use full or terminal", m.profile)
+	}
 	if err := validateRelease(m.osReleasePath); err != nil {
 		return err
 	}

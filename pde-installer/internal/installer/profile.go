@@ -20,16 +20,22 @@ const (
 
 func resolveProfile(home, requested string, mode profileMode) (profile.Profile, error) {
 	saved, found, err := loadProfile(home)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	if requested != "" {
 		selected, err := profile.Parse(requested)
-		if err != nil { return "", err }
+		if err != nil {
+			return "", err
+		}
 		if found && saved == profile.Full && selected == profile.Terminal {
 			return "", fmt.Errorf("cannot change profile from full to terminal; reinstall to remove components")
 		}
 		return selected, nil
 	}
-	if found { return saved, nil }
+	if found {
+		return saved, nil
+	}
 	switch mode {
 	case installProfile, readProfile:
 		return profile.Full, nil
@@ -51,15 +57,25 @@ func loadProfile(home string) (profile.Profile, bool, error) {
 		}
 		return "", false, nil
 	}
-	if err != nil { return "", false, fmt.Errorf("read PDE config: %w", err) }
+	if err != nil {
+		return "", false, fmt.Errorf("read PDE config: %w", err)
+	}
 	var values map[string]json.RawMessage
-	if err := json.Unmarshal(data, &values); err != nil { return "", false, fmt.Errorf("read PDE config: %w", err) }
+	if err := json.Unmarshal(data, &values); err != nil {
+		return "", false, fmt.Errorf("read PDE config: %w", err)
+	}
 	raw, ok := values["profile"]
-	if !ok { return "", false, repairProfileError(path) }
+	if !ok {
+		return "", false, repairProfileError(path)
+	}
 	var value string
-	if err := json.Unmarshal(raw, &value); err != nil { return "", false, fmt.Errorf("read profile in %s: %w", path, err) }
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", false, fmt.Errorf("read profile in %s: %w", path, err)
+	}
 	selected, err := profile.Parse(value)
-	if err != nil { return "", false, fmt.Errorf("read profile in %s: %w", path, err) }
+	if err != nil {
+		return "", false, fmt.Errorf("read profile in %s: %w", path, err)
+	}
 	return selected, true, nil
 }
 
