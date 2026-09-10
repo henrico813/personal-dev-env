@@ -146,7 +146,11 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 	if err := fsutil.GuardHome(m.Home, statePath, m.AquaRoot); err != nil {
 		return nil, journal.Revert(err)
 	}
-	command := run.Command{Name: binary, Args: append(m.arguments(), "apply", "--no-tty"), Env: m.environment()}
+	command := run.Command{
+		Name: binary,
+		Args: append(m.arguments(), "apply", "--force", "--no-tty"),
+		Env:  m.environment(),
+	}
 	if err := m.Runner.Run("apply repository chezmoi source", command); err != nil {
 		return nil, journal.Revert(err)
 	}
