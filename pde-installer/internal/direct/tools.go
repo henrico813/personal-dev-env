@@ -213,14 +213,23 @@ func (m Manager) installTool(workspace, stage string, tool Tool) error {
 		if err := m.extractTool(tool, archive, extracted); err != nil {
 			return err
 		}
+		if err := os.Remove(archive); err != nil {
+			return fmt.Errorf("remove %s archive: %w", tool.Name, err)
+		}
 		components := strings.Join([]string{"rustc", "rust-std-" + tool.Target, "cargo"}, ",")
 		args := []string{filepath.Join(extracted, "install.sh"), "--prefix=" + destination, "--disable-ldconfig", "--components=" + components}
 		if err := m.Runner.Run("install rust release", run.Command{Name: "sh", Args: args}); err != nil {
 			return err
 		}
+		if err := os.RemoveAll(extracted); err != nil {
+			return fmt.Errorf("remove rust installer: %w", err)
+		}
 	case archiveTool:
 		if err := m.extractTool(tool, archive, destination); err != nil {
 			return err
+		}
+		if err := os.Remove(archive); err != nil {
+			return fmt.Errorf("remove %s archive: %w", tool.Name, err)
 		}
 	case fileTool:
 		bin := filepath.Join(destination, "bin")

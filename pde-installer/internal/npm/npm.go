@@ -110,7 +110,8 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			return nil, fmt.Errorf("stage npm %s: %w", name, err)
 		}
 	}
-	environment := m.environment(filepath.Join(workspace, "cache"))
+	cache := filepath.Join(workspace, "cache")
+	environment := m.environment(cache)
 	if err := m.Runner.Retry("npm ci", 3, func() error {
 		if err := fsutil.GuardHome(m.Home, workspace, stage); err != nil {
 			return err
@@ -127,6 +128,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}
 	if err := m.verify(stage); err != nil {
 		return nil, err
+	}
+	if err := os.RemoveAll(cache); err != nil {
+		return nil, fmt.Errorf("remove npm cache: %w", err)
 	}
 	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
 	if err != nil {
