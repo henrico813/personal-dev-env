@@ -1,7 +1,9 @@
 use crate::{
-    cli::RunArgs,
+    adapters::docker,
+    cli::{ResolveModelArgs, RunArgs},
     ledger, observe, prompts,
-    result::{RunResult, Status},
+    provider::{self, Request, Resolved},
+    result::{ResolveModelResult, RunResult, Status},
     sandbox, snapshot,
     state::RunPhase,
     worktree,
@@ -9,6 +11,30 @@ use crate::{
 use std::{fs, fs::OpenOptions, io::Write, path::Path};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
+
+struct PreparedModel {
+    runtime_root: std::path::PathBuf,
+    config: docker::DiscoveryConfig,
+    resolved: Resolved,
+}
+
+fn prepare_model(model: &str, provider: Option<&str>) -> Result<PreparedModel, String> {
+    let request = Request::parse(model, provider)?;
+    let runtime_root = sandbox::prepare_discovery()?;
+    let config = docker::discovery_config(std::env::var("HOME").ok().as_deref())?;
+    let models = docker::list_models(&config, request.model())?;
+    let resolved = provider::select(request, &models, config.configured())?;
+    Ok(PreparedModel {
+        runtime_root,
+        config,
+        resolved,
+    })
+}
+
+pub fn resolve_model(args: ResolveModelArgs) -> Result<ResolveModelResult, String> {
+    let prepared = prepare_model(&args.model, args.provider.as_deref())?;
+    Ok(ResolveModelResult::from(prepared.resolved))
+}
 
 /// Read the supervisor prompt as UTF-8 so the rendered contract is deterministic.
 pub fn read_supervisor_prompt(path: &Path) -> Result<String, String> {
@@ -125,10 +151,16 @@ fn finalize_changed_files(
 }
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
-pub fn execute(args: RunArgs) -> RunResult {
-    if let Err(err) = sandbox::require_run_auth() {
-        return RunResult::setup_error(err);
+pub fn execute(mut args: RunArgs) -> RunResult {
+    let prepared = match prepare_model(&args.model, args.provider.as_deref()) {
+        Ok(prepared) => prepared,
+        Err(error) => return RunResult::setup_error(error),
+    };
+    if let Err(error) = docker::require_run_auth(&prepared.config) {
+        return RunResult::setup_error(error);
     }
+    let requested_model = prepared.resolved.requested().to_string();
+    args.model = prepared.resolved.selector().to_string();
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
@@ -145,7 +177,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         &session.slug,
         &session.branch,
         &session.worktree,
-        &args.model,
+        &requested_model,
         created_at,
         run_id,
     ) {
@@ -294,25 +326,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    let runtime_root = match sandbox::prepare_discovery() {
-        Ok(path) => path,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::WrapperFailed,
-                        Vec::new(),
-                        Some(err),
-                    ),
-                ),
-            )
-        }
-    };
+    let runtime_root = prepared.runtime_root;
     let mounts = session.sandbox_mounts(&args.inputs);
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(

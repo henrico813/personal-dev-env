@@ -41,6 +41,8 @@ pub enum Command {
         after_help = "Example:\n  vibe run --key pdev-049-demo --prompt-file /tmp/vibe-task.txt --model openai-codex/gpt-5.4\n\nArtifacts:\n  ~/.local/state/vibe/<repo>/<slug>/runs/..."
     )]
     Run(RunArgs),
+    #[command(about = "Resolve a model request to a configured provider.")]
+    ResolveModel(ResolveModelArgs),
     #[command(about = "Show the latest persisted run state for one key.")]
     Status(StatusArgs),
 }
@@ -63,10 +65,12 @@ pub struct RunArgs {
     #[arg(long = "input")]
     pub inputs: Vec<PathBuf>,
 
-    /// Pi model selector passed unchanged to the container runtime.
-    /// Prefer provider/model form, for example openai-codex/gpt-5.4.
+    /// Model name or provider/model selector.
     #[arg(long)]
     pub model: String,
+
+    #[arg(long)]
+    pub provider: Option<String>,
 
     /// Optional commit message for dirty runs.
     #[arg(long)]
@@ -79,6 +83,14 @@ pub struct RunArgs {
     /// Allow insecure TLS connections in Docker.
     #[arg(long)]
     pub insecure_tls: bool,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct ResolveModelArgs {
+    #[arg(long)]
+    pub model: String,
+    #[arg(long)]
+    pub provider: Option<String>,
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -95,6 +107,7 @@ pub struct StatusArgs {
 #[derive(Clone, Debug)]
 pub enum ParsedCommand {
     Run(RunArgs),
+    ResolveModel(ResolveModelArgs),
     Status(StatusArgs),
 }
 
@@ -122,6 +135,7 @@ where
             }
             Ok(ParsedCommand::Run(args))
         }
+        Command::ResolveModel(args) => Ok(ParsedCommand::ResolveModel(args)),
         Command::Status(args) => Ok(ParsedCommand::Status(args)),
     }
 }

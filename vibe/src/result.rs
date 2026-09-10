@@ -1,5 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+use crate::provider::Resolved;
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ResolveModelResult {
+    pub requested: String,
+    pub selector: String,
+}
+
+impl From<Resolved> for ResolveModelResult {
+    fn from(resolved: Resolved) -> Self {
+        Self {
+            requested: resolved.requested().to_string(),
+            selector: resolved.selector().to_string(),
+        }
+    }
+}
+
 /// Stable machine-readable outcome for `vibe run`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

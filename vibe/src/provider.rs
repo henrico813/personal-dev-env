@@ -75,6 +75,10 @@ pub(crate) struct Request {
 }
 
 impl Request {
+    pub(crate) fn model(&self) -> &str {
+        &self.model
+    }
+
     pub(crate) fn parse(model: &str, provider: Option<&str>) -> Result<Self, String> {
         if model.contains('/') {
             if provider.is_some() {
