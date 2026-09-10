@@ -16,6 +16,7 @@ pub struct SandboxMounts {
     pub repo_root: PathBuf,
     pub git_common_dir: PathBuf,
     pub worktree: PathBuf,
+    pub inputs: Vec<PathBuf>,
 }
 
 impl WorktreeSession {
@@ -23,11 +24,12 @@ impl WorktreeSession {
         &self.repo_root
     }
 
-    pub fn sandbox_mounts(&self) -> SandboxMounts {
+    pub fn sandbox_mounts(&self, inputs: &[PathBuf]) -> SandboxMounts {
         SandboxMounts {
             repo_root: self.repo_root.clone(),
             git_common_dir: self.git_common_dir.clone(),
             worktree: self.worktree.clone(),
+            inputs: inputs.to_vec(),
         }
     }
 }
