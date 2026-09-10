@@ -21,7 +21,7 @@ These are proposed acceptance cases, not evidence of completed agent tests.
 | --- | --- | --- |
 | Prevent user IDs and project IDs from being mixed up. | API design | Uses distinct types where useful; explains why aliases do not enforce separation. |
 | Add a validated type with a default and deserialization. | API design | Checks every construction path; does not create an invalid default or bypass validation through a derive. |
-| Review this type with manual equality and derived hashing. | API design | Checks that equal values hash equally; fixes a real contract mismatch, not merely a formatting preference. |
+| Review this type with manual equality and derived hashing. | API design | Checks that equal values hash equally; fixes a real semantic mismatch, not merely a formatting preference. |
 | Make this error easier to handle. | Errors and resources | Preserves actionable failure information and underlying causes; does not flatten everything into strings. |
 | Ensure buffered output errors reach the caller. | Errors and resources | Uses explicit fallible completion; does not claim drop guarantees successful flushing or persistence. |
 | Change the public module layout without breaking callers. | API design | Reviews public paths, re-exports, bounds, and behavior; preserves compatibility instead of blindly enforcing one path. |
@@ -30,7 +30,7 @@ These are proposed acceptance cases, not evidence of completed agent tests.
 | Convert this function to async while preserving its lock-protected state. | Concurrency | Checks lock scopes, blocking work, task ownership, and cancellation; does not hold a blocking guard across an await. |
 | This spawned task fails a Send or static bound. | Concurrency | Explains retained values and captures; does not add unsafe marker implementations or claim static values must live forever. |
 | Cancel a timed-out operation. | Concurrency | Checks whether underlying work stops, partial effects, and cleanup; does not equate stopping the wait with undoing the operation. |
-| Wrap this C API in safe Rust. | Unsafe and FFI, errors and resources | Reviews ABI, pointer and ownership contracts, error paths, cleanup, and supported validation. |
+| Wrap this C API in safe Rust. | Unsafe and FFI, errors and resources | Reviews ABI, pointer and ownership requirements, error paths, cleanup, and supported validation. |
 | Speed this up with unchecked indexing. | Unsafe and FFI | Requires a concrete need and measurements, considers safe alternatives, and supplies a safety argument. |
 | Simplify this Rust API for a beginner. | API design | Explains useful Rust concepts instead of deleting necessary types, guarantees, or error information. |
 

@@ -111,7 +111,7 @@ behavior. It is not a reason to clone before every method call.
 
 `Clone` does not always mean a fully independent resource. Cloning an `Arc<T>`
 creates another owner of the same allocation. Cloning a custom service handle
-may keep talking to the same service. Check the type's contract before promising
+may keep talking to the same service. Check the type's requirements before promising
 independent state.
 
 When the borrow checker rejects a change, first identify the overlapping uses

@@ -8,7 +8,7 @@ are not obvious from its types and names.
 
 - [Document behavior, not the signature](#document-behavior-not-the-signature)
 - [Use an example that demonstrates a reason to call the API](#use-an-example-that-demonstrates-a-reason-to-call-the-api)
-- [Separate a usage contract from a language explanation](#separate-a-usage-contract-from-a-language-explanation)
+- [Separate usage behavior from a language explanation](#separate-usage-behavior-from-a-language-explanation)
 - [Write comments that survive a refactor](#write-comments-that-survive-a-refactor)
 - [Explain the decision in the handoff](#explain-the-decision-in-the-handoff)
 
@@ -77,7 +77,7 @@ item. The Rust API Guidelines explicitly qualify their example guidance:
 
 Reference: [rustdoc documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html).
 
-## Separate a usage contract from a language explanation
+## Separate usage behavior from a language explanation
 
 The production API needs lasting information: a borrowed result cannot outlive
 its source, an identifier must be nonzero, or a failed write may have partial

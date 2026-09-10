@@ -173,7 +173,7 @@ not whether a particular internal buffer method was called.
 ## Verify the behavior
 
 Test meaningful failure categories, retained causes, partial writes or updates,
-and cleanup after an early return when these are part of the contract. Assert
+and cleanup after an early return when these are part of the behavior. Assert
 structured error information where available instead of matching incidental
 message punctuation. Control the failing dependency rather than relying on disk
 exhaustion, network timing, or another global environmental accident. Keep mocks

@@ -126,7 +126,7 @@ For test names and behavioral test design, also load and follow the
 ## 3. Documentation
 
 Use `//!` to explain a crate or module and `///` for documented items. Document
-public APIs and non-obvious internal contracts. Start with a short sentence
+public APIs and non-obvious internal requirements. Start with a short sentence
 saying what the item does. Explain required inputs, units, side effects, and
 important guarantees where they matter.
 
@@ -172,7 +172,7 @@ constructors, conversions, setters, and deserialization, not just at creation.
 
 A trait describes behavior that implementing types provide; it does not store
 instance fields. Reuse standard traits such as `Read`, `Write`, `Display`, and
-`From` when they express the actual contract.
+`From` when they express the intended conversion semantics.
 
 Introduce a custom trait for useful interchangeable behavior, an extension point,
 or a dependency that genuinely needs substitution. Do not create one for every
@@ -198,7 +198,7 @@ implicit duplication; `Clone` makes duplication explicit but may still share an
 underlying resource. `Debug` is for diagnostics and `Display` is for people.
 Equality, hashing, and ordering must agree. Use `From` for infallible conversions
 and `TryFrom` when validation or conversion can fail. Read the API checklist for
-these contracts before implementing them manually.
+these requirements before implementing them manually.
 
 ## 6. Syntax and ownership
 
@@ -294,7 +294,7 @@ guide, not Go's syntax or testing APIs.
 
 Test newtype validation and custom error behavior through supported entry points.
 For handwritten equality, hashing, or ordering, test the promised relationships.
-Test cleanup and partial failures when they affect the contract. Use property
+Test cleanup and partial failures when they affect observable behavior. Use property
 checks or fuzzing when input combinations exceed useful hand-written cases;
 do not add tests that merely repeat a standard derive implementation.
 
@@ -386,7 +386,7 @@ proof that every permitted call is safe; report unsupported validation clearly.
 ## Before finishing
 
 Check the areas affected by the change: behavior and failure paths; ownership
-and cleanup; names and documentation; trait contracts and public compatibility;
+and cleanup; names and documentation; trait requirements and public compatibility;
 test coverage of meaningful outcomes; and supported build configurations. Skip
 irrelevant specialized checks, but not unfamiliar ones.
 

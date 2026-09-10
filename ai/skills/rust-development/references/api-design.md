@@ -1,8 +1,8 @@
-# API design and type contracts
+# API design and type requirements
 
 Read this before changing data models, trait implementations, public interfaces,
 or re-exports. Apply the parts affected by the task, including to internal types
-when their contracts matter. A small private type does not need a public-library
+when their requirements matter. A small private type does not need a public-library
 framework.
 
 ## Contents
@@ -12,7 +12,7 @@ framework.
 - [Conversions and borrowed views](#conversions-and-borrowed-views)
 - [Design custom traits around callers](#design-custom-traits-around-callers)
 - [Imports, visibility, and compatibility](#imports-visibility-and-compatibility)
-- [Verify the contract](#verify-the-contract)
+- [Verify the requirements](#verify-the-requirements)
 
 ## Model meaningful distinctions
 
@@ -89,7 +89,7 @@ often the simplest correct choice, but check whether those fields express the
 meaning you intend.
 
 
-| Trait | Contract and decision |
+| Trait | Requirements and decision |
 | --- | --- |
 | `Debug` | Useful diagnostic output. Review whether deriving it exposes credentials or other secrets. Debug formatting is not a stable serialization format. |
 | `Display` | A deliberate human-facing representation. Implement it rather than `ToString` directly when a textual representation makes sense. |
@@ -113,7 +113,7 @@ name. Equal values could then produce different hashes.
 Either let all relevant fields define both equality and hashing, or implement
 both consistently using the intended identity. Apply the same reasoning to
 ordering. Test the relationships when implementations are handwritten; do not
-assert a particular hash number, which is not the contract.
+assert a particular hash number, which is not part of the behavior.
 
 Reference: [`Hash` and equality](https://doc.rust-lang.org/std/hash/trait.Hash.html#hash-and-eq).
 
@@ -188,7 +188,7 @@ compatibility requires it. A cleaner module layout is not permission to break it
 References: [rust-analyzer: style](https://rust-analyzer.github.io/book/contributing/style.html)
 and [Cargo: SemVer compatibility](https://doc.rust-lang.org/cargo/reference/semver.html).
 
-## Verify the contract
+## Verify the requirements
 
 Exercise construction and validation through the supported API. Check handwritten
 trait relationships and failure cases, not compiler-generated boilerplate. Build

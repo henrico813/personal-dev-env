@@ -188,7 +188,7 @@ does not become a container for their state.
 
 Here, summaries are a specific application capability. Use `Display` instead
 when the requirement is simply the type's ordinary human-readable representation.
-Prefer an existing standard trait when its contract fits; do not introduce a
+Prefer an existing standard trait when its behavior fits; do not introduce a
 near-duplicate only to rename its methods.
 
 A trait does not require two implementations already in the repository. An
@@ -239,7 +239,7 @@ concrete types in different return branches. For a fixed set of alternatives,
 an enum can be clearer than either trait-object storage or more generic layers.
 
 Only dyn-compatible traits can be used as trait objects. Consult the compiler
-and the trait's contract instead of adding bounds until errors disappear.
+and the trait's requirements instead of adding bounds until errors disappear.
 Do not choose dispatch primarily on an unmeasured speed claim.
 
 References: [Effective Rust, Item 12](https://effective-rust.com/generics.html)

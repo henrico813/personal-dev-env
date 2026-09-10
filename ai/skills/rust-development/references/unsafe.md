@@ -9,7 +9,7 @@ Do not introduce these techniques merely to satisfy this checklist.
 - [Establish the need and the boundary](#establish-the-need-and-the-boundary)
 - [Write a concrete safety argument](#write-a-concrete-safety-argument)
 - [Example: copy a foreign buffer](#example-copy-a-foreign-buffer)
-- [Check foreign contracts explicitly](#check-foreign-contracts-explicitly)
+- [Check foreign requirements explicitly](#check-foreign-requirements-explicitly)
 - [Validate without overstating the result](#validate-without-overstating-the-result)
 
 ## Establish the need and the boundary
@@ -44,7 +44,7 @@ code could invalidate them. Cover the relevant parts of:
 
 For an unsafe public function or trait, put the caller's or implementer's
 obligations in `# Safety` documentation. For an unsafe call, explain how this
-call satisfies the callee's contract. Do not use vague comments such as "pointer
+call satisfies the callee's requirements. Do not use vague comments such as "pointer
 is safe" or rely on tests instead of an argument. Keep unsafe operations in
 explicit narrow blocks, including inside unsafe functions, following the
 repository's edition and lints.
@@ -57,7 +57,7 @@ and [Rustonomicon](https://doc.rust-lang.org/nomicon/).
 Suppose a foreign API supplies a pointer and length, and the application needs
 an owned byte vector. A null check alone cannot establish that the memory is
 live, long enough, or not changing. The function therefore has an unsafe caller
-contract rather than pretending it can validate an arbitrary pointer.
+set of requirements rather than pretending it can validate an arbitrary pointer.
 
 ```rust
 /// Copies a foreign buffer into a Rust-owned vector.
@@ -99,17 +99,17 @@ executing undefined behavior.
 
 Reference: [`slice::from_raw_parts` safety requirements](https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html).
 
-## Check foreign contracts explicitly
+## Check foreign requirements explicitly
 
 Verify the ABI, supported targets, parameter representation, string encoding and
 termination, nullability, buffer lengths, and who owns and releases each value.
-Use `repr(C)` or other representation controls where the actual foreign contract
+Use `repr(C)` or other representation controls where the actual foreign requirements
 requires them; do not assume ordinary Rust layouts, `String`, or `Vec` are C types.
 Keep callbacks alive for the period the foreign side can call them. Document any
 thread-affinity or reentrancy requirements.
 
 Do not let unwinding cross an ABI boundary without an explicitly supported,
-reviewed contract. Check both Rust panics and foreign exceptions. Use generated
+reviewed requirements. Check both Rust panics and foreign exceptions. Use generated
 bindings or established wrappers where they reduce risk, but still verify the
 ownership and safety obligations of the boundary.
 

@@ -18,7 +18,7 @@ The topics are independent lessons, not modules every application must contain.
 | What belongs in API docs? | [Behavior and usage examples](documentation.md) | [Parser doctest](../examples/src/retry.rs) |
 | What should tests assert? | [Behavior, tables, and failure substitutes](testing.md) | [Local tests](../examples/src/report.rs), [CLI tests](../examples/tests/cli.rs) |
 | Can threads borrow without an Arc? | [Scoped work](concurrency.md#borrow-with-scoped-work-when-it-fits) | [Joined threads](../examples/src/threaded.rs) |
-| What makes an unsafe boundary reviewable? | [A foreign byte buffer](unsafe.md#example-copy-a-foreign-buffer) | [Safety contract and tests](../examples/src/foreign.rs) |
+| What makes an unsafe boundary reviewable? | [A foreign byte buffer](unsafe.md#example-copy-a-foreign-buffer) | [Safety requirements and tests](../examples/src/foreign.rs) |
 
 Some explanatory snippets omit surrounding imports, types, or documentation to
 focus on one choice. They are labeled as excerpts or fragments and link to their

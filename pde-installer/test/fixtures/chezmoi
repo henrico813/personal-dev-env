@@ -15,6 +15,7 @@ fail_marker="$PDE_REPO_ROOT/chezmoi/.pde-smoke-fail"
 gitconfig_source="$PDE_REPO_ROOT/chezmoi/dot_config/pde/gitconfig"
 hook_source="$PDE_REPO_ROOT/chezmoi/dot_config/git/template/hooks/executable_commit-msg"
 configure_git_template="$PDE_REPO_ROOT/chezmoi/run_onchange_after_configure_git_template.sh.tmpl"
+rust_source="$PDE_REPO_ROOT/ai/skills/rust-development"
 action=""
 for argument in "$@"; do
 	case "$argument" in
@@ -44,6 +45,12 @@ apply)
 	mkdir -p "$HOME/.config/pde" "$HOME/.config/git/template/hooks"
 	cp "$gitconfig_source" "$HOME/.config/pde/gitconfig"
 	install -m 0755 "$hook_source" "$HOME/.config/git/template/hooks/commit-msg"
+	for skill_home in "$HOME/.agents/skills" "$HOME/.codex/skills"; do
+		mkdir -p "$skill_home/rust-development/examples/src" "$skill_home/rust-development/references"
+		cp "$rust_source/SKILL.md" "$skill_home/rust-development/SKILL.md"
+		cp "$rust_source/examples/src/lib.rs" "$skill_home/rust-development/examples/src/lib.rs"
+		cp "$rust_source/references/testing.md" "$skill_home/rust-development/references/testing.md"
+	done
 	bash "$configure_git_template"
 	if [ -e "$fail_marker" ]; then
 		printf 'changed\n' >"$HOME/.config/opencode/transaction-marker"
