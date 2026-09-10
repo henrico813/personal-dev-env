@@ -101,6 +101,62 @@ type applyFixture struct {
 	state   string
 }
 
+func TestApplyExpandsTerminalToFull(t *testing.T) {
+	fixture := newApplyFixture(t, "unchanged")
+	terminalConfig := filepath.Join(fixture.manager.Home, ".config", "aquaproj-aqua", "aqua-terminal.yaml")
+	terminalChecksums := filepath.Join(fixture.manager.Home, ".config", "aquaproj-aqua", "aqua-terminal-checksums.json")
+	writeApplyFile(t, terminalConfig, "terminal manifest\n")
+	writeApplyFile(t, terminalChecksums, "terminal checksums\n")
+	configBefore, err := os.ReadFile(terminalConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checksumsBefore, err := os.ReadFile(terminalChecksums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullTarget := filepath.Join(fixture.manager.Home, ".config", "full-only")
+	writeApplyFile(t, filepath.Join(fixture.manager.Source(), "test-profile"), "full\n")
+	writeExecutable(t, filepath.Join(fixture.manager.AquaRoot, "bin", "chezmoi"), `#!/bin/sh
+set -eu
+source_dir=
+destination=
+command=
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--source) source_dir=$2; shift 2 ;;
+		--destination) destination=$2; shift 2 ;;
+		status|apply) command=$1; shift ;;
+		*) shift ;;
+	esac
+done
+[ "$PDE_PROFILE" = full ]
+[ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
+[ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
+target="$destination/.config/full-only"
+case "$command" in
+	status)
+		if [ ! -f "$target" ]; then printf 'M  %s\n' "$target"; fi
+		;;
+	apply)
+		mkdir -p "$(dirname "$target")"
+		printf 'managed by full\n' >"$target"
+		;;
+esac
+`)
+	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, profile.Full, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
+	journal, err := fixture.manager.Apply()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journal == nil {
+		t.Fatal("Apply() returned nil journal")
+	}
+	assertApplyFile(t, terminalConfig, string(configBefore))
+	assertApplyFile(t, terminalChecksums, string(checksumsBefore))
+	assertApplyFile(t, fullTarget, "managed by full\n")
+}
+
 func TestApplyUsesProfileEnvironment(t *testing.T) {
 	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
 		t.Run(string(selected), func(t *testing.T) {
