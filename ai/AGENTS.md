@@ -13,6 +13,8 @@
 - When writing, updating, or reviewing automated tests, load and follow the
   `behavior-focused-testing` skill.
 - When changing or reviewing Go code, load and follow the `go-development` skill.
+- When changing or reviewing Rust code, load and follow the `rust-development`
+  skill.
 - If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
 
 ## Planning Docs

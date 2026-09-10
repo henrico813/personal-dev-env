@@ -216,7 +216,7 @@ checksum.sha256 = "894eec70433cdaf68d3f1a8f81fc87fcc3ffaa96cdf3e7201c0590a4e9812
 [".config/opencode/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "4d658b40dd5f4e7408415599175cd33a55a71849b7cd1836407bb3883f9a2454"
+checksum.sha256 = "8108c16f802e504bd03335b2c54e0413e89c953fd913cc7f04a5ed413a3ff4c2"
 
 [".config/opencode/agents/codebase-analyzer.md"]
 type = "file"
@@ -321,7 +321,7 @@ checksum.sha256 = "7e7e9a64b90ccbbce08ea3bc67e76bdf1442912f47db09d257a7910e44aab
 [".codex/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "4d658b40dd5f4e7408415599175cd33a55a71849b7cd1836407bb3883f9a2454"
+checksum.sha256 = "8108c16f802e504bd03335b2c54e0413e89c953fd913cc7f04a5ed413a3ff4c2"
 
 [".codex/skills/cleanup-plan/SKILL.md"]
 type = "file"
@@ -458,10 +458,280 @@ type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/promote-memory/SKILL.md'
 checksum.sha256 = "0cb9d06aa1a776aacfcabae36bc0ab4b13fb443a07b76c622ff669de6cef3f80"
 
+[".agents/skills/rust-development/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/SKILL.md'
+checksum.sha256 = "d334b30e4eb82951290284152a164fdf6ad01cb6cb84f6c9a4eba4348c6e1d0e"
+
+[".codex/skills/rust-development/SKILL.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/SKILL.md'
+checksum.sha256 = "d334b30e4eb82951290284152a164fdf6ad01cb6cb84f6c9a4eba4348c6e1d0e"
+
+[".agents/skills/rust-development/examples/.gitignore"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/.gitignore'
+checksum.sha256 = "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368"
+
+[".codex/skills/rust-development/examples/.gitignore"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/.gitignore'
+checksum.sha256 = "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368"
+
+[".agents/skills/rust-development/examples/Cargo.lock"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/Cargo.lock'
+checksum.sha256 = "cb4dd76bd5556aca1774a91a679405807225a0c6f6990791a648ebeda9975b03"
+
+[".codex/skills/rust-development/examples/Cargo.lock"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/Cargo.lock'
+checksum.sha256 = "cb4dd76bd5556aca1774a91a679405807225a0c6f6990791a648ebeda9975b03"
+
+[".agents/skills/rust-development/examples/Cargo.toml"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/Cargo.toml'
+checksum.sha256 = "0d2653d69b4b5b86035baf425a2052eebf97c42a5c3e15a2c4fe161704e86973"
+
+[".codex/skills/rust-development/examples/Cargo.toml"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/Cargo.toml'
+checksum.sha256 = "0d2653d69b4b5b86035baf425a2052eebf97c42a5c3e15a2c4fe161704e86973"
+
+[".agents/skills/rust-development/examples/README.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/README.md'
+checksum.sha256 = "bf0b2c9c53424f1e6871d7eeef5afae5419fae02b1404101d02b6c610ed83bd9"
+
+[".codex/skills/rust-development/examples/README.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/README.md'
+checksum.sha256 = "bf0b2c9c53424f1e6871d7eeef5afae5419fae02b1404101d02b6c610ed83bd9"
+
+[".agents/skills/rust-development/examples/src/buffered_output.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/buffered_output.rs'
+checksum.sha256 = "fb153f8f7a47335c9f888382cd2c9dd961622ef1d4c614679d21e66ca3d7f4a4"
+
+[".codex/skills/rust-development/examples/src/buffered_output.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/buffered_output.rs'
+checksum.sha256 = "fb153f8f7a47335c9f888382cd2c9dd961622ef1d4c614679d21e66ca3d7f4a4"
+
+[".agents/skills/rust-development/examples/src/device.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/device.rs'
+checksum.sha256 = "e9787e8ae038b327626a67dca2acf906d291b1472548a730bbce0738bbf74922"
+
+[".codex/skills/rust-development/examples/src/device.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/device.rs'
+checksum.sha256 = "e9787e8ae038b327626a67dca2acf906d291b1472548a730bbce0738bbf74922"
+
+[".agents/skills/rust-development/examples/src/foreign.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/foreign.rs'
+checksum.sha256 = "ba1a8e90714d14cbe5c0b8fea48958f531e5ed7fa14f22fefa9c7edf1d7960f9"
+
+[".codex/skills/rust-development/examples/src/foreign.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/foreign.rs'
+checksum.sha256 = "ba1a8e90714d14cbe5c0b8fea48958f531e5ed7fa14f22fefa9c7edf1d7960f9"
+
+[".agents/skills/rust-development/examples/src/identity.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/identity.rs'
+checksum.sha256 = "ba2ad04fb1eb36159b653b6b26b8f2625e5d74af1ba75b6b23eb5b758f1495c1"
+
+[".codex/skills/rust-development/examples/src/identity.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/identity.rs'
+checksum.sha256 = "ba2ad04fb1eb36159b653b6b26b8f2625e5d74af1ba75b6b23eb5b758f1495c1"
+
+[".agents/skills/rust-development/examples/src/lib.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/lib.rs'
+checksum.sha256 = "76c549c3fa6f523b85f04a26c7b092ab9ba58429c6959ed6dd6ec113a3101a96"
+
+[".codex/skills/rust-development/examples/src/lib.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/lib.rs'
+checksum.sha256 = "76c549c3fa6f523b85f04a26c7b092ab9ba58429c6959ed6dd6ec113a3101a96"
+
+[".agents/skills/rust-development/examples/src/main.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/main.rs'
+checksum.sha256 = "897865888c7a4d4484f9f6f0cf9d2e45e3cd07ad8ae2353ed6064e9b74546f60"
+
+[".codex/skills/rust-development/examples/src/main.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/main.rs'
+checksum.sha256 = "897865888c7a4d4484f9f6f0cf9d2e45e3cd07ad8ae2353ed6064e9b74546f60"
+
+[".agents/skills/rust-development/examples/src/report.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/report.rs'
+checksum.sha256 = "92a913f67dd31bca73efef2538e2a32382f294cb1869e4c45094413da4d8c162"
+
+[".codex/skills/rust-development/examples/src/report.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/report.rs'
+checksum.sha256 = "92a913f67dd31bca73efef2538e2a32382f294cb1869e4c45094413da4d8c162"
+
+[".agents/skills/rust-development/examples/src/retry.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/retry.rs'
+checksum.sha256 = "1f529de7b19e222e27470f0175dc0d542761efa64ca60762787833bfc8c3361d"
+
+[".codex/skills/rust-development/examples/src/retry.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/retry.rs'
+checksum.sha256 = "1f529de7b19e222e27470f0175dc0d542761efa64ca60762787833bfc8c3361d"
+
+[".agents/skills/rust-development/examples/src/threaded.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/threaded.rs'
+checksum.sha256 = "2512eb3d6f460ab567e2d366db3125c022731421c821ca78748dba6eba1098d8"
+
+[".codex/skills/rust-development/examples/src/threaded.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/src/threaded.rs'
+checksum.sha256 = "2512eb3d6f460ab567e2d366db3125c022731421c821ca78748dba6eba1098d8"
+
+[".agents/skills/rust-development/examples/tests/cli.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/tests/cli.rs'
+checksum.sha256 = "2e45321c140407cddcac6e615f4236bfa64e33255a4dee418e8826c42aaf4193"
+
+[".codex/skills/rust-development/examples/tests/cli.rs"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/examples/tests/cli.rs'
+checksum.sha256 = "2e45321c140407cddcac6e615f4236bfa64e33255a4dee418e8826c42aaf4193"
+
+[".agents/skills/rust-development/references/api-design.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/api-design.md'
+checksum.sha256 = "a287cefcb687390d0dfb595908dbe61ddf5003d6423c2035053b96c0673fa820"
+
+[".codex/skills/rust-development/references/api-design.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/api-design.md'
+checksum.sha256 = "a287cefcb687390d0dfb595908dbe61ddf5003d6423c2035053b96c0673fa820"
+
+[".agents/skills/rust-development/references/cargo.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/cargo.md'
+checksum.sha256 = "7dc85cf0834b585fcb7592000fd915c0041c91aeb859309c35312483f448b918"
+
+[".codex/skills/rust-development/references/cargo.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/cargo.md'
+checksum.sha256 = "7dc85cf0834b585fcb7592000fd915c0041c91aeb859309c35312483f448b918"
+
+[".agents/skills/rust-development/references/concurrency.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/concurrency.md'
+checksum.sha256 = "1e7f56650928aac7bc9b8f1b8f9320ead0b33f0d55b3a306c240101aa0c2e01e"
+
+[".codex/skills/rust-development/references/concurrency.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/concurrency.md'
+checksum.sha256 = "1e7f56650928aac7bc9b8f1b8f9320ead0b33f0d55b3a306c240101aa0c2e01e"
+
+[".agents/skills/rust-development/references/design-choices.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/design-choices.md'
+checksum.sha256 = "44a4bacb13df0c6c1b300ec2aa096dd354a2c4f45c236c7de043fa1438ca35ab"
+
+[".codex/skills/rust-development/references/design-choices.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/design-choices.md'
+checksum.sha256 = "44a4bacb13df0c6c1b300ec2aa096dd354a2c4f45c236c7de043fa1438ca35ab"
+
+[".agents/skills/rust-development/references/documentation.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/documentation.md'
+checksum.sha256 = "2e7a5ca2fd867b1ea56fc9a4ceab4280068f7e0a39db4a9293856a8e7d154a94"
+
+[".codex/skills/rust-development/references/documentation.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/documentation.md'
+checksum.sha256 = "2e7a5ca2fd867b1ea56fc9a4ceab4280068f7e0a39db4a9293856a8e7d154a94"
+
+[".agents/skills/rust-development/references/errors-resources.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/errors-resources.md'
+checksum.sha256 = "98c68e6a2a1eaf15e1746151e99a4678dd6284326fd6683f2b69245036d843ee"
+
+[".codex/skills/rust-development/references/errors-resources.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/errors-resources.md'
+checksum.sha256 = "98c68e6a2a1eaf15e1746151e99a4678dd6284326fd6683f2b69245036d843ee"
+
+[".agents/skills/rust-development/references/evaluation.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/evaluation.md'
+checksum.sha256 = "9add4b0e911553132c3da9bd6215a7e59bc1c093586950f7268d9f930c0e3dda"
+
+[".codex/skills/rust-development/references/evaluation.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/evaluation.md'
+checksum.sha256 = "9add4b0e911553132c3da9bd6215a7e59bc1c093586950f7268d9f930c0e3dda"
+
+[".agents/skills/rust-development/references/examples.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/examples.md'
+checksum.sha256 = "2ad3ae6edd06df2b013126da8339740bd55a1fdf7519a22198841896319ebce0"
+
+[".codex/skills/rust-development/references/examples.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/examples.md'
+checksum.sha256 = "2ad3ae6edd06df2b013126da8339740bd55a1fdf7519a22198841896319ebce0"
+
+[".agents/skills/rust-development/references/ownership.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/ownership.md'
+checksum.sha256 = "b76d59d9496062525946cab82bccd5f3c51a7b295d4a4e2096820c1145d8eb81"
+
+[".codex/skills/rust-development/references/ownership.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/ownership.md'
+checksum.sha256 = "b76d59d9496062525946cab82bccd5f3c51a7b295d4a4e2096820c1145d8eb81"
+
+[".agents/skills/rust-development/references/sources.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/sources.md'
+checksum.sha256 = "2a8506d8493fd06a8aae56496366c105b8cb5c73304d551e4ba0aaaa39b32b9f"
+
+[".codex/skills/rust-development/references/sources.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/sources.md'
+checksum.sha256 = "2a8506d8493fd06a8aae56496366c105b8cb5c73304d551e4ba0aaaa39b32b9f"
+
+[".agents/skills/rust-development/references/testing.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/testing.md'
+checksum.sha256 = "b8c75279c3286acb5677780b42396ba8e33dd16d1fcf8d3b26fe02a600163098"
+
+[".codex/skills/rust-development/references/testing.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/testing.md'
+checksum.sha256 = "b8c75279c3286acb5677780b42396ba8e33dd16d1fcf8d3b26fe02a600163098"
+
+[".agents/skills/rust-development/references/unsafe.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/unsafe.md'
+checksum.sha256 = "23efd1355f6357a24220d578884673b5fe84ce3c64387d0aeafd1ab40b0c89f7"
+
+[".codex/skills/rust-development/references/unsafe.md"]
+type = "file"
+url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/rust-development/references/unsafe.md'
+checksum.sha256 = "23efd1355f6357a24220d578884673b5fe84ce3c64387d0aeafd1ab40b0c89f7"
+
 [".pi/agent/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "4d658b40dd5f4e7408415599175cd33a55a71849b7cd1836407bb3883f9a2454"
+checksum.sha256 = "8108c16f802e504bd03335b2c54e0413e89c953fd913cc7f04a5ed413a3ff4c2"
 
 [".pi/agent/settings.json"]
 type = "file"
