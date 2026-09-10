@@ -18,7 +18,12 @@ You are tasked with conducting comprehensive research across the codebase to ans
 
 ## Initial Setup:
 
-When this command is invoked, respond with:
+When this skill is invoked with a research question or area of interest, treat
+it as the query and begin the research workflow immediately. Do not send the
+readiness prompt or ask the user to repeat information already supplied.
+
+When this skill is invoked without a research question or area of interest,
+respond with:
 ```
 I'm ready to research the codebase. Please provide your research question or area of interest, and I'll analyze it thoroughly by exploring relevant components and connections.
 ```
