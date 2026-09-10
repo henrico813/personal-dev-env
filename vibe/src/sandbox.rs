@@ -26,6 +26,7 @@ pub fn run_agent(
         &mounts.repo_root,
         &mounts.git_common_dir,
         &mounts.worktree,
+        &mounts.inputs,
         artifacts,
         model,
         stderr_level,

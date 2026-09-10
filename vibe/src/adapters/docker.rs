@@ -147,6 +147,7 @@ struct DockerRunArgs<'a> {
     repo_root: &'a Path,
     git_common_dir: &'a Path,
     worktree: &'a Path,
+    inputs: &'a [PathBuf],
     artifacts: &'a ArtifactPaths,
     model: &'a str,
     stderr_level: &'a str,
@@ -162,6 +163,7 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         repo_root,
         git_common_dir,
         worktree,
+        inputs,
         artifacts,
         model,
         stderr_level,
@@ -214,6 +216,9 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         "-e".to_string(),
         format!("VIBE_REPO_ROOT={}", repo_root.display()),
     ];
+    for input in *inputs {
+        run_args.extend(["-v".to_string(), format!("{}:{}:ro", input.display(), input.display())]);
+    }
     if let Some(pi_agent_dir) = pi_agent_dir {
         // Pi rotates OAuth tokens and locks beside auth.json, so the
         // directory must stay writable and shared across runs.
@@ -233,6 +238,7 @@ pub fn run_task(
     repo_root: &Path,
     git_common_dir: &Path,
     worktree: &Path,
+    inputs: &[PathBuf],
     artifacts: &ArtifactPaths,
     model: &str,
     stderr_level: &str,
@@ -260,6 +266,7 @@ pub fn run_task(
         repo_root,
         git_common_dir,
         worktree,
+        inputs,
         artifacts,
         model,
         stderr_level,
@@ -532,6 +539,7 @@ mod tests {
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
         let worktree = temp.path().join("worktree");
+        let input = temp.path().join("input.md");
         let artifacts = test_artifacts(temp.path());
         let user = HostUser {
             uid: "1000".to_string(),
@@ -542,6 +550,7 @@ mod tests {
             repo_root: &repo_root,
             git_common_dir: &git_common_dir,
             worktree: &worktree,
+            inputs: &[input.clone()],
             artifacts: &artifacts,
             model: "vibe-fixture/dynamic-model",
             stderr_level: "info",
@@ -566,6 +575,9 @@ mod tests {
         assert!(args
             .iter()
             .any(|arg| arg == &format!("VIBE_REPO_ROOT={}", repo_root.display())));
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("{}:{}:ro", input.display(), input.display())));
     }
 
     #[test]
@@ -584,6 +596,7 @@ mod tests {
             repo_root: &repo_root,
             git_common_dir: &git_common_dir,
             worktree: &worktree,
+            inputs: &[],
             artifacts: &artifacts,
             model: "openai-codex/gpt-5.4",
             stderr_level: "info",
@@ -615,6 +628,7 @@ mod tests {
             repo_root: &repo_root,
             git_common_dir: &git_common_dir,
             worktree: &worktree,
+            inputs: &[],
             artifacts: &artifacts,
             model: "openai-codex/gpt-5.4",
             stderr_level: "info",
