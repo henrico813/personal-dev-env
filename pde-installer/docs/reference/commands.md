@@ -31,8 +31,8 @@ profile-less configuration without installer state must be repaired by adding
 ### `pde-installer update [--dry-run]`
 
 Updates tools and home configuration for the saved profile. Use it after changes
-to package lists, tool versions, runtimes, or local builds. It first updates
-managed components, then applies managed home configuration. It requires saved
+to package lists, tool versions, runtimes, or local builds. It reconciles
+managed components and applies managed home configuration. It requires saved
 profile state, has no profile selector, and rejects UID 0.
 
 ### `pde-installer config [--dry-run]`
