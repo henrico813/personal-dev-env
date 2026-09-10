@@ -22,15 +22,40 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 9\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeExecutable(t, binary, "#!/bin/sh\nexit 9\n")
 	_, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).Probe()
 	if err == nil || status != "" || !strings.Contains(err.Error(), "exit status 9") {
 		t.Fatalf("Probe() = _, %q, %v", status, err)
 	}
 	if _, status := New(home, t.TempDir(), profile.Full, run.Runner{}).Status(); status != "error" {
 		t.Fatalf("Status() state = %q", status)
+	}
+}
+
+// writeExecutable avoids ETXTBSY by atomically publishing a closed fixture.
+func writeExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".executable-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporaryName := temporary.Name()
+	defer func() {
+		if err := os.Remove(temporaryName); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}()
+	if _, err := temporary.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := temporary.Chmod(0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := temporary.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(temporaryName, path); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -195,9 +220,7 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 				t.Fatal(err)
 			}
 			script := "#!/bin/sh\n[ \"$1\" = \"" + test.argument + "\" ] || exit 9\nprintf '%s\\n' '" + test.output + "'\n"
-			if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			writeExecutable(t, binary, script)
 			installed, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).ToolProbe(test.name, test.version)
 			if err != nil || status != "current" || !strings.Contains(installed, test.output) {
 				t.Fatalf("ToolProbe() = %q, %q, %v", installed, status, err)

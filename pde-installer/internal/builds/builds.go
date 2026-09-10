@@ -20,6 +20,8 @@ import (
 type Manager struct {
 	Home, RepoRoot string
 	Runner         run.Runner
+	blinkURL       string
+	blinkSHA256    string
 }
 
 type buildSpec struct {
@@ -40,13 +42,19 @@ type blinkState struct {
 }
 
 const (
-	blinkURL    = "https://github.com/Saghen/blink.cmp/archive/2befba190e0ffa3692ab364f75604c9c2d248adf.tar.gz"
-	blinkSHA256 = "25d47c66081f55bdd95d2952166aa48ad45c7bb5ebb1646678279f4d2ecc3868"
+	defaultBlinkURL    = "https://github.com/Saghen/blink.cmp/archive/2befba190e0ffa3692ab364f75604c9c2d248adf.tar.gz"
+	defaultBlinkSHA256 = "25d47c66081f55bdd95d2952166aa48ad45c7bb5ebb1646678279f4d2ecc3868"
 )
 
 // New returns a local build manager.
 func New(home, repoRoot string, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, Runner: runner}
+	return Manager{
+		Home:        home,
+		RepoRoot:    repoRoot,
+		Runner:      runner,
+		blinkURL:    defaultBlinkURL,
+		blinkSHA256: defaultBlinkSHA256,
+	}
 }
 
 // Reconcile rebuilds binaries when their source inputs change.
@@ -86,10 +94,58 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	cargo := filepath.Join(m.Home, ".local", "bin", "cargo")
 	environment := m.environment(stageRoot)
 	specs := []buildSpec{
-		{name: "planner", source: filepath.Join(m.RepoRoot, "planner"), output: filepath.Join(stageRoot, "planner"), command: run.Command{Name: goBinary, Args: []string{"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "planner"), "./main"}, Dir: filepath.Join(m.RepoRoot, "planner"), Env: environment}},
-		{name: "opencode-inline-shim", source: filepath.Join(m.RepoRoot, "cli"), output: filepath.Join(stageRoot, "opencode-inline-shim"), command: run.Command{Name: goBinary, Args: []string{"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "opencode-inline-shim"), "./cmd/opencode-inline-shim"}, Dir: filepath.Join(m.RepoRoot, "cli"), Env: environment}},
-		{name: "surveil", source: filepath.Join(m.RepoRoot, "surveil"), output: filepath.Join(stageRoot, "surveil-target", "release", "surveil"), command: run.Command{Name: cargo, Args: []string{"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "surveil-target"), "--bin", "surveil"}, Dir: filepath.Join(m.RepoRoot, "surveil"), Env: environment}},
-		{name: "vibe", source: filepath.Join(m.RepoRoot, "vibe"), output: filepath.Join(stageRoot, "vibe-target", "release", "vibe"), command: run.Command{Name: cargo, Args: []string{"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "vibe-target")}, Dir: filepath.Join(m.RepoRoot, "vibe"), Env: environment}},
+		{
+			name:   "planner",
+			source: filepath.Join(m.RepoRoot, "planner"),
+			output: filepath.Join(stageRoot, "planner"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "planner"), "./main",
+				},
+				Dir: filepath.Join(m.RepoRoot, "planner"), Env: environment,
+			},
+		},
+		{
+			name:   "opencode-inline-shim",
+			source: filepath.Join(m.RepoRoot, "cli"),
+			output: filepath.Join(stageRoot, "opencode-inline-shim"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "opencode-inline-shim"), "./cmd/opencode-inline-shim",
+				},
+				Dir: filepath.Join(m.RepoRoot, "cli"), Env: environment,
+			},
+		},
+		{
+			name:   "surveil",
+			source: filepath.Join(m.RepoRoot, "surveil"),
+			output: filepath.Join(stageRoot, "surveil-target", "release", "surveil"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "surveil-target"), "--bin", "surveil",
+				},
+				Dir: filepath.Join(m.RepoRoot, "surveil"), Env: environment,
+			},
+		},
+		{
+			name:   "vibe",
+			source: filepath.Join(m.RepoRoot, "vibe"),
+			output: filepath.Join(stageRoot, "vibe-target", "release", "vibe"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "vibe-target"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "vibe"), Env: environment,
+			},
+		},
+	}
+	cargoTargets := map[string]string{
+		"surveil": filepath.Join(stageRoot, "surveil-target"),
+		"vibe":    filepath.Join(stageRoot, "vibe-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -97,6 +153,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 		if err := m.Runner.Run("build "+spec.name, spec.command); err != nil {
 			return nil, err
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(stageRoot, "go-cache"),
+		filepath.Join(stageRoot, "go-mod-cache"),
+		filepath.Join(stageRoot, "cargo-home"),
+	} {
+		if err := os.RemoveAll(path); err != nil {
+			return nil, fmt.Errorf("remove build cache %s: %w", path, err)
 		}
 	}
 	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
@@ -107,6 +172,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		staged := filepath.Join(stageRoot, "activate-"+spec.name)
 		if err := copyExecutable(spec.output, staged); err != nil {
 			return nil, journal.Revert(fmt.Errorf("stage %s: %w", spec.name, err))
+		}
+		// Journal activation uses staged; the original output is disposable.
+		if err := os.Remove(spec.output); err != nil {
+			return nil, journal.Revert(fmt.Errorf("remove %s build output: %w", spec.name, err))
+		}
+		if target := cargoTargets[spec.name]; target != "" {
+			if err := os.RemoveAll(target); err != nil {
+				return nil, journal.Revert(fmt.Errorf("remove %s build target: %w", spec.name, err))
+			}
 		}
 		if err := journal.Activate(staged, filepath.Join(m.Home, ".local", "bin", spec.name)); err != nil {
 			return nil, journal.Revert(fmt.Errorf("activate %s: %w", spec.name, err))
@@ -119,7 +193,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 	}
 	for _, check := range []struct{ name, arg string }{{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"surveil", "--help"}, {"vibe", "--help"}} {
-		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: environment}); err != nil {
+		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
 	}
@@ -142,7 +216,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	destination := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp")
 	blinkLib := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.lib")
 	if m.Runner.DryRun {
-		if err := m.Runner.Plan("download and verify "+blinkURL+" sha256="+blinkSHA256, nil); err != nil {
+		if err := m.Runner.Plan("download and verify "+m.blinkURL+" sha256="+m.blinkSHA256, nil); err != nil {
 			return nil, err
 		}
 		if err := m.Runner.Plan("build, verify, and atomically activate complete blink.cmp plugin tree", nil); err != nil {
@@ -154,7 +228,16 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if data, err := os.ReadFile(statePath); err == nil {
 		var state blinkState
 		installedHash, hashErr := hashTree(destination)
-		if json.Unmarshal(data, &state) == nil && hashErr == nil && state.ArchiveSHA256 == blinkSHA256 && state.TreeSHA256 == installedHash && state.RustVersion == managedVersion("rust") && state.NvimVersion == managedVersion("neovim") && regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so")) {
+		stateErr := json.Unmarshal(data, &state)
+		// Reuse Blink only when its source, build inputs, and installed library match the recorded state.
+		isCurrent := stateErr == nil &&
+			hashErr == nil &&
+			state.ArchiveSHA256 == m.blinkSHA256 &&
+			state.TreeSHA256 == installedHash &&
+			state.RustVersion == managedVersion("rust") &&
+			state.NvimVersion == managedVersion("neovim") &&
+			regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"))
+		if isCurrent {
 			return &fsutil.Journal{}, nil
 		}
 	}
@@ -183,7 +266,7 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 		if err := fsutil.GuardHome(m.Home, workspace, archive); err != nil {
 			return err
 		}
-		return fsutil.Download(blinkURL, archive, blinkSHA256)
+		return fsutil.Download(m.blinkURL, archive, m.blinkSHA256)
 	}); err != nil {
 		return nil, err
 	}
@@ -192,6 +275,9 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	}
 	if err := m.Runner.Run("extract blink.cmp", run.Command{Name: "tar", Args: []string{"-xzf", archive, "--strip-components=1", "-C", stage}}); err != nil {
 		return nil, err
+	}
+	if err := os.Remove(archive); err != nil {
+		return nil, fmt.Errorf("remove blink archive: %w", err)
 	}
 	target := filepath.Join(workspace, "target")
 	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
@@ -206,15 +292,28 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	}
 	nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
 	lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
-	verify := run.Command{Name: nvim, Args: []string{"--headless", "-u", "NONE", "--cmd", "set runtimepath+=" + blinkLib, "--cmd", "set runtimepath+=" + stage, "-c", "lua " + lua, "-c", "qa"}, Env: m.environment(workspace)}
+	verifyArgs := []string{
+		"--headless",
+		"-u", "NONE",
+		"--cmd", "set runtimepath+=" + blinkLib,
+		"--cmd", "set runtimepath+=" + stage,
+		"-c", "lua " + lua,
+		"-c", "qa",
+	}
+	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
 	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
 		return nil, err
+	}
+	for _, path := range []string{target, filepath.Join(workspace, "cargo-home")} {
+		if err := os.RemoveAll(path); err != nil {
+			return nil, fmt.Errorf("remove blink artifact %s: %w", path, err)
+		}
 	}
 	treeHash, err := hashTree(stage)
 	if err != nil {
 		return nil, err
 	}
-	stateData, err := json.Marshal(blinkState{ArchiveSHA256: blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
+	stateData, err := json.Marshal(blinkState{ArchiveSHA256: m.blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
 	if err != nil {
 		return nil, err
 	}
