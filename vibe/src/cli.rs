@@ -59,6 +59,10 @@ pub struct RunArgs {
     #[arg(long)]
     pub prompt_file: PathBuf,
 
+    /// Absolute host path to mount read-only at the same path in Docker.
+    #[arg(long = "input")]
+    pub inputs: Vec<PathBuf>,
+
     /// Pi model selector passed unchanged to the container runtime.
     /// Prefer provider/model form, for example openai-codex/gpt-5.4.
     #[arg(long)]
@@ -110,6 +114,11 @@ where
                 args.prompt_file = std::env::current_dir()
                     .expect("cwd")
                     .join(&args.prompt_file);
+            }
+            for input in &mut args.inputs {
+                if input.is_relative() {
+                    *input = std::env::current_dir().expect("cwd").join(&*input);
+                }
             }
             Ok(ParsedCommand::Run(args))
         }
@@ -175,6 +184,27 @@ mod tests {
         assert_eq!(args.commit_message.as_deref(), Some("docs: update note"));
         assert_eq!(args.stderr_level, StderrLevel::Info);
         assert!(!args.insecure_tls);
+    }
+
+    #[test]
+    fn parses_input_mounts() {
+        let ParsedCommand::Run(args) = try_parse_from([
+            "vibe",
+            "run",
+            "--key",
+            "demo",
+            "--prompt-file",
+            "/tmp/prompt.txt",
+            "--input",
+            "/tmp/input.md",
+            "--model",
+            "model",
+        ])
+        .expect("parse args") else {
+            panic!("expected run args");
+        };
+
+        assert_eq!(args.inputs, [std::path::PathBuf::from("/tmp/input.md")]);
     }
 
     #[test]

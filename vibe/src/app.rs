@@ -310,7 +310,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             )
         }
     };
-    let mounts = session.sandbox_mounts();
+    let mounts = session.sandbox_mounts(&args.inputs);
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
             &artifacts,
