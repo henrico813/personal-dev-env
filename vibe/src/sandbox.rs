@@ -22,14 +22,5 @@ pub fn run_agent(
     stderr_level: &str,
     insecure_tls: bool,
 ) -> Result<i32, String> {
-    docker::run_task(
-        &mounts.repo_root,
-        &mounts.git_common_dir,
-        &mounts.worktree,
-        &mounts.inputs,
-        artifacts,
-        model,
-        stderr_level,
-        insecure_tls,
-    )
+    docker::run_task(mounts, artifacts, model, stderr_level, insecure_tls)
 }

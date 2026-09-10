@@ -6,7 +6,7 @@ use std::{
     thread,
 };
 
-use crate::observe::ArtifactPaths;
+use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
 
 const IMAGE: &str = "vibe-pi:0.5.0";
 const AUTH_VARS: &[&str] = &[
@@ -217,7 +217,14 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         format!("VIBE_REPO_ROOT={}", repo_root.display()),
     ];
     for input in *inputs {
-        run_args.extend(["-v".to_string(), format!("{}:{}:ro", input.display(), input.display())]);
+        run_args.extend([
+            "--mount".to_string(),
+            format!(
+                "type=bind,src={},dst={},readonly",
+                input.display(),
+                input.display()
+            ),
+        ]);
     }
     if let Some(pi_agent_dir) = pi_agent_dir {
         // Pi rotates OAuth tokens and locks beside auth.json, so the
@@ -235,10 +242,7 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
 }
 
 pub fn run_task(
-    repo_root: &Path,
-    git_common_dir: &Path,
-    worktree: &Path,
-    inputs: &[PathBuf],
+    mounts: &SandboxMounts,
     artifacts: &ArtifactPaths,
     model: &str,
     stderr_level: &str,
@@ -248,7 +252,8 @@ pub fn run_task(
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
     let snapshot_ref = format!(
         "refs/vibe/snapshots/{}",
-        worktree
+        mounts
+            .worktree
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("run")
@@ -263,10 +268,10 @@ pub fn run_task(
 
     let mut cmd = Command::new("docker");
     cmd.args(docker_run_args(&DockerRunArgs {
-        repo_root,
-        git_common_dir,
-        worktree,
-        inputs,
+        repo_root: &mounts.repo_root,
+        git_common_dir: &mounts.git_common_dir,
+        worktree: &mounts.worktree,
+        inputs: &mounts.inputs,
         artifacts,
         model,
         stderr_level,
@@ -539,7 +544,7 @@ mod tests {
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
         let worktree = temp.path().join("worktree");
-        let input = temp.path().join("input.md");
+        let input = temp.path().join("input:notes.md");
         let artifacts = test_artifacts(temp.path());
         let user = HostUser {
             uid: "1000".to_string(),
@@ -575,9 +580,12 @@ mod tests {
         assert!(args
             .iter()
             .any(|arg| arg == &format!("VIBE_REPO_ROOT={}", repo_root.display())));
-        assert!(args
-            .iter()
-            .any(|arg| arg == &format!("{}:{}:ro", input.display(), input.display())));
+        assert!(args.iter().any(|arg| arg
+            == &format!(
+                "type=bind,src={},dst={},readonly",
+                input.display(),
+                input.display()
+            )));
     }
 
     #[test]
