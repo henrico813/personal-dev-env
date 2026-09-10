@@ -247,7 +247,12 @@ done
 	var compressed bytes.Buffer
 	zipper := gzip.NewWriter(&compressed)
 	archive := tar.NewWriter(zipper)
-	if err := archive.WriteHeader(&tar.Header{Name: "rust-fixture/install.sh", Mode: 0o755, Size: int64(len(script))}); err != nil {
+	header := &tar.Header{
+		Name: "rust-fixture/install.sh",
+		Mode: 0o755,
+		Size: int64(len(script)),
+	}
+	if err := archive.WriteHeader(header); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := io.WriteString(archive, script); err != nil {

@@ -271,7 +271,12 @@ func blinkArchiveFixture(t *testing.T) []byte {
 	zipper := gzip.NewWriter(&compressed)
 	archive := tar.NewWriter(zipper)
 	content := []byte("return {}\n")
-	if err := archive.WriteHeader(&tar.Header{Name: "blink-fixture/lua/blink/cmp/init.lua", Mode: 0o644, Size: int64(len(content))}); err != nil {
+	header := &tar.Header{
+		Name: "blink-fixture/lua/blink/cmp/init.lua",
+		Mode: 0o644,
+		Size: int64(len(content)),
+	}
+	if err := archive.WriteHeader(header); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := archive.Write(content); err != nil {

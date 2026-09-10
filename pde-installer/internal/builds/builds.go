@@ -292,7 +292,15 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	}
 	nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
 	lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
-	verify := run.Command{Name: nvim, Args: []string{"--headless", "-u", "NONE", "--cmd", "set runtimepath+=" + blinkLib, "--cmd", "set runtimepath+=" + stage, "-c", "lua " + lua, "-c", "qa"}, Env: m.environment()}
+	verifyArgs := []string{
+		"--headless",
+		"-u", "NONE",
+		"--cmd", "set runtimepath+=" + blinkLib,
+		"--cmd", "set runtimepath+=" + stage,
+		"-c", "lua " + lua,
+		"-c", "qa",
+	}
+	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
 	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
 		return nil, err
 	}
