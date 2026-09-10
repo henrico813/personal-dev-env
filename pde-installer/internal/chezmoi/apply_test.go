@@ -251,11 +251,13 @@ source_dir=
 destination=
 state=
 command=
+force=false
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--source) source_dir=$2; shift 2 ;;
 		--destination) destination=$2; shift 2 ;;
 		--persistent-state) state=$2; shift 2 ;;
+		--force) force=true; shift ;;
 		status|apply) command=$1; shift ;;
 		*) shift ;;
 	esac
@@ -283,6 +285,7 @@ case "$command" in
 		fi
 		;;
 	apply)
+		[ "$force" = true ]
 		printf 'new-state\n' >"$state"
 		if [ "$mode" != unchanged ]; then
 			mkdir -p "$destination/.config"
