@@ -305,7 +305,7 @@ checksum.sha256 = "e1f3d28b133c733a25130d42f1db3a44481ded0f0cc343ec790644a891b07
 [".config/opencode/commands/implement_plan.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/implement_plan.md'
-checksum.sha256 = "b6743b997d85e56dd1f2d94b5762b1ce7a5f1b3a9b49cd71d0b37f46649c9823"
+checksum.sha256 = "d1fbc686bb41951f744c88848ef3013c198de74813428c66cebad68496ecd88c"
 
 [".config/opencode/commands/research_codebase.md"]
 type = "file"
@@ -345,7 +345,7 @@ checksum.sha256 = "0a591383a9d5d0c9afe3fa6261d5c64dc38455701ed254fff90194f6ce438
 [".codex/skills/implement-plan/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/codex/skills/implement-plan/SKILL.md'
-checksum.sha256 = "543bff30b2f06437a8ce8a408b20bb0de9d2529e882bd04af01e60772d98a4d4"
+checksum.sha256 = "a41d6f62246bfec6f23ef1c1b0e53b1bd741a6a57b53381482d4780a669ee41e"
 
 [".codex/skills/research-codebase/SKILL.md"]
 type = "file"
@@ -390,7 +390,7 @@ checksum.sha256 = "453ef00856d528d528720216c32d562510f22c6bb380cb1c7c15e4cb2021f
 [".pi/agent/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "5985fbd68325ac27a0982334a495a0a4701f2e02db7619d1c8cfb4e12e49fe3b"
+checksum.sha256 = "5561e89c2c680ca7ab1d131b9cc5ebc240e23468be7533289437b5870d552d1f"
 
 [".pi/agent/settings.json"]
 type = "file"
