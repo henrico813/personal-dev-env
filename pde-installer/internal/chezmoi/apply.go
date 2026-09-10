@@ -238,6 +238,7 @@ func (m Manager) environment() []string {
 		"AQUA_ROOT_DIR=" + m.AquaRoot,
 		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, configName),
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
+		"PDE_PROFILE=" + string(m.Profile),
 		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,
@@ -247,12 +248,25 @@ func (m Manager) environment() []string {
 
 // Validate checks that the chezmoi source is complete and pinned.
 func (m Manager) Validate() error {
-	for _, path := range []string{m.Source(), filepath.Join(m.Source(), ".chezmoiexternal.toml"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc")} {
+	required := []string{
+		m.Source(),
+		filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"),
+		filepath.Join(m.Source(), ".chezmoiignore.tmpl"),
+		filepath.Join(m.Source(), "dot_zshrc.tmpl"),
+		filepath.Join(m.Source(), "dot_tmux.conf.tmpl"),
+	}
+	if m.Profile == profile.Full {
+		required = append(required,
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"),
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+		)
+	}
+	for _, path := range required {
 		if _, err := os.Stat(path); err != nil {
 			return fmt.Errorf("invalid chezmoi source %s: %w", path, err)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(m.Source(), ".chezmoiexternal.toml"))
+	data, err := os.ReadFile(filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"))
 	if err != nil {
 		return err
 	}

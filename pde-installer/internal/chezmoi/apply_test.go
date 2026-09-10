@@ -110,7 +110,10 @@ func newApplyFixture(t *testing.T, mode string) applyFixture {
 	source := filepath.Join(repoRoot, "chezmoi")
 	binary := filepath.Join(aquaRoot, "bin", "chezmoi")
 
-	writeApplyFile(t, filepath.Join(source, ".chezmoiexternal.toml"), "")
+	writeApplyFile(t, filepath.Join(source, ".chezmoiexternal.toml.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, ".chezmoiignore.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_zshrc.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_tmux.conf.tmpl"), "")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua.yaml"), "registries: []\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
@@ -134,6 +137,7 @@ done
 : "${AQUA_ROOT_DIR:?}"
 [ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
 [ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
+[ "$PDE_PROFILE" = full ]
 mode=$(cat "$source_dir/test-mode")
 target="$destination/.config/tool"
 case "$command" in
