@@ -15,12 +15,13 @@ each item. It is not an uninstall list.
 | npm tools | `package.json`, `package-lock.json`, `internal/npm/npm.go`, and manifest versions |
 | Repository builds | `internal/builds/builds.go`; manifest inventory |
 | `blink.cmp` native build | pinned URL and checksum in `internal/builds/builds.go` |
-| Home configuration | repository `chezmoi/` source and `.chezmoiexternal.toml` checksums |
+| Home configuration | repository `chezmoi/` source and `.chezmoiexternal.toml.tmpl` checksums |
 
-Pins repeated across files must agree. Validation catches duplicate inventory
-names, missing required pins, incomplete npm locks, missing chezmoi source data,
-and externals without SHA-256 fields. Backend reconciliation performs further
-checksum and installed-version checks.
+Pins repeated across files must agree. Profile selection limits the terminal
+inventory, the Aqua manifest and checksum files used, and the chezmoi output.
+Validation catches duplicate inventory names, missing required pins, incomplete
+npm locks, missing chezmoi source data, and externals without SHA-256 fields.
+Backend reconciliation performs further checksum and installed-version checks.
 
 See the matching [how-to guide](../README.md#how-to-guides) before changing
 metadata.

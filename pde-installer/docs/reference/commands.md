@@ -13,22 +13,31 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ## Commands
 
-### `pde-installer install [--dry-run]`
+### `pde-installer install [--profile full|terminal] [--dry-run]`
 
-Reconciles every managed component. It rejects UID 0. `--dry-run` prints
-ordered actions and does not perform mutations.
+Reconciles the selected profile. A fresh install defaults to `full`; the
+selection is saved in `~/.config/pde/config.json`. A saved `terminal` profile
+can expand to `full`, but a saved `full` profile cannot change to `terminal`
+because installed components are not removed. It rejects UID 0. `--dry-run`
+prints ordered actions and does not perform mutations.
+
+Only `install` accepts `--profile`. `update` and `config` require a saved
+profile and use it. On a fresh home, `doctor` and `list` inspect `full`; after
+installation they inspect the saved profile. Profile-less legacy configuration
+must be repaired by adding `"profile": "full"` or `"profile": "terminal"` to
+`~/.config/pde/config.json` before commands that require saved state can run.
 
 ### `pde-installer update [--dry-run]`
 
-Runs the same full reconciliation as `install`. It has no tool or backend
-selector.
+Reconciles the saved profile to repository pins. It requires saved profile
+state and has no profile selector.
 
 ### `pde-installer config [--dry-run]`
 
-Migrates legacy PDE configuration, then applies the complete chezmoi source
-without reconciling other backends. It rejects UID 0. Dry run executes read-only
-chezmoi status and diff without refreshing externals or running scripts. A
-managed Aqua installation of chezmoi must already exist.
+Migrates legacy PDE configuration, then applies the chezmoi source for the
+saved profile without reconciling other backends. It rejects UID 0. Dry run
+executes read-only chezmoi status and diff without refreshing externals or
+running scripts. A managed Aqua installation of chezmoi must already exist.
 
 `config` also configures Git's template directory at
 `~/.config/git/template`. Future `git init` and `git clone` operations receive
