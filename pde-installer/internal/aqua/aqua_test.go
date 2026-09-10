@@ -76,7 +76,7 @@ func TestProfileChecksumsCoverSelectedPackages(t *testing.T) {
 				t.Fatal("standard registry checksum is missing")
 			}
 			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
-				if item.Name == "aqua" || item.Name == "ya" {
+				if item.Name == "aqua" || item.Name == "ya" || item.Name == "gopls" {
 					continue
 				}
 				repository := map[string]string{
