@@ -123,14 +123,13 @@ where
     let cli = Cli::try_parse_from(itr)?;
     match cli.command {
         Command::Run(mut args) => {
+            let current_dir = std::env::current_dir().expect("cwd");
             if args.prompt_file.is_relative() {
-                args.prompt_file = std::env::current_dir()
-                    .expect("cwd")
-                    .join(&args.prompt_file);
+                args.prompt_file = current_dir.join(&args.prompt_file);
             }
             for input in &mut args.inputs {
                 if input.is_relative() {
-                    *input = std::env::current_dir().expect("cwd").join(&*input);
+                    *input = current_dir.join(&*input);
                 }
             }
             Ok(ParsedCommand::Run(args))

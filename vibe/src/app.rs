@@ -8,7 +8,12 @@ use crate::{
     state::RunPhase,
     worktree,
 };
-use std::{fs, fs::OpenOptions, io::Write, path::Path};
+use std::{
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
 
@@ -152,8 +157,20 @@ fn finalize_changed_files(
     }
 }
 
+pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
+    for input in inputs {
+        if !input.is_file() {
+            return Err(format!("input must be an existing file: {}", input.display()));
+        }
+    }
+    Ok(())
+}
+
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(mut args: RunArgs) -> RunResult {
+    if let Err(error) = validate_inputs(&args.inputs) {
+        return RunResult::setup_error(error);
+    }
     let prepared = match prepare_model(&args.model, args.provider.as_deref()) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
