@@ -10,10 +10,9 @@
 
 ## Testing
 
-- Tests must use the production API whenever possible
-- Avoid mocks whenever possible
-- Test names must be 7 words or less
-- If writing Go, refer to `CLI Error Types Guide.md` in the vault, use table tests whenever possible
+- When writing, updating, or reviewing automated tests, load and follow the
+  `behavior-focused-testing` skill.
+- When changing or reviewing Go code, load and follow the `go-development` skill.
 - If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
 
 ## Planning Docs

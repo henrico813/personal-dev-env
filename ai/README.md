@@ -8,8 +8,8 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `codex/` holds Codex skills.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
-Shared skills include `behavior-focused-testing` for writing, updating, and
-reviewing automated tests.
+Shared skills include `behavior-focused-testing` for automated tests and
+`go-development` for implementing, refactoring, testing, and reviewing Go code.
 
 `pde-installer install` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
