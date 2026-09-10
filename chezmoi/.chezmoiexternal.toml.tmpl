@@ -75,6 +75,7 @@ exact = true
 stripComponents = 1
 checksum.sha256 = "9f1dda18554291ee7f8a0f499e2af90bbadc2ebceb7a995bb13b76529fe0c5c9"
 
+{{ if eq (env "PDE_PROFILE") "full" }}
 [".config/nvim/pack/plugins/start/obsidian.nvim"]
 type = "archive"
 url = "https://github.com/obsidian-nvim/obsidian.nvim/archive/50be6d70988af31b71cd4d8675ca928e6194c4fb.tar.gz"
@@ -380,19 +381,20 @@ checksum.sha256 = "f044dea6e5e9ecf5dfd96fad7d0790f95194ac3cb842ef1604efd7a6900fa
 [".agents/skills/promote-memory/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/promote-memory/SKILL.md'
-checksum.sha256 = "453ef00856d528d528720216c32d562510f22c6bb380cb1c7c15e4cb2021fab5"
+checksum.sha256 = "0cb9d06aa1a776aacfcabae36bc0ab4b13fb443a07b76c622ff669de6cef3f80"
 
 [".codex/skills/promote-memory/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/promote-memory/SKILL.md'
-checksum.sha256 = "453ef00856d528d528720216c32d562510f22c6bb380cb1c7c15e4cb2021fab5"
+checksum.sha256 = "0cb9d06aa1a776aacfcabae36bc0ab4b13fb443a07b76c622ff669de6cef3f80"
 
 [".pi/agent/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "5561e89c2c680ca7ab1d131b9cc5ebc240e23468be7533289437b5870d552d1f"
+checksum.sha256 = "5985fbd68325ac27a0982334a495a0a4701f2e02db7619d1c8cfb4e12e49fe3b"
 
 [".pi/agent/settings.json"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/pi/agent/settings.json'
 checksum.sha256 = "c398cd92341bcc2dcc2153f030222630f488ea99b5ba2ad008217591f8e2b682"
+{{- end }}

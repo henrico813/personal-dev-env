@@ -1,9 +1,9 @@
 # Installation Architecture
 
-The repository describes one desired PDE environment. `install` and `update`
-call the same reconciliation code, so both process the complete environment.
-They do not take tool or backend selectors. `config` is the only supported
-subset.
+The repository describes full and terminal PDE profiles. `install` reconciles
+the selected profile; `update` reconciles the saved profile. Terminal skips
+full-only components, while terminal can expand to full through `install
+--profile full`. `config` applies the saved profile's chezmoi configuration.
 
 ## Dependency Order
 
@@ -12,7 +12,7 @@ The full order is:
 1. Install missing Ubuntu dependencies with apt.
 2. Check the host compiler, build tools, Ubuntu release, repository metadata,
    and writable destinations.
-3. Build and activate tmux.
+3. Download and activate the existing amd64-only direct tmux 3.7b binary.
 4. Install Aqua and all Aqua tools.
 5. Install direct-release tools, including Node.js, Go, and Rust.
 6. Install npm tools with the managed npm.
