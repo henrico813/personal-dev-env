@@ -233,15 +233,18 @@ pub(crate) fn list_models(
 }
 
 // Kept for the existing unit tests; run-time callers use the split checks above.
+#[cfg(test)]
 fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
     let dir = readable_pi_agent_dir(home)?;
     writable_pi_agent_dir(Some(&dir))
 }
 
+#[cfg(test)]
 fn auth_is_configured(home: Option<&str>) -> bool {
     has_provider_env() || pi_agent_dir_with_auth(home).is_some()
 }
 
+#[cfg(test)]
 pub fn require_auth() -> Result<(), String> {
     let config = discovery_config(std::env::var("HOME").ok().as_deref())?;
     require_run_auth(&config)
