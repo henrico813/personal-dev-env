@@ -38,9 +38,19 @@ vibe --help
 vibe run --help
 ```
 
-Before using `vibe run`, ensure provider auth is configured through one of
-the supported env vars or `~/.pi/agent/auth.json`. Missing auth should fail
-as `setup_error`, not a generic agent failure.
+Before using `vibe run`, select the provider before the first invocation.
+Honor an explicit provider prefix from the user. Otherwise, list configured
+Pi providers without reading credentials:
+
+```bash
+jq -r 'keys[]' "$HOME/.pi/agent/auth.json"
+```
+
+Use the first available preferred provider in this order: `openai-codex`, then
+`github-copilot`. Do not select `opencode-go` unless the user explicitly
+requests it. Preserve the requested model while replacing only its provider
+prefix. If neither preferred provider is configured, stop with `setup_error`
+and ask the user to configure one or explicitly select another provider.
 
 For this workflow, <task-context> is the complete plan and every document it references. For repo-backed plans, run the following research once per plan, not once per implementation step.
 
@@ -124,16 +134,9 @@ Handle statuses as follows:
 - `completed`: inspect the commit, run verification, update the plan, then continue.
 - `noop`: continue only if the step was already complete or intentionally no-op.
 - `agent_failed`, `commit_failed`, `refused_dirty`, `setup_error`: stop, inspect the reported logs/worktree, and notify the user.
-- When Vibe reports an authentication failure, list the configured Pi provider
-  names without reading credentials:
-
-  ```bash
-  jq -r 'keys[]' "$HOME/.pi/agent/auth.json"
-  ```
-
-- Retry with the configured provider prefix and the requested model. For
-  example, use `openai-codex/gpt-5.6-luna` when `openai-codex` is configured.
-  Do not change the requested model.
+- When Vibe reports an authentication failure, recheck the configured provider
+  names and retry once using the same provider-selection order. Do not change
+  the requested model.
 
 For completed steps, review correctness and consistency before running the next
 step:
