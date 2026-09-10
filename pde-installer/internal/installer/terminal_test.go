@@ -24,6 +24,7 @@ func TestTerminalDoctorProfiles(t *testing.T) {
 			bin := terminalProbeBin(t, test.missing)
 			t.Setenv("PATH", bin)
 			cfg := terminalTestConfig(t)
+			writeInvalidFullMetadata(t, cfg)
 			runner := run.Runner{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
 			err := hostPreflight(cfg, runner, preflightQuiet)
 			if (err != nil) != test.wantErr {
@@ -36,12 +37,7 @@ func TestTerminalDoctorProfiles(t *testing.T) {
 func TestTerminalListIgnoresFullMetadata(t *testing.T) {
 	t.Setenv("PATH", terminalProbeBin(t, ""))
 	cfg := terminalTestConfig(t)
-	if err := os.MkdirAll(filepath.Join(cfg.Home, ".local", "share", "pde", "npm"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cfg.Home, ".local", "share", "pde", "npm", "package.json"), []byte("invalid"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeInvalidFullMetadata(t, cfg)
 	var output bytes.Buffer
 	if err := list(cfg, run.Runner{Stdout: &output, Stderr: &bytes.Buffer{}}); err != nil {
 		t.Fatalf("list() error = %v", err)
@@ -51,6 +47,24 @@ func TestTerminalListIgnoresFullMetadata(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "opencode-ai") || strings.Contains(output.String(), "neovim") {
 		t.Fatalf("list output includes full-only item: %s", output.String())
+	}
+}
+
+func writeInvalidFullMetadata(t *testing.T, cfg config) {
+	t.Helper()
+	for _, directory := range []string{
+		filepath.Join(cfg.Home, ".local", "share", "pde", "npm"),
+		filepath.Join(cfg.Home, ".local", "share", "pde", "releases"),
+	} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(cfg.Home, ".local", "share", "pde", "npm", "package.json"), []byte("invalid"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.Home, ".local", "share", "pde", "releases", ".pde-state.json"), []byte("invalid"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
