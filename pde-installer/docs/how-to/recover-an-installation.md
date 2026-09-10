@@ -3,8 +3,8 @@
 The installer normally recovers itself after an interruption.
 
 1. Stop any other `pde-installer` process.
-2. Rerun the exact failed mutating command, including its profile option when
-   present:
+2. Rerun the exact failed mutating command. For a failed terminal install,
+   include `--profile terminal` exactly as before:
 
    ```bash
    pde-installer install --profile terminal

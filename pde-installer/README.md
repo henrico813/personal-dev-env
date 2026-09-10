@@ -31,8 +31,9 @@ pde-installer list
 The installer does not clone or update the checkout. It finds the checkout from
 the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
-`install` accepts `--profile full|terminal`; other commands use the saved
-profile. The terminal profile contains the runtime Ubuntu prerequisites
+Only `install` accepts `--profile full|terminal`. On a fresh `HOME`, omitting
+`--profile` selects full; an existing install reuses its saved profile. The
+terminal profile contains the runtime Ubuntu prerequisites
 (`ca-certificates`, `curl`, `file`, `git`, `gzip`, `tar`, `unzip`, `xclip`,
 `xz-utils`, and `zsh`), the existing amd64-only direct tmux 3.7b binary, fd,
 fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, Yazi/ya, and
@@ -41,7 +42,8 @@ plugin externals, Git template configuration, and PDE Git configuration.
 
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Full retains all of
-these components and everything else in the environment.
+these components and everything else in the environment. `update` and `config`
+require saved profile state; fresh `doctor` and `list` inspect full.
 
 ## Documentation
 

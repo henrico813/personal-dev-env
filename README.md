@@ -40,13 +40,16 @@ pde-installer list
 pde-installer config
 ```
 
-- `install` reconciles the full environment by default, or the selected profile,
-  in dependency order.
+- `install` reconciles the selected profile in dependency order. On a fresh
+  `HOME`, omitting `--profile` selects full; an existing install reuses its
+  saved profile.
 - `update` reconciles the saved profile.
 - `doctor` validates host prerequisites, pins, and managed paths for the saved
+  profile (or full on a fresh `HOME`).
+- `list` reports ownership and installed status for the saved profile (or full
+  on a fresh `HOME`).
+- `config` migrates legacy state and applies the chezmoi source for the saved
   profile.
-- `list` reports ownership and installed status.
-- `config` migrates legacy state and applies the chezmoi source.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
 Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to

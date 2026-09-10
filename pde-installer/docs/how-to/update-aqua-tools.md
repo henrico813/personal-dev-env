@@ -37,9 +37,9 @@
 Update Aqua's version in `internal/manifest/manifest.go`. Update its amd64 and
 arm64 archive checksums in `internal/aqua/aqua.go`.
 
-The installer hashes both Aqua configuration files. A changed hash causes it to
-stage a complete Aqua root, install all pinned packages, verify versions, and
-replace the old root.
+The installer hashes the selected profile's Aqua manifest and matching checksum
+file. A changed hash causes it to stage an Aqua root for that profile, install
+its pinned packages, verify versions, and replace the old root.
 
 There is no Aqua-only update. Run an update to reconcile the saved profile:
 

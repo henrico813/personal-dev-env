@@ -14,7 +14,7 @@ The Aqua registry also selects compatible artifacts, including Yazi's musl
 build on Ubuntu 22.04.
 
 The installer downloads and verifies the existing amd64-only direct tmux
-3.7b binary. PDE does not build tmux or use pkgsrc on the target host.
+3.7b binary from its pinned release.
 
 Profile selection determines which inventory and owners are reconciled.
 `install` uses its selected profile, while `update` uses the saved profile.

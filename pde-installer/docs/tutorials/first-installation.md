@@ -28,8 +28,9 @@ pde-installer install --profile terminal --dry-run
 ```
 
 The preview reads host and repository state but does not run mutating commands.
-Omit `--profile terminal` to preview the full profile on a fresh HOME. An
-existing install reuses its saved profile.
+Omit `--profile terminal` to preview the full profile on a fresh HOME. This
+fresh-HOME default does not replace saved state: an existing install reuses its
+saved profile.
 
 ## 4. Install
 
@@ -37,7 +38,7 @@ Choose one profile:
 
 ```bash
 pde-installer install --profile terminal
-pde-installer install                 # full on a fresh HOME
+pde-installer install                 # full only on a fresh HOME
 ```
 
 Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
