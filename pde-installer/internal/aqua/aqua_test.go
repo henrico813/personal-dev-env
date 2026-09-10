@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -48,6 +49,37 @@ func TestProfileChecksumsCoverSelectedPackages(t *testing.T) {
 			configName, checksumsName := selected.AquaFiles()
 			configPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", configName)
 			checksumsPath := filepath.Join(filepath.Dir(configPath), checksumsName)
+			configData, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var packages []string
+			for _, line := range strings.Split(string(configData), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "- name: ") {
+					packages = append(packages, strings.TrimPrefix(line, "- name: "))
+				}
+			}
+			repositories := map[string]string{
+				"fd": "sharkdp/fd", "fzf": "junegunn/fzf", "ripgrep": "BurntSushi/ripgrep", "bat": "sharkdp/bat",
+				"jq": "jqlang/jq", "chezmoi": "twpayne/chezmoi", "eza": "eza-community/eza", "zoxide": "ajeetdsouza/zoxide",
+				"bottom": "ClementTsang/bottom", "yq": "mikefarah/yq", "yazi": "sxyazi/yazi", "gopls": "golang.org/x/tools/gopls",
+				"lua-language-server": "LuaLS/lua-language-server",
+			}
+			var expectedPackages []string
+			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+				if item.Name == "aqua" || item.Name == "ya" {
+					continue
+				}
+				repository, ok := repositories[item.Name]
+				if !ok {
+					t.Fatalf("no expected Aqua package for %s", item.Name)
+				}
+				expectedPackages = append(expectedPackages, repository+"@"+item.Version)
+			}
+			if !reflect.DeepEqual(packages, expectedPackages) {
+				t.Fatalf("%s packages = %#v, want %#v", configName, packages, expectedPackages)
+			}
 			var document struct {
 				Checksums []struct {
 					ID string `json:"id"`
