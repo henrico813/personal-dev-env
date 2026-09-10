@@ -364,8 +364,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         &runtime_root,
         &mounts,
         &artifacts,
-        &requested_model,
-                &args.model,
+        &args.model,
         args.stderr_level.as_str(),
         args.insecure_tls,
     ) {
