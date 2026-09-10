@@ -43,17 +43,17 @@ func TestAquaProbeReportsMissingTool(t *testing.T) {
 
 func TestCurrentnessCandidatesIncludeYaziExecutable(t *testing.T) {
 	candidates := tools(profile.Terminal)
-	found := false
+	count := 0
 	for _, candidate := range candidates {
 		if candidate.name == "ya" {
-			found = true
+			count++
 		}
 	}
-	if !found {
-		t.Fatal("terminal currentness candidates omit ya")
+	if count != 1 {
+		t.Fatalf("terminal currentness candidates contain %d ya entries, want one", count)
 	}
-	if _, ok := manifest.Find("ya", manifest.Aqua); ok {
-		t.Fatal("ya must not be a separate Aqua package")
+	if _, ok := manifest.Find("ya", manifest.Aqua); !ok {
+		t.Fatal("ya is missing from the Aqua manifest")
 	}
 }
 

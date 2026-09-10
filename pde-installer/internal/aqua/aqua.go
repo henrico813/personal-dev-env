@@ -38,9 +38,6 @@ func tools(selected profile.Profile) []tool {
 			continue
 		}
 		result = append(result, tool{name: item.Name, version: item.Version})
-		if item.Name == "yazi" {
-			result = append(result, tool{name: "ya", version: item.Version})
-		}
 	}
 	return result
 }
