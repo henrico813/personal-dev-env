@@ -2,13 +2,15 @@
 set -eu
 
 target="$HOME/.zshrc"
-source="$PDE_REPO_ROOT/chezmoi/dot_zshrc"
 profile="${PDE_PROFILE:-}"
 case "$profile" in
 full|terminal) ;;
 *) printf 'fixture chezmoi: invalid profile\n' >&2; exit 1 ;;
 esac
 rendered="# fixture profile: $profile\n"
+rendered_file="$(mktemp)"
+trap 'rm -f "$rendered_file"' EXIT
+printf '%b' "$rendered" >"$rendered_file"
 fail_marker="$PDE_REPO_ROOT/chezmoi/.pde-smoke-fail"
 gitconfig_source="$PDE_REPO_ROOT/chezmoi/dot_config/pde/gitconfig"
 hook_source="$PDE_REPO_ROOT/chezmoi/dot_config/git/template/hooks/executable_commit-msg"
@@ -34,10 +36,10 @@ status)
 	fi
 	;;
 diff)
-	diff -u "$target" "$source" 2>/dev/null || true
+	diff -u "$target" "$rendered_file" 2>/dev/null || true
 	;;
 apply)
-	printf '%b' "$rendered" >"$target"
+	cp "$rendered_file" "$target"
 	rm -f "$HOME/.config/pde/paths.env"
 	mkdir -p "$HOME/.config/pde" "$HOME/.config/git/template/hooks"
 	cp "$gitconfig_source" "$HOME/.config/pde/gitconfig"
