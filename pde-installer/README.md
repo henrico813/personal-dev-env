@@ -36,7 +36,8 @@ profile. The terminal profile contains the runtime Ubuntu prerequisites
 (`ca-certificates`, `curl`, `file`, `git`, `gzip`, `tar`, `unzip`, `xclip`,
 `xz-utils`, and `zsh`), the existing amd64-only direct tmux 3.7b binary, fd,
 fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, Yazi/ya, and
-shell/tmux configuration.
+shell/tmux configuration, the retained bottom/Aqua configuration, common
+plugin externals, Git template configuration, and PDE Git configuration.
 
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Full retains all of

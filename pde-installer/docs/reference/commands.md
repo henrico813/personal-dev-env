@@ -15,16 +15,15 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ### `pde-installer install [--profile full|terminal] [--dry-run]`
 
-Reconciles the selected profile. A fresh install defaults to `full`; the
-selection is saved in `~/.config/pde/config.json`. A saved `terminal` profile
+Reconciles the selected profile. On a fresh HOME, an install without a profile
+defaults to `full`; an existing install reuses its saved profile. The selection is saved in `~/.config/pde/config.json`. A saved `terminal` profile
 can expand to `full`, but a saved `full` profile cannot change to `terminal`
 because installed components are not removed. It rejects UID 0. `--dry-run`
 prints ordered actions and does not perform mutations.
 
 Only `install` accepts `--profile`. `update` and `config` require a saved
 profile and use it. On a fresh home, `doctor` and `list` inspect `full`; after
-installation they inspect the saved profile. Profile-less legacy configuration
-must be repaired by adding `"profile": "full"` or `"profile": "terminal"` to
+installation they inspect the saved profile. A legacy profile-less configuration must be repaired by adding `"profile": "full"` or `"profile": "terminal"` to
 `~/.config/pde/config.json` before commands that require saved state can run.
 
 ### `pde-installer update [--dry-run]`

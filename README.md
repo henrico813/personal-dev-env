@@ -17,12 +17,14 @@ export PATH="$HOME/.local/bin:$PATH"
 pde-installer install --profile terminal
 ```
 
-This terminal profile is the small terminal-focused entry point. A fresh
-`pde-installer install` selects the full profile by default. Only `install`
-accepts `--profile full|terminal`; the selected profile is saved in
+This terminal profile is the small terminal-focused entry point. On a fresh
+HOME, omitting `--profile` selects the full profile. An existing install
+reuses its saved profile. Only `install` accepts `--profile full|terminal`; the
+selected profile is saved in
 `~/.config/pde/config.json`. A terminal installation can later expand to full
-with `pde-installer install --profile full`. A full installation cannot change
-to terminal because installed components are not removed.
+with `pde-installer install --profile full`. Existing terminal users must run
+`pde-installer install --profile full` to expand. A full installation cannot
+change to terminal because installed components are not removed.
 
 The installer does not clone or update the repository. Run it from anywhere
 inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set

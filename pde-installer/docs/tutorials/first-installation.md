@@ -28,7 +28,8 @@ pde-installer install --profile terminal --dry-run
 ```
 
 The preview reads host and repository state but does not run mutating commands.
-Omit `--profile terminal` to preview the full profile.
+Omit `--profile terminal` to preview the full profile on a fresh HOME. An
+existing install reuses its saved profile.
 
 ## 4. Install
 
@@ -36,15 +37,18 @@ Choose one profile:
 
 ```bash
 pde-installer install --profile terminal
-pde-installer install                 # full; also the default when omitted
+pde-installer install                 # full on a fresh HOME
 ```
 
-Terminal installs the reduced Ubuntu prerequisites, terminal tools, and
-terminal shell/tmux chezmoi configuration. It does not install the full
-profile's runtimes, editor, LSP, npm/AI tools, fonts, or editor/AI
-configuration. The installer saves the choice in
-`~/.config/pde/config.json`; later `update`, `config`, `doctor`, and `list` use
-that saved profile. A terminal installation can later expand to full.
+Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
+fd, fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, and Yazi/ya. It
+applies terminal shell/tmux configuration, retained bottom/Aqua configuration,
+common plugin externals, Git template configuration, and PDE Git configuration.
+It does not install the full profile's runtimes, editor, LSP, npm/AI tools,
+fonts, or editor/AI configuration. On a fresh HOME, omitting `--profile`
+selects full; an existing install reuses saved state. Existing terminal users
+must run `pde-installer install --profile full` to expand. Later `update`,
+`config`, `doctor`, and `list` use the saved profile.
 
 ## 5. Verify
 

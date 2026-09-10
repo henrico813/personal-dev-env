@@ -16,6 +16,8 @@ build on Ubuntu 22.04.
 The installer downloads a pinned static tmux binary and verifies its checksum.
 PDE no longer builds tmux or uses pkgsrc on the target host.
 
-Users do not choose a policy during a run. The repository assigns every item an
-owner, and `install` or `update` reconciles all owners. Only `config` exposes a
-supported subset.
+Profile selection determines which inventory and owners are reconciled.
+`install` uses its selected profile, while `update` uses the saved profile.
+Terminal skips full-only direct releases, runtimes, npm tools, builds, fonts,
+and editor/AI configuration. `config` applies the saved profile's chezmoi
+configuration.

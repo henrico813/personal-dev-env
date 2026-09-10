@@ -20,8 +20,9 @@
    aqua update-checksum -a -prune
    ```
 
-   The Yazi package supplies both `yazi` and `ya`; update both manifest entries
-   in both Aqua manifests when changing it.
+   Yazi has one Aqua package entry, and that package supplies the two inventory
+   executables `yazi` and `ya`; update that entry in both Aqua manifests when
+   changing it.
 4. Keep `gopls` and `lua-language-server` in the full manifest only. When
    updating chezmoi, also update its version in `internal/chezmoi/apply.go`.
 5. Run:

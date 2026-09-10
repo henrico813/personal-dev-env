@@ -16,7 +16,8 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
 - Reject UID 0 for mutations.
 - Use apt for Ubuntu dependencies and sudo only for apt.
 - Keep other installer destinations under HOME.
-- Keep tmux pinned, verified, and built under HOME.
+- Keep the existing amd64-only direct tmux 3.7b binary pinned, verified, and
+installed under HOME.
 - Keep checkout detection compatible with cwd, `--repo-root`, and `PDE_REPO_ROOT`.
 - Route mutations and external commands through `Runner`.
 - Keep `pde` dedicated to vault configuration and lookup.

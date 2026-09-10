@@ -7,7 +7,7 @@ each item. It is not an uninstall list.
 | Component | Primary metadata |
 |---|---|
 | Ubuntu dependencies | `internal/ubuntu/ubuntu.go` |
-| tmux | Pinned `mjakob-gh/build-static-tmux` asset and checksum in `internal/tmux/tmux.go`; manifest version |
+| tmux | Existing amd64-only direct 3.7b binary from `mjakob-gh/build-static-tmux` and checksum in `internal/tmux/tmux.go`; manifest version |
 | Aqua | `internal/aqua/aqua.go`; manifest version and architecture checksums |
 | Aqua tools | `../chezmoi/dot_config/aquaproj-aqua/`, manifest versions, and the chezmoi version in `internal/chezmoi/apply.go` |
 | Direct tools | `internal/direct/tools.go`; manifest versions and amd64/arm64 checksums |
