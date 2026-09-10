@@ -149,9 +149,8 @@ pub(crate) fn select(
                     .cloned()
             }),
     };
-    let selector = selected.ok_or_else(|| {
-        format!("no configured provider supports {}", request.text)
-    })?;
+    let selector =
+        selected.ok_or_else(|| format!("no configured provider supports {}", request.text))?;
     Ok(Resolved {
         requested: request.text,
         selector,
@@ -201,12 +200,7 @@ mod tests {
                 "other/gpt-5.4",
                 "openai-codex/gpt-5.4",
             ]),
-            &providers(&[
-                "opencode-go",
-                "github-copilot",
-                "other",
-                "openai-codex",
-            ]),
+            &providers(&["opencode-go", "github-copilot", "other", "openai-codex"]),
         )
         .expect("resolved");
 

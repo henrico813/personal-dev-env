@@ -160,7 +160,10 @@ fn finalize_changed_files(
 pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
     for input in inputs {
         if !input.is_file() {
-            return Err(format!("input must be an existing file: {}", input.display()));
+            return Err(format!(
+                "input must be an existing file: {}",
+                input.display()
+            ));
         }
     }
     Ok(())
@@ -205,7 +208,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             &session,
             &artifacts,
             &requested_model,
-                &args.model,
+            &args.model,
             ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
@@ -242,7 +245,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             );
@@ -323,7 +326,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
             )
@@ -393,7 +396,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::WrapperFailed,
@@ -448,7 +451,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::SnapshotFailed,
@@ -468,7 +471,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit),
                         Status::WrapperFailed,
@@ -495,7 +498,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                     &session,
                     &artifacts,
                     &requested_model,
-                &args.model,
+                    &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
                         Status::WrapperFailed,
@@ -536,7 +539,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         &session,
         &artifacts,
         &requested_model,
-                &args.model,
+        &args.model,
         ResultParts {
             pre_run_commit: Some(pre_run_commit),
             status,

@@ -18,7 +18,10 @@ const ENV_PROVIDERS: &[(&[&str], &str)] = &[
     (&["OPENAI_API_KEY"], "openai"),
     (&["GEMINI_API_KEY"], "google"),
     (&["DEEPSEEK_API_KEY"], "deepseek"),
-    (&["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"], "azure-openai"),
+    (
+        &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
+        "azure-openai",
+    ),
 ];
 
 const IMAGE: &str = "vibe-pi:0.5.0";
@@ -173,11 +176,16 @@ pub(crate) fn discovery_config(home: Option<&str>) -> Result<DiscoveryConfig, St
             .map_err(|error| format!("parse Pi auth configuration: {error}"))?;
         let providers = entries
             .into_keys()
-            .map(|name| Provider::parse(&name).map_err(|_| "invalid Pi provider configuration".to_string()))
+            .map(|name| {
+                Provider::parse(&name).map_err(|_| "invalid Pi provider configuration".to_string())
+            })
             .collect::<Result<BTreeSet<_>, _>>()?;
         configured.extend(providers);
     }
-    Ok(DiscoveryConfig { configured, pi_agent_dir })
+    Ok(DiscoveryConfig {
+        configured,
+        pi_agent_dir,
+    })
 }
 
 pub(crate) fn require_run_auth(config: &DiscoveryConfig) -> Result<(), String> {
@@ -188,7 +196,10 @@ pub(crate) fn require_run_auth(config: &DiscoveryConfig) -> Result<(), String> {
     }
 }
 
-pub(crate) fn list_models(config: &DiscoveryConfig, model: &str) -> Result<BTreeSet<Selector>, String> {
+pub(crate) fn list_models(
+    config: &DiscoveryConfig,
+    model: &str,
+) -> Result<BTreeSet<Selector>, String> {
     let mut command = Command::new("docker");
     command.args(["run", "--rm", "--entrypoint", "pi", "-e", "HOME=/vibe-home"]);
     if let Some(dir) = &config.pi_agent_dir {
@@ -207,7 +218,8 @@ pub(crate) fn list_models(config: &DiscoveryConfig, model: &str) -> Result<BTree
     if !output.status.success() {
         return Err("list Pi models failed".to_string());
     }
-    output.stdout
+    output
+        .stdout
         .split(|byte| *byte == b'\n')
         .filter_map(|line| {
             let line = std::str::from_utf8(line).ok()?;
