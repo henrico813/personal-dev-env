@@ -46,3 +46,6 @@ The `promote-memory` skill turns an explicitly requested learning into a
 reviewed source change. It targets this repository by default from any
 checkout, installs skills through checksummed chezmoi externals, and opens a
 pull request with Git author email `henryco4388@gmail.com`.
+
+The `supplied-input` skill directs agents to begin a workflow from required
+input already included in the request rather than asking for it again.
