@@ -1,6 +1,7 @@
 package aqua
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,6 +39,71 @@ func TestAquaProbeReportsMissingTool(t *testing.T) {
 	_, status, err := New(t.TempDir(), t.TempDir(), profile.Full, run.Runner{}).ToolProbe("fd", "v8.3.1")
 	if err != nil || status != "missing" {
 		t.Fatalf("ToolProbe() = _, %q, %v", status, err)
+	}
+}
+
+func TestProfileChecksumsCoverSelectedPackages(t *testing.T) {
+	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
+		t.Run(string(selected), func(t *testing.T) {
+			configName, checksumsName := selected.AquaFiles()
+			configPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", configName)
+			checksumsPath := filepath.Join(filepath.Dir(configPath), checksumsName)
+			var document struct {
+				Checksums []struct {
+					ID string `json:"id"`
+				} `json:"checksums"`
+			}
+			data, err := os.ReadFile(checksumsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(data, &document); err != nil {
+				t.Fatal(err)
+			}
+			ids := make([]string, 0, len(document.Checksums))
+			for _, checksum := range document.Checksums {
+				ids = append(ids, checksum.ID)
+			}
+			contains := func(fragment string) bool {
+				for _, id := range ids {
+					if strings.Contains(id, fragment) {
+						return true
+					}
+				}
+				return false
+			}
+			if !contains("registries/github_content/github.com/aquaproj/aqua-registry/v4.550.0") {
+				t.Fatal("standard registry checksum is missing")
+			}
+			for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+				if item.Name == "aqua" || item.Name == "ya" {
+					continue
+				}
+				repository := map[string]string{
+					"fd": "sharkdp/fd", "fzf": "junegunn/fzf", "ripgrep": "BurntSushi/ripgrep", "bat": "sharkdp/bat",
+					"jq": "jqlang/jq", "chezmoi": "twpayne/chezmoi", "eza": "eza-community/eza", "zoxide": "ajeetdsouza/zoxide",
+					"bottom": "ClementTsang/bottom", "yq": "mikefarah/yq", "yazi": "sxyazi/yazi", "gopls": "golang.org/x/tools/gopls",
+					"lua-language-server": "LuaLS/lua-language-server",
+				}[item.Name]
+				fragment := "github.com/" + repository + "/" + item.Version
+				matches := func(architectures ...string) bool {
+					for _, id := range ids {
+						if !strings.Contains(id, fragment) || !strings.Contains(id, "linux") {
+							continue
+						}
+						for _, architecture := range architectures {
+							if strings.Contains(id, architecture) {
+								return true
+							}
+						}
+					}
+					return false
+				}
+				if !matches("aarch64", "arm64") || !matches("x86_64", "x64", "amd64") {
+					t.Fatalf("Linux checksum artifacts for %s are missing", item.Name)
+				}
+			}
+		})
 	}
 }
 

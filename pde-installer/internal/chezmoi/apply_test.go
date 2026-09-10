@@ -101,7 +101,39 @@ type applyFixture struct {
 	state   string
 }
 
+func TestApplyUsesProfileEnvironment(t *testing.T) {
+	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
+		t.Run(string(selected), func(t *testing.T) {
+			fixture := newApplyFixtureForProfile(t, "unchanged", selected)
+			if _, err := fixture.manager.Apply(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestApplyValidatesRequiredTemplates(t *testing.T) {
+	for _, name := range []string{".chezmoiignore.tmpl", "dot_zshrc.tmpl", "dot_tmux.conf.tmpl"} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newApplyFixture(t, "success")
+			if err := os.Remove(filepath.Join(fixture.manager.Source(), name)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fixture.manager.Apply(); err == nil {
+				t.Fatal("Apply() succeeded with missing template")
+			}
+			if _, err := os.Stat(fixture.state); !os.IsNotExist(err) {
+				t.Fatalf("fake apply ran; state stat error = %v", err)
+			}
+		})
+	}
+}
+
 func newApplyFixture(t *testing.T, mode string) applyFixture {
+	return newApplyFixtureForProfile(t, mode, profile.Full)
+}
+
+func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profile) applyFixture {
 	t.Helper()
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -121,6 +153,7 @@ func newApplyFixture(t *testing.T, mode string) applyFixture {
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode-mem.jsonc"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
+	writeApplyFile(t, filepath.Join(source, "test-profile"), string(selected)+"\n")
 	writeExecutable(t, binary, `#!/bin/sh
 set -eu
 source_dir=
@@ -137,9 +170,15 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 : "${AQUA_ROOT_DIR:?}"
-[ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
-[ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
-[ "$PDE_PROFILE" = full ]
+expected_profile=$(cat "$source_dir/test-profile")
+[ "$PDE_PROFILE" = "$expected_profile" ]
+case "$expected_profile" in
+	full) aqua_name=aqua ; checksums_name=aqua-checksums ;;
+	terminal) aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums ;;
+	*) exit 8 ;;
+esac
+[ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/$aqua_name.yaml" ]
+[ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/$checksums_name.json" ]
 mode=$(cat "$source_dir/test-mode")
 target="$destination/.config/tool"
 case "$command" in
@@ -167,7 +206,7 @@ case "$command" in
 
 	state := filepath.Join(home, ".local", "state", "pde", "chezmoi.boltdb")
 	return applyFixture{
-		manager: New(home, repoRoot, aquaRoot, profile.Full, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
+		manager: New(home, repoRoot, aquaRoot, selected, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
 		target:  filepath.Join(home, ".config", "tool"),
 		state:   state,
 	}
