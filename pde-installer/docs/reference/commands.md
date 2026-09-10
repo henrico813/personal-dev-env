@@ -30,15 +30,20 @@ profile-less configuration without installer state must be repaired by adding
 
 ### `pde-installer update [--dry-run]`
 
-Reconciles the saved profile to repository pins. It requires saved profile
-state and has no profile selector.
+Updates tools and home configuration for the saved profile. Use it after changes
+to package lists, tool versions, runtimes, or local builds. It first updates
+managed components, then applies managed home configuration. It requires saved
+profile state, has no profile selector, and rejects UID 0.
 
 ### `pde-installer config [--dry-run]`
 
-Migrates legacy PDE configuration, then applies the chezmoi source for the
-saved profile without reconciling other backends. It rejects UID 0. Dry run
-executes read-only chezmoi status and diff without refreshing externals or
-running scripts. A managed Aqua installation of chezmoi must already exist.
+Applies managed home configuration for the saved profile without updating tools,
+runtimes, packages, or local builds. Use it after changes only to shell, Git,
+editor, or AI configuration. A normal run can update managed configuration files
+and run source-managed scripts. It migrates older PDE settings automatically,
+requires an installed Aqua-managed chezmoi binary, and rejects UID 0. Its dry
+run uses read-only chezmoi status and diff without refreshing external content
+or running scripts.
 
 `config` also configures Git's template directory at
 `~/.config/git/template`. Future `git init` and `git clone` operations receive
