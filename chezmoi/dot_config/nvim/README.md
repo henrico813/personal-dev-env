@@ -127,7 +127,7 @@ vim.keymap.set("n", "<leader>xx", "<cmd>SomeCommand<cr>", { desc = "..." })
 Add `require("plugins.<name>")` to `init.lua`. Restart nvim.
 
 To make this reproducible on a fresh machine, add the plugin archive and its
-SHA-256 checksum to `chezmoi/.chezmoiexternal.toml`.
+SHA-256 checksum to `chezmoi/.chezmoiexternal.toml.tmpl`.
 
 ### Add a keymap
 

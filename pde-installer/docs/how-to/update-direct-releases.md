@@ -1,6 +1,7 @@
 # Update Direct Releases
 
-Direct releases contain runtimes, Neovim, Keychain, and fonts.
+Direct releases contain full-only runtimes, Neovim, Keychain, and fonts.
+Terminal updates skip these components.
 
 ## Tools and Runtimes
 
@@ -25,4 +26,5 @@ Direct releases contain runtimes, Neovim, Keychain, and fonts.
 
 The backend verifies SHA-256 values before activation. It uses direct releases
 for exact runtimes and layouts that other supported managers do not provide.
-There is no direct-release-only command; `update` reconciles all backends.
+There is no direct-release-only command; `update` reconciles the saved
+profile and skips these full-only components for terminal installations.

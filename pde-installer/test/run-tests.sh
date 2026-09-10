@@ -11,6 +11,12 @@ base_image() {
 	printf 'pde-base:%s-%s\n' "$version" "${identity%% *}"
 }
 
+terminal_base_image() {
+	local identity
+	identity="$(sha256sum "$SCRIPT_DIR/Dockerfile.terminal")"
+	printf 'pde-terminal-base:22.04-%s\n' "${identity%% *}"
+}
+
 build_image() {
 	local version="$1" base
 	base="$(base_image "$version")"
@@ -29,6 +35,16 @@ smoke() {
 	done
 }
 
+terminal() {
+	local base
+	base="$(terminal_base_image)"
+	if ! docker image inspect "$base" >/dev/null 2>&1; then
+		docker build -t "$base" --build-arg UBUNTU_VERSION=22.04 -f "$SCRIPT_DIR/Dockerfile.terminal" "$REPO_ROOT"
+	fi
+	docker build -t pde-installer-terminal --build-arg "BASE_IMAGE=$base" -f "$SCRIPT_DIR/Dockerfile" "$REPO_ROOT"
+	docker run --rm pde-installer-terminal ./pde-installer/test/verify-terminal.sh
+}
+
 clean() {
 	local version
 	for version in "${UBUNTU_VERSIONS[@]}"; do
@@ -38,6 +54,7 @@ clean() {
 
 case "${1:-smoke}" in
 	smoke) smoke ;;
+	terminal) terminal ;;
 	clean) clean ;;
-	*) printf 'usage: %s [smoke|clean]\n' "$0" >&2; exit 2 ;;
+	*) printf 'usage: %s [smoke|terminal|clean]\n' "$0" >&2; exit 2 ;;
 esac
