@@ -12,6 +12,22 @@ jobs:
       - name: test
         run: bash ai/skills/git-messages/scripts/check-message.test.sh
 
+  rust-development:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai/skills/rust-development/examples
+    steps:
+      - uses: actions/checkout@v4
+      - name: format
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets --offline --locked -- -D warnings
+      - name: test
+        run: cargo test --offline --locked
+      - name: docs
+        run: cargo doc --no-deps --offline --locked
+
   planner:
     runs-on: ubuntu-latest
     defaults:

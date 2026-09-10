@@ -100,6 +100,7 @@ repo-managed AI config.
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/`, `~/.codex/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/`, `~/.codex/skills/go-development/` | Shared Go development guidance |
+| Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/`, `~/.codex/skills/rust-development/` | Shared Rust development guidance |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
