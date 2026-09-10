@@ -52,10 +52,11 @@ git -C "$repository" init --template="$HOME/.config/git/template"
 
 ### `pde-installer doctor`
 
-Checks the non-root user, archive commands, a fetcher, Ubuntu and
+Checks the non-root user, common archive commands and a fetcher, Ubuntu and
 package-manager requirements, repository metadata, and writable managed
-destinations for both profiles. C and C++ compilation and build-command checks
-are full-profile-only. It exits with an error if any applicable check
+destinations for the resolved profile. C and C++ compilation and build-command
+checks are full-profile-only; common archive and fetch checks apply to both
+profiles. It exits with an error if any applicable check
 fails.
 
 ### `pde-installer list`

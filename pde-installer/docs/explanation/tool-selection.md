@@ -13,8 +13,8 @@ The installer assigns tools by this policy:
 The Aqua registry also selects compatible artifacts, including Yazi's musl
 build on Ubuntu 22.04.
 
-The installer downloads and verifies the existing amd64-only direct tmux
-3.7b binary from its pinned release.
+The installer downloads and verifies tmux, the existing amd64-only direct
+binary, version 3.7b from its pinned release.
 
 Profile selection determines which inventory and owners are reconciled.
 `install` uses its selected profile, while `update` uses the saved profile.
