@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"pde-installer/internal/profile"
 )
 
 // Migration must preserve existing settings and legacy vault paths.
@@ -23,7 +26,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +46,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		"install_path":  "/repo",
 		"main_vault":    "/vault/main",
 		"other":         true,
+		"profile":       "full",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("config = %#v", got)
@@ -51,6 +55,32 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		if got[key] != value {
 			t.Errorf("config[%q] = %#v, want %#v", key, got[key], value)
 		}
+	}
+}
+
+func TestLegacyConfigPersistsFullProfile(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{\"install_path\":\"/old\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"profile": "full"`) {
+		t.Fatalf("config = %s", data)
 	}
 }
 
@@ -64,7 +94,7 @@ func TestLegacyConfigHandlesNull(t *testing.T) {
 	if err := os.WriteFile(path, []byte("null\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,12 +110,12 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	original := []byte("{\"install_path\":\"/old\"}\n")
+	original := []byte("{\"install_path\":\"/old\",\"profile\":\"terminal\"}\n")
 	if err := os.WriteFile(path, original, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +141,7 @@ func TestLegacyNvimLinkRollsBack(t *testing.T) {
 	if err := os.Symlink(target, destination); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo"})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
 	if err != nil {
 		t.Fatal(err)
 	}

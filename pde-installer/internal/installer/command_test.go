@@ -6,6 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
+	"pde-installer/internal/run"
 )
 
 // Concurrent installers can corrupt shared files and package state.
@@ -43,6 +48,96 @@ func TestCommandRejectsInvalidRepository(t *testing.T) {
 	err := command.Execute()
 	if err == nil || !strings.Contains(err.Error(), "invalid --repo-root") {
 		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestCommandsRecoverSavedProfile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("mutating commands intentionally reject UID 0")
+	}
+	for _, commandName := range []string{"update", "doctor", "list"} {
+		t.Run(commandName, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			path := filepath.Join(home, ".config", "pde", "config.json")
+			writeCommandTestFile(t, path, `{"profile":"full"}`+"\n")
+			stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
+			writeCommandTestFile(t, stage, `{"profile":"terminal"}`+"\n")
+			journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := journal.Activate(stage, path); err != nil {
+				t.Fatal(err)
+			}
+
+			var got profile.Profile
+			action := func(config config, _ run.Runner) error {
+				got = config.Profile
+				return nil
+			}
+			repoRoot := testRepositoryRoot(t)
+			var command *cobra.Command
+			switch commandName {
+			case "update":
+				command = mutatingCommand(commandName, "", &repoRoot, requireProfile, nil, action)
+			case "doctor", "list":
+				command = readCommand(commandName, "", &repoRoot, action)
+			}
+			if err := command.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if got != profile.Full {
+				t.Fatalf("recovered profile = %q, want %q", got, profile.Full)
+			}
+		})
+	}
+}
+
+func writeCommandTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateRejectsProfileFlag(t *testing.T) {
+	command := NewCommand()
+	command.SetArgs([]string{"update", "--profile", "terminal"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("update profile flag error = %v", err)
+	}
+}
+
+func TestInstallPreservesFullProfile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("mutating commands intentionally reject UID 0")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{"profile":"full"}` + "\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	command := NewCommand()
+	command.SetArgs([]string{"install", "--profile", "terminal", "--repo-root", testRepositoryRoot(t)})
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cannot change profile") {
+		t.Fatalf("install downgrade error = %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("config changed to %q", got)
 	}
 }
 
