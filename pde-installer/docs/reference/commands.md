@@ -13,22 +13,32 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ## Commands
 
-### `pde-installer install [--dry-run]`
+### `pde-installer install [--profile full|terminal] [--dry-run]`
 
-Reconciles every managed component. It rejects UID 0. `--dry-run` prints
-ordered actions and does not perform mutations.
+Reconciles the selected profile. On a fresh HOME, an install without a profile
+defaults to `full`; an existing install reuses its saved profile. The selection is saved in `~/.config/pde/config.json`. A saved `terminal` profile
+can expand to `full`, but a saved `full` profile cannot change to `terminal`
+because installed components are not removed. It rejects UID 0. `--dry-run`
+prints ordered actions and does not perform mutations.
+
+Only `install` accepts `--profile`. `update` and `config` require a saved
+profile and use it. On a fresh home, `doctor` and `list` inspect `full`; after
+installation they inspect the saved profile. Existing installer state without a
+profile is treated as `full` and saved during the next mutating command. A
+profile-less configuration without installer state must be repaired by adding
+`"profile": "full"` or `"profile": "terminal"`.
 
 ### `pde-installer update [--dry-run]`
 
-Runs the same full reconciliation as `install`. It has no tool or backend
-selector.
+Reconciles the saved profile to repository pins. It requires saved profile
+state and has no profile selector.
 
 ### `pde-installer config [--dry-run]`
 
-Migrates legacy PDE configuration, then applies the complete chezmoi source
-without reconciling other backends. It rejects UID 0. Dry run executes read-only
-chezmoi status and diff without refreshing externals or running scripts. A
-managed Aqua installation of chezmoi must already exist.
+Migrates legacy PDE configuration, then applies the chezmoi source for the
+saved profile without reconciling other backends. It rejects UID 0. Dry run
+executes read-only chezmoi status and diff without refreshing externals or
+running scripts. A managed Aqua installation of chezmoi must already exist.
 
 `config` also configures Git's template directory at
 `~/.config/git/template`. Future `git init` and `git clone` operations receive
@@ -44,9 +54,12 @@ git -C "$repository" init --template="$HOME/.config/git/template"
 
 ### `pde-installer doctor`
 
-Checks the non-root user, C and C++ compilation, build and archive commands, a
-fetcher, Ubuntu and package-manager requirements, repository metadata, and
-writable managed destinations. It exits with an error if any check fails.
+Checks the non-root user, common archive commands and a fetcher, Ubuntu and
+package-manager requirements, repository metadata, and writable managed
+destinations for the resolved profile. C and C++ compilation and build-command
+checks are full-profile-only; common archive and fetch checks apply to both
+profiles. It exits with an error if any applicable check
+fails.
 
 ### `pde-installer list`
 

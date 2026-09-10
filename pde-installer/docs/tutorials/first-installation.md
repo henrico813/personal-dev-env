@@ -21,21 +21,35 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## 3. Preview the Work
 
+For a terminal installation, preview the reduced profile:
+
 ```bash
-pde-installer install --dry-run
+pde-installer install --profile terminal --dry-run
 ```
 
 The preview reads host and repository state but does not run mutating commands.
+Omit `--profile terminal` to preview the full profile on a fresh HOME. This
+fresh-HOME default does not replace saved state: an existing install reuses its
+saved profile.
 
 ## 4. Install
 
+Choose one profile:
+
 ```bash
-pde-installer install
+pde-installer install --profile terminal
+pde-installer install                 # full only on a fresh HOME
 ```
 
-Enter your sudo password if `apt-get` asks for it. The command installs missing
-Ubuntu dependencies, then reconciles every user-owned component and the chezmoi
-configuration. You cannot select individual tools or backends.
+Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
+fd, fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, and Yazi/ya. It
+applies terminal shell/tmux configuration, retained bottom/Aqua configuration,
+common plugin externals, Git template configuration, and PDE Git configuration.
+It does not install the full profile's runtimes, editor, LSP, npm/AI tools,
+fonts, or editor/AI configuration. On a fresh HOME, omitting `--profile`
+selects full; an existing install reuses saved state. Existing terminal users
+must run `pde-installer install --profile full` to expand. Later `update`,
+`config`, `doctor`, and `list` use the saved profile.
 
 ## 5. Verify
 

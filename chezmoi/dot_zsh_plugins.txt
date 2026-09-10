@@ -1,1 +1,1 @@
-# Shell plugins are pinned in .chezmoiexternal.toml and loaded by .zshrc.
+# Shell plugins are pinned in .chezmoiexternal.toml.tmpl and loaded by .zshrc.

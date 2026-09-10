@@ -16,6 +16,7 @@ mkdir -p "$HOME/.local/share/aquaproj-aqua/bin" "$HOME/.config/opencode" "$HOME/
 install -m 0755 "$REPO_ROOT/pde-installer/test/fixtures/chezmoi" "$HOME/.local/share/aquaproj-aqua/bin/chezmoi"
 printf 'preserve-me\n' >"$HOME/.config/opencode/smoke-marker"
 printf 'deprecated=true\n' >"$HOME/.config/pde/paths.env"
+printf '{"profile":"full"}\n' >"$HOME/.config/pde/config.json"
 existing_repository="$HOME/existing-repository"
 git init --quiet "$existing_repository"
 
@@ -27,7 +28,8 @@ after="$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 -cf - -C "
 [[ "$before" == "$after" ]]
 
 pde-installer config --repo-root "$REPO_ROOT"
-cmp -s "$REPO_ROOT/chezmoi/dot_zshrc" "$HOME/.zshrc"
+printf '# fixture profile: full\n' | cmp -s - "$HOME/.zshrc"
+zsh -n "$HOME/.zshrc"
 [[ ! -e "$HOME/.config/pde/paths.env" ]]
 [[ "$(cat "$HOME/.config/opencode/smoke-marker")" == "preserve-me" ]]
 new_repository="$HOME/new-repository"

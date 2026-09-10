@@ -1,14 +1,16 @@
 # Disable terminal flow control to enable Ctrl-S for forward history search
 stty -ixon
 
+{{- if eq (env "PDE_PROFILE") "full" }}
 # SSH agent via keychain (lazy key loading)
 if command -v keychain &>/dev/null; then
     eval "$(keychain --eval --agents ssh --quiet)"
 fi
+{{- end }}
 
 # Plugins are checksummed chezmoi externals and load only from local paths.
 PDE_ZSH_PLUGINS=${ZDOTDIR:-$HOME}/.local/share/zsh/plugins
-for plugin in colored-man-pages command-not-found git git-extras node; do
+for plugin in colored-man-pages command-not-found git git-extras{{ if eq (env "PDE_PROFILE") "full" }} node{{ end }}; do
     source "$PDE_ZSH_PLUGINS/ohmyzsh/plugins/$plugin/$plugin.plugin.zsh"
 done
 fpath=("$PDE_ZSH_PLUGINS/zsh-completions/src" $fpath)
@@ -23,14 +25,18 @@ source "$PDE_ZSH_PLUGINS/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
 bindkey '^R' history-incremental-search-backward
 bindkey '^S' history-incremental-search-forward
 
+{{- if eq (env "PDE_PROFILE") "full" }}
 # List out all globally installed npm packages
 alias list-npm-globals='npm list -g --depth=0'
 # use neovim instead of vim
 alias vim='nvim'
+{{- end }}
 # checkout branch using fzf
 alias gcob='git branch | fzf | xargs git checkout'
+{{- if eq (env "PDE_PROFILE") "full" }}
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
+{{- end }}
 # cat -> bat
 alias cat='bat'
 # colored ls output
@@ -46,13 +52,21 @@ export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --pad
 # PATH
 export PATH="$HOME/.local/bin:$PATH"
 export AQUA_ROOT_DIR="$HOME/.local/share/aquaproj-aqua"
+{{- if eq (env "PDE_PROFILE") "terminal" }}
+export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua-terminal.yaml"
+export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-terminal-checksums.json"
+{{- else }}
 export AQUA_GLOBAL_CONFIG="$HOME/.config/aquaproj-aqua/aqua.yaml"
+export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-checksums.json"
+{{- end }}
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 
 export BAT_THEME="gruvbox-dark"
 
+{{- if eq (env "PDE_PROFILE") "full" }}
 # EDITOR
 export EDITOR=$(which nvim)
+{{- end }}
 
 # LITELLM
 # export LITELLM_MASTER_KEY=<your-litellm-master-key>

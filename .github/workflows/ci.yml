@@ -69,6 +69,14 @@ jobs:
       - name: rootless command smoke
         run: ./pde-installer/test/run-tests.sh smoke
 
+  pde-installer-terminal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: terminal installation
+        run: ./pde-installer/test/run-tests.sh terminal
+
   surveil:
     runs-on: ubuntu-latest
     steps:

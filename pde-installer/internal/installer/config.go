@@ -7,10 +7,19 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 )
 
 type config struct {
 	Home, RepoRoot, LocalBin, AquaRoot string
+	Profile                            profile.Profile
+}
+
+func (c config) validateProfile() error {
+	if !c.Profile.Valid() {
+		return fmt.Errorf("invalid profile %q; use full or terminal", c.Profile)
+	}
+	return nil
 }
 
 func detectConfig(flagRoot string) (config, error) {

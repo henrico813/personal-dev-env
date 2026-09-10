@@ -34,7 +34,7 @@ Choose the narrowest one:
 1. Restate the learning as one concise, future-facing rule.
 2. Search `ai/skills/` for overlap before creating a package.
 3. Write the skill and install it through
-   `chezmoi/.chezmoiexternal.toml` entries for
+   `chezmoi/.chezmoiexternal.toml.tmpl` entries for
    `.agents/skills/<name>/SKILL.md` and `.codex/skills/<name>/SKILL.md`,
    each with a SHA256 checksum.
 4. When `ai/AGENTS.md` changes, recompute and update every `AGENTS.md`

@@ -11,6 +11,7 @@ import (
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -30,12 +31,13 @@ func checksum(architecture string) (string, bool) {
 	}
 }
 
-func tools() []tool {
+func tools(selected profile.Profile) []tool {
 	var result []tool
-	for _, item := range manifest.ByOwner(manifest.Aqua) {
-		if item.Name != "aqua" {
-			result = append(result, tool{name: item.Name, version: item.Version})
+	for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
+		if item.Name == "aqua" {
+			continue
 		}
+		result = append(result, tool{name: item.Name, version: item.Version})
 	}
 	return result
 }
@@ -43,6 +45,7 @@ func tools() []tool {
 // Manager installs Aqua and its pinned tool set for one user.
 type Manager struct {
 	home, repoRoot, root string
+	profile              profile.Profile
 	runner               run.Runner
 }
 
@@ -52,14 +55,17 @@ type state struct {
 }
 
 // New returns an Aqua manager rooted in the user's home directory.
-func New(home, repoRoot string, runner run.Runner) Manager {
-	return Manager{home: home, repoRoot: repoRoot, root: filepath.Join(home, ".local", "share", "aquaproj-aqua"), runner: runner}
+func New(home, repoRoot string, selected profile.Profile, runner run.Runner) Manager {
+	return Manager{home: home, repoRoot: repoRoot, root: filepath.Join(home, ".local", "share", "aquaproj-aqua"), profile: selected, runner: runner}
 }
 
 func (m Manager) binary() string { return filepath.Join(m.root, "bin", "aqua") }
 
 // Reconcile installs the pinned Aqua release and managed tools.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
+	if !m.profile.Valid() {
+		return nil, fmt.Errorf("invalid profile %q; use full or terminal", m.profile)
+	}
 	aqua, ok := manifest.Find("aqua", manifest.Aqua)
 	if !ok {
 		return nil, fmt.Errorf("aqua is missing from manifest")
@@ -68,8 +74,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if runtime.GOOS != "linux" || !ok {
 		return nil, fmt.Errorf("unsupported Aqua platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	config := filepath.Join(m.repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua.yaml")
-	checksumsFile := filepath.Join(filepath.Dir(config), "aqua-checksums.json")
+	configName, checksumsName := m.profile.AquaFiles()
+	config := filepath.Join(m.repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", configName)
+	checksumsFile := filepath.Join(filepath.Dir(config), checksumsName)
 	for _, path := range []string{config, checksumsFile} {
 		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("required Aqua source is not a regular file: %s", path)
@@ -149,7 +156,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := fsutil.CopyPath(checksumsFile, stagedChecksums); err != nil {
 		return nil, err
 	}
-	environment := []string{"AQUA_ROOT_DIR=" + stage, "AQUA_GLOBAL_CONFIG=" + stagedManifest, "AQUA_CHECKSUMS_PATH=" + stagedChecksums, "PATH=" + filepath.Join(stage, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")}
+	environment := []string{"AQUA_ROOT_DIR=" + stage, "AQUA_GLOBAL_CONFIG=" + stagedManifest, "AQUA_CHECKSUMS_PATH=" + stagedChecksums, "PATH=" + filepath.Join(stage, "bin") + string(os.PathListSeparator) + filepath.Join(m.home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")}
 	if err := fsutil.GuardHome(m.home, stage); err != nil {
 		return nil, err
 	}
@@ -191,7 +198,7 @@ func (m Manager) current(wanted state) (bool, error) {
 	if _, status, err := m.Probe(); err != nil || status != "current" {
 		return false, err
 	}
-	for _, candidate := range tools() {
+	for _, candidate := range tools(m.profile) {
 		if _, status, err := m.ToolProbe(candidate.name, candidate.version); err != nil || status != "current" {
 			return false, err
 		}

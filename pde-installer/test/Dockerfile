@@ -10,8 +10,7 @@ RUN go build -o /out/pde-installer .
 
 FROM ${BASE_IMAGE}
 COPY --from=builder --chown=testuser:testuser /out/pde-installer /home/testuser/.local/bin/pde-installer
-COPY --from=builder /usr/local/go /usr/local/go
-ENV PATH="/home/testuser/.local/bin:/usr/local/go/bin:${PATH}"
+ENV PATH="/home/testuser/.local/bin:${PATH}"
 COPY --chown=testuser:testuser . /home/testuser/personal-dev-env
 USER testuser
 WORKDIR /home/testuser/personal-dev-env

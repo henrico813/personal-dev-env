@@ -14,7 +14,8 @@ Ubuntu dependencies and tmux have separate metadata.
    go run . update --dry-run --repo-root ..
    ```
 
-The backend checks `dpkg-query`. If any required package is missing, it runs
+The selected profile determines the Ubuntu package set. The backend checks
+`dpkg-query`. If any required package is missing, it runs
 `sudo apt-get update` and one `sudo apt-get install -y --no-install-recommends`
 command. It does not upgrade a package that is already installed.
 
@@ -30,4 +31,5 @@ The installer downloads the pinned amd64 binary from
 `mjakob-gh/build-static-tmux` and verifies its SHA-256 checksum. Do not use the
 latest-release URL. Pin a versioned asset and its checksum.
 
-There is no Ubuntu-only or tmux-only command. `update` reconciles everything.
+There is no Ubuntu-only or tmux-only command. `update` reconciles the saved
+profile.
