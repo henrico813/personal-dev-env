@@ -7,8 +7,6 @@
 - Before writing a commit or pull request message, load and follow the
   `git-messages` skill.
 - Do not add AI attribution to commits or pull requests.
-- Follow the `supplied-input` skill when a request includes command input or a
-  research question.
 
 ## Testing
 

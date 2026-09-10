@@ -215,7 +215,7 @@ checksum.sha256 = "894eec70433cdaf68d3f1a8f81fc87fcc3ffaa96cdf3e7201c0590a4e9812
 [".config/opencode/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "49e975ebf02d3ac4b60dd91f06ccdd8e5a4b12be6c254edc7ad4124e1400ced5"
+checksum.sha256 = "5985fbd68325ac27a0982334a495a0a4701f2e02db7619d1c8cfb4e12e49fe3b"
 
 [".config/opencode/agents/codebase-analyzer.md"]
 type = "file"
@@ -320,7 +320,7 @@ checksum.sha256 = "7e7e9a64b90ccbbce08ea3bc67e76bdf1442912f47db09d257a7910e44aab
 [".codex/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "49e975ebf02d3ac4b60dd91f06ccdd8e5a4b12be6c254edc7ad4124e1400ced5"
+checksum.sha256 = "5985fbd68325ac27a0982334a495a0a4701f2e02db7619d1c8cfb4e12e49fe3b"
 
 [".codex/skills/cleanup-plan/SKILL.md"]
 type = "file"
@@ -382,25 +382,15 @@ type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/promote-memory/SKILL.md'
 checksum.sha256 = "453ef00856d528d528720216c32d562510f22c6bb380cb1c7c15e4cb2021fab5"
 
-[".agents/skills/supplied-input/SKILL.md"]
-type = "file"
-url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/supplied-input/SKILL.md'
-checksum.sha256 = "e0fbac910087dfcbb662c7b8188364bdaf20a9a97c920014c96414de976cb13f"
-
 [".codex/skills/promote-memory/SKILL.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/promote-memory/SKILL.md'
 checksum.sha256 = "453ef00856d528d528720216c32d562510f22c6bb380cb1c7c15e4cb2021fab5"
 
-[".codex/skills/supplied-input/SKILL.md"]
-type = "file"
-url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/skills/supplied-input/SKILL.md'
-checksum.sha256 = "e0fbac910087dfcbb662c7b8188364bdaf20a9a97c920014c96414de976cb13f"
-
 [".pi/agent/AGENTS.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
-checksum.sha256 = "49e975ebf02d3ac4b60dd91f06ccdd8e5a4b12be6c254edc7ad4124e1400ced5"
+checksum.sha256 = "5561e89c2c680ca7ab1d131b9cc5ebc240e23468be7533289437b5870d552d1f"
 
 [".pi/agent/settings.json"]
 type = "file"
