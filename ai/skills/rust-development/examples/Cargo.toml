@@ -1,0 +1,11 @@
+[package]
+name = "rust-skill-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[[bin]]
+name = "retry-count"
+path = "src/main.rs"

@@ -20,6 +20,12 @@ printf '{"profile":"full"}\n' >"$HOME/.config/pde/config.json"
 existing_repository="$HOME/existing-repository"
 git init --quiet "$existing_repository"
 
+# Exercise an upgrade where shared skill roots exist but Rust is new.
+mkdir -p "$HOME/.agents/skills" "$HOME/.codex/skills"
+rm -rf "$HOME/.agents/skills/rust-development" "$HOME/.codex/skills/rust-development"
+[[ ! -e "$HOME/.agents/skills/rust-development" ]]
+[[ ! -e "$HOME/.codex/skills/rust-development" ]]
+
 before="$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 -cf - -C "$HOME" . | sha256sum)"
 pde-installer install --dry-run --repo-root "$REPO_ROOT"
 pde-installer update --dry-run --repo-root "$REPO_ROOT"
@@ -30,6 +36,12 @@ after="$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 -cf - -C "
 pde-installer config --repo-root "$REPO_ROOT"
 printf '# fixture profile: full\n' | cmp -s - "$HOME/.zshrc"
 zsh -n "$HOME/.zshrc"
+[[ -f "$HOME/.agents/skills/rust-development/SKILL.md" ]]
+[[ -f "$HOME/.agents/skills/rust-development/examples/src/lib.rs" ]]
+[[ -f "$HOME/.agents/skills/rust-development/references/testing.md" ]]
+[[ -f "$HOME/.codex/skills/rust-development/SKILL.md" ]]
+[[ -f "$HOME/.codex/skills/rust-development/examples/src/lib.rs" ]]
+[[ -f "$HOME/.codex/skills/rust-development/references/testing.md" ]]
 [[ ! -e "$HOME/.config/pde/paths.env" ]]
 [[ "$(cat "$HOME/.config/opencode/smoke-marker")" == "preserve-me" ]]
 new_repository="$HOME/new-repository"
@@ -45,7 +57,8 @@ rerun="$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 -cf - -C "
 failure_repo="$(mktemp -d)"
 trap 'rm -rf "$failure_repo"' EXIT
 cp -a "$REPO_ROOT/chezmoi" "$failure_repo/chezmoi"
-mkdir -p "$failure_repo/planner" "$failure_repo/pde-installer"
+mkdir -p "$failure_repo/ai/skills" "$failure_repo/planner" "$failure_repo/pde-installer"
+cp -a "$REPO_ROOT/ai/skills/rust-development" "$failure_repo/ai/skills/rust-development"
 cp "$REPO_ROOT/planner/go.mod" "$failure_repo/planner/go.mod"
 cp "$REPO_ROOT/pde-installer/go.mod" "$failure_repo/pde-installer/go.mod"
 : >"$failure_repo/chezmoi/.pde-smoke-fail"
