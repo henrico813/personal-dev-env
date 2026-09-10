@@ -1,0 +1,28 @@
+{{- $profile := env "PDE_PROFILE" -}}
+{{- if not (or (eq $profile "full") (eq $profile "terminal")) -}}
+{{ fail "PDE_PROFILE must be exactly full or terminal" }}
+{{- end }}
+
+.config/nvim/pack/plugins/start/blink.cmp
+.config/nvim/pack/plugins/start/blink.cmp/**
+{{- if eq $profile "terminal" }}
+.config/aquaproj-aqua/aqua.yaml
+.config/aquaproj-aqua/aqua-checksums.json
+.config/alacritty
+.config/alacritty/**
+.config/wezterm
+.config/wezterm/**
+.config/nvim
+.config/nvim/**
+.config/opencode
+.config/opencode/**
+.codex
+.codex/**
+.agents
+.agents/**
+.pi
+.pi/**
+{{- else }}
+.config/aquaproj-aqua/aqua-terminal.yaml
+.config/aquaproj-aqua/aqua-terminal-checksums.json
+{{- end }}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -46,6 +47,7 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		return nil, fmt.Errorf("read PDE config: %w", err)
 	}
 	values["install_path"] = config.RepoRoot
+	values["profile"] = string(config.Profile)
 
 	if data, err := os.ReadFile(legacy); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -98,8 +100,10 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		}
 		removeStage = false
 	}
-	if err := migrateLegacyNvim(config.Home, journal); err != nil {
-		return nil, journal.Revert(err)
+	if config.Profile == profile.Full {
+		if err := migrateLegacyNvim(config.Home, journal); err != nil {
+			return nil, journal.Revert(err)
+		}
 	}
 	return journal, nil
 }

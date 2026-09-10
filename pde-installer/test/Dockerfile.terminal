@@ -1,0 +1,13 @@
+ARG UBUNTU_VERSION=22.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends sudo \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& useradd -m -s /bin/bash testuser \
+	&& printf 'testuser ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/testuser \
+	&& chmod 0440 /etc/sudoers.d/testuser
+
+USER testuser
+WORKDIR /home/testuser

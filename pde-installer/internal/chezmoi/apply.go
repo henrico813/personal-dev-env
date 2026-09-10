@@ -8,18 +8,20 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
 // Manager applies one repository's chezmoi source.
 type Manager struct {
 	Home, RepoRoot, AquaRoot string
+	Profile                  profile.Profile
 	Runner                   run.Runner
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
-func New(home, repoRoot, aquaRoot string, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Runner: runner}
+func New(home, repoRoot, aquaRoot string, selected profile.Profile, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Runner: runner}
 }
 
 // Source returns the repository's chezmoi source directory.
@@ -230,11 +232,13 @@ func (m Manager) environment() []string {
 		state = configured
 	}
 	path := filepath.Join(m.AquaRoot, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
+	configName, checksumsName := m.Profile.AquaFiles()
 	aquaConfig := filepath.Join(m.Source(), "dot_config", "aquaproj-aqua")
 	return []string{
 		"AQUA_ROOT_DIR=" + m.AquaRoot,
-		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, "aqua.yaml"),
-		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, "aqua-checksums.json"),
+		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, configName),
+		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
+		"PDE_PROFILE=" + string(m.Profile),
 		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,
@@ -244,12 +248,39 @@ func (m Manager) environment() []string {
 
 // Validate checks that the chezmoi source is complete and pinned.
 func (m Manager) Validate() error {
-	for _, path := range []string{m.Source(), filepath.Join(m.Source(), ".chezmoiexternal.toml"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"), filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc")} {
-		if _, err := os.Stat(path); err != nil {
+	if !m.Profile.Valid() {
+		return fmt.Errorf("invalid profile %q; use full or terminal", m.Profile)
+	}
+	configName, checksumsName := m.Profile.AquaFiles()
+	required := []string{
+		m.Source(),
+		filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"),
+		filepath.Join(m.Source(), ".chezmoiignore.tmpl"),
+		filepath.Join(m.Source(), "dot_zshrc.tmpl"),
+		filepath.Join(m.Source(), "dot_tmux.conf.tmpl"),
+		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", configName),
+		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", checksumsName),
+	}
+	if m.Profile == profile.Full {
+		required = append(required,
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"),
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+		)
+	}
+	for index, path := range required {
+		info, err := os.Stat(path)
+		if err != nil {
 			return fmt.Errorf("invalid chezmoi source %s: %w", path, err)
 		}
+		if index == 0 {
+			if !info.IsDir() {
+				return fmt.Errorf("invalid chezmoi source %s: not a directory", path)
+			}
+		} else if !info.Mode().IsRegular() {
+			return fmt.Errorf("invalid chezmoi source %s: not a regular file", path)
+		}
 	}
-	data, err := os.ReadFile(filepath.Join(m.Source(), ".chezmoiexternal.toml"))
+	data, err := os.ReadFile(filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"))
 	if err != nil {
 		return err
 	}
