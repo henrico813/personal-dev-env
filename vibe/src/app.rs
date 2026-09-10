@@ -126,6 +126,9 @@ fn finalize_changed_files(
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
 pub fn execute(args: RunArgs) -> RunResult {
+    if let Err(err) = sandbox::require_run_auth() {
+        return RunResult::setup_error(err);
+    }
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
@@ -291,7 +294,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    let runtime_root = match sandbox::prepare() {
+    let runtime_root = match sandbox::prepare_discovery() {
         Ok(path) => path,
         Err(err) => {
             return finish_result(

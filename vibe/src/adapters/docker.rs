@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -6,7 +7,19 @@ use std::{
     thread,
 };
 
-use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
+use crate::{
+    observe::ArtifactPaths,
+    provider::{Provider, Selector},
+    worktree::SandboxMounts,
+};
+
+const ENV_PROVIDERS: &[(&[&str], &str)] = &[
+    (&["ANTHROPIC_API_KEY"], "anthropic"),
+    (&["OPENAI_API_KEY"], "openai"),
+    (&["GEMINI_API_KEY"], "google"),
+    (&["DEEPSEEK_API_KEY"], "deepseek"),
+    (&["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"], "azure-openai"),
+];
 
 const IMAGE: &str = "vibe-pi:0.5.0";
 const AUTH_VARS: &[&str] = &[
@@ -98,7 +111,7 @@ fn host_user() -> Result<HostUser, String> {
     })
 }
 
-fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
+fn readable_pi_agent_dir(home: Option<&str>) -> Option<PathBuf> {
     let pi_agent_dir = PathBuf::from(home?).join(".pi/agent");
     let auth_file = pi_agent_dir.join("auth.json");
     let metadata = std::fs::metadata(&auth_file).ok()?;
@@ -106,9 +119,15 @@ fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
         return None;
     }
     File::open(auth_file).ok()?;
+    Some(pi_agent_dir)
+}
+
+fn writable_pi_agent_dir(dir: Option<&Path>) -> Option<PathBuf> {
+    let pi_agent_dir = dir?.to_path_buf();
+    let auth_file = pi_agent_dir.join("auth.json");
+    File::open(auth_file).ok()?;
 
     // Pi rotates OAuth tokens and writes refresh locks beside auth.json.
-    // Fail before Docker if that shared state cannot be updated.
     let probe = pi_agent_dir.join(".vibe-write-check");
     File::create(&probe).ok()?;
     let _ = std::fs::remove_file(probe);
@@ -129,18 +148,91 @@ fn has_provider_env() -> bool {
         .any(|keys| keys.iter().all(|key| env_var_is_set(key)))
 }
 
+pub(crate) struct DiscoveryConfig {
+    configured: BTreeSet<Provider>,
+    pi_agent_dir: Option<PathBuf>,
+}
+
+impl DiscoveryConfig {
+    pub(crate) fn configured(&self) -> &BTreeSet<Provider> {
+        &self.configured
+    }
+}
+
+pub(crate) fn discovery_config(home: Option<&str>) -> Result<DiscoveryConfig, String> {
+    let pi_agent_dir = readable_pi_agent_dir(home);
+    let mut configured: BTreeSet<Provider> = ENV_PROVIDERS
+        .iter()
+        .filter(|(keys, _)| keys.iter().all(|key| env_var_is_set(key)))
+        .map(|(_, provider)| Provider::parse(provider))
+        .collect::<Result<_, _>>()?;
+    if let Some(dir) = &pi_agent_dir {
+        let text = std::fs::read_to_string(dir.join("auth.json"))
+            .map_err(|error| format!("read Pi auth configuration: {error}"))?;
+        let entries: BTreeMap<String, serde_json::Value> = serde_json::from_str(&text)
+            .map_err(|error| format!("parse Pi auth configuration: {error}"))?;
+        let providers = entries
+            .into_keys()
+            .map(|name| Provider::parse(&name).map_err(|_| "invalid Pi provider configuration".to_string()))
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        configured.extend(providers);
+    }
+    Ok(DiscoveryConfig { configured, pi_agent_dir })
+}
+
+pub(crate) fn require_run_auth(config: &DiscoveryConfig) -> Result<(), String> {
+    if has_provider_env() || writable_pi_agent_dir(config.pi_agent_dir.as_deref()).is_some() {
+        Ok(())
+    } else {
+        Err("vibe requires provider auth via env vars or ~/.pi/agent/auth.json".to_string())
+    }
+}
+
+pub(crate) fn list_models(config: &DiscoveryConfig, model: &str) -> Result<BTreeSet<Selector>, String> {
+    let mut command = Command::new("docker");
+    command.args(["run", "--rm", "--entrypoint", "pi", "-e", "HOME=/vibe-home"]);
+    if let Some(dir) = &config.pi_agent_dir {
+        command.args(["-v", &format!("{}:/vibe-home/.pi/agent:ro", dir.display())]);
+    }
+    for key in AUTH_VARS {
+        if let Ok(value) = std::env::var(key) {
+            command.args(["-e", &format!("{key}={value}")]);
+        }
+    }
+    let output = command
+        .arg(IMAGE)
+        .args(["--list-models", model])
+        .output()
+        .map_err(|error| format!("list Pi models: {error}"))?;
+    if !output.status.success() {
+        return Err("list Pi models failed".to_string());
+    }
+    output.stdout
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| {
+            let line = std::str::from_utf8(line).ok()?;
+            let mut fields = line.split_whitespace();
+            let provider = fields.next()?;
+            let listed = fields.next()?;
+            (listed == model).then_some(format!("{provider}/{listed}"))
+        })
+        .map(|selector| selector.parse())
+        .collect()
+}
+
+// Kept for the existing unit tests; run-time callers use the split checks above.
+fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
+    let dir = readable_pi_agent_dir(home)?;
+    writable_pi_agent_dir(Some(&dir))
+}
+
 fn auth_is_configured(home: Option<&str>) -> bool {
     has_provider_env() || pi_agent_dir_with_auth(home).is_some()
 }
 
 pub fn require_auth() -> Result<(), String> {
-    let home = std::env::var("HOME").ok();
-
-    if auth_is_configured(home.as_deref()) {
-        Ok(())
-    } else {
-        Err("vibe requires provider auth via env vars or ~/.pi/agent/auth.json".to_string())
-    }
+    let config = discovery_config(std::env::var("HOME").ok().as_deref())?;
+    require_run_auth(&config)
 }
 
 struct DockerRunArgs<'a> {
@@ -259,7 +351,8 @@ pub fn run_task(
             .unwrap_or("run")
     );
     let user = host_user()?;
-    let pi_agent_dir = pi_agent_dir_with_auth(std::env::var("HOME").ok().as_deref());
+    let read_only = readable_pi_agent_dir(std::env::var("HOME").ok().as_deref());
+    let pi_agent_dir = writable_pi_agent_dir(read_only.as_deref());
 
     // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
     if insecure_tls {
