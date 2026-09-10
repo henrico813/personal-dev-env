@@ -42,8 +42,8 @@ func TestTerminalListIgnoresFullMetadata(t *testing.T) {
 	if err := list(cfg, run.Runner{Stdout: &output, Stderr: &bytes.Buffer{}}); err != nil {
 		t.Fatalf("list() error = %v", err)
 	}
-	if !strings.Contains(output.String(), "ya") {
-		t.Fatalf("list output omits ya: %s", output.String())
+	if !strings.Contains(output.String(), "aqua\tya\tv25.5.31\t\tmissing\n") {
+		t.Fatalf("list output omits exact ya row: %s", output.String())
 	}
 	if strings.Contains(output.String(), "opencode-ai") || strings.Contains(output.String(), "neovim") {
 		t.Fatalf("list output includes full-only item: %s", output.String())
@@ -55,6 +55,8 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	for _, directory := range []string{
 		filepath.Join(cfg.Home, ".local", "share", "pde", "npm"),
 		filepath.Join(cfg.Home, ".local", "share", "pde", "releases"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode"),
+		filepath.Join(cfg.RepoRoot, "pde-installer"),
 	} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
@@ -66,12 +68,25 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	if err := os.WriteFile(filepath.Join(cfg.Home, ".local", "share", "pde", "releases", ".pde-state.json"), []byte("invalid"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiexternal.toml"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode.json"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+		filepath.Join(cfg.RepoRoot, "pde-installer", "package.json"),
+		filepath.Join(cfg.RepoRoot, "pde-installer", "package-lock.json"),
+	} {
+		if err := os.WriteFile(path, []byte("invalid"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func terminalTestConfig(t *testing.T) config {
 	t.Helper()
 	home := t.TempDir()
-	return config{Home: home, RepoRoot: testRepositoryRoot(t), LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal}
+	return config{Home: home, RepoRoot: t.TempDir(), LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal}
 }
 
 func terminalProbeBin(t *testing.T, missing string) string {

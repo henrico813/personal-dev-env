@@ -34,8 +34,12 @@ func checksum(architecture string) (string, bool) {
 func tools(selected profile.Profile) []tool {
 	var result []tool
 	for _, item := range manifest.ByOwnerFor(selected, manifest.Aqua) {
-		if item.Name != "aqua" && item.Name != "ya" {
-			result = append(result, tool{name: item.Name, version: item.Version})
+		if item.Name == "aqua" {
+			continue
+		}
+		result = append(result, tool{name: item.Name, version: item.Version})
+		if item.Name == "yazi" {
+			result = append(result, tool{name: "ya", version: item.Version})
 		}
 	}
 	return result

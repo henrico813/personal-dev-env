@@ -33,7 +33,7 @@ func TestManifestIncludesRuntimeTools(t *testing.T) {
 }
 
 func TestTerminalInventory(t *testing.T) {
-	want := []string{"zsh", "git", "xclip", "unzip", "tmux", "aqua", "fd", "fzf", "ripgrep", "bat", "jq", "chezmoi", "eza", "zoxide", "bottom", "yq", "yazi", "ya", "repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}
+	want := []string{"zsh", "git", "xclip", "unzip", "tmux", "aqua", "fd", "fzf", "ripgrep", "bat", "jq", "chezmoi", "eza", "zoxide", "bottom", "yq", "yazi", "repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}
 	items := ItemsFor(profile.Terminal)
 	got := make([]string, 0, len(items))
 	for _, item := range items {

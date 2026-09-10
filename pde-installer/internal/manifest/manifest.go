@@ -79,7 +79,7 @@ func Items() []Item {
 		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua, Terminal: true}, {Name: "chezmoi", Version: "v2.72.0", Owner: Aqua, Terminal: true},
 		{Name: "eza", Version: "v0.23.4", Owner: Aqua, Terminal: true}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua, Terminal: true},
 		{Name: "bottom", Version: "0.11.4", Owner: Aqua, Terminal: true}, {Name: "yq", Version: "v4.53.3", Owner: Aqua, Terminal: true},
-		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Terminal: true}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Terminal: true},
+		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Terminal: true},
 		{Name: "gopls", Version: "v0.23.0", Owner: Aqua},
 		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua},
 		{Name: "opencode-ai", Version: "1.18.27", Owner: NPM},

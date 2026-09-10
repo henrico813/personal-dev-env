@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/manifest"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
@@ -37,6 +38,22 @@ func TestAquaProbeReportsMissingTool(t *testing.T) {
 	_, status, err := New(t.TempDir(), t.TempDir(), profile.Full, run.Runner{}).ToolProbe("fd", "v8.3.1")
 	if err != nil || status != "missing" {
 		t.Fatalf("ToolProbe() = _, %q, %v", status, err)
+	}
+}
+
+func TestCurrentnessCandidatesIncludeYaziExecutable(t *testing.T) {
+	candidates := tools(profile.Terminal)
+	found := false
+	for _, candidate := range candidates {
+		if candidate.name == "ya" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("terminal currentness candidates omit ya")
+	}
+	if _, ok := manifest.Find("ya", manifest.Aqua); ok {
+		t.Fatal("ya must not be a separate Aqua package")
 	}
 }
 
