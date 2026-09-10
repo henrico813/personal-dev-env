@@ -23,8 +23,10 @@ prints ordered actions and does not perform mutations.
 
 Only `install` accepts `--profile`. `update` and `config` require a saved
 profile and use it. On a fresh home, `doctor` and `list` inspect `full`; after
-installation they inspect the saved profile. A legacy profile-less configuration must be repaired by adding `"profile": "full"` or `"profile": "terminal"` to
-`~/.config/pde/config.json` before commands that require saved state can run.
+installation they inspect the saved profile. Existing installer state without a
+profile is treated as `full` and saved during the next mutating command. A
+profile-less configuration without installer state must be repaired by adding
+`"profile": "full"` or `"profile": "terminal"`.
 
 ### `pde-installer update [--dry-run]`
 

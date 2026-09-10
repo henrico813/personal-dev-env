@@ -51,7 +51,7 @@ func loadProfile(home string) (profile.Profile, bool, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) || err == nil && len(bytes.TrimSpace(data)) == 0 {
 		if _, legacyErr := os.Stat(filepath.Join(directory, "paths.env")); legacyErr == nil {
-			return "", false, repairProfileError(path)
+			return profile.Full, true, nil
 		} else if !os.IsNotExist(legacyErr) {
 			return "", false, fmt.Errorf("inspect legacy PDE config: %w", legacyErr)
 		}
@@ -66,6 +66,9 @@ func loadProfile(home string) (profile.Profile, bool, error) {
 	}
 	raw, ok := values["profile"]
 	if !ok {
+		if _, legacy := values["install_path"]; legacy {
+			return profile.Full, true, nil
+		}
 		return "", false, repairProfileError(path)
 	}
 	var value string

@@ -49,9 +49,9 @@ func TestMissingProfileBlocksUpdate(t *testing.T) {
 	}
 }
 
-func TestLegacyProfilesRequireRepair(t *testing.T) {
+func TestLegacyProfilesUseFull(t *testing.T) {
 	tests := map[string]func(*testing.T) string{
-		"config without profile": func(t *testing.T) string { return profileHome(t, `{}`) },
+		"config with install path": func(t *testing.T) string { return profileHome(t, `{"install_path":"/repo"}`) },
 		"legacy paths file": func(t *testing.T) string {
 			home := t.TempDir()
 			writeProfileFile(t, filepath.Join(home, ".config", "pde", "paths.env"), "PDE_MAIN_VAULT=/vault\n")
@@ -60,11 +60,18 @@ func TestLegacyProfilesRequireRepair(t *testing.T) {
 	}
 	for name, setup := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := resolveProfile(setup(t), "", readProfile)
-			if err == nil || !strings.Contains(err.Error(), "has no profile") {
-				t.Fatalf("resolveProfile() error = %v", err)
+			got, err := resolveProfile(setup(t), "", readProfile)
+			if err != nil || got != profile.Full {
+				t.Fatalf("resolveProfile() = %q, %v", got, err)
 			}
 		})
+	}
+}
+
+func TestProfilelessConfigRequiresRepair(t *testing.T) {
+	_, err := resolveProfile(profileHome(t, `{}`), "", readProfile)
+	if err == nil || !strings.Contains(err.Error(), "has no profile") {
+		t.Fatalf("resolveProfile() error = %v", err)
 	}
 }
 

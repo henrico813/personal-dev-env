@@ -156,20 +156,23 @@ func reconcile(config config, runner run.Runner) error {
 	journals = append(journals, tmuxJournal)
 	// Order matters: runtimes precede their package tools, and config precedes
 	// builds that use files installed by chezmoi.
+	var buildManager builds.Manager
+	var directManager direct.Manager
+	if config.Profile == profile.Full {
+		directManager = direct.New(config.Home, runner)
+		toolJournal, err := directManager.ReconcileTools()
+		if err != nil {
+			return fail("direct tools", err)
+		}
+		journals = append(journals, toolJournal)
+	}
 	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaJournal, err := aquaManager.Reconcile()
 	if err != nil {
 		return fail("Aqua", err)
 	}
 	journals = append(journals, aquaJournal)
-	var buildManager builds.Manager
 	if config.Profile == profile.Full {
-		directManager := direct.New(config.Home, runner)
-		toolJournal, err := directManager.ReconcileTools()
-		if err != nil {
-			return fail("direct tools", err)
-		}
-		journals = append(journals, toolJournal)
 		npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
 		if err != nil {
 			return fail("npm", err)

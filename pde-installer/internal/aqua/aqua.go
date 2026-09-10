@@ -156,7 +156,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := fsutil.CopyPath(checksumsFile, stagedChecksums); err != nil {
 		return nil, err
 	}
-	environment := []string{"AQUA_ROOT_DIR=" + stage, "AQUA_GLOBAL_CONFIG=" + stagedManifest, "AQUA_CHECKSUMS_PATH=" + stagedChecksums, "PATH=" + filepath.Join(stage, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")}
+	environment := []string{"AQUA_ROOT_DIR=" + stage, "AQUA_GLOBAL_CONFIG=" + stagedManifest, "AQUA_CHECKSUMS_PATH=" + stagedChecksums, "PATH=" + filepath.Join(stage, "bin") + string(os.PathListSeparator) + filepath.Join(m.home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")}
 	if err := fsutil.GuardHome(m.home, stage); err != nil {
 		return nil, err
 	}
