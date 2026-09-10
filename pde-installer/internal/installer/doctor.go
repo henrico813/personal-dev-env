@@ -98,7 +98,6 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
 			failures = append(failures, "npm lock: "+err.Error())
 		}
-		directManager := direct.New(config.Home, runner)
 		if _, err := direct.Tools(); err != nil {
 			failures = append(failures, "direct tools: "+err.Error())
 		}

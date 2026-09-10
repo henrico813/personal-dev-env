@@ -48,6 +48,7 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 		{name: "gopls", version: "v0.23.0", path: "golang.org/x/tools/gopls/v0.23.0/bin/gopls", argument: "version", output: "golang.org/x/tools/gopls v0.23.0"},
 		{name: "jq", version: "jq-1.7.1", path: "github_release/github.com/jqlang/jq/jq-1.7.1/jq-linux-" + runtime.GOARCH + "/jq-linux-" + runtime.GOARCH, argument: "--version", output: "jq-1.7.1"},
 		{name: "yq", version: "v4.53.3", path: "github_release/github.com/mikefarah/yq/v4.53.3/yq_linux_" + runtime.GOARCH + "/yq_linux_" + runtime.GOARCH, argument: "--version", output: "yq version v4.53.3"},
+		{name: "ya", version: "v25.5.31", path: "github_release/github.com/sxyazi/yazi/v25.5.31/ya", argument: "--version", output: "ya v25.5.31"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
