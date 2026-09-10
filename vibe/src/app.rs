@@ -19,25 +19,30 @@ const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
 
 struct PreparedModel {
     runtime_root: std::path::PathBuf,
-    config: docker::DiscoveryConfig,
     resolved: Resolved,
 }
 
-fn prepare_model(model: &str, provider: Option<&str>) -> Result<PreparedModel, String> {
+fn prepare_model(
+    model: &str,
+    provider: Option<&str>,
+    require_run_auth: bool,
+) -> Result<PreparedModel, String> {
     let request = Request::parse(model, provider)?;
-    let runtime_root = sandbox::prepare_discovery()?;
     let config = docker::discovery_config(std::env::var("HOME").ok().as_deref())?;
+    if require_run_auth {
+        docker::require_run_auth(&config)?;
+    }
+    let runtime_root = sandbox::prepare_discovery()?;
     let models = docker::list_models(&config, request.model())?;
     let resolved = provider::select(request, &models, config.configured())?;
     Ok(PreparedModel {
         runtime_root,
-        config,
         resolved,
     })
 }
 
 pub fn resolve_model(args: ResolveModelArgs) -> Result<ResolveModelResult, String> {
-    let prepared = prepare_model(&args.model, args.provider.as_deref())?;
+    let prepared = prepare_model(&args.model, args.provider.as_deref(), false)?;
     Ok(ResolveModelResult::from(prepared.resolved))
 }
 
@@ -165,6 +170,12 @@ pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
                 input.display()
             ));
         }
+        if input.to_string_lossy().contains(',') {
+            return Err(format!(
+                "input path cannot contain commas: {}",
+                input.display()
+            ));
+        }
     }
     Ok(())
 }
@@ -174,13 +185,10 @@ pub fn execute(mut args: RunArgs) -> RunResult {
     if let Err(error) = validate_inputs(&args.inputs) {
         return RunResult::setup_error(error);
     }
-    let prepared = match prepare_model(&args.model, args.provider.as_deref()) {
+    let prepared = match prepare_model(&args.model, args.provider.as_deref(), true) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
-    if let Err(error) = docker::require_run_auth(&prepared.config) {
-        return RunResult::setup_error(error);
-    }
     let requested_model = prepared.resolved.requested().to_string();
     args.model = prepared.resolved.selector().to_string();
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
@@ -555,7 +563,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{finalize_changed_files, read_supervisor_prompt};
+    use super::{finalize_changed_files, read_supervisor_prompt, validate_inputs};
     use tempfile::tempdir;
 
     #[test]
@@ -567,6 +575,20 @@ mod tests {
         let err = read_supervisor_prompt(&path).expect_err("invalid UTF-8 should fail");
 
         assert!(err.starts_with("read prompt file as UTF-8:"));
+    }
+
+    #[test]
+    fn rejects_input_with_mount_separator() {
+        let temp = tempdir().expect("tempdir");
+        let input = temp.path().join("input,notes.txt");
+        std::fs::write(&input, "notes").expect("write input");
+
+        let error = validate_inputs(&[input.clone()]).expect_err("invalid input path");
+
+        assert_eq!(
+            error,
+            format!("input path cannot contain commas: {}", input.display())
+        );
     }
 
     #[test]

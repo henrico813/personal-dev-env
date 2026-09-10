@@ -79,3 +79,57 @@ fn resolve_json_persists_requested_and_resolved_selectors() {
     assert_eq!(value["model"], "openai-codex/dynamic-model");
     assert!(!String::from_utf8_lossy(&output.stdout).contains("fixture-key"));
 }
+
+#[test]
+fn run_auth_precedes_docker_discovery() {
+    let home = tempfile::tempdir().expect("home");
+    let bin = tempfile::tempdir().expect("bin");
+    let marker = bin.path().join("docker-ran");
+    let docker = bin.path().join("docker");
+    fs::write(
+        &docker,
+        format!("#!/bin/sh\n/usr/bin/touch {}\n", marker.display()),
+    )
+    .expect("write docker");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(&docker, fs::Permissions::from_mode(0o755)).expect("chmod docker");
+    }
+    let prompt = tempfile::NamedTempFile::new().expect("prompt");
+    let path = format!(
+        "{}:{}",
+        bin.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_vibe"))
+        .args([
+            "run",
+            "--key",
+            "fixture-auth-order",
+            "--prompt-file",
+            prompt.path().to_str().expect("prompt path"),
+            "--model",
+            "dynamic-model",
+        ])
+        .env("HOME", home.path())
+        .env("PATH", path)
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("GEMINI_API_KEY")
+        .env_remove("DEEPSEEK_API_KEY")
+        .env_remove("AZURE_OPENAI_API_KEY")
+        .env_remove("AZURE_OPENAI_BASE_URL")
+        .output()
+        .expect("run vibe");
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("run JSON");
+
+    assert_eq!(value["status"], "setup_error");
+    assert_eq!(
+        value["error_message"],
+        "vibe requires provider auth via env vars or ~/.pi/agent/auth.json"
+    );
+    assert!(!marker.exists());
+}

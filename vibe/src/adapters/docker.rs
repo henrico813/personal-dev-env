@@ -151,6 +151,14 @@ fn has_provider_env() -> bool {
         .any(|keys| keys.iter().all(|key| env_var_is_set(key)))
 }
 
+fn auth_env_args() -> Vec<String> {
+    AUTH_VARS
+        .iter()
+        .filter(|key| env_var_is_set(key))
+        .flat_map(|key| ["-e".to_string(), (*key).to_string()])
+        .collect()
+}
+
 pub(crate) struct DiscoveryConfig {
     configured: BTreeSet<Provider>,
     pi_agent_dir: Option<PathBuf>,
@@ -205,11 +213,7 @@ pub(crate) fn list_models(
     if let Some(dir) = &config.pi_agent_dir {
         command.args(["-v", &format!("{}:/vibe-home/.pi/agent:ro", dir.display())]);
     }
-    for key in AUTH_VARS {
-        if let Ok(value) = std::env::var(key) {
-            command.args(["-e", &format!("{key}={value}")]);
-        }
-    }
+    command.args(auth_env_args());
     let output = command
         .arg(IMAGE)
         .args(["--list-models", model])
@@ -388,11 +392,7 @@ pub fn run_task(
         user: &user,
         pi_agent_dir: pi_agent_dir.as_deref(),
     }));
-    for key in AUTH_VARS {
-        if let Ok(value) = std::env::var(key) {
-            cmd.args(["-e", &format!("{key}={value}")]);
-        }
-    }
+    cmd.args(auth_env_args());
     for (git_key, env_key) in HOST_GIT_CONFIG_KEYS {
         let out = Command::new("git")
             .args(["config", "--global", git_key])
@@ -459,8 +459,8 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_is_configured, docker_run_args, pi_agent_dir_with_auth, require_auth, ArtifactPaths,
-        DockerRunArgs, HostUser, AUTH_VARS,
+        auth_env_args, auth_is_configured, docker_run_args, pi_agent_dir_with_auth, require_auth,
+        ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
     use std::{ffi::OsString, fs, path::Path};
@@ -644,6 +644,21 @@ mod tests {
             result.expect_err("missing Azure base URL should fail"),
             ERROR_MESSAGE
         );
+    }
+
+    #[test]
+    fn auth_env_args_exclude_secret_values() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let saved = save_auth_env();
+
+        clear_auth_env();
+        std::env::set_var("OPENAI_API_KEY", "test-secret");
+        let args = auth_env_args();
+
+        restore_env(saved);
+
+        assert!(args.iter().any(|arg| arg == "OPENAI_API_KEY"));
+        assert!(!args.iter().any(|arg| arg.contains("test-secret")));
     }
 
     #[test]

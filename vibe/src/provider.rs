@@ -81,9 +81,6 @@ impl Request {
 
     pub(crate) fn parse(model: &str, provider: Option<&str>) -> Result<Self, String> {
         if model.contains('/') {
-            if provider.is_some() {
-                return Err("--provider cannot accompany provider/model --model".to_string());
-            }
             let selector: Selector = model.parse()?;
             return Ok(Self {
                 text: model.to_string(),
@@ -219,10 +216,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_conflicting_provider_selector() {
-        let error = Request::parse("openai-codex/gpt-5.4", Some("github-copilot"))
-            .expect_err("conflicting provider");
+    fn explicit_selector_overrides_provider_flag() {
+        let request =
+            Request::parse("openai-codex/gpt-5.4", Some("github-copilot")).expect("request");
 
-        assert_eq!(error, "--provider cannot accompany provider/model --model");
+        let resolved = select(
+            request,
+            &selectors(&["openai-codex/gpt-5.4", "github-copilot/gpt-5.4"]),
+            &providers(&["openai-codex", "github-copilot"]),
+        )
+        .expect("resolved");
+
+        assert_eq!(resolved.selector().to_string(), "openai-codex/gpt-5.4");
     }
 }
