@@ -4,6 +4,7 @@ mod cli;
 mod ledger;
 mod observe;
 mod prompts;
+mod provider;
 mod result;
 mod sandbox;
 mod snapshot;
