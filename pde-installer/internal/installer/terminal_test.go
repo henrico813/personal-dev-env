@@ -68,8 +68,15 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	if err := os.WriteFile(filepath.Join(cfg.Home, ".local", "share", "pde", "releases", ".pde-state.json"), []byte("invalid"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiexternal.toml"), nil, 0o644); err != nil {
-		t.Fatal(err)
+	for _, path := range []string{
+		filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiexternal.toml.tmpl"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiignore.tmpl"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_zshrc.tmpl"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_tmux.conf.tmpl"),
+	} {
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for _, path := range []string{
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode.json"),
@@ -86,7 +93,25 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 func terminalTestConfig(t *testing.T) config {
 	t.Helper()
 	home := t.TempDir()
-	return config{Home: home, RepoRoot: t.TempDir(), LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal}
+	repoRoot := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(repoRoot, "chezmoi", ".chezmoiexternal.toml.tmpl"),
+		filepath.Join(repoRoot, "chezmoi", ".chezmoiignore.tmpl"),
+		filepath.Join(repoRoot, "chezmoi", "dot_zshrc.tmpl"),
+		filepath.Join(repoRoot, "chezmoi", "dot_tmux.conf.tmpl"),
+		filepath.Join(repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua.yaml"),
+		filepath.Join(repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua-checksums.json"),
+		filepath.Join(repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua-terminal.yaml"),
+		filepath.Join(repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua-terminal-checksums.json"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal}
 }
 
 func terminalProbeBin(t *testing.T, missing string) string {

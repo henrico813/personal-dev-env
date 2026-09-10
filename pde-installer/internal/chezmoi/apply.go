@@ -261,9 +261,17 @@ func (m Manager) Validate() error {
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
 		)
 	}
-	for _, path := range required {
-		if _, err := os.Stat(path); err != nil {
+	for index, path := range required {
+		info, err := os.Stat(path)
+		if err != nil {
 			return fmt.Errorf("invalid chezmoi source %s: %w", path, err)
+		}
+		if index == 0 {
+			if !info.IsDir() {
+				return fmt.Errorf("invalid chezmoi source %s: not a directory", path)
+			}
+		} else if !info.Mode().IsRegular() {
+			return fmt.Errorf("invalid chezmoi source %s: not a regular file", path)
 		}
 	}
 	data, err := os.ReadFile(filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"))
