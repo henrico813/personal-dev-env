@@ -36,7 +36,7 @@ func TestNPMLockIncludesPinnedPackages(t *testing.T) {
 }
 
 // Reconciliation must activate exact packages and preserve prior installs.
-func TestReconcileActivatesAndRollsBack(t *testing.T) {
+func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	home := t.TempDir()
 	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -57,6 +57,7 @@ func TestReconcileActivatesAndRollsBack(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertNPMInstall(t, manager)
+	assertNoNPMCache(t, home)
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
 	}
@@ -107,6 +108,7 @@ func writeNPMFixture(t *testing.T, path, logPath string) {
 	t.Helper()
 	var script strings.Builder
 	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$1\" >> %q\n", logPath)
+	script.WriteString("mkdir -p \"$npm_config_cache\"\nprintf '%s\\n' cache > \"$npm_config_cache/content\"\n")
 	script.WriteString("[ \"$1\" = ci ] || exit 0\nmkdir -p node_modules/.bin\n")
 	for _, spec := range packages() {
 		metadata := filepath.Join("node_modules", filepath.FromSlash(spec.Name), "package.json")
@@ -165,4 +167,23 @@ func assertNPMFile(t *testing.T, path, want string) {
 	if string(data) != want {
 		t.Fatalf("%s = %q, want %q", path, data, want)
 	}
+}
+
+func assertNoNPMCache(t *testing.T, home string) {
+	t.Helper()
+	parent := filepath.Join(home, ".local", "share", "pde")
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".npm-") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(parent, entry.Name(), "cache")); !os.IsNotExist(err) {
+			t.Fatalf("Stat(npm cache) error = %v, want not exist", err)
+		}
+		return
+	}
+	t.Fatal("npm workspace not found")
 }
