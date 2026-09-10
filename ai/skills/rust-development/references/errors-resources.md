@@ -166,7 +166,7 @@ and relying only on `BufWriter`'s destructor would hide a possible completion
 error. The buffer already owns its cleanup, so adding another `Drop`
 implementation would not solve the reporting problem.
 
-The [failure-path test](testing.md#substitute-only-the-dependency-that-needs-control)
+The [failure-path test](testing.md#control-a-dependency-with-a-trait)
 uses a writer that rejects flushing. The test checks the caller-visible error,
 not whether a particular internal buffer method was called.
 
