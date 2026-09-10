@@ -30,8 +30,47 @@ func TestExternalTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{".tmux/plugins/tmux-resurrect", "type = \"archive\""}, omit: []string{"obsidian.nvim", ".pi/agent/settings.json", ".agents/skills/go-development/Apache-2.0.txt", ".agents/skills/go-development/README.md", ".agents/skills/go-development/SKILL.md", ".agents/skills/go-development/examples/composition-original.go", ".agents/skills/go-development/references/composition.md", ".agents/skills/go-development/references/uber-go-guide.md", ".codex/skills/go-development/Apache-2.0.txt", ".codex/skills/go-development/README.md", ".codex/skills/go-development/SKILL.md", ".codex/skills/go-development/examples/composition-original.go", ".codex/skills/go-development/references/composition.md", ".codex/skills/go-development/references/uber-go-guide.md"}},
-		"full":     {profile: "full", want: []string{"obsidian.nvim", ".pi/agent/settings.json", "implement-plan/SKILL.md", ".agents/skills/go-development/Apache-2.0.txt", ".agents/skills/go-development/README.md", ".agents/skills/go-development/SKILL.md", ".agents/skills/go-development/examples/composition-original.go", ".agents/skills/go-development/references/composition.md", ".agents/skills/go-development/references/uber-go-guide.md", ".codex/skills/go-development/Apache-2.0.txt", ".codex/skills/go-development/README.md", ".codex/skills/go-development/SKILL.md", ".codex/skills/go-development/examples/composition-original.go", ".codex/skills/go-development/references/composition.md", ".codex/skills/go-development/references/uber-go-guide.md"}, omit: []string{"PDE_PROFILE must be exactly"}},
+		"terminal": {
+			profile: "terminal",
+			want:    []string{".tmux/plugins/tmux-resurrect", "type = \"archive\""},
+			omit: []string{
+				"obsidian.nvim",
+				".pi/agent/settings.json",
+				".agents/skills/go-development/Apache-2.0.txt",
+				".agents/skills/go-development/README.md",
+				".agents/skills/go-development/SKILL.md",
+				".agents/skills/go-development/examples/composition-original.go",
+				".agents/skills/go-development/references/composition.md",
+				".agents/skills/go-development/references/uber-go-guide.md",
+				".codex/skills/go-development/Apache-2.0.txt",
+				".codex/skills/go-development/README.md",
+				".codex/skills/go-development/SKILL.md",
+				".codex/skills/go-development/examples/composition-original.go",
+				".codex/skills/go-development/references/composition.md",
+				".codex/skills/go-development/references/uber-go-guide.md",
+			},
+		},
+		"full": {
+			profile: "full",
+			want: []string{
+				"obsidian.nvim",
+				".pi/agent/settings.json",
+				"implement-plan/SKILL.md",
+				".agents/skills/go-development/Apache-2.0.txt",
+				".agents/skills/go-development/README.md",
+				".agents/skills/go-development/SKILL.md",
+				".agents/skills/go-development/examples/composition-original.go",
+				".agents/skills/go-development/references/composition.md",
+				".agents/skills/go-development/references/uber-go-guide.md",
+				".codex/skills/go-development/Apache-2.0.txt",
+				".codex/skills/go-development/README.md",
+				".codex/skills/go-development/SKILL.md",
+				".codex/skills/go-development/examples/composition-original.go",
+				".codex/skills/go-development/references/composition.md",
+				".codex/skills/go-development/references/uber-go-guide.md",
+			},
+			omit: []string{"PDE_PROFILE must be exactly"},
+		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
 }
