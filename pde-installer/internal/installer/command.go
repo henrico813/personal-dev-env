@@ -24,6 +24,10 @@ func NewCommand() *cobra.Command {
 	var repoRoot string
 	root := &cobra.Command{
 		Use: "pde-installer", Short: "Reconcile the PDE development environment",
+		Long: `Install and maintain the PDE development environment.
+
+Use config after changing managed home configuration. Use update after changing
+tools, packages, runtimes, or local builds; it also applies home configuration.`,
 		Args: cobra.NoArgs, SilenceErrors: true, SilenceUsage: true,
 		RunE: func(command *cobra.Command, _ []string) error { return command.Help() },
 	}
@@ -33,8 +37,30 @@ func NewCommand() *cobra.Command {
 	install := mutatingCommand("install", "Install pinned PDE components", &repoRoot, installProfile, &requestedProfile, reconcile)
 	install.Flags().StringVar(&requestedProfile, "profile", "", "installation profile: full or terminal")
 	root.AddCommand(install)
-	root.AddCommand(mutatingCommand("update", "Reconcile installed components to repository pins", &repoRoot, requireProfile, nil, reconcile))
-	root.AddCommand(mutatingCommand("config", "Migrate legacy state and apply the chezmoi source", &repoRoot, requireProfile, nil, applyConfig))
+	update := mutatingCommand("update", "Update saved-profile tools and home configuration", &repoRoot, requireProfile, nil, reconcile)
+	update.Long = `Update managed tools and home configuration for the saved profile.
+
+Use this after pulling changes to package lists, tool versions, runtimes, or
+local builds. It also applies managed home configuration.
+
+Use config instead when only managed home configuration changed. A saved profile
+is required. Do not run this command as root.`
+	update.Example = `  pde-installer update --dry-run
+  pde-installer update`
+	root.AddCommand(update)
+
+	config := mutatingCommand("config", "Apply saved-profile home configuration", &repoRoot, requireProfile, nil, applyConfig)
+	config.Long = `Apply managed home configuration for the saved profile.
+
+Use this after pulling changes only to shell, Git, editor, or AI configuration.
+It does not update tools, runtimes, packages, or local builds. A normal run can
+update managed configuration files and run source-managed scripts.
+
+A saved profile and the chezmoi binary installed by PDE are required. Do not run
+this command as root.`
+	config.Example = `  pde-installer config --dry-run
+  pde-installer config`
+	root.AddCommand(config)
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	return root
