@@ -1,7 +1,6 @@
 package installer
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,7 @@ func TestCommandBlocksConcurrentInstalls(t *testing.T) {
 	})
 
 	command := NewCommand()
-	command.SetArgs([]string{"config", "--repo-root", testRepositoryRoot(t)})
+	command.SetArgs([]string{"install", "full", "--repo-root", testRepositoryRoot(t)})
 	err = command.Execute()
 	if err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("Execute() error = %v", err)
@@ -42,8 +41,6 @@ func TestCommandRejectsInvalidRepository(t *testing.T) {
 	invalid := filepath.Join(t.TempDir(), "missing")
 
 	command := NewCommand()
-	command.SetOut(&bytes.Buffer{})
-	command.SetErr(&bytes.Buffer{})
 	command.SetArgs([]string{"list", "--repo-root", invalid})
 	err := command.Execute()
 	if err == nil || !strings.Contains(err.Error(), "invalid --repo-root") {
@@ -51,11 +48,11 @@ func TestCommandRejectsInvalidRepository(t *testing.T) {
 	}
 }
 
-func TestCommandsRecoverSavedProfile(t *testing.T) {
+func TestCommandsRecoverProfiles(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("mutating commands intentionally reject UID 0")
 	}
-	for _, commandName := range []string{"update", "doctor", "list"} {
+	for _, commandName := range []string{"install", "doctor", "list"} {
 		t.Run(commandName, func(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
@@ -79,8 +76,8 @@ func TestCommandsRecoverSavedProfile(t *testing.T) {
 			repoRoot := testRepositoryRoot(t)
 			var command *cobra.Command
 			switch commandName {
-			case "update":
-				command = mutatingCommand(commandName, "", &repoRoot, requireProfile, nil, action)
+			case "install":
+				command = mutatingCommand(commandName, "", &repoRoot, action)
 			case "doctor", "list":
 				command = readCommand(commandName, "", &repoRoot, action)
 			}
@@ -104,51 +101,18 @@ func writeCommandTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestUpdateRejectsProfileFlag(t *testing.T) {
+func TestInstallRejectsMultipleSelections(t *testing.T) {
 	command := NewCommand()
-	command.SetArgs([]string{"update", "--profile", "terminal"})
-	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag") {
-		t.Fatalf("update profile flag error = %v", err)
-	}
-}
-
-func TestInstallPreservesFullProfile(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("mutating commands intentionally reject UID 0")
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".config", "pde", "config.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	original := []byte(`{"profile":"full"}` + "\n")
-	if err := os.WriteFile(path, original, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	command := NewCommand()
-	command.SetArgs([]string{"install", "--profile", "terminal", "--repo-root", testRepositoryRoot(t)})
-	err := command.Execute()
-	if err == nil || !strings.Contains(err.Error(), "cannot change profile") {
-		t.Fatalf("install downgrade error = %v", err)
-	}
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(got, original) {
-		t.Fatalf("config changed to %q", got)
+	command.SetArgs([]string{"install", "terminal", "full"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "accepts at most 1 arg") {
+		t.Fatalf("install arguments error = %v", err)
 	}
 }
 
 // Root execution violates the installer's user-owned path model.
 func TestMutationsRejectRootExecution(t *testing.T) {
-	for _, command := range []string{"install", "update", "config"} {
-		t.Run(command, func(t *testing.T) {
-			if err := rejectUID(0, command); err == nil {
-				t.Fatalf("rejectUID(0, %q) error = nil", command)
-			}
-		})
+	if err := rejectUID(0, "install"); err == nil {
+		t.Fatal("rejectUID(0, install) error = nil")
 	}
 }
 

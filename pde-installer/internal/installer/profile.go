@@ -14,7 +14,6 @@ type profileMode uint8
 
 const (
 	installProfile profileMode = iota + 1
-	requireProfile
 	readProfile
 )
 
@@ -28,19 +27,16 @@ func resolveProfile(home, requested string, mode profileMode) (profile.Profile, 
 		if err != nil {
 			return "", err
 		}
-		if found && saved == profile.Full && selected == profile.Terminal {
-			return "", fmt.Errorf("cannot change profile from full to terminal; reinstall to remove components")
-		}
 		return selected, nil
 	}
 	if found {
 		return saved, nil
 	}
 	switch mode {
-	case installProfile, readProfile:
+	case readProfile:
 		return profile.Full, nil
-	case requireProfile:
-		return "", fmt.Errorf("no saved profile; run pde-installer install first")
+	case installProfile:
+		return "", fmt.Errorf("no saved profile; run pde-installer install terminal or pde-installer install full")
 	}
 	return "", fmt.Errorf("invalid profile resolution mode")
 }

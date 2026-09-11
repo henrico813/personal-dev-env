@@ -11,7 +11,7 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 Shared skills include `behavior-focused-testing` for automated tests,
 `go-development` for Go code, and `rust-development` for Rust code.
 
-`pde-installer install` installs planner, `codex`, `opencode`,
+`pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
 package under `skills/` to `~/.agents/skills/<name>/` and
 `~/.codex/skills/<name>/`. It syncs `opencode/`, `codex/`, and
