@@ -182,15 +182,15 @@ path containment, package-state decisions, exact version checks, installer
 locking, durable recovery, backend activation, and rollback after a later
 failure.
 
-Docker is still used to confirm that the command behaves as an unprivileged
-process on supported Ubuntu releases:
+CI runs one direct smoke test as an unprivileged user with a temporary home and
+a fake ChezMoi binary. It rejects a root configuration call, verifies config
+idempotency and rollback, and confirms that dry-run install, update, and config
+do not mutate the home. It does not build Docker images or install PDE tools.
+The GitHub Actions Go toolchain and module cache can download on a cache miss.
+Run `./pde-installer/test/verify-ci-smoke.sh` locally.
 
-```bash
-./pde-installer/test/run-tests.sh smoke
-```
-
-The smoke runs all five commands as an unprivileged user on Ubuntu 22.04 and
-24.04 and confirms that root execution is rejected. It covers config
-transactions, including an induced chezmoi failure and rollback. Install and
-update are dry runs. A complete installation remains a manual real-world check
-because it is too expensive for hosted CI.
+The full Go suite and Docker checks are local-only verification:
+Run `go test -C pde-installer ./...`, `go test -race -C pde-installer ./...`,
+`go vet -C pde-installer ./...`, `./pde-installer/test/run-tests.sh smoke`, or
+`./pde-installer/test/run-tests.sh terminal` when deliberately testing installer
+behavior. A full-profile installation remains a manual real-world check.
