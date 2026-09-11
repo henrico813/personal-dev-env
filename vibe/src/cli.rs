@@ -325,6 +325,7 @@ mod tests {
         assert_eq!(args.stderr_level, StderrLevel::Warn);
     }
 
+    #[test]
     fn normalizes_relative_prompt_file() {
         let ParsedCommand::Run(args) = try_parse_from([
             "vibe",

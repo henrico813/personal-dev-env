@@ -674,7 +674,6 @@ mod tests {
             gid: "1001".to_string(),
         };
 
-        let input = temp.path().join("input.txt");
         let args = docker_run_args(&DockerRunArgs {
             repo_root: &repo_root,
             git_common_dir: &git_common_dir,
