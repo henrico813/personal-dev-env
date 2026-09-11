@@ -173,7 +173,7 @@ toolchains:
 
 ```bash
 go test -C pde-installer ./...
-go test -race -C pde-installer ./...
+go test -C pde-installer -race ./...
 go vet -C pde-installer ./...
 ```
 
@@ -190,7 +190,7 @@ The GitHub Actions Go toolchain and module cache can download on a cache miss.
 Run `./pde-installer/test/verify-ci-smoke.sh` locally.
 
 The full Go suite and Docker checks are local-only verification:
-Run `go test -C pde-installer ./...`, `go test -race -C pde-installer ./...`,
+Run `go test -C pde-installer ./...`, `go test -C pde-installer -race ./...`,
 `go vet -C pde-installer ./...`, `./pde-installer/test/run-tests.sh smoke`, or
 `./pde-installer/test/run-tests.sh terminal` when deliberately testing installer
 behavior. A full-profile installation remains a manual real-world check.
