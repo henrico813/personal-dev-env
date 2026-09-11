@@ -1,5 +1,17 @@
 {
   "providers": {
+    "openai-codex": {
+      "api": "openai-completions",
+      "baseUrl": "https://openai.invalid/v1",
+      "apiKey": "fixture-openai-key",
+      "models": [{"id": "dynamic-model", "name": "Dynamic Model", "reasoning": false, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 16384}]
+    },
+    "opencode-go": {
+      "api": "openai-completions",
+      "baseUrl": "https://opencode.invalid/v1",
+      "apiKey": "fixture-opencode-key",
+      "models": [{"id": "dynamic-model", "name": "Dynamic Model", "reasoning": false, "input": ["text"], "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}, "contextWindow": 128000, "maxTokens": 16384}]
+    },
     "vibe-fixture": {
       "api": "openai-completions",
       "baseUrl": "https://vibe-fixture.invalid/v1",

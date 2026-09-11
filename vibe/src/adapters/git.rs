@@ -335,6 +335,13 @@ mod tests {
             String::from_utf8_lossy(&init.stderr)
         );
 
+        let hooks_dir = repo.join("hooks");
+        std::fs::create_dir(&hooks_dir).expect("create hooks directory");
+        run(
+            repo,
+            &["config", "core.hooksPath", hooks_dir.to_str().unwrap()],
+        );
+
         let config_name = Command::new("git")
             .args(["config", "user.name", "Test User"])
             .current_dir(repo)

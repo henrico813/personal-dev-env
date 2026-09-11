@@ -59,12 +59,29 @@ vibe run \
   --key pdev-049-demo \
   --base origin/feature/demo \
   --prompt-file /tmp/vibe-task.txt \
-  --model openai-codex/gpt-5.4 \
+  --model gpt-5.6-luna \
   --stderr-level info \
   --commit-message "docs: update README note"
 
 vibe status --key pdev-049-demo
 ```
+
+Vibe resolves a bare model before creating a repository, managed worktree,
+run artifacts, or ledger state. An explicit `provider/model` selector takes
+precedence over `--provider`; for a bare model, `--provider` selects the
+provider, and without it Vibe tries `openai-codex`, then `github-copilot`,
+then other configured providers except `opencode-go`. The requested model is
+passed unchanged by callers. To diagnose resolution without creating any
+repository, worktree, artifact, or ledger state, run:
+
+```bash
+vibe resolve-model --model gpt-5.6-luna
+```
+
+Model discovery mounts `~/.pi/agent` read-only and uses it only to discover
+configured models and providers. During the agent run, Vibe mounts the host
+Pi agent directory writable so Pi can persist authentication refreshes and
+locks. Authentication data is not copied into run artifacts.
 
 Add `--insecure-tls` only if you need to bypass certificate verification in
 Docker; it sets `NODE_TLS_REJECT_UNAUTHORIZED=0` inside the container and

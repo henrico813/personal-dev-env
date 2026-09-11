@@ -6,9 +6,8 @@ use crate::{
     worktree::SandboxMounts,
 };
 
-pub fn prepare() -> Result<PathBuf, String> {
+pub fn prepare_discovery() -> Result<PathBuf, String> {
     docker::require_docker()?;
-    docker::require_auth()?;
     let runtime_root = runtime::ensure_runtime_assets()?;
     docker::ensure_image(&runtime_root)?;
     Ok(runtime_root)
