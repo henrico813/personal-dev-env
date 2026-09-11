@@ -4,6 +4,7 @@ mod cli;
 mod ledger;
 mod observe;
 mod prompts;
+mod provider;
 mod result;
 mod sandbox;
 mod snapshot;
@@ -25,10 +26,10 @@ fn persist_result_json(result: &RunResult) -> Result<(), String> {
     ledger::persist_result_from_run(std::path::Path::new(run_path), &path)
 }
 
-fn emit_and_exit(result: &RunResult) -> ! {
+fn emit_and_exit<T: serde::Serialize>(result: &T, exit_code: i32) -> ! {
     let json = serde_json::to_string_pretty(result).expect("serialize result");
     println!("{json}");
-    process::exit(result.exit_code());
+    process::exit(exit_code);
 }
 
 // Emitted result JSON is useful for callers, but ledger-backed status must survive if it fails.
@@ -43,8 +44,15 @@ fn main() {
         ParsedCommand::Run(args) => {
             let mut result = app::execute(args);
             persist_emitted_result(&mut result);
-            emit_and_exit(&result);
+            emit_and_exit(&result, result.exit_code());
         }
+        ParsedCommand::ResolveModel(args) => match app::resolve_model(args) {
+            Ok(result) => emit_and_exit(&result, 0),
+            Err(error) => {
+                let result = RunResult::setup_error(error);
+                emit_and_exit(&result, result.exit_code());
+            }
+        },
         ParsedCommand::Status(args) => {
             let repo = adapters::git::repo_layout().unwrap_or_else(|err| {
                 eprintln!("vibe status requires a target repo checkout: {err}");
@@ -85,6 +93,7 @@ mod tests {
             status: Status::Completed,
             branch: Some("vibe/pdev-099b".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
+            requested_model: Some("gpt-5.4-mini".to_string()),
             model: Some("openai-codex/gpt-5.4-mini".to_string()),
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
@@ -148,6 +157,7 @@ mod tests {
             status: Some(Status::Completed),
             branch: Some("vibe/pdev-099b".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
+            requested_model: Some("gpt-5.4-mini".to_string()),
             model: Some("openai-codex/gpt-5.4-mini".to_string()),
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),

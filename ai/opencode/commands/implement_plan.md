@@ -38,9 +38,14 @@ vibe --help
 vibe run --help
 ```
 
-Before using `vibe run`, ensure provider auth is configured through one of
-the supported env vars or `~/.pi/agent/auth.json`. Missing auth should fail
-as `setup_error`, not a generic agent failure.
+Pass the user-requested model to Vibe unchanged with `--model "$MODEL"`.
+Vibe resolves bare model names before repository, worktree, artifact, or ledger
+side effects. An explicit `provider/model` selector takes precedence over
+`--provider`; otherwise bare names use `openai-codex`, then `github-copilot`,
+then other configured providers (excluding `opencode-go`). For example, pass
+`gpt-5.6-luna` unchanged as a bare model. If model resolution returns
+`setup_error`, diagnose it with `vibe resolve-model --model "$MODEL"` (and the
+same `--provider` when one was requested).
 
 For this workflow, <task-context> is the complete plan and every document it references. For repo-backed plans, run the following research once per plan, not once per implementation step.
 
@@ -123,17 +128,8 @@ After each run, parse the final JSON and review the result before continuing.
 Handle statuses as follows:
 - `completed`: inspect the commit, run verification, update the plan, then continue.
 - `noop`: continue only if the step was already complete or intentionally no-op.
-- `agent_failed`, `commit_failed`, `refused_dirty`, `setup_error`: stop, inspect the reported logs/worktree, and notify the user.
-- When Vibe reports an authentication failure, list the configured Pi provider
-  names without reading credentials:
-
-  ```bash
-  jq -r 'keys[]' "$HOME/.pi/agent/auth.json"
-  ```
-
-- Retry with the configured provider prefix and the requested model. For
-  example, use `openai-codex/gpt-5.6-luna` when `openai-codex` is configured.
-  Do not change the requested model.
+- `agent_failed`, `commit_failed`, `refused_dirty`: stop, inspect the reported logs/worktree, and notify the user.
+- For a model-resolution `setup_error`, run `vibe resolve-model --model "$MODEL"` (and the same `--provider` when one was requested); stop for other setup errors.
 
 For completed steps, review correctness and consistency before running the next
 step:
