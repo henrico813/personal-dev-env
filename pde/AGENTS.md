@@ -12,7 +12,8 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
 
 ## Working Rules
 
-- Keep the exact commands `install`, `update`, `doctor`, `list`, and `config`.
+- Keep only `install [terminal|full]`, bare `install`, `doctor`, and `list`;
+  do not add aliases for removed commands or `--profile`.
 - Reject UID 0 for mutations.
 - Use apt for Ubuntu dependencies and sudo only for apt.
 - Keep other installer destinations under HOME.
@@ -27,7 +28,7 @@ downloaded under HOME.
 
 ```bash
 go build -C pde-installer -o ~/.local/bin/pde-installer .
-pde-installer install
+pde-installer install full
 
 go build -C cli -o ~/.local/bin/pde .
 pde vault --help

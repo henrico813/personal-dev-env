@@ -1,9 +1,12 @@
 # Installation Architecture
 
-The repository describes full and terminal PDE profiles. `install` reconciles
-the selected profile; `update` reconciles the saved profile. Terminal skips
-full-only components, while terminal can expand to full through `install
---profile full`. `config` applies the saved profile's chezmoi configuration.
+The repository describes full and terminal PDE selections. `install terminal`
+and `install full` save an explicit selection. Bare `install` reconciles the
+saved selection or infers full from legacy installer state; it errors when
+neither exists. Terminal skips full-only components. Switching between
+selections changes future reconciliation, but switching from full to terminal
+does not uninstall full-only artifacts. Every install reconciles tools and
+managed home configuration.
 
 ## Dependency Order
 
