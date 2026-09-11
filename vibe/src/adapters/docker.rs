@@ -161,6 +161,7 @@ fn auth_env_args() -> Vec<String> {
 
 pub(crate) struct DiscoveryConfig {
     configured: BTreeSet<Provider>,
+    run_configured: BTreeSet<Provider>,
     pi_agent_dir: Option<PathBuf>,
 }
 
@@ -168,15 +169,21 @@ impl DiscoveryConfig {
     pub(crate) fn configured(&self) -> &BTreeSet<Provider> {
         &self.configured
     }
+
+    pub(crate) fn run_configured(&self) -> &BTreeSet<Provider> {
+        &self.run_configured
+    }
 }
 
 pub(crate) fn discovery_config(home: Option<&str>) -> Result<DiscoveryConfig, String> {
     let pi_agent_dir = readable_pi_agent_dir(home);
-    let mut configured: BTreeSet<Provider> = ENV_PROVIDERS
+    let env_configured: BTreeSet<Provider> = ENV_PROVIDERS
         .iter()
         .filter(|(keys, _)| keys.iter().all(|key| env_var_is_set(key)))
         .map(|(_, provider)| Provider::parse(provider))
         .collect::<Result<_, _>>()?;
+    let mut configured = env_configured.clone();
+    let mut run_configured = env_configured;
     if let Some(dir) = &pi_agent_dir {
         let text = std::fs::read_to_string(dir.join("auth.json"))
             .map_err(|error| format!("read Pi auth configuration: {error}"))?;
@@ -188,10 +195,14 @@ pub(crate) fn discovery_config(home: Option<&str>) -> Result<DiscoveryConfig, St
                 Provider::parse(&name).map_err(|_| "invalid Pi provider configuration".to_string())
             })
             .collect::<Result<BTreeSet<_>, _>>()?;
-        configured.extend(providers);
+        configured.extend(providers.iter().cloned());
+        if writable_pi_agent_dir(Some(dir)).is_some() {
+            run_configured.extend(providers);
+        }
     }
     Ok(DiscoveryConfig {
         configured,
+        run_configured,
         pi_agent_dir,
     })
 }
@@ -459,10 +470,10 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_env_args, auth_is_configured, docker_run_args, pi_agent_dir_with_auth, require_auth,
-        ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
+        auth_env_args, auth_is_configured, discovery_config, docker_run_args,
+        pi_agent_dir_with_auth, require_auth, ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
     };
-    use crate::state::home_env_lock;
+    use crate::{provider::Provider, state::home_env_lock};
     use std::{ffi::OsString, fs, path::Path};
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
@@ -586,6 +597,41 @@ mod tests {
         restore_env(saved);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn run_configuration_excludes_read_only_pi_auth() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let auth_dir = home.path().join(".pi/agent");
+        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
+        fs::write(auth_dir.join("auth.json"), br#"{"github-copilot": {}}"#)
+            .expect("write auth file");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("OPENAI_API_KEY", "test-key");
+        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&auth_dir, permissions).expect("readonly auth dir");
+
+        let config = discovery_config(home.path().to_str()).expect("discovery config");
+
+        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(&auth_dir, permissions).expect("restore auth dir");
+        restore_env(saved);
+
+        assert!(config
+            .configured()
+            .contains(&Provider::parse("github-copilot").expect("provider")));
+        assert!(!config
+            .run_configured()
+            .contains(&Provider::parse("github-copilot").expect("provider")));
+        assert!(config
+            .run_configured()
+            .contains(&Provider::parse("openai").expect("provider")));
     }
 
     #[test]

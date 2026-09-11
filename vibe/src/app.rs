@@ -34,7 +34,12 @@ fn prepare_model(
     }
     let runtime_root = sandbox::prepare_discovery()?;
     let models = docker::list_models(&config, request.model())?;
-    let resolved = provider::select(request, &models, config.configured())?;
+    let configured = if require_run_auth {
+        config.run_configured()
+    } else {
+        config.configured()
+    };
+    let resolved = provider::select(request, &models, configured)?;
     Ok(PreparedModel {
         runtime_root,
         resolved,
@@ -185,6 +190,10 @@ pub fn execute(mut args: RunArgs) -> RunResult {
     if let Err(error) = validate_inputs(&args.inputs) {
         return RunResult::setup_error(error);
     }
+    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
+        Ok(prompt) => prompt,
+        Err(error) => return RunResult::setup_error(error),
+    };
     let prepared = match prepare_model(&args.model, args.provider.as_deref(), true) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
@@ -244,21 +253,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             ),
         );
     }
-    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
-        Ok(prompt) => prompt,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &requested_model,
-                    &args.model,
-                    ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-                ),
-            );
-        }
-    };
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return finish_result(
             &artifacts,
