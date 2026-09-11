@@ -1,14 +1,55 @@
 use crate::{
-    cli::RunArgs,
+    adapters::docker,
+    cli::{ResolveModelArgs, RunArgs},
     ledger, observe, prompts,
-    result::{RunResult, Status},
+    provider::{self, Request, Resolved},
+    result::{ResolveModelResult, RunResult, Status},
     sandbox, snapshot,
     state::RunPhase,
     worktree,
 };
-use std::{fs, fs::OpenOptions, io::Write, path::Path};
+use std::{
+    fs,
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
+
+struct PreparedModel {
+    runtime_root: std::path::PathBuf,
+    resolved: Resolved,
+}
+
+fn prepare_model(
+    model: &str,
+    provider: Option<&str>,
+    require_run_auth: bool,
+) -> Result<PreparedModel, String> {
+    let request = Request::parse(model, provider)?;
+    let config = docker::discovery_config(std::env::var("HOME").ok().as_deref())?;
+    if require_run_auth {
+        docker::require_run_auth(&config)?;
+    }
+    let runtime_root = sandbox::prepare_discovery()?;
+    let models = docker::list_models(&config, request.model())?;
+    let configured = if require_run_auth {
+        config.run_configured()
+    } else {
+        config.configured()
+    };
+    let resolved = provider::select(request, &models, configured)?;
+    Ok(PreparedModel {
+        runtime_root,
+        resolved,
+    })
+}
+
+pub fn resolve_model(args: ResolveModelArgs) -> Result<ResolveModelResult, String> {
+    let prepared = prepare_model(&args.model, args.provider.as_deref(), false)?;
+    Ok(ResolveModelResult::from(prepared.resolved))
+}
 
 /// Read the supervisor prompt as UTF-8 so the rendered contract is deterministic.
 pub fn read_supervisor_prompt(path: &Path) -> Result<String, String> {
@@ -63,6 +104,7 @@ impl ResultParts {
 fn build_result(
     session: &worktree::WorktreeSession,
     artifacts: &observe::ArtifactPaths,
+    requested_model: &str,
     model: &str,
     parts: ResultParts,
 ) -> RunResult {
@@ -71,6 +113,7 @@ fn build_result(
         status: parts.status,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
+        requested_model: Some(requested_model.to_string()),
         model: Some(model.to_string()),
         pre_run_commit: parts.pre_run_commit,
         commit: parts.commit,
@@ -124,8 +167,39 @@ fn finalize_changed_files(
     }
 }
 
+pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
+    for input in inputs {
+        if !input.is_file() {
+            return Err(format!(
+                "input must be an existing file: {}",
+                input.display()
+            ));
+        }
+        if input.to_string_lossy().contains(',') {
+            return Err(format!(
+                "input path cannot contain commas: {}",
+                input.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Execute one Vibe task end-to-end and return the stable JSON result.
-pub fn execute(args: RunArgs) -> RunResult {
+pub fn execute(mut args: RunArgs) -> RunResult {
+    if let Err(error) = validate_inputs(&args.inputs) {
+        return RunResult::setup_error(error);
+    }
+    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
+        Ok(prompt) => prompt,
+        Err(error) => return RunResult::setup_error(error),
+    };
+    let prepared = match prepare_model(&args.model, args.provider.as_deref(), true) {
+        Ok(prepared) => prepared,
+        Err(error) => return RunResult::setup_error(error),
+    };
+    let requested_model = prepared.resolved.requested().to_string();
+    args.model = prepared.resolved.selector().to_string();
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
@@ -142,6 +216,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         &session.slug,
         &session.branch,
         &session.worktree,
+        &requested_model,
         &args.model,
         created_at,
         run_id,
@@ -149,6 +224,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         return build_result(
             &session,
             &artifacts,
+            &requested_model,
             &args.model,
             ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
@@ -159,6 +235,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -170,31 +247,19 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
         );
     }
-    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
-        Ok(prompt) => prompt,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-                ),
-            );
-        }
-    };
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return finish_result(
             &artifacts,
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -207,6 +272,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -218,6 +284,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -229,6 +296,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
             ),
@@ -245,6 +313,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -258,6 +327,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
+                    &requested_model,
                     &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
@@ -270,6 +340,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -281,6 +352,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -291,25 +363,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-    let runtime_root = match sandbox::prepare() {
-        Ok(path) => path,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::WrapperFailed,
-                        Vec::new(),
-                        Some(err),
-                    ),
-                ),
-            )
-        }
-    };
+    let runtime_root = prepared.runtime_root;
     let mounts = session.sandbox_mounts(&args.inputs);
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
@@ -317,6 +371,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -342,6 +397,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
+                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -359,6 +415,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -376,6 +433,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
+                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -394,6 +452,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
+                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -413,6 +472,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
+                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit),
@@ -439,6 +499,7 @@ pub fn execute(args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
+                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -479,6 +540,7 @@ pub fn execute(args: RunArgs) -> RunResult {
     let mut result = build_result(
         &session,
         &artifacts,
+        &requested_model,
         &args.model,
         ResultParts {
             pre_run_commit: Some(pre_run_commit),
@@ -495,7 +557,7 @@ pub fn execute(args: RunArgs) -> RunResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{finalize_changed_files, read_supervisor_prompt};
+    use super::{finalize_changed_files, read_supervisor_prompt, validate_inputs};
     use tempfile::tempdir;
 
     #[test]
@@ -507,6 +569,20 @@ mod tests {
         let err = read_supervisor_prompt(&path).expect_err("invalid UTF-8 should fail");
 
         assert!(err.starts_with("read prompt file as UTF-8:"));
+    }
+
+    #[test]
+    fn rejects_input_with_mount_separator() {
+        let temp = tempdir().expect("tempdir");
+        let input = temp.path().join("input,notes.txt");
+        std::fs::write(&input, "notes").expect("write input");
+
+        let error = validate_inputs(&[input.clone()]).expect_err("invalid input path");
+
+        assert_eq!(
+            error,
+            format!("input path cannot contain commas: {}", input.display())
+        );
     }
 
     #[test]
