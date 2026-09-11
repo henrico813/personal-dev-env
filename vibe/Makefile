@@ -16,6 +16,7 @@ test:
 
 integration:
 	cargo test --test pi_model_config -- --ignored
+	cargo test --test model_resolution -- --ignored
 
 install:
 	cargo install --path . --root $(HOME)/.local
