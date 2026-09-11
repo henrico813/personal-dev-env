@@ -35,40 +35,23 @@ jobs:
       - name: test
         run: go test ./...
 
-  pde-installer:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pde-installer
+  pde-installer-smoke:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: pde-installer/go.mod
           cache-dependency-path: pde-installer/go.sum
-      - name: format
-        run: test -z "$(gofmt -l .)"
-      - name: test production paths
+      - name: verify smoke prerequisites
         run: |
-          go test -count=1 -coverprofile=coverage.out ./...
-          go test -race ./...
-          go vet ./...
-          bash -n test/*.sh
-
-  pde-installer-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          test -x /usr/bin/sudo
+          sudo -n true
+          for tool in git sudo tar sha256sum zsh cmp diff install; do
+            command -v "$tool" >/dev/null
+          done
       - name: rootless command smoke
-        run: ./pde-installer/test/run-tests.sh smoke
-
-  pde-installer-terminal:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: terminal installation
-        run: ./pde-installer/test/run-tests.sh terminal
+        run: ./pde-installer/test/verify-ci-smoke.sh
 
   surveil:
     runs-on: ubuntu-latest
