@@ -13,39 +13,28 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ## Commands
 
-### `pde-installer install [--profile full|terminal] [--dry-run]`
+### `pde-installer install [terminal|full] [--dry-run]`
 
-Reconciles the selected profile. On a fresh HOME, an install without a profile
-defaults to `full`; an existing install reuses its saved profile. The selection is saved in `~/.config/pde/config.json`. A saved `terminal` profile
-can expand to `full`, but a saved `full` profile cannot change to `terminal`
-because installed components are not removed. It rejects UID 0. `--dry-run`
-prints ordered actions and does not perform mutations.
+Reconciles tools and managed home configuration for one selection. A fresh HOME
+must specify `terminal` or `full`; bare `install` exits with an error when no
+saved or legacy selection exists. An explicit selection is saved in
+`~/.config/pde/config.json`. Bare `install` reuses the saved selection.
+Existing `paths.env` state or a config containing `install_path` without
+`profile` is legacy full state and is saved during the next install.
 
-Only `install` accepts `--profile`. `update` and `config` require a saved
-profile and use it. On a fresh home, `doctor` and `list` inspect `full`; after
-installation they inspect the saved profile. Existing installer state without a
-profile is treated as `full` and saved during the next mutating command. A
-profile-less configuration without installer state must be repaired by adding
-`"profile": "full"` or `"profile": "terminal"`.
+A successful explicit argument may switch either direction; a pre-commit
+failure preserves the prior selection. Switching from full to terminal stops
+reconciling full-only components but does not uninstall existing full-only
+artifacts. Switching from terminal to full adds the full inventory.
 
-### `pde-installer update [--dry-run]`
+Every install reconciles packages, tools, runtimes, local builds, and managed
+home configuration in dependency order. It migrates older PDE settings,
+configures Git and chezmoi-managed content, and runs source-managed scripts.
+It rejects UID 0. `--dry-run` prints ordered actions and does not mutate HOME.
 
-Updates tools and home configuration for the saved profile. Use it after changes
-to package lists, tool versions, runtimes, or local builds. It reconciles
-managed components and applies managed home configuration. It requires saved
-profile state, has no profile selector, and rejects UID 0.
+The removed `update`, `config`, and `--profile` interfaces have no aliases.
 
-### `pde-installer config [--dry-run]`
-
-Applies managed home configuration for the saved profile without updating tools,
-runtimes, packages, or local builds. Use it after changes only to shell, Git,
-editor, or AI configuration. A normal run can update managed configuration files
-and run source-managed scripts. It migrates older PDE settings automatically,
-requires an installed Aqua-managed chezmoi binary, and rejects UID 0. Its dry
-run uses read-only chezmoi status and diff without refreshing external content
-or running scripts.
-
-`config` also configures Git's template directory at
+Installation also configures Git's template directory at
 `~/.config/git/template`. Future `git init` and `git clone` operations receive
 its `commit-msg` checker. To add it to an existing repository without a
 `commit-msg` hook, run:

@@ -123,6 +123,15 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			_ = os.RemoveAll(stage)
 		}
 	}()
+	if m.profile == profile.Terminal {
+		if _, err := os.Stat(m.root); err == nil {
+			if err := fsutil.CopyTree(m.root, stage); err != nil {
+				return nil, fmt.Errorf("seed Aqua staging root: %w", err)
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("inspect Aqua root: %w", err)
+		}
+	}
 	archive := filepath.Join(stage, "aqua.tar.gz")
 	if err := m.runner.Retry("Aqua download", 3, func() error {
 		if err := fsutil.GuardHome(m.home, stage, archive); err != nil {

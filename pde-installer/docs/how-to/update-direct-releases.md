@@ -1,7 +1,7 @@
 # Update Direct Releases
 
 Direct releases contain full-only runtimes, Neovim, Keychain, and fonts.
-Terminal updates skip these components.
+Terminal installs skip these components.
 
 ## Tools and Runtimes
 
@@ -15,7 +15,7 @@ Terminal updates skip these components.
    ```bash
    go test ./...
    PDE_TEST_OFFICIAL_TOOLS=1 go test ./internal/direct
-   go run . update --dry-run --repo-root ..
+   go run . install --dry-run --repo-root ..
    ```
 
 ## Fonts
@@ -26,5 +26,5 @@ Terminal updates skip these components.
 
 The backend verifies SHA-256 values before activation. It uses direct releases
 for exact runtimes and layouts that other supported managers do not provide.
-There is no direct-release-only command; `update` reconciles the saved
-profile and skips these full-only components for terminal installations.
+There is no direct-release-only command; bare `install` reconciles the saved
+selection and skips these full-only components when terminal is selected.
