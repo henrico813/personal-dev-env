@@ -24,54 +24,24 @@ func NewCommand() *cobra.Command {
 	var repoRoot string
 	root := &cobra.Command{
 		Use: "pde-installer", Short: "Reconcile the PDE development environment",
-		Long: `Install and maintain the PDE development environment.
-
-Use config after changing managed home configuration. Use update after changing
-tools, packages, runtimes, or local builds; it also applies home configuration.`,
+		Long: `Install and inspect the PDE development environment.`,
 		Args: cobra.NoArgs, SilenceErrors: true, SilenceUsage: true,
 		RunE: func(command *cobra.Command, _ []string) error { return command.Help() },
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().StringVar(&repoRoot, "repo-root", "", "personal-dev-env checkout")
-	var requestedProfile string
-	install := mutatingCommand("install", "Install pinned PDE components", &repoRoot, installProfile, &requestedProfile, reconcile)
-	install.Flags().StringVar(&requestedProfile, "profile", "", "installation profile: full or terminal")
-	root.AddCommand(install)
-	update := mutatingCommand("update", "Update saved-profile tools and home configuration", &repoRoot, requireProfile, nil, reconcile)
-	update.Long = `Update managed tools and home configuration for the saved profile.
-
-Use this after pulling changes to package lists, tool versions, runtimes, or
-local builds. It also applies managed home configuration.
-
-Use config instead when only managed home configuration changed. A saved profile
-is required. Do not run this command as root.`
-	update.Example = `  pde-installer update --dry-run
-  pde-installer update`
-	root.AddCommand(update)
-
-	config := mutatingCommand("config", "Apply saved-profile home configuration", &repoRoot, requireProfile, nil, applyConfig)
-	config.Long = `Apply managed home configuration for the saved profile.
-
-Use this after pulling changes only to shell, Git, editor, or AI configuration.
-It does not update tools, runtimes, packages, or local builds. A normal run can
-update managed configuration files and run source-managed scripts.
-
-A saved profile and the chezmoi binary installed by PDE are required. Do not run
-this command as root.`
-	config.Example = `  pde-installer config --dry-run
-  pde-installer config`
-	root.AddCommand(config)
+	root.AddCommand(mutatingCommand("install [terminal|full]", "Install pinned PDE components", &repoRoot, reconcile))
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	return root
 }
 
-func mutatingCommand(name, description string, repoRoot *string, mode profileMode, requested *string, action func(config, run.Runner) error) *cobra.Command {
+func mutatingCommand(use, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
 	var dryRun bool
 	command := &cobra.Command{
-		Use: name, Short: description, Args: cobra.NoArgs,
-		RunE: func(command *cobra.Command, _ []string) error {
-			if err := rejectUID(os.Geteuid(), name); err != nil {
+		Use: use, Short: description, Args: cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := rejectUID(os.Geteuid(), command.Name()); err != nil {
 				return err
 			}
 			if err := manifest.Validate(); err != nil {
@@ -81,7 +51,7 @@ func mutatingCommand(name, description string, repoRoot *string, mode profileMod
 			if err != nil {
 				return err
 			}
-			runner := run.Runner{DryRun: dryRun, ReadOnlyDryRun: dryRun && name == "config", Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}
+			runner := run.Runner{DryRun: dryRun, Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}
 			if dryRun {
 				pending, err := fsutil.HasPendingJournals(fsutil.JournalConfig{Home: config.Home})
 				if err != nil {
@@ -90,11 +60,11 @@ func mutatingCommand(name, description string, repoRoot *string, mode profileMod
 				if pending {
 					return fmt.Errorf("pending filesystem recovery; rerun without --dry-run")
 				}
-				requestedValue := ""
-				if requested != nil {
-					requestedValue = *requested
+				requested := ""
+				if len(args) == 1 {
+					requested = args[0]
 				}
-				config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
+				config.Profile, err = resolveProfile(config.Home, requested, installProfile)
 				if err != nil {
 					return err
 				}
@@ -107,11 +77,11 @@ func mutatingCommand(name, description string, repoRoot *string, mode profileMod
 			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
 				return errors.Join(err, lock.Close())
 			}
-			requestedValue := ""
-			if requested != nil {
-				requestedValue = *requested
+			requested := ""
+			if len(args) == 1 {
+				requested = args[0]
 			}
-			config.Profile, err = resolveProfile(config.Home, requestedValue, mode)
+			config.Profile, err = resolveProfile(config.Home, requested, installProfile)
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
@@ -237,19 +207,4 @@ func reconcile(config config, runner run.Runner) error {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
 	return nil
-}
-
-func applyConfig(config config, runner run.Runner) error {
-	if err := config.validateProfile(); err != nil {
-		return err
-	}
-	migrationJournal, err := prepareLegacyConfig(config, runner)
-	if err != nil {
-		return err
-	}
-	journal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Apply()
-	if err != nil {
-		return migrationJournal.Revert(err)
-	}
-	return fsutil.CommitJournals(migrationJournal, journal)
 }

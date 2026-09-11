@@ -29,7 +29,7 @@
 
    ```bash
    go test ./...
-   go run . update --dry-run --repo-root ..
+   go run . install --dry-run --repo-root ..
    ```
 
 ## Update Aqua Itself
@@ -41,10 +41,10 @@ The installer hashes the selected profile's Aqua manifest and matching checksum
 file. A changed hash causes it to stage an Aqua root for that profile, install
 its pinned packages, verify versions, and replace the old root.
 
-There is no Aqua-only update. Run an update to reconcile the saved profile:
+There is no Aqua-only command. Run install to reconcile the saved selection:
 
 ```bash
-go run . update --repo-root ..
+go run . install --repo-root ..
 ```
 
 See [component metadata](../reference/component-metadata.md).

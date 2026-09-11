@@ -9,21 +9,17 @@ import (
 	"pde-installer/internal/profile"
 )
 
-func TestFreshProfilesUseDefaults(t *testing.T) {
-	tests := map[string]struct {
-		mode profileMode
-		want profile.Profile
-	}{
-		"install": {mode: installProfile, want: profile.Full},
-		"list":    {mode: readProfile, want: profile.Full},
+func TestFreshReadsUseFull(t *testing.T) {
+	got, err := resolveProfile(t.TempDir(), "", readProfile)
+	if err != nil || got != profile.Full {
+		t.Fatalf("resolveProfile() = %q, %v", got, err)
 	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			got, err := resolveProfile(t.TempDir(), "", test.mode)
-			if err != nil || got != test.want {
-				t.Fatalf("resolveProfile() = %q, %v", got, err)
-			}
-		})
+}
+
+func TestFreshInstallRequiresSelection(t *testing.T) {
+	_, err := resolveProfile(t.TempDir(), "", installProfile)
+	if err == nil || !strings.Contains(err.Error(), "no saved profile") {
+		t.Fatalf("resolveProfile() error = %v", err)
 	}
 }
 
@@ -36,20 +32,20 @@ func TestExplicitProfileIsSelected(t *testing.T) {
 
 func TestSavedProfileIsLoaded(t *testing.T) {
 	home := profileHome(t, `{"profile":"terminal"}`)
-	got, err := resolveProfile(home, "", requireProfile)
+	got, err := resolveProfile(home, "", installProfile)
 	if err != nil || got != profile.Terminal {
 		t.Fatalf("resolveProfile() = %q, %v", got, err)
 	}
 }
 
-func TestMissingProfileBlocksUpdate(t *testing.T) {
-	_, err := resolveProfile(t.TempDir(), "", requireProfile)
-	if err == nil || !strings.Contains(err.Error(), "no saved profile") {
+func TestMissingProfileBlocksInstall(t *testing.T) {
+	_, err := resolveProfile(t.TempDir(), "", installProfile)
+	if err == nil || !strings.Contains(err.Error(), "install terminal") {
 		t.Fatalf("resolveProfile() error = %v", err)
 	}
 }
 
-func TestLegacyProfilesUseFull(t *testing.T) {
+func TestLegacyInstallsUseFull(t *testing.T) {
 	tests := map[string]func(*testing.T) string{
 		"config with install path": func(t *testing.T) string { return profileHome(t, `{"install_path":"/repo"}`) },
 		"legacy paths file": func(t *testing.T) string {
@@ -60,7 +56,7 @@ func TestLegacyProfilesUseFull(t *testing.T) {
 	}
 	for name, setup := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := resolveProfile(setup(t), "", readProfile)
+			got, err := resolveProfile(setup(t), "", installProfile)
 			if err != nil || got != profile.Full {
 				t.Fatalf("resolveProfile() = %q, %v", got, err)
 			}
@@ -83,26 +79,19 @@ func TestInvalidSavedProfileIsRejected(t *testing.T) {
 	}
 }
 
-func TestProfileTransitions(t *testing.T) {
+func TestExplicitSelectionsOverrideSaved(t *testing.T) {
 	tests := map[string]struct {
 		saved, request string
 		want           profile.Profile
-		wantError      string
 	}{
 		"same profile":     {saved: "full", request: "full", want: profile.Full},
 		"terminal expands": {saved: "terminal", request: "full", want: profile.Full},
-		"full downgrade":   {saved: "full", request: "terminal", wantError: "cannot change profile from full to terminal"},
+		"full narrows":     {saved: "full", request: "terminal", want: profile.Terminal},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			home := profileHome(t, `{"profile":"`+test.saved+`"}`)
 			got, err := resolveProfile(home, test.request, installProfile)
-			if test.wantError != "" {
-				if err == nil || !strings.Contains(err.Error(), test.wantError) {
-					t.Fatalf("resolveProfile() error = %v", err)
-				}
-				return
-			}
 			if err != nil || got != test.want {
 				t.Fatalf("resolveProfile() = %q, %v", got, err)
 			}

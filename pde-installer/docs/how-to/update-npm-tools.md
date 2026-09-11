@@ -9,8 +9,8 @@
 
    ```bash
    go test ./...
-   go run . update --dry-run --repo-root ..
-   go run . update --repo-root ..
+   go run . install --dry-run --repo-root ..
+   go run . install --repo-root ..
    ```
 
 The installer requires exactly the four declared top-level packages. It uses
@@ -19,4 +19,4 @@ required install scripts in staging, verifies each command's version, and then
 activates the prefix and launchers.
 
 npm owns npm-native command-line tools. Individual npm tools cannot be selected
-for update.
+for reconciliation.

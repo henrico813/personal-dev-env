@@ -17,18 +17,44 @@ assert_absent_packages() {
 }
 assert_absent_packages
 
-pde-installer install --profile terminal --repo-root "$REPO_ROOT"
+pde-installer install terminal --repo-root "$REPO_ROOT"
 assert_absent_packages
 [[ -f "$HOME/.config/pde/config.json" ]]
 grep -Eq '"profile"[[:space:]]*:[[:space:]]*"terminal"' "$HOME/.config/pde/config.json"
+
+rm -rf "$HOME/.local/share/aquaproj-aqua"
+aqua_root="$HOME/.local/share/aquaproj-aqua"
+full_only_package="$aqua_root/pkgs/go.dev/gopls/v0.23.0/gopls"
+full_only_launcher="$aqua_root/bin/gopls"
+mkdir -p "$HOME/.config/pde" "$(dirname "$full_only_package")" "$(dirname "$full_only_launcher")"
+printf '{"profile":"full"}\n' >"$HOME/.config/pde/config.json"
+printf '#!/bin/sh\nprintf '\''gopls-retained\\n'\''\n' >"$full_only_package"
+chmod 0755 "$full_only_package"
+ln -s "$full_only_package" "$full_only_launcher"
+mkdir -p "$HOME/.config/nvim" "$HOME/.agents" "$HOME/.codex"
+printf 'retain-opencode\n' >"$HOME/.config/opencode"
+printf 'retain-nvim\n' >"$HOME/.config/nvim/init.lua"
+printf 'retain-agents\n' >"$HOME/.agents/marker"
+printf 'retain-codex\n' >"$HOME/.codex/marker"
+
+pde-installer install terminal --repo-root "$REPO_ROOT"
+assert_absent_packages
+[[ -f "$HOME/.config/pde/config.json" ]]
+grep -Eq '"profile"[[:space:]]*:[[:space:]]*"terminal"' "$HOME/.config/pde/config.json"
+[[ "$("$full_only_launcher")" == "gopls-retained" ]]
+[[ -L "$full_only_launcher" ]]
+[[ -x "$full_only_package" ]]
+[[ "$(cat "$HOME/.config/opencode")" == "retain-opencode" ]]
+[[ "$(cat "$HOME/.config/nvim/init.lua")" == "retain-nvim" ]]
+[[ "$(cat "$HOME/.agents/marker")" == "retain-agents" ]]
+[[ "$(cat "$HOME/.codex/marker")" == "retain-codex" ]]
 
 [[ "$(tmux -V)" == 'tmux 3.7b' ]]
 tmux_binary="$HOME/.local/share/pde/tmux/3.7b/bin/tmux"
 [[ -x "$tmux_binary" ]]
 file "$tmux_binary" | grep -qi static
 
-pde-installer update --repo-root "$REPO_ROOT"
-pde-installer config --repo-root "$REPO_ROOT"
+pde-installer install --repo-root "$REPO_ROOT"
 pde-installer doctor --repo-root "$REPO_ROOT"
 
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
@@ -49,7 +75,7 @@ for item in build-essential bison gopls lua-language-server opencode-ai '@openai
 	! awk -F '\t' -v item="$item" 'NR > 1 && $2 == item { found=1 } END { exit found }' <<<"$inventory"
 done
 
-for path in "$HOME/.config/nvim" "$HOME/.config/alacritty" "$HOME/.config/wezterm" "$HOME/.config/opencode" "$HOME/.codex" "$HOME/.agents" "$HOME/.pi"; do
+for path in "$HOME/.config/alacritty" "$HOME/.config/wezterm" "$HOME/.pi"; do
 	[[ ! -e "$path" ]]
 done
 mapfile -t aqua_files < <(find "$HOME/.config/aquaproj-aqua" -maxdepth 1 -type f -printf '%f\n' | sort)

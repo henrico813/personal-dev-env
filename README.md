@@ -14,44 +14,38 @@ pinned environment:
 mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
 export PATH="$HOME/.local/bin:$PATH"
-pde-installer install --profile terminal
+pde-installer install terminal
 ```
 
-This terminal profile is the small terminal-focused entry point. On a fresh
-HOME, omitting `--profile` selects the full profile. An existing install
-reuses its saved profile. Only `install` accepts `--profile full|terminal`; the
-selected profile is saved in
-`~/.config/pde/config.json`. A terminal installation can later expand to full
-with `pde-installer install --profile full`. Existing terminal users must run
-`pde-installer install --profile full` to expand. A full installation cannot
-change to terminal because installed components are not removed.
+`terminal` is the small terminal-focused selection. A fresh installation must
+choose `terminal` or `full`; the installer saves that selection in
+`~/.config/pde/config.json`. Later bare `install` runs reuse the saved
+selection, including the inferred full selection for legacy installer state.
+A successful explicit selection switches future installs. A pre-commit failure
+preserves the prior selection. Switching from full to terminal stops
+reconciling full-only artifacts but does not uninstall them.
 
 The installer does not clone or update the repository. Run it from anywhere
 inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set
 `PDE_REPO_ROOT`.
 
-The installer exposes five commands:
+The installer exposes three commands:
 
 ```bash
 pde-installer install
-pde-installer update
 pde-installer doctor
 pde-installer list
-pde-installer config
 ```
 
-- `install` reconciles the selected profile in dependency order. On a fresh
-  `HOME`, omitting `--profile` selects full; an existing install reuses its
-  saved profile.
-- `update` updates saved-profile tools and home configuration.
+- `install [terminal|full]` reconciles tools and managed home configuration in
+  dependency order. A fresh installation requires an explicit selection;
+  later bare installs reuse saved or legacy selection.
 - `doctor` validates host prerequisites, pins, and managed paths for the saved
   profile (or full on a fresh `HOME`).
 - `list` reports ownership and installed status for the saved profile (or full
   on a fresh `HOME`).
-- `config` applies saved-profile home configuration without updating tools.
-
-Run `pde-installer update --help` or `pde-installer config --help` before
-maintaining an existing installation. See the
+Run `pde-installer install --help` before maintaining an existing installation.
+See the
 [command reference](pde-installer/docs/reference/commands.md) for details.
 
 Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
@@ -66,19 +60,19 @@ export PATH="$HOME/.local/bin:$PATH"
 pde vault --help
 ```
 
-The `config` target migrates known vault values from deprecated `paths.env`
-state before removing it. It records the selected checkout in `config.json`
-and preserves unrelated fields. Future vault changes use `pde vault`.
+Installation migrates known vault values from deprecated `paths.env` state
+before removing it. It records the selected checkout in `config.json` and
+preserves unrelated fields. Future vault changes use `pde vault`.
 
 See [`pde-installer/README.md`](./pde-installer/README.md) for installer details.
 
 ## AI Tools Quick Start
 
 ```bash
-pde-installer install
+pde-installer install full
 ```
 
-The default full install includes the AI tooling. It installs planner, Codex,
+The full install includes the AI tooling. It installs planner, Codex,
 OpenCode, the OpenCode inline shim, Pi, Surveil, and Vibe binaries plus
 repo-managed AI config.
 
@@ -189,8 +183,7 @@ process on supported Ubuntu releases:
 ./pde-installer/test/run-tests.sh smoke
 ```
 
-The smoke runs all five commands as an unprivileged user on Ubuntu 22.04 and
-24.04 and confirms that root execution is rejected. It covers config
-transactions, including an induced chezmoi failure and rollback. Install and
-update are dry runs. A complete installation remains a manual real-world check
-because it is too expensive for hosted CI.
+The smoke runs all three commands as an unprivileged user on Ubuntu 22.04 and
+24.04 and confirms that root execution is rejected. Go tests cover managed
+configuration transactions and rollback. Install is a dry run in the full
+smoke; the terminal suite performs a real installation.

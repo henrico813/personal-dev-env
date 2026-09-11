@@ -23,7 +23,6 @@ type Command struct {
 // Runner executes commands and routes their output.
 type Runner struct {
 	DryRun         bool
-	ReadOnlyDryRun bool
 	Stdout, Stderr io.Writer
 }
 

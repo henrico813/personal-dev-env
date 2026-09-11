@@ -33,46 +33,22 @@ func (m Manager) Apply() (*fsutil.Journal, error) {
 		return nil, err
 	}
 	binary := filepath.Join(m.AquaRoot, "bin", "chezmoi")
-	if !m.Runner.DryRun || m.Runner.ReadOnlyDryRun {
+	if !m.Runner.DryRun {
 		var err error
 		binary, err = m.readOnlyBinary()
 		if err != nil {
 			return nil, err
 		}
 	}
-	if _, err := os.Stat(binary); err != nil && (!m.Runner.DryRun || m.Runner.ReadOnlyDryRun) {
+	if _, err := os.Stat(binary); err != nil && !m.Runner.DryRun {
 		return nil, fmt.Errorf("aqua-owned chezmoi not found at %s; run install first", binary)
 	}
 	if m.Runner.DryRun {
 		arguments := m.arguments()
 		arguments[9] = ""
-		statusCommand := run.Command{Name: binary, Args: append(arguments, "--refresh-externals=never", "status", "--exclude", "externals,scripts", "--path-style", "absolute"), Env: m.environment()}
 		diffCommand := run.Command{Name: binary, Args: append(arguments, "--refresh-externals=never", "diff", "--exclude", "externals,scripts", "--no-pager"), Env: m.environment()}
-		if !m.Runner.ReadOnlyDryRun {
-			if err := m.Runner.Plan("preview chezmoi changes", &diffCommand); err != nil {
-				return nil, err
-			}
-			return &fsutil.Journal{}, nil
-		}
-		status, err := m.Runner.Query("read-only chezmoi status", statusCommand)
-		if err != nil {
+		if err := m.Runner.Plan("preview chezmoi changes", &diffCommand); err != nil {
 			return nil, err
-		}
-		diff, err := m.Runner.Query("read-only chezmoi diff", diffCommand)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := fmt.Fprintln(m.Runner.Out(), "DRY-RUN: chezmoi status"); err != nil {
-			return nil, fmt.Errorf("write chezmoi status heading: %w", err)
-		}
-		if _, err := m.Runner.Out().Write(status); err != nil {
-			return nil, fmt.Errorf("write chezmoi status: %w", err)
-		}
-		if _, err := fmt.Fprintln(m.Runner.Out(), "DRY-RUN: chezmoi diff"); err != nil {
-			return nil, fmt.Errorf("write chezmoi diff heading: %w", err)
-		}
-		if _, err := m.Runner.Out().Write(diff); err != nil {
-			return nil, fmt.Errorf("write chezmoi diff: %w", err)
 		}
 		return &fsutil.Journal{}, nil
 	}

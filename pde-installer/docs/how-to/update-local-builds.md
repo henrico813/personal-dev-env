@@ -11,8 +11,8 @@ The local backend builds repository applications: `planner`,
 
    ```bash
    go test ./...
-   go run . update --dry-run --repo-root ..
-   go run . update --repo-root ..
+   go run . install --dry-run --repo-root ..
+   go run . install --repo-root ..
    ```
 
 The installer hashes regular source files, excluding `.git` and `target`

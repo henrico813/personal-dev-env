@@ -44,22 +44,50 @@ func TestApplyCommitsChanges(t *testing.T) {
 
 // A failed command must restore files and durable state.
 func TestApplyFailureRestoresFiles(t *testing.T) {
-	t.Parallel()
-	fixture := newApplyFixture(t, "fail")
-	writeApplyFile(t, fixture.target, "old\n")
-	writeApplyFile(t, fixture.state, "old-state\n")
+	tests := []struct {
+		name    string
+		symlink bool
+	}{
+		{name: "regular file"},
+		{name: "outside leaf symlink", symlink: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newApplyFixture(t, "fail")
+			outside := ""
+			if test.symlink {
+				outside = filepath.Join(t.TempDir(), "tool")
+				writeApplyFile(t, outside, "old\n")
+				if err := os.MkdirAll(filepath.Dir(fixture.target), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, fixture.target); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				writeApplyFile(t, fixture.target, "old\n")
+			}
+			writeApplyFile(t, fixture.state, "old-state\n")
 
-	if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), "exit status 9") {
-		t.Fatalf("Apply() error = %v", err)
-	}
-	assertApplyFile(t, fixture.target, "old\n")
-	assertApplyFile(t, fixture.state, "old-state\n")
-	info, err := os.Lstat(fixture.target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !info.Mode().IsRegular() {
-		t.Fatalf("restored target mode = %v", info.Mode())
+			if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), "exit status 9") {
+				t.Fatalf("Apply() error = %v", err)
+			}
+			assertApplyFile(t, fixture.target, "old\n")
+			assertApplyFile(t, fixture.state, "old-state\n")
+			info, err := os.Lstat(fixture.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.symlink {
+				link, err := os.Readlink(fixture.target)
+				if err != nil || link != outside {
+					t.Fatalf("restored symlink = %q, %v", link, err)
+				}
+				assertApplyFile(t, outside, "old\n")
+			} else if !info.Mode().IsRegular() {
+				t.Fatalf("restored target mode = %v", info.Mode())
+			}
+		})
 	}
 }
 

@@ -16,7 +16,7 @@ import (
 func TestCommandSecurityBoundaries(t *testing.T) {
 	repo := repositoryRoot(t)
 	if os.Geteuid() == 0 {
-		_, _, err := execute(t, t.TempDir(), "install", "--dry-run", "--repo-root", repo)
+		_, _, err := execute(t, t.TempDir(), "install", "full", "--dry-run", "--repo-root", repo)
 		if err == nil || !strings.Contains(err.Error(), "refuses UID 0") {
 			t.Fatalf("root error = %v", err)
 		}
@@ -26,7 +26,7 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 	t.Run("dry run leaves home unchanged", func(t *testing.T) {
 		home := t.TempDir()
 		before := treeState(t, home)
-		stdout, _, err := execute(t, home, "install", "--dry-run", "--repo-root", repo)
+		stdout, _, err := execute(t, home, "install", "full", "--dry-run", "--repo-root", repo)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,7 +49,7 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		if err := os.Symlink(outside, filepath.Join(home, ".local")); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := execute(t, home, "config", "--dry-run", "--repo-root", repo)
+		_, _, err := execute(t, home, "install", "full", "--dry-run", "--repo-root", repo)
 		if err == nil || !strings.Contains(err.Error(), "outside HOME") {
 			t.Fatalf("containment error = %v", err)
 		}
@@ -104,78 +104,12 @@ func TestDryRunRejectsPendingRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := treeState(t, home)
-	_, _, err = execute(t, home, "install", "--dry-run", "--repo-root", repo)
+	_, _, err = execute(t, home, "install", "full", "--dry-run", "--repo-root", repo)
 	if err == nil || !strings.Contains(err.Error(), "rerun without --dry-run") {
 		t.Fatalf("pending recovery error = %v", err)
 	}
 	if after := treeState(t, home); after != before {
 		t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", before, after)
-	}
-}
-
-func TestConfigFailureRestoresContent(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("mutating commands intentionally reject UID 0")
-	}
-	tests := []struct {
-		name    string
-		symlink bool
-	}{
-		{name: "regular file"},
-		{name: "outside leaf symlink", symlink: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home, repo := t.TempDir(), repositoryRoot(t)
-			writeFile(t, filepath.Join(home, ".config", "pde", "config.json"), `{"profile":"full"}`+"\n", 0o644)
-			target := filepath.Join(home, ".config", "opencode", "opencode.json")
-			original := "{\"user_setting\":true}\n"
-			outside := ""
-			if tt.symlink {
-				outside = filepath.Join(t.TempDir(), "opencode.json")
-				writeFile(t, outside, original, 0o644)
-				if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Symlink(outside, target); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				writeFile(t, target, original, 0o644)
-			}
-			chezmoi := filepath.Join(home, ".local", "share", "aquaproj-aqua", "bin", "chezmoi")
-			script := `#!/bin/sh
-set -eu
-case " $* " in
-  *" status "*) printf ' M %s\n' "$HOME/.config/opencode/opencode.json" ;;
-  *" apply "*) printf '{"managed":true}\n' > "$HOME/.config/opencode/opencode.json"; exit 23 ;;
-esac
-`
-			writeFile(t, chezmoi, script, 0o755)
-			_, _, err := execute(t, home, "config", "--repo-root", repo)
-			if err == nil {
-				t.Fatal("config failure returned nil")
-			}
-			if tt.symlink {
-				link, readErr := os.Readlink(target)
-				if readErr != nil || link != outside {
-					t.Fatalf("restored symlink = %q, %v", link, readErr)
-				}
-			}
-			content, readErr := os.ReadFile(target)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if string(content) != original {
-				t.Fatalf("restored content = %q", content)
-			}
-			if tt.symlink {
-				content, readErr = os.ReadFile(outside)
-				if readErr != nil || string(content) != original {
-					t.Fatalf("outside content = %q, %v", content, readErr)
-				}
-			}
-		})
 	}
 }
 

@@ -11,7 +11,7 @@ Ubuntu dependencies and tmux have separate metadata.
 
    ```bash
    go test ./...
-   go run . update --dry-run --repo-root ..
+   go run . install --dry-run --repo-root ..
    ```
 
 The selected profile determines the Ubuntu package set. The backend checks
@@ -31,5 +31,5 @@ The installer downloads the pinned amd64 binary from
 `mjakob-gh/build-static-tmux` and verifies its SHA-256 checksum. Do not use the
 latest-release URL. Pin a versioned asset and its checksum.
 
-There is no Ubuntu-only or tmux-only command. `update` reconciles the saved
-profile.
+There is no Ubuntu-only or tmux-only command. Bare `install` reconciles the
+saved selection.
