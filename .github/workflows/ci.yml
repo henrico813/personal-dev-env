@@ -43,6 +43,10 @@ jobs:
         with:
           go-version-file: pde-installer/go.mod
           cache-dependency-path: pde-installer/go.sum
+      - name: install zsh for fixture verification
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes zsh
       - name: verify smoke prerequisites
         run: |
           test -x /usr/bin/sudo
