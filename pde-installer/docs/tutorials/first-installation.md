@@ -24,21 +24,20 @@ export PATH="$HOME/.local/bin:$PATH"
 For a terminal installation, preview the reduced profile:
 
 ```bash
-pde-installer install --profile terminal --dry-run
+pde-installer install terminal --dry-run
 ```
 
 The preview reads host and repository state but does not run mutating commands.
-Omit `--profile terminal` to preview the full profile on a fresh HOME. This
-fresh-HOME default does not replace saved state: an existing install reuses its
-saved profile.
+Use `install full --dry-run` to preview the full selection. A fresh HOME must
+specify a selection, even for a dry run.
 
 ## 4. Install
 
-Choose one profile:
+Choose one selection:
 
 ```bash
-pde-installer install --profile terminal
-pde-installer install                 # full only on a fresh HOME
+pde-installer install terminal
+pde-installer install full
 ```
 
 Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
@@ -46,10 +45,12 @@ fd, fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, and Yazi/ya. It
 applies terminal shell/tmux configuration, retained bottom/Aqua configuration,
 common plugin externals, Git template configuration, and PDE Git configuration.
 It does not install the full profile's runtimes, editor, LSP, npm/AI tools,
-fonts, or editor/AI configuration. On a fresh HOME, omitting `--profile`
-selects full; an existing install reuses saved state. Existing terminal users
-must run `pde-installer install --profile full` to expand. Later `update`,
-`config`, `doctor`, and `list` use the saved profile.
+fonts, or editor/AI configuration. The explicit selection is saved. Later bare
+`pde-installer install` runs reconcile the saved selection, including tools and
+managed home configuration. Use `pde-installer install full` to expand a
+terminal installation. Use `pde-installer install terminal` to switch future
+reconciliation from full to terminal; previously installed full-only artifacts
+are not removed. `doctor` and `list` use the saved or legacy selection.
 
 ## 5. Verify
 

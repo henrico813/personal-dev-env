@@ -8,8 +8,8 @@ and path identity. Journal state is written before activation. On a normal full
 run, all active journals are marked committed as a group before backup cleanup.
 
 If a stage fails, the installer rolls back that stage and earlier journaled
-stages in reverse order. On the next non-dry-run `install`, `update`, or
-`config`, recovery handles journals before new work:
+stages in reverse order. On the next non-dry-run `install`, recovery handles
+journals before new work:
 
 - an uncommitted journal restores old paths;
 - a committed journal finishes removing backups and temporary paths;

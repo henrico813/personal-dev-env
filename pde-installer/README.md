@@ -1,6 +1,6 @@
 # PDE Installer
 
-`pde-installer` installs and updates the PDE environment from an existing
+`pde-installer` reconciles the PDE environment from an existing
 `personal-dev-env` checkout.
 
 ## Requirements
@@ -22,8 +22,8 @@ From the repository root:
 mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
 export PATH="$HOME/.local/bin:$PATH"
-pde-installer install --profile terminal --dry-run
-pde-installer install --profile terminal
+pde-installer install terminal --dry-run
+pde-installer install terminal
 pde-installer doctor
 pde-installer list
 ```
@@ -31,9 +31,12 @@ pde-installer list
 The installer does not clone or update the checkout. It finds the checkout from
 the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
-Only `install` accepts `--profile full|terminal`. On a fresh `HOME`, omitting
-`--profile` selects full; an existing install reuses its saved profile. The
-terminal profile contains the runtime Ubuntu prerequisites
+A fresh installation must run `install terminal` or `install full`. The
+selection is saved in `~/.config/pde/config.json`. Later bare `install` runs
+reuse the saved selection or infer full from `paths.env` or an `install_path`
+field. A successful explicit selection switches future reconciliation; a
+pre-commit failure preserves the prior selection. Switching from full to
+terminal does not uninstall full-only artifacts. Terminal contains the runtime Ubuntu prerequisites
 (`ca-certificates`, `curl`, `file`, `git`, `gzip`, `tar`, `unzip`, `xclip`,
 `xz-utils`, and `zsh`), the existing amd64-only direct tmux 3.7b binary, fd,
 fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, Yazi/ya, and
@@ -42,8 +45,9 @@ plugin externals, Git template configuration, and PDE Git configuration.
 
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Full retains all of
-these components and everything else in the environment. `update` and `config`
-require saved profile state; fresh `doctor` and `list` inspect full.
+these components and everything else in the environment. Every install
+reconciles both tools and managed home configuration. Fresh `doctor` and `list`
+inspect full.
 
 ## Documentation
 

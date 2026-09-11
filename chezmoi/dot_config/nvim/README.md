@@ -10,7 +10,7 @@ nvim
 
 `pde-installer install` applies this config and pinned plugin archives through chezmoi. The maintained CodeCompanion fork uses a checksummed archive for a frozen `main` commit because it has no compatible release.
 
-Run `pde-installer config` after changing the chezmoi source.
+Run `pde-installer install` after changing the chezmoi source.
 
 ---
 
