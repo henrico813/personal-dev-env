@@ -38,14 +38,16 @@ vibe --help
 vibe run --help
 ```
 
-Pass the user-requested model to Vibe unchanged with `--model "$MODEL"`.
-Vibe resolves bare model names before repository, worktree, artifact, or ledger
-side effects. An explicit `provider/model` selector takes precedence over
-`--provider`; otherwise bare names use `openai-codex`, then `github-copilot`,
-then other configured providers (excluding `opencode-go`). For example, pass
-`gpt-5.6-luna` unchanged as a bare model. If model resolution returns
-`setup_error`, diagnose it with `vibe resolve-model --model "$MODEL"` (and the
-same `--provider` when one was requested).
+Choose a provider before invoking Vibe and pass the resulting `provider/model`
+selector unchanged with `--model "$MODEL"`. For a bare model name, try
+`openai-codex`, then `github-copilot`, then another configured provider except
+`opencode-go`.
+
+Do not prompt the user when provider selection fails. Inspect the final JSON,
+agent log, and available provider names in Pi auth or supported environment
+variables without exposing credential values, then retry the same step with the
+next viable provider. Stop only after exhausting configured providers or when
+the failure is not provider-specific.
 
 For this workflow, <task-context> is the complete plan and every document it references. For repo-backed plans, run the following research once per plan, not once per implementation step.
 
@@ -128,8 +130,9 @@ After each run, parse the final JSON and review the result before continuing.
 Handle statuses as follows:
 - `completed`: inspect the commit, run verification, update the plan, then continue.
 - `noop`: continue only if the step was already complete or intentionally no-op.
-- `agent_failed`, `commit_failed`, `refused_dirty`: stop, inspect the reported logs/worktree, and notify the user.
-- For a model-resolution `setup_error`, run `vibe resolve-model --model "$MODEL"` (and the same `--provider` when one was requested); stop for other setup errors.
+- `agent_failed`: inspect the reported logs; retry provider-specific failures with the next viable provider, otherwise stop and notify the user.
+- `commit_failed`, `refused_dirty`: stop, inspect the reported logs/worktree, and notify the user.
+- `setup_error`: inspect the final JSON; resolve provider-specific failures without prompting, otherwise stop.
 
 For completed steps, review correctness and consistency before running the next
 step:

@@ -46,8 +46,6 @@ pub struct PersistedRunState {
     pub created_at: u64,
     pub branch: Option<String>,
     pub worktree: Option<String>,
-    #[serde(default)]
-    pub requested_model: Option<String>,
     pub model: Option<String>,
     pub phase: RunPhase,
     pub terminal_status: Option<Status>,
@@ -207,8 +205,7 @@ mod tests {
             created_at: 1778000000,
             branch: Some("vibe/pdev-055-demo-key".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
-            requested_model: Some("gpt-5.4".to_string()),
-            model: Some("openai-codex/gpt-5.4".to_string()),
+            model: Some("gpt-5.4".to_string()),
             phase: RunPhase::RunningAgent,
             terminal_status: None,
             pre_run_commit: Some("abc".to_string()),

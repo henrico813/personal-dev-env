@@ -1,9 +1,8 @@
 use crate::{
     adapters::docker,
-    cli::{ResolveModelArgs, RunArgs},
+    cli::RunArgs,
     ledger, observe, prompts,
-    provider::{self, Request, Resolved},
-    result::{ResolveModelResult, RunResult, Status},
+    result::{RunResult, Status},
     sandbox, snapshot,
     state::RunPhase,
     worktree,
@@ -16,40 +15,6 @@ use std::{
 };
 
 const COMBINED_PROMPT_MISSING_EXIT: i32 = 97;
-
-struct PreparedModel {
-    runtime_root: std::path::PathBuf,
-    resolved: Resolved,
-}
-
-fn prepare_model(
-    model: &str,
-    provider: Option<&str>,
-    require_run_auth: bool,
-) -> Result<PreparedModel, String> {
-    let request = Request::parse(model, provider)?;
-    let config = docker::discovery_config(std::env::var("HOME").ok().as_deref())?;
-    if require_run_auth {
-        docker::require_run_auth(&config)?;
-    }
-    let runtime_root = sandbox::prepare_discovery()?;
-    let models = docker::list_models(&config, request.model())?;
-    let configured = if require_run_auth {
-        config.run_configured()
-    } else {
-        config.configured()
-    };
-    let resolved = provider::select(request, &models, configured)?;
-    Ok(PreparedModel {
-        runtime_root,
-        resolved,
-    })
-}
-
-pub fn resolve_model(args: ResolveModelArgs) -> Result<ResolveModelResult, String> {
-    let prepared = prepare_model(&args.model, args.provider.as_deref(), false)?;
-    Ok(ResolveModelResult::from(prepared.resolved))
-}
 
 /// Read the supervisor prompt as UTF-8 so the rendered contract is deterministic.
 pub fn read_supervisor_prompt(path: &Path) -> Result<String, String> {
@@ -104,7 +69,6 @@ impl ResultParts {
 fn build_result(
     session: &worktree::WorktreeSession,
     artifacts: &observe::ArtifactPaths,
-    requested_model: &str,
     model: &str,
     parts: ResultParts,
 ) -> RunResult {
@@ -113,7 +77,6 @@ fn build_result(
         status: parts.status,
         branch: Some(session.branch.clone()),
         worktree: Some(session.worktree.display().to_string()),
-        requested_model: Some(requested_model.to_string()),
         model: Some(model.to_string()),
         pre_run_commit: parts.pre_run_commit,
         commit: parts.commit,
@@ -186,7 +149,7 @@ pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
 }
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
-pub fn execute(mut args: RunArgs) -> RunResult {
+pub fn execute(args: RunArgs) -> RunResult {
     if let Err(error) = validate_inputs(&args.inputs) {
         return RunResult::setup_error(error);
     }
@@ -194,12 +157,14 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         Ok(prompt) => prompt,
         Err(error) => return RunResult::setup_error(error),
     };
-    let prepared = match prepare_model(&args.model, args.provider.as_deref(), true) {
+    let prepared_auth = match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref()) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
-    let requested_model = prepared.resolved.requested().to_string();
-    args.model = prepared.resolved.selector().to_string();
+    let asset_root = match sandbox::prepare_agent_image() {
+        Ok(root) => root,
+        Err(error) => return RunResult::setup_error(error),
+    };
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
@@ -216,7 +181,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         &session.slug,
         &session.branch,
         &session.worktree,
-        &requested_model,
         &args.model,
         created_at,
         run_id,
@@ -224,7 +188,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         return build_result(
             &session,
             &artifacts,
-            &requested_model,
             &args.model,
             ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
@@ -235,7 +198,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -247,7 +209,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -259,7 +220,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -272,7 +232,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -284,7 +243,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -296,7 +254,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
             ),
@@ -313,7 +270,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -327,7 +283,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &requested_model,
                     &args.model,
                     ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
                 ),
@@ -340,7 +295,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             ),
@@ -352,7 +306,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -363,7 +316,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             ),
         );
     }
-    let runtime_root = prepared.runtime_root;
     let mounts = session.sandbox_mounts(&args.inputs);
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
@@ -371,7 +323,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -383,12 +334,13 @@ pub fn execute(mut args: RunArgs) -> RunResult {
         );
     }
     let agent_exit = match sandbox::run_agent(
-        &runtime_root,
+        &asset_root,
         &mounts,
         &artifacts,
         &args.model,
         args.stderr_level.as_str(),
         args.insecure_tls,
+        prepared_auth.as_deref(),
     ) {
         Ok(code) => code,
         Err(err) => {
@@ -397,7 +349,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -415,7 +366,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -433,7 +383,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             build_result(
                 &session,
                 &artifacts,
-                &requested_model,
                 &args.model,
                 ResultParts::failure(
                     Some(pre_run_commit.clone()),
@@ -452,7 +401,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -472,7 +420,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit),
@@ -499,7 +446,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
                 build_result(
                     &session,
                     &artifacts,
-                    &requested_model,
                     &args.model,
                     ResultParts::failure(
                         Some(pre_run_commit.clone()),
@@ -514,7 +460,7 @@ pub fn execute(mut args: RunArgs) -> RunResult {
             .commit_message
             .clone()
             .unwrap_or_else(|| format!("vibe: run {}", session.key));
-        match worktree::commit_result(&session.worktree, &message, &runtime_root.join("hooks")) {
+        match worktree::commit_result(&session.worktree, &message, &asset_root.join("hooks")) {
             Ok(sha) => {
                 commit = Some(sha);
                 status = if agent_exit == 0 {
@@ -540,7 +486,6 @@ pub fn execute(mut args: RunArgs) -> RunResult {
     let mut result = build_result(
         &session,
         &artifacts,
-        &requested_model,
         &args.model,
         ResultParts {
             pre_run_commit: Some(pre_run_commit),

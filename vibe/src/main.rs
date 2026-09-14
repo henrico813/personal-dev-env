@@ -4,7 +4,6 @@ mod cli;
 mod ledger;
 mod observe;
 mod prompts;
-mod provider;
 mod result;
 mod sandbox;
 mod snapshot;
@@ -46,13 +45,6 @@ fn main() {
             persist_emitted_result(&mut result);
             emit_and_exit(&result, result.exit_code());
         }
-        ParsedCommand::ResolveModel(args) => match app::resolve_model(args) {
-            Ok(result) => emit_and_exit(&result, 0),
-            Err(error) => {
-                let result = RunResult::setup_error(error);
-                emit_and_exit(&result, result.exit_code());
-            }
-        },
         ParsedCommand::Status(args) => {
             let repo = adapters::git::repo_layout().unwrap_or_else(|err| {
                 eprintln!("vibe status requires a target repo checkout: {err}");
@@ -93,8 +85,7 @@ mod tests {
             status: Status::Completed,
             branch: Some("vibe/pdev-099b".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
-            requested_model: Some("gpt-5.4-mini".to_string()),
-            model: Some("openai-codex/gpt-5.4-mini".to_string()),
+            model: Some("gpt-5.4-mini".to_string()),
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
@@ -157,8 +148,7 @@ mod tests {
             status: Some(Status::Completed),
             branch: Some("vibe/pdev-099b".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
-            requested_model: Some("gpt-5.4-mini".to_string()),
-            model: Some("openai-codex/gpt-5.4-mini".to_string()),
+            model: Some("gpt-5.4-mini".to_string()),
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
