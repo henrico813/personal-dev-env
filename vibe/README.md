@@ -26,6 +26,19 @@ make -C vibe check
 make -C vibe test
 ```
 
+The live integration test is compiled but not executed by `make check` or
+`make test`. Run it explicitly on Linux with:
+
+```bash
+make -C vibe integration
+```
+
+The explicit test requires Docker, GNU `timeout`, network access, and valid
+`~/.pi/agent/auth.json` credentials. It runs the actual Vibe binary and Pi
+provider call. The test uses an isolated home for Vibe state but links the real
+Pi agent directory so OAuth refreshes persist. Pi may update the credentials as
+it would during a normal Vibe run.
+
 ## Install
 
 ```bash
@@ -59,29 +72,18 @@ vibe run \
   --key pdev-049-demo \
   --base origin/feature/demo \
   --prompt-file /tmp/vibe-task.txt \
-  --model gpt-5.6-luna \
+  --model openai-codex/gpt-5.6-luna \
   --stderr-level info \
   --commit-message "docs: update README note"
 
 vibe status --key pdev-049-demo
 ```
 
-Vibe resolves a bare model before creating a repository, managed worktree,
-run artifacts, or ledger state. An explicit `provider/model` selector takes
-precedence over `--provider`; for a bare model, `--provider` selects the
-provider, and without it Vibe tries `openai-codex`, then `github-copilot`,
-then other configured providers except `opencode-go`. The requested model is
-passed unchanged by callers. To diagnose resolution without creating any
-repository, worktree, artifact, or ledger state, run:
-
-```bash
-vibe resolve-model --model gpt-5.6-luna
-```
-
-Model discovery mounts `~/.pi/agent` read-only and uses it only to discover
-configured models and providers. During the agent run, Vibe mounts the host
-Pi agent directory writable so Pi can persist authentication refreshes and
-locks. Authentication data is not copied into run artifacts.
+Choose a `provider/model` selector before invoking Vibe. Vibe passes `--model`
+unchanged, and Pi uses that selector during the agent run. Bare model names can
+be ambiguous across Pi providers.
+When Pi auth is used, Vibe mounts the host Pi agent directory writable so Pi can
+persist refreshes and locks. Authentication data is not copied into run artifacts.
 
 Add `--insecure-tls` only if you need to bypass certificate verification in
 Docker; it sets `NODE_TLS_REJECT_UNAUTHORIZED=0` inside the container and

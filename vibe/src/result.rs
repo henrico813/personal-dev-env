@@ -1,22 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::provider::Resolved;
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct ResolveModelResult {
-    pub requested_model: String,
-    pub model: String,
-}
-
-impl From<Resolved> for ResolveModelResult {
-    fn from(resolved: Resolved) -> Self {
-        Self {
-            requested_model: resolved.requested().to_string(),
-            model: resolved.selector().to_string(),
-        }
-    }
-}
-
 /// Stable machine-readable outcome for `vibe run`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -37,7 +20,6 @@ pub struct RunResult {
     pub status: Status,
     pub branch: Option<String>,
     pub worktree: Option<String>,
-    pub requested_model: Option<String>,
     pub model: Option<String>,
     pub pre_run_commit: Option<String>,
     pub commit: Option<String>,
@@ -72,7 +54,6 @@ impl RunResult {
             status: Status::SetupError,
             branch: None,
             worktree: None,
-            requested_model: None,
             model: None,
             pre_run_commit: None,
             commit: None,
@@ -91,7 +72,7 @@ impl RunResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{ResolveModelResult, RunResult, Status};
+    use super::{RunResult, Status};
 
     fn sample_result(status: Status) -> RunResult {
         RunResult {
@@ -99,8 +80,7 @@ mod tests {
             status,
             branch: Some("vibe/pdev-049-demo".to_string()),
             worktree: Some("/tmp/worktree".to_string()),
-            requested_model: Some("gpt-5.4".to_string()),
-            model: Some("openai-codex/gpt-5.4".to_string()),
+            model: Some("gpt-5.4".to_string()),
             pre_run_commit: Some("abc".to_string()),
             commit: Some("def".to_string()),
             snapshot_commits: vec!["snap".to_string()],
@@ -113,18 +93,6 @@ mod tests {
             persistence_error: None,
             error_message: None,
         }
-    }
-
-    #[test]
-    fn resolve_result_serializes_requested_and_resolved_models() {
-        let value = serde_json::to_value(ResolveModelResult {
-            requested_model: "dynamic-model".to_string(),
-            model: "openai-codex/dynamic-model".to_string(),
-        })
-        .expect("serialize resolve result");
-
-        assert_eq!(value["requested_model"], "dynamic-model");
-        assert_eq!(value["model"], "openai-codex/dynamic-model");
     }
 
     #[test]
@@ -151,8 +119,7 @@ mod tests {
             serde_json::to_value(sample_result(Status::AgentFailed)).expect("serialize result");
 
         assert_eq!(value["status"], "agent_failed");
-        assert_eq!(value["requested_model"], "gpt-5.4");
-        assert_eq!(value["model"], "openai-codex/gpt-5.4");
+        assert_eq!(value["model"], "gpt-5.4");
         assert_eq!(value["run_id"], "run-id");
         assert_eq!(value["artifacts_dir"], "/tmp/run");
         assert_eq!(value["pre_run_commit"], "abc");

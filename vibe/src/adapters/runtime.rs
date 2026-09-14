@@ -103,12 +103,13 @@ mod tests {
     }
 
     #[test]
-    fn shipped_runtime_shell_preserves_combined_prompt_newline() {
+    fn shipped_shell_preserves_model_and_prompt() {
         let temp = tempdir().expect("tempdir");
         let bin = temp.path().join("bin");
         let home = temp.path().join("home");
         let repo_root = temp.path().join("repo");
         let capture = temp.path().join("captured-prompt.bin");
+        let args_capture = temp.path().join("captured-args.bin");
         let combined_prompt = temp.path().join("combined-prompt.txt");
         let script = temp.path().join("run-agent.sh");
 
@@ -133,7 +134,13 @@ mod tests {
         );
         write_executable(
             &bin.join("pi"),
-            "#!/usr/bin/env bash\nset -euo pipefail\nlast=\"${!#}\"\nprintf '%s' \"$last\" > \"$PI_CAPTURE_FILE\"\n",
+            concat!(
+                "#!/usr/bin/env bash\n",
+                "set -euo pipefail\n",
+                "printf '%s\\0' \"$@\" > \"$PI_ARGS_CAPTURE_FILE\"\n",
+                "last=\"${!#}\"\n",
+                "printf '%s' \"$last\" > \"$PI_CAPTURE_FILE\"\n",
+            ),
         );
 
         let status = Command::new(&script)
@@ -148,9 +155,10 @@ mod tests {
                 ),
             )
             .env("PI_CAPTURE_FILE", &capture)
+            .env("PI_ARGS_CAPTURE_FILE", &args_capture)
             .env("VIBE_REPO_ROOT", &repo_root)
             .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
-            .env("VIBE_MODEL", "fake/model")
+            .env("VIBE_MODEL", "fake-provider/fake-model")
             .output()
             .expect("run runtime shell");
 
@@ -159,6 +167,22 @@ mod tests {
             "stdout: {}\nstderr: {}",
             String::from_utf8_lossy(&status.stdout),
             String::from_utf8_lossy(&status.stderr),
+        );
+
+        // The fake Pi records its arguments before consuming the prompt. This
+        // verifies shell quoting without Docker, credentials, or network access.
+        let captured_args = fs::read(&args_capture).expect("read captured Pi arguments");
+        let pi_args: Vec<&[u8]> = captured_args
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .collect();
+        let model_position = pi_args
+            .iter()
+            .position(|arg| *arg == b"--model")
+            .expect("Pi receives --model");
+        assert_eq!(
+            std::str::from_utf8(pi_args[model_position + 1]).expect("UTF-8 model selector"),
+            "fake-provider/fake-model"
         );
         assert_eq!(
             fs::read(&capture).expect("read captured prompt"),
