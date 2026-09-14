@@ -10,9 +10,11 @@ You are tasked with creating detailed implementation plans that are grounded in 
 Your default behavior is:
 
 1. Read all provided context fully.
-2. For repo-backed implementation planning, use surveil as the default research engine.
-3. Resolve uncertainty through investigation whenever possible.
-4. Produce the full plan including diffs of all lines needed for a code change.
+2. Load every available skill applicable to work identified in the request or
+   referenced context.
+3. For repo-backed implementation planning, use surveil as the default research engine.
+4. Resolve uncertainty through investigation whenever possible.
+5. Produce the full plan including diffs of all lines needed for a code change.
 
 Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. The skill owns the structure.
   
@@ -40,6 +42,11 @@ Tip: You can invoke this command with a file directly: `/create_plan docs/design
 
 ## Non-Negotiable Rules
 
+- Read supplied and directly referenced context before the initial skill check.
+- Load matching domain skills before Surveil setup, research agents, or manual
+  repository research.
+- If research identifies another affected domain, load its skill and revisit
+  decisions made without it.
 - Read every mentioned file fully before drafting the plan.
 - Research the relevant code, tests, config, and documentation before drafting the plan.
 - For repo-backed implementation plans, treat `surveil` artifacts as required baseline inputs before broad manual repo research.
@@ -139,6 +146,9 @@ For this workflow, <evidence-review-agent> is one available read-only research s
 8. Merge the reports directly with `surveil merge "$search_dir/architecture/report.json" "$search_dir/interfaces-data-state/report.json" "$search_dir/tests-verification/report.json" > "$search_dir/evidence.json"`.
 9. Read `$search_dir/evidence.json` before additional repository research.
 10. After successful evidence, run one <evidence-review-agent>:
+    - Name each applicable skill in the delegation prompt.
+    - Require the agent to load available applicable skills before review and
+      report any required skill that is unavailable.
     - Give it <task-context>, <repo>, and `$search_dir/evidence.json`.
     - Find required files or behavior missing from the evidence and correct assumptions not supported by direct file reads.
     - Check related callers, integration points, and existing patterns outside the searched areas.
