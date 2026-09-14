@@ -36,6 +36,8 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			omit: []string{
 				"obsidian.nvim",
 				".pi/agent/settings.json",
+				".agents/skills/obsidian-zettel/SKILL.md",
+				".codex/skills/obsidian-zettel/SKILL.md",
 				".agents/skills/go-development/Apache-2.0.txt",
 				".agents/skills/go-development/README.md",
 				".agents/skills/go-development/SKILL.md",
@@ -112,6 +114,8 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"obsidian.nvim",
 				".pi/agent/settings.json",
 				"implement-plan/SKILL.md",
+				".agents/skills/obsidian-zettel/SKILL.md",
+				".codex/skills/obsidian-zettel/SKILL.md",
 				".agents/skills/go-development/Apache-2.0.txt",
 				".agents/skills/go-development/README.md",
 				".agents/skills/go-development/SKILL.md",
