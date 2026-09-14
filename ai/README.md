@@ -9,7 +9,8 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
 Shared skills include `behavior-focused-testing` for automated tests,
-`go-development` for Go code, and `rust-development` for Rust code.
+`go-development` for Go code, `obsidian-zettel` for template-aligned vault
+notes, and `rust-development` for Rust code.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
