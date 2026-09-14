@@ -6,10 +6,6 @@ description: Create detailed implementation plans through the shared Go planner 
 
 You are tasked with creating detailed implementation plans that are grounded in the actual codebase and ready for execution.
 
-## Task
-
-$ARGUMENTS
-
 Your default behavior is:
 
 1. Read all provided context fully.
