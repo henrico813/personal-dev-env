@@ -19,9 +19,10 @@
   test.
 - Do not load a language skill merely because the repository contains that
   language. If a skill is loaded late, revisit affected prior work.
-- When delegating domain work, name the applicable skills in the delegation
-  prompt. Require the subagent to load available skills before working and to
-  report required skills that are unavailable.
+- When delegating domain work, include an `Applicable skills:` line in the
+  delegation prompt with each skill's exact name. Require the subagent to load
+  available skills before working and to report required skills that are
+  unavailable.
 
 ## Testing
 
