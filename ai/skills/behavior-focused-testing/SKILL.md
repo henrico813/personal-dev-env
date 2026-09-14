@@ -1,6 +1,6 @@
 ---
 name: behavior-focused-testing
-description: Use when writing, updating, or reviewing automated tests, including regression tests and test plans.
+description: Use when planning changes to, writing, updating, or reviewing automated tests, including proposed test diffs, regression tests, and test plans.
 ---
 
 Behavior-focused testing
