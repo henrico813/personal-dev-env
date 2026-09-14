@@ -6,7 +6,7 @@ use crate::{
     worktree::SandboxMounts,
 };
 
-pub fn prepare_discovery() -> Result<PathBuf, String> {
+pub fn prepare_agent_image() -> Result<PathBuf, String> {
     docker::require_docker()?;
     let runtime_root = runtime::ensure_runtime_assets()?;
     docker::ensure_image(&runtime_root)?;
@@ -20,6 +20,14 @@ pub fn run_agent(
     model: &str,
     stderr_level: &str,
     insecure_tls: bool,
+    pi_agent_dir: Option<&Path>,
 ) -> Result<i32, String> {
-    docker::run_task(mounts, artifacts, model, stderr_level, insecure_tls)
+    docker::run_task(
+        mounts,
+        artifacts,
+        model,
+        stderr_level,
+        insecure_tls,
+        pi_agent_dir,
+    )
 }
