@@ -8,13 +8,30 @@
   `git-messages` skill.
 - Do not add AI attribution to commits or pull requests.
 
+## Skill Routing
+
+- After reading the user request and directly referenced context, compare the
+  identified work with the available skill descriptions.
+- Load each skill applicable to the requested or discovered work before
+  repository research, planning, review, implementation, or substantive advice.
+- Recheck skill applicability after a handoff, compaction, material goal change,
+  or discovery of another domain the response will plan, review, implement, or
+  test.
+- Do not load a language skill merely because the repository contains that
+  language. If a skill is loaded late, revisit affected prior work.
+- When delegating domain work, include an `Applicable skills:` line in the
+  delegation prompt with each skill's exact name. Require the subagent to load
+  available skills before working and to report required skills that are
+  unavailable.
+
 ## Testing
 
-- When writing, updating, or reviewing automated tests, load and follow the
-  `behavior-focused-testing` skill.
-- When changing or reviewing Go code, load and follow the `go-development` skill.
-- When changing or reviewing Rust code, load and follow the `rust-development`
-  skill.
+- When planning changes to, writing, updating, or reviewing automated tests,
+  load and follow the `behavior-focused-testing` skill.
+- When planning changes to, changing, or reviewing Go code, load and follow the
+  `go-development` skill.
+- When planning changes to, changing, or reviewing Rust code, load and follow
+  the `rust-development` skill.
 - If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
 
 ## Planning Docs
