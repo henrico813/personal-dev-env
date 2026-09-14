@@ -1,30 +1,15 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs::File,
+    fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::{
-    observe::ArtifactPaths,
-    provider::{Provider, Selector},
-    worktree::SandboxMounts,
-};
+use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
 
-const ENV_PROVIDERS: &[(&[&str], &str)] = &[
-    (&["ANTHROPIC_API_KEY"], "anthropic"),
-    (&["OPENAI_API_KEY"], "openai"),
-    (&["GEMINI_API_KEY"], "google"),
-    (&["DEEPSEEK_API_KEY"], "deepseek"),
-    (
-        &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
-        "azure-openai",
-    ),
-];
-
-const IMAGE: &str = "vibe-pi:0.5.0";
+const IMAGE: &str = "vibe-pi:0.6.0";
 const AUTH_VARS: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -114,30 +99,6 @@ fn host_user() -> Result<HostUser, String> {
     })
 }
 
-fn readable_pi_agent_dir(home: Option<&str>) -> Option<PathBuf> {
-    let pi_agent_dir = PathBuf::from(home?).join(".pi/agent");
-    let auth_file = pi_agent_dir.join("auth.json");
-    let metadata = std::fs::metadata(&auth_file).ok()?;
-    if !metadata.is_file() {
-        return None;
-    }
-    File::open(auth_file).ok()?;
-    Some(pi_agent_dir)
-}
-
-fn writable_pi_agent_dir(dir: Option<&Path>) -> Option<PathBuf> {
-    let pi_agent_dir = dir?.to_path_buf();
-    let auth_file = pi_agent_dir.join("auth.json");
-    File::open(auth_file).ok()?;
-
-    // Pi rotates OAuth tokens and writes refresh locks beside auth.json.
-    let probe = pi_agent_dir.join(".vibe-write-check");
-    File::create(&probe).ok()?;
-    let _ = std::fs::remove_file(probe);
-
-    Some(pi_agent_dir)
-}
-
 fn env_var_is_set(key: &str) -> bool {
     std::env::var(key)
         .ok()
@@ -159,110 +120,36 @@ fn auth_env_args() -> Vec<String> {
         .collect()
 }
 
-pub(crate) struct DiscoveryConfig {
-    configured: BTreeSet<Provider>,
-    run_configured: BTreeSet<Provider>,
-    pi_agent_dir: Option<PathBuf>,
-}
-
-impl DiscoveryConfig {
-    pub(crate) fn configured(&self) -> &BTreeSet<Provider> {
-        &self.configured
-    }
-
-    pub(crate) fn run_configured(&self) -> &BTreeSet<Provider> {
-        &self.run_configured
-    }
-}
-
-pub(crate) fn discovery_config(home: Option<&str>) -> Result<DiscoveryConfig, String> {
-    let pi_agent_dir = readable_pi_agent_dir(home);
-    let env_configured: BTreeSet<Provider> = ENV_PROVIDERS
-        .iter()
-        .filter(|(keys, _)| keys.iter().all(|key| env_var_is_set(key)))
-        .map(|(_, provider)| Provider::parse(provider))
-        .collect::<Result<_, _>>()?;
-    let mut configured = env_configured.clone();
-    let mut run_configured = env_configured;
-    if let Some(dir) = &pi_agent_dir {
-        let text = std::fs::read_to_string(dir.join("auth.json"))
-            .map_err(|error| format!("read Pi auth configuration: {error}"))?;
-        let entries: BTreeMap<String, serde_json::Value> = serde_json::from_str(&text)
-            .map_err(|error| format!("parse Pi auth configuration: {error}"))?;
-        let providers = entries
-            .into_keys()
-            .map(|name| {
-                Provider::parse(&name).map_err(|_| "invalid Pi provider configuration".to_string())
-            })
-            .collect::<Result<BTreeSet<_>, _>>()?;
-        configured.extend(providers.iter().cloned());
-        if writable_pi_agent_dir(Some(dir)).is_some() {
-            run_configured.extend(providers);
+pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf>, String> {
+    let pi_agent_dir = home.and_then(|home| {
+        let pi_agent_dir = PathBuf::from(home).join(".pi/agent");
+        let auth_file = pi_agent_dir.join("auth.json");
+        let metadata = std::fs::metadata(&auth_file).ok()?;
+        if !metadata.is_file() {
+            return None;
         }
-    }
-    Ok(DiscoveryConfig {
-        configured,
-        run_configured,
-        pi_agent_dir,
-    })
-}
+        File::open(auth_file).ok()?;
 
-pub(crate) fn require_run_auth(config: &DiscoveryConfig) -> Result<(), String> {
-    if has_provider_env() || writable_pi_agent_dir(config.pi_agent_dir.as_deref()).is_some() {
-        Ok(())
+        // Pi rotates OAuth tokens and writes refresh locks beside auth.json.
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .ok()?
+            .as_nanos();
+        let probe = pi_agent_dir.join(format!(".vibe-write-check-{}-{nonce}", std::process::id()));
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+            .ok()?;
+        std::fs::remove_file(probe).ok()?;
+        Some(pi_agent_dir)
+    });
+
+    if has_provider_env() || pi_agent_dir.is_some() {
+        Ok(pi_agent_dir)
     } else {
         Err("vibe requires provider auth via env vars or ~/.pi/agent/auth.json".to_string())
     }
-}
-
-pub(crate) fn list_models(
-    config: &DiscoveryConfig,
-    model: &str,
-) -> Result<BTreeSet<Selector>, String> {
-    let mut command = Command::new("docker");
-    command.args(["run", "--rm", "--entrypoint", "pi", "-e", "HOME=/vibe-home"]);
-    if let Some(dir) = &config.pi_agent_dir {
-        command.args(["-v", &format!("{}:/vibe-home/.pi/agent:ro", dir.display())]);
-    }
-    command.args(auth_env_args());
-    let output = command
-        .arg(IMAGE)
-        .args(["--list-models", model])
-        .output()
-        .map_err(|error| format!("list Pi models: {error}"))?;
-    if !output.status.success() {
-        return Err("list Pi models failed".to_string());
-    }
-    output
-        .stdout
-        .split(|byte| *byte == b'\n')
-        .filter_map(|line| {
-            let line = std::str::from_utf8(line).ok()?;
-            let mut fields = line.split_whitespace();
-            let provider = fields.next()?;
-            let listed = fields.next()?;
-            (listed == model).then_some(format!("{provider}/{listed}"))
-        })
-        .map(|selector| selector.parse())
-        .collect()
-}
-
-// Kept for the existing unit tests; run-time callers use the split checks above.
-#[cfg(test)]
-fn pi_agent_dir_with_auth(home: Option<&str>) -> Option<PathBuf> {
-    let dir = readable_pi_agent_dir(home)?;
-    writable_pi_agent_dir(Some(&dir))
-}
-
-#[cfg(test)]
-fn auth_is_configured(home: Option<&str>) -> bool {
-    has_provider_env() || pi_agent_dir_with_auth(home).is_some()
-}
-
-#[cfg(test)]
-pub fn require_auth() -> Result<(), String> {
-    let config = discovery_config(std::env::var("HOME").ok().as_deref())?;
-    require_run_auth(&config)
 }
 
 struct DockerRunArgs<'a> {
@@ -369,6 +256,7 @@ pub fn run_task(
     model: &str,
     stderr_level: &str,
     insecure_tls: bool,
+    pi_agent_dir: Option<&Path>,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -381,9 +269,6 @@ pub fn run_task(
             .unwrap_or("run")
     );
     let user = host_user()?;
-    let read_only = readable_pi_agent_dir(std::env::var("HOME").ok().as_deref());
-    let pi_agent_dir = writable_pi_agent_dir(read_only.as_deref());
-
     // Auth depends on host state, so the deterministic Docker prompt wiring stays separate.
     if insecure_tls {
         eprintln!("warning: --insecure-tls disables TLS certificate verification inside Docker");
@@ -401,7 +286,7 @@ pub fn run_task(
         insecure_tls,
         snapshot_ref: &snapshot_ref,
         user: &user,
-        pi_agent_dir: pi_agent_dir.as_deref(),
+        pi_agent_dir,
     }));
     cmd.args(auth_env_args());
     for (git_key, env_key) in HOST_GIT_CONFIG_KEYS {
@@ -470,10 +355,10 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_env_args, auth_is_configured, discovery_config, docker_run_args,
-        pi_agent_dir_with_auth, require_auth, ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
+        auth_env_args, docker_run_args, prepare_provider_auth, ArtifactPaths, DockerRunArgs,
+        HostUser, AUTH_VARS,
     };
-    use crate::{provider::Provider, state::home_env_lock};
+    use crate::state::home_env_lock;
     use std::{ffi::OsString, fs, path::Path};
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
@@ -533,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn auth_is_configured_accepts_real_credentials() {
+    fn provider_auth_accepts_env_credentials() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let saved = save_auth_env();
@@ -542,13 +427,13 @@ mod tests {
         clear_auth_env();
         std::env::set_var("OPENAI_API_KEY", "sk-test");
 
-        assert!(auth_is_configured(home.path().to_str()));
+        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
 
         restore_env(saved);
     }
 
     #[test]
-    fn auth_is_configured_accepts_auth_file() {
+    fn provider_auth_accepts_empty_pi_object() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_dir = home.path().join(".pi/agent");
@@ -560,13 +445,13 @@ mod tests {
         std::env::set_var("HOME", home.path());
         clear_auth_env();
 
-        assert!(auth_is_configured(home.path().to_str()));
+        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
 
         restore_env(saved);
     }
 
     #[test]
-    fn auth_is_configured_rejects_missing_credentials_and_auth_file() {
+    fn provider_auth_rejects_missing_credentials() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let saved = save_auth_env();
@@ -574,68 +459,13 @@ mod tests {
         std::env::set_var("HOME", home.path());
         clear_auth_env();
 
-        assert!(!auth_is_configured(home.path().to_str()));
+        assert!(prepare_provider_auth(home.path().to_str()).is_err());
 
         restore_env(saved);
     }
 
     #[test]
-    fn require_auth_accepts_auth_file_without_credentials() {
-        let _guard = auth_env_lock().lock().expect("lock auth env");
-        let home = tempfile::tempdir().expect("tempdir");
-        let auth_dir = home.path().join(".pi/agent");
-        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
-        fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
-
-        let saved = save_auth_env();
-
-        std::env::set_var("HOME", home.path());
-        clear_auth_env();
-
-        let result = require_auth();
-
-        restore_env(saved);
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn run_configuration_excludes_read_only_pi_auth() {
-        let _guard = auth_env_lock().lock().expect("lock auth env");
-        let home = tempfile::tempdir().expect("tempdir");
-        let auth_dir = home.path().join(".pi/agent");
-        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
-        fs::write(auth_dir.join("auth.json"), br#"{"github-copilot": {}}"#)
-            .expect("write auth file");
-        let saved = save_auth_env();
-
-        std::env::set_var("HOME", home.path());
-        clear_auth_env();
-        std::env::set_var("OPENAI_API_KEY", "test-key");
-        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
-        permissions.set_readonly(true);
-        fs::set_permissions(&auth_dir, permissions).expect("readonly auth dir");
-
-        let config = discovery_config(home.path().to_str()).expect("discovery config");
-
-        let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
-        permissions.set_readonly(false);
-        fs::set_permissions(&auth_dir, permissions).expect("restore auth dir");
-        restore_env(saved);
-
-        assert!(config
-            .configured()
-            .contains(&Provider::parse("github-copilot").expect("provider")));
-        assert!(!config
-            .run_configured()
-            .contains(&Provider::parse("github-copilot").expect("provider")));
-        assert!(config
-            .run_configured()
-            .contains(&Provider::parse("openai").expect("provider")));
-    }
-
-    #[test]
-    fn require_auth_rejects_non_credential_provider_config() {
+    fn provider_auth_rejects_incomplete_config() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let saved = save_auth_env();
@@ -644,7 +474,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = require_auth();
+        let result = prepare_provider_auth(home.path().to_str());
 
         restore_env(saved);
 
@@ -655,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn require_auth_accepts_complete_azure_credentials() {
+    fn provider_auth_accepts_complete_azure() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let saved = save_auth_env();
@@ -665,7 +495,7 @@ mod tests {
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = require_auth();
+        let result = prepare_provider_auth(home.path().to_str());
 
         restore_env(saved);
 
@@ -673,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn require_auth_rejects_incomplete_azure_credentials() {
+    fn provider_auth_rejects_incomplete_azure() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let saved = save_auth_env();
@@ -682,7 +512,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
 
-        let result = require_auth();
+        let result = prepare_provider_auth(home.path().to_str());
 
         restore_env(saved);
 
@@ -708,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn docker_run_args_uses_combined_prompt_artifact() {
+    fn docker_uses_combined_prompt_artifact() {
         let temp = tempfile::tempdir().expect("tempdir");
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
@@ -758,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn docker_run_args_sets_insecure_tls_env() {
+    fn docker_sets_insecure_tls_env() {
         let temp = tempfile::tempdir().expect("tempdir");
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
@@ -789,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn mounts_pi_agent_dir_writable() {
+    fn docker_mounts_pi_state_writable() {
         let temp = tempfile::tempdir().expect("tempdir");
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
@@ -821,23 +651,36 @@ mod tests {
     }
 
     #[test]
-    fn pi_agent_dir_rejects_auth_directory() {
+    fn pi_state_rejects_auth_directory() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_path = home.path().join(".pi/agent/auth.json");
         fs::create_dir_all(&auth_path).expect("mkdir fake auth dir");
+        let saved = save_auth_env();
+        clear_auth_env();
 
-        assert!(pi_agent_dir_with_auth(home.path().to_str()).is_none());
+        let result = prepare_provider_auth(home.path().to_str());
+
+        restore_env(saved);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn pi_agent_dir_rejects_missing_auth() {
+    fn pi_state_rejects_missing_auth() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+        clear_auth_env();
 
-        assert!(pi_agent_dir_with_auth(home.path().to_str()).is_none());
+        let result = prepare_provider_auth(home.path().to_str());
+
+        restore_env(saved);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn pi_agent_dir_rejects_unwritable_dir() {
+    fn pi_state_rejects_unwritable_directory() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_dir = home.path().join(".pi/agent");
         fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
@@ -846,13 +689,16 @@ mod tests {
         let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
         permissions.set_readonly(true);
         fs::set_permissions(&auth_dir, permissions).expect("readonly auth dir");
+        let saved = save_auth_env();
+        clear_auth_env();
 
-        let result = pi_agent_dir_with_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str());
 
         let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
         permissions.set_readonly(false);
         fs::set_permissions(&auth_dir, permissions).expect("restore auth dir");
+        restore_env(saved);
 
-        assert!(result.is_none());
+        assert!(result.is_err());
     }
 }
