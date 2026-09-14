@@ -97,6 +97,7 @@ repo-managed AI config.
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/`, `~/.codex/skills/rust-development/` | Shared Rust development guidance |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |
+| Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/`, `~/.codex/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | `opencode-mem@2.25.0`, `~/.opencode-mem/` | Explicit correction retention |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
