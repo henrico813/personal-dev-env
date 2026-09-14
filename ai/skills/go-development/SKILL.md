@@ -1,12 +1,12 @@
 ---
 name: go-development
 description: >-
-  Writes, refactors, tests, and reviews Go code using the Uber Go Style Guide,
-  small interfaces, struct composition, and readable behavior tests. Use when
-  implementing Go features, changing .go files, designing Go APIs or dependencies,
-  writing Go tests, or reviewing Go changes. Also use when explaining Go
-  composition with examples. Not for unrelated work in a repository that happens
-  to contain Go.
+  Plans, writes, refactors, tests, and reviews Go code using the Uber Go Style
+  Guide, small interfaces, struct composition, and readable behavior tests. Use
+  when planning changes to Go code, implementing Go features, changing .go files,
+  designing Go APIs or dependencies, writing Go tests, or reviewing Go changes.
+  Also use when explaining Go composition with examples. Not for unrelated work
+  in a repository that happens to contain Go.
 ---
 
 # Go development

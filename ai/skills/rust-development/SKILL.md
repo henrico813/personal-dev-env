@@ -1,12 +1,12 @@
 ---
 name: rust-development
 description: >-
-  Writes, reviews, refactors, and tests maintainable Rust code. Use for Rust
-  implementation, debugging, API design, code review, documentation, tests,
-  modules, Cargo configuration, dependencies, and features. Covers standard
-  Rust practices with explanations suitable for a junior maintainer, including
-  ownership, traits, errors, resource cleanup, concurrency, and unsafe code.
-  Does not apply to unrelated languages or tasks.
+  Plans, writes, reviews, refactors, and tests maintainable Rust code. Use when
+  planning changes to Rust code or working on Rust implementation, debugging,
+  API design, code review, documentation, tests, modules, Cargo configuration,
+  dependencies, or features. Covers ownership, traits, errors, resource cleanup,
+  concurrency, and unsafe code with explanations suitable for a junior
+  maintainer. Do not use it merely because a repository contains Rust.
 ---
 
 # Rust development
