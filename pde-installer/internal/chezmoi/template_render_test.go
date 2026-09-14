@@ -193,8 +193,8 @@ func TestZshTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json", "colored-man-pages", "HISTSIZE=1000000"}, omit: []string{"keychain --eval", "node{{", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}},
-		"full":     {profile: "full", want: []string{"keychain --eval", "node", "list-npm-globals", "alias vim=", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}, omit: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json"}},
+		"terminal": {profile: "terminal", want: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json", "colored-man-pages", "HISTSIZE=1000000"}, omit: []string{"keychain --eval", "node{{", "list-npm-globals", "alias vim=", "oca()", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}},
+		"full":     {profile: "full", want: []string{"keychain --eval", "node", "list-npm-globals", "alias vim=", "oca()", "command git rev-parse --show-toplevel", "command opencode attach", "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}", "--dir \"$dir\"", "\"$@\"", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}, omit: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json"}},
 	}
 	assertProfileTemplates(t, "dot_zshrc.tmpl", tests)
 }
