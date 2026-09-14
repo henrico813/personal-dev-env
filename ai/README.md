@@ -3,6 +3,7 @@
 This directory is the neutral repo-managed source for PDE AI tooling.
 
 - `AGENTS.md` holds shared workflow defaults.
+- `evals/` holds manual AI workflow checks.
 - `skills/` holds shared Agent Skills-format guidance.
 - `opencode/` holds OpenCode agents and commands.
 - `codex/` holds Codex skills.
@@ -11,6 +12,9 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 Shared skills include `behavior-focused-testing` for automated tests,
 `go-development` for Go code, `obsidian-zettel` for template-aligned vault
 notes, and `rust-development` for Rust code.
+Shared instructions require skill selection after reading supplied context and
+before domain work. Run `evals/skill-routing.md` after changing routing
+instructions, skill descriptions, or planning workflows.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
