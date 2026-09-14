@@ -12,6 +12,7 @@ conclusion, an edit, or a delegated task.
 | Both | `Review a Rust CLI test that asserts --help contains Usage.` | Load `behavior-focused-testing` and `rust-development` before giving review findings. |
 | Both | `Update README wording only; do not review or change Go code.` | Do not load `go-development` merely because the repository contains Go. |
 | Both | `Delegate review of a Rust CLI test that asserts --help contains Usage.` | Load the testing and Rust skills, and name both in the delegation prompt. |
+| Both | `Create a Zettel that captures the Rust CLI test review findings.` | Load `obsidian-zettel` before creating a vault note. |
 
 Record the harness, model, version, required loads, unnecessary loads, and late
 loads in the pull request. If a harness does not expose a required event, record
