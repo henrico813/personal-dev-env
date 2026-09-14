@@ -36,6 +36,15 @@ alias gcob='git branch | fzf | xargs git checkout'
 {{- if eq (env "PDE_PROFILE") "full" }}
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
+oca() {
+    local dir
+    dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
+
+    command opencode attach \
+        "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
+        --dir "$dir" \
+        "$@"
+}
 {{- end }}
 # cat -> bat
 alias cat='bat'
