@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -242,6 +243,87 @@ func TestZshTemplateProfiles(t *testing.T) {
 		},
 	}
 	assertProfileTemplates(t, "dot_zshrc.tmpl", tests)
+}
+
+func TestOpenCodeHelpersScopeCredentials(t *testing.T) {
+	tests := []struct {
+		name        string
+		credentials string
+		override    bool
+		wantSuccess bool
+	}{
+		{name: "valid", credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n", wantSuccess: true},
+		{name: "missing"},
+		{name: "malformed", credentials: "OPENCODE_SERVER_USERNAME=opencode\nUNEXPECTED=value\n"},
+		{name: "override", override: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeOpenCodeZshRuntime(t, home)
+			if test.credentials != "" {
+				path := filepath.Join(home, ".config", "opencode", "server.env")
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(test.credentials), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.override {
+				path := filepath.Join(home, "override.env")
+				if err := os.WriteFile(path, []byte("OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			command := exec.Command("zsh", "-i", "-c", `ocw --hostname 0.0.0.0 --port 4096; status=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$status"`)
+			command.Env = append(os.Environ(), "HOME="+home, "ZDOTDIR="+home)
+			if test.override {
+				command.Env = append(command.Env, "OCW_ENV_FILE="+filepath.Join(home, "override.env"))
+			}
+			err := command.Run()
+			if got := err == nil; got != test.wantSuccess {
+				t.Fatalf("ocw success = %t, want %t: %v", got, test.wantSuccess, err)
+			}
+
+			caller, err := os.ReadFile(filepath.Join(home, "caller"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(caller); got != ":\n" {
+				t.Fatalf("caller credentials = %q, want empty", got)
+			}
+			if !test.wantSuccess {
+				if _, err := os.Stat(filepath.Join(home, "opencode-command")); !os.IsNotExist(err) {
+					t.Fatalf("opencode ran: %v", err)
+				}
+				return
+			}
+			credentials, err := os.ReadFile(filepath.Join(home, "opencode-credentials"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(credentials); got != "opencode:secret\n" {
+				t.Fatalf("opencode credentials = %q", got)
+			}
+		})
+	}
+}
+
+func writeOpenCodeZshRuntime(t *testing.T, home string) {
+	t.Helper()
+	writeApplyFile(t, filepath.Join(home, ".zshrc"), renderProfileTemplate(t, "dot_zshrc.tmpl", "full"))
+	for _, plugin := range []string{"colored-man-pages", "command-not-found", "git", "git-extras", "node"} {
+		writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "ohmyzsh", "plugins", plugin, plugin+".plugin.zsh"), "")
+	}
+	writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "powerlevel10k", "powerlevel10k.zsh-theme"), "")
+	writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "zsh-z", "zsh-z.plugin.zsh"), "")
+	writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "zsh-autosuggestions", "zsh-autosuggestions.zsh"), "")
+	writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "zsh-history-substring-search", "zsh-history-substring-search.zsh"), "")
+	writeApplyFile(t, filepath.Join(home, ".local", "share", "zsh", "plugins", "zsh-syntax-highlighting", "zsh-syntax-highlighting.zsh"), "")
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "opencode"), "#!/bin/sh\nprintf '%s:%s\\n' \"$OPENCODE_SERVER_USERNAME\" \"$OPENCODE_SERVER_PASSWORD\" >\"$HOME/opencode-credentials\"\nprintf '%s\\n' \"$1\" >\"$HOME/opencode-command\"\n")
 }
 
 func TestTmuxTemplateProfiles(t *testing.T) {
