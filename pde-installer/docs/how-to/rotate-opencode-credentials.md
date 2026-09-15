@@ -13,12 +13,8 @@ ocw-password
 The helper prompts twice without echoing input. It rejects empty, mismatched,
 or unsupported values before changing the existing file.
 
-If the service is active, the helper restarts it after the replacement. Start
-an inactive service explicitly:
-
-```bash
-systemctl --user enable --now opencode-web.service
-```
+After replacement, the helper restarts an active service or enables and starts
+an inactive service. It also enables the health timer.
 
 ## Verify the Service
 
