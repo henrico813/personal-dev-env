@@ -44,7 +44,7 @@ func TestOpenCodeSetupRequiresRegularCredentials(t *testing.T) {
 		"[ -f \"$env_file\" ] && [ ! -L \"$env_file\" ]",
 		"systemctl --user enable --now \"$service\" \"$timer\"",
 		"systemctl --user disable --now \"$service\" \"$timer\"",
-		"run ocw-password",
+		"Run ocw-password",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("setup script omits %q", want)

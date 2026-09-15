@@ -11,6 +11,6 @@ if [ -f "$env_file" ] && [ ! -L "$env_file" ]; then
     systemctl --user enable --now "$service" "$timer"
 else
     systemctl --user disable --now "$service" "$timer" >/dev/null 2>&1 || true
-    printf '%s\n' "OpenCode credentials are unavailable; run ocw-password to create $env_file." >&2
+    printf '%s\n' 'Run ocw-password, then start opencode-web.service.' >&2
 fi
 {{- end }}
