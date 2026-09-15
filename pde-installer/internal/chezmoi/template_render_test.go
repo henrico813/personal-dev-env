@@ -268,6 +268,24 @@ func TestZshTemplateProfiles(t *testing.T) {
 }
 
 const (
+	fakeCurlScript = `#!/bin/sh
+count_file="$HOME/curl-count"
+count=0
+[ -f "$count_file" ] && count=$(cat "$count_file")
+printf '%s\n' "$@" >>"$HOME/curl-arguments"
+failures=${PDE_TEST_CURL_FAILURES:-0}
+if [ "$count" -lt "$failures" ]; then
+    printf '%s\n' $((count + 1)) >"$count_file"
+    exit 1
+fi
+exit 0
+`
+	fakeSystemctlScript = `#!/bin/sh
+printf '%s\n' "$*" >"$HOME/systemctl-arguments"
+`
+	fakeSleepScript = `#!/bin/sh
+exit 0
+`
 	validOpenCodeCredentials = `OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=secret
 `
@@ -373,6 +391,93 @@ func TestOCWScopesCredentials(t *testing.T) {
 				t.Fatalf("opencode arguments = %q", got)
 			}
 		})
+	}
+}
+
+func TestOCARecoversDefaultServer(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeOpenCodeCredentials(t, home, validOpenCodeCredentials)
+	command := openCodeZshCommand(home, `oca --session forwarded`)
+	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=3")
+
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("oca failed: %v\n%s", err, output)
+	}
+
+	calls, err := os.ReadFile(filepath.Join(home, "curl-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 4 {
+		t.Fatalf("curl probes = %d, want 4", got)
+	}
+	units, err := os.ReadFile(filepath.Join(home, "systemctl-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(units); got != "--user restart opencode-web.service\n" {
+		t.Fatalf("systemctl arguments = %q", got)
+	}
+	arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(arguments); !strings.Contains(got, "attach\nhttp://127.0.0.1:4096\n--dir\n") || !strings.HasSuffix(got, "--session\nforwarded\n") {
+		t.Fatalf("opencode arguments = %q", got)
+	}
+	credentials, err := os.ReadFile(filepath.Join(home, "opencode-credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(credentials); got != "opencode:secret\n" {
+		t.Fatalf("opencode credentials = %q", got)
+	}
+}
+
+func TestOCAStopsAfterTenProbes(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	command := openCodeZshCommand(home, `oca --session forwarded`)
+	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=10")
+
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("oca succeeded: %s", output)
+	}
+	calls, err := os.ReadFile(filepath.Join(home, "curl-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 11 {
+		t.Fatalf("curl probes = %d, want 11", got)
+	}
+	if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("opencode ran: %v", err)
+	}
+}
+
+func TestOCAOverrideSkipsRecovery(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	command := openCodeZshCommand(home, `export OPENCODE_ATTACH_URL=http://example.test:4096
+oca --session forwarded`)
+	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=10")
+
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("oca failed: %v\n%s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(home, "curl-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("override ran recovery probe: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("override restarted server: %v", err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(arguments); !strings.Contains(got, "attach\nhttp://example.test:4096\n--dir\n") {
+		t.Fatalf("opencode arguments = %q", got)
 	}
 }
 
@@ -510,6 +615,9 @@ func writeOpenCodeZshRuntime(t *testing.T, home string) {
 		writeApplyFile(t, path, "")
 	}
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "opencode"), fakeOpenCodeScript)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "curl"), fakeCurlScript)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "sleep"), fakeSleepScript)
 }
 
 func zshPluginPath(home, plugin, file string) string {
