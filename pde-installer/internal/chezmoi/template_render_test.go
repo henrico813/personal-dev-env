@@ -435,14 +435,18 @@ func TestOCARecoversDefaultServer(t *testing.T) {
 	}
 }
 
-func TestOCAStopsAfterTenProbes(t *testing.T) {
+func TestOCAStopsAfterElevenProbes(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
 	command := openCodeZshCommand(home, `oca --session forwarded`)
-	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=10")
+	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=11")
 
-	if output, err := command.CombinedOutput(); err == nil {
+	output, err := command.CombinedOutput()
+	if err == nil {
 		t.Fatalf("oca succeeded: %s", output)
+	}
+	if !strings.Contains(string(output), "OpenCode server did not become ready: http://127.0.0.1:4096") {
+		t.Fatalf("missing readiness error: %s", output)
 	}
 	calls, err := os.ReadFile(filepath.Join(home, "curl-arguments"))
 	if err != nil {
