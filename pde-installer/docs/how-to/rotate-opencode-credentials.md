@@ -1,8 +1,9 @@
-# Rotate OpenCode Credentials
+# Set Up or Rotate OpenCode Credentials
 
-Use the full-profile `ocw-password` helper to replace the host-local password.
+Use the full-profile `ocw-password` helper to create or replace the host-local
+password.
 
-## Rotate the Password
+## Create or Rotate the Password
 
 ```bash
 exec zsh -l
@@ -12,14 +13,14 @@ ocw-password
 The helper prompts twice without echoing input. It rejects empty, mismatched,
 or unsupported values before changing the existing file.
 
-If the service is active, the helper restarts it after the replacement. If it
-is inactive, start it explicitly:
+If the service is active, the helper restarts it after the replacement. Start
+an inactive service explicitly:
 
 ```bash
 systemctl --user enable --now opencode-web.service
 ```
 
-## Verify the Replacement
+## Verify the Service
 
 Confirm the file remains private:
 
@@ -27,8 +28,20 @@ Confirm the file remains private:
 stat -c '%a %n' ~/.config/opencode/server.env
 ```
 
-The expected mode is `600`. Verify anonymous and authenticated requests as
-described in [the setup tutorial](../tutorials/opencode-setup.md#4-verify-authentication).
+The expected mode is `600`. Anonymous health requests should return `401`:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  http://127.0.0.1:4096/global/health
+```
+
+Use curl's password prompt to verify an authenticated request returns `200`:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -u opencode \
+  http://127.0.0.1:4096/global/health
+```
 
 ## Recover From Invalid Input
 
