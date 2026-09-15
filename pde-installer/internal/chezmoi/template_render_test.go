@@ -229,9 +229,9 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"oca() (",
 				"ocw() (",
 				"$HOME/.config/opencode/server.env",
-				"_opencode_load_credentials",
+				"_opencode_run_with_credentials",
 				"command opencode attach",
-				"command opencode web \"$@\"",
+				"command opencode \"$@\"",
 				"EDITOR=$(which nvim)",
 				"/aqua.yaml",
 				"/aqua-checksums.json",
@@ -249,21 +249,34 @@ func TestOCWScopesCredentials(t *testing.T) {
 	tests := []struct {
 		name        string
 		credentials string
-		override    bool
+		dangling    bool
 		wantSuccess bool
 	}{
-		{name: "valid", credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n", wantSuccess: true},
+		{
+			name:        "valid",
+			credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n",
+			wantSuccess: true,
+		},
 		{name: "missing"},
+		{name: "empty", credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=\n"},
+		{name: "duplicate", credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_USERNAME=other\nOPENCODE_SERVER_PASSWORD=secret\n"},
 		{name: "malformed", credentials: "OPENCODE_SERVER_USERNAME=opencode\nUNEXPECTED=value\n"},
-		{name: "override", override: true},
+		{name: "dangling", dangling: true},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
 			writeOpenCodeZshRuntime(t, home)
-			if test.credentials != "" {
-				path := filepath.Join(home, ".config", "opencode", "server.env")
+			path := filepath.Join(home, ".config", "opencode", "server.env")
+			if test.dangling {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(home, "missing.env"), path); err != nil {
+					t.Fatal(err)
+				}
+			} else if test.credentials != "" {
 				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -271,17 +284,7 @@ func TestOCWScopesCredentials(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if test.override {
-				path := filepath.Join(home, "override.env")
-				if err := os.WriteFile(path, []byte("OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			command := openCodeZshCommand(home, `OPENCODE_SERVER_USERNAME=inherited OPENCODE_SERVER_PASSWORD=inherited ocw --hostname 0.0.0.0 --port 4096; result=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$result"`)
-			if test.override {
-				command.Env = append(command.Env, "OCW_ENV_FILE="+filepath.Join(home, "override.env"))
-			}
+			command := openCodeZshCommand(home, `ocw --hostname 0.0.0.0 --port 4096; result=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$result"`)
 			output, err := command.CombinedOutput()
 			if got := err == nil; got != test.wantSuccess {
 				t.Fatalf("ocw success = %t, want %t: %v\n%s", got, test.wantSuccess, err, output)
@@ -323,13 +326,29 @@ func TestOCAScopesCredentials(t *testing.T) {
 		name        string
 		credentials string
 		dangling    bool
+		inherited   bool
 		wantSuccess bool
 		wantAuth    string
+		wantCaller  string
 	}{
-		{name: "absent", wantSuccess: true, wantAuth: ":\n"},
-		{name: "valid", credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n", wantSuccess: true, wantAuth: "opencode:secret\n"},
-		{name: "malformed", credentials: "OPENCODE_SERVER_USERNAME=opencode\nUNEXPECTED=value\n", wantAuth: ""},
-		{name: "dangling", dangling: true, wantAuth: ""},
+		{name: "absent", wantSuccess: true, wantAuth: ":\n", wantCaller: ":\n"},
+		{
+			name:        "valid",
+			credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n",
+			wantSuccess: true,
+			wantAuth:    "opencode:secret\n",
+			wantCaller:  ":\n",
+		},
+		{
+			name:        "ignores inherited",
+			credentials: "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n",
+			inherited:   true,
+			wantSuccess: true,
+			wantAuth:    "opencode:secret\n",
+			wantCaller:  "inherited:inherited\n",
+		},
+		{name: "malformed", credentials: "OPENCODE_SERVER_USERNAME=opencode\nUNEXPECTED=value\n", wantCaller: ":\n"},
+		{name: "dangling", dangling: true, wantCaller: ":\n"},
 	}
 
 	for _, test := range tests {
@@ -353,7 +372,11 @@ func TestOCAScopesCredentials(t *testing.T) {
 				}
 			}
 
-			command := openCodeZshCommand(home, `OPENCODE_SERVER_USERNAME=inherited OPENCODE_SERVER_PASSWORD=inherited oca --session forwarded; result=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$result"`)
+			script := `oca --session forwarded; result=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$result"`
+			if test.inherited {
+				script = `export OPENCODE_SERVER_USERNAME=inherited OPENCODE_SERVER_PASSWORD=inherited; ` + script
+			}
+			command := openCodeZshCommand(home, script)
 			output, err := command.CombinedOutput()
 			if got := err == nil; got != test.wantSuccess {
 				t.Fatalf("oca success = %t, want %t: %v\n%s", got, test.wantSuccess, err, output)
@@ -363,8 +386,8 @@ func TestOCAScopesCredentials(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := string(caller); got != ":\n" {
-				t.Fatalf("caller credentials = %q, want empty", got)
+			if got := string(caller); got != test.wantCaller {
+				t.Fatalf("caller credentials = %q, want %q", got, test.wantCaller)
 			}
 			if !test.wantSuccess {
 				if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
@@ -388,6 +411,44 @@ func TestOCAScopesCredentials(t *testing.T) {
 				t.Fatalf("opencode arguments = %q, want %q", got, wantArguments)
 			}
 		})
+	}
+}
+
+func TestCredentialRunnerKeepsCallerClean(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	path := filepath.Join(home, ".config", "opencode", "server.env")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	command := openCodeZshCommand(home, `_opencode_run_with_credentials web --hostname 0.0.0.0 --port 4096; result=$?; print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"; exit "$result"`)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("credential runner failed: %v\n%s", err, output)
+	}
+	caller, err := os.ReadFile(filepath.Join(home, "caller"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(caller); got != ":\n" {
+		t.Fatalf("caller credentials = %q, want empty", got)
+	}
+}
+
+func TestCredentialRunnerRejectsOtherCommands(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+
+	command := openCodeZshCommand(home, `_opencode_run_with_credentials status`)
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("credential runner accepted status: %s", output)
+	}
+	if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("opencode ran: %v", err)
 	}
 }
 

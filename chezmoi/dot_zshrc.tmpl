@@ -36,9 +36,14 @@ alias gcob='git branch | fzf | xargs git checkout'
 {{- if eq (env "PDE_PROFILE") "full" }}
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
-_opencode_load_credentials() {
+_opencode_run_with_credentials() (
     local env_file="$HOME/.config/opencode/server.env"
     local line name value
+
+    case "$1" in
+        attach|web) ;;
+        *) return 2 ;;
+    esac
 
     if [[ ! -f "$env_file" || -L "$env_file" ]]; then
         print -u2 "OpenCode credentials are unavailable: $env_file"
@@ -59,29 +64,30 @@ _opencode_load_credentials() {
         esac
     done < "$env_file"
 
-    [[ -n "$OPENCODE_SERVER_USERNAME" && -n "$OPENCODE_SERVER_PASSWORD" ]]
-}
+    [[ -n "$OPENCODE_SERVER_USERNAME" && -n "$OPENCODE_SERVER_PASSWORD" ]] || return 1
+    command opencode "$@"
+)
 
 oca() (
     local dir
 
     unset OPENCODE_SERVER_USERNAME OPENCODE_SERVER_PASSWORD
-    if [[ -e "$HOME/.config/opencode/server.env" || -L "$HOME/.config/opencode/server.env" ]] &&
-        ! _opencode_load_credentials; then
-        return 1
-    fi
-
     dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
-
-    command opencode attach \
-        "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
-        --dir "$dir" \
-        "$@"
+    if [[ -e "$HOME/.config/opencode/server.env" || -L "$HOME/.config/opencode/server.env" ]]; then
+        _opencode_run_with_credentials attach \
+            "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
+            --dir "$dir" \
+            "$@"
+    else
+        command opencode attach \
+            "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
+            --dir "$dir" \
+            "$@"
+    fi
 )
 
 ocw() (
-    _opencode_load_credentials || return
-    command opencode web "$@"
+    _opencode_run_with_credentials web "$@"
 )
 {{- end }}
 # cat -> bat
