@@ -28,6 +28,8 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim",
 				".config/opencode",
 				".config/systemd/user/opencode-web.service",
+				".config/systemd/user/opencode-web-health.service",
+				".config/systemd/user/opencode-web-health.timer",
 				".codex",
 				".agents",
 				".pi",
@@ -45,6 +47,8 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/wezterm",
 				".config/opencode",
 				".config/systemd/user/opencode-web.service",
+				".config/systemd/user/opencode-web-health.service",
+				".config/systemd/user/opencode-web-health.timer",
 			},
 		},
 	}
