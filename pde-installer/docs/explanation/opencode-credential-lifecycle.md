@@ -14,14 +14,22 @@ server during a fresh installation.
 After `ocw-password` creates the file, the operator enables the service. The
 service reads the file through systemd's `EnvironmentFile` support.
 
-## Ownership Boundary
+## Process Isolation
 
-PDE manages the helper and service definition. Each host owns its credential
-file. The file is not part of chezmoi state and must not be copied between
-hosts.
+`oca` and `ocw` load credentials inside a subshell and clear inherited
+credential variables before parsing the file. The caller's environment is not
+modified. The parser accepts only the two expected variables and rejects
+malformed input, symlinks, duplicate assignments, and empty values.
 
-[The helper reference](../reference/opencode-helpers.md) documents validation,
-file modes, and replacement behavior.
+## Safe Replacement
+
+`ocw-password` validates both prompts before touching the destination. It writes
+to a temporary file in the credential directory, applies mode `0600`, and
+renames the completed file into place. A cleanup trap removes a temporary file
+after failure. The parent directory is enforced as mode `0700`.
+
+The accepted password character set is intentionally limited so the generated
+file remains compatible with systemd environment-file parsing.
 
 ## Profile Boundary
 
