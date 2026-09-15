@@ -295,7 +295,7 @@ func TestOCWScopesCredentials(t *testing.T) {
 				t.Fatalf("caller credentials = %q, want empty", got)
 			}
 			if !test.wantSuccess {
-				if _, err := os.Stat(filepath.Join(home, "opencode-command")); !os.IsNotExist(err) {
+				if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
 					t.Fatalf("opencode ran: %v", err)
 				}
 				return
@@ -306,6 +306,13 @@ func TestOCWScopesCredentials(t *testing.T) {
 			}
 			if got := string(credentials); got != "opencode:secret\n" {
 				t.Fatalf("opencode credentials = %q", got)
+			}
+			arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := string(arguments); got != "web\n--hostname\n0.0.0.0\n--port\n4096\n" {
+				t.Fatalf("opencode arguments = %q", got)
 			}
 		})
 	}
@@ -376,7 +383,7 @@ func TestOCAScopesCredentials(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantArguments := "http://127.0.0.1:4096\n--dir\n" + repoRoot(t) + "\n--session\nforwarded\n"
+			wantArguments := "attach\nhttp://127.0.0.1:4096\n--dir\n" + repoRoot(t) + "\n--session\nforwarded\n"
 			if got := string(arguments); got != wantArguments {
 				t.Fatalf("opencode arguments = %q, want %q", got, wantArguments)
 			}
