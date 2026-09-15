@@ -13,6 +13,8 @@ ignore = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rustix = { version = "1", features = ["fs"] }
+sha2 = "0.10"
 tantivy = "0.22"
 tree-sitter = "0.24"
 tree-sitter-go = "0.23"

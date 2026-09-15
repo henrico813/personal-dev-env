@@ -1,9 +1,15 @@
+use crate::gather;
+use crate::merge;
+use crate::research;
 use crate::taskfile::{self, validate_task_name, DEFAULT_TASK_FILENAME};
+use rustix::fs::{renameat_with, RenameFlags, CWD};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::io::{self, Write};
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const SESSION_DIR: &str = ".surveil-session";
 const TASK_ARTIFACT_DIR: &str = "tasks";
@@ -138,12 +144,162 @@ fn discover_tasks(root: &Path) -> Result<Vec<SessionTask>, Box<dyn Error>> {
     Ok(tasks)
 }
 
-pub fn run(repo: &Path, root: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    let _repo = resolve_repo(repo)?;
-    let _tasks = discover_tasks(root)?;
+pub(crate) fn run(repo: &Path, root: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let repo = resolve_repo(repo)?;
+    let tasks = discover_tasks(root)?;
+    let session_dir = root.join(SESSION_DIR);
+    match fs::symlink_metadata(&session_dir) {
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "managed root already contains .surveil-session",
+            )
+            .into())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+
+    let staging = create_staging_dir(root)?;
+    let result = execute(&repo, &staging, &tasks);
+    let receipt = match result {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+    };
+    if let Err(error) = renameat_with(
+        CWD,
+        &staging,
+        CWD,
+        &session_dir,
+        RenameFlags::NOREPLACE,
+    ) {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error.into());
+    }
+    Ok(session_dir.join(receipt))
+}
+
+fn execute(
+    repo: &Path,
+    staging: &Path,
+    tasks: &[SessionTask],
+) -> Result<&'static str, Box<dyn Error>> {
+    let mut reports = Vec::with_capacity(tasks.len());
+    let mut artifacts = Vec::with_capacity(tasks.len() * 3 + 1);
+
+    for task in tasks {
+        let context = gather::create_output(repo, &task.task_file)?;
+        let (report, trace) = research::create_research_outputs(context.clone())?;
+        let task_root = format!("{TASK_ARTIFACT_DIR}/{}", task.name);
+        for (kind, file, value) in [
+            (ArtifactKind::Context, "context.json", serde_json::to_value(&context)?),
+            (ArtifactKind::Trace, "trace.json", serde_json::to_value(&trace)?),
+            (ArtifactKind::Report, "report.json", serde_json::to_value(&report)?),
+        ] {
+            let relative = format!("{task_root}/{file}");
+            artifacts.push(write_artifact(
+                staging,
+                &relative,
+                kind,
+                Some(&task.name),
+                &value,
+            )?);
+        }
+        reports.push(report);
+    }
+
+    let evidence = merge::merge_outputs(reports)?;
+    artifacts.push(write_artifact(
+        staging,
+        "evidence.json",
+        ArtifactKind::Evidence,
+        None,
+        &evidence,
+    )?);
+    let receipt = SessionReceipt {
+        schema_version: SESSION_SCHEMA_VERSION.to_string(),
+        status: SessionStatus::Complete,
+        repo_root: repo.to_str().expect("validated UTF-8 repo").to_string(),
+        task_names: tasks.iter().map(|task| task.name.clone()).collect(),
+        artifacts,
+    };
+    write_new(&staging.join(RECEIPT_FILENAME), &encode_json(&receipt)?)?;
+    Ok(RECEIPT_FILENAME)
+}
+
+fn create_staging_dir(root: &Path) -> io::Result<PathBuf> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_nanos();
+    for attempt in 0..10 {
+        let path = root.join(format!(
+            ".surveil-session-{}-{stamp}-{attempt}.tmp",
+            std::process::id()
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
     Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "session execution is not implemented",
-    )
-    .into())
+        io::ErrorKind::AlreadyExists,
+        "could not allocate session staging directory",
+    ))
+}
+
+fn write_artifact(
+    root: &Path,
+    relative: &str,
+    kind: ArtifactKind,
+    task_name: Option<&str>,
+    value: &impl Serialize,
+) -> Result<ArtifactRecord, Box<dyn Error>> {
+    let bytes = encode_json(value)?;
+    write_new(&artifact_path(root, relative)?, &bytes)?;
+    Ok(ArtifactRecord {
+        kind,
+        task_name: task_name.map(str::to_string),
+        path: relative.to_string(),
+        byte_len: bytes.len() as u64,
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+    })
+}
+
+fn artifact_path(root: &Path, relative: &str) -> io::Result<PathBuf> {
+    let relative = Path::new(relative);
+    let mut components = relative.components();
+    let valid = !relative.is_absolute()
+        && matches!(components.next(), Some(Component::Normal(_)))
+        && components.all(|part| matches!(part, Component::Normal(_)));
+    if !valid {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "artifact path must contain only relative normal components",
+        ));
+    }
+    Ok(root.join(relative))
+}
+
+fn encode_json(value: &impl Serialize) -> Result<Vec<u8>, serde_json::Error> {
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
+fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(bytes)?;
+    file.flush()?;
+    Ok(())
 }
