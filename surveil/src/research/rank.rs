@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
+type RankedCandidates = (HashMap<PathBuf, f32>, Vec<SourceFile>);
+
 pub(super) struct RunRanker {
     open_index: Option<index::OpenChunkIndex>,
 }
@@ -22,7 +24,7 @@ impl RunRanker {
         &self,
         candidates: &[SourceFile],
         tokens: &[String],
-    ) -> Result<(HashMap<PathBuf, f32>, Vec<SourceFile>), Box<dyn Error>> {
+    ) -> Result<RankedCandidates, Box<dyn Error>> {
         let Some(open_index) = self.open_index.as_ref() else {
             return Ok((HashMap::new(), candidates.to_vec()));
         };

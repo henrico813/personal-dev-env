@@ -2,6 +2,8 @@
 
 `surveil` works with strict JSON task documents.
 
+See the [Surveil documentation](docs/README.md) for tutorials, operational guides, command reference, and design explanation.
+
 ## Install
 
 `pde-installer install` installs `~/.local/bin/surveil`.
@@ -40,10 +42,15 @@ Notes:
 - `surveil gather --repo <repo> --task-file <task.json>` emits a `surveil.v7` `GatherOutput` JSON context. Its required `task_name` is the UTF-8 name of the resolved `task.json` parent directory.
 - `surveil research --context <context.json> --trace-out <trace.json>` requires a `surveil.v7` context, propagates `task_name` into a `surveil.v7` report, and writes a shallow `TraceOutput` JSON file.
 - `surveil merge <task-report>...` accepts positional report paths, validates `surveil.v7` task reports, rejects invalid or duplicate `task_name` values, and emits one `surveil.evidence.v2` evidence pack.
+- `surveil session run --repo <repo> --root <managed-root>` discovers populated tasks in an existing managed root, processes them in sorted task-name order, and prints `<managed-root>/.surveil-session/receipt.json` after atomically publishing the completed session directory.
 
 Task names may contain ordinary spaces and Unicode, but must not be empty or whitespace-only and must not contain controls, path separators, or path components such as `.` and `..`. Managed creation, gather-derived identity, and merge report loading apply the same rules.
 
 Managed roots live under `$XDG_STATE_HOME/surveil/runs` when `XDG_STATE_HOME` is absolute. Otherwise Surveil uses `$HOME/.local/state/surveil/runs`, which requires an absolute `HOME`. Environment paths retain their native operating-system representation. Managed roots remain until a caller removes them; Surveil does not prune them automatically.
+
+A completed session owns `<managed-root>/.surveil-session/`. Per-task files live under `tasks/<task-name>/`; the namespace also contains `evidence.json` and a `surveil.session.v1` `receipt.json`. Receipt artifact records bind each context, trace, report, and the evidence file to a relative path, byte length, and SHA-256 digest; the receipt does not record itself. Session execution writes a temporary sibling directory and publishes `.surveil-session/` only after every task and the merge succeed. Any existing `.surveil-session` path refuses rerun, and a task named `.surveil-session` is rejected for session compatibility.
+
+Session V1 requires a UTF-8 managed-root path. It does not create tasks, rebuild `.surveil/index/`, retry failed stages, or provide degraded fallback evidence. Each task independently checks for a usable index at its research startup and otherwise performs the existing full lexical scan. Repository files and task documents are read live, so callers must keep both stable until exit. Failures before publication create no new `.surveil-session` path, although best-effort cleanup can leave a `.surveil-session-*.tmp` sibling. A stdout failure can report nonzero after publication; the receipt path on disk is authoritative.
 
 The `.surveil-managed` marker prevents accidental append to unrelated directories. It is misuse prevention, not protection against a hostile filesystem. Root and task directories are reserved with `create_dir`, but a complete task is published only when the creating command successfully writes `task.json`.
 
