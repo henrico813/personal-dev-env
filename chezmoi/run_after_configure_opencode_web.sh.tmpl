@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+{{- if eq (env "PDE_PROFILE") "full" }}
+systemctl --user daemon-reload
+if [[ -f "$HOME/.config/opencode/server.env" && ! -L "$HOME/.config/opencode/server.env" ]]; then
+    systemctl --user enable --now opencode-web.service
+else
+    printf '%s\n' 'Run ocw-password, then start opencode-web.service.' >&2
+fi
+{{- end }}

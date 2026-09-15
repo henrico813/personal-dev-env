@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenCode attach server
+
+[Service]
+Type=exec
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+EnvironmentFile=%h/.config/opencode/server.env
+ExecStart=%h/.local/bin/opencode serve --hostname 127.0.0.1 --port 4096
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
