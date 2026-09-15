@@ -21,6 +21,9 @@ func TestOCWPasswordCreatesAndReplacesCredentials(t *testing.T) {
 	}
 	assertPasswordMode(t, filepath.Join(home, ".config", "opencode"), 0o700)
 	assertPasswordMode(t, path, 0o600)
+	if got := readPasswordFile(t, filepath.Join(home, "systemctl-arguments")); got != "--user enable --now opencode-web.service opencode-web-health.timer\n" {
+		t.Fatalf("systemctl arguments = %q", got)
+	}
 
 	output, err := runPasswordCommand(home, "second-pass\nsecond-pass\n")
 	if err != nil {
@@ -87,7 +90,7 @@ func runPasswordCommand(home, input string) (string, error) {
 func writePasswordRuntime(t *testing.T, home string) {
 	t.Helper()
 	writeOpenCodeZshRuntime(t, home)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\nif [ \"$1 $2\" = \"--user is-active\" ]; then exit 1; fi\nexit 0\n")
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$HOME/systemctl-arguments\"\nexit 0\n")
 }
 
 func readPasswordFile(t *testing.T, path string) string {

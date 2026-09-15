@@ -5,6 +5,7 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 ## Tutorials
 
 - [First installation](tutorials/first-installation.md)
+- [OpenCode setup](tutorials/opencode-setup.md)
 
 ## How-to Guides
 
@@ -16,6 +17,7 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 - [Update local builds](how-to/update-local-builds.md)
 - [Update chezmoi content](how-to/update-chezmoi-content.md)
 - [Set up or rotate OpenCode credentials](how-to/rotate-opencode-credentials.md)
+- [Supervise OpenCode](how-to/supervise-opencode.md)
 
 ## Explanation
 
