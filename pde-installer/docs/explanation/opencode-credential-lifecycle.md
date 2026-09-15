@@ -11,8 +11,10 @@ script reloads systemd but does not start the service when
 `~/.config/opencode/server.env` is absent. This avoids starting an unsecured
 server during a fresh installation.
 
-After `ocw-password` creates the file, the operator enables the service. The
-service reads the file through systemd's `EnvironmentFile` support.
+After `ocw-password` creates the file, it enables and starts the service and
+health timer. The service reads the file through systemd's `EnvironmentFile`
+support. Re-running `chezmoi apply` also enables both units when the file is
+present.
 
 ## Ownership Boundary
 
