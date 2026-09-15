@@ -69,20 +69,26 @@ _opencode_run_with_credentials() (
 )
 
 oca() (
-    local dir
+    local dir url attempt
 
     unset OPENCODE_SERVER_USERNAME OPENCODE_SERVER_PASSWORD
     dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
+    url="${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}"
+    if [[ "$url" == "http://127.0.0.1:4096" ]] && ! command curl --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1; then
+        command systemctl --user restart opencode-web.service || return 1
+        for attempt in {1..10}; do
+            command curl --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1 && break
+            if [[ "$attempt" == 10 ]]; then
+                print -u2 -- "OpenCode server did not become ready: $url"
+                return 1
+            fi
+            command sleep 1
+        done
+    fi
     if [[ -e "$HOME/.config/opencode/server.env" || -L "$HOME/.config/opencode/server.env" ]]; then
-        _opencode_run_with_credentials attach \
-            "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
-            --dir "$dir" \
-            "$@"
+        _opencode_run_with_credentials attach "$url" --dir "$dir" "$@"
     else
-        command opencode attach \
-            "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
-            --dir "$dir" \
-            "$@"
+        command opencode attach "$url" --dir "$dir" "$@"
     fi
 )
 
@@ -133,9 +139,8 @@ ocw-password() (
     fi
     trap - EXIT
 
-    if command systemctl --user is-active --quiet opencode-web.service; then
-        command systemctl --user restart opencode-web.service || return 1
-    fi
+    command systemctl --user daemon-reload || return 1
+    command systemctl --user enable --now opencode-web.service opencode-web-health.timer || return 1
     print "OpenCode credentials saved to $env_file"
 )
 {{- end }}
