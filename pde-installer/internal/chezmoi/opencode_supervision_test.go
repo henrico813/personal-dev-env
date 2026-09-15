@@ -10,12 +10,21 @@ import (
 func TestOpenCodeSystemdUnits(t *testing.T) {
 	service := readChezMoiFile(t, "dot_config/systemd/user/opencode-web.service")
 	for _, want := range []string{
+		"Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
 		"EnvironmentFile=%h/.config/opencode/server.env",
-		"ExecStart=%h/.local/bin/opencode web --hostname 127.0.0.1 --port 4096",
+		"ExecStart=%h/.local/bin/opencode serve --hostname 127.0.0.1 --port 4096",
 		"Restart=on-failure",
 	} {
 		if !strings.Contains(service, want) {
 			t.Errorf("service omits %q", want)
+		}
+	}
+	health := readChezMoiFile(t, "dot_config/systemd/user/opencode-web-health.service")
+	for _, want := range []string{
+		"ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/ || /usr/bin/systemctl --user restart opencode-web.service'",
+	} {
+		if !strings.Contains(health, want) {
+			t.Errorf("health service omits %q", want)
 		}
 	}
 	timer := readChezMoiFile(t, "dot_config/systemd/user/opencode-web-health.timer")
@@ -25,7 +34,7 @@ func TestOpenCodeSystemdUnits(t *testing.T) {
 }
 
 func TestOpenCodeSetupRequiresRegularCredentials(t *testing.T) {
-	script := filepath.Join("..", "..", "..", "chezmoi", "run_after_setup_opencode_web.sh.tmpl")
+	script := filepath.Join("..", "..", "..", "chezmoi", "run_after_configure_opencode_web.sh.tmpl")
 	data, err := os.ReadFile(script)
 	if err != nil {
 		t.Fatal(err)
