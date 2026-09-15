@@ -4,17 +4,22 @@ mod index;
 mod merge;
 mod research;
 mod schema;
+mod session;
 mod source;
 mod taskfile;
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use std::convert::TryFrom;
 use std::error::Error;
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "surveil")]
+#[command(
+    name = "surveil",
+    version,
+    about = "Research repositories with structured tasks and evidence"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -22,11 +27,45 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Build one task context from repository files.
     Gather(GatherArgs),
+    /// Create task documents and managed research roots.
     New(NewArgs),
+    /// Build the optional repository search index.
     Index(IndexArgs),
+    /// Combine task reports into one evidence pack.
     Merge(MergeArgs),
+    /// Research one gathered task context.
     Research(ResearchArgs),
+    /// Run all tasks in an existing managed root.
+    Session(SessionArgs),
+}
+
+#[derive(Args)]
+struct SessionArgs {
+    #[command(subcommand)]
+    command: SessionCommand,
+}
+
+#[derive(Subcommand)]
+enum SessionCommand {
+    #[command(
+        about = "Run every populated task in a managed root",
+        long_about = "Run every populated task in one existing Surveil-managed root.\n\nTasks are discovered only from immediate child directories and processed sequentially in sorted task-name order. Each task is gathered and researched, then all reports are merged. At its own research startup, each task independently uses a usable repository index or performs the existing lexical scan; this command does not create or rebuild an index.\n\nAll files are staged below the managed root. The completed .surveil-session directory becomes visible only after every task, merge, artifact digest, and receipt succeeds.",
+        after_help = "Artifacts:\n  <MANAGED_ROOT>/.surveil-session/tasks/<TASK>/context.json\n  <MANAGED_ROOT>/.surveil-session/tasks/<TASK>/trace.json\n  <MANAGED_ROOT>/.surveil-session/tasks/<TASK>/report.json\n  <MANAGED_ROOT>/.surveil-session/evidence.json\n  <MANAGED_ROOT>/.surveil-session/receipt.json\n\nBehavior:\n  Tasks run sequentially in sorted name order.\n  Completed output is atomically published after all work succeeds.\n  Failures before publication create no .surveil-session path.\n  An existing .surveil-session path refuses rerun.\n\nExample:\n  surveil session run --repo /path/to/repo --root /path/to/managed-root"
+    )]
+    Run(SessionRunArgs),
+}
+
+#[derive(Args)]
+struct SessionRunArgs {
+    /// Repository root researched by every task.
+    #[arg(long, value_name = "REPO")]
+    repo: PathBuf,
+
+    /// Existing UTF-8 absolute root created by `surveil new task --task`.
+    #[arg(long, value_name = "MANAGED_ROOT")]
+    root: PathBuf,
 }
 
 #[derive(Args)]
@@ -48,6 +87,7 @@ struct NewArgs {
 
 #[derive(Subcommand)]
 enum NewCommand {
+    /// Create a task document in an explicit or managed directory.
     Task(NewTaskArgs),
 }
 
@@ -62,9 +102,11 @@ struct NewTaskArgs {
     /// Directory where task.json is created.
     output_dir: Option<PathBuf>,
 
+    /// Managed task name to create.
     #[arg(long, conflicts_with = "output_dir")]
     task: Option<String>,
 
+    /// Existing absolute managed root receiving the task.
     #[arg(long, requires = "task", conflicts_with = "output_dir")]
     root: Option<PathBuf>,
 }
@@ -101,16 +143,19 @@ struct IndexArgs {
 
 #[derive(Args)]
 struct MergeArgs {
+    /// Task report JSON files to merge in argument order.
     #[arg(required = true, num_args = 1.., value_name = "TASK_REPORT")]
     reports: Vec<PathBuf>,
 }
 
 #[derive(Args)]
 struct ResearchArgs {
-    #[arg(long)]
+    /// Gathered task context JSON.
+    #[arg(long, value_name = "CONTEXT_JSON")]
     context: PathBuf,
 
-    #[arg(long = "trace-out")]
+    /// Destination for the research trace JSON.
+    #[arg(long = "trace-out", value_name = "TRACE_JSON")]
     trace_out: PathBuf,
 }
 
@@ -146,12 +191,25 @@ fn run() -> Result<(), Box<dyn Error>> {
         Command::Index(args) => index::build_chunk_index(&args.repo),
         Command::Merge(args) => merge::run(&args.reports),
         Command::Research(args) => research::run(&args.context, &args.trace_out),
+        Command::Session(args) => match args.command {
+            SessionCommand::Run(args) => {
+                let receipt = session::run(&args.repo, &args.root)?;
+                let receipt = receipt.to_str().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "receipt path must be UTF-8")
+                })?;
+                let stdout = io::stdout();
+                let mut output = stdout.lock();
+                writeln!(output, "{receipt}")?;
+                output.flush()?;
+                Ok(())
+            }
+        },
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Command, NewCommand, NewTaskMode};
+    use super::{Cli, Command, NewCommand, NewTaskMode, SessionCommand};
     use clap::error::ErrorKind;
     use clap::Parser;
     use std::convert::TryFrom;
@@ -252,6 +310,30 @@ mod tests {
         match Cli::try_parse_from(["surveil", "merge"]) {
             Ok(_) => panic!("expected missing argument error"),
             Err(err) => assert_eq!(err.kind(), ErrorKind::MissingRequiredArgument),
+        }
+    }
+
+    #[test]
+    fn parses_session_run() {
+        let cli = Cli::try_parse_from([
+            "surveil",
+            "session",
+            "run",
+            "--repo",
+            "/repo",
+            "--root",
+            "/state/run",
+        ])
+        .expect("parse session run");
+
+        match cli.command {
+            Command::Session(args) => match args.command {
+                SessionCommand::Run(args) => {
+                    assert_eq!(args.repo, PathBuf::from("/repo"));
+                    assert_eq!(args.root, PathBuf::from("/state/run"));
+                }
+            },
+            _ => panic!("expected session command"),
         }
     }
 }
