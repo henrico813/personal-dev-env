@@ -19,8 +19,34 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{".config/aquaproj-aqua/aqua.yaml", ".config/alacritty", ".config/wezterm", ".config/nvim", ".config/opencode", ".codex", ".agents", ".pi", ".config/nvim/pack/plugins/start/blink.cmp"}},
-		"full":     {profile: "full", want: []string{".config/aquaproj-aqua/aqua-terminal.yaml", ".config/nvim/pack/plugins/start/blink.cmp"}, omit: []string{".config/alacritty", ".config/wezterm", ".config/opencode"}},
+		"terminal": {
+			profile: "terminal",
+			want: []string{
+				".config/aquaproj-aqua/aqua.yaml",
+				".config/alacritty",
+				".config/wezterm",
+				".config/nvim",
+				".config/opencode",
+				".config/systemd/user/opencode-web.service",
+				".codex",
+				".agents",
+				".pi",
+				".config/nvim/pack/plugins/start/blink.cmp",
+			},
+		},
+		"full": {
+			profile: "full",
+			want: []string{
+				".config/aquaproj-aqua/aqua-terminal.yaml",
+				".config/nvim/pack/plugins/start/blink.cmp",
+			},
+			omit: []string{
+				".config/alacritty",
+				".config/wezterm",
+				".config/opencode",
+				".config/systemd/user/opencode-web.service",
+			},
+		},
 	}
 	assertProfileTemplates(t, ".chezmoiignore.tmpl", tests)
 }
@@ -213,6 +239,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"alias vim=",
 				"oca()",
 				"ocw()",
+				"ocw-password()",
 				"server.env",
 				"EDITOR=$(which nvim)",
 				"/aqua.yaml",
@@ -224,6 +251,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 			want: []string{
 				"oca() (",
 				"ocw() (",
+				"ocw-password() (",
 				"$HOME/.config/opencode/server.env",
 			},
 			omit: []string{

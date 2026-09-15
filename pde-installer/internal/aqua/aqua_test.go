@@ -48,10 +48,10 @@ func writeExecutable(t *testing.T, path, content string) {
 	if _, err := temporary.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	if err := temporary.Chmod(0o755); err != nil {
+	if err := temporary.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := temporary.Close(); err != nil {
+	if err := os.Chmod(temporaryName, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(temporaryName, path); err != nil {
