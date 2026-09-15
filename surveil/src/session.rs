@@ -113,9 +113,10 @@ fn discover_tasks(root: &Path) -> Result<Vec<SessionTask>, Box<dyn Error>> {
             )
             .into());
         }
-        let name = entry.file_name().into_string().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "task name must be UTF-8")
-        })?;
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "task name must be UTF-8"))?;
         validate_task_name(&name)?;
         if name == SESSION_DIR {
             return Err(io::Error::new(
