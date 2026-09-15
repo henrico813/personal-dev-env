@@ -1,0 +1,6 @@
+[Unit]
+Description=Check OpenCode attach server health
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sh -c '/usr/bin/curl --fail --silent --max-time 2 http://127.0.0.1:4096/ >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'

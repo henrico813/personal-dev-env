@@ -18,8 +18,8 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{".config/aquaproj-aqua/aqua.yaml", ".config/alacritty", ".config/wezterm", ".config/nvim", ".config/opencode", ".codex", ".agents", ".pi", ".config/nvim/pack/plugins/start/blink.cmp"}},
-		"full":     {profile: "full", want: []string{".config/aquaproj-aqua/aqua-terminal.yaml", ".config/nvim/pack/plugins/start/blink.cmp"}, omit: []string{".config/alacritty", ".config/wezterm", ".config/opencode"}},
+		"terminal": {profile: "terminal", want: []string{".config/aquaproj-aqua/aqua.yaml", ".config/alacritty", ".config/wezterm", ".config/nvim", ".config/opencode", ".config/systemd/user/opencode-web.service", ".config/systemd/user/opencode-web-health.service", ".config/systemd/user/opencode-web-health.timer", ".codex", ".agents", ".pi", ".config/nvim/pack/plugins/start/blink.cmp"}},
+		"full":     {profile: "full", want: []string{".config/aquaproj-aqua/aqua-terminal.yaml", ".config/nvim/pack/plugins/start/blink.cmp"}, omit: []string{".config/alacritty", ".config/wezterm", ".config/opencode", ".config/systemd/user/opencode-web.service", ".config/systemd/user/opencode-web-health.service", ".config/systemd/user/opencode-web-health.timer"}},
 	}
 	assertProfileTemplates(t, ".chezmoiignore.tmpl", tests)
 }
@@ -198,9 +198,40 @@ func TestZshTemplateProfiles(t *testing.T) {
 		omit    []string
 	}{
 		"terminal": {profile: "terminal", want: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json", "colored-man-pages", "HISTSIZE=1000000"}, omit: []string{"keychain --eval", "node{{", "list-npm-globals", "alias vim=", "oca()", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}},
-		"full":     {profile: "full", want: []string{"keychain --eval", "node", "list-npm-globals", "alias vim=", "oca()", "command git rev-parse --show-toplevel", "command opencode attach", "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}", "--dir \"$dir\"", "\"$@\"", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}, omit: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json"}},
+		"full":     {profile: "full", want: []string{"keychain --eval", "node", "list-npm-globals", "alias vim=", "oca()", "command git rev-parse --show-toplevel", "command curl --fail --silent --max-time 2", "command systemctl --user restart opencode-web.service", "command opencode attach", "--dir \"$dir\"", "\"$@\"", "EDITOR=$(which nvim)", "/aqua.yaml", "/aqua-checksums.json"}, omit: []string{"aqua-terminal.yaml", "aqua-terminal-checksums.json"}},
 	}
 	assertProfileTemplates(t, "dot_zshrc.tmpl", tests)
+}
+
+func TestOpenCodeSetupScriptProfiles(t *testing.T) {
+	full := renderProfileTemplate(t, "run_after_configure_opencode_web.sh.tmpl", "full")
+	if !strings.Contains(full, "systemctl --user enable --now opencode-web.service") {
+		t.Fatalf("full setup script = %q", full)
+	}
+	terminal := renderProfileTemplate(t, "run_after_configure_opencode_web.sh.tmpl", "terminal")
+	if strings.Contains(terminal, "systemctl --user") {
+		t.Fatalf("terminal setup script = %q", terminal)
+	}
+}
+
+func TestOpenCodeSetupScriptIsExecutable(t *testing.T) {
+	info, err := os.Stat(filepath.Join(repoRoot(t), "chezmoi", "run_after_configure_opencode_web.sh.tmpl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("setup script mode = %v", info.Mode())
+	}
+}
+
+func TestOpenCodeServiceUsesManagedPath(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", "dot_config", "systemd", "user", "opencode-web.service"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Environment=PATH=%h/.local/bin:") {
+		t.Fatalf("service does not include the managed launcher path: %q", data)
+	}
 }
 
 func TestTmuxTemplateProfiles(t *testing.T) {

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+{{- if eq (env "PDE_PROFILE") "full" }}
+systemctl --user daemon-reload
+systemctl --user enable --now opencode-web.service
+systemctl --user enable --now opencode-web-health.timer
+{{- end }}

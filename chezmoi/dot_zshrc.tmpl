@@ -37,11 +37,28 @@ alias gcob='git branch | fzf | xargs git checkout'
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
 oca() {
-    local dir
+    local dir url default_url="http://127.0.0.1:4096" attempt ready=0
     dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
+    url="${OPENCODE_ATTACH_URL:-$default_url}"
+
+    if [[ "$url" == "$default_url" ]] && ! command curl --fail --silent --max-time 2 "$url/" >/dev/null; then
+        print -u2 "Restarting the local OpenCode server..."
+        command systemctl --user restart opencode-web.service || return 1
+        for attempt in {1..10}; do
+            if command curl --fail --silent --max-time 2 "$url/" >/dev/null; then
+                ready=1
+                break
+            fi
+            sleep 1
+        done
+        if (( ! ready )); then
+            print -u2 "OpenCode server did not become ready: $url"
+            return 1
+        fi
+    fi
 
     command opencode attach \
-        "${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}" \
+        "$url" \
         --dir "$dir" \
         "$@"
 }

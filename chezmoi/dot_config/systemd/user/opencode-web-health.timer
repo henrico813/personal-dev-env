@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule OpenCode attach server health checks
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=opencode-web-health.service
+
+[Install]
+WantedBy=timers.target

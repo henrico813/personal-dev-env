@@ -78,6 +78,9 @@ done
 for path in "$HOME/.config/alacritty" "$HOME/.config/wezterm" "$HOME/.pi"; do
 	[[ ! -e "$path" ]]
 done
+for path in "$HOME/.config/systemd/user/opencode-web.service" "$HOME/.config/systemd/user/opencode-web-health.service" "$HOME/.config/systemd/user/opencode-web-health.timer"; do
+	[[ ! -e "$path" ]]
+done
 mapfile -t aqua_files < <(find "$HOME/.config/aquaproj-aqua" -maxdepth 1 -type f -printf '%f\n' | sort)
 [[ "${aqua_files[*]}" == 'aqua-terminal-checksums.json aqua-terminal.yaml' ]]
 for launcher in go node npm nvim; do
