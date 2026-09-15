@@ -169,13 +169,7 @@ pub(crate) fn run(repo: &Path, root: &Path) -> Result<PathBuf, Box<dyn Error>> {
             return Err(error);
         }
     };
-    if let Err(error) = renameat_with(
-        CWD,
-        &staging,
-        CWD,
-        &session_dir,
-        RenameFlags::NOREPLACE,
-    ) {
+    if let Err(error) = renameat_with(CWD, &staging, CWD, &session_dir, RenameFlags::NOREPLACE) {
         let _ = fs::remove_dir_all(&staging);
         return Err(error.into());
     }
@@ -195,9 +189,21 @@ fn execute(
         let (report, trace) = research::create_research_outputs(context.clone())?;
         let task_root = format!("{TASK_ARTIFACT_DIR}/{}", task.name);
         for (kind, file, value) in [
-            (ArtifactKind::Context, "context.json", serde_json::to_value(&context)?),
-            (ArtifactKind::Trace, "trace.json", serde_json::to_value(&trace)?),
-            (ArtifactKind::Report, "report.json", serde_json::to_value(&report)?),
+            (
+                ArtifactKind::Context,
+                "context.json",
+                serde_json::to_value(&context)?,
+            ),
+            (
+                ArtifactKind::Trace,
+                "trace.json",
+                serde_json::to_value(&trace)?,
+            ),
+            (
+                ArtifactKind::Report,
+                "report.json",
+                serde_json::to_value(&report)?,
+            ),
         ] {
             let relative = format!("{task_root}/{file}");
             artifacts.push(write_artifact(
