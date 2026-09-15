@@ -39,7 +39,7 @@ The `surveil.session.v1` receipt fields are:
 | --- | --- |
 | `schema_version` | Always `surveil.session.v1`. |
 | `status` | Always `complete`. |
-| `repo_root` | Canonical UTF-8 repository path. |
+| `repo_root` | Resolved absolute UTF-8 repository path. |
 | `task_names` | Task names in execution order. |
 | `artifacts` | Ordered integrity records for task artifacts and evidence. |
 
@@ -49,7 +49,7 @@ Each artifact record contains `kind`, `task_name`, `path`, `byte_len`, and `sha2
 
 Tasks run sequentially. Each task performs the existing gather and research operations, and the reports are merged with the existing merge validation. Each task independently evaluates index usability at its own research startup; a usable index participates in ranking and missing, stale, incompatible, or corrupt indexes use lexical fallback. Repository files and task documents are live inputs and must remain stable until exit.
 
-Status `0` means publication and receipt-path output both succeeded. Runtime and I/O errors return status `1`; Clap usage errors return status `2`. Runtime failures before publication leave stdout empty, write an error to stderr, and create no new `.surveil-session` path. Cleanup is best-effort, so a `.surveil-session-*.tmp` sibling can remain. If stdout fails after the atomic rename, status is `1` but the published receipt remains authoritative. Any existing `.surveil-session` file, directory, or symlink is an error and is never overwritten.
+Status `0` means publication and receipt-path output both succeeded. Runtime and I/O errors return status `1`; Clap usage errors return status `2`. Runtime failures before publication leave stdout empty, write an error to stderr, and create no new `.surveil-session` path. Cleanup is best-effort, so a `.surveil-session-*.tmp` sibling can remain. If stdout fails after the atomic no-replace move, status is `1` but the published receipt remains authoritative. Any existing `.surveil-session` file, directory, or symlink is an error and is never overwritten.
 
 ## V1 Limits
 

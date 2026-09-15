@@ -1,5 +1,5 @@
-use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output};
@@ -425,10 +425,8 @@ fn session_writes_complete_artifacts() {
     assert!(output.stderr.is_empty());
     let receipt_path = stdout_path(&output);
     assert_eq!(receipt_path, root.join(".surveil-session/receipt.json"));
-    let receipt: Value = serde_json::from_slice(
-        &fs::read(&receipt_path).expect("read receipt"),
-    )
-    .expect("parse receipt");
+    let receipt: Value = serde_json::from_slice(&fs::read(&receipt_path).expect("read receipt"))
+        .expect("parse receipt");
     assert_eq!(receipt["schema_version"], "surveil.session.v1");
     assert_eq!(receipt["status"], "complete");
     assert_eq!(receipt["task_names"], json!(["architecture", "tests"]));
@@ -460,17 +458,12 @@ fn session_writes_complete_artifacts() {
         assert!(Path::new(path)
             .components()
             .all(|part| matches!(part, Component::Normal(_))));
-        let bytes = fs::read(root.join(".surveil-session").join(path))
-            .expect("read artifact");
+        let bytes = fs::read(root.join(".surveil-session").join(path)).expect("read artifact");
         assert_eq!(artifact["byte_len"], bytes.len() as u64);
-        assert_eq!(
-            artifact["sha256"],
-            format!("{:x}", Sha256::digest(&bytes)),
-        );
+        assert_eq!(artifact["sha256"], format!("{:x}", Sha256::digest(&bytes)),);
     }
     let evidence: Value = serde_json::from_slice(
-        &fs::read(root.join(".surveil-session/evidence.json"))
-            .expect("read evidence"),
+        &fs::read(root.join(".surveil-session/evidence.json")).expect("read evidence"),
     )
     .expect("parse evidence");
     assert_eq!(
@@ -500,8 +493,30 @@ fn session_rejects_completed_root() {
     let rerun = run_session(&repo, &root);
     assert!(!rerun.status.success());
     assert!(rerun.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&rerun.stderr)
-        .contains("already contains .surveil-session"));
+    assert!(String::from_utf8_lossy(&rerun.stderr).contains("already contains .surveil-session"));
+    let _ = fs::remove_dir_all(state_home);
+    let _ = fs::remove_dir_all(repo);
+}
+
+#[test]
+fn session_preserves_existing_output_file() {
+    let state_home = temp_root("session-existing-file-state");
+    let repo = temp_root("session-existing-file-repo");
+    fs::create_dir_all(repo.join("src")).expect("create source");
+    fs::write(repo.join("src/lib.rs"), "fn session() {}\n").expect("write source");
+    let root = stdout_path(&run_managed_create(&state_home, "architecture"));
+    populate_task(&root.join("architecture/task.json"), "architecture");
+    let session_path = root.join(".surveil-session");
+    fs::write(&session_path, "existing output\n").expect("seed session output");
+
+    let output = run_session(&repo, &root);
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        fs::read_to_string(session_path).expect("read session output"),
+        "existing output\n",
+    );
     let _ = fs::remove_dir_all(state_home);
     let _ = fs::remove_dir_all(repo);
 }
@@ -527,13 +542,11 @@ fn session_failure_publishes_nothing() {
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(!root.join(".surveil-session").exists());
-    assert!(fs::read_dir(&root)
-        .expect("read root")
-        .all(|entry| !entry
-            .expect("entry")
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".surveil-session-")));
+    assert!(fs::read_dir(&root).expect("read root").all(|entry| !entry
+        .expect("entry")
+        .file_name()
+        .to_string_lossy()
+        .starts_with(".surveil-session-")));
     let _ = fs::remove_dir_all(state_home);
     let _ = fs::remove_dir_all(repo);
 }
@@ -559,10 +572,7 @@ fn session_rejects_task_named_for_output_namespace() {
     let repo = temp_root("session-reserved-repo");
     fs::create_dir_all(&repo).expect("create repo");
     let root = stdout_path(&run_managed_create(&state_home, ".surveil-session"));
-    populate_task(
-        &root.join(".surveil-session/task.json"),
-        ".surveil-session",
-    );
+    populate_task(&root.join(".surveil-session/task.json"), ".surveil-session");
 
     let output = run_session(&repo, &root);
     assert!(!output.status.success());
@@ -626,8 +636,8 @@ fn session_rejects_non_utf8_root() {
     use std::ffi::OsString;
     use std::os::unix::ffi::OsStringExt;
 
-    let state_home = temp_root("session-native-state")
-        .join(OsString::from_vec(b"non-utf8-\xff".to_vec()));
+    let state_home =
+        temp_root("session-native-state").join(OsString::from_vec(b"non-utf8-\xff".to_vec()));
     let repo = temp_root("session-native-repo");
     fs::create_dir_all(&repo).expect("create repo");
     let created = run_managed_create(&state_home, "architecture");
