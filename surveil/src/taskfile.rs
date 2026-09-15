@@ -78,7 +78,7 @@ pub fn create_managed_task(state_root: &Path, task: &str) -> io::Result<PathBuf>
     validate_task_name(task)?;
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?
+        .map_err(io::Error::other)?
         .as_nanos();
     let root = create_managed_root_at(state_root, stamp, std::process::id())?;
     let initialized = (|| {
@@ -154,7 +154,7 @@ fn create_managed_task_dir(root: &Path, task: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn validate_existing_managed_root(root: &Path) -> io::Result<()> {
+pub(crate) fn validate_existing_managed_root(root: &Path) -> io::Result<()> {
     if !root.is_absolute() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
