@@ -1,3 +1,6 @@
+// These tests run the actual OpenCode shell commands in a temporary home
+// directory. They check that passwords are saved safely, failed changes keep
+// the old password, and only full installations configure the web service.
 package chezmoi
 
 import (
@@ -56,6 +59,8 @@ func TestOCWPasswordPreservesFileOnMismatch(t *testing.T) {
 	assertPasswordMode(t, path, 0o600)
 }
 
+// This checks the files and setup messages created during installation. It
+// does not start the Linux service manager or the web service.
 func TestOpenCodeServiceRequiresCredentials(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", "dot_config", "systemd", "user", "opencode-web.service"))
 	if err != nil {
@@ -75,6 +80,8 @@ func TestOpenCodeServiceRequiresCredentials(t *testing.T) {
 	}
 }
 
+// runPasswordCommand runs ocw-password with a temporary home directory and a
+// fake systemctl command.
 func runPasswordCommand(home, input string) (string, error) {
 	command := exec.Command("zsh", "-fc", "source \"$HOME/.zshrc\"; ocw-password")
 	command.Dir = home
@@ -84,6 +91,8 @@ func runPasswordCommand(home, input string) (string, error) {
 	return string(output), err
 }
 
+// writePasswordRuntime creates the files and fake commands needed by
+// ocw-password without changing services on the test machine.
 func writePasswordRuntime(t *testing.T, home string) {
 	t.Helper()
 	writeOpenCodeZshRuntime(t, home)
