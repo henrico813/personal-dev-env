@@ -1,0 +1,6 @@
+[Unit]
+Description=Check the OpenCode web server
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl --fail --silent --show-error http://127.0.0.1:4096/global/health

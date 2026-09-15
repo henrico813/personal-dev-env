@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the OpenCode web server periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=opencode-web-health.service
+
+[Install]
+WantedBy=timers.target
