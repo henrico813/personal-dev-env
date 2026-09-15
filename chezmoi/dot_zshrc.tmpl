@@ -89,6 +89,55 @@ oca() (
 ocw() (
     _opencode_run_with_credentials web "$@"
 )
+
+ocw-password() (
+    local env_dir="$HOME/.config/opencode"
+    local env_file="$env_dir/server.env"
+    local password confirmation tmp
+
+    if [[ -L "$HOME/.config" || -L "$env_dir" || -L "$env_file" ||
+        -d "$env_file" || ( -e "$env_file" && ! -f "$env_file" ) ]]; then
+        print -u2 "OpenCode credentials path is not a regular file"
+        return 1
+    fi
+
+    print -n "OpenCode password: "
+    read -r -s password || { print; return 1; }
+    print
+    print -n "Confirm OpenCode password: "
+    read -r -s confirmation || { print; return 1; }
+    print
+
+    if [[ -z "$password" || -z "$confirmation" ]]; then
+        print -u2 "OpenCode passwords must not be empty"
+        return 1
+    fi
+    if [[ "$password" != "$confirmation" ]]; then
+        print -u2 "OpenCode passwords must match"
+        return 1
+    fi
+    if [[ "$password" == *[!A-Za-z0-9._:@%+,-]* ]]; then
+        print -u2 "Use letters, numbers, or . _ : @ % + , - in the password"
+        return 1
+    fi
+
+    command install -d -m 700 "$env_dir" || return 1
+    command chmod 700 "$env_dir" || return 1
+    umask 077
+    tmp="$(command mktemp "$env_file.XXXXXX")" || return 1
+    trap 'command rm -f -- "$tmp"' EXIT
+    if ! printf 'OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=%s\n' \
+        "$password" >"$tmp" || ! command chmod 600 "$tmp" ||
+        ! command mv -f -- "$tmp" "$env_file"; then
+        return 1
+    fi
+    trap - EXIT
+
+    if command systemctl --user is-active --quiet opencode-web.service; then
+        command systemctl --user restart opencode-web.service || return 1
+    fi
+    print "OpenCode credentials saved to $env_file"
+)
 {{- end }}
 # cat -> bat
 alias cat='bat'
