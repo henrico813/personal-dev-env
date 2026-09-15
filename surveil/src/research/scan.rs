@@ -11,6 +11,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tree_sitter::Parser;
 
+type ScanResult = (Vec<Finding>, Vec<String>, bool);
+
+// Query scanning keeps its ordered inputs and mutable run state explicit.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn create_answer_from_sources(
     repo_root: &Path,
     search_areas: &[String],
@@ -21,7 +25,7 @@ pub(super) fn create_answer_from_sources(
     ranking_usable: bool,
     live_cache: &mut LiveFileCache,
     trace: &mut TraceState,
-) -> Result<(Vec<Finding>, Vec<String>, bool), Box<dyn Error>> {
+) -> Result<ScanResult, Box<dyn Error>> {
     let mut ranked_files = Vec::new();
     let mut loaded_for_query = HashSet::new();
     let mut fallback_used = false;
@@ -378,7 +382,7 @@ fn find_case_insensitive_byte_offset(line: &str, needle: &str) -> Option<usize> 
         window
             .iter()
             .zip(needle_bytes.iter())
-            .all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+            .all(|(a, b)| a.eq_ignore_ascii_case(b))
     })
 }
 

@@ -9,6 +9,18 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
+    let output = create_output(repo_root, task_file)?;
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+    serde_json::to_writer(&mut handle, &output)?;
+    handle.write_all(b"\n")?;
+    Ok(())
+}
+
+pub(crate) fn create_output(
+    repo_root: &Path,
+    task_file: &Path,
+) -> Result<GatherOutput, Box<dyn Error>> {
     let task_file = fs::canonicalize(task_file)?;
     let task_name = task_name_from_resolved(&task_file)?;
     let task = read_task_file(&task_file)?;
@@ -16,7 +28,7 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
     let validated_explicit_files = validate_explicit_files(repo_root, &task.explicit_files)?;
     validate_search_areas(repo_root, &task.search_areas)?;
 
-    let output = GatherOutput {
+    Ok(GatherOutput {
         schema_version: SCHEMA_VERSION.to_string(),
         task_name,
         repo_root: repo_root.to_string_lossy().into_owned(),
@@ -28,13 +40,7 @@ pub fn run(repo_root: &Path, task_file: &Path) -> Result<(), Box<dyn Error>> {
         query: task.query,
         terms: task.terms,
         blockers: Vec::new(),
-    };
-
-    let stdout = io::stdout();
-    let mut handle = stdout.lock();
-    serde_json::to_writer(&mut handle, &output)?;
-    handle.write_all(b"\n")?;
-    Ok(())
+    })
 }
 
 fn task_name_from_resolved(task_file: &Path) -> io::Result<String> {

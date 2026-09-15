@@ -89,6 +89,8 @@ pub(super) fn slice_lines(
     text[start..end].to_string()
 }
 
+// Chunk construction keeps distinct source metadata visible at call sites.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn make_chunk(
     source: &SourceFile,
     kind: ChunkKind,
