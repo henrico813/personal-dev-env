@@ -106,6 +106,35 @@ pub(crate) fn run(paths: &[PathBuf]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub(crate) fn merge_outputs(
+    reports: Vec<ResearchOutput>,
+) -> Result<EvidencePack, Box<dyn Error>> {
+    let mut task_names = HashSet::new();
+    let mut loaded = Vec::with_capacity(reports.len());
+    for report in reports {
+        if report.schema_version != SCHEMA_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "unsupported generated report version: expected {SCHEMA_VERSION}, got {}",
+                    report.schema_version
+                ),
+            )
+            .into());
+        }
+        validate_task_name(&report.task_name)?;
+        if !task_names.insert(report.task_name.clone()) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("duplicate generated task name: {}", report.task_name),
+            )
+            .into());
+        }
+        loaded.push(LoadedTaskReport { report });
+    }
+    Ok(merge_task_reports(loaded))
+}
+
 /// Parses ordered positional task-report paths.
 fn parse_task_reports(paths: &[PathBuf]) -> Vec<TaskReport> {
     paths
