@@ -1,6 +1,3 @@
-// These tests run the actual OpenCode shell commands in a temporary home
-// directory. They check that passwords are saved safely, failed changes keep
-// the old password, and only full installations configure the web service.
 package chezmoi
 
 import (
@@ -24,6 +21,9 @@ func TestOCWPasswordCreatesAndReplacesCredentials(t *testing.T) {
 	}
 	assertPasswordMode(t, filepath.Join(home, ".config", "opencode"), 0o700)
 	assertPasswordMode(t, path, 0o600)
+	if got := readPasswordFile(t, filepath.Join(home, "systemctl-arguments")); got != "--user enable --now opencode-web.service opencode-web-health.timer\n" {
+		t.Fatalf("systemctl arguments = %q", got)
+	}
 
 	output, err := runPasswordCommand(home, "second-pass\nsecond-pass\n")
 	if err != nil {
@@ -59,8 +59,6 @@ func TestOCWPasswordPreservesFileOnMismatch(t *testing.T) {
 	assertPasswordMode(t, path, 0o600)
 }
 
-// This checks the files and setup messages created during installation. It
-// does not start the Linux service manager or the web service.
 func TestOpenCodeServiceRequiresCredentials(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", "dot_config", "systemd", "user", "opencode-web.service"))
 	if err != nil {
@@ -80,8 +78,6 @@ func TestOpenCodeServiceRequiresCredentials(t *testing.T) {
 	}
 }
 
-// runPasswordCommand runs ocw-password with a temporary home directory and a
-// fake systemctl command.
 func runPasswordCommand(home, input string) (string, error) {
 	command := exec.Command("zsh", "-fc", "source \"$HOME/.zshrc\"; ocw-password")
 	command.Dir = home
@@ -91,12 +87,10 @@ func runPasswordCommand(home, input string) (string, error) {
 	return string(output), err
 }
 
-// writePasswordRuntime creates the files and fake commands needed by
-// ocw-password without changing services on the test machine.
 func writePasswordRuntime(t *testing.T, home string) {
 	t.Helper()
 	writeOpenCodeZshRuntime(t, home)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\nif [ \"$1 $2\" = \"--user is-active\" ]; then exit 1; fi\nexit 0\n")
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$HOME/systemctl-arguments\"\nexit 0\n")
 }
 
 func readPasswordFile(t *testing.T, path string) string {

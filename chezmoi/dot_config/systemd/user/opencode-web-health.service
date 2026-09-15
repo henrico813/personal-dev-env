@@ -1,0 +1,6 @@
+[Unit]
+Description=Check the OpenCode web server
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/ || /usr/bin/systemctl --user restart opencode-web.service'

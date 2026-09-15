@@ -34,9 +34,10 @@ directory, with the current directory as fallback:
 oca [opencode attach options]
 ```
 
-When `server.env` exists, credentials are loaded only inside the helper's
-subprocess. Without the file, `oca` preserves its unauthenticated attach
-behavior.
+When `server.env` is a regular file, credentials are loaded only inside the
+helper's subprocess. Without the file, `oca` preserves its unauthenticated
+attach behavior. A symlink or other invalid credential path causes the
+credential helper to fail rather than loading credentials.
 
 ## `ocw`
 
@@ -58,3 +59,6 @@ opencode-web.service
 ```
 
 It reads `~/.config/opencode/server.env` and listens on `127.0.0.1:4096`.
+The health timer checks this endpoint every minute and restarts the service
+when it is unavailable. `oca` performs the same readiness recovery before a
+default local attach.
