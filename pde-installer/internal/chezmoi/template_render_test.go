@@ -394,6 +394,34 @@ func TestOCWScopesCredentials(t *testing.T) {
 	}
 }
 
+func TestOCAUsesReadyDefaultServer(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	command := openCodeZshCommand(home, `oca --session forwarded`)
+
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("oca failed: %v\n%s", err, output)
+	}
+
+	calls, err := os.ReadFile(filepath.Join(home, "curl-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 1 {
+		t.Fatalf("curl probes = %d, want 1", got)
+	}
+	if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("ready server restarted: %v", err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(arguments); !strings.Contains(got, "attach\nhttp://127.0.0.1:4096\n--dir\n") || !strings.HasSuffix(got, "--session\nforwarded\n") {
+		t.Fatalf("opencode arguments = %q", got)
+	}
+}
+
 func TestOCARecoversDefaultServer(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
