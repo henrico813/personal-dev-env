@@ -30,7 +30,7 @@ pub(crate) fn write_research_output(
     Ok(())
 }
 
-fn create_research_outputs(
+pub(crate) fn create_research_outputs(
     gather: GatherOutput,
 ) -> Result<(ResearchOutput, TraceOutput), Box<dyn Error>> {
     if gather.schema_version != SCHEMA_VERSION {
