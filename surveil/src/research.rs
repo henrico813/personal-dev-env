@@ -9,8 +9,8 @@ mod scan;
 mod setup;
 mod tokenize;
 
-pub(crate) use output::write_research_output as run;
 pub(crate) use output::create_research_outputs;
+pub(crate) use output::write_research_output as run;
 
 #[derive(Default)]
 pub(super) struct TraceState {

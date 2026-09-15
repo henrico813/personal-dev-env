@@ -106,9 +106,7 @@ pub(crate) fn run(paths: &[PathBuf]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub(crate) fn merge_outputs(
-    reports: Vec<ResearchOutput>,
-) -> Result<EvidencePack, Box<dyn Error>> {
+pub(crate) fn merge_outputs(reports: Vec<ResearchOutput>) -> Result<EvidencePack, Box<dyn Error>> {
     let mut task_names = HashSet::new();
     let mut loaded = Vec::with_capacity(reports.len());
     for report in reports {
