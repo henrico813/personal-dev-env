@@ -139,9 +139,8 @@ ocw-password() (
     fi
     trap - EXIT
 
-    if command systemctl --user is-active --quiet opencode-web.service; then
-        command systemctl --user restart opencode-web.service || return 1
-    fi
+    command systemctl --user daemon-reload || return 1
+    command systemctl --user enable --now opencode-web.service opencode-web-health.timer || return 1
     print "OpenCode credentials saved to $env_file"
 )
 {{- end }}
