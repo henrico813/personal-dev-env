@@ -46,6 +46,8 @@ jobs:
         with:
           go-version-file: pde-installer/go.mod
           cache-dependency-path: pde-installer/go.sum
+      - name: install zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh
       - name: format
         run: test -z "$(gofmt -l .)"
       - name: test production paths
