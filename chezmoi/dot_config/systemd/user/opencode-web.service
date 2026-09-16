@@ -9,7 +9,7 @@ ExecCondition=/bin/sh -c '[ -n "$$OPENCODE_SERVER_USERNAME" ] && [ -n "$$OPENCOD
 ExecStart=%h/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096
 Restart=always
 RestartSec=5
-MemoryMax=1G
+MemoryMax=8G
 
 [Install]
 WantedBy=default.target
