@@ -7,13 +7,16 @@ never stored in the repository.
 ## Bootstrap Order
 
 The full profile applies the shell helper and the systemd unit. The post-apply
-script reloads systemd but does not start the service when
-`~/.config/opencode/server.env` is absent. This avoids starting an unsecured
-server during a fresh installation.
+script reloads systemd, then enables and restarts the service only when
+`~/.config/opencode/server.env` is a regular file. This avoids starting an
+unsecured server during a fresh installation.
 
-After `ocw-password` creates the file, it enables and starts the service and
-health timer. The service reads the file through systemd's `EnvironmentFile`
-support. Re-running `chezmoi apply` also enables both units when the file is
+After `ocw-password` creates the file, it reloads systemd, enables both units,
+restarts the service, and starts the health timer. The service reads the file
+through systemd's `EnvironmentFile` support and refuses to start if either
+credential is missing or empty. The health probe reads authentication through
+curl's standard input, keeping the password out of curl's process arguments.
+Re-running `chezmoi apply` uses the same ordered activation when the file is
 present.
 
 ## Ownership Boundary
