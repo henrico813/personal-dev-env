@@ -128,15 +128,30 @@ For this workflow, <task-context> is the user's request and every referenced doc
 For this workflow, <evidence-review-agent> is an independent OpenCode `general`
 agent restricted by its delegation prompt to read-only research.
 
-As soon as `<research-artifact-dir>` is known, write
-`<research-artifact-dir>/planning-state.md` with the operation type, output
-path and initial existence or hash, ordered `<loaded-skills>`, referenced
-context paths, and successfully completed evidence artifact paths. Update it
-immediately after a later skill load or successful evidence stage. Read it
-after compaction or handoff and before each delegation, drafting, or review.
-Store its exact path in the planning TodoWrite list, update that item if the
-file moves, and include it in the final report. Do not list partial output from
-a failed command as evidence.
+For repo-backed planning, run `planner help` and `planner workflow help` before
+the first Planner command. Run `planner workflow id`, capture its
+`workflow_id`, then run `planner workflow start --id <workflow-id> --repo
+"<repo>" --output "<output.md>" --operation new` with one `--skill <name>` for
+each loaded skill. For a partial update, also pass `--input "<input.md>"` and
+use `--operation partial-update`; input and output may name the same file.
+Capture the returned revision. Store the workflow ID and exact `planner
+workflow show <workflow-id>` command in TodoWrite. Run that read-only command
+after compaction or handoff and before each delegation, drafting step, or
+review; its strict JSON is the lifecycle state. Never read or edit Planner's
+private state files directly.
+
+Generate the ID before start so a failed stdout write is recoverable. After
+any state-changing Planner command exits nonzero, run `planner workflow show
+<workflow-id>`. Continue only when the returned stage and revision prove the
+requested transition committed; otherwise use the returned revision to record
+a terminal failure when possible and stop. Never retry a transition blindly.
+
+For conceptual planning, use the temporary `<research-artifact-dir>` created
+above and write `<research-artifact-dir>/planning-state.md` with the operation,
+output identity, ordered skills, referenced context, and completed evidence.
+Update and reread it after handoffs and before delegation, drafting, or review.
+Store its path in TodoWrite. Do not invoke `planner workflow` or Surveil for
+that branch.
 
 For either independent reviewer, apply this read-only guard around each agent
 attempt:
@@ -157,22 +172,21 @@ attempt:
    mutation: stop, report the changed path or repo state, and do not use the
    review response.
 
-## Detailed Surveil Research Instructions
+## Managed Repo Research
 
-1. Reserve a unique fallback location before any Surveil command:
-   - Run `mktemp -d "${TMPDIR:-/tmp}/surveil-research-failure.XXXXXX"` as its own tool call.
-   - Capture the exact printed path as `<fallback-dir>`. Set `<failure-file>` to `<fallback-dir>/failure.md` and `<research-artifact-dir>` to `<fallback-dir>`.
-   - Do not combine this call with `surveil new`, and do not rely on shell variables persisting across tool calls. Replace placeholders below with captured literal paths.
-2. Create the three Surveil tasks:
-   - Run `surveil new task --task architecture` and capture its exact output as `<search-dir>`.
-   - After root creation succeeds, move `<fallback-dir>/planning-state.md` to
-     `<search-dir>/planning-state.md`, run `rmdir "<fallback-dir>"`, then set
-     `<failure-file>` to `<search-dir>/failure.md` and
-     `<research-artifact-dir>` to `<search-dir>` and update the state file and
-     its TodoWrite locator.
-   - Run `surveil new task --root "<search-dir>" --task interfaces-data-state`.
-   - Run `surveil new task --root "<search-dir>" --task tests-verification`.
-3. Populate `<search-dir>/architecture/task.json`, `<search-dir>/interfaces-data-state/task.json`, and `<search-dir>/tests-verification/task.json` from <task-context>:
+1. Run `surveil new task --task architecture` and capture its exact output as
+   `<search-dir>` and `<research-artifact-dir>`. If root creation fails, run
+   `planner workflow fail <workflow-id> --expected-revision <N> --stage
+   research --reason "<concise error>"` and stop.
+2. Bind that absolute root with `planner workflow research bind <workflow-id>
+   --expected-revision <N> --managed-root "<search-dir>"`. Replace `<N>` with
+   every returned revision. Create `interfaces-data-state` and
+   `tests-verification` with `surveil new task --root "<search-dir>" --task
+   <name>`. Any setup failure is terminal and must be recorded with `workflow
+   fail --stage research`.
+3. Populate `<search-dir>/architecture/task.json`,
+   `<search-dir>/interfaces-data-state/task.json`, and
+   `<search-dir>/tests-verification/task.json` from <task-context>:
    - Set `summary` to the task-context title; if it has no title, use its first sentence verbatim.
    - Set `explicit_files` to only literal paths named by the task context, preserving first-seen order and removing exact duplicates.
    - Set `search_areas` to the smallest repo directories covering those paths and each task's focus; use `.` only when the intended scope is the repository root.
@@ -197,28 +211,29 @@ attempt:
      3. `Which docs, config, commands, and CI targets affect this change?`
      4. `Which automated checks verify the implementation?`
      5. `Which behavior requires manual verification?`
-5. Run `surveil index --repo "<repo>"`.
-6. Run all three gather commands:
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/architecture/task.json" > "<search-dir>/architecture/context.json"`
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/interfaces-data-state/task.json" > "<search-dir>/interfaces-data-state/context.json"`
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/tests-verification/task.json" > "<search-dir>/tests-verification/context.json"`
-7. Launch all three research commands through parallel tool calls and wait for all three:
-   - `surveil research --context "<search-dir>/architecture/context.json" --trace-out "<search-dir>/architecture/trace.json" > "<search-dir>/architecture/report.json"`
-   - `surveil research --context "<search-dir>/interfaces-data-state/context.json" --trace-out "<search-dir>/interfaces-data-state/trace.json" > "<search-dir>/interfaces-data-state/report.json"`
-   - `surveil research --context "<search-dir>/tests-verification/context.json" --trace-out "<search-dir>/tests-verification/trace.json" > "<search-dir>/tests-verification/report.json"`
-8. Treat redirected output as complete only when its command exits
-   successfully. Proceed to step 9 only after all three tasks succeed;
-   otherwise exclude failed or partial outputs and follow step 13.
-9. Merge the reports directly with `surveil merge "<search-dir>/architecture/report.json" "<search-dir>/interfaces-data-state/report.json" "<search-dir>/tests-verification/report.json" > "<search-dir>/evidence.json"`.
-10. Read `<search-dir>/evidence.json` before additional repository research. If a read is truncated, use targeted searches and direct file reads rather than treating the partial output as complete evidence.
-11. After successful evidence, run one <evidence-review-agent>:
+5. Run `surveil index --repo "<repo>"`. If indexing fails, record `workflow
+   fail --stage research` and stop.
+6. Run `surveil session run --repo "<repo>" --root "<search-dir>"` once. The
+   authoritative receipt is
+   `<search-dir>/.surveil-session/receipt.json`. After a nonzero exit, inspect
+   only that path: continue when it exists because publication completed before
+   stdout failed; otherwise record `workflow fail --stage research` and stop.
+   Do not retry the completed root and do not produce fallback evidence.
+7. Run `planner workflow research complete <workflow-id>
+   --expected-revision <N> --receipt "<receipt-path>"`. Planner strictly
+   validates the PDEV-161 receipt and every listed artifact. Set
+   `<evidence-path>` to `<search-dir>/.surveil-session/evidence.json`.
+8. Read `<evidence-path>` before additional repository research. If a read is
+   truncated, use targeted searches and direct file reads rather than treating
+   partial output as complete evidence.
+9. After successful evidence, run one <evidence-review-agent>:
     - Apply the read-only guard to `<output.md>`, the repo, all supplied
       artifacts, and `<research-artifact-dir>/manual-review.md`.
     - Name each applicable skill in the delegation prompt.
     - Require the agent to load available applicable skills before review and
       report any required skill that is unavailable.
-    - Give it <task-context>, <repo>, `<search-dir>/evidence.json`, and
-      `<research-artifact-dir>/planning-state.md`.
+    - Give it <task-context>, <repo>, `<receipt-path>`, `<evidence-path>`, and
+      the current `planner workflow show <workflow-id>` result.
     - Find required files or behavior missing from the evidence and correct assumptions not supported by direct file reads.
     - Check related callers, integration points, and existing patterns outside the searched areas.
     - Identify missing tests, fixtures, config, commands, CI checks, or manual verification.
@@ -226,24 +241,11 @@ attempt:
     - Save its final response verbatim as `<research-artifact-dir>/manual-review.md`.
     - If the agent invocation fails, retry it once with a fresh read-only guard.
       If the artifact write fails, retry that write once. If either still
-      fails, write the failure to `<failure-file>`, record the missing review
-      as `unresolved` in Step 3, and stop.
-12. Verify new or conflicting findings from <evidence-review-agent> with direct file reads before continuing.
-13. If task JSON or search-area validation fails, correct the input once and
-    rerun gather; this correction does not consume the operational retry. If
-    validation still fails, use the fallback below. If any other Surveil
-    command fails, retry only the failed stage once. If initial root creation
-    succeeds on retry, perform the successful setup in step 2. If the failed
-    stage still fails:
-    - Write the failed stage and error to `<failure-file>` using the already captured literal path. Do not search temporary directories to rediscover it.
-    - Skip steps 9-10 only.
-    - Run one <evidence-review-agent> using all step 11 review instructions with
-      <task-context>, <repo>, and every successfully completed artifact. Exclude
-      redirected output from any failed command.
-    - Save its final response verbatim as `<research-artifact-dir>/manual-review.md`.
-    - Apply the same one-retry and unresolved stopping rule when the fallback
-      agent or artifact write fails.
-    - Verify new or conflicting fallback findings with direct file reads, then continue to Step 3.
+      fails, record `workflow fail --stage evidence` and stop.
+10. Verify new or conflicting findings from <evidence-review-agent> with direct file reads before continuing.
+11. Use `planner workflow skill add <workflow-id> --expected-revision <N>
+    --name <skill>` immediately for every applicable skill discovered during
+    research. All skill additions must finish before evidence completion.
 ## Evidence Review Best Practices
 
 Run one research task after reading merged evidence. Give the analyzer exact directories, require read-only tools and `file:line` references, wait for it to complete, and cross-check unexpected findings directly.
@@ -260,7 +262,7 @@ Assistant: This is a repo-backed implementation plan, so I'll create three manag
 Before drafting, write `<research-artifact-dir>/evidence-disposition.md`.
 
 1. Include only material findings from the supplied context, loaded skills,
-   Surveil evidence, manual review, fallback review, and direct verification.
+   Surveil evidence, manual review, and direct verification.
 2. For each finding, record its source, the finding, one disposition, and the
    concrete plan impact or exclusion reason.
 3. Use only these dispositions:
@@ -273,6 +275,12 @@ Before drafting, write `<research-artifact-dir>/evidence-disposition.md`.
    not create or finalize the plan.
 6. Update the disposition if later research or a late skill load changes a
    material decision.
+7. For repo-backed planning, after all skills and dispositions are final, run
+   `planner workflow evidence complete <workflow-id> --expected-revision <N>
+   --review "<research-artifact-dir>/manual-review.md" --disposition
+   "<research-artifact-dir>/evidence-disposition.md"`. A skill discovered after
+   this transition makes the lifecycle terminal: record `workflow fail --stage
+   evidence` and stop rather than reviewing stale inputs.
 
 
 ### Step 4: Plan Structure Development
@@ -298,7 +306,8 @@ Once aligned on approach:
 
 After research is complete:
 
-1. Run `planner help` first; do not guess command shapes from memory.
+1. Run `planner help` before the first Planner command and again if compaction
+   obscures command shapes; do not guess them from memory.
 2. For new plans, verify `<output.md>` is still absent immediately before
    running `planner new "<output.md>"`; stop instead of overwriting it if it
    now exists.
@@ -347,8 +356,8 @@ OpenCode `general` agent after the draft passes its initial Planner check.
    every exact skill name in order.
 3. Require the reviewer to load every listed skill before reviewing and report
    any unavailable skill as a blocking finding.
-4. Give it <task-context>, <repo>, <output.md>,
-   `<research-artifact-dir>/planning-state.md`,
+4. Give it <task-context>, <repo>, <output.md>, the current `planner workflow
+   show <workflow-id>` result,
    `<research-artifact-dir>/evidence-disposition.md`, and all available
    evidence, manual-review, and prior loaded-skill-review artifact paths.
 5. Require read-only tools, prohibit edits and mutating commands, and require it
@@ -363,16 +372,28 @@ OpenCode `general` agent after the draft passes its initial Planner check.
    response, classifying findings, or changing the plan.
 8. Save the final response verbatim as
    `<research-artifact-dir>/loaded-skill-review.md`.
+   For repo-backed planning, classify the saved response as `pass` or
+   `blocking`, then run `planner workflow review complete <workflow-id>
+   --expected-revision <N> --path
+   "<research-artifact-dir>/loaded-skill-review.md" --outcome <outcome>`.
 9. If the reviewer invocation fails, retry once with a fresh read-only guard.
+   For repo-backed planning, record `workflow fail --stage review` before
+   stopping after the permitted retry or artifact-write failure.
    If saving the review artifact fails, retry the write once. Stop if either
    action still fails. Apply the same rules to the follow-up.
 10. Treat unavailable required skills, contradicted skill guidance, unsupported
    behavior prohibited by a loaded skill, and omitted required verification as
    blocking.
-11. If there are blocking findings, correct the plan and evidence disposition,
-   rerun the initial Planner check, then run one independent follow-up with the
-   same inputs and save it as
+11. If there are blocking findings, correct the plan. For conceptual planning,
+   also correct the evidence disposition. Repo-backed evidence is frozen after
+   `evidence complete`; if a finding requires changing it, record `workflow
+   fail --stage review` and stop instead of recording a stale follow-up.
+   Otherwise, rerun the initial Planner check, then run one independent
+   follow-up with the same inputs and save it as
    `<research-artifact-dir>/loaded-skill-review-follow-up.md`.
+   Record the follow-up's actual `pass` or `blocking` outcome with the same
+   `planner workflow review complete` command. A second blocking result moves
+   the lifecycle to terminal failure.
 12. Apply a fresh read-only guard to the follow-up and its intended artifact.
     Any plan change after the initial review consumes this single correction
     cycle and requires the follow-up.
@@ -382,12 +403,15 @@ OpenCode `general` agent after the draft passes its initial Planner check.
 
 ### Step 7: Validate And Report
 
-1. Run `planner check "<output.md>" --json-errors` after completed-plan review.
-2. The reviewed draft already passed Planner validation. If final validation
-   fails, stop; do not modify the reviewed plan without another independent
-   review.
-3. Report the final output path, validation result, scope summary,
-   `<research-artifact-dir>/planning-state.md`,
+1. For repo-backed planning, run `planner workflow finish <workflow-id>
+   --expected-revision <N>`. Planner reruns plan validation and rechecks the
+   receipt, receipt-listed artifacts, evidence review, disposition, every plan
+   review, the latest reviewed plan bytes, and a distinct partial-update input.
+2. For conceptual planning, run `planner check "<output.md>" --json-errors`.
+   If final validation fails, stop; do not modify a reviewed plan without the
+   permitted independent follow-up.
+3. Report the final output path, completion identity or validation result,
+   current workflow state or `<research-artifact-dir>/planning-state.md`,
    `<research-artifact-dir>/evidence-disposition.md`, the applicable
    loaded-skill review path, and any blockers.
 
