@@ -257,6 +257,10 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"ocw() (",
 				"ocw-password() (",
 				"$HOME/.config/opencode/server.env",
+				"url=\"http://127.0.0.1:4096\"",
+				"health_url=\"$url/global/health\"",
+				"--write-out '%{http_code}'",
+				"start|restart|status",
 			},
 			omit: []string{
 				"aqua-terminal.yaml",
@@ -278,10 +282,14 @@ if [ "$count" -lt "$failures" ]; then
     printf '%s\n' $((count + 1)) >"$count_file"
     exit 1
 fi
-exit 0
+status=${PDE_TEST_CURL_STATUS:-200}
+if [ "$status" = 000 ]; then
+    exit 1
+fi
+printf '%s' "$status"
 `
 	fakeSystemctlScript = `#!/bin/sh
-printf '%s\n' "$*" >"$HOME/systemctl-arguments"
+printf '%s\n' "$*" >>"$HOME/systemctl-arguments"
 `
 	fakeSleepScript = `#!/bin/sh
 exit 0
@@ -297,12 +305,7 @@ OPENCODE_SERVER_PASSWORD=secret
 	malformedOpenCodeCredentials = `OPENCODE_SERVER_USERNAME=opencode
 UNEXPECTED=value
 `
-	ocwScript = `
-ocw --hostname 0.0.0.0 --port 4096
-result=$?
-print -r -- "${OPENCODE_SERVER_USERNAME-}:${OPENCODE_SERVER_PASSWORD-}" >"$HOME/caller"
-exit "$result"
-`
+	ocwScript = `ocw`
 	ocaScript = `
 oca --session forwarded
 result=$?
@@ -315,80 +318,59 @@ printf '%s\n' "$@" >"$HOME/opencode-arguments"
 `
 )
 
-func TestOCWScopesCredentials(t *testing.T) {
+func TestOCWDispatchesServiceActions(t *testing.T) {
 	tests := []struct {
-		name        string
-		credentials string
-		symlink     bool
-		inherited   bool
-		wantSuccess bool
-		wantCaller  string
+		name   string
+		script string
+		want   string
 	}{
-		{
-			name:        "valid",
-			credentials: validOpenCodeCredentials,
-			wantSuccess: true,
-			wantCaller:  ":\n",
-		},
-		{name: "missing", wantCaller: ":\n"},
-		{name: "empty", credentials: emptyOpenCodePassword, wantCaller: ":\n"},
-		{name: "duplicate", credentials: duplicateOpenCodeUsername, wantCaller: ":\n"},
-		{name: "malformed", credentials: malformedOpenCodeCredentials, wantCaller: ":\n"},
-		{name: "symlink", credentials: validOpenCodeCredentials, symlink: true, wantCaller: ":\n"},
-		{
-			name:        "ignores inherited",
-			credentials: validOpenCodeCredentials,
-			inherited:   true,
-			wantSuccess: true,
-			wantCaller:  "inherited:inherited\n",
-		},
+		{name: "default", script: ocwScript, want: "--user start opencode-web.service\n"},
+		{name: "restart", script: "ocw restart", want: "--user restart opencode-web.service\n"},
+		{name: "status", script: "ocw status", want: "--user status opencode-web.service\n"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
 			writeOpenCodeZshRuntime(t, home)
-			if test.symlink {
-				writeOpenCodeSymlink(t, home, test.credentials)
-			} else if test.credentials != "" {
-				writeOpenCodeCredentials(t, home, test.credentials)
-			}
-			script := ocwScript
-			if test.inherited {
-				script = withInheritedOpenCodeCredentials(script)
-			}
-			command := openCodeZshCommand(home, script)
-			output, err := command.CombinedOutput()
-			if got := err == nil; got != test.wantSuccess {
-				t.Fatalf("ocw success = %t, want %t: %v\n%s", got, test.wantSuccess, err, output)
-			}
 
-			caller, err := os.ReadFile(filepath.Join(home, "caller"))
+			command := openCodeZshCommand(home, test.script)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("ocw failed: %v\n%s", err, output)
+			}
+			arguments, err := os.ReadFile(filepath.Join(home, "systemctl-arguments"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := string(caller); got != test.wantCaller {
-				t.Fatalf("caller credentials = %q, want %q", got, test.wantCaller)
+			if got := string(arguments); got != test.want {
+				t.Fatalf("systemctl arguments = %q", got)
 			}
-			if !test.wantSuccess {
-				if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
-					t.Fatalf("opencode ran: %v", err)
-				}
-				return
+			if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
+				t.Fatalf("opencode ran: %v", err)
 			}
-			credentials, err := os.ReadFile(filepath.Join(home, "opencode-credentials"))
-			if err != nil {
-				t.Fatal(err)
+		})
+	}
+}
+
+func TestOCWRejectsInvalidUsage(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+	}{
+		{name: "unsupported-action", script: "ocw stop"},
+		{name: "multiple-actions", script: "ocw start restart"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeOpenCodeZshRuntime(t, home)
+
+			command := openCodeZshCommand(home, test.script)
+			if output, err := command.CombinedOutput(); err == nil {
+				t.Fatalf("ocw succeeded: %s", output)
 			}
-			if got := string(credentials); got != "opencode:secret\n" {
-				t.Fatalf("opencode credentials = %q", got)
-			}
-			arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := string(arguments); got != "web\n--hostname\n0.0.0.0\n--port\n4096\n" {
-				t.Fatalf("opencode arguments = %q", got)
+			if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
+				t.Fatalf("systemctl ran: %v", err)
 			}
 		})
 	}
@@ -407,7 +389,7 @@ func TestOCAUsesReadyDefaultServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 1 {
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096/global/health"); got != 1 {
 		t.Fatalf("curl probes = %d, want 1", got)
 	}
 	if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
@@ -437,7 +419,7 @@ func TestOCARecoversDefaultServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 4 {
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096/global/health"); got != 4 {
 		t.Fatalf("curl probes = %d, want 4", got)
 	}
 	units, err := os.ReadFile(filepath.Join(home, "systemctl-arguments"))
@@ -473,14 +455,14 @@ func TestOCAStopsAfterElevenProbes(t *testing.T) {
 	if err == nil {
 		t.Fatalf("oca succeeded: %s", output)
 	}
-	if !strings.Contains(string(output), "OpenCode server did not become ready: http://127.0.0.1:4096") {
+	if !strings.Contains(string(output), "OpenCode server did not become ready: http://127.0.0.1:4096/global/health") {
 		t.Fatalf("missing readiness error: %s", output)
 	}
 	calls, err := os.ReadFile(filepath.Join(home, "curl-arguments"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(calls), "http://127.0.0.1:4096"); got != 11 {
+	if got := strings.Count(string(calls), "http://127.0.0.1:4096/global/health"); got != 11 {
 		t.Fatalf("curl probes = %d, want 11", got)
 	}
 	if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
@@ -488,27 +470,23 @@ func TestOCAStopsAfterElevenProbes(t *testing.T) {
 	}
 }
 
-func TestOCAOverrideSkipsRecovery(t *testing.T) {
+func TestOCAIgnoresOverride(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
 	command := openCodeZshCommand(home, `export OPENCODE_ATTACH_URL=http://example.test:4096
 oca --session forwarded`)
-	command.Env = append(command.Env, "PDE_TEST_CURL_FAILURES=10")
 
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("oca failed: %v\n%s", err, output)
 	}
-	if _, err := os.Stat(filepath.Join(home, "curl-arguments")); !os.IsNotExist(err) {
-		t.Fatalf("override ran recovery probe: %v", err)
-	}
 	if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
-		t.Fatalf("override restarted server: %v", err)
+		t.Fatalf("override restarted local server: %v", err)
 	}
 	arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(arguments); !strings.Contains(got, "attach\nhttp://example.test:4096\n--dir\n") {
+	if got := string(arguments); !strings.Contains(got, "attach\nhttp://127.0.0.1:4096\n--dir\n") {
 		t.Fatalf("opencode arguments = %q", got)
 	}
 }
@@ -607,9 +585,84 @@ func TestCredentialRunnerRejectsOtherCommands(t *testing.T) {
 	writeOpenCodeZshRuntime(t, home)
 	writeOpenCodeCredentials(t, home, validOpenCodeCredentials)
 
-	command := openCodeZshCommand(home, `_opencode_run_with_credentials status`)
+	command := openCodeZshCommand(home, `_opencode_run_with_credentials web`)
 	if output, err := command.CombinedOutput(); err == nil {
-		t.Fatalf("credential runner accepted status: %s", output)
+		t.Fatalf("credential runner accepted web: %s", output)
+	}
+	if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("opencode ran: %v", err)
+	}
+}
+
+func TestOCARejectsInvalidCredentials(t *testing.T) {
+	tests := []struct {
+		name        string
+		credentials string
+	}{
+		{name: "empty", credentials: emptyOpenCodePassword},
+		{name: "duplicate", credentials: duplicateOpenCodeUsername},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeOpenCodeZshRuntime(t, home)
+			writeOpenCodeCredentials(t, home, test.credentials)
+
+			command := openCodeZshCommand(home, `oca --session forwarded`)
+			if output, err := command.CombinedOutput(); err == nil {
+				t.Fatalf("oca succeeded: %s", output)
+			}
+			if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
+				t.Fatalf("opencode ran: %v", err)
+			}
+		})
+	}
+}
+
+func TestOCAAcceptsUnauthorizedServer(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeOpenCodeCredentials(t, home, validOpenCodeCredentials)
+	command := openCodeZshCommand(home, `oca --session forwarded`)
+	command.Env = append(command.Env, "PDE_TEST_CURL_STATUS=401")
+
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("oca failed: %v\n%s", err, output)
+	}
+	if _, err := os.Stat(filepath.Join(home, "systemctl-arguments")); !os.IsNotExist(err) {
+		t.Fatalf("unauthorized server restarted: %v", err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(home, "opencode-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(arguments); !strings.Contains(got, "attach\nhttp://127.0.0.1:4096\n--dir\n") {
+		t.Fatalf("opencode arguments = %q", got)
+	}
+	credentials, err := os.ReadFile(filepath.Join(home, "opencode-credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(credentials); got != "opencode:secret\n" {
+		t.Fatalf("opencode credentials = %q", got)
+	}
+}
+
+func TestOCARestartsAfterServerError(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	command := openCodeZshCommand(home, `oca --session forwarded`)
+	command.Env = append(command.Env, "PDE_TEST_CURL_STATUS=500")
+
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("oca succeeded: %s", output)
+	}
+	arguments, err := os.ReadFile(filepath.Join(home, "systemctl-arguments"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(arguments); got != "--user restart opencode-web.service\n" {
+		t.Fatalf("systemctl arguments = %q", got)
 	}
 	if _, err := os.Stat(filepath.Join(home, "opencode-arguments")); !os.IsNotExist(err) {
 		t.Fatalf("opencode ran: %v", err)

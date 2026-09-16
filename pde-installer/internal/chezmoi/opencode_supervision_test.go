@@ -12,8 +12,9 @@ func TestOpenCodeSystemdUnits(t *testing.T) {
 	for _, want := range []string{
 		"Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
 		"EnvironmentFile=%h/.config/opencode/server.env",
-		"ExecStart=%h/.local/bin/opencode serve --hostname 127.0.0.1 --port 4096",
-		"Restart=on-failure",
+		"ExecStart=%h/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096",
+		"Restart=always",
+		"MemoryMax=1G",
 	} {
 		if !strings.Contains(service, want) {
 			t.Errorf("service omits %q", want)
@@ -21,15 +22,22 @@ func TestOpenCodeSystemdUnits(t *testing.T) {
 	}
 	health := readChezMoiFile(t, "dot_config/systemd/user/opencode-web-health.service")
 	for _, want := range []string{
-		"ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/ || /usr/bin/systemctl --user restart opencode-web.service'",
+		"EnvironmentFile=%h/.config/opencode/server.env",
+		"ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 --user \"$$OPENCODE_SERVER_USERNAME:$$OPENCODE_SERVER_PASSWORD\" http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'",
 	} {
 		if !strings.Contains(health, want) {
 			t.Errorf("health service omits %q", want)
 		}
 	}
 	timer := readChezMoiFile(t, "dot_config/systemd/user/opencode-web-health.timer")
-	if !strings.Contains(timer, "Unit=opencode-web-health.service") {
-		t.Error("health timer does not trigger health service")
+	for _, want := range []string{
+		"OnBootSec=1min",
+		"OnUnitActiveSec=1min",
+		"Unit=opencode-web-health.service",
+	} {
+		if !strings.Contains(timer, want) {
+			t.Errorf("health timer omits %q", want)
+		}
 	}
 }
 
@@ -42,7 +50,9 @@ func TestOpenCodeSetupRequiresRegularCredentials(t *testing.T) {
 	text := string(data)
 	for _, want := range []string{
 		"[ -f \"$env_file\" ] && [ ! -L \"$env_file\" ]",
-		"systemctl --user enable --now \"$service\" \"$timer\"",
+		"systemctl --user enable \"$service\" \"$timer\"",
+		"systemctl --user restart \"$service\"",
+		"systemctl --user start \"$timer\"",
 		"systemctl --user disable --now \"$service\" \"$timer\"",
 		"Run ocw-password",
 	} {
