@@ -3,4 +3,5 @@ Description=Check the OpenCode web server
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/ || /usr/bin/systemctl --user restart opencode-web.service'
+EnvironmentFile=%h/.config/opencode/server.env
+ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 --user "$$OPENCODE_SERVER_USERNAME:$$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
