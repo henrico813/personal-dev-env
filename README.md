@@ -76,6 +76,15 @@ The full install includes the AI tooling. It installs planner, Codex,
 OpenCode, the OpenCode inline shim, Pi, Surveil, and Vibe binaries plus
 repo-managed AI config.
 
+Planner owns explicit, revisioned stages for repo-backed `/create_plan` runs.
+After three managed tasks are prepared, PDEV-161's `surveil session run --repo
+<repo> --root <managed-root>` publishes one complete receipt for Planner to
+validate before evidence and plan reviews are recorded. `planner workflow show`
+is the supported recovery interface; Planner's state files remain private.
+Conceptual planning and direct Planner authoring do not use this lifecycle. The
+records detect changed recorded artifacts but do not snapshot the repository,
+sign receipts, or defend against a hostile same-user process.
+
 ## AI Source Tree
 
 - `ai/AGENTS.md` is the shared workflow default file.

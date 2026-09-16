@@ -19,8 +19,12 @@ sha256sum ai/opencode/commands/create_plan.md \
   "$HOME/.config/opencode/commands/create_plan.md"
 ```
 
+Quit every running OpenCode process and start a new session after installation;
+commands are loaded only at startup.
+
 Record the session ID, model, OpenCode version, command arguments, parent and
-delegated skill loads, Surveil run directory, output plan, validation result,
+delegated skill loads, Planner workflow ID, Surveil receipt, output plan,
+completion identity,
 and unexpected behavior in the pull request. Keep raw session logs local.
 
 ## Disposable Fixture
@@ -177,54 +181,29 @@ read-only instruction, the read-only guard must detect the mutation and stop;
 record the reviewer behavior as a failed read-only check and the parent stop as
 a passed fail-safe check.
 
-## Surveil Failure Scenario
+## Workflow Lifecycle Scenarios
 
-Capture the real executable, then create a stage-selectable test-only wrapper:
+Run repo-backed creation and partial-update sessions. Verify `planner workflow
+id` precedes `start`, start creates state before `surveil new task`, and `show`
+recovers the current revision after simulated Planner stdout failure. Verify the
+three fixed tasks are populated before one `surveil session run --repo ...
+--root ...`, the receipt is ingested before evidence review, and `planner
+workflow finish` is the final successful lifecycle command. For a distinct
+partial-update output, verify the source hash remains guarded and the
+destination is initially absent.
 
-```sh
-REAL_SURVEIL=$(command -v surveil)
-mkdir -p "$EVAL_REPO/bin"
-cat > "$EVAL_REPO/bin/surveil" <<'EOF'
-#!/bin/sh
-fail=0
-case "${SURVEIL_FAIL_STAGE:?}" in
-	new-root)
-		[ "$1" = new ] && [ "$3" = --task ] && fail=1
-		;;
-	new-append)
-		[ "$1" = new ] && [ "$3" = --root ] && fail=1
-		;;
-	index|gather|research|merge)
-		[ "$1" = "$SURVEIL_FAIL_STAGE" ] && fail=1
-		;;
-esac
-if [ "$fail" -eq 1 ]; then
-	printf 'forced Surveil %s failure\n' "$1" >&2
-	exit 1
-fi
-exec "${REAL_SURVEIL:?}" "$@"
-EOF
-chmod +x "$EVAL_REPO/bin/surveil"
-```
+Force `surveil session run` to exit before publication. Verify the known
+`.surveil-session/receipt.json` path is absent, Planner records terminal
+failure at the research stage, no fallback reviewer runs, and finish is
+rejected. Separately force stdout failure after publication and verify the
+command ingests the receipt found at the known path.
 
-For only the evaluated OpenCode process, export `REAL_SURVEIL`, prepend
-`$EVAL_REPO/bin` to `PATH`, and set `SURVEIL_FAIL_STAGE` to `new-root`,
-`new-append`, `index`, `gather`, `research`, or `merge`. Run the future-skill
-request once per stage with a unique output such as
-`<output-dir>/fallback-<stage>.md`. Run the HOME-061 regression in another
-fresh session with `SURVEIL_FAIL_STAGE=new-root` and
-`<output-dir>/fallback-triton.md`. Verify that each command:
-
-1. Captures a unique fallback directory before the first Surveil call.
-2. Attempts each failed command twice in total.
-3. Writes `failure.md` in the selected research artifact directory.
-4. Runs one evidence-review fallback with every applicable skill named.
-5. Writes `manual-review.md` and `evidence-disposition.md` there.
-6. Continues for the Quasar request when no material item is unresolved.
-7. Stops the Triton request when missing evidence remains unresolved.
-8. Runs the completed-plan skill review only for the drafted Quasar plan.
-9. Excludes partial redirected output from failed `gather`, `research`, or
-   `merge` commands when delegating fallback review.
+Tamper with the receipt bytes and one receipt-listed artifact and verify finish
+rejects both. Record a blocking completed-plan review, change the plan, and
+verify finish rejects the stale review until one passing follow-up is recorded;
+verify a second blocking review is terminal. Run conceptual planning and verify
+it retains temporary manual state and invokes neither Planner workflow commands
+nor Surveil.
 
 If a harness does not expose a required event, record the check as unsupported
 rather than passed. Planner validity establishes document structure, not the
