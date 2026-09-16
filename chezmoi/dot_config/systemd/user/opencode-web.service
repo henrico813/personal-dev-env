@@ -5,6 +5,7 @@ Description=OpenCode attach server
 Type=exec
 Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 EnvironmentFile=%h/.config/opencode/server.env
+ExecCondition=/bin/sh -c '[ -n "$$OPENCODE_SERVER_USERNAME" ] && [ -n "$$OPENCODE_SERVER_PASSWORD" ]'
 ExecStart=%h/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096
 Restart=always
 RestartSec=5

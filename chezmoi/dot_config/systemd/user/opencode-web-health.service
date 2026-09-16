@@ -4,4 +4,4 @@ Description=Check the OpenCode web server
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.config/opencode/server.env
-ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 --user "$$OPENCODE_SERVER_USERNAME:$$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
+ExecStart=/bin/sh -c 'printf "user = \"%s:%s\"\n" "$$OPENCODE_SERVER_USERNAME" "$$OPENCODE_SERVER_PASSWORD" | /usr/bin/curl --config - --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'

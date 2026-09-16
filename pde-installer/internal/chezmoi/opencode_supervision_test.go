@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -16,6 +17,7 @@ Description=OpenCode attach server
 Type=exec
 Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 EnvironmentFile=%h/.config/opencode/server.env
+ExecCondition=/bin/sh -c '[ -n "$$OPENCODE_SERVER_USERNAME" ] && [ -n "$$OPENCODE_SERVER_PASSWORD" ]'
 ExecStart=%h/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096
 Restart=always
 RestartSec=5
@@ -30,7 +32,7 @@ Description=Check the OpenCode web server
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.config/opencode/server.env
-ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 2 --user "$$OPENCODE_SERVER_USERNAME:$$OPENCODE_SERVER_PASSWORD" http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
+ExecStart=/bin/sh -c 'printf "user = \"%s:%s\"\n" "$$OPENCODE_SERVER_USERNAME" "$$OPENCODE_SERVER_PASSWORD" | /usr/bin/curl --config - --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
 `,
 		"dot_config/systemd/user/opencode-web-health.timer": `[Unit]
 Description=Check the OpenCode web server periodically
@@ -45,9 +47,60 @@ WantedBy=timers.target
 `,
 	}
 	for name, want := range checks {
-		if got := readChezMoiFile(t, name); got != want {
+		got := readChezMoiFile(t, name)
+		if got != want {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
+		if name == "dot_config/systemd/user/opencode-web-health.service" {
+			curlCommand := strings.SplitN(got, " || ", 2)[0]
+			if strings.Contains(curlCommand, "--user") {
+				t.Errorf("%s passes credentials with --user", name)
+			}
+		}
+	}
+}
+
+func TestHealthCommandReadsCredentialsFromStdin(t *testing.T) {
+	home := t.TempDir()
+	curl := filepath.Join(home, "curl")
+	writeExecutable(t, curl, `#!/bin/sh
+printf '%s\n' "$@" >"$CURL_ARGS"
+cat >"$CURL_CONFIG"
+`)
+
+	unit := readChezMoiFile(t, "dot_config/systemd/user/opencode-web-health.service")
+	line := ""
+	for _, candidate := range strings.Split(unit, "\n") {
+		if strings.HasPrefix(candidate, "ExecStart=") {
+			line = candidate
+			break
+		}
+	}
+	command := strings.TrimPrefix(line, "ExecStart=/bin/sh -c '")
+	command = strings.TrimSuffix(command, "'")
+	command = strings.Replace(command, "/usr/bin/curl", curl, 1)
+	command = strings.Replace(command, "/usr/bin/systemctl", filepath.Join(home, "systemctl"), 1)
+
+	configPath := filepath.Join(home, "curl-config")
+	argsPath := filepath.Join(home, "curl-args")
+	process := exec.Command("sh", "-c", command)
+	process.Env = []string{
+		"CURL_CONFIG=" + configPath,
+		"CURL_ARGS=" + argsPath,
+		"OPENCODE_SERVER_USERNAME=test-user",
+		"OPENCODE_SERVER_PASSWORD=test-password",
+	}
+	if output, err := process.CombinedOutput(); err != nil {
+		t.Fatalf("health command failed: %v\n%s", err, output)
+	}
+	if got := readPasswordFile(t, configPath); got != "user = \"test-user:test-password\"\n" {
+		t.Fatalf("curl config = %q", got)
+	}
+	if got := readPasswordFile(t, argsPath); strings.Contains(got, "test-password") || strings.Contains(got, "--user") {
+		t.Fatalf("curl arguments expose credentials: %q", got)
+	}
+	if got := readPasswordFile(t, argsPath); !strings.Contains(got, "http://127.0.0.1:4096/global/health") {
+		t.Fatalf("curl arguments omit health URL: %q", got)
 	}
 }
 
