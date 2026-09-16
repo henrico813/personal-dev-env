@@ -13,8 +13,8 @@ ocw-password
 The helper prompts twice without echoing input. It rejects empty, mismatched,
 or unsupported values before changing the existing file.
 
-After replacement, the helper restarts an active service or enables and starts
-an inactive service. It also enables the health timer.
+After replacement, the helper reloads systemd, enables the service and timer,
+restarts the service to load the new file, and starts the health timer.
 
 ## Verify the Service
 

@@ -38,17 +38,20 @@ When `server.env` is a regular file, credentials are loaded only inside the
 helper's subprocess. Without the file, `oca` preserves its unauthenticated
 attach behavior. A symlink or other invalid credential path causes the
 credential helper to fail rather than loading credentials.
+`oca` always targets `http://127.0.0.1:4096` and ignores
+`OPENCODE_ATTACH_URL`. It probes `/global/health`, accepting only local `200`
+or anonymous `401` before attaching; other statuses restart the owned service.
 
 ## `ocw`
 
-Starts the OpenCode web command with host-local credentials:
+Controls the owned OpenCode systemd service:
 
 ```bash
-ocw [opencode web options]
+ocw [start|restart|status]
 ```
 
-The caller chooses the hostname and port. `ocw` does not create or manage a
-systemd service.
+With no argument, `ocw` starts `opencode-web.service`. It does not run an
+OpenCode foreground process or accept arbitrary systemctl actions.
 
 ## Service
 
@@ -58,7 +61,7 @@ The managed local service is:
 opencode-web.service
 ```
 
-It reads `~/.config/opencode/server.env` and listens on `127.0.0.1:4096`.
-The health timer checks this endpoint every minute and restarts the service
-when it is unavailable. `oca` performs the same readiness recovery before a
-default local attach.
+It reads `~/.config/opencode/server.env` and listens on `0.0.0.0:4096`.
+The health timer authenticates to `/global/health` every minute and restarts
+the service when that request fails. `oca` performs local status-specific
+readiness recovery before attaching.
