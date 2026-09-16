@@ -314,6 +314,7 @@ exit "$result"
 `
 	fakeOpenCodeScript = `#!/bin/sh
 printf '%s:%s\n' "$OPENCODE_SERVER_USERNAME" "$OPENCODE_SERVER_PASSWORD" >"$HOME/opencode-credentials"
+printf '%s\n' "$OPENCODE_ATTACH_URL" >"$HOME/opencode-attach-url"
 printf '%s\n' "$@" >"$HOME/opencode-arguments"
 `
 )
@@ -488,6 +489,13 @@ oca --session forwarded`)
 	}
 	if got := string(arguments); !strings.Contains(got, "attach\nhttp://127.0.0.1:4096\n--dir\n") {
 		t.Fatalf("opencode arguments = %q", got)
+	}
+	attachURL, err := os.ReadFile(filepath.Join(home, "opencode-attach-url"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(attachURL); got != "\n" {
+		t.Fatalf("OPENCODE_ATTACH_URL = %q, want empty\n", got)
 	}
 }
 

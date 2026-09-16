@@ -7,7 +7,7 @@ This tutorial configures the full profile's local OpenCode attach server.
 Run from the repository root:
 
 ```bash
-PDE_PROFILE=full chezmoi apply
+pde-installer install full
 ```
 
 The configuration installs the shell helpers and systemd units. With a regular

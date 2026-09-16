@@ -35,6 +35,9 @@ func TestOCWPasswordCreatesAndReplacesCredentials(t *testing.T) {
 	if got := readPasswordFile(t, path); got != "OPENCODE_SERVER_USERNAME=opencode\nOPENCODE_SERVER_PASSWORD=second-pass\n" {
 		t.Fatalf("replaced credentials = %q", got)
 	}
+	if got := readPasswordFile(t, filepath.Join(home, "systemctl-arguments")); got != "--user daemon-reload\n--user enable opencode-web.service opencode-web-health.timer\n--user restart opencode-web.service\n--user start opencode-web-health.timer\n"+"--user daemon-reload\n--user enable opencode-web.service opencode-web-health.timer\n--user restart opencode-web.service\n--user start opencode-web-health.timer\n" {
+		t.Fatalf("rotation systemctl arguments = %q", got)
+	}
 }
 
 func TestOCWPasswordPreservesFileOnMismatch(t *testing.T) {
