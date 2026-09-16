@@ -16,6 +16,11 @@ Shared instructions require skill selection after reading supplied context and
 before domain work. Run `evals/skill-routing.md` after changing routing
 instructions, skill descriptions, or planning workflows.
 
+Repo-backed `/create_plan` uses Planner's revisioned workflow stages around one
+PDEV-161 Surveil session. Planner state is accessed only through `planner
+workflow show`; conceptual planning keeps its temporary manual state. Run both
+`evals/create-plan.md` and `evals/skill-routing.md` after changing this flow.
+
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
 package under `skills/` to `~/.agents/skills/<name>/` and
