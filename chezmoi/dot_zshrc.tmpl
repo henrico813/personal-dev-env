@@ -41,7 +41,7 @@ _opencode_run_with_credentials() (
     local line name value
 
     case "$1" in
-        attach|web) ;;
+        attach) ;;
         *) return 2 ;;
     esac
 
@@ -69,17 +69,22 @@ _opencode_run_with_credentials() (
 )
 
 oca() (
-    local dir url attempt
+    local dir url health_url attempt health_status
 
-    unset OPENCODE_SERVER_USERNAME OPENCODE_SERVER_PASSWORD
+    unset OPENCODE_SERVER_USERNAME OPENCODE_SERVER_PASSWORD OPENCODE_ATTACH_URL
     dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
-    url="${OPENCODE_ATTACH_URL:-http://127.0.0.1:4096}"
-    if [[ "$url" == "http://127.0.0.1:4096" ]] && ! command curl --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1; then
+    url="http://127.0.0.1:4096"
+    health_url="$url/global/health"
+    health_status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || health_status=000
+    if [[ "$health_status" != 200 && "$health_status" != 401 ]]; then
         command systemctl --user restart opencode-web.service || return 1
         for attempt in {1..10}; do
-            command curl --fail --silent --show-error --max-time 2 "$url" >/dev/null 2>&1 && break
+            health_status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || health_status=000
+            if [[ "$health_status" == 200 || "$health_status" == 401 ]]; then
+                break
+            fi
             if [[ "$attempt" == 10 ]]; then
-                print -u2 -- "OpenCode server did not become ready: $url"
+                print -u2 -- "OpenCode server did not become ready: $health_url"
                 return 1
             fi
             command sleep 1
@@ -93,7 +98,20 @@ oca() (
 )
 
 ocw() (
-    _opencode_run_with_credentials web "$@"
+    local action="${1:-start}"
+
+    if (( $# > 1 )); then
+        print -u2 "Usage: ocw [start|restart|status]"
+        return 2
+    fi
+    case "$action" in
+        start|restart|status) ;;
+        *)
+            print -u2 "Usage: ocw [start|restart|status]"
+            return 2
+            ;;
+    esac
+    command systemctl --user "$action" opencode-web.service
 )
 
 ocw-password() (
@@ -140,7 +158,9 @@ ocw-password() (
     trap - EXIT
 
     command systemctl --user daemon-reload || return 1
-    command systemctl --user enable --now opencode-web.service opencode-web-health.timer || return 1
+    command systemctl --user enable opencode-web.service opencode-web-health.timer || return 1
+    command systemctl --user restart opencode-web.service || return 1
+    command systemctl --user start opencode-web-health.timer || return 1
     print "OpenCode credentials saved to $env_file"
 )
 {{- end }}

@@ -7,11 +7,12 @@ This tutorial configures the full profile's local OpenCode attach server.
 Run from the repository root:
 
 ```bash
-PDE_PROFILE=full chezmoi apply
+pde-installer install full
 ```
 
-The configuration installs the shell helpers and systemd units. Until
-credentials exist, the setup hook leaves the service and health timer disabled.
+The configuration installs the shell helpers and systemd units. With a regular
+credential file, the setup hook enables the units, restarts the service, and
+starts the health timer. Until credentials exist, both units stay disabled.
 
 ## 2. Create Credentials
 
@@ -39,6 +40,9 @@ Attach from a Git repository with:
 ```bash
 oca
 ```
+
+Open `https://opencode.googungus.com` from a separate device and authenticate.
+The existing edge route reaches the home listener; no route change is needed.
 
 See [OpenCode supervision](../how-to/supervise-opencode.md) for recovery tests
 and troubleshooting.
