@@ -32,7 +32,7 @@ Description=Check the OpenCode web server
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.config/opencode/server.env
-ExecStart=/bin/sh -c 'printf "user = \"%s:%s\"\n" "$$OPENCODE_SERVER_USERNAME" "$$OPENCODE_SERVER_PASSWORD" | /usr/bin/curl --config - --fail --silent --show-error --max-time 2 http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
+ExecStart=/bin/sh -c 'printf "user = \"%%s:%%s\"\n" "$$OPENCODE_SERVER_USERNAME" "$$OPENCODE_SERVER_PASSWORD" | /usr/bin/curl --config - --fail --silent --show-error --max-time 10 http://127.0.0.1:4096/global/health >/dev/null || /usr/bin/systemctl --user restart opencode-web.service'
 `,
 		"dot_config/systemd/user/opencode-web-health.timer": `[Unit]
 Description=Check the OpenCode web server periodically
@@ -78,8 +78,9 @@ cat >"$CURL_CONFIG"
 	}
 	command := strings.TrimPrefix(line, "ExecStart=/bin/sh -c '")
 	command = strings.TrimSuffix(command, "'")
-	// Systemd turns $$ into a literal $ before invoking the shell.
+	// Systemd unescapes dollar signs and percent specifiers before invoking the shell.
 	command = strings.ReplaceAll(command, "$$", "$")
+	command = strings.ReplaceAll(command, "%%", "%")
 	command = strings.Replace(command, "/usr/bin/curl", curl, 1)
 	command = strings.Replace(command, "/usr/bin/systemctl", filepath.Join(home, "systemctl"), 1)
 
