@@ -81,6 +81,24 @@ jobs:
       - name: test
         run: cargo test --manifest-path surveil/Cargo.toml
 
+  planner-workflow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: planner/go.mod
+          cache-dependency-path: planner/go.sum
+      - name: build tools
+        run: |
+          command -v jq
+          go -C planner build -o "$RUNNER_TEMP/planner" ./main
+          cargo build --manifest-path surveil/Cargo.toml
+      - name: check shell
+        run: sh -n test/planner-workflow.sh
+      - name: test lifecycle
+        run: PATH="$RUNNER_TEMP:$PWD/surveil/target/debug:$PATH" ./test/planner-workflow.sh
+
   vibe:
     runs-on: ubuntu-latest
     defaults:
