@@ -69,18 +69,18 @@ _opencode_run_with_credentials() (
 )
 
 oca() (
-    local dir url health_url attempt status
+    local dir url health_url attempt health_status
 
     unset OPENCODE_SERVER_USERNAME OPENCODE_SERVER_PASSWORD OPENCODE_ATTACH_URL
     dir="$(command git rev-parse --show-toplevel 2>/dev/null)" || dir="$PWD"
     url="http://127.0.0.1:4096"
     health_url="$url/global/health"
-    status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || status=000
-    if [[ "$status" != 200 && "$status" != 401 ]]; then
+    health_status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || health_status=000
+    if [[ "$health_status" != 200 && "$health_status" != 401 ]]; then
         command systemctl --user restart opencode-web.service || return 1
         for attempt in {1..10}; do
-            status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || status=000
-            if [[ "$status" == 200 || "$status" == 401 ]]; then
+            health_status="$(command curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 2 "$health_url" 2>/dev/null)" || health_status=000
+            if [[ "$health_status" == 200 || "$health_status" == 401 ]]; then
                 break
             fi
             if [[ "$attempt" == 10 ]]; then
