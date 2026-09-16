@@ -195,6 +195,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner check",
 		"planner inspect",
 		"planner patch",
+		"planner workflow help",
 	} {
 		if !strings.Contains(help, command) {
 			t.Fatalf("buildHelpText() missing command %q", command)
@@ -209,6 +210,54 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
+	}
+}
+
+func TestWorkflowStartAndShow(t *testing.T) {
+	repo := t.TempDir()
+	output := filepath.Join(t.TempDir(), "plan.md")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	const id = "0123456789abcdef0123456789abcdef"
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"workflow", "start", "--id", id, "--repo", repo, "--output", output, "--operation", "new"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("start exit=%d stderr=%q", exit, stderr.String())
+	}
+	var start struct {
+		WorkflowID string `json:"workflow_id"`
+		Revision   uint64 `json:"revision"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &start); err != nil {
+		t.Fatal(err)
+	}
+	if start.WorkflowID != id || start.Revision != 1 {
+		t.Fatalf("start = %#v", start)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exit := Execute([]string{"workflow", "show", id}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("show exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"stage":"research-pending"`) {
+		t.Fatalf("show = %s", stdout.String())
+	}
+}
+
+func TestWorkflowHelpListsCommands(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"workflow", "help"}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
+	}
+	for _, command := range []string{"workflow id", "workflow start", "workflow show", "workflow finish"} {
+		if !strings.Contains(stdout.String(), command) {
+			t.Fatalf("help missing %q", command)
+		}
+	}
+}
+
+func TestWorkflowUsageErrors(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"workflow", "finish", "--json-errors"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 	}
 }
 
