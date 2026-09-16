@@ -8,6 +8,7 @@ EnvironmentFile=%h/.config/opencode/server.env
 ExecStart=%h/.local/bin/opencode serve --hostname 127.0.0.1 --port 4096
 Restart=on-failure
 RestartSec=5
+MemoryMax=8G
 
 [Install]
 WantedBy=default.target
