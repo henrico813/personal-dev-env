@@ -16,8 +16,8 @@ restarts the service, and starts the health timer. The service reads the file
 through systemd's `EnvironmentFile` support and refuses to start if either
 credential is missing or empty. The health probe reads authentication through
 curl's standard input, keeping the password out of curl's process arguments.
-Re-running `chezmoi apply` uses
-the same ordered activation when the file is present.
+Re-running `chezmoi apply` uses the same ordered activation when the file is
+present.
 
 ## Ownership Boundary
 

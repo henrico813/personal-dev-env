@@ -78,6 +78,8 @@ cat >"$CURL_CONFIG"
 	}
 	command := strings.TrimPrefix(line, "ExecStart=/bin/sh -c '")
 	command = strings.TrimSuffix(command, "'")
+	// Systemd turns $$ into a literal $ before invoking the shell.
+	command = strings.ReplaceAll(command, "$$", "$")
 	command = strings.Replace(command, "/usr/bin/curl", curl, 1)
 	command = strings.Replace(command, "/usr/bin/systemctl", filepath.Join(home, "systemctl"), 1)
 
