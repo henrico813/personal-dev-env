@@ -92,8 +92,9 @@ reduces TLS security.
 Use `--base <revision>` to seed a new managed worktree from any Git revision,
 such as a local `feature/demo` branch or `origin/feature/demo`. Without it,
 Vibe keeps the existing behavior of fetching and branching from resolved
-remote `main`. Reusing a `--key` keeps its existing managed branch; `--base`
-does not reset or rebase it.
+remote `main`. Reusing a `--key` keeps its existing managed branch and must omit
+`--base`; Vibe rejects `--base` when that branch or worktree already exists.
+Concurrent runs whose keys normalize to the same slug are rejected.
 
 ## Runtime model
 
