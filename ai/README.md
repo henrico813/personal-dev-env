@@ -14,7 +14,8 @@ Shared skills include `behavior-focused-testing` for automated tests,
 notes, and `rust-development` for Rust code.
 Shared instructions require skill selection after reading supplied context and
 before domain work. Run `evals/skill-routing.md` after changing routing
-instructions, skill descriptions, or planning workflows.
+instructions, skill descriptions, or planning workflows. Run
+`evals/plan-workflows.md` after changing planning skills or commands.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each

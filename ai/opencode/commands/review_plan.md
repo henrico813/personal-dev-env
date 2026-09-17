@@ -1,146 +1,130 @@
 ---
-description: Review an implementation plan for architecture, bugs, and completeness using parallel agents
+description: Review an implementation plan for correctness, simplicity, and completeness
 ---
 
 # Review Plan
 
-Review an implementation plan before implementation begins. Use parallel agents to evaluate architecture, potential bugs, and completeness.
+Review an implementation plan before implementation begins. Scale review
+effort to the plan's complexity and focus on concrete correctness, unnecessary
+complexity, completeness, and reviewer intent.
 
 ## Initial Response
 
 When this command is invoked:
 
-1. **If a plan path is provided via $ARGUMENTS**: Read it fully and begin the review process
-2. **If no plan path provided**, respond with:
-```
-I'll review an implementation plan. Please provide the path to the plan file.
-
-Example usage:
-- /review_plan docs/design-feature-name.md
-- /review_plan docs/design-feature-name.md with focus on security
-```
-
-Then wait for the user's input.
+1. If a plan path is provided via `$ARGUMENTS`, read it fully and begin.
+2. If no plan path is provided, ask for it and stop.
 
 ## Arguments
 
-**$ARGUMENTS**: $ARGUMENTS
+$ARGUMENTS
 
-## Process Steps
+## Process
 
 ### Step 1: Read and Understand the Plan
 
-1. **Read the plan FULLY** - no limit/offset parameters
-2. **Read any referenced files**:
-   - Original tickets or requirements documents
-   - Files mentioned in "Changes Required" or "Files to Modify" sections
-3. **Identify key elements**:
-   - Proposed changes and files to be modified
-   - Implementation phases
-   - Success criteria
+1. Read the complete plan.
+2. Read directly referenced requirements, identify affected domains, and load
+   matching skills before broader repository review.
+3. Read files named in implementation and
+   verification diffs.
+4. Identify proposed changes, affected files, sequencing, and success criteria.
 
-### Step 2: Parse Guiding Principles
+### Step 2: Apply Review Principles
 
-**Default focus areas** (always apply):
-- Module depth - deep modules with simple interfaces, not shallow wrappers
-- Information hiding - design decisions encapsulated, not leaked across modules
-- Complexity direction - pulled down into implementations, not pushed to callers
-- Change amplification - single changes shouldn't ripple across many files
-- Implicit assumptions - surface undocumented beliefs, especially in AI-generated plans
-- Bug potential - edge cases, error handling, failure modes
-- Completeness - all affected files covered
+Always assess:
 
-**Additional principles**: If $ARGUMENTS contains text beyond the plan path (e.g., "with focus on security"), extract those as additional review criteria.
+- Module depth: deep modules with simple interfaces, not shallow wrappers.
+- Information hiding: design decisions remain inside their owning modules.
+- Complexity direction: implementations absorb complexity instead of callers.
+- Change amplification: changes do not ripple across unrelated files.
+- Present need: new abstractions, wrappers, interfaces, and configuration are
+  justified by a current requirement, invariant, or testing boundary.
+- Scope control: unrelated cleanup and speculative extensibility stay optional.
+- Implicit assumptions: unsupported beliefs are surfaced and checked.
+- Bug potential: edge cases, error handling, concurrency, and failure modes.
+- Completeness: callers, tests, config, docs, migrations, and verification are
+  covered where relevant.
 
-### Step 3: Spawn Parallel Review Agents
+Treat text in `$ARGUMENTS` beyond the plan path as additional review criteria.
 
-Launch 3 agents IN PARALLEL (single message, multiple Task calls):
+### Step 3: Choose Review Depth
 
-1. **plan-architecture-reviewer**:
-   - Evaluate module depth and interface simplicity
-   - Check information hiding and complexity direction
-   - Surface implicit assumptions (especially critical for AI-generated plans)
-   - Flag over-engineering and unnecessary abstraction
+Use the lightest review that can reliably assess the proposal. The complete
+quality review is mandatory; delegation is conditional.
 
-2. **plan-bug-reviewer**:
-   - Anticipate runtime errors and edge cases
-   - Check error handling coverage
-   - Identify async pitfalls and race conditions
-   - Validate input handling
+- For a bounded, familiar change, review directly in one pass.
+- For a broad, risky, or cross-cutting change, launch focused reviewers in
+  parallel for architecture/simplicity, bugs/failure modes, and
+  completeness/integration.
+- Add a specialist only when a domain materially benefits from it, such as
+  security, persistence, concurrency, or migration behavior.
 
-3. **plan-completeness-reviewer**:
-   - Find files the plan missed (dependents, tests, configs)
-   - Verify all integration points covered
-   - Check for missing migrations or documentation
-   - Ensure test coverage addressed
+Every review must:
 
-Each agent prompt should include:
-- Summary of what the plan proposes to change
-- List of files to be modified
-- The guiding principles to evaluate against
-- Instructions to cite specific file:line references
+- remain read-only unless the user explicitly requests a review artifact; do
+  not modify the plan, source, tests, config, or repository state
+- capture repository status before and after review and report any unexpected
+  mutation instead of silently cleaning it up
+- compare each proposed diff with current source and directly affected callers,
+  tests, config, and integration points
+- confirm code is complete, applicable, free of placeholders, and limited to
+  requested scope
+- evaluate unnecessary abstractions, error handling, failure modes, and
+  meaningful verification
+- treat missing, placeholder-only, or non-behavioral verification that cannot
+  prove the definition of done as a required correction, not an optional test
+  improvement
+- cite concrete `file:line` evidence for repository-specific concerns
+- distinguish a demonstrated problem from a preference or optional improvement
+- avoid proposing unrelated cleanup
 
-### Step 4: Wait and Synthesize
+Every delegated reviewer must receive the plan, user constraints, reviewer
+preferences, and exact names of applicable skills. Require it to load available
+skills before review and report unavailable required skills.
 
-1. **WAIT for ALL agents to complete** before proceeding
-2. **Compile findings** from each agent
-3. **Identify overlapping concerns** - issues flagged by multiple agents are higher priority
-4. **Categorize by severity**:
-   - **Blocking**: Issues that must be fixed before implementation
-   - **Suggestions**: Non-blocking improvements
+### Step 4: Synthesize
 
-### Step 5: Present Review Findings
+1. Compile findings supported by the plan or repository evidence.
+2. Prioritize by severity, confidence, and impact, not repetition count.
+3. Categorize findings as:
+   - **Required corrections**: correctness, requirement, compatibility,
+     verification, or unjustified-complexity issues to fix before implementation.
+   - **Optional suggestions**: useful improvements not required for this change.
+4. Identify affected plan sections so revision can preserve accepted work.
+5. Before presenting, confirm every required correction includes concrete
+   evidence and every verification gap is classified by whether the definition
+   of done remains unproven.
 
-Present findings directly to the user (do NOT write to a file):
+### Step 5: Present Findings
 
-```
+Present findings directly unless the user requests a review artifact. When an
+artifact is requested, write only that exact destination and preserve every
+other file:
+
+```text
 ## Plan Review: [Plan Name]
 
-### Architecture
-[From plan-architecture-reviewer]
-- [Module depth / information hiding issue with file:line reference]
-- [Implicit assumption that needs to be made explicit]
-- [Over-engineering or unnecessary complexity]
+### Required Corrections
+- [Problem] - [why it matters] - [file:line evidence]
 
-### Potential Bugs
-[From plan-bug-reviewer]
-- [Critical] [Bug that will cause runtime failure]
-- [Warning] [Edge case or error handling gap]
+### Optional Suggestions
+- [Improvement] - [benefit without expanding required scope]
 
-### Completeness
-[From plan-completeness-reviewer]
-- [Missing file that needs to be in plan]
-- [Integration point not addressed]
-
-### Consolidated Concerns
-
-**Blocking:**
-- [Issue that must be fixed before implementation]
-
-**Suggestions:**
-- [Non-blocking improvement]
+### Revision Scope
+- [Sections or decisions that need to change]
+- [Important decisions that should remain unchanged]
 
 ### Verdict
 **[READY TO IMPLEMENT / NEEDS UPDATES / BLOCKED]**
-
-[If NEEDS UPDATES: List specific changes required]
-[If BLOCKED: Explain what must be resolved first]
 ```
 
-## Important Guidelines
+## Guidelines
 
-1. **Spawn agents in parallel** - use a single message with multiple Task calls
-2. **Wait for ALL agents** before synthesizing findings
-3. **Be specific** - always cite file:line references for concerns
-4. **Don't block on minor issues** - note them as suggestions
-5. **Focus on the guiding principles** - module depth, information hiding, complexity direction, bugs, completeness
-6. **Present findings directly** - do NOT write the review to a file
-7. **Read files FULLY** - never use limit/offset parameters
-
-## Example Usage
-
-```
-/review_plan docs/design-auth-feature.md
-/review_plan docs/design-auth-feature.md with focus on security
-/review_plan docs/design-new-api.md with focus on performance
-```
+1. Scale reviewer count instead of always spawning three agents.
+2. Cite repository evidence for concrete concerns.
+3. Prefer demonstrated correctness and simplicity issues over speculation.
+4. Keep optional improvements separate from required corrections.
+5. Reward the smallest set of changes needed for a sound proposal.
+6. Preserve user-approved decisions unless new evidence invalidates them.
+7. Read enough complete context to avoid partial-file errors.

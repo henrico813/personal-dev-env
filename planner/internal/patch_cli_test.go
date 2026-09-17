@@ -164,6 +164,33 @@ func TestPatchCommandStdout(t *testing.T) {
 	}
 }
 
+func TestPatchDiffPreservesMiddleContext(t *testing.T) {
+	sourcePath := writeBehavioralPlan(t, t.TempDir())
+	patch := "*** Begin Patch\n" +
+		"*** Update Field: overview\n" +
+		"-O\n" +
+		"+Updated overview\n" +
+		"*** Update Field: implementation[1].summary\n" +
+		"-S\n" +
+		"+Updated summary\n" +
+		"*** End Patch\n"
+
+	var stdout, stderr bytes.Buffer
+	withStdin(t, []byte(patch), func() {
+		if exit := Execute([]string{"patch", sourcePath}, &stdout, &stderr); exit != 0 {
+			t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+		}
+	})
+
+	got := stdout.String()
+	if !strings.Contains(got, "  ## Definition of Done\n") {
+		t.Fatalf("diff did not preserve middle section as context:\n%s", got)
+	}
+	if strings.Contains(got, "- ## Definition of Done\n") || strings.Contains(got, "+ ## Definition of Done\n") {
+		t.Fatalf("diff replaced unchanged middle section:\n%s", got)
+	}
+}
+
 func patchDiffExpect(t *testing.T, sourcePath string) string {
 	t.Helper()
 	var stdout, stderr bytes.Buffer

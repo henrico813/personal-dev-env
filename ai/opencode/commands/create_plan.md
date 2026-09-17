@@ -1,10 +1,11 @@
 ---
-description: Create detailed implementation plans through the shared Go planner CLI
+description: Create a repository-grounded, code-bearing implementation proposal
 ---
 
 # Create Plan
 
-You are tasked with creating detailed implementation plans that are grounded in the actual codebase and ready for execution.
+Create implementation proposals that are grounded in the current codebase,
+easy for a human to review, and ready for execution once approved.
 
 ## Task Context
 
@@ -15,455 +16,181 @@ $ARGUMENTS
 
 Your default behavior is:
 
-1. Read all provided context fully.
-2. Load every available skill applicable to work identified in the request or
-   referenced context.
-3. For repo-backed implementation planning, use surveil as the default research engine.
-4. Resolve uncertainty through investigation whenever possible.
-5. Produce the full plan including diffs of all lines needed for a code change.
-6. Track the ordered list of skills successfully loaded while planning.
+1. Read the request and directly referenced context needed to identify the
+   affected domains.
+2. Load domain skills that materially constrain the implementation.
+3. Read the relevant code and research only enough to resolve the decisions the
+   proposal depends on; expand research when scope or uncertainty requires it.
+4. Prefer existing repository patterns and present requirements over
+   speculative abstractions or unrelated cleanup.
+5. Produce a complete final plan with exact code diffs for implementation and
+   verification.
 
-Ask the user clarifying questions only when missing information would materially change the implementation, sequencing, or verification. Do not ask for approval on plan structure or phasing. Planner owns the document structure.
-  
+Ask clarifying questions only when missing information would materially change
+implementation, sequencing, or verification. Do not add planning ceremony when
+the implementation direction is already clear.
+
 ## Initial Response
 
 When this command is invoked:
-  
+
 1. **If parameters were provided**:
    - If a file path, ticket reference, or document path was provided, read it fully.
-   - Begin research immediately.
-
-2. **If no parameters were provided**:
-```text
-I'll help you create a detailed implementation plan.
-
-Please provide:
-1. The task or ticket description, or a path to the design doc / issue
-2. Any constraints or requirements that materially affect implementation
-3. Links or paths to related docs, previous plans, or prior implementations
-
-I'll research the relevant code and produce a concrete implementation plan.
-
-Tip: You can invoke this command with a file directly: `/create_plan docs/design-feature-name.md`
-```
-
-Then stop and wait for the user to provide the task.
+   - Apply the skill gate, then begin broader research immediately.
+2. **If no parameters were provided**, ask for the task, material constraints,
+   and related references, then stop and wait for the user.
 
 ## Non-Negotiable Rules
 
-- Read supplied and directly referenced context before the initial skill check.
-- Load matching domain skills before Surveil setup, research agents, or manual
-  repository research.
-- If research identifies another affected domain, load its skill and revisit
-  decisions made without it.
-- Read every mentioned file fully before drafting the plan.
-- Research the relevant code, tests, config, and documentation before drafting the plan.
-- For repo-backed implementation plans, treat `surveil` artifacts as required baseline inputs before broad manual repo research.
-- Do not draft the final plan until research is complete.
-- If blocking questions remain after research, ask only those questions and stop.
-- Determine the final output path before running `planner new "<output.md>"` or scaffolding `surveil`.
-- Classify the operation as a new plan or partial update. For a new plan, verify
-  the destination is absent before research and again immediately before
-  `planner new`; if it exists, stop and ask whether to update it or use another
-  path. Never overwrite an existing plan implicitly.
-- Write the final plan to its real destination, not a transient temp path.
-- If the user says a legacy surface is being phased out, treat that surface as out of scope unless they explicitly request changes there.
-- Use the unique managed root printed by `surveil new task --task architecture`; do not create or reuse a shared task path.
-- Avoid dependency, virtualenv, worktree, generated output, and cache directories unless explicitly requested.
-- Use exactly the required headings and heading order in the final plan unless the user explicitly asks for a different format.
-- Do not add extra sections unless the user explicitly asks for them.
-- Keep the final plan actionable. The output is an implementation issue, not a design brainstorm.
-- Prefer `make` commands in verification when suitable targets exist. If no suitable `make` target exists, say so and use the direct command.
-- Exact code in diff blocks must be provided for all implementation and verification steps. Do not omit any lines of code or commands. This is a requirement for the plan to be actionable, reviewable, and unambiguous.
-- Maintain `<loaded-skills>` as the ordered, de-duplicated names of skills the
-  parent successfully loads, including skills discovered later.
-- If an applicable skill cannot be loaded, report it and stop before research;
-  do not silently omit it from `<loaded-skills>`.
-- Reconcile material evidence before drafting; an unresolved material finding
-  blocks plan creation.
-- Review a completed plan against `<loaded-skills>` with an independent agent;
-  do not substitute a parent-only self-check.
+- Read supplied and directly referenced context before planning.
+- Load matching domain skills before making decisions they constrain. If
+  research exposes another affected domain, load its skill and revisit affected
+  decisions.
+- When delegating, name every applicable loaded skill and require the subagent
+  to load available skills before working.
+- Read every mentioned file fully before the final proposal. Read directly
+  related callers, tests, config, and docs when they affect the change.
+- Scale research to the task. Do not run a fixed multi-agent or multi-track
+  workflow merely because the task is repo-backed.
+- Use `surveil` when it reduces uncertainty or efficiently finds cross-cutting
+  dependencies; direct repository reads are valid for bounded changes.
+- Before expanding a proposal, challenge new abstractions, wrappers,
+  interfaces, configuration layers, and cleanup. Keep them only when a present
+  requirement, invariant, or meaningful testing boundary justifies them.
+- Exclude unrelated cleanup and speculative extensibility from required scope.
+  Put genuinely useful extras in optional suggestions instead.
+- A draft may expose an unresolved implementation decision early when expanding
+  the wrong choice would create substantial rework. Label it as a draft; the
+  final plan must resolve blocking decisions.
+- Classify the operation as a new plan or revision. Reserve every new
+  destination with `planner new`; it fails atomically rather than overwriting an
+  existing plan.
+- Determine the final output path before creating the plan and write the final
+  plan to its real destination.
+- If the user says a legacy surface is being phased out, treat it as out of
+  scope unless explicitly requested.
+- Avoid dependency, virtualenv, worktree, generated output, and cache
+  directories unless explicitly requested.
+- Keep the final plan actionable. It is a reviewable implementation proposal,
+  not a design brainstorm.
+- Prefer `make` commands in verification when suitable targets exist. Otherwise
+  use the direct command.
+- Exact code in diff blocks is required for every implementation and
+  verification change in the final plan.
 
 ## Workflow
-
-First classify whether the request is a repo-backed implementation plan.
-
-Treat the request as repo-backed and use `surveil` when any of these are true:
-- the user wants an implementation plan for an existing repo feature, refactor, bug fix, or integration
-- the plan depends on current code, tests, config, docs, or workflow behavior
-- the request names files, modules, services, commands, or directories in this repo
-
-Skip `surveil` when:
-- the request is purely conceptual or comparative
-- the user is brainstorming options without needing concrete repo research
-- there is no meaningful local codebase surface to inspect
-
-If any repo-backed trigger is present, do not fall back to manual-first research.
 
 ### Step 1: Read and Gather Context
 
 1. Read all files mentioned by the user fully.
-2. Read any directly related design docs, research docs, prior implementation plans, and referenced JSON or data files fully.
-3. Resolve plan, issue, doc, and vault references using the Planning Docs guidance in `ai/AGENTS.md`.
-   - Use existing filesystem paths directly.
-   - For existing plans, docs, and notes, use `pde vault locate --json --vault <selector> "<reference>"`.
-   - Use `pde vault path <selector>` only when determining the destination root for a new plan or when the user explicitly asks for a vault root.
-   - Ask only on `ambiguous`, `not_found`, or setup `error`.
-4. Identify the code paths, modules, tests, config, and docs that are likely to be affected.
-5. Determine the exact output path, classify the operation as a new plan or
-   partial update, and apply the destination-existence rule above.
+2. Read directly related requirements, design docs, prior plans, and data files.
+3. Resolve plan, issue, doc, and vault references using the loaded shared
+   Planning Docs guidance.
+4. Load skills for the domains exposed by that context before broader source
+   research or implementation decisions.
+5. Identify the likely code paths, callers, tests, config, and docs.
+6. Determine the output path, classify creation or revision, and apply the
+   destination rule above.
 
 ### Step 2: Research the Codebase
 
-For repo-backed implementation plans, use `surveil` as the default research workflow.
+Use the lightest research path that can support the proposal with evidence.
 
-For requests that are not repo-backed, skip `surveil`. Run `mktemp -d
-"${TMPDIR:-/tmp}/create-plan-research.XXXXXX"` once and capture its exact
-output as `<research-artifact-dir>`, then research the relevant code, tests,
-config, docs, or comparative material directly using the available read-only
-tools before drafting.
+**Bounded, well-understood change**
 
-For this workflow, <task-context> is the user's request and every referenced document.
+- Read the named files and directly related callers, tests, config, and docs.
+- Follow existing patterns before introducing a new one.
+- Do not start Surveil or research subagents unless direct inspection leaves
+  material uncertainty.
 
-For this workflow, <evidence-review-agent> is an independent OpenCode `general`
-agent restricted by its delegation prompt to read-only research.
+**Cross-cutting, unfamiliar, or uncertain change**
 
-As soon as `<research-artifact-dir>` is known, write
-`<research-artifact-dir>/planning-state.md` with the operation type, output
-path and initial existence or hash, ordered `<loaded-skills>`, referenced
-context paths, and successfully completed evidence artifact paths. Update it
-immediately after a later skill load or successful evidence stage. Read it
-after compaction or handoff and before each delegation, drafting, or review.
-Store its exact path in the planning TodoWrite list, update that item if the
-file moves, and include it in the final report. Do not list partial output from
-a failed command as evidence.
+- Use `surveil --help` and relevant subcommand help rather than memorized
+  command shapes.
+- Create one focused Surveil task for the uncertainty to resolve. Add another
+  task only when it answers a distinct question inefficient to combine.
+- Use a read-only research subagent only when evidence is incomplete,
+  conflicting, or broad enough that an independent pass is valuable.
+- Verify surprising or conflicting findings with direct file reads.
 
-For either independent reviewer, apply this read-only guard around each agent
-attempt:
+Research should answer only the questions needed to make the proposal
+reviewable:
 
-1. Capture the output path's existence or hash, hashes of every supplied
-   artifact and directly referenced file outside the repo, the partial-update
-   input plan when distinct from the output, and absence of the intended review
-   artifact.
-2. For a Git-backed repo, also capture a content fingerprint of tracked and
-   staged changes plus non-ignored untracked files, and capture the current
-   revision. Use `git rev-parse HEAD`, `git diff --binary HEAD`, and
-   `git ls-files --others --exclude-standard` as the inventory sources. For a
-   Git repo with an unborn branch, capture `git symbolic-ref HEAD`,
-   `git diff --binary --cached`, and `git diff --binary` instead. For a non-Git
-   repo, fingerprint all non-excluded source files.
-3. Immediately after the agent returns or fails, before using or saving its
-   response, compare every captured value. Any change is an unauthorized
-   mutation: stop, report the changed path or repo state, and do not use the
-   review response.
+- What current behavior and invariants must remain true?
+- Which implementation path and integration points actually change?
+- Which existing pattern should this change follow?
+- Which tests and verification commands prove the behavior?
+- What compatibility, migration, persistence, process, or API boundaries apply?
 
-## Detailed Surveil Research Instructions
+Stop researching when those decisions are supported. More evidence is not a
+goal by itself.
 
-1. Reserve a unique fallback location before any Surveil command:
-   - Run `mktemp -d "${TMPDIR:-/tmp}/surveil-research-failure.XXXXXX"` as its own tool call.
-   - Capture the exact printed path as `<fallback-dir>`. Set `<failure-file>` to `<fallback-dir>/failure.md` and `<research-artifact-dir>` to `<fallback-dir>`.
-   - Do not combine this call with `surveil new`, and do not rely on shell variables persisting across tool calls. Replace placeholders below with captured literal paths.
-2. Create the three Surveil tasks:
-   - Run `surveil new task --task architecture` and capture its exact output as `<search-dir>`.
-   - After root creation succeeds, move `<fallback-dir>/planning-state.md` to
-     `<search-dir>/planning-state.md`, run `rmdir "<fallback-dir>"`, then set
-     `<failure-file>` to `<search-dir>/failure.md` and
-     `<research-artifact-dir>` to `<search-dir>` and update the state file and
-     its TodoWrite locator.
-   - Run `surveil new task --root "<search-dir>" --task interfaces-data-state`.
-   - Run `surveil new task --root "<search-dir>" --task tests-verification`.
-3. Populate `<search-dir>/architecture/task.json`, `<search-dir>/interfaces-data-state/task.json`, and `<search-dir>/tests-verification/task.json` from <task-context>:
-   - Set `summary` to the task-context title; if it has no title, use its first sentence verbatim.
-   - Set `explicit_files` to only literal paths named by the task context, preserving first-seen order and removing exact duplicates.
-   - Set `search_areas` to the smallest repo directories covering those paths and each task's focus; use `.` only when the intended scope is the repository root.
-   - Treat every relative `explicit_files` and `search_areas` value as relative to the exact <repo> passed to `--repo`; recalculate them if <repo> changes.
-   - Set `terms` to literal identifiers, filenames, path segments, commands, and feature names, de-duplicate case-insensitively, and do not invent synonyms.
-4. Populate each task's `query` array with its ordered questions. Do not omit, reorder, combine, reword, or reuse question sets across tasks.
-   - `architecture`:
-     1. `How does the current command or request flow through this area?`
-     2. `Which modules own this behavior, and where are their boundaries?`
-     3. `Which callers and integration points would need to change?`
-     4. `What orchestration or dependency direction must be preserved?`
-     5. `Which files define the complete implementation path?`
-   - `interfaces-data-state`:
-     1. `Which structs, types, functions, and fields define this behavior?`
-     2. `How does data enter, change, and leave this area?`
-     3. `Which validation rules and invariants must be preserved?`
-     4. `Which persistence, environment, filesystem, process, or API boundaries are involved?`
-     5. `Which compatibility or migration concerns apply?`
-   - `tests-verification`:
-     1. `Which existing tests and fixtures cover this behavior?`
-     2. `Which test helpers and patterns should new coverage follow?`
-     3. `Which docs, config, commands, and CI targets affect this change?`
-     4. `Which automated checks verify the implementation?`
-     5. `Which behavior requires manual verification?`
-5. Run `surveil index --repo "<repo>"`.
-6. Run all three gather commands:
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/architecture/task.json" > "<search-dir>/architecture/context.json"`
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/interfaces-data-state/task.json" > "<search-dir>/interfaces-data-state/context.json"`
-   - `surveil gather --repo "<repo>" --task-file "<search-dir>/tests-verification/task.json" > "<search-dir>/tests-verification/context.json"`
-7. Launch all three research commands through parallel tool calls and wait for all three:
-   - `surveil research --context "<search-dir>/architecture/context.json" --trace-out "<search-dir>/architecture/trace.json" > "<search-dir>/architecture/report.json"`
-   - `surveil research --context "<search-dir>/interfaces-data-state/context.json" --trace-out "<search-dir>/interfaces-data-state/trace.json" > "<search-dir>/interfaces-data-state/report.json"`
-   - `surveil research --context "<search-dir>/tests-verification/context.json" --trace-out "<search-dir>/tests-verification/trace.json" > "<search-dir>/tests-verification/report.json"`
-8. Treat redirected output as complete only when its command exits
-   successfully. Proceed to step 9 only after all three tasks succeed;
-   otherwise exclude failed or partial outputs and follow step 13.
-9. Merge the reports directly with `surveil merge "<search-dir>/architecture/report.json" "<search-dir>/interfaces-data-state/report.json" "<search-dir>/tests-verification/report.json" > "<search-dir>/evidence.json"`.
-10. Read `<search-dir>/evidence.json` before additional repository research. If a read is truncated, use targeted searches and direct file reads rather than treating the partial output as complete evidence.
-11. After successful evidence, run one <evidence-review-agent>:
-    - Apply the read-only guard to `<output.md>`, the repo, all supplied
-      artifacts, and `<research-artifact-dir>/manual-review.md`.
-    - Name each applicable skill in the delegation prompt.
-    - Require the agent to load available applicable skills before review and
-      report any required skill that is unavailable.
-    - Give it <task-context>, <repo>, `<search-dir>/evidence.json`, and
-      `<research-artifact-dir>/planning-state.md`.
-    - Find required files or behavior missing from the evidence and correct assumptions not supported by direct file reads.
-    - Check related callers, integration points, and existing patterns outside the searched areas.
-    - Identify missing tests, fixtures, config, commands, CI checks, or manual verification.
-    - Require read-only research with concrete `file:line` references and findings not already present in the evidence. Prohibit edits and mutating commands.
-    - Save its final response verbatim as `<research-artifact-dir>/manual-review.md`.
-    - If the agent invocation fails, retry it once with a fresh read-only guard.
-      If the artifact write fails, retry that write once. If either still
-      fails, write the failure to `<failure-file>`, record the missing review
-      as `unresolved` in Step 3, and stop.
-12. Verify new or conflicting findings from <evidence-review-agent> with direct file reads before continuing.
-13. If task JSON or search-area validation fails, correct the input once and
-    rerun gather; this correction does not consume the operational retry. If
-    validation still fails, use the fallback below. If any other Surveil
-    command fails, retry only the failed stage once. If initial root creation
-    succeeds on retry, perform the successful setup in step 2. If the failed
-    stage still fails:
-    - Write the failed stage and error to `<failure-file>` using the already captured literal path. Do not search temporary directories to rediscover it.
-    - Skip steps 9-10 only.
-    - Run one <evidence-review-agent> using all step 11 review instructions with
-      <task-context>, <repo>, and every successfully completed artifact. Exclude
-      redirected output from any failed command.
-    - Save its final response verbatim as `<research-artifact-dir>/manual-review.md`.
-    - Apply the same one-retry and unresolved stopping rule when the fallback
-      agent or artifact write fails.
-    - Verify new or conflicting fallback findings with direct file reads, then continue to Step 3.
-## Evidence Review Best Practices
+### Step 3: Choose the Smallest Implementation Shape
 
-Run one research task after reading merged evidence. Give the analyzer exact directories, require read-only tools and `file:line` references, wait for it to complete, and cross-check unexpected findings directly.
+Before expanding the full diff, inspect the proposed module shape and main code
+path.
 
-Example:
-```python
-task = Task("Review Surveil evidence", evidence_review_prompt)
-```
+- Prefer the smallest change that satisfies the requirements and preserves
+  current invariants.
+- Reuse existing concrete types and flows when they provide the needed boundary.
+- For every new abstraction, identify the present requirement or meaningful
+  testing boundary that needs it. Remove hypothetical future flexibility.
+- Keep unrelated cleanup out of the required proposal.
 
-Assistant: This is a repo-backed implementation plan, so I'll create three managed Surveil tasks, merge their reports, and use one <evidence-review-agent> to review the evidence before drafting.
+If one unresolved choice would cause substantial rework if wrong, expose only
+enough representative code to make that choice reviewable. Do not expand the
+rest until it is resolved. This is an optional fast-feedback path, not a
+mandatory approval stage.
 
-### Step 3: Reconcile Evidence
+### Step 4: Write or Revise the Plan
 
-Before drafting, write `<research-artifact-dir>/evidence-disposition.md`.
+1. Run `planner help` when you need the CLI; do not guess command shapes.
+2. For a new plan, run `planner new "<output.md>"` to reserve the destination
+   and scaffold the supported format. Stop if it reports that the path exists.
+3. After reservation, write or edit Markdown directly when that is the simplest
+   authoring path. The Markdown file is the human-facing source of truth.
+4. For an existing plan, keep direct edits range-targeted and verify that
+   wrapped-issue frontmatter and unrelated accepted sections remain byte-for-byte
+   unchanged.
+5. Before every revision to an existing fenced code diff, run
+   `planner inspect "<plan.md>"` immediately, then use its current
+   `update_diff_expect` token in a single-operation guarded `planner patch`
+   `Update Diff`. Do not directly edit that diff or use an unguarded command.
+6. Validate every final or revised proposal with
+   `planner check "<output.md>" --json-errors`.
 
-1. Include only material findings from the supplied context, loaded skills,
-   Surveil evidence, manual review, fallback review, and direct verification.
-2. For each finding, record its source, the finding, one disposition, and the
-   concrete plan impact or exclusion reason.
-3. Use only these dispositions:
-   - `applied`: the plan will reflect the finding in a named decision, step, or verification item.
-   - `no-plan-impact`: the finding is verified but immaterial or out of scope, with a concrete reason.
-   - `unresolved`: evidence is insufficient or conflicting and the plan cannot safely choose an implementation.
-4. If there are no material findings, write `No material findings.`
-5. If any material finding is `unresolved`, ask the minimum blocking question
-   when the user can answer it; otherwise report the evidence gap and stop. Do
-   not create or finalize the plan.
-6. Update the disposition if later research or a late skill load changes a
-   material decision.
+#### Revisions After Human Feedback
 
+Treat review as a correction loop, not a restart:
 
-### Step 4: Plan Structure Development
+1. Identify which decisions and sections the feedback invalidates.
+2. Preserve unrelated accepted decisions and proposal sections.
+3. Re-research only when feedback invalidates an assumption, reveals a missing
+   dependency, or changes the affected surface.
+4. Apply required corrections first. Keep optional improvements separate.
+5. Show the complete proposal diff and reject collateral changes.
+6. Re-run Planner validation.
 
-Once aligned on approach:
+### Step 5: Validate and Report
 
-1. **Create the initial outline internally unless the user explicitly asked for interactive planning**:
-   ```
-   Here's my proposed plan structure:
+1. Run `planner check "<output.md>" --json-errors`.
+2. Compare every proposed diff with current source. Confirm that it applies to
+   the intended file, includes every required line without placeholders,
+   follows repository patterns, and excludes unrelated work.
+3. Perform the complete quality review directly. For broad, risky, or
+   cross-cutting work, delegate focused architecture, bug, and completeness
+   reviews in parallel and reconcile evidence-backed findings.
+4. Fix validation or source-review failures before reporting success.
+5. Report the output path, validation result, scope summary, and blockers.
 
-   ## Overview
-   [1-2 sentence summary]
+## Review Principles
 
-   ## Implementation Phases:
-   1. [Phase name] - [what it accomplishes]
-   2. [Phase name] - [what it accomplishes]
-   3. [Phase name] - [what it accomplishes]
-
-   Use the smallest scope that satisfies the request and constraints.
-   ```
-
-### Step 5: Detailed Plan Writing
-
-After research is complete:
-
-1. Run `planner help` first; do not guess command shapes from memory.
-2. For new plans, verify `<output.md>` is still absent immediately before
-   running `planner new "<output.md>"`; stop instead of overwriting it if it
-   now exists.
-3. For partial updates, run `planner inspect "<plan.md>"` to see the parsed plan JSON and `update_diff_expect` tokens.
-4. Prefer `planner patch "<plan.md>" "<out.md>"` for transactional scalar, checklist, and `Update Diff` edits; omit the second path for same-file patches.
-5. Use behavioral commands when the patch v1 surface does not cover the change; for same-file behavioral edits, `<out.md>` may equal `<plan.md>`.
-6. Preserve the supported wrapped-issue frontmatter on same-path edits.
-7. Run `planner check "<output.md>" --json-errors` to establish a structurally valid draft before completed-plan review. Fix all reported failures together and rerun, for at most three correction rounds. If validation still fails, stop before review.
-
-Do not emit freeform markdown directly when the installed helper is available.
-
-Planner owns separators and formatting. The required heading order is:
-
-1. `# <title>`
-2. `## Overview`
-3. `## Definition of Done`
-4. `### Goals`
-5. `### Current State`
-6. `### Module Shape`
-7. `## Implementation`
-8. `### <number>. <step title>` for each implementation step
-9. `## Verification`
-10. `### Automated Verification`
-11. `### Manual Verification`
-
-#### Partial Updates
-
-For targeted updates to an existing plan:
-
-1. Run `planner inspect "<plan.md>"`
-2. Prefer `planner patch "<plan.md>" "<out.md>"` for transactional scalar and checklist edits; omit the second path for same-file patches.
-3. Fall back to behavioral commands such as `planner implementation step
-   file-change add "<plan.md>" "<out.md>" --step N --filename F --explanation
-   E --diff-stdin` when patch v1 does not cover the change.
-
-Non-targeted sections are preserved byte-for-byte, including supported wrapped issue frontmatter.
-
-### Step 6: Review Against Loaded Skills
-
-If `<loaded-skills>` is empty, skip this step. Otherwise run one independent
-OpenCode `general` agent after the draft passes its initial Planner check.
-
-1. Apply the read-only guard to `<output.md>`, the repo, all supplied artifacts,
-   and `<research-artifact-dir>/loaded-skill-review.md`.
-2. Begin the delegation prompt with `Applicable skills: <loaded-skills>` using
-   every exact skill name in order.
-3. Require the reviewer to load every listed skill before reviewing and report
-   any unavailable skill as a blocking finding.
-4. Give it <task-context>, <repo>, <output.md>,
-   `<research-artifact-dir>/planning-state.md`,
-   `<research-artifact-dir>/evidence-disposition.md`, and all available
-   evidence, manual-review, and prior loaded-skill-review artifact paths.
-5. Require read-only tools, prohibit edits and mutating commands, and require it
-   to read the completed plan fully and review only whether the plan
-   preserves the loaded skills' material guidance. It may identify unsupported
-   behavior or missing verification when that demonstrates a skill violation,
-   but it must not repeat a general architecture review.
-6. Require concrete findings with severity, skill name, plan or source
-   reference, reason, and required correction. Require an explicit `No
-   findings.` result when none exist.
-7. Immediately after the reviewer returns, apply the guard before saving its
-   response, classifying findings, or changing the plan.
-8. Save the final response verbatim as
-   `<research-artifact-dir>/loaded-skill-review.md`.
-9. If the reviewer invocation fails, retry once with a fresh read-only guard.
-   If saving the review artifact fails, retry the write once. Stop if either
-   action still fails. Apply the same rules to the follow-up.
-10. Treat unavailable required skills, contradicted skill guidance, unsupported
-   behavior prohibited by a loaded skill, and omitted required verification as
-   blocking.
-11. If there are blocking findings, correct the plan and evidence disposition,
-   rerun the initial Planner check, then run one independent follow-up with the
-   same inputs and save it as
-   `<research-artifact-dir>/loaded-skill-review-follow-up.md`.
-12. Apply a fresh read-only guard to the follow-up and its intended artifact.
-    Any plan change after the initial review consumes this single correction
-    cycle and requires the follow-up.
-13. If the follow-up reports a blocking finding, either review agent fails
-    after one retry, or either reviewer changes the plan, stop without reporting
-    a completed plan. Do not replace the independent review with a self-review.
-
-### Step 7: Validate And Report
-
-1. Run `planner check "<output.md>" --json-errors` after completed-plan review.
-2. The reviewed draft already passed Planner validation. If final validation
-   fails, stop; do not modify the reviewed plan without another independent
-   review.
-3. Report the final output path, validation result, scope summary,
-   `<research-artifact-dir>/planning-state.md`,
-   `<research-artifact-dir>/evidence-disposition.md`, the applicable
-   loaded-skill review path, and any blockers.
-
-## Important Guidelines
-
-1. **Be Skeptical**:
-   - Question vague requirements
-   - Identify potential issues early
-   - Ask "why" and "what about"
-   - Don't assume - verify with code
-
-2. **Be Directed**:
-   - Begin research immediately when enough information is present to resolve inputs
-   - Ask clarifying questions only when missing information would materially change implementation, sequencing, or verification
-   - Do not pause for approval on plan structure or intermediate research updates
-
-3. **Be Thorough**:
-   - Read all context files COMPLETELY before planning
-   - For repo-backed planning, use `surveil` before broad manual repo research
-   - Research actual code patterns using parallel sub-tasks only after the initial `surveil` pass when additional investigation is still needed
-   - Include specific file paths and line numbers
-   - Write measurable success criteria with clear automated vs manual distinction
-   - automated steps should use `make` whenever possible - for example `make -C myapp check` instead of `cd myapp && npm run fmt`
-
-4. **Be Practical**:
-   - Focus on incremental, testable changes
-   - Consider migration and rollback
-   - Think about edge cases
-   - Include "what we're NOT doing"
-
-5. **Track Progress**:
-   - Use TodoWrite to track planning tasks
-   - Update todos as you complete research
-   - Mark planning tasks complete when done
-
-6. **No Open Questions in Final Plan**:
-   - If you encounter open questions during planning, STOP
-   - Research or ask for clarification immediately
-   - Do NOT write the plan with unresolved questions
-   - The implementation plan must be complete and actionable
-   - Every decision must be made before finalizing the plan
-
-## Common Patterns
-
-### For Database Changes:
-- Start with schema/migration
-- Add store methods
-- Update business logic
-- Expose via API
-- Update clients
-
-### For New Features:
-- Research existing patterns first
-- Start with data model
-- Build backend logic
-- Add API endpoints
-- Implement UI last
-
-### For Refactoring:
-- Document current behavior
-- Plan incremental changes
-- Maintain backwards compatibility
-- Include migration strategy
-
-## Example Interaction Flow
-
-```
-User: /create_plan
-Assistant: I'll help you create a detailed implementation plan...
-
-User: We need to add parent-child tracking for agent sub-tasks. See docs/research-2025-01-08-parent-child-tracking.md
-Assistant: Let me read that document completely first...
-
-[Reads file fully]
-
-Assistant: This is a repo-backed implementation plan, so I'll create three managed Surveil tasks, merge their reports, and use one <evidence-review-agent> to review the evidence before drafting.
-
-[Interactive process continues...]
-```
+- Verify assumptions against code.
+- Challenge unnecessary abstraction, hidden scope expansion, and speculative
+  flexibility.
+- Distinguish required corrections from optional improvements.
+- Spend research effort according to uncertainty, blast radius, and
+  unfamiliarity.
+- Consider migration, rollback, failure modes, and edge cases when relevant.
+- Final plans must resolve blocking questions and include complete
+  implementation and verification diffs.

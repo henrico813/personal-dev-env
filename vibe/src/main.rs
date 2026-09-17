@@ -38,11 +38,20 @@ fn persist_emitted_result(result: &mut RunResult) {
     }
 }
 
+fn execute_run(args: cli::RunArgs) -> RunResult {
+    let _run_lock = match worktree::acquire_run_lock(&args.key) {
+        Ok(lock) => lock,
+        Err(error) => return RunResult::setup_error(error),
+    };
+    let mut result = app::execute(args);
+    persist_emitted_result(&mut result);
+    result
+}
+
 fn main() {
     match cli::parse() {
         ParsedCommand::Run(args) => {
-            let mut result = app::execute(args);
-            persist_emitted_result(&mut result);
+            let result = execute_run(args);
             emit_and_exit(&result, result.exit_code());
         }
         ParsedCommand::Status(args) => {
