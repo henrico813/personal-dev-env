@@ -51,7 +51,7 @@ pub struct RunArgs {
     #[arg(long)]
     pub key: String,
 
-    /// Optional Git revision used to seed a new managed worktree.
+    /// Optional Git revision used only to seed a new managed branch and worktree.
     #[arg(long)]
     pub base: Option<String>,
 

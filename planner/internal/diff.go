@@ -2,10 +2,12 @@ package internal
 
 import "strings"
 
-// diffLines produces a minimal per-line diff between a and b. Identical lines
-// are shown with a leading "  ", lines only in a with "- ", lines only in b
-// with "+ ". Callers use this to preview planner output before write/dry-run;
-// the output is readable by humans and easy to assert against in tests.
+// A 4 million-cell table uses about 32 MiB on 64-bit systems.
+const maxDiffLCSCells = 4_000_000
+
+// diffLines produces a bounded per-line diff between a and b. It preserves
+// common lines with LCS when the unmatched region fits the memory limit and
+// falls back to remove-then-add output above the limit.
 func diffLines(a, b string) string {
 	if a == b || strings.TrimRight(a, "\n") == strings.TrimRight(b, "\n") {
 		return ""
@@ -26,26 +28,92 @@ func diffLines(a, b string) string {
 
 	var out strings.Builder
 	for i := 0; i < head; i++ {
-		out.WriteString("  ")
-		out.WriteString(aLines[i])
-		out.WriteByte('\n')
+		writeDiffLine(&out, "  ", aLines[i])
 	}
-	for i := head; i < aTail; i++ {
-		out.WriteString("- ")
-		out.WriteString(aLines[i])
-		out.WriteByte('\n')
+
+	aMiddle := aLines[head:aTail]
+	bMiddle := bLines[head:bTail]
+	switch {
+	case len(aMiddle) == 0:
+		for _, line := range bMiddle {
+			writeDiffLine(&out, "+ ", line)
+		}
+	case len(bMiddle) == 0:
+		for _, line := range aMiddle {
+			writeDiffLine(&out, "- ", line)
+		}
+	case canUseDiffLCS(len(aMiddle), len(bMiddle)):
+		writeLCSDiff(&out, aMiddle, bMiddle)
+	default:
+		for _, line := range aMiddle {
+			writeDiffLine(&out, "- ", line)
+		}
+		for _, line := range bMiddle {
+			writeDiffLine(&out, "+ ", line)
+		}
 	}
-	for i := head; i < bTail; i++ {
-		out.WriteString("+ ")
-		out.WriteString(bLines[i])
-		out.WriteByte('\n')
-	}
+
 	for i := aTail; i < len(aLines); i++ {
-		out.WriteString("  ")
-		out.WriteString(aLines[i])
-		out.WriteByte('\n')
+		writeDiffLine(&out, "  ", aLines[i])
 	}
 	return out.String()
+}
+
+func canUseDiffLCS(aLen, bLen int) bool {
+	maxInt := int(^uint(0) >> 1)
+	if aLen < 0 || bLen < 0 || aLen == maxInt || bLen == maxInt {
+		return false
+	}
+	rows := aLen + 1
+	cols := bLen + 1
+	return rows <= maxDiffLCSCells/cols
+}
+
+func writeLCSDiff(out *strings.Builder, aLines, bLines []string) {
+	cols := len(bLines) + 1
+	lcs := make([]int, (len(aLines)+1)*cols)
+	for i := len(aLines) - 1; i >= 0; i-- {
+		for j := len(bLines) - 1; j >= 0; j-- {
+			idx := i*cols + j
+			if aLines[i] == bLines[j] {
+				lcs[idx] = lcs[(i+1)*cols+j+1] + 1
+				continue
+			}
+			if lcs[(i+1)*cols+j] >= lcs[i*cols+j+1] {
+				lcs[idx] = lcs[(i+1)*cols+j]
+			} else {
+				lcs[idx] = lcs[i*cols+j+1]
+			}
+		}
+	}
+
+	i, j := 0, 0
+	for i < len(aLines) && j < len(bLines) {
+		switch {
+		case aLines[i] == bLines[j]:
+			writeDiffLine(out, "  ", aLines[i])
+			i++
+			j++
+		case lcs[(i+1)*cols+j] >= lcs[i*cols+j+1]:
+			writeDiffLine(out, "- ", aLines[i])
+			i++
+		default:
+			writeDiffLine(out, "+ ", bLines[j])
+			j++
+		}
+	}
+	for ; i < len(aLines); i++ {
+		writeDiffLine(out, "- ", aLines[i])
+	}
+	for ; j < len(bLines); j++ {
+		writeDiffLine(out, "+ ", bLines[j])
+	}
+}
+
+func writeDiffLine(out *strings.Builder, prefix, line string) {
+	out.WriteString(prefix)
+	out.WriteString(line)
+	out.WriteByte('\n')
 }
 
 func splitLines(s string) []string {

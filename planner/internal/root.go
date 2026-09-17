@@ -48,7 +48,8 @@ Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
 Markdown-first authoring flow:
-  1. Run planner new plan.md.
+  1. Run planner new plan.md. It fails without changing an existing destination,
+     including during --dry-run.
   2. Edit the markdown directly, or use behavioral edit commands for same-path updates.
   3. For behavioral edit commands, <out.md> may be the same path as <plan.md>
      for same-file updates.
@@ -284,13 +285,20 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, nonMarkdownUsage))
 		return 2
 	}
+	if _, err := os.Lstat(outputPath); err == nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerWriteOutputError, os.ErrExist, outputPath))
+		return 1
+	} else if !errors.Is(err, os.ErrNotExist) {
+		reportError(stderr, "new", newPlannerCLIError(PlannerReadInputError, err, outputPath))
+		return 1
+	}
 	rendered, err := renderCanonicalScaffold()
 	if err != nil {
 		reportError(stderr, "new", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 		return 1
 	}
 	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
-		if err := WriteAtomic(outputPath, []byte(rendered)); err != nil {
+		if err := WriteNewAtomic(outputPath, []byte(rendered)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil

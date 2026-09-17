@@ -1,3 +1,4 @@
+use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -17,6 +18,17 @@ pub struct SandboxMounts {
     pub git_common_dir: PathBuf,
     pub worktree: PathBuf,
     pub inputs: Vec<PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct RunLock {
+    _file: File,
+}
+
+impl Drop for RunLock {
+    fn drop(&mut self) {
+        let _ = self._file.unlock();
+    }
 }
 
 impl WorktreeSession {
@@ -52,6 +64,47 @@ pub fn slugify(key: &str) -> String {
     } else {
         trimmed
     }
+}
+
+pub fn acquire_run_lock(key: &str) -> Result<RunLock, String> {
+    let repo = git::repo_layout()?;
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let repo_id = repo
+        .repo_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repo");
+    let lock_dir = Path::new(&home)
+        .join(".local/state/vibe")
+        .join(repo_id)
+        .join("locks");
+    acquire_run_lock_in(&lock_dir, key)
+}
+
+fn acquire_run_lock_in(lock_dir: &Path, key: &str) -> Result<RunLock, String> {
+    let slug = slugify(key);
+    std::fs::create_dir_all(lock_dir)
+        .map_err(|error| format!("create Vibe lock directory: {error}"))?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock_dir.join(format!("{slug}.lock")))
+        .map_err(|error| format!("open Vibe run lock for {slug}: {error}"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(RunLock { _file: file }),
+        Err(TryLockError::WouldBlock) => Err(format!("vibe run already active for slug {slug}")),
+        Err(TryLockError::Error(error)) => Err(format!("lock Vibe run for {slug}: {error}")),
+    }
+}
+
+pub fn validate_base_target(key: &str, base: Option<&str>) -> Result<(), String> {
+    let repo = git::repo_layout()?;
+    let slug = slugify(key);
+    let branch = format!("vibe/{slug}");
+    let worktree = repo.repo_root.join("worktrees").join(&slug);
+    git::validate_base_target(&repo.repo_root, &worktree, &branch, base)
 }
 
 pub fn prepare(key: &str, base: Option<&str>) -> Result<WorktreeSession, String> {
@@ -134,7 +187,8 @@ pub fn commit_result(worktree: &Path, message: &str, hooks_dir: &Path) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::slugify;
+    use super::{acquire_run_lock_in, slugify};
+    use tempfile::tempdir;
 
     #[test]
     fn slugify_normalizes_keys() {
@@ -144,5 +198,17 @@ mod tests {
     #[test]
     fn empty_slug_falls_back() {
         assert_eq!(slugify("---"), "vibe");
+    }
+
+    #[test]
+    fn same_slug_blocks_until_release() {
+        let temp = tempdir().expect("tempdir");
+        let first = acquire_run_lock_in(temp.path(), "Demo/key").expect("first lock");
+
+        let error = acquire_run_lock_in(temp.path(), "demo-key").expect_err("second lock");
+        assert!(error.contains("already active"), "{error}");
+
+        drop(first);
+        acquire_run_lock_in(temp.path(), "demo-key").expect("released lock");
     }
 }

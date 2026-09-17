@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -216,6 +217,7 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 	help := buildHelpText()
 	for _, want := range []string{
 		"planner new plan.md.",
+		"fails without changing an existing destination",
 		"planner check plan.md --json-errors.",
 		"<out.md> may be the same path as <plan.md>",
 		"planner patch <plan.md> [<out.md>]",
@@ -446,6 +448,75 @@ func TestNewDryRunDiffDoesNotWriteChanges(t *testing.T) {
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Fatalf("output should not be written, stat err = %v", err)
+	}
+}
+
+func TestNewPreservesExistingFile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "write"},
+		{name: "dry_run", args: []string{"--dry-run"}},
+		{name: "diff_dry_run", args: []string{"--diff", "--dry-run"}},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.md")
+			if err := os.WriteFile(path, []byte("sentinel\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
+
+			var stdout, stderr bytes.Buffer
+			if exit := Execute(append([]string{"new", path}, tc.args...), &stdout, &stderr); exit != 1 {
+				t.Fatalf("exit=%d stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			if string(got) != "sentinel\n" {
+				t.Fatalf("existing file changed: %q", got)
+			}
+		})
+	}
+}
+
+func TestWriteNewAtomicAllowsOneWriter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.md")
+	contents := [][]byte{[]byte("first\n"), []byte("second\n")}
+	errs := make(chan error, len(contents))
+	var wg sync.WaitGroup
+	for _, content := range contents {
+		content := content
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- WriteNewAtomic(path, content)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	succeeded := 0
+	for err := range errs {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		if !os.IsExist(err) {
+			t.Fatalf("losing writer error=%v, want destination-exists error", err)
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("successful writers=%d, want 1", succeeded)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != "first\n" && string(got) != "second\n" {
+		t.Fatalf("unexpected content: %q", got)
 	}
 }
 
