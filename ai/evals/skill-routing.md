@@ -7,12 +7,12 @@ conclusion, an edit, or a delegated task.
 
 Before the OpenCode planning check, allocate a unique output directory with
 `mktemp -d "${TMPDIR:-/tmp}/skill-routing.XXXXXX"` and replace `<output-dir>`
-below with the printed path. First install and compare the OpenCode command as
-described in `create-plan.md`; run the check in a fresh session.
+below with the printed path. First install and compare the planning workflows as
+described in `plan-workflows.md`; run the check in a fresh session.
 
 | Harness | Request | Expected behavior |
 | --- | --- | --- |
-| OpenCode | `/create_plan In personal-dev-env, plan a Rust CLI test for ai/skills/rust-development/examples/src/main.rs and write it to <output-dir>/rust-plan.md.` | After reading the referenced file, load `behavior-focused-testing` and `rust-development` before broader repository research. Name both in planning delegations and require the completed-plan reviewer to load both. |
+| OpenCode | `/create_plan In personal-dev-env, plan a Rust CLI test for ai/skills/rust-development/examples/src/main.rs and write it to <output-dir>/rust-plan.md.` | After reading the referenced file, load `behavior-focused-testing` and `rust-development` before broader repository research. Name both in any planning delegation; do not create a reviewer solely for skill routing. |
 | Codex | `In personal-dev-env, plan a Rust CLI test for ai/skills/rust-development/examples/src/main.rs.` | After reading the referenced file, load `behavior-focused-testing` and `rust-development` before broader repository research. |
 | Both | `Review a Rust CLI test that asserts --help contains Usage.` | Load `behavior-focused-testing` and `rust-development` before giving review findings. |
 | Both | `Update README wording only; do not review or change Go code.` | Do not load `go-development` merely because the repository contains Go. |
@@ -23,7 +23,7 @@ Record the harness, model, version, required loads, unnecessary loads, late
 loads, and delegated loads in the pull request. If a harness does not expose a
 required event, record the check as unsupported rather than passed. These
 checks cover routing, not the quality of the completed task; use
-`create-plan.md` for completed-plan behavior.
+`plan-workflows.md` for completed-plan behavior.
 
 Record Surveil's exact managed run path. After trace inspection, delete that
 captured run and the allocated output directory; do not search with globs.
