@@ -130,7 +130,7 @@ In OpenCode, type `/command_name` to invoke. These are the same commands install
 | Command | Purpose |
 |---------|---------|
 | `/design_doc` | Create a technical design document for a feature or system |
-| `/create_plan` | Produce a surveil-backed implementation plan |
+| `/create_plan` | Produce a repository-grounded implementation proposal |
 | `/review_plan` | Validate a plan for architecture, bugs, and completeness |
 | `/implement_plan` | Execute plan phases with verification |
 | `/cleanup_plan` | Clean completed plan, worktree, branch, PR evidence, and main state |
@@ -143,7 +143,7 @@ Codex skills are prompt-triggered, not slash commands. Use them by asking natura
 
 | Skill | What it does | Example prompt |
 |-------|-------------|----------------|
-| `create-plan` | Create a surveil-backed implementation issue | "Use create-plan to plan the auth refactor" |
+| `create-plan` | Create a repository-grounded implementation proposal | "Use create-plan to plan the auth refactor" |
 | `design-doc` | Draft a technical design document | "Use design-doc to design the new caching layer" |
 | `document-codebase` | Audit and improve project documentation | "Use document-codebase to review docs under pde/" |
 | `implement-plan` | Execute an approved plan with verification | "Use implement-plan on docs/PDEV-006.md" |

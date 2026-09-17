@@ -155,6 +155,29 @@ fn branch_exists(repo_root: &Path, branch: &str) -> Result<bool, String> {
     Ok(status.success())
 }
 
+pub fn validate_base_target(
+    repo_root: &Path,
+    worktree: &Path,
+    branch: &str,
+    base: Option<&str>,
+) -> Result<(), String> {
+    if base.is_none() {
+        return Ok(());
+    }
+    if worktree.exists() {
+        return Err(format!(
+            "--base requires a new managed worktree; already exists: {}",
+            worktree.display()
+        ));
+    }
+    if branch_exists(repo_root, branch)? {
+        return Err(format!(
+            "--base requires a new managed branch; already exists: {branch}"
+        ));
+    }
+    Ok(())
+}
+
 /// Worktrees are the durable branch state; Docker is only the execution boundary.
 pub fn ensure_worktree(
     repo_root: &Path,
@@ -163,16 +186,34 @@ pub fn ensure_worktree(
     git_common_dir: &Path,
     base: Option<&str>,
 ) -> Result<(), String> {
+    validate_base_target(repo_root, worktree, branch, base)?;
+    if base.is_some() {
+        let base_ref = resolve_new_branch_base(repo_root, base)?;
+        git(
+            repo_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                branch,
+                worktree.to_str().unwrap_or(""),
+                &base_ref,
+            ],
+        )?;
+        return validate_worktree(worktree, branch, git_common_dir);
+    }
+
+    let existing_branch = branch_exists(repo_root, branch)?;
     if worktree.exists() {
         return validate_worktree(worktree, branch, git_common_dir);
     }
-    if branch_exists(repo_root, branch)? {
+    if existing_branch {
         git(
             repo_root,
             &["worktree", "add", worktree.to_str().unwrap_or(""), branch],
         )?;
     } else {
-        let base_ref = resolve_new_branch_base(repo_root, base)?;
+        let base_ref = resolve_new_branch_base(repo_root, None)?;
         git(
             repo_root,
             &[
@@ -471,5 +512,50 @@ mod tests {
             None,
         )
         .expect("reuse branch");
+    }
+
+    #[test]
+    fn base_rejects_existing_worktree() {
+        let (_temp, repo, _remote) = setup_repo();
+        let worktree = repo.join("worktrees/existing-worktree");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+        ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/existing-worktree",
+            &common_dir(&repo),
+            None,
+        )
+        .expect("create worktree");
+
+        let error = ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/existing-worktree",
+            &common_dir(&repo),
+            Some("HEAD"),
+        )
+        .expect_err("reject base");
+
+        assert!(error.contains("new managed worktree"), "{error}");
+    }
+
+    #[test]
+    fn base_rejects_existing_branch() {
+        let (_temp, repo, _remote) = setup_repo();
+        let worktree = repo.join("worktrees/existing-branch");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+        run(&repo, &["branch", "vibe/existing-branch", "HEAD"]);
+
+        let error = ensure_worktree(
+            &repo,
+            &worktree,
+            "vibe/existing-branch",
+            &common_dir(&repo),
+            Some("HEAD"),
+        )
+        .expect_err("reject base");
+
+        assert!(error.contains("new managed branch"), "{error}");
     }
 }
