@@ -35,9 +35,13 @@ Specialized task agents spawned by commands and reviewers to conduct parallel re
 
 ## How They Work
 
-Commands like `/create_plan`, `/review_plan`, and `/document_codebase` spawn agents in parallel:
+Commands may spawn focused agents when the task benefits from delegation:
 - Each agent receives a focused prompt
 - Agents work concurrently to maximize efficiency
 - Results are synthesized when all complete
+
+`/create_plan` and `/review_plan` scale delegation to uncertainty and review
+risk; bounded changes may be handled directly. `/implement_plan` delegates only
+when an implementation step benefits from separate execution.
 
 Most agents are read-only. The exception is `docs-writer`, which modifies files.
