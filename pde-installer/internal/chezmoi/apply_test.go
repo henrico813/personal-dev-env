@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
@@ -91,6 +92,18 @@ func TestApplyFailureRestoresFiles(t *testing.T) {
 	}
 }
 
+func TestApplyFailureRemovesCreatedFiles(t *testing.T) {
+	fixture := newApplyFixture(t, "fail")
+	writeApplyFile(t, fixture.state, "old-state\n")
+	if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), "exit status 9") {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if _, err := os.Lstat(fixture.target); !os.IsNotExist(err) {
+		t.Fatalf("created target remains: %v", err)
+	}
+	assertApplyFile(t, fixture.state, "old-state\n")
+}
+
 // Status output must never authorize writes outside HOME.
 func TestApplyRejectsOutsideHome(t *testing.T) {
 	t.Parallel()
@@ -172,7 +185,7 @@ case "$command" in
 		;;
 esac
 `)
-	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, profile.Full, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
+	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, profile.Full, colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
 	journal, err := fixture.manager.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +210,7 @@ func TestApplySetsProfileEnvironment(t *testing.T) {
 }
 
 func TestApplyRejectsMissingTemplates(t *testing.T) {
-	for _, name := range []string{".chezmoiignore.tmpl", "dot_zshrc.tmpl", "dot_tmux.conf.tmpl"} {
+	for _, name := range []string{".chezmoidata.json", ".chezmoiignore.tmpl", "dot_p10k.zsh.tmpl", "dot_zshrc.tmpl", "dot_tmux.conf.tmpl"} {
 		t.Run(name, func(t *testing.T) {
 			fixture := newApplyFixture(t, "success")
 			if err := os.Remove(filepath.Join(fixture.manager.Source(), name)); err != nil {
@@ -208,6 +221,26 @@ func TestApplyRejectsMissingTemplates(t *testing.T) {
 			}
 			if _, err := os.Stat(fixture.state); !os.IsNotExist(err) {
 				t.Fatalf("fake apply ran; state stat error = %v", err)
+			}
+		})
+	}
+}
+
+func TestFullApplyRequiresThemeTemplates(t *testing.T) {
+	for _, name := range []string{
+		"dot_config/alacritty/alacritty.toml.tmpl",
+		"dot_config/wezterm/wezterm.lua.tmpl",
+		"dot_config/nvim/lua/plugins/colorscheme.lua.tmpl",
+		"dot_config/nvim/lua/plugins/ui.lua.tmpl",
+		"dot_config/opencode/modify_tui.jsonc",
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newApplyFixture(t, "success")
+			if err := os.Remove(filepath.Join(fixture.manager.Source(), name)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := fixture.manager.Apply(); err == nil {
+				t.Fatal("Apply() succeeded with missing theme template")
 			}
 		})
 	}
@@ -261,18 +294,26 @@ func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profi
 	source := filepath.Join(repoRoot, "chezmoi")
 	binary := filepath.Join(aquaRoot, "bin", "chezmoi")
 
+	writeApplyFile(t, filepath.Join(source, ".chezmoidata.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, ".chezmoiexternal.toml.tmpl"), "")
 	writeApplyFile(t, filepath.Join(source, ".chezmoiignore.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_p10k.zsh.tmpl"), "")
 	writeApplyFile(t, filepath.Join(source, "dot_zshrc.tmpl"), "")
 	writeApplyFile(t, filepath.Join(source, "dot_tmux.conf.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "alacritty", "alacritty.toml.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "wezterm", "wezterm.lua.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "nvim", "lua", "plugins", "colorscheme.lua.tmpl"), "")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "nvim", "lua", "plugins", "ui.lua.tmpl"), "")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua.yaml"), "registries: []\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-terminal.yaml"), "registries: []\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-terminal-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode-mem.jsonc"), "{}\n")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_tui.jsonc"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-profile"), string(selected)+"\n")
+	writeApplyFile(t, filepath.Join(source, "test-color-profile"), string(colorprofile.TokyoNight)+"\n")
 	writeExecutable(t, binary, `#!/bin/sh
 set -eu
 source_dir=
@@ -292,7 +333,9 @@ while [ "$#" -gt 0 ]; do
 done
 : "${AQUA_ROOT_DIR:?}"
 expected_profile=$(cat "$source_dir/test-profile")
+expected_color_profile=$(cat "$source_dir/test-color-profile")
 [ "$PDE_PROFILE" = "$expected_profile" ]
+[ "$PDE_COLOR_PROFILE" = "$expected_color_profile" ]
 case "$expected_profile" in
 	full) aqua_name=aqua ; checksums_name=aqua-checksums ;;
 	terminal) aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums ;;
@@ -328,7 +371,7 @@ case "$command" in
 
 	state := filepath.Join(home, ".local", "state", "pde", "chezmoi.boltdb")
 	return applyFixture{
-		manager: New(home, repoRoot, aquaRoot, selected, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
+		manager: New(home, repoRoot, aquaRoot, selected, colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
 		target:  filepath.Join(home, ".config", "tool"),
 		state:   state,
 	}

@@ -25,6 +25,11 @@ A successful explicit selection switches future installs. A pre-commit failure
 preserves the prior selection. Switching from full to terminal stops
 reconciling full-only artifacts but does not uninstall them.
 
+The independent `--color-profile` setting accepts `tokyo-night`,
+`everforest-dark`, or `gruvbox-dark`. It defaults to Tokyo Night, is saved per
+machine, and coordinates terminal, tmux, shell, and full-profile Neovim and
+OpenCode configuration included by the selected component profile.
+
 The installer does not clone or update the repository. Run it from anywhere
 inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set
 `PDE_REPO_ROOT`.
@@ -99,7 +104,7 @@ binaries plus repo-managed AI config.
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/`, `~/.codex/skills/obsidian-zettel/` | Template-aligned vault note creation |
-| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands}`, `opencode.json` permission merge | OpenCode commands and agents |
+| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,tui.jsonc}`, `opencode.json` permission merge | OpenCode commands, agents, and synchronized TUI theme |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | `opencode-mem@2.25.0`, `~/.opencode-mem/` | Explicit correction retention |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |

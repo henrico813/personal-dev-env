@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
 )
 
@@ -27,8 +28,10 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
+		filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoidata.json"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiexternal.toml.tmpl"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", ".chezmoiignore.tmpl"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_p10k.zsh.tmpl"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_zshrc.tmpl"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_tmux.conf.tmpl"),
 	} {
@@ -39,6 +42,7 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	for _, path := range []string{
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode.json"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_tui.jsonc"),
 		filepath.Join(cfg.RepoRoot, "pde-installer", "package.json"),
 		filepath.Join(cfg.RepoRoot, "pde-installer", "package-lock.json"),
 	} {
@@ -53,8 +57,10 @@ func terminalTestConfig(t *testing.T) config {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
 	for _, path := range []string{
+		filepath.Join(repoRoot, "chezmoi", ".chezmoidata.json"),
 		filepath.Join(repoRoot, "chezmoi", ".chezmoiexternal.toml.tmpl"),
 		filepath.Join(repoRoot, "chezmoi", ".chezmoiignore.tmpl"),
+		filepath.Join(repoRoot, "chezmoi", "dot_p10k.zsh.tmpl"),
 		filepath.Join(repoRoot, "chezmoi", "dot_zshrc.tmpl"),
 		filepath.Join(repoRoot, "chezmoi", "dot_tmux.conf.tmpl"),
 		filepath.Join(repoRoot, "chezmoi", "dot_config", "aquaproj-aqua", "aqua.yaml"),
@@ -69,7 +75,7 @@ func terminalTestConfig(t *testing.T) config {
 			t.Fatal(err)
 		}
 	}
-	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal}
+	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal, ColorProfile: colorprofile.TokyoNight}
 }
 
 func terminalProbeBin(t *testing.T, missing string) string {

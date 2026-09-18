@@ -1,0 +1,53 @@
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
+# Alacritty Configuration
+# https://alacritty.org/config-alacritty.html
+
+[window]
+padding = { x = 5, y = 5 }
+decorations = "full"
+opacity = 0.95
+
+[font]
+normal = { family = "JetBrainsMono Nerd Font Mono", style = "Regular" }
+bold = { family = "JetBrainsMono Nerd Font Mono", style = "Bold" }
+italic = { family = "JetBrainsMono Nerd Font Mono", style = "Italic" }
+size = 11.0
+
+[cursor]
+style = { shape = "Block", blinking = "On" }
+
+[terminal]
+shell = { program = "/bin/zsh" }
+
+# {{ $colors.label }}
+[colors.primary]
+background = "{{ $colors.terminal.background }}"
+foreground = "{{ $colors.terminal.foreground }}"
+
+[colors.cursor]
+cursor = "{{ $colors.terminal.cursor }}"
+text = "{{ $colors.terminal.background }}"
+
+[colors.selection]
+background = "{{ $colors.terminal.selectionBackground }}"
+text = "{{ $colors.terminal.selectionForeground }}"
+
+[colors.normal]
+black = "{{ $colors.terminal.normal.black }}"
+red = "{{ $colors.terminal.normal.red }}"
+green = "{{ $colors.terminal.normal.green }}"
+yellow = "{{ $colors.terminal.normal.yellow }}"
+blue = "{{ $colors.terminal.normal.blue }}"
+magenta = "{{ $colors.terminal.normal.magenta }}"
+cyan = "{{ $colors.terminal.normal.cyan }}"
+white = "{{ $colors.terminal.normal.white }}"
+
+[colors.bright]
+black = "{{ $colors.terminal.bright.black }}"
+red = "{{ $colors.terminal.bright.red }}"
+green = "{{ $colors.terminal.bright.green }}"
+yellow = "{{ $colors.terminal.bright.yellow }}"
+blue = "{{ $colors.terminal.bright.blue }}"
+magenta = "{{ $colors.terminal.bright.magenta }}"
+cyan = "{{ $colors.terminal.bright.cyan }}"
+white = "{{ $colors.terminal.bright.white }}"

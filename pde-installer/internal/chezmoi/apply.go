@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
@@ -16,12 +17,13 @@ import (
 type Manager struct {
 	Home, RepoRoot, AquaRoot string
 	Profile                  profile.Profile
+	ColorProfile             colorprofile.Profile
 	Runner                   run.Runner
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
-func New(home, repoRoot, aquaRoot string, selected profile.Profile, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Runner: runner}
+func New(home, repoRoot, aquaRoot string, selected profile.Profile, color colorprofile.Profile, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, ColorProfile: color, Runner: runner}
 }
 
 // Source returns the repository's chezmoi source directory.
@@ -219,6 +221,7 @@ func (m Manager) environment() []string {
 		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, configName),
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
 		"PDE_PROFILE=" + string(m.Profile),
+		"PDE_COLOR_PROFILE=" + string(m.ColorProfile),
 		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,
@@ -231,11 +234,16 @@ func (m Manager) Validate() error {
 	if !m.Profile.Valid() {
 		return fmt.Errorf("invalid profile %q; use full or terminal", m.Profile)
 	}
+	if !m.ColorProfile.Valid() {
+		return fmt.Errorf("invalid color profile %q; use %s", m.ColorProfile, colorprofile.ValidValues)
+	}
 	configName, checksumsName := m.Profile.AquaFiles()
 	required := []string{
 		m.Source(),
+		filepath.Join(m.Source(), ".chezmoidata.json"),
 		filepath.Join(m.Source(), ".chezmoiexternal.toml.tmpl"),
 		filepath.Join(m.Source(), ".chezmoiignore.tmpl"),
+		filepath.Join(m.Source(), "dot_p10k.zsh.tmpl"),
 		filepath.Join(m.Source(), "dot_zshrc.tmpl"),
 		filepath.Join(m.Source(), "dot_tmux.conf.tmpl"),
 		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", configName),
@@ -243,8 +251,13 @@ func (m Manager) Validate() error {
 	}
 	if m.Profile == profile.Full {
 		required = append(required,
+			filepath.Join(m.Source(), "dot_config", "alacritty", "alacritty.toml.tmpl"),
+			filepath.Join(m.Source(), "dot_config", "wezterm", "wezterm.lua.tmpl"),
+			filepath.Join(m.Source(), "dot_config", "nvim", "lua", "plugins", "colorscheme.lua.tmpl"),
+			filepath.Join(m.Source(), "dot_config", "nvim", "lua", "plugins", "ui.lua.tmpl"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_tui.jsonc"),
 		)
 	}
 	for index, path := range required {
