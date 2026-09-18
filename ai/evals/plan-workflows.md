@@ -526,8 +526,9 @@ Expected behavior:
 
 - Delegates focused architecture, bug, and completeness reviews in parallel.
 - Gives every reviewer the applicable loaded skills and exact review focus.
-- Assigns source-documentation findings to completeness; it adds no fourth
-  reviewer.
+- The completeness reviewer loads `code-documentation`, checks changed source
+  and tests for stale or useful missing explanations, accepts no documentation
+  change when the code is sufficient, and adds no fourth reviewer.
 - Reconciles repository-backed findings without treating repetition as proof.
 - Leaves the plan and repository byte-for-byte unchanged.
 
