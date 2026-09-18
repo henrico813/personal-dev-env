@@ -29,6 +29,7 @@ type Tool struct {
 	Links                               []string
 	VersionArgs                         []string
 	Kind                                toolKind
+	RootBinary                          bool
 }
 
 type toolState struct {
@@ -51,24 +52,28 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
 	}
 
-	var nvimArch, rustArch, nodeArch string
+	var nvimArch, rustArch, nodeArch, moshiArch, herdrArch string
 	var checksums map[string]string
 	switch goarch {
 	case "amd64":
-		nvimArch, rustArch, nodeArch = "x86_64", "x86_64", "x64"
+		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "x86_64", "x86_64", "x64", "x86_64", "x86_64"
 		checksums = map[string]string{
 			"neovim": "c441b547142860bf01bcce39e36cbed185c41112813e15443b16e5237750724d",
 			"go":     "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
 			"rust":   "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
-			"node":   "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
+			"node":       "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
+			"moshi-hook": "0241614ab88282159800caf9a0a65230b8e927e21f02a6d34ecc2cfedc782550",
+			"herdr":      "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
 		}
 	case "arm64":
-		nvimArch, rustArch, nodeArch = "arm64", "aarch64", "arm64"
+		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "arm64", "aarch64", "arm64", "arm64", "aarch64"
 		checksums = map[string]string{
 			"neovim": "e055af73fa9c72b37456da8d204fa5c09850bc07e80e9176fe3b87d4afb7a3fc",
 			"go":     "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
 			"rust":   "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
-			"node":   "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
+			"node":       "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
+			"moshi-hook": "d105703fb053e6af416e7b9ca9d8ce3b1fb488443585a1c5ea45fd392ba48118",
+			"herdr":      "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
 		}
 	default:
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
@@ -80,16 +85,21 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	}
 	nvimVersion, goVersion := version("neovim"), version("go")
 	rustVersion, nodeVersion := version("rust"), version("node")
+	moshiVersion, herdrVersion := version("moshi-hook"), version("herdr")
 	nvimArchive := "nvim-linux-" + nvimArch + ".tar.gz"
 	goArchive := "go" + goVersion + ".linux-" + goarch + ".tar.gz"
 	rustArchive := "rust-" + rustVersion + "-" + rustArch + "-unknown-linux-gnu.tar.xz"
 	nodeArchive := "node-v" + nodeVersion + "-linux-" + nodeArch + ".tar.xz"
+	moshiArchive := "moshi-hook_Linux_" + moshiArch + ".tar.gz"
+	herdrArchive := "herdr-linux-" + herdrArch
 	return []Tool{
 		{Name: "neovim", Version: nvimVersion, Archive: nvimArchive, URL: "https://github.com/neovim/neovim/releases/download/v" + nvimVersion + "/" + nvimArchive, SHA256: checksums["neovim"], Directory: "neovim", Binary: "nvim", VersionPrefix: "NVIM v", Links: []string{"nvim"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "go", Version: goVersion, Archive: goArchive, URL: "https://go.dev/dl/" + goArchive, SHA256: checksums["go"], Directory: "go", Binary: "go", VersionPrefix: "go version go", Links: []string{"go", "gofmt"}, VersionArgs: []string{"version"}, Kind: archiveTool},
 		{Name: "rust", Version: rustVersion, Archive: rustArchive, URL: "https://static.rust-lang.org/dist/" + rustArchive, SHA256: checksums["rust"], Directory: "rust", Binary: "rustc", VersionPrefix: "rustc ", Target: rustArch + "-unknown-linux-gnu", Links: []string{"cargo", "rustc", "rustdoc"}, VersionArgs: []string{"--version"}, Kind: rustTool},
 		{Name: "node", Version: nodeVersion, Archive: nodeArchive, URL: "https://nodejs.org/dist/v" + nodeVersion + "/" + nodeArchive, SHA256: checksums["node"], Directory: "node", Binary: "node", VersionPrefix: "v", Links: []string{"corepack", "node", "npm", "npx"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "keychain", Version: version("keychain"), Archive: "keychain-2.9.8", URL: "https://github.com/danielrobbins/keychain/releases/download/2.9.8/keychain", SHA256: "f8b4e8a2a630907bb81737d455a2dec2cb8308e3210840665239ef9c49bbeadb", Directory: "keychain", Binary: "keychain", VersionPrefix: "keychain ", Links: []string{"keychain"}, VersionArgs: []string{"--version"}, Kind: fileTool},
+		{Name: "moshi-hook", Version: moshiVersion, Archive: moshiArchive, URL: "https://cdn.getmoshi.app/hook/" + moshiVersion + "/" + moshiArchive, SHA256: checksums["moshi-hook"], Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
+		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
 	}, nil
 }
 
@@ -228,6 +238,23 @@ func (m Manager) installTool(workspace, stage string, tool Tool) error {
 		if err := m.extractTool(tool, archive, destination); err != nil {
 			return err
 		}
+		if tool.RootBinary {
+			binary := filepath.Join(destination, "bin", tool.Binary)
+			if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
+				return fmt.Errorf("create %s binary directory: %w", tool.Name, err)
+			}
+			if err := os.Rename(filepath.Join(destination, tool.Binary), binary); err != nil {
+				return fmt.Errorf("stage %s executable: %w", tool.Name, err)
+			}
+			for _, name := range tool.Links {
+				if name == tool.Binary {
+					continue
+				}
+				if err := os.Symlink(tool.Binary, filepath.Join(filepath.Dir(binary), name)); err != nil {
+					return fmt.Errorf("link %s executable: %w", name, err)
+				}
+			}
+		}
 		if err := os.Remove(archive); err != nil {
 			return fmt.Errorf("remove %s archive: %w", tool.Name, err)
 		}
@@ -260,7 +287,12 @@ func (m Manager) extractTool(tool Tool, archive, destination string) error {
 	if strings.HasSuffix(tool.Archive, ".tar.gz") {
 		flag = "-xzf"
 	}
-	return m.Runner.Run("extract "+tool.Name, run.Command{Name: "tar", Args: []string{flag, archive, "--strip-components=1", "-C", destination}})
+	args := []string{flag, archive}
+	if !tool.RootBinary {
+		args = append(args, "--strip-components=1")
+	}
+	args = append(args, "-C", destination)
+	return m.Runner.Run("extract "+tool.Name, run.Command{Name: "tar", Args: args})
 }
 
 func (m Manager) writeToolsState(stage string, tools []Tool) error {
