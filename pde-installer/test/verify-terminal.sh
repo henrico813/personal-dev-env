@@ -20,14 +20,48 @@ assert_absent_packages
 pde-installer install terminal --repo-root "$REPO_ROOT"
 assert_absent_packages
 [[ -f "$HOME/.config/pde/config.json" ]]
-grep -Eq '"profile"[[:space:]]*:[[:space:]]*"terminal"' "$HOME/.config/pde/config.json"
+jq -e '.profile == "terminal" and .color_profile == "tokyo-night"' "$HOME/.config/pde/config.json" >/dev/null
+grep -Fq 'export BAT_THEME="TwoDark"' "$HOME/.zshrc"
+grep -Fq '#7aa2f7' "$HOME/.tmux.conf"
+grep -Fq '#7aa2f7' "$HOME/.p10k.zsh"
+bat --list-themes | grep -Fxq TwoDark
+
+before_rollback="$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")"
+zsh_template="$REPO_ROOT/chezmoi/dot_zshrc.tmpl"
+template_backup="$(mktemp)"
+cp "$zsh_template" "$template_backup"
+printf '\n{{ fail "rollback test" }}\n' >>"$zsh_template"
+if pde-installer install --color-profile gruvbox-dark --repo-root "$REPO_ROOT"; then
+	rollback_status=0
+else
+	rollback_status=$?
+fi
+cp "$template_backup" "$zsh_template"
+rm "$template_backup"
+[[ "$rollback_status" -ne 0 ]]
+[[ "$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")" == "$before_rollback" ]]
+
+pde-installer install --color-profile everforest-dark --repo-root "$REPO_ROOT"
+jq -e '.profile == "terminal" and .color_profile == "everforest-dark"' "$HOME/.config/pde/config.json" >/dev/null
+grep -Fq 'export BAT_THEME="zenburn"' "$HOME/.zshrc"
+grep -Fq '#7fbbb3' "$HOME/.zshrc"
+grep -Fq '#7fbbb3' "$HOME/.tmux.conf"
+grep -Fq '#7fbbb3' "$HOME/.p10k.zsh"
+bat --list-themes | grep -Fxq zenburn
+zsh -c 'source "$1"; printf "item\n" | fzf --filter=item >/dev/null' zsh "$HOME/.zshrc"
+zsh -n "$HOME/.zshrc"
+zsh -n "$HOME/.p10k.zsh"
+tmux -L pde-color -f "$HOME/.tmux.conf" new-session -d -s config-check
+[[ "$(tmux -L pde-color show-option -gv pane-active-border-style)" == 'fg=#7fbbb3' ]]
+tmux -L pde-color kill-server
+! grep -Eq '](4|10|11|12);' "$HOME/.zshrc" "$HOME/.p10k.zsh" "$HOME/.tmux.conf"
 
 rm -rf "$HOME/.local/share/aquaproj-aqua"
 aqua_root="$HOME/.local/share/aquaproj-aqua"
 full_only_package="$aqua_root/pkgs/go.dev/gopls/v0.23.0/gopls"
 full_only_launcher="$aqua_root/bin/gopls"
 mkdir -p "$HOME/.config/pde" "$(dirname "$full_only_package")" "$(dirname "$full_only_launcher")"
-printf '{"profile":"full"}\n' >"$HOME/.config/pde/config.json"
+printf '{"profile":"full","color_profile":"gruvbox-dark"}\n' >"$HOME/.config/pde/config.json"
 printf '#!/bin/sh\nprintf '\''gopls-retained\\n'\''\n' >"$full_only_package"
 chmod 0755 "$full_only_package"
 ln -s "$full_only_package" "$full_only_launcher"
@@ -36,11 +70,16 @@ printf 'retain-opencode\n' >"$HOME/.config/opencode"
 printf 'retain-nvim\n' >"$HOME/.config/nvim/init.lua"
 printf 'retain-agents\n' >"$HOME/.agents/marker"
 printf 'retain-codex\n' >"$HOME/.codex/marker"
+rm "$HOME/.tmux.conf"
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
 assert_absent_packages
 [[ -f "$HOME/.config/pde/config.json" ]]
-grep -Eq '"profile"[[:space:]]*:[[:space:]]*"terminal"' "$HOME/.config/pde/config.json"
+jq -e '.profile == "terminal" and .color_profile == "gruvbox-dark"' "$HOME/.config/pde/config.json" >/dev/null
+grep -Fq 'export BAT_THEME="gruvbox-dark"' "$HOME/.zshrc"
+grep -Fq '#83a598' "$HOME/.tmux.conf"
+grep -Fq '#83a598' "$HOME/.p10k.zsh"
+bat --list-themes | grep -Fxq gruvbox-dark
 [[ "$("$full_only_launcher")" == "gopls-retained" ]]
 [[ -L "$full_only_launcher" ]]
 [[ -x "$full_only_package" ]]
