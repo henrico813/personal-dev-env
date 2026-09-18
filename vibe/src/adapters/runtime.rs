@@ -115,6 +115,7 @@ mod tests {
 
         fs::create_dir_all(&bin).expect("mkdir bin");
         fs::create_dir_all(&home).expect("mkdir home");
+        fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
         fs::create_dir_all(&repo_root).expect("mkdir repo");
         fs::write(&combined_prompt, b"Line one\nLine two\n").expect("write prompt");
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
@@ -183,6 +184,15 @@ mod tests {
         assert_eq!(
             std::str::from_utf8(pi_args[model_position + 1]).expect("UTF-8 model selector"),
             "fake-provider/fake-model"
+        );
+        let skill_position = pi_args
+            .iter()
+            .position(|arg| *arg == b"--skill")
+            .expect("Pi receives --skill");
+        assert!(pi_args.iter().any(|arg| *arg == b"--no-skills"));
+        assert_eq!(
+            std::str::from_utf8(pi_args[skill_position + 1]).expect("UTF-8 skill path"),
+            home.join(".agents/skills").to_string_lossy()
         );
         assert_eq!(
             fs::read(&capture).expect("read captured prompt"),

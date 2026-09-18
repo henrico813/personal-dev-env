@@ -2,9 +2,9 @@
   "name": "pde-managed-cli-packages",
   "private": true,
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.4",
-    "@openai/codex": "0.153.2",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@openai/codex": "0.155.1",
     "obsidian-headless": "0.0.14",
-    "opencode-ai": "1.18.27"
+    "opencode-ai": "1.18.31"
   }
 }

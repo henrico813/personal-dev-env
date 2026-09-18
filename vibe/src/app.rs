@@ -160,7 +160,13 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(error) = worktree::validate_base_target(&args.key, args.base.as_deref()) {
         return RunResult::setup_error(error);
     }
-    let prepared_auth = match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref()) {
+    let prepared_auth =
+        match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model) {
+            Ok(prepared) => prepared,
+            Err(error) => return RunResult::setup_error(error),
+        };
+    let home = std::env::var_os("HOME");
+    let shared_skills = match docker::prepare_shared_skills(home.as_deref()) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
@@ -337,13 +343,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
     let agent_exit = match sandbox::run_agent(
-        &asset_root,
         &mounts,
         &artifacts,
         &args.model,
         args.stderr_level.as_str(),
         args.insecure_tls,
         prepared_auth.as_deref(),
+        shared_skills.as_ref(),
     ) {
         Ok(code) => code,
         Err(err) => {

@@ -24,7 +24,7 @@ Safe firmware installation
 
 Use behavior and examples to connect requirements to checks. BDD
 
-Make the reason for the test clear from its name, visible inputs, and assertions. Add a short explanation when the reason is not obvious. Explain shared capability and architectural context once in the module or existing suite documentation, not above every test.
+Make the reason for the test clear from its name, visible inputs, and assertions. Follow `code-documentation` for test comments, docstrings, and suite-level explanations.
 
 Prioritize high-impact hot spots: interfaces and error contracts, state transitions and invariants, data-model validation and persistence, and boundaries between systems or layers. Select relevant failure cases and boundary values rather than exhaustive combinations.
 

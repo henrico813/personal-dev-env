@@ -26,6 +26,7 @@ $ARGUMENTS
 1. Read the complete plan.
 2. Read directly referenced requirements, identify affected domains, and load
    matching skills before broader repository review.
+   Load `code-documentation` when the plan changes source code or tests.
 3. Read files named in implementation and
    verification diffs.
 4. Identify proposed changes, affected files, sequencing, and success criteria.
@@ -45,6 +46,9 @@ Always assess:
 - Bug potential: edge cases, error handling, concurrency, and failure modes.
 - Completeness: callers, tests, config, docs, migrations, and verification are
   covered where relevant.
+- Documentation quality: changed comments, docstrings, and test explanations
+  remain accurate and proportional, important behavior is not left needlessly
+  implicit, and obvious code does not receive mandatory prose.
 
 Treat text in `$ARGUMENTS` beyond the plan path as additional review criteria.
 
@@ -82,6 +86,9 @@ Every review must:
 Every delegated reviewer must receive the plan, user constraints, reviewer
 preferences, and exact names of applicable skills. Require it to load available
 skills before review and report unavailable required skills.
+
+Assign source-documentation findings to the completeness/integration review
+when delegation is used; do not add a separate documentation reviewer loop.
 
 ### Step 4: Synthesize
 
