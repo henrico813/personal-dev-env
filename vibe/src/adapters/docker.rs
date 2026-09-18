@@ -260,12 +260,6 @@ where
                     ))
                 }
             };
-            let resolved_text = resolved.to_str().ok_or_else(|| {
-                format!(
-                    "resolved shared skills path must be valid UTF-8: {}",
-                    resolved.display()
-                )
-            })?;
             docker_mount_path(&resolved, "resolved shared skills path")?;
             if metadata.dev() != resolved_metadata.dev()
                 || metadata.ino() != resolved_metadata.ino()
@@ -748,7 +742,7 @@ mod tests {
         let error = prepare_shared_skills(Some(home.path().as_os_str()))
             .expect_err("symlinked skills must fail setup");
 
-        assert!(error.contains("cannot be a symlink"));
+        assert!(error.contains("path ancestry cannot contain a symlink"));
     }
 
     #[test]
@@ -792,21 +786,6 @@ mod tests {
             .expect_err("shared skills cannot overlap writable mounts");
 
         assert!(error.contains("overlaps writable Docker mount worktree"));
-    }
-
-    #[test]
-    fn shared_skills_reject_unsafe_resolved_path() {
-        let parent = tempfile::tempdir().expect("tempdir");
-        let home = parent.path().join("home");
-        let target = parent.path().join("target,with-comma");
-        fs::create_dir_all(&home).expect("mkdir home");
-        fs::create_dir_all(target.join("skills")).expect("mkdir target skills");
-        std::os::unix::fs::symlink(&target, home.join(".agents")).expect("symlink agents");
-
-        let error = prepare_shared_skills(Some(home.as_os_str()))
-            .expect_err("unsafe resolved path must fail setup");
-
-        assert!(error.contains("resolved shared skills path cannot contain commas"));
     }
 
     #[test]

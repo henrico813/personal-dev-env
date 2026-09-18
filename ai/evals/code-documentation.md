@@ -44,13 +44,8 @@ export EVAL_TRACES="$EVAL_ROOT/traces"
 export PYTHONDONTWRITEBYTECODE=1
 INSTALLER="$EVAL_ROOT/pde-installer"
 EVAL_PROMPT="$EVAL_ROOT/code-documentation-vibe-prompt.md"
-mkdir -p "$EVAL_HOME" "$EVAL_CASES" "$EVAL_TRACES"
 export HOME="$EVAL_HOME"
 export PATH="$ORIGINAL_PATH"
-if [[ -z "${OPENCODE_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
-  printf '%s\n' 'Set OPENCODE_API_KEY or OPENAI_API_KEY before running the evaluation' >&2
-  exit 1
-fi
 restore_environment() {
   if [[ -n "$ORIGINAL_HOME" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
   if [[ -n "$ORIGINAL_PATH" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
@@ -62,8 +57,14 @@ cleanup_evaluation() {
   exit "$status"
 }
 trap cleanup_evaluation EXIT
+mkdir -p "$EVAL_HOME" "$EVAL_CASES" "$EVAL_TRACES"
+if [[ -z "${OPENCODE_API_KEY:-}" || -z "${OPENAI_API_KEY:-}" ]]; then
+  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
+  exit 1
+fi
 go build -C pde-installer -o "$INSTALLER" .
 "$INSTALLER" install full
+export PATH="$EVAL_HOME/.local/bin:$ORIGINAL_PATH"
 
 compare_managed() {
   cmp -s "$1" "$HOME/$2"
