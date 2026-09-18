@@ -610,11 +610,9 @@ mod tests {
     fn shared_skills_accept_missing_directory() {
         let home = tempfile::tempdir().expect("tempdir");
 
-        assert_eq!(
-            prepare_shared_skills(Some(home.path().as_os_str()))
-                .expect("missing skills are optional"),
-            None
-        );
+        assert!(prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect("missing skills are optional")
+            .is_none());
     }
 
     #[test]
@@ -623,7 +621,9 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
 
-        let prepared = prepare_shared_skills(Some(home.path().as_os_str())).expect("skills path");
+        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect("read skills path")
+            .expect("skills path");
 
         assert_eq!(
             prepared.path,
