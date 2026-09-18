@@ -51,7 +51,8 @@ if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVI
   printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
   exit 1
 fi
-export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
+EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")
+export EVAL_ROOT
 export EVAL_HOME="$EVAL_ROOT/home"
 export EVAL_BASE="$EVAL_ROOT/base"
 export EVAL_CASES="$EVAL_ROOT/cases"
