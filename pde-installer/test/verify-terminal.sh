@@ -103,6 +103,7 @@ tmux -L pde-color -f "$HOME/.tmux.conf" new-session -d -s config-check
 [[ "$(tmux -L pde-color show-option -gv pane-active-border-style)" == 'fg=#7fbbb3' ]]
 tmux -L pde-color kill-server
 ! grep -Eq '](4|10|11|12);' "$HOME/.zshrc" "$HOME/.p10k.zsh" "$HOME/.tmux.conf"
+[[ ! -e "$HOME/.config/herdr" ]]
 
 rm -rf "$HOME/.local/share/aquaproj-aqua"
 aqua_root="$HOME/.local/share/aquaproj-aqua"
@@ -113,12 +114,13 @@ printf '{"profile":"full","color_profile":"gruvbox-dark"}\n' >"$HOME/.config/pde
 printf '#!/bin/sh\nprintf '\''gopls-retained\\n'\''\n' >"$full_only_package"
 chmod 0755 "$full_only_package"
 ln -s "$full_only_package" "$full_only_launcher"
-mkdir -p "$HOME/.config/nvim" "$HOME/.agents" "$HOME/.codex"
+mkdir -p "$HOME/.config/nvim" "$HOME/.agents" "$HOME/.codex" "$HOME/.config/herdr"
 printf 'retain-opencode\n' >"$HOME/.config/opencode"
 printf 'retain-nvim\n' >"$HOME/.config/nvim/init.lua"
 printf 'retain-agents\n' >"$HOME/.agents/marker"
 printf 'retain-codex\n' >"$HOME/.codex/marker"
 rm "$HOME/.tmux.conf"
+printf 'retain-herdr\n' >"$HOME/.config/herdr/config.toml"
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
 assert_absent_packages
@@ -135,11 +137,116 @@ bat --list-themes | grep -Fxq gruvbox-dark
 [[ "$(cat "$HOME/.config/nvim/init.lua")" == "retain-nvim" ]]
 [[ "$(cat "$HOME/.agents/marker")" == "retain-agents" ]]
 [[ "$(cat "$HOME/.codex/marker")" == "retain-codex" ]]
+[[ "$(cat "$HOME/.config/herdr/config.toml")" == "retain-herdr" ]]
 
 [[ "$(tmux -V)" == 'tmux 3.7b' ]]
 tmux_binary="$HOME/.local/share/pde/tmux/3.7b/bin/tmux"
 [[ -x "$tmux_binary" ]]
 file "$tmux_binary" | grep -qi static
+tmux_socket="pde-terminal-$$"
+trap 'tmux -L "$tmux_socket" kill-server 2>/dev/null || true' EXIT
+workspace="$HOME/tw-workspace"
+mkdir -p "$workspace"
+cat >"$HOME/.config/pde/tw.yml" <<YAML
+herdr: printf 'herdr\n' >> '$workspace/startups'
+wallace: printf 'wallace\n' >> '$workspace/startups'
+shell: ""
+YAML
+chmod 600 "$HOME/.config/pde/tw.yml"
+: >"$workspace/startups"
+tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -x 46 -y 22 -s workspace -n zsh -c "$HOME" \
+	"zsh -ic 'if tw init \"$workspace\"; then print 0 >\"$workspace/init-status\"; else print 1 >\"$workspace/init-status\"; fi; tmux wait-for -S tw-ready; exec zsh'"
+timeout 20 tmux -L "$tmux_socket" wait-for tw-ready
+if [[ "$(cat "$workspace/init-status")" != 0 ]]; then
+	tmux -L "$tmux_socket" list-windows -t workspace >&2
+	tmux -L "$tmux_socket" capture-pane -p -t workspace:shell >&2
+	exit 1
+fi
+timeout 20 bash -c 'until [[ -f "$1" && $(wc -l <"$1") -eq 2 ]]; do sleep 0.1; done' _ "$workspace/startups"
+[[ "$(sort "$workspace/startups")" == $'herdr\nwallace' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_index}:#{window_name}')" == $'1:herdr\n2:wallace\n3:shell' ]]
+for role in herdr wallace shell; do
+	[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:$role '#{pane_current_path}')" == "$workspace" ]]
+done
+[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_name}:#{window_width}x#{window_height}' | grep '^herdr:')" == 'herdr:46x22' ]]
+[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
+
+shell_pane="$(tmux -L "$tmux_socket" display-message -p -t workspace:shell '#{pane_id}')"
+tmux -L "$tmux_socket" select-window -t workspace:shell
+tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw '$workspace' \"touch '$workspace/left-started'\" \"touch '$workspace/top-started'\" \"touch '$workspace/bottom-started'\" \"touch '$workspace/right-started'\" && touch '$workspace/open-succeeded'" C-m
+timeout 20 bash -c 'until [[ -e "$1/open-succeeded" && -e "$1/left-started" && -e "$1/top-started" && -e "$1/bottom-started" && -e "$1/right-started" ]]; do sleep 0.1; done' _ "$workspace"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{window_panes}')" == 4 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{pane_current_path} #{pane_active}')" == "$workspace 1" ]]
+tmux -L "$tmux_socket" kill-window -t workspace:tw_workspace
+tmux -L "$tmux_socket" select-window -t workspace:shell
+tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw && touch '$workspace/open-default-succeeded'" C-m
+timeout 20 bash -c 'until [[ -e "$1" ]]; do sleep 0.1; done' _ "$workspace/open-default-succeeded"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{window_panes}')" == 4 ]]
+tmux -L "$tmux_socket" kill-window -t workspace:tw_workspace
+
+tmux -L "$tmux_socket" new-window -d -t workspace -n notes -c "$workspace"
+tmux -L "$tmux_socket" split-window -d -t workspace:herdr -c "$workspace"
+tmux -L "$tmux_socket" kill-window -t workspace:wallace
+tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw init '$workspace' || touch '$workspace/repeat-failed'" C-m
+timeout 20 bash -c 'until [[ -f "$1" && $(wc -l <"$1") -eq 3 ]]; do sleep 0.1; done' _ "$workspace/startups"
+[[ ! -e "$workspace/repeat-failed" ]]
+[[ "$(sort "$workspace/startups")" == $'herdr\nwallace\nwallace' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_name}' | sort)" == $'herdr\nnotes\nshell\nwallace' ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:herdr '#{window_panes}')" == 2 ]]
+[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
+
+other_workspace="$HOME/tw-other"
+mkdir -p "$other_workspace"
+tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw init '$other_workspace' && touch '$workspace/root-unexpected'; tmux wait-for -S tw-root" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tw-root
+[[ ! -e "$workspace/root-unexpected" ]]
+[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
+
+uninitialized="$HOME/tw-uninitialized"
+mkdir -p "$uninitialized"
+tmux -L "$tmux_socket" new-session -d -s uninitialized -n herdr -x 46 -y 22 -c "$uninitialized" \
+	"zsh -ic \"tw '$uninitialized' && touch '$uninitialized/opened'; tmux wait-for -S tw-uninitialized; exec zsh\""
+timeout 20 tmux -L "$tmux_socket" wait-for tw-uninitialized
+[[ -e "$uninitialized/opened" ]]
+[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t uninitialized @tw-root)" ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t uninitialized:tw_uninitialized '#{window_panes}')" == 4 ]]
+
+project_config="$HOME/tw-project-config"
+mkdir -p "$project_config"
+printf 'herdr: touch %s/project-config-unexpected\nwallace: ""\nshell: ""\n' "$project_config" >"$project_config/.tw.yml"
+tmux -L "$tmux_socket" new-session -d -s project-config -x 46 -y 22 -c "$project_config" \
+	"zsh -ic \"tw init '$project_config' && touch '$project_config/initialized'; tmux wait-for -S tw-project; exec zsh\""
+timeout 20 tmux -L "$tmux_socket" wait-for tw-project
+[[ -e "$project_config/initialized" ]]
+[[ ! -e "$project_config/project-config-unexpected" ]]
+[[ "$(tmux -L "$tmux_socket" show-option -qv -t project-config @tw-root)" == "$project_config" ]]
+
+tmux -L "$tmux_socket" new-session -d -s duplicate -n herdr -x 46 -y 22 -c "$workspace" \
+	"zsh -ic 'tmux wait-for tw-duplicate-start; tw init \"$workspace\" && touch \"$workspace/duplicate-unexpected\"; tmux wait-for -S tw-duplicate; exec zsh'"
+tmux -L "$tmux_socket" new-window -d -t duplicate:2 -n herdr -c "$workspace"
+tmux -L "$tmux_socket" wait-for -S tw-duplicate-start
+timeout 20 tmux -L "$tmux_socket" wait-for tw-duplicate
+[[ ! -e "$workspace/duplicate-unexpected" ]]
+[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t duplicate @tw-root)" ]]
+
+insecure_config="$HOME/tw-insecure-config"
+mkdir -p "$insecure_config"
+chmod 644 "$HOME/.config/pde/tw.yml"
+tmux -L "$tmux_socket" new-session -d -s insecure-config -x 46 -y 22 -c "$insecure_config" \
+	"zsh -ic \"tw init '$insecure_config' && touch '$insecure_config/unexpected'; tmux wait-for -S tw-insecure; exec zsh\""
+timeout 20 tmux -L "$tmux_socket" wait-for tw-insecure
+[[ ! -e "$insecure_config/unexpected" ]]
+[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t insecure-config @tw-root)" ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t insecure-config -F '#{window_index}' | wc -l)" -eq 1 ]]
+chmod 600 "$HOME/.config/pde/tw.yml"
+
+[[ "$(tmux -L "$tmux_socket" show-options -gqv base-index)" == 1 ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gwqv pane-base-index)" == 1 ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gqv renumber-windows)" == off ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gqv status-justify)" == left ]]
+tmux -L "$tmux_socket" show-options -gqv status-right | grep -Fq '%H:%M'
+tmux -L "$tmux_socket" kill-server
+trap - EXIT
 
 pde-installer install --repo-root "$REPO_ROOT"
 pde-installer doctor --repo-root "$REPO_ROOT"
