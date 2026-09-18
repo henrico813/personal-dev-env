@@ -18,7 +18,7 @@ import (
 )
 
 func list(config config, runner run.Runner) error {
-	if err := config.validateProfile(); err != nil {
+	if err := config.validate(); err != nil {
 		return err
 	}
 	ubuntuManager := ubuntu.New(config.Profile, runner)
@@ -42,7 +42,7 @@ func list(config config, runner run.Runner) error {
 		}
 		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 	}
-	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Probe()
+	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
 	}

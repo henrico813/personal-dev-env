@@ -2,6 +2,10 @@
 {{- if not (or (eq $profile "full") (eq $profile "terminal")) -}}
 {{ fail "PDE_PROFILE must be exactly full or terminal" }}
 {{- end }}
+{{- $colorProfile := env "PDE_COLOR_PROFILE" -}}
+{{- if not (index .colorProfiles $colorProfile) -}}
+{{ fail "PDE_COLOR_PROFILE must select a defined color profile" }}
+{{- end }}
 
 .config/nvim/pack/plugins/start/blink.cmp
 .config/nvim/pack/plugins/start/blink.cmp/**

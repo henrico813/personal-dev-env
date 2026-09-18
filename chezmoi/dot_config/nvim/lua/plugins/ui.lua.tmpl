@@ -1,6 +1,7 @@
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
 require("lualine").setup({
   options = {
-    theme = "tokyonight",
+    theme = "{{ $colors.nvim.lualine }}",
     globalstatus = true,
     component_separators = "|",
     section_separators = "",
@@ -33,7 +34,7 @@ require("lualine").setup({
         cond = function()
           return type(vim.g.pde_inline_status) == "string" and vim.g.pde_inline_status ~= ""
         end,
-        color = { fg = "#e0af68" },
+        color = { fg = "{{ $colors.ui.warning }}" },
       },
       {
         function()

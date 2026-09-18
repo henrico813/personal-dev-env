@@ -1,0 +1,139 @@
+{
+  "colorProfiles": {
+    "tokyo-night": {
+      "label": "Tokyo Night",
+      "terminal": {
+        "background": "#1a1b26",
+        "foreground": "#c0caf5",
+        "cursor": "#c0caf5",
+        "selectionBackground": "#33467c",
+        "selectionForeground": "#c0caf5",
+        "normal": {
+          "black": "#15161e",
+          "red": "#f7768e",
+          "green": "#9ece6a",
+          "yellow": "#e0af68",
+          "blue": "#7aa2f7",
+          "magenta": "#bb9af7",
+          "cyan": "#7dcfff",
+          "white": "#a9b1d6"
+        },
+        "bright": {
+          "black": "#414868",
+          "red": "#f7768e",
+          "green": "#9ece6a",
+          "yellow": "#e0af68",
+          "blue": "#7aa2f7",
+          "magenta": "#bb9af7",
+          "cyan": "#7dcfff",
+          "white": "#c0caf5"
+        }
+      },
+      "ui": {
+        "surface": "#16161e",
+        "muted": "#414868",
+        "subtle": "#565f89",
+        "accent": "#7aa2f7",
+        "secondary": "#bb9af7",
+        "success": "#9ece6a",
+        "error": "#f7768e",
+        "warning": "#e0af68"
+      },
+      "nvim": {
+        "colorscheme": "tokyonight-night",
+        "lualine": "tokyonight"
+      },
+      "bat": "TwoDark"
+    },
+    "everforest-dark": {
+      "label": "Everforest Dark",
+      "terminal": {
+        "background": "#2d353b",
+        "foreground": "#d3c6aa",
+        "cursor": "#d3c6aa",
+        "selectionBackground": "#543a48",
+        "selectionForeground": "#d3c6aa",
+        "normal": {
+          "black": "#343f44",
+          "red": "#e67e80",
+          "green": "#a7c080",
+          "yellow": "#dbbc7f",
+          "blue": "#7fbbb3",
+          "magenta": "#d699b6",
+          "cyan": "#83c092",
+          "white": "#d3c6aa"
+        },
+        "bright": {
+          "black": "#859289",
+          "red": "#e67e80",
+          "green": "#a7c080",
+          "yellow": "#dbbc7f",
+          "blue": "#7fbbb3",
+          "magenta": "#d699b6",
+          "cyan": "#83c092",
+          "white": "#e7d8b8"
+        }
+      },
+      "ui": {
+        "surface": "#232a2e",
+        "muted": "#475258",
+        "subtle": "#859289",
+        "accent": "#7fbbb3",
+        "secondary": "#d699b6",
+        "success": "#a7c080",
+        "error": "#e67e80",
+        "warning": "#dbbc7f"
+      },
+      "nvim": {
+        "colorscheme": "everforest",
+        "lualine": "everforest"
+      },
+      "bat": "zenburn"
+    },
+    "gruvbox-dark": {
+      "label": "Gruvbox Dark",
+      "terminal": {
+        "background": "#282828",
+        "foreground": "#ebdbb2",
+        "cursor": "#ebdbb2",
+        "selectionBackground": "#504945",
+        "selectionForeground": "#ebdbb2",
+        "normal": {
+          "black": "#282828",
+          "red": "#cc241d",
+          "green": "#98971a",
+          "yellow": "#d79921",
+          "blue": "#458588",
+          "magenta": "#b16286",
+          "cyan": "#689d6a",
+          "white": "#a89984"
+        },
+        "bright": {
+          "black": "#928374",
+          "red": "#fb4934",
+          "green": "#b8bb26",
+          "yellow": "#fabd2f",
+          "blue": "#83a598",
+          "magenta": "#d3869b",
+          "cyan": "#8ec07c",
+          "white": "#ebdbb2"
+        }
+      },
+      "ui": {
+        "surface": "#1d2021",
+        "muted": "#504945",
+        "subtle": "#928374",
+        "accent": "#83a598",
+        "secondary": "#d3869b",
+        "success": "#b8bb26",
+        "error": "#fb4934",
+        "warning": "#fabd2f"
+      },
+      "nvim": {
+        "colorscheme": "gruvbox",
+        "lualine": "gruvbox"
+      },
+      "bat": "gruvbox-dark"
+    }
+  }
+}

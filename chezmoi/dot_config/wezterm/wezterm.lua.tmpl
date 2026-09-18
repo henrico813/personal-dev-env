@@ -1,0 +1,72 @@
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
+local wezterm = require 'wezterm'
+
+return {
+  colors = {
+    foreground = '{{ $colors.terminal.foreground }}',
+    background = '{{ $colors.terminal.background }}',
+    cursor_bg = '{{ $colors.terminal.cursor }}',
+    cursor_fg = '{{ $colors.terminal.background }}',
+    cursor_border = '{{ $colors.terminal.cursor }}',
+    selection_fg = '{{ $colors.terminal.selectionForeground }}',
+    selection_bg = '{{ $colors.terminal.selectionBackground }}',
+    scrollbar_thumb = '{{ $colors.ui.muted }}',
+    split = '{{ $colors.ui.accent }}',
+    ansi = {
+      '{{ $colors.terminal.normal.black }}', '{{ $colors.terminal.normal.red }}',
+      '{{ $colors.terminal.normal.green }}', '{{ $colors.terminal.normal.yellow }}',
+      '{{ $colors.terminal.normal.blue }}', '{{ $colors.terminal.normal.magenta }}',
+      '{{ $colors.terminal.normal.cyan }}', '{{ $colors.terminal.normal.white }}',
+    },
+    brights = {
+      '{{ $colors.terminal.bright.black }}', '{{ $colors.terminal.bright.red }}',
+      '{{ $colors.terminal.bright.green }}', '{{ $colors.terminal.bright.yellow }}',
+      '{{ $colors.terminal.bright.blue }}', '{{ $colors.terminal.bright.magenta }}',
+      '{{ $colors.terminal.bright.cyan }}', '{{ $colors.terminal.bright.white }}',
+    },
+  },
+
+  hide_tab_bar_if_only_one_tab = true,
+
+  font = wezterm.font('JetBrainsMonoNL Nerd Font Mono', { weight = 'Regular' }),
+  font_rules = {
+    { intensity = 'Bold', font = wezterm.font('JetBrainsMonoNL Nerd Font Mono', { weight = 'Bold' }) },
+    { italic = true, font = wezterm.font('JetBrainsMonoNL Nerd Font Mono', { italic = true }) },
+  },
+  font_size = 13.5,
+  cell_width = 0.9,
+
+  window_background_opacity = 0.95,
+  text_background_opacity = 1.0,
+
+  window_decorations = 'TITLE | RESIZE',
+
+  default_prog = { '/bin/zsh' },
+
+  window_frame = {
+    active_titlebar_bg = '{{ $colors.terminal.background }}',
+    inactive_titlebar_bg = '{{ $colors.ui.surface }}',
+  },
+
+  window_padding = {
+    left = 5,
+    right = 5,
+    top = 5,
+    bottom = 5,
+  },
+
+  -- Copy mode (CTRL+SHIFT+X) and Quick Select (CTRL+SHIFT+SPACE) are built-in.
+  -- These keybinds add explicit mappings and a leader for pane splitting.
+  keys = {
+    { key = 'x', mods = 'CTRL|SHIFT', action = wezterm.action.ActivateCopyMode },
+    { key = 'phys:Space', mods = 'CTRL|SHIFT', action = wezterm.action.QuickSelect },
+  },
+
+  -- Quick select: extend built-in patterns with extras
+  quick_select_patterns = {
+    '[0-9a-f]{7,40}',           -- git hashes
+    '\\d+\\.\\d+\\.\\d+\\.\\d+', -- IP addresses
+    '[\\w./~-]+/[\\w./~-]+',    -- file paths
+  },
+
+}

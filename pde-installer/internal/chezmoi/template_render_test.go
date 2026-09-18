@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"pde-installer/internal/colorprofile"
 )
 
 func TestIgnoreTemplateProfiles(t *testing.T) {
@@ -771,6 +774,157 @@ func TestTemplatesRejectInvalidProfiles(t *testing.T) {
 	}
 }
 
+func TestTemplatesRejectInvalidColors(t *testing.T) {
+	if _, err := renderConfiguredTemplate(t, ".chezmoiignore.tmpl", "full", "nord"); err == nil {
+		t.Fatal("render succeeded")
+	}
+}
+
+func TestColorDataHasCompletePalettes(t *testing.T) {
+	values := loadTemplateData(t)
+	profiles, ok := values["colorProfiles"].(map[string]any)
+	if !ok {
+		t.Fatal("colorProfiles is not an object")
+	}
+	wantProfiles := colorprofile.All()
+	if len(profiles) != len(wantProfiles) {
+		t.Fatalf("colorProfiles count = %d, want %d", len(profiles), len(wantProfiles))
+	}
+	hexColor := regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+	for _, name := range wantProfiles {
+		profileData, ok := profiles[string(name)].(map[string]any)
+		if !ok {
+			t.Errorf("colorProfiles[%q] is missing", name)
+			continue
+		}
+		terminal, ok := profileData["terminal"].(map[string]any)
+		if !ok {
+			t.Errorf("colorProfiles[%q].terminal is missing", name)
+			continue
+		}
+		assertColorFields(t, hexColor, terminal, "background", "foreground", "cursor", "selectionBackground", "selectionForeground")
+		for _, set := range []string{"normal", "bright"} {
+			palette, ok := terminal[set].(map[string]any)
+			if !ok {
+				t.Errorf("colorProfiles[%q].terminal.%s is missing", name, set)
+				continue
+			}
+			assertColorFields(t, hexColor, palette, "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white")
+			if len(palette) != 8 {
+				t.Errorf("colorProfiles[%q].terminal.%s has %d colors, want 8", name, set, len(palette))
+			}
+		}
+		ui, ok := profileData["ui"].(map[string]any)
+		if !ok {
+			t.Errorf("colorProfiles[%q].ui is missing", name)
+		} else {
+			assertColorFields(t, hexColor, ui, "surface", "muted", "subtle", "accent", "secondary", "success", "error", "warning")
+		}
+		for _, field := range []string{"label", "bat"} {
+			if value, ok := profileData[field].(string); !ok || value == "" {
+				t.Errorf("colorProfiles[%q].%s is missing", name, field)
+			}
+		}
+		nvim, ok := profileData["nvim"].(map[string]any)
+		colorscheme, colorschemeOK := nvim["colorscheme"].(string)
+		lualine, lualineOK := nvim["lualine"].(string)
+		if !ok || !colorschemeOK || colorscheme == "" || !lualineOK || lualine == "" {
+			t.Errorf("colorProfiles[%q].nvim is incomplete", name)
+		}
+	}
+}
+
+func TestColorTemplatesRenderEveryProfile(t *testing.T) {
+	templates := []string{
+		"dot_config/alacritty/alacritty.toml.tmpl",
+		"dot_config/wezterm/wezterm.lua.tmpl",
+		"dot_tmux.conf.tmpl",
+		"dot_p10k.zsh.tmpl",
+		"dot_zshrc.tmpl",
+		"dot_config/nvim/lua/plugins/colorscheme.lua.tmpl",
+		"dot_config/nvim/lua/plugins/ui.lua.tmpl",
+	}
+	profiles := colorprofile.All()
+	for _, name := range templates {
+		t.Run(name, func(t *testing.T) {
+			outputs := make(map[[32]byte]string)
+			for _, profile := range profiles {
+				text, err := renderConfiguredTemplate(t, name, "full", string(profile))
+				if err != nil {
+					t.Fatalf("render %s: %v", profile, err)
+				}
+				if strings.Contains(text, "{{") {
+					t.Fatalf("render %s left a template action", profile)
+				}
+				outputs[sha256.Sum256([]byte(text))] = string(profile)
+			}
+			if len(outputs) != len(profiles) {
+				t.Fatalf("rendered %d distinct outputs, want %d", len(outputs), len(profiles))
+			}
+		})
+	}
+}
+
+func TestPowerlevelUsesRGBColors(t *testing.T) {
+	for _, profile := range colorprofile.All() {
+		path := filepath.Join(t.TempDir(), ".p10k.zsh")
+		text, err := renderConfiguredTemplate(t, "dot_p10k.zsh.tmpl", "full", string(profile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command("zsh", "-c", `
+source "$1"
+for name in ${(k)parameters}; do
+  [[ $name == POWERLEVEL9K_*_(FOREGROUND|BACKGROUND) ]] || continue
+  value=${(P)name}
+  [[ -z $value || $value == \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F] ]] || exit 1
+done
+`, "zsh", path)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("%s leaves a non-RGB prompt color: %v\n%s", profile, err, output)
+		}
+	}
+}
+
+func TestRenderedConfigsAvoidPaletteChanges(t *testing.T) {
+	for _, name := range []string{"dot_tmux.conf.tmpl", "dot_p10k.zsh.tmpl", "dot_zshrc.tmpl"} {
+		text, err := renderConfiguredTemplate(t, name, "full", "everforest-dark")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, escape := range []string{"]4;", "]10;", "]11;", "]12;"} {
+			if strings.Contains(text, escape) {
+				t.Errorf("%s emits terminal palette selector %q", name, escape)
+			}
+		}
+	}
+}
+
+func TestWezTermRendersInterfaceColors(t *testing.T) {
+	text, err := renderConfiguredTemplate(t, "dot_config/wezterm/wezterm.lua.tmpl", "full", "everforest-dark")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"scrollbar_thumb", "split"} {
+		if !strings.Contains(text, field+" = '#") {
+			t.Errorf("rendered WezTerm config omits %s", field)
+		}
+	}
+}
+
+func assertColorFields(t *testing.T, pattern *regexp.Regexp, values map[string]any, fields ...string) {
+	t.Helper()
+	for _, field := range fields {
+		value, ok := values[field].(string)
+		if !ok || !pattern.MatchString(value) {
+			t.Errorf("%s = %v, want #RRGGBB", field, values[field])
+		}
+	}
+}
+
 func assertProfileTemplates(t *testing.T, templateName string, tests map[string]struct {
 	profile string
 	want    []string
@@ -826,6 +980,10 @@ func renderProfileTemplate(t *testing.T, name, profile string) string {
 }
 
 func renderTemplate(t *testing.T, name, profile string) (string, error) {
+	return renderConfiguredTemplate(t, name, profile, "tokyo-night")
+}
+
+func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) (string, error) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", name))
 	if err != nil {
@@ -839,19 +997,35 @@ func renderTemplate(t *testing.T, name, profile string) (string, error) {
 			if key == "PDE_REPO_ROOT" {
 				return repoRoot(t)
 			}
+			if key == "PDE_COLOR_PROFILE" {
+				return colorProfile
+			}
 			return ""
 		},
 		"fail": func(message string) (string, error) { return "", &templateError{message} },
 	}
-	tmpl, err := template.New(name).Funcs(functions).Parse(string(data))
+	tmpl, err := template.New(name).Option("missingkey=error").Funcs(functions).Parse(string(data))
 	if err != nil {
 		return "", err
 	}
 	var output bytes.Buffer
-	if err := tmpl.Execute(&output, nil); err != nil {
+	if err := tmpl.Execute(&output, loadTemplateData(t)); err != nil {
 		return "", err
 	}
 	return output.String(), nil
+}
+
+func loadTemplateData(t *testing.T) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", ".chezmoidata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal(data, &values); err != nil {
+		t.Fatal(err)
+	}
+	return values
 }
 
 type templateError struct{ message string }
