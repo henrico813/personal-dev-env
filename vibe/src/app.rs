@@ -162,9 +162,9 @@ pub fn execute(args: RunArgs) -> RunResult {
     }
     let prepared_auth =
         match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model) {
-        Ok(prepared) => prepared,
-        Err(error) => return RunResult::setup_error(error),
-    };
+            Ok(prepared) => prepared,
+            Err(error) => return RunResult::setup_error(error),
+        };
     let home = std::env::var_os("HOME");
     let shared_skills = match docker::prepare_shared_skills(home.as_deref()) {
         Ok(prepared) => prepared,
