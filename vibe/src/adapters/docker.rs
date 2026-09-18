@@ -189,7 +189,11 @@ fn docker_mount_path(path: &Path, label: &str) -> Result<(), String> {
     let text = path
         .to_str()
         .ok_or_else(|| format!("{label} must be valid UTF-8 to mount shared skills"))?;
-    if text.contains(',') || text.contains('"') {
+    if text.contains(',')
+        || text.contains('"')
+        || text.contains('\n')
+        || text.contains('\r')
+    {
         return Err(format!(
             "{label} contains syntax unsafe for Docker mounts: {}",
             path.display()
@@ -207,12 +211,17 @@ fn reject_writable_mount_overlap(
     worktree: &Path,
     git_common_dir: &Path,
     artifacts: &Path,
+    pi_agent_dir: Option<&Path>,
 ) -> Result<(), String> {
-    for (label, writable_mount) in [
+    let mut writable_mounts = vec![
         ("worktree", worktree),
         ("shared Git directory", git_common_dir),
         ("artifacts", artifacts),
-    ] {
+    ];
+    if let Some(pi_agent_dir) = pi_agent_dir {
+        writable_mounts.push(("Pi state directory", pi_agent_dir));
+    }
+    for (label, writable_mount) in writable_mounts {
         let writable_mount = fs::canonicalize(writable_mount)
             .map_err(|error| format!("resolve {label} for shared skills validation: {error}"))?;
         if paths_overlap(shared_skills, &writable_mount) {
@@ -232,13 +241,23 @@ fn inspect_shared_skills_with<F>(
 where
     F: FnOnce(&Path) -> std::io::Result<()>,
 {
+    let metadata = match fs::symlink_metadata(skills_dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "read shared skills metadata {}: {error}",
+                skills_dir.display()
+            ))
+        }
+    };
     reject_symlink_ancestry(skills_dir)?;
-    match fs::symlink_metadata(skills_dir) {
-        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
+    match metadata {
+        metadata if metadata.file_type().is_symlink() => Err(format!(
             "shared skills path cannot be a symlink: {}",
             skills_dir.display()
         )),
-        Ok(metadata) if metadata.is_dir() => {
+        metadata if metadata.is_dir() => {
             let resolved = match fs::canonicalize(skills_dir) {
                 Ok(resolved) => resolved,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -281,13 +300,8 @@ where
                 )),
             }
         }
-        Ok(_) => Err(format!(
+        _ => Err(format!(
             "shared skills path is not a directory: {}",
-            skills_dir.display()
-        )),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!(
-            "read shared skills metadata {}: {error}",
             skills_dir.display()
         )),
     }
@@ -487,14 +501,6 @@ pub fn run_task(
             }
         }
     }
-    if let Some(prepared) = shared_skills {
-        reject_writable_mount_overlap(
-            &prepared.path,
-            &mounts.worktree,
-            &mounts.git_common_dir,
-            &artifacts.dir,
-        )?;
-    }
     let shared_skills_dir = match shared_skills {
         Some(prepared) => revalidate_shared_skills(prepared)?,
         None => None,
@@ -505,6 +511,7 @@ pub fn run_task(
             &mounts.worktree,
             &mounts.git_common_dir,
             &artifacts.dir,
+            pi_agent_dir,
         )?;
     }
     let mut cmd = Command::new("docker");
@@ -752,10 +759,21 @@ mod tests {
         fs::create_dir_all(real_home.join(".agents/skills")).expect("mkdir skills");
         std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
 
-        let error = prepare_shared_skills(Some(home.as_os_str()))
-            .expect_err("symlinked path ancestry must fail setup");
+        assert!(prepare_shared_skills(Some(home.as_os_str()))
+            .expect("missing skills remain optional")
+            .is_none());
+    }
 
-        assert!(error.contains("path ancestry cannot contain a symlink"));
+    #[test]
+    fn shared_skills_reject_newline_path() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let home = parent.path().join("home\nnewline");
+        fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
+
+        let error = prepare_shared_skills(Some(home.as_os_str()))
+            .expect_err("newline mount paths must fail setup");
+
+        assert!(error.contains("syntax unsafe for Docker mounts"));
     }
 
     #[test]
@@ -781,10 +799,42 @@ mod tests {
         fs::create_dir_all(&git).expect("mkdir git");
         fs::create_dir_all(&artifacts).expect("mkdir artifacts");
 
-        let error = reject_writable_mount_overlap(&shared_skills, &worktree, &git, &artifacts)
-            .expect_err("shared skills cannot overlap writable mounts");
+        let error = reject_writable_mount_overlap(
+            &shared_skills,
+            &worktree,
+            &git,
+            &artifacts,
+            None,
+        )
+        .expect_err("shared skills cannot overlap writable mounts");
 
         assert!(error.contains("overlaps writable Docker mount worktree"));
+    }
+
+    #[test]
+    fn pi_state_rejects_shared_skills_overlap() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let shared_skills = parent.path().join("skills");
+        let pi_agent_dir = parent.path().join("pi");
+        let worktree = parent.path().join("worktree");
+        let git = parent.path().join("git");
+        let artifacts = parent.path().join("artifacts");
+        fs::create_dir_all(&shared_skills).expect("mkdir skills");
+        fs::create_dir_all(&worktree).expect("mkdir worktree");
+        fs::create_dir_all(&git).expect("mkdir git");
+        fs::create_dir_all(&artifacts).expect("mkdir artifacts");
+        std::os::unix::fs::symlink(&shared_skills, &pi_agent_dir).expect("symlink pi state");
+
+        let error = reject_writable_mount_overlap(
+            &shared_skills,
+            &worktree,
+            &git,
+            &artifacts,
+            Some(&pi_agent_dir),
+        )
+        .expect_err("Pi state cannot overlap shared skills");
+
+        assert!(error.contains("Pi state directory"));
     }
 
     #[test]

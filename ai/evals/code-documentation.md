@@ -21,9 +21,9 @@ events in the pull request.
 Before running the matrix, verify the selectors rather than guessing aliases:
 
 ```sh
-opencode models
-pi --list-models qwen3.6
-pi --list-models gpt-5.6-luna
+env OPENCODE_API_KEY="${OPENCODE_API_KEY-}" opencode models
+env OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models qwen3.6
+env OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models gpt-5.6-luna
 ```
 
 ## Install the Reviewed Sources
@@ -35,6 +35,13 @@ newly built installer by its exact path:
 set -euo pipefail
 ORIGINAL_HOME=${HOME-}
 ORIGINAL_PATH=${PATH-}
+ORIGINAL_HOME_SET=${HOME+x}
+ORIGINAL_PATH_SET=${PATH+x}
+ORIGINAL_OPENCODE_API_KEY=${OPENCODE_API_KEY-}
+ORIGINAL_OPENAI_API_KEY=${OPENAI_API_KEY-}
+ORIGINAL_OPENCODE_API_KEY_SET=${OPENCODE_API_KEY+x}
+ORIGINAL_OPENAI_API_KEY_SET=${OPENAI_API_KEY+x}
+unset OPENCODE_API_KEY OPENAI_API_KEY
 export PDE_REPO_ROOT=$PWD
 export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
 export EVAL_HOME="$EVAL_ROOT/home"
@@ -47,18 +54,24 @@ EVAL_PROMPT="$EVAL_ROOT/code-documentation-vibe-prompt.md"
 export HOME="$EVAL_HOME"
 export PATH="$ORIGINAL_PATH"
 restore_environment() {
-  if [[ -n "$ORIGINAL_HOME" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
-  if [[ -n "$ORIGINAL_PATH" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
+  if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
+  if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
+  if [[ -n "$ORIGINAL_OPENCODE_API_KEY_SET" ]]; then export OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY"; else unset OPENCODE_API_KEY; fi
+  if [[ -n "$ORIGINAL_OPENAI_API_KEY_SET" ]]; then export OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY"; else unset OPENAI_API_KEY; fi
 }
 cleanup_evaluation() {
   local status=$?
-  rm -rf -- "$EVAL_ROOT"
   restore_environment
+  if [[ "$status" -eq 0 ]]; then
+    rm -rf -- "$EVAL_ROOT"
+  else
+    printf 'evaluation artifacts preserved at %s\n' "$EVAL_ROOT" >&2
+  fi
   exit "$status"
 }
 trap cleanup_evaluation EXIT
 mkdir -p "$EVAL_HOME" "$EVAL_CASES" "$EVAL_TRACES"
-if [[ -z "${OPENCODE_API_KEY:-}" || -z "${OPENAI_API_KEY:-}" ]]; then
+if [[ -z "$ORIGINAL_OPENCODE_API_KEY" || -z "$ORIGINAL_OPENAI_API_KEY" ]]; then
   printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
   exit 1
 fi
@@ -241,15 +254,15 @@ run_opencode_trace() {
   mkdir -p "$trace_dir"
   printf '%s\n' "$model" > "$trace_dir/model.txt"
   printf '%s\n' "$prompt" > "$trace_dir/prompt.txt"
-  opencode --version > "$trace_dir/version.txt"
+  env OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" opencode --version > "$trace_dir/version.txt"
   worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
   set +e
   if [[ -n "$command" ]]; then
-    opencode run --pure --dir "$case_dir" --model "$model" \
+    env OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" opencode run --pure --dir "$case_dir" --model "$model" \
       --command "$command" --format json -- "$prompt" \
       > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   else
-    opencode run --pure --dir "$case_dir" --model "$model" \
+    env OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" opencode run --pure --dir "$case_dir" --model "$model" \
       --format json -- "$prompt" \
       > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   fi
@@ -263,7 +276,7 @@ run_opencode_trace() {
   git -C "$case_dir" diff --binary > "$trace_dir/unstaged.diff"
   git -C "$case_dir" diff --cached --check
   git -C "$case_dir" diff --check
-  return "$status"
+  :
 }
 
 run_codex_trace() {
@@ -272,10 +285,10 @@ run_codex_trace() {
   mkdir -p "$trace_dir"
   printf '%s\n' "$model" > "$trace_dir/model.txt"
   printf '%s\n' "$prompt" > "$trace_dir/prompt.txt"
-  codex --version > "$trace_dir/version.txt"
+  env OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY" codex --version > "$trace_dir/version.txt"
   worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
   set +e
-  codex exec --ephemeral --json --sandbox "$sandbox" -m "$model" \
+  env OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY" codex exec --ephemeral --json --sandbox "$sandbox" -m "$model" \
     -C "$case_dir" "$prompt" \
     > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   local status=$?
@@ -288,7 +301,7 @@ run_codex_trace() {
   git -C "$case_dir" diff --binary > "$trace_dir/unstaged.diff"
   git -C "$case_dir" diff --cached --check
   git -C "$case_dir" diff --check
-  return "$status"
+  :
 }
 ```
 
@@ -306,7 +319,7 @@ Git-visible worktree state, not ignored files or filesystem metadata.
 | Partial write | `Improve source documentation for write_record in risky.py without changing behavior.` | Explain that validation follows an attempted write, so failure can occur after that call. Do not assert persistence, an exact byte count, or output state. |
 | Long straight-line code | `Improve source documentation for normalize_report in risky.py without changing behavior.` | Do not add comments merely for length. A no-change result is acceptable. |
 | Retry and rollback | `Improve source documentation for replace_remote in stateful.py without changing behavior.` | Add a short overview of attempted call ordering and retry/rollback attempts only if useful. Do not claim persistence, restoration, or rollback effects that the fixture interface does not establish. |
-| Stale docstring | `Review and fix source documentation for save_settings in stale.py without changing behavior.` | Correct or remove the false merge claim; do not change the replacement behavior. |
+| Stale docstring | `Review and fix source documentation for save_settings in stale.py without changing behavior.` | Correct or remove the false merge claim; do not change the call to untyped `write_text` or claim replacement, merge, persistence, or storage effects it does not establish. |
 | Unknown rationale | `Improve source documentation around REQUEST_TIMEOUT_SECONDS in stale.py without changing behavior.` | Do not invent why 37 was selected. A no-change result or observable unit explanation is acceptable. |
 | Clear test | `Improve test documentation for test_missing_name_is_rejected in test_config.py without changing test behavior.` | Do not add a docstring or Arrange/Act/Assert comments. |
 | Test overclaim | `Review documentation for test_failed_save_preserves_file in test_config.py. Do not edit files.` | Report that the assertion proves only the returned error. Do not claim file preservation and do not edit. |
@@ -336,8 +349,8 @@ cmp -s "$EVAL_TRACES/stability-second-$MODEL_TAG/before.sha256" \
 ```
 
 The first pass must remove or correct the false merge claim. The second pass
-should make no edits. A wording rewrite without a corrected claim fails the
-stability check.
+must retain the first pass's worktree change and add no fingerprint change of
+its own. A wording rewrite without a corrected claim fails the stability check.
 
 ## Vibe Exposure
 
@@ -375,11 +388,19 @@ EOF
   printf '%s\n' "$MODEL" > "$TRACE_DIR/model.txt"
   cp "$EVAL_PROMPT" "$TRACE_DIR/prompt.txt"
   set +e
-  env -C "$EVAL_CASE" vibe run \
-    --key "$KEY" \
-    --base "$BASE_SHA" \
-    --prompt-file "$EVAL_PROMPT" \
-    --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
+  if [[ "$MODEL" == openai-codex/* ]]; then
+    env -C "$EVAL_CASE" OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY" vibe run \
+      --key "$KEY" \
+      --base "$BASE_SHA" \
+      --prompt-file "$EVAL_PROMPT" \
+      --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
+  else
+    env -C "$EVAL_CASE" OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" vibe run \
+      --key "$KEY" \
+      --base "$BASE_SHA" \
+      --prompt-file "$EVAL_PROMPT" \
+      --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
+  fi
   STATUS=$?
   set -e
   printf '%s\n' "$STATUS" > "$TRACE_DIR/exit-status.txt"
@@ -436,9 +457,12 @@ worker-visible skill in the prompt, reject unavailable required skills before
 delegation, and use the existing completion gate rather than another review
 pass.
 
-For review-only and no-change rows, compare the Git-visible worktree-state
-fingerprint before and after and require `git status --short` to be empty. This
-check does not cover ignored files or general filesystem metadata.
+For fresh review-only and no-change rows, compare the Git-visible worktree-state
+fingerprint before and after and require `git status --short` to be empty. A
+second stability pass may retain the first pass's worktree change, but must add
+no fingerprint change of its own. This check does not cover ignored files or
+general filesystem metadata.
 
 Delete only `$EVAL_ROOT` and exact Vibe run paths recorded for the evaluation;
-the cleanup trap must restore the caller's original `HOME` and `PATH`.
+the cleanup trap must restore the caller's original `HOME`, `PATH`, and provider
+key environment.

@@ -530,7 +530,7 @@ Expected behavior:
   and tests for stale or useful missing explanations, accepts no documentation
   change when the code is sufficient, and adds no fourth reviewer.
 - Reconciles repository-backed findings without treating repetition as proof.
-- Leaves the plan and repository byte-for-byte unchanged.
+- Leaves `HEAD` unchanged and `git status --porcelain` empty, which is the Git-visible state guarantee checked here.
 
 ### Targeted Implementation Freshness
 
