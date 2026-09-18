@@ -517,11 +517,7 @@ mod tests {
         HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
-    use std::{
-        ffi::OsString,
-        fs,
-        path::Path,
-    };
+    use std::{ffi::OsString, fs, path::Path};
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
 
@@ -627,8 +623,7 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
 
-        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
-            .expect("skills path");
+        let prepared = prepare_shared_skills(Some(home.path().as_os_str())).expect("skills path");
 
         assert_eq!(
             prepared.path,
