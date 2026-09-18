@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
 )
 
@@ -26,7 +27,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full, ColorProfile: colorprofile.TokyoNight})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +43,7 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{
+		"color_profile": "tokyo-night",
 		"default_vault": "main",
 		"install_path":  "/repo",
 		"main_vault":    "/vault/main",
@@ -68,7 +70,7 @@ func TestLegacyConfigPersistsFullProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full, ColorProfile: colorprofile.TokyoNight})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +96,7 @@ func TestLegacyConfigHandlesNull(t *testing.T) {
 	if err := os.WriteFile(path, []byte("null\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full, ColorProfile: colorprofile.TokyoNight})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +117,7 @@ func TestLegacyConfigRollbackRestoresFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new", Profile: profile.Full})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/new", Profile: profile.Full, ColorProfile: colorprofile.GruvboxDark})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestLegacyNvimLinkRollsBack(t *testing.T) {
 	if err := os.Symlink(target, destination); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full})
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: profile.Full, ColorProfile: colorprofile.TokyoNight})
 	if err != nil {
 		t.Fatal(err)
 	}

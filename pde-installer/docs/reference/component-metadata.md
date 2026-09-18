@@ -16,12 +16,15 @@ each item. It is not an uninstall list.
 | Repository builds | `internal/builds/builds.go`; manifest inventory |
 | `blink.cmp` native build | pinned URL and checksum in `internal/builds/builds.go` |
 | Home configuration | repository `chezmoi/` source and `.chezmoiexternal.toml.tmpl` checksums |
+| Color profiles | names in `internal/colorprofile`; palettes and application themes in `../chezmoi/.chezmoidata.json` |
 
 Pins repeated across files must agree. Profile selection limits the terminal
 inventory, the Aqua manifest and checksum files used, and the chezmoi output.
 Validation catches duplicate inventory names, missing required pins, incomplete
 npm locks, missing chezmoi source data, and externals without SHA-256 fields.
 Backend reconciliation performs further checksum and installed-version checks.
+Tests require the Go names and Chezmoi data keys to match and validate complete
+normal, bright, interface, and application-theme fields for every profile.
 
 See the matching [how-to guide](../README.md#how-to-guides) before changing
 metadata.

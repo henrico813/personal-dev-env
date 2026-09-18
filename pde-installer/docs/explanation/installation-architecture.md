@@ -8,6 +8,12 @@ selections changes future reconciliation, but switching from full to terminal
 does not uninstall full-only artifacts. Every install reconciles tools and
 managed home configuration.
 
+Color selection is an independent per-machine value in the same config file.
+Install resolves both selections after journal recovery and passes them to
+Chezmoi. Missing color state resolves to Tokyo Night. The migration journal
+activates the updated config before Chezmoi runs, restores the previous config
+on a later failure, and makes the update permanent when installation commits.
+
 ## Dependency Order
 
 The full order is:

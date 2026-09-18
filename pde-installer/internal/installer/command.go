@@ -9,6 +9,7 @@ import (
 	"pde-installer/internal/aqua"
 	"pde-installer/internal/builds"
 	chezmoibackend "pde-installer/internal/chezmoi"
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/direct"
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
@@ -38,6 +39,7 @@ func NewCommand() *cobra.Command {
 
 func mutatingCommand(use, description string, repoRoot *string, action func(config, run.Runner) error) *cobra.Command {
 	var dryRun bool
+	var requestedColorProfile string
 	command := &cobra.Command{
 		Use: use, Short: description, Args: cobra.MaximumNArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -68,6 +70,10 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 				if err != nil {
 					return err
 				}
+				config.ColorProfile, err = resolveColorProfile(config.Home, requestedColorProfile)
+				if err != nil {
+					return err
+				}
 				return action(config, runner)
 			}
 			lock, err := acquireInstallerLock(config.Home)
@@ -85,10 +91,15 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
+			config.ColorProfile, err = resolveColorProfile(config.Home, requestedColorProfile)
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			return errors.Join(action(config, runner), lock.Close())
 		},
 	}
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "preview ordered actions without making changes")
+	command.Flags().StringVar(&requestedColorProfile, "color-profile", "", "color profile: "+colorprofile.ValidValues)
 	return command
 }
 
@@ -118,13 +129,17 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
+			config.ColorProfile, err = resolveColorProfile(config.Home, "")
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			return errors.Join(action(config, run.Runner{Stdout: command.OutOrStdout(), Stderr: command.ErrOrStderr()}), lock.Close())
 		},
 	}
 }
 
 func reconcile(config config, runner run.Runner) error {
-	if err := config.validateProfile(); err != nil {
+	if err := config.validate(); err != nil {
 		return err
 	}
 	// APT owns system dependencies. Later stages journal changes below HOME.
@@ -191,7 +206,7 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("PDE config migration", err)
 	}
 	journals = append(journals, migrationJournal)
-	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Apply()
+	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}

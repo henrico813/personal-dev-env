@@ -1,0 +1,25 @@
+{{- $profile := env "PDE_COLOR_PROFILE" -}}
+{{- $colors := index .colorProfiles $profile -}}
+vim.o.background = "dark"
+{{ if eq $profile "tokyo-night" -}}
+require("tokyonight").setup({
+  style = "night",
+  transparent = false,
+  styles = {
+    sidebars = "dark",
+    floats = "dark",
+  },
+})
+{{- else if eq $profile "everforest-dark" }}
+require("everforest").setup({
+  background = "medium",
+  transparent_background_level = 0,
+})
+{{- else if eq $profile "gruvbox-dark" }}
+require("gruvbox").setup({
+  contrast = "",
+  transparent_mode = false,
+})
+{{- end }}
+
+vim.cmd("colorscheme {{ $colors.nvim.colorscheme }}")

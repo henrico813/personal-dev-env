@@ -18,6 +18,8 @@
    ```
 
 Every install reconciles tools as well as managed home configuration. The
-installer passes `PDE_PROFILE` when rendering selection-aware templates, so use
-it rather than applying chezmoi directly. For selection, prerequisites, and
-examples, run `pde-installer install --help`.
+installer passes `PDE_PROFILE` and `PDE_COLOR_PROFILE` when rendering
+selection-aware templates, so use it rather than applying chezmoi directly.
+Shared palette and application-theme data belongs in
+`../chezmoi/.chezmoidata.json`; keep the supported names aligned with
+`internal/colorprofile`. For examples, run `pde-installer install --help`.
