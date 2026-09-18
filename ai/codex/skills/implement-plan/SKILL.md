@@ -78,6 +78,8 @@ For each step:
 5. Run the step's verification commands.
 6. Inspect the full diff against the pre-step commit, not only the latest commit
    or summary.
+7. Remove unsupported drift before continuing.
+8. Update the plan's progress only after code and verification agree.
 
 Pass the exact current step to a Vibe worker with an `Applicable skills:` line
 containing every loaded skill needed for the step. Require the worker to load
@@ -85,9 +87,6 @@ available listed skills before editing and report required skills that are
 unavailable. Before delegation, verify every required worker skill is readable
 at `~/.agents/skills/<name>/SKILL.md`; if one is unavailable, execute in the
 parent harness when safe or stop and report the missing requirement.
-
-7. Remove unsupported drift before continuing.
-8. Update the plan's progress only after code and verification agree.
 
 For the first run of a proven-new key, invoke `vibe run` with the key, full
 `--base` SHA, exact step prompt file, and selected model. For later runs, use the
