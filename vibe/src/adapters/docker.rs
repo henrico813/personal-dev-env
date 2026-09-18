@@ -210,6 +210,7 @@ struct DockerRunArgs<'a> {
     snapshot_ref: &'a str,
     user: &'a HostUser,
     pi_agent_dir: Option<&'a Path>,
+    shared_skills_dir: Option<&'a Path>,
 }
 
 /// Keep prompt/env wiring pure so tests can lock the Docker seam.
