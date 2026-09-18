@@ -22,7 +22,7 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 | `~/.local/share/pde/tmux/<version>/` | Existing amd64-only direct tmux 3.7b binary |
 | `~/.local/share/fonts/pde/` | Managed fonts (full only) |
 | `~/.local/state/pde/` | Installer lock, journals, and build state |
-| `~/.config/pde/config.json` | PDE install path and migrated vault settings |
+| `~/.config/pde/config.json` | Install path, component/color profiles, and migrated vault settings |
 | `~/.config/` and other home paths | Chezmoi-managed configuration |
 
 Direct releases, the npm prefix, and managed fonts are full-only. The terminal profile uses only the listed paths needed for its Ubuntu packages,
