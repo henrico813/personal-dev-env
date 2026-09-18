@@ -139,10 +139,7 @@ pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf
             .duration_since(UNIX_EPOCH)
             .ok()?
             .as_nanos();
-        let probe = pi_agent_dir.join(format!(
-            ".vibe-write-check-{}-{nonce}",
-            std::process::id()
-        ));
+        let probe = pi_agent_dir.join(format!(".vibe-write-check-{}-{nonce}", std::process::id()));
         OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -216,9 +213,8 @@ fn reject_writable_mount_overlap(
         ("shared Git directory", git_common_dir),
         ("artifacts", artifacts),
     ] {
-        let writable_mount = fs::canonicalize(writable_mount).map_err(|error| {
-            format!("resolve {label} for shared skills validation: {error}")
-        })?;
+        let writable_mount = fs::canonicalize(writable_mount)
+            .map_err(|error| format!("resolve {label} for shared skills validation: {error}"))?;
         if paths_overlap(shared_skills, &writable_mount) {
             return Err(format!(
                 "shared skills path overlaps writable Docker mount {label}: {}",
