@@ -189,11 +189,7 @@ fn docker_mount_path(path: &Path, label: &str) -> Result<(), String> {
     let text = path
         .to_str()
         .ok_or_else(|| format!("{label} must be valid UTF-8 to mount shared skills"))?;
-    if text.contains(',')
-        || text.contains('"')
-        || text.contains('\n')
-        || text.contains('\r')
-    {
+    if text.contains(',') || text.contains('"') || text.contains('\n') || text.contains('\r') {
         return Err(format!(
             "{label} contains syntax unsafe for Docker mounts: {}",
             path.display()
@@ -752,6 +748,19 @@ mod tests {
     }
 
     #[test]
+    fn shared_skills_allow_missing_symlinked_home() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let real_home = parent.path().join("real-home");
+        let home = parent.path().join("home");
+        fs::create_dir_all(&real_home).expect("mkdir home");
+        std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
+
+        assert!(prepare_shared_skills(Some(home.as_os_str()))
+            .expect("missing skills remain optional")
+            .is_none());
+    }
+
+    #[test]
     fn shared_skills_reject_symlinked_parent() {
         let parent = tempfile::tempdir().expect("tempdir");
         let real_home = parent.path().join("real-home");
@@ -759,9 +768,10 @@ mod tests {
         fs::create_dir_all(real_home.join(".agents/skills")).expect("mkdir skills");
         std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
 
-        assert!(prepare_shared_skills(Some(home.as_os_str()))
-            .expect("missing skills remain optional")
-            .is_none());
+        let error = prepare_shared_skills(Some(home.as_os_str()))
+            .expect_err("existing skills cannot use symlinked home");
+
+        assert!(error.contains("path ancestry cannot contain a symlink"));
     }
 
     #[test]
@@ -799,14 +809,9 @@ mod tests {
         fs::create_dir_all(&git).expect("mkdir git");
         fs::create_dir_all(&artifacts).expect("mkdir artifacts");
 
-        let error = reject_writable_mount_overlap(
-            &shared_skills,
-            &worktree,
-            &git,
-            &artifacts,
-            None,
-        )
-        .expect_err("shared skills cannot overlap writable mounts");
+        let error =
+            reject_writable_mount_overlap(&shared_skills, &worktree, &git, &artifacts, None)
+                .expect_err("shared skills cannot overlap writable mounts");
 
         assert!(error.contains("overlaps writable Docker mount worktree"));
     }
