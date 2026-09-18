@@ -21,15 +21,17 @@ const AUTH_VARS: &[&str] = &[
     "AZURE_OPENAI_BASE_URL",
     "OPENCODE_API_KEY",
 ];
-// Forward provider config into the container, but only allow complete
-// credential groups to satisfy the host-side auth preflight.
-const REQUIRED_AUTH_GROUPS: &[&[&str]] = &[
-    &["ANTHROPIC_API_KEY"],
-    &["OPENAI_API_KEY"],
-    &["GEMINI_API_KEY"],
-    &["DEEPSEEK_API_KEY"],
-    &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
-    &["OPENCODE_API_KEY"],
+// These provider IDs match Pi's model selectors; unknown IDs cannot use env auth.
+const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
+    (&["anthropic"], &["ANTHROPIC_API_KEY"]),
+    (&["openai", "openai-codex"], &["OPENAI_API_KEY"]),
+    (&["google", "gemini"], &["GEMINI_API_KEY"]),
+    (&["deepseek"], &["DEEPSEEK_API_KEY"]),
+    (
+        &["azure-openai"],
+        &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
+    ),
+    (&["opencode", "opencode-go"], &["OPENCODE_API_KEY"]),
 ];
 const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
@@ -110,21 +112,34 @@ fn env_var_is_set(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn has_provider_env() -> bool {
-    REQUIRED_AUTH_GROUPS
+fn required_auth_group(model: &str) -> Option<&'static [&'static str]> {
+    let provider = model.split_once('/')?.0;
+    AUTH_GROUPS
         .iter()
-        .any(|keys| keys.iter().all(|key| env_var_is_set(key)))
+        .find(|(providers, _)| providers.contains(&provider))
+        .map(|(_, keys)| *keys)
 }
 
-fn auth_env_args() -> Vec<String> {
-    AUTH_VARS
-        .iter()
-        .filter(|key| env_var_is_set(key))
+fn has_provider_env(model: &str) -> bool {
+    required_auth_group(model)
+        .is_some_and(|keys| keys.iter().all(|key| env_var_is_set(key)))
+}
+
+fn auth_env_args(model: &str) -> Vec<String> {
+    let Some(keys) = required_auth_group(model).filter(|keys| {
+        keys.iter().all(|key| env_var_is_set(key))
+    }) else {
+        return Vec::new();
+    };
+    keys.iter()
         .flat_map(|key| ["-e".to_string(), (*key).to_string()])
         .collect()
 }
 
-pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf>, String> {
+pub(crate) fn prepare_provider_auth(
+    home: Option<&str>,
+    model: &str,
+) -> Result<Option<PathBuf>, String> {
     let pi_agent_dir = home.and_then(|home| {
         let pi_agent_dir = PathBuf::from(home).join(".pi/agent");
         let auth_file = pi_agent_dir.join("auth.json");
@@ -149,7 +164,7 @@ pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf
         Some(pi_agent_dir)
     });
 
-    if has_provider_env() || pi_agent_dir.is_some() {
+    if has_provider_env(model) || pi_agent_dir.is_some() {
         Ok(pi_agent_dir)
     } else {
         Err("vibe requires provider auth via env vars or ~/.pi/agent/auth.json".to_string())
@@ -525,7 +540,7 @@ pub fn run_task(
         pi_agent_dir,
         shared_skills_dir: shared_skills_dir.as_deref(),
     }));
-    cmd.args(auth_env_args());
+    cmd.args(auth_env_args(model));
     cmd.args(git_env_args);
     let mut child = cmd
         .arg(IMAGE)
@@ -654,7 +669,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("OPENAI_API_KEY", "sk-test");
 
-        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
+        assert!(prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4").is_ok());
 
         restore_env(saved);
     }
@@ -669,8 +684,10 @@ mod tests {
         clear_auth_env();
         std::env::set_var("OPENCODE_API_KEY", "sk-test");
 
-        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
-        assert!(auth_env_args().iter().any(|arg| arg == "OPENCODE_API_KEY"));
+        assert!(prepare_provider_auth(home.path().to_str(), "opencode-go/model").is_ok());
+        assert!(auth_env_args("opencode-go/model")
+            .iter()
+            .any(|arg| arg == "OPENCODE_API_KEY"));
 
         restore_env(saved);
     }
@@ -905,7 +922,7 @@ mod tests {
         std::env::set_var("HOME", home.path());
         clear_auth_env();
 
-        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
+        assert!(prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4").is_ok());
 
         restore_env(saved);
     }
@@ -919,7 +936,7 @@ mod tests {
         std::env::set_var("HOME", home.path());
         clear_auth_env();
 
-        assert!(prepare_provider_auth(home.path().to_str()).is_err());
+        assert!(prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4").is_err());
 
         restore_env(saved);
     }
@@ -934,7 +951,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         restore_env(saved);
 
@@ -955,7 +972,7 @@ mod tests {
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         restore_env(saved);
 
@@ -972,7 +989,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         restore_env(saved);
 
@@ -989,12 +1006,75 @@ mod tests {
 
         clear_auth_env();
         std::env::set_var("OPENAI_API_KEY", "test-secret");
-        let args = auth_env_args();
+        let args = auth_env_args("openai-codex/gpt-5.4");
 
         restore_env(saved);
 
         assert!(args.iter().any(|arg| arg == "OPENAI_API_KEY"));
         assert!(!args.iter().any(|arg| arg.contains("test-secret")));
+    }
+
+    #[test]
+    fn forwards_openai_credentials_only() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let saved = save_auth_env();
+        clear_auth_env();
+        for (key, value) in [
+            ("ANTHROPIC_API_KEY", "anthropic"),
+            ("OPENAI_API_KEY", "openai"),
+            ("GEMINI_API_KEY", "gemini"),
+            ("DEEPSEEK_API_KEY", "deepseek"),
+            ("AZURE_OPENAI_API_KEY", "azure"),
+            ("AZURE_OPENAI_BASE_URL", "https://example.invalid"),
+            ("OPENCODE_API_KEY", "opencode"),
+        ] {
+            std::env::set_var(key, value);
+        }
+
+        let args = auth_env_args("openai-codex/model");
+
+        restore_env(saved);
+        assert_eq!(args, ["-e", "OPENAI_API_KEY"]);
+    }
+
+    #[test]
+    fn forwards_opencode_credentials_only() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let saved = save_auth_env();
+        clear_auth_env();
+        for (key, value) in [
+            ("ANTHROPIC_API_KEY", "anthropic"),
+            ("OPENAI_API_KEY", "openai"),
+            ("GEMINI_API_KEY", "gemini"),
+            ("DEEPSEEK_API_KEY", "deepseek"),
+            ("AZURE_OPENAI_API_KEY", "azure"),
+            ("AZURE_OPENAI_BASE_URL", "https://example.invalid"),
+            ("OPENCODE_API_KEY", "opencode"),
+        ] {
+            std::env::set_var(key, value);
+        }
+
+        let args = auth_env_args("opencode-go/model");
+
+        restore_env(saved);
+        assert_eq!(args, ["-e", "OPENCODE_API_KEY"]);
+    }
+
+    #[test]
+    fn rejects_unknown_provider_environment_auth() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+        clear_auth_env();
+        std::env::set_var("OPENAI_API_KEY", "openai");
+
+        let result = prepare_provider_auth(home.path().to_str(), "unknown/model");
+
+        restore_env(saved);
+        assert_eq!(
+            result.expect_err("unknown providers must fail closed"),
+            ERROR_MESSAGE
+        );
     }
 
     #[test]
@@ -1162,7 +1242,7 @@ mod tests {
         let saved = save_auth_env();
         clear_auth_env();
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         restore_env(saved);
         assert!(result.is_err());
@@ -1175,7 +1255,7 @@ mod tests {
         let saved = save_auth_env();
         clear_auth_env();
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         restore_env(saved);
         assert!(result.is_err());
@@ -1195,7 +1275,7 @@ mod tests {
         let saved = save_auth_env();
         clear_auth_env();
 
-        let result = prepare_provider_auth(home.path().to_str());
+        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
         permissions.set_readonly(false);

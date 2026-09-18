@@ -59,7 +59,10 @@ requires provider auth via supported env vars or a readable
 `~/.pi/agent/auth.json`; missing auth fails early as `setup_error`.
 Supported env vars are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 `OPENCODE_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or the Azure pair
-`AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL`.
+`AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL`. For environment
+authentication, Vibe selects the credential group matching the provider prefix
+in `--model` and forwards only that group; unknown providers require Pi file
+authentication.
 
 ## Run
 

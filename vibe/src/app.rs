@@ -160,7 +160,10 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(error) = worktree::validate_base_target(&args.key, args.base.as_deref()) {
         return RunResult::setup_error(error);
     }
-    let prepared_auth = match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref()) {
+    let prepared_auth = match docker::prepare_provider_auth(
+        std::env::var("HOME").ok().as_deref(),
+        &args.model,
+    ) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
