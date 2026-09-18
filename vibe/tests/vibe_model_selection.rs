@@ -25,13 +25,14 @@ use std::{
 
 const MODEL: &str = "gpt-5.6-luna";
 const SELECTOR: &str = "openai-codex/gpt-5.6-luna";
-const AUTH_VARS: [&str; 6] = [
+const AUTH_VARS: [&str; 7] = [
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
     "DEEPSEEK_API_KEY",
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_BASE_URL",
+    "OPENCODE_API_KEY",
 ];
 
 fn run_git(repo: &Path, args: &[&str]) {

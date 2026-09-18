@@ -10,8 +10,9 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
 Shared skills include `behavior-focused-testing` for automated tests,
-`go-development` for Go code, `obsidian-zettel` for template-aligned vault
-notes, and `rust-development` for Rust code.
+`code-documentation` for proportional source explanations, `go-development`
+for Go code, `obsidian-zettel` for template-aligned vault notes, and
+`rust-development` for Rust code.
 Shared instructions require skill selection after reading supplied context and
 before domain work. Run `evals/skill-routing.md` after changing routing
 instructions, skill descriptions, or planning workflows. Run
@@ -19,7 +20,7 @@ instructions, skill descriptions, or planning workflows. Run
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
-package under `skills/` to `~/.agents/skills/<name>/` and
+mapped packages under `skills/` to `~/.agents/skills/<name>/` and
 `~/.codex/skills/<name>/`. It syncs `opencode/`, `codex/`, and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
