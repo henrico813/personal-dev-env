@@ -85,7 +85,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	}
 	nvimVersion, goVersion := version("neovim"), version("go")
 	rustVersion, nodeVersion := version("rust"), version("node")
-	moshiVersion, herdrVersion := version("moshi-hook"), version("herdr")
+	moshiVersion, herdrVersion := strings.TrimPrefix(version("moshi-hook"), "v"), version("herdr")
 	nvimArchive := "nvim-linux-" + nvimArch + ".tar.gz"
 	goArchive := "go" + goVersion + ".linux-" + goarch + ".tar.gz"
 	rustArchive := "rust-" + rustVersion + "-" + rustArch + "-unknown-linux-gnu.tar.xz"
