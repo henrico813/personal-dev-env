@@ -44,10 +44,12 @@ Find what the plan missed. For every file the plan modifies, check what else dep
 ## Process
 
 1. **Read the plan** - list all files it proposes to modify
-2. **Find dependents** - use Grep to find what imports those files
-3. **Check patterns** - how are similar features structured?
-4. **Verify completeness** - compare plan's list against full affected set
-5. **Report gaps**
+2. **Load applicable skills** - load `code-documentation` when source code or
+   automated tests are in scope
+3. **Find dependents** - use Grep to find what imports those files
+4. **Check patterns** - how are similar features structured?
+5. **Verify completeness** - compare plan's list against full affected set
+6. **Report gaps**
 
 ## Output Format
 
@@ -113,4 +115,8 @@ grep -r "CONFIG_KEY" --include="*.py" --include="*.yaml"
 - **Follow the dependency chain** - if A imports B, and plan changes B, check A
 - **Check test coverage** - modified code should have test updates
 - **Look for patterns** - how are similar features structured?
-- **Don't require docs for every change** - only when APIs or behavior changes
+- **Keep documentation proportional** - check changed source and tests for stale
+  explanations and for non-obvious side effects, failures, state, ordering, or
+  concurrency that the plan leaves implicit. Accept no documentation change
+  when names, types, implementation, and assertions already answer the reader's
+  questions.
