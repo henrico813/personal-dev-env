@@ -15,10 +15,17 @@ for that reader without labeling them as a beginner or junior in source text.
 This skill sets the cross-language baseline. Follow stricter language,
 framework, safety, and repository requirements when they apply.
 
-## Decide whether documentation is needed
+## Edit gate
 
-Do not add documentation by default. Add or update it when it saves meaningful
-reader effort, prevents misuse, or is required by the language or repository.
+Unless documentation is required by an applicable language or repository rule,
+edit only when a specific, supported fact needed for safe use or maintenance is
+missing, false, or unreasonably hard to discover. Otherwise make no source
+change, even when asked to "improve" documentation. Prose derived directly from
+a name, signature, single statement, or a test's name, inputs, and assertions is
+a restatement and must not be added. Accurate existing documentation need not be
+exhaustive: do not revise it merely to add another true detail, section, or
+phrasing. Once accurate documentation covers the needed fact, repeating the
+same request against unchanged code must produce no further edit.
 
 Look more closely when code has:
 
@@ -149,16 +156,43 @@ When source code or tests change:
    including existing comments and docstrings that were not edited.
 3. Check whether existing documentation became false or incomplete.
 4. Add only useful missing context and remove new filler or narration.
-5. Preserve good existing text. Do not rewrite documentation only for style,
-   including on a repeated pass over the same code.
+5. Treat documentation already present in the working tree, including
+   uncommitted text, as existing documentation. Preserve it when it is accurate
+   and already resolves the identified reader question. A repeated generic
+   request is not new evidence that more detail is needed and must not by itself
+   cause another edit. On a later pass over unchanged behavior, edit existing
+   prose only to fix a specific false or unsupported claim, an omission that
+   makes it misleading for safe use, or an applicable convention violation;
+   otherwise leave it byte-for-byte unchanged. Do not broaden, reformat, or
+   polish it merely because more implementation details could be stated.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
 
-For abstract I/O dependencies, document only guarantees established by the
-interface and checked behavior. A slice passed to a write method does not prove
-that every requested byte was persisted. Do not add parameter, result, or caller
-remediation sections unless they answer a supported, useful reader question.
+For abstract or injected I/O dependencies, distinguish method calls from their
+effects. Do not infer storage, mapping, durability, verification, or rollback
+guarantees from method names. A slice bound does not prove the slice contains
+that many items, and passing data to a write-like method does not prove how much
+was accepted, persisted, left behind, or later restored. State stronger effects
+only when the interface and checked behavior establish them; otherwise describe
+only the call order or attempted operation. Do not add parameter, result, or
+caller remediation sections unless they answer a supported, useful reader
+question.
+
+When the useful fact is failure ordering, document that fact without implying a
+completed write or prescribing unsupported caller action.
+
+Bad:
+
+```python
+"""Writes the first chunk before validation. Callers must repair partial output."""
+```
+
+Better:
+
+```python
+"""Validation follows the call to ``writer.write``, so failure does not mean no write was attempted."""
+```
 
 For documentation-only work, do not change behavior, public signatures, test
 names, test inputs, or assertions unless the user explicitly requests it.

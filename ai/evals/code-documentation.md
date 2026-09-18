@@ -38,6 +38,7 @@ export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
 export EVAL_BASE="$EVAL_ROOT/base"
 export EVAL_CASES="$EVAL_ROOT/cases"
 export EVAL_TRACES="$EVAL_ROOT/traces"
+export PYTHONDONTWRITEBYTECODE=1
 INSTALLER="$EVAL_ROOT/pde-installer"
 mkdir -p "$EVAL_CASES" "$EVAL_TRACES"
 go build -C pde-installer -o "$INSTALLER" .
@@ -86,6 +87,10 @@ jq -e '.mode == "subagent"' "$EVAL_TRACES/docs-writer.json"
 ```bash
 set -euo pipefail
 mkdir -p "$EVAL_BASE"
+cat > "$EVAL_BASE/.gitignore" <<'EOF'
+__pycache__/
+.pytest_cache/
+EOF
 cat > "$EVAL_BASE/README.md" <<'MD'
 # Documentation Evaluation
 MD
@@ -144,6 +149,28 @@ def test_missing_name_is_rejected(parser):
 def test_failed_save_preserves_file(store):
     """A failed save leaves the existing file unchanged."""
     assert store.save("missing", b"value") == "not-found"
+PY
+cat > "$EVAL_BASE/conftest.py" <<'PY'
+import pytest
+
+
+@pytest.fixture
+def parser():
+    def parse(config):
+        if "name" not in config:
+            raise ValueError("name is required")
+        return config
+
+    return parse
+
+
+@pytest.fixture
+def store():
+    class Store:
+        def save(self, key, value):
+            return "not-found"
+
+    return Store()
 PY
 git -C "$EVAL_BASE" init
 git -C "$EVAL_BASE" add .
