@@ -4,19 +4,32 @@ Run these manual checks in fresh sessions after changing `code-documentation`,
 shared routing, implementation workflows, or Vibe skill exposure. Evaluate
 behavior and diffs, not exact prose.
 
-Required OpenCode models:
+## Evaluation Model Matrix
 
-- `opencode-go/qwen3.6-plus`
-- `opencode-go/gpt-5.6-luna`
+The values below are pinned evaluation selections, not Vibe runtime
+requirements.
 
-Required Vibe/Pi models:
+| Execution path | Runtime | Capability role | Model argument | Evaluation credential |
+| --- | --- | --- | --- | --- |
+| Direct OpenCode | OpenCode | lower capability | `opencode-go/qwen3.6-plus` | `OPENCODE_API_KEY` |
+| Direct OpenCode | OpenCode | stronger | `opencode-go/gpt-5.6-luna` | `OPENCODE_API_KEY` |
+| Vibe sandbox | Pi | lower capability | `opencode-go/qwen3.6-plus` | `OPENCODE_API_KEY` |
+| Vibe sandbox | Pi | stronger | `openai-codex/gpt-5.6-luna` | `OPENAI_API_KEY` |
+| Direct Codex | Codex | stronger | `gpt-5.6-luna` | `OPENAI_API_KEY` |
 
-- `opencode-go/qwen3.6-plus`
-- `openai-codex/gpt-5.6-luna`
+OpenCode and Pi accept provider/model selectors, while direct Codex accepts the
+bare model argument. The shared Luna label does not establish identical
+backends, versions, or behavior.
 
-Do not replace a failed lower-capability run with a stronger model. Record the
-harness, exact model, version, prompt, skill loads, diff, and unsupported trace
-events in the pull request.
+Do not replace a failed lower-capability row with a stronger model; doing so
+removes the intended coverage. For every run, record the execution path,
+runtime version, exact model argument, prompt, skill loads, diff, exit status,
+and unsupported events.
+
+Unavailable or rejected rows are unsupported, not passed. Every listed row is
+required for this matrix, so an unsupported row leaves the evaluation incomplete
+and must fail. Permanent provider removals require a deliberate matrix update,
+not silent substitution.
 
 Before running the matrix, verify the selectors rather than guessing aliases:
 
@@ -31,6 +44,11 @@ env -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u DEEPSEEK_API_KEY \
   -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL -u OPENCODE_API_KEY \
   OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models gpt-5.6-luna
 ```
+
+Discovery output alone does not prove account execution access. Treat each
+row's first authenticated invocation as the final availability check, and
+preserve stderr and exit status when the provider rejects the selector or
+credential.
 
 ## Install the Reviewed Sources
 
