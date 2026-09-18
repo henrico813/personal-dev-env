@@ -42,7 +42,7 @@ func TestToolsMapSupportedArchitectures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("toolsForPlatform(%q) error = %v", architecture, err)
 		}
-		if len(tools) != 5 {
+		if len(tools) != 7 {
 			t.Fatalf("toolsForPlatform(%q) count = %d", architecture, len(tools))
 		}
 		for _, tool := range tools {
@@ -111,6 +111,33 @@ func TestToolsActivateAndRollBack(t *testing.T) {
 	}
 	assertDirectFile(t, oldRoot, "old root\n")
 	assertDirectFile(t, oldLauncher, "old launcher\n")
+}
+
+func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
+	home := t.TempDir()
+	archive := toolArchive(t, "", "moshi-hook", "v0.3.26")
+	digest := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write(archive)
+	}))
+	defer server.Close()
+
+	tool := Tool{
+		Name: "moshi-hook", Version: "v0.3.26", Archive: "moshi-hook.tar.gz",
+		URL: server.URL, SHA256: hex.EncodeToString(digest[:]), Directory: "moshi-hook",
+		Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"},
+		VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true,
+	}
+	manager := New(home, run.Runner{})
+	if _, err := manager.reconcileTools([]Tool{tool}); err != nil {
+		t.Fatalf("reconcileTools() error = %v", err)
+	}
+	for _, name := range tool.Links {
+		output, err := manager.Runner.Query("read "+name, run.Command{Name: filepath.Join(home, ".local", "bin", name), Args: tool.VersionArgs})
+		if err != nil || strings.TrimSpace(string(output)) != "moshi-hook v0.3.26" {
+			t.Fatalf("%s output = %q, %v", name, output, err)
+		}
+	}
 }
 
 func TestToolCleanupPreservesRollback(t *testing.T) {
@@ -207,11 +234,15 @@ func toolArchive(t *testing.T, root, name, version string) []byte {
 	zipper := gzip.NewWriter(&compressed)
 	archive := tar.NewWriter(zipper)
 	content := "#!/bin/sh\nprintf '%s\\n' '" + name + " " + version + "'\n"
+	path := name
+	if root != "" {
+		path = root + "/bin/" + name
+	}
 	entries := []struct {
 		name, content string
 		mode          int64
 	}{
-		{name: root + "/bin/" + name, content: content, mode: 0o755},
+		{name: path, content: content, mode: 0o755},
 	}
 	for _, entry := range entries {
 		if err := archive.WriteHeader(&tar.Header{Name: entry.name, Mode: entry.mode, Size: int64(len(entry.content))}); err != nil {

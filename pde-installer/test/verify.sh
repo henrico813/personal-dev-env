@@ -27,7 +27,7 @@ after="$(tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 -cf - -C "
 
 pde-installer doctor --repo-root "$REPO_ROOT"
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
-for item in zsh unzip tmux aqua neovim go rust node keychain opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
+for item in zsh unzip tmux aqua neovim go rust node keychain moshi-hook herdr opencode-ai planner blink.cmp FiraCode repository-config ai-config; do
 	[[ "$inventory" == *$'\t'"$item"$'\t'* ]]
 done
 
