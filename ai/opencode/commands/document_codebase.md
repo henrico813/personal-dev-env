@@ -57,11 +57,14 @@ For bounded edit work, edit directly. For an explicitly broad edit, the
 skills:` line containing `code-documentation` only for source-documentation
 work and require each worker to load available listed skills before working.
 
-For each review-mode delegation, capture the current revision,
-`git diff --binary --cached`, `git diff --binary`, `git status --porcelain=v1`,
-and non-ignored untracked paths and content, plus supplied external files.
-Compare every value immediately after the reviewer returns. Any difference is
-an unauthorized mutation: stop, report it, and do not use the review response.
+Run each review-mode delegation in an isolated checkout with no concurrent
+writer. Before delegation, record a local Git worktree-state fingerprint from
+the current revision, staged and unstaged binary diffs, status, and hashes of
+non-ignored untracked files. Do not put untracked contents or supplied external
+files into the delegated prompt merely to create the fingerprint. Compare the
+fingerprint immediately after the reviewer returns. On a mismatch, stop, report
+the unexpected state change without attributing it to the reviewer, and do not
+use the review response.
 
 ## Verify and Report
 

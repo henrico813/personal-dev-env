@@ -54,11 +54,14 @@ skills:` line containing `code-documentation` only for source-documentation
 work and require workers to load available listed skills before working. Do not
 delegate review mode to an editing specialist.
 
-For each review-mode pass, capture the current revision,
-`git diff --binary --cached`, `git diff --binary`, `git status --porcelain=v1`,
-and non-ignored untracked paths and content, plus supplied external files.
-Compare every value immediately after the review. Any difference is an
-unauthorized mutation: stop, report it, and do not use the review response.
+Run each review-mode pass in an isolated checkout with no concurrent writer.
+Before review, record a local Git worktree-state fingerprint from the current
+revision, staged and unstaged binary diffs, status, and hashes of non-ignored
+untracked files. Do not include untracked contents or supplied external files in
+another worker's prompt merely to create the fingerprint. Compare the
+fingerprint immediately after the review. On a mismatch, stop, report the
+unexpected state change without attributing it to the reviewer, and do not use
+the review response.
 
 ## Verify and Report
 

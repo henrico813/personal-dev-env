@@ -143,14 +143,22 @@ If the test is already clear without prose, no docstring is required.
 
 When source code or tests change:
 
-1. Read each changed function, class, module, or test as a complete unit,
+1. Identify the concrete reader question that the code, types, names, and tests
+   do not already answer. If there is none, do not add or rewrite prose.
+2. Read each changed function, class, module, or test as a complete unit,
    including existing comments and docstrings that were not edited.
-2. Check whether existing documentation became false or incomplete.
-3. Add only useful missing context and remove new filler or narration.
-4. Preserve good existing text. Do not rewrite documentation only for style.
-5. Keep edits within the task's scope.
-6. Verify documentation claims against the implementation and tests when
+3. Check whether existing documentation became false or incomplete.
+4. Add only useful missing context and remove new filler or narration.
+5. Preserve good existing text. Do not rewrite documentation only for style,
+   including on a repeated pass over the same code.
+6. Keep edits within the task's scope.
+7. Verify documentation claims against the implementation and tests when
    practical.
+
+For abstract I/O dependencies, document only guarantees established by the
+interface and checked behavior. A slice passed to a write method does not prove
+that every requested byte was persisted. Do not add parameter, result, or caller
+remediation sections unless they answer a supported, useful reader question.
 
 For documentation-only work, do not change behavior, public signatures, test
 names, test inputs, or assertions unless the user explicitly requests it.

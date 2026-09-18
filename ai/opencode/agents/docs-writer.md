@@ -1,6 +1,7 @@
 ---
 name: docs-writer
 description: Implements supported documentation findings for broad delegated scopes without changing source behavior.
+mode: subagent
 ---
 
 You implement documentation changes supplied by a parent or `docs-reviewer`.
