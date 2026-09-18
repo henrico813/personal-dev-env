@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,6 +67,11 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			want:    []string{".tmux/plugins/tmux-resurrect", "type = \"archive\""},
 			omit: []string{
 				"obsidian.nvim",
+				".config/opencode/AGENTS.md",
+				".codex/AGENTS.md",
+				".pi/agent/AGENTS.md",
+				".agents/skills/code-documentation/SKILL.md",
+				".codex/skills/code-documentation/SKILL.md",
 				".pi/agent/settings.json",
 				".agents/skills/obsidian-zettel/SKILL.md",
 				".codex/skills/obsidian-zettel/SKILL.md",
@@ -143,6 +149,11 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			profile: "full",
 			want: []string{
 				"obsidian.nvim",
+				".config/opencode/AGENTS.md",
+				".codex/AGENTS.md",
+				".pi/agent/AGENTS.md",
+				".agents/skills/code-documentation/SKILL.md",
+				".codex/skills/code-documentation/SKILL.md",
 				".pi/agent/settings.json",
 				"implement-plan/SKILL.md",
 				".agents/skills/obsidian-zettel/SKILL.md",
@@ -220,6 +231,34 @@ func TestExternalTemplateProfiles(t *testing.T) {
 		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
+}
+
+func TestSharedWorkflowMappings(t *testing.T) {
+	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
+	tests := []struct {
+		target string
+		source string
+	}{
+		{target: ".config/opencode/AGENTS.md", source: "ai/AGENTS.md"},
+		{target: ".codex/AGENTS.md", source: "ai/AGENTS.md"},
+		{target: ".pi/agent/AGENTS.md", source: "ai/AGENTS.md"},
+		{target: ".agents/skills/code-documentation/SKILL.md", source: "ai/skills/code-documentation/SKILL.md"},
+		{target: ".codex/skills/code-documentation/SKILL.md", source: "ai/skills/code-documentation/SKILL.md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.target, func(t *testing.T) {
+			mapping := fmt.Sprintf(
+				"[%q]\ntype = \"file\"\nurl = 'file://%s/%s'",
+				tt.target,
+				repoRoot(t),
+				tt.source,
+			)
+			if count := strings.Count(text, mapping); count != 1 {
+				t.Fatalf("mapping %s count = %d, want 1", tt.target, count)
+			}
+		})
+	}
 }
 
 func TestZshTemplateProfiles(t *testing.T) {

@@ -1,5 +1,6 @@
 use std::{
-    fs::{File, OpenOptions},
+    ffi::OsStr,
+    fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -17,6 +18,7 @@ const AUTH_VARS: &[&str] = &[
     "DEEPSEEK_API_KEY",
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_BASE_URL",
+    "OPENCODE_API_KEY",
 ];
 // Forward provider config into the container, but only allow complete
 // credential groups to satisfy the host-side auth preflight.
@@ -26,6 +28,7 @@ const REQUIRED_AUTH_GROUPS: &[&[&str]] = &[
     &["GEMINI_API_KEY"],
     &["DEEPSEEK_API_KEY"],
     &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
+    &["OPENCODE_API_KEY"],
 ];
 const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
@@ -152,6 +155,49 @@ pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf
     }
 }
 
+fn prepare_shared_skills_with<F>(
+    home: Option<&OsStr>,
+    read_dir: F,
+) -> Result<Option<PathBuf>, String>
+where
+    F: FnOnce(&Path) -> std::io::Result<()>,
+{
+    let Some(home) = home else {
+        return Ok(None);
+    };
+    let home = home
+        .to_str()
+        .ok_or_else(|| "HOME must be valid UTF-8 to mount shared skills".to_string())?;
+    if home.is_empty() || !Path::new(home).is_absolute() {
+        return Err("HOME must be an absolute path to mount shared skills".to_string());
+    }
+    if home.contains(',') {
+        return Err("HOME cannot contain commas when mounting shared skills".to_string());
+    }
+
+    let skills_dir = PathBuf::from(home).join(".agents/skills");
+    match fs::metadata(&skills_dir) {
+        Ok(metadata) if metadata.is_dir() => {
+            read_dir(&skills_dir)
+                .map_err(|e| format!("read shared skills {}: {e}", skills_dir.display()))?;
+            Ok(Some(skills_dir))
+        }
+        Ok(_) => Err(format!(
+            "shared skills path is not a directory: {}",
+            skills_dir.display()
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "read shared skills metadata {}: {error}",
+            skills_dir.display()
+        )),
+    }
+}
+
+pub(crate) fn prepare_shared_skills(home: Option<&OsStr>) -> Result<Option<PathBuf>, String> {
+    prepare_shared_skills_with(home, |path| fs::read_dir(path).map(|_| ()))
+}
+
 struct DockerRunArgs<'a> {
     repo_root: &'a Path,
     git_common_dir: &'a Path,
@@ -180,6 +226,7 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         snapshot_ref,
         user,
         pi_agent_dir,
+        shared_skills_dir,
     } = args;
 
     let mut run_args = vec![
@@ -235,6 +282,15 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
             ),
         ]);
     }
+    if let Some(shared_skills_dir) = shared_skills_dir {
+        run_args.extend([
+            "--mount".to_string(),
+            format!(
+                "type=bind,src={},dst=/vibe-home/.agents/skills,readonly",
+                shared_skills_dir.display()
+            ),
+        ]);
+    }
     if let Some(pi_agent_dir) = pi_agent_dir {
         // Pi rotates OAuth tokens and locks beside auth.json, so the
         // directory must stay writable and shared across runs.
@@ -257,6 +313,7 @@ pub fn run_task(
     stderr_level: &str,
     insecure_tls: bool,
     pi_agent_dir: Option<&Path>,
+    shared_skills_dir: Option<&Path>,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -287,6 +344,7 @@ pub fn run_task(
         snapshot_ref: &snapshot_ref,
         user: &user,
         pi_agent_dir,
+        shared_skills_dir,
     }));
     cmd.args(auth_env_args());
     for (git_key, env_key) in HOST_GIT_CONFIG_KEYS {
@@ -355,11 +413,15 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_env_args, docker_run_args, prepare_provider_auth, ArtifactPaths, DockerRunArgs,
-        HostUser, AUTH_VARS,
+        auth_env_args, docker_run_args, prepare_provider_auth, prepare_shared_skills,
+        prepare_shared_skills_with, ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
-    use std::{ffi::OsString, fs, path::Path};
+    use std::{
+        ffi::{OsStr, OsString},
+        fs,
+        path::Path,
+    };
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
 
@@ -430,6 +492,82 @@ mod tests {
         assert!(prepare_provider_auth(home.path().to_str()).is_ok());
 
         restore_env(saved);
+    }
+
+    #[test]
+    fn provider_auth_accepts_opencode_credentials() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("OPENCODE_API_KEY", "sk-test");
+
+        assert!(prepare_provider_auth(home.path().to_str()).is_ok());
+        assert!(auth_env_args().iter().any(|arg| arg == "OPENCODE_API_KEY"));
+
+        restore_env(saved);
+    }
+
+    #[test]
+    fn shared_skills_accept_missing_directory() {
+        let home = tempfile::tempdir().expect("tempdir");
+
+        assert_eq!(
+            prepare_shared_skills(Some(home.path().as_os_str()))
+                .expect("missing skills are optional"),
+            None
+        );
+    }
+
+    #[test]
+    fn shared_skills_find_directory() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let skills_dir = home.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+
+        assert_eq!(
+            prepare_shared_skills(Some(home.path().as_os_str())).expect("read skills path"),
+            Some(skills_dir)
+        );
+    }
+
+    #[test]
+    fn shared_skills_reject_file() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let skills_dir = home.path().join(".agents/skills");
+        fs::create_dir_all(skills_dir.parent().expect("skills parent")).expect("mkdir parent");
+        fs::write(&skills_dir, b"not a directory").expect("write skills file");
+
+        let error = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect_err("a file cannot be mounted as the skills directory");
+
+        assert!(error.contains("shared skills path is not a directory"));
+    }
+
+    #[test]
+    fn shared_skills_reject_unsafe_home() {
+        for home in ["", ".", "/tmp/home,with-comma"] {
+            assert!(prepare_shared_skills(Some(OsStr::new(home))).is_err());
+        }
+    }
+
+    #[test]
+    fn shared_skills_reject_unreadable_directory() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let skills_dir = home.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+
+        let error = prepare_shared_skills_with(Some(home.path().as_os_str()), |_| {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "permission denied",
+            ))
+        })
+        .expect_err("unreadable skills must fail setup");
+
+        assert!(error.contains("read shared skills"));
     }
 
     #[test]
@@ -562,6 +700,7 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: None,
+            shared_skills_dir: None,
         });
 
         assert!(args
@@ -611,6 +750,7 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: None,
+            shared_skills_dir: None,
         });
 
         assert!(args
@@ -643,11 +783,52 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: Some(&pi_agent_dir),
+            shared_skills_dir: None,
         });
 
         // This checks Vibe's mount only; Pi owns refresh behavior.
         let expected_mount = format!("{}:/vibe-home/.pi/agent:rw", pi_agent_dir.display());
         assert!(args.iter().any(|arg| arg == &expected_mount));
+    }
+
+    #[test]
+    fn docker_mounts_shared_skills_read_only() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo_root = temp.path().join("repo");
+        let git_common_dir = temp.path().join("git");
+        let worktree = temp.path().join("worktree");
+        let shared_skills_dir = temp.path().join(".agents/skills");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: &repo_root,
+            git_common_dir: &git_common_dir,
+            worktree: &worktree,
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: None,
+            shared_skills_dir: Some(&shared_skills_dir),
+        });
+        let expected_mount = format!(
+            "type=bind,src={},dst=/vibe-home/.agents/skills,readonly",
+            shared_skills_dir.display()
+        );
+
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--mount" && pair[1] == expected_mount));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.contains("/vibe-home/.agents/skills:rw")));
     }
 
     #[test]

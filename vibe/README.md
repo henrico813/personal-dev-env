@@ -58,7 +58,7 @@ renders the immutable executor prompt contract in `src/prompts.rs`, and
 requires provider auth via supported env vars or a readable
 `~/.pi/agent/auth.json`; missing auth fails early as `setup_error`.
 Supported env vars are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or the Azure pair
+`OPENCODE_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or the Azure pair
 `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_BASE_URL`.
 
 ## Run
@@ -103,6 +103,8 @@ Concurrent runs whose keys normalize to the same slug are rejected.
 - bundled Docker, hook, and extension assets are extracted under
   `~/.local/share/vibe/<version>/`
 - Vibe mounts the target worktree, shared git metadata, and `/artifacts`
+- when present, host `~/.agents/skills` is mounted read-only at
+  `/vibe-home/.agents/skills` so Pi can load supervisor-named shared skills
 - the container runs as the host UID/GID and sets git `safe.directory`
 - `prompt.txt` stores the raw UTF-8 supervisor prompt
 - `system-prompt.txt` stores the rendered executor system prompt
@@ -163,6 +165,11 @@ This lets Pi persist rotated OAuth credentials and share its refresh lock across
 When `auth.json` supplies authentication, the same mount exposes sibling configuration such as `models.json` and `models-store.json`.
 Auth is never copied into the run artifact directory.
 Prefer provider API keys for disposable or concurrent automation.
+The shared-skill mount is independent of provider authentication. A missing
+`~/.agents/skills` directory is allowed for standalone Vibe use; a non-directory
+or unreadable path fails setup instead of letting Docker create or rewrite it.
+Vibe treats every installed host skill as trusted executor input; the read-only
+mount protects host files from writes but does not vet their instructions.
 
 Recovery notes:
 

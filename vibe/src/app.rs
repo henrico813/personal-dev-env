@@ -164,6 +164,11 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
+    let home = std::env::var_os("HOME");
+    let shared_skills = match docker::prepare_shared_skills(home.as_deref()) {
+        Ok(prepared) => prepared,
+        Err(error) => return RunResult::setup_error(error),
+    };
     let asset_root = match sandbox::prepare_agent_image() {
         Ok(root) => root,
         Err(error) => return RunResult::setup_error(error),
@@ -337,13 +342,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
     let agent_exit = match sandbox::run_agent(
-        &asset_root,
         &mounts,
         &artifacts,
         &args.model,
         args.stderr_level.as_str(),
         args.insecure_tls,
         prepared_auth.as_deref(),
+        shared_skills.as_deref(),
     ) {
         Ok(code) => code,
         Err(err) => {
