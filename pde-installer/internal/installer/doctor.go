@@ -28,7 +28,7 @@ const (
 )
 
 func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
-	if err := config.validateProfile(); err != nil {
+	if err := config.validate(); err != nil {
 		return err
 	}
 	var failures []string
@@ -91,7 +91,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := ubuntu.New(config.Profile, runner).Validate(); err != nil {
 		failures = append(failures, "Ubuntu release: "+err.Error())
 	}
-	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, runner).Validate(); err != nil {
+	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
 	if config.Profile == profile.Full {

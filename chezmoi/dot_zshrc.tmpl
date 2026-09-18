@@ -1,3 +1,4 @@
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
 # Disable terminal flow control to enable Ctrl-S for forward history search
 stty -ixon
 
@@ -174,7 +175,7 @@ export CLICOLOR=1
 
 # FZF
 export FZF_DEFAULT_COMMAND="rg --files --hidden --glob '!.git'"
-export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1"
+export FZF_DEFAULT_OPTS="--height=40% --layout=reverse --border --margin=1 --padding=1 --color=bg:{{ $colors.terminal.background }},bg+:{{ $colors.ui.surface }},fg:{{ $colors.terminal.foreground }},fg+:{{ $colors.terminal.foreground }},hl:{{ $colors.ui.warning }},hl+:{{ $colors.ui.warning }},border:{{ $colors.ui.muted }},prompt:{{ $colors.ui.accent }},pointer:{{ $colors.ui.secondary }},marker:{{ $colors.ui.success }},spinner:{{ $colors.ui.accent }},header:{{ $colors.ui.subtle }}"
 
 # PATH
 export PATH="$HOME/.local/bin:$PATH"
@@ -188,7 +189,7 @@ export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-checksums.json"
 {{- end }}
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 
-export BAT_THEME="gruvbox-dark"
+export BAT_THEME="{{ $colors.bat }}"
 
 {{- if eq (env "PDE_PROFILE") "full" }}
 # EDITOR

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/profile"
 )
@@ -13,11 +14,15 @@ import (
 type config struct {
 	Home, RepoRoot, LocalBin, AquaRoot string
 	Profile                            profile.Profile
+	ColorProfile                       colorprofile.Profile
 }
 
-func (c config) validateProfile() error {
+func (c config) validate() error {
 	if !c.Profile.Valid() {
 		return fmt.Errorf("invalid profile %q; use full or terminal", c.Profile)
+	}
+	if !c.ColorProfile.Valid() {
+		return fmt.Errorf("invalid color profile %q; use %s", c.ColorProfile, colorprofile.ValidValues)
 	}
 	return nil
 }

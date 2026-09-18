@@ -22,8 +22,8 @@ From the repository root:
 mkdir -p ~/.local/bin
 go build -C pde-installer -o ~/.local/bin/pde-installer .
 export PATH="$HOME/.local/bin:$PATH"
-pde-installer install terminal --dry-run
-pde-installer install terminal
+pde-installer install terminal --color-profile everforest-dark --dry-run
+pde-installer install terminal --color-profile everforest-dark
 pde-installer doctor
 pde-installer list
 ```
@@ -48,6 +48,12 @@ builds, Alacritty, WezTerm, and editor/AI configuration. Full retains all of
 these components and everything else in the environment. Every install
 reconciles both tools and managed home configuration. Fresh `doctor` and `list`
 inspect full.
+
+The independent color selection accepts `tokyo-night`, `everforest-dark`, or
+`gruvbox-dark`. Missing state defaults to Tokyo Night. All installs coordinate
+tmux, Powerlevel10k, fzf, and bat. Full installs also coordinate Alacritty,
+WezTerm, and Neovim; terminal installs retain those full-only files unchanged.
+Static rendering never recolors the local terminal during SSH sessions.
 
 ## Documentation
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
@@ -57,9 +58,9 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			home := t.TempDir()
 			t.Setenv("HOME", home)
 			path := filepath.Join(home, ".config", "pde", "config.json")
-			writeCommandTestFile(t, path, `{"profile":"full"}`+"\n")
+			writeCommandTestFile(t, path, `{"profile":"full","color_profile":"everforest-dark"}`+"\n")
 			stage := filepath.Join(home, ".config", "pde", "recovered-config.json")
-			writeCommandTestFile(t, stage, `{"profile":"terminal"}`+"\n")
+			writeCommandTestFile(t, stage, `{"profile":"terminal","color_profile":"gruvbox-dark"}`+"\n")
 			journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: home})
 			if err != nil {
 				t.Fatal(err)
@@ -69,8 +70,10 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			}
 
 			var got profile.Profile
+			var gotColor colorprofile.Profile
 			action := func(config config, _ run.Runner) error {
 				got = config.Profile
+				gotColor = config.ColorProfile
 				return nil
 			}
 			repoRoot := testRepositoryRoot(t)
@@ -86,6 +89,9 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			}
 			if got != profile.Full {
 				t.Fatalf("recovered profile = %q, want %q", got, profile.Full)
+			}
+			if gotColor != colorprofile.EverforestDark {
+				t.Fatalf("recovered color profile = %q, want %q", gotColor, colorprofile.EverforestDark)
 			}
 		})
 	}
