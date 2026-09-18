@@ -58,9 +58,9 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	case "amd64":
 		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "x86_64", "x86_64", "x64", "x86_64", "x86_64"
 		checksums = map[string]string{
-			"neovim": "c441b547142860bf01bcce39e36cbed185c41112813e15443b16e5237750724d",
-			"go":     "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
-			"rust":   "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
+			"neovim":     "c441b547142860bf01bcce39e36cbed185c41112813e15443b16e5237750724d",
+			"go":         "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
+			"rust":       "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
 			"node":       "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
 			"moshi-hook": "0241614ab88282159800caf9a0a65230b8e927e21f02a6d34ecc2cfedc782550",
 			"herdr":      "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
@@ -68,9 +68,9 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	case "arm64":
 		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "arm64", "aarch64", "arm64", "arm64", "aarch64"
 		checksums = map[string]string{
-			"neovim": "e055af73fa9c72b37456da8d204fa5c09850bc07e80e9176fe3b87d4afb7a3fc",
-			"go":     "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
-			"rust":   "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
+			"neovim":     "e055af73fa9c72b37456da8d204fa5c09850bc07e80e9176fe3b87d4afb7a3fc",
+			"go":         "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
+			"rust":       "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
 			"node":       "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
 			"moshi-hook": "d105703fb053e6af416e7b9ca9d8ce3b1fb488443585a1c5ea45fd392ba48118",
 			"herdr":      "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
