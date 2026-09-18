@@ -92,6 +92,18 @@ func TestApplyFailureRestoresFiles(t *testing.T) {
 	}
 }
 
+func TestApplyFailureRemovesCreatedFiles(t *testing.T) {
+	fixture := newApplyFixture(t, "fail")
+	writeApplyFile(t, fixture.state, "old-state\n")
+	if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), "exit status 9") {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if _, err := os.Lstat(fixture.target); !os.IsNotExist(err) {
+		t.Fatalf("created target remains: %v", err)
+	}
+	assertApplyFile(t, fixture.state, "old-state\n")
+}
+
 // Status output must never authorize writes outside HOME.
 func TestApplyRejectsOutsideHome(t *testing.T) {
 	t.Parallel()
@@ -220,6 +232,7 @@ func TestFullApplyRequiresThemeTemplates(t *testing.T) {
 		"dot_config/wezterm/wezterm.lua.tmpl",
 		"dot_config/nvim/lua/plugins/colorscheme.lua.tmpl",
 		"dot_config/nvim/lua/plugins/ui.lua.tmpl",
+		"dot_config/opencode/modify_tui.jsonc",
 	} {
 		t.Run(name, func(t *testing.T) {
 			fixture := newApplyFixture(t, "success")
@@ -297,6 +310,7 @@ func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profi
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-terminal-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode-mem.jsonc"), "{}\n")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_tui.jsonc"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "test-mode"), mode+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-profile"), string(selected)+"\n")
 	writeApplyFile(t, filepath.Join(source, "test-color-profile"), string(colorprofile.TokyoNight)+"\n")

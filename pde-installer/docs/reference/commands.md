@@ -29,11 +29,16 @@ saves it as `color_profile`. A valid explicit flag can replace an invalid saved
 color value.
 
 Every selection renders tmux, Powerlevel10k, fzf, and bat colors. Full installs
-also render Alacritty, WezTerm, and Neovim; terminal installs leave any retained
-full-only files unchanged until the next full install. Rendering is static and
-does not emit terminal palette escape sequences. An SSH client therefore keeps
-its local terminal palette while a remote PDE prompt and tmux session use the
-remote host's selected RGB colors.
+also render Alacritty, WezTerm, Neovim, and OpenCode; terminal installs leave
+any retained full-only files unchanged until the next full install. The
+OpenCode modifier replaces `theme` while retaining other parsed `tui.jsonc`
+values. It emits normalized JSON, so comments and original formatting are not
+retained. Restart OpenCode after changing profiles because it reads TUI config
+at startup.
+
+Rendering is static and does not emit terminal palette escape sequences. An SSH
+client keeps its local terminal palette while a remote PDE prompt and tmux
+session use the remote host's selected RGB colors.
 
 A successful explicit argument may switch either direction; a pre-commit
 failure preserves the prior selection. Switching from full to terminal stops

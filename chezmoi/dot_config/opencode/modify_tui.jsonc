@@ -1,0 +1,10 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
+{{- $config := dict -}}
+{{- if ne (.chezmoi.stdin | trim) "" -}}
+{{- $config = .chezmoi.stdin | fromJsonc -}}
+{{- end -}}
+{{- if not (kindIs "map" $config) -}}
+{{- fail "OpenCode TUI config must be an object" -}}
+{{- end -}}
+{{ $config | setValueAtPath "theme" $colors.opencode | toPrettyJson }}
