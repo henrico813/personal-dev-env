@@ -93,6 +93,7 @@ binaries plus repo-managed AI config.
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/`, `~/.codex/skills/behavior-focused-testing/` | Shared test-writing guidance |
+| Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/`, `~/.codex/skills/code-documentation/` | Proportional source and test explanations |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/`, `~/.codex/skills/go-development/` | Shared Go development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/`, `~/.codex/skills/rust-development/` | Shared Rust development guidance |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |

@@ -2,8 +2,7 @@
 
 - Never use emojis.
 - Never use the words canonical or contract.
-- Keep code comments and docstrings concise.
-- Prefer examples over prose.
+- Keep source documentation useful and proportional to the code it explains.
 - Before writing a commit or pull request message, load and follow the
   `git-messages` skill.
 - Do not add AI attribution to commits or pull requests.
@@ -33,6 +32,15 @@
 - When planning changes to, changing, or reviewing Rust code, load and follow
   the `rust-development` skill.
 - If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
+
+## Source Documentation
+
+- When planning changes to, writing, changing, or reviewing source code or
+  automated tests, load and follow the `code-documentation` skill.
+- During implementation, make supported source-documentation fixes within the
+  current task. During review-only work, report findings without editing files.
+- When delegating source or test work, include `code-documentation` in the
+  applicable skill list.
 
 ## Planning Docs
 
@@ -72,8 +80,3 @@
   changes, or external actions.
 - When the user asks to promote a learned preference into source-controlled
   guidance, use the `promote-memory` skill.
-
-## Code Comments
-
-- Be concise.
-- Prefer code over prose.
