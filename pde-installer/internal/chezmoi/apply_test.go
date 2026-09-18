@@ -320,8 +320,8 @@ done
 : "${AQUA_ROOT_DIR:?}"
 expected_profile=$(cat "$source_dir/test-profile")
 expected_color_profile=$(cat "$source_dir/test-color-profile")
-[ "$PDE_COLOR_PROFILE" = "$expected_color_profile" ]
 [ "$PDE_PROFILE" = "$expected_profile" ]
+[ "$PDE_COLOR_PROFILE" = "$expected_color_profile" ]
 case "$expected_profile" in
 	full) aqua_name=aqua ; checksums_name=aqua-checksums ;;
 	terminal) aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums ;;
