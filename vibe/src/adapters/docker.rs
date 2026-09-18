@@ -2,6 +2,7 @@ use std::{
     ffi::OsStr,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -155,32 +156,78 @@ pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf
     }
 }
 
-fn prepare_shared_skills_with<F>(
-    home: Option<&OsStr>,
+#[derive(Debug)]
+pub(crate) struct SharedSkillsDir {
+    path: PathBuf,
+    device: u64,
+    inode: u64,
+}
+
+fn inspect_shared_skills_with<F>(
+    skills_dir: &Path,
     read_dir: F,
-) -> Result<Option<PathBuf>, String>
+) -> Result<Option<SharedSkillsDir>, String>
 where
     F: FnOnce(&Path) -> std::io::Result<()>,
 {
-    let Some(home) = home else {
-        return Ok(None);
-    };
-    let home = home
-        .to_str()
-        .ok_or_else(|| "HOME must be valid UTF-8 to mount shared skills".to_string())?;
-    if home.is_empty() || !Path::new(home).is_absolute() {
-        return Err("HOME must be an absolute path to mount shared skills".to_string());
-    }
-    if home.contains(',') {
-        return Err("HOME cannot contain commas when mounting shared skills".to_string());
-    }
-
-    let skills_dir = PathBuf::from(home).join(".agents/skills");
-    match fs::metadata(&skills_dir) {
+    match fs::symlink_metadata(skills_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
+            "shared skills path cannot be a symlink: {}",
+            skills_dir.display()
+        )),
         Ok(metadata) if metadata.is_dir() => {
-            read_dir(&skills_dir)
-                .map_err(|e| format!("read shared skills {}: {e}", skills_dir.display()))?;
-            Ok(Some(skills_dir))
+            let resolved = match fs::canonicalize(skills_dir) {
+                Ok(resolved) => resolved,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => {
+                    return Err(format!(
+                        "resolve shared skills {}: {error}",
+                        skills_dir.display()
+                    ))
+                }
+            };
+            let resolved_metadata = match fs::metadata(&resolved) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => {
+                    return Err(format!(
+                        "read shared skills metadata {}: {error}",
+                        resolved.display()
+                    ))
+                }
+            };
+            let resolved_text = resolved.to_str().ok_or_else(|| {
+                format!(
+                    "resolved shared skills path must be valid UTF-8: {}",
+                    resolved.display()
+                )
+            })?;
+            if resolved_text.contains(',') {
+                return Err(format!(
+                    "resolved shared skills path cannot contain commas: {}",
+                    resolved.display()
+                ));
+            }
+            if metadata.dev() != resolved_metadata.dev()
+                || metadata.ino() != resolved_metadata.ino()
+            {
+                return Err(format!(
+                    "shared skills path changed during validation: {}",
+                    skills_dir.display()
+                ));
+            }
+            match read_dir(&resolved) {
+                Ok(()) => Ok(Some(SharedSkillsDir {
+                    path: resolved,
+                    device: metadata.dev(),
+                    inode: metadata.ino(),
+                })),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(format!(
+                    "read shared skills {}: {error}",
+                    resolved.display()
+                )),
+            }
         }
         Ok(_) => Err(format!(
             "shared skills path is not a directory: {}",
@@ -194,8 +241,54 @@ where
     }
 }
 
-pub(crate) fn prepare_shared_skills(home: Option<&OsStr>) -> Result<Option<PathBuf>, String> {
+fn prepare_shared_skills_with<F>(
+    home: Option<&OsStr>,
+    read_dir: F,
+) -> Result<Option<SharedSkillsDir>, String>
+where
+    F: FnOnce(&Path) -> std::io::Result<()>,
+{
+    let Some(home) = home else {
+        return Ok(None);
+    };
+    let home_path = PathBuf::from(home);
+    let skills_dir = home_path.join(".agents/skills");
+    let prepared = inspect_shared_skills_with(&skills_dir, read_dir)?;
+    if prepared.is_none() {
+        return Ok(None);
+    }
+
+    let home = home
+        .to_str()
+        .ok_or_else(|| "HOME must be valid UTF-8 to mount shared skills".to_string())?;
+    if home.is_empty() || !home_path.is_absolute() {
+        return Err("HOME must be an absolute path to mount shared skills".to_string());
+    }
+    if home.contains(',') {
+        return Err("HOME cannot contain commas when mounting shared skills".to_string());
+    }
+    Ok(prepared)
+}
+
+pub(crate) fn prepare_shared_skills(
+    home: Option<&OsStr>,
+) -> Result<Option<SharedSkillsDir>, String> {
     prepare_shared_skills_with(home, |path| fs::read_dir(path).map(|_| ()))
+}
+
+fn revalidate_shared_skills(prepared: &SharedSkillsDir) -> Result<Option<PathBuf>, String> {
+    let Some(current) =
+        inspect_shared_skills_with(&prepared.path, |path| fs::read_dir(path).map(|_| ()))?
+    else {
+        return Ok(None);
+    };
+    if current.device != prepared.device || current.inode != prepared.inode {
+        return Err(format!(
+            "shared skills path changed after validation: {}",
+            prepared.path.display()
+        ));
+    }
+    Ok(Some(current.path))
 }
 
 struct DockerRunArgs<'a> {
@@ -314,7 +407,7 @@ pub fn run_task(
     stderr_level: &str,
     insecure_tls: bool,
     pi_agent_dir: Option<&Path>,
-    shared_skills_dir: Option<&Path>,
+    shared_skills: Option<&SharedSkillsDir>,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -331,7 +424,23 @@ pub fn run_task(
     if insecure_tls {
         eprintln!("warning: --insecure-tls disables TLS certificate verification inside Docker");
     }
-
+    let mut git_env_args = Vec::new();
+    for (git_key, env_key) in HOST_GIT_CONFIG_KEYS {
+        let out = Command::new("git")
+            .args(["config", "--global", git_key])
+            .output()
+            .map_err(|e| format!("read git {git_key}: {e}"))?;
+        if out.status.success() {
+            let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !value.is_empty() {
+                git_env_args.extend(["-e".to_string(), format!("{env_key}={value}")]);
+            }
+        }
+    }
+    let shared_skills_dir = match shared_skills {
+        Some(prepared) => revalidate_shared_skills(prepared)?,
+        None => None,
+    };
     let mut cmd = Command::new("docker");
     cmd.args(docker_run_args(&DockerRunArgs {
         repo_root: &mounts.repo_root,
@@ -345,21 +454,10 @@ pub fn run_task(
         snapshot_ref: &snapshot_ref,
         user: &user,
         pi_agent_dir,
-        shared_skills_dir,
+        shared_skills_dir: shared_skills_dir.as_deref(),
     }));
     cmd.args(auth_env_args());
-    for (git_key, env_key) in HOST_GIT_CONFIG_KEYS {
-        let out = Command::new("git")
-            .args(["config", "--global", git_key])
-            .output()
-            .map_err(|e| format!("read git {git_key}: {e}"))?;
-        if out.status.success() {
-            let value = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !value.is_empty() {
-                cmd.args(["-e", &format!("{env_key}={value}")]);
-            }
-        }
-    }
+    cmd.args(git_env_args);
     let mut child = cmd
         .arg(IMAGE)
         .stdout(Stdio::null())
@@ -415,11 +513,12 @@ pub fn run_task(
 mod tests {
     use super::{
         auth_env_args, docker_run_args, prepare_provider_auth, prepare_shared_skills,
-        prepare_shared_skills_with, ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
+        prepare_shared_skills_with, revalidate_shared_skills, ArtifactPaths, DockerRunArgs,
+        HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
     use std::{
-        ffi::{OsStr, OsString},
+        ffi::OsString,
         fs,
         path::Path,
     };
@@ -528,9 +627,12 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
 
+        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect("skills path");
+
         assert_eq!(
-            prepare_shared_skills(Some(home.path().as_os_str())).expect("read skills path"),
-            Some(skills_dir)
+            prepared.path,
+            fs::canonicalize(skills_dir).expect("resolve skills")
         );
     }
 
@@ -548,10 +650,85 @@ mod tests {
     }
 
     #[test]
+    fn shared_skills_allow_missing_unsafe_home() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let missing = home.path().join("missing,home");
+
+        assert!(prepare_shared_skills(Some(missing.as_os_str()))
+            .expect("missing skills are optional")
+            .is_none());
+    }
+
+    #[test]
     fn shared_skills_reject_unsafe_home() {
-        for home in ["", ".", "/tmp/home,with-comma"] {
-            assert!(prepare_shared_skills(Some(OsStr::new(home))).is_err());
-        }
+        let parent = tempfile::tempdir().expect("tempdir");
+        let home = parent.path().join("home,with-comma");
+        fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
+
+        assert!(prepare_shared_skills(Some(home.as_os_str())).is_err());
+    }
+
+    #[test]
+    fn shared_skills_reject_symlink() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let target = home.path().join("target");
+        let skills_dir = home.path().join(".agents/skills");
+        fs::create_dir_all(&target).expect("mkdir target");
+        fs::create_dir_all(skills_dir.parent().expect("skills parent")).expect("mkdir parent");
+        std::os::unix::fs::symlink(target, &skills_dir).expect("symlink skills");
+
+        let error = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect_err("symlinked skills must fail setup");
+
+        assert!(error.contains("cannot be a symlink"));
+    }
+
+    #[test]
+    fn shared_skills_reject_unsafe_resolved_path() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let home = parent.path().join("home");
+        let target = parent.path().join("target,with-comma");
+        fs::create_dir_all(&home).expect("mkdir home");
+        fs::create_dir_all(target.join("skills")).expect("mkdir target skills");
+        std::os::unix::fs::symlink(&target, home.join(".agents")).expect("symlink agents");
+
+        let error = prepare_shared_skills(Some(home.as_os_str()))
+            .expect_err("unsafe resolved path must fail setup");
+
+        assert!(error.contains("resolved shared skills path cannot contain commas"));
+    }
+
+    #[test]
+    fn shared_skills_omit_disappeared_directory() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let skills_dir = home.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect("read skills path")
+            .expect("skills path");
+        fs::remove_dir(&skills_dir).expect("remove skills");
+
+        assert!(revalidate_shared_skills(&prepared)
+            .expect("disappeared skills are optional")
+            .is_none());
+    }
+
+    #[test]
+    fn shared_skills_reject_replacement() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let skills_dir = home.path().join(".agents/skills");
+        let original = home.path().join("original-skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+            .expect("read skills path")
+            .expect("skills path");
+        fs::rename(&skills_dir, &original).expect("move original skills");
+        fs::create_dir(&skills_dir).expect("replace skills");
+
+        let error =
+            revalidate_shared_skills(&prepared).expect_err("replacement must fail before launch");
+
+        assert!(error.contains("changed after validation"));
     }
 
     #[test]

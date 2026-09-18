@@ -20,7 +20,7 @@ pub fn run_agent(
     stderr_level: &str,
     insecure_tls: bool,
     pi_agent_dir: Option<&Path>,
-    shared_skills_dir: Option<&Path>,
+    shared_skills: Option<&docker::SharedSkillsDir>,
 ) -> Result<i32, String> {
     docker::run_task(
         mounts,
@@ -29,6 +29,6 @@ pub fn run_agent(
         stderr_level,
         insecure_tls,
         pi_agent_dir,
-        shared_skills_dir,
+        shared_skills,
     )
 }

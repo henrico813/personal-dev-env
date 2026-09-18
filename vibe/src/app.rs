@@ -348,7 +348,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         args.stderr_level.as_str(),
         args.insecure_tls,
         prepared_auth.as_deref(),
-        shared_skills.as_deref(),
+        shared_skills.as_ref(),
     ) {
         Ok(code) => code,
         Err(err) => {
