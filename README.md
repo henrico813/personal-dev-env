@@ -25,6 +25,11 @@ A successful explicit selection switches future installs. A pre-commit failure
 preserves the prior selection. Switching from full to terminal stops
 reconciling full-only artifacts but does not uninstall them.
 
+The independent `--color-profile` setting accepts `tokyo-night`,
+`everforest-dark`, or `gruvbox-dark`. It defaults to Tokyo Night, is saved per
+machine, and coordinates the terminal, tmux, shell, and Neovim configuration
+included by the selected component profile.
+
 The installer does not clone or update the repository. Run it from anywhere
 inside the checkout, pass `--repo-root /path/to/personal-dev-env`, or set
 `PDE_REPO_ROOT`.

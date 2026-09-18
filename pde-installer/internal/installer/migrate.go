@@ -48,6 +48,7 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 	}
 	values["install_path"] = config.RepoRoot
 	values["profile"] = string(config.Profile)
+	values["color_profile"] = string(config.ColorProfile)
 
 	if data, err := os.ReadFile(legacy); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -91,6 +92,10 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		if _, err := stage.Write(updated); err != nil {
 			_ = stage.Close()
 			return nil, fmt.Errorf("write staged PDE config: %w", err)
+		}
+		if err := stage.Sync(); err != nil {
+			_ = stage.Close()
+			return nil, fmt.Errorf("sync staged PDE config: %w", err)
 		}
 		if err := stage.Close(); err != nil {
 			return nil, fmt.Errorf("close staged PDE config: %w", err)

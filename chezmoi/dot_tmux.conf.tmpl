@@ -1,3 +1,4 @@
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
 # Terminal colors - required for prompt and editor colors to match outside tmux
 set -g default-terminal "tmux-256color"
 set -ga terminal-overrides ",*256col*:Tc"
@@ -12,15 +13,15 @@ unbind Space
 
 set-option -g status-position top
 
-# Status bar styling - Tokyo Night rounded powerline hybrid
-set -g status-style bg=#1a1b26
+# Status bar styling - {{ $colors.label }} rounded powerline hybrid
+set -g status-style bg={{ $colors.terminal.background }}
 set -g status-left-length 30
 set -g status-right-length 50
-set -g status-left "#[fg=#7aa2f7]#[bg=#7aa2f7,fg=#1a1b26,bold] #S #[bg=#1a1b26,fg=#7aa2f7] "
+set -g status-left "#[fg={{ $colors.ui.accent }}]#[bg={{ $colors.ui.accent }},fg={{ $colors.terminal.background }},bold] #S #[bg={{ $colors.terminal.background }},fg={{ $colors.ui.accent }}] "
 set -g window-status-separator ""
-set -g window-status-format         "#[fg=#565f89] #I:#W "
-set -g window-status-current-format "#[fg=#414868]#[bg=#414868,fg=#c0caf5,bold] #I:#W #[bg=#1a1b26,fg=#414868]"
-set -g status-right "#[fg=#bb9af7]#[bg=#bb9af7,fg=#1a1b26] %d %b #[bg=#1a1b26,fg=#bb9af7]#[fg=#7aa2f7]#[bg=#7aa2f7,fg=#1a1b26] %H:%M #[bg=#1a1b26,fg=#7aa2f7]"
+set -g window-status-format         "#[fg={{ $colors.ui.subtle }}] #I:#W "
+set -g window-status-current-format "#[fg={{ $colors.ui.muted }}]#[bg={{ $colors.ui.muted }},fg={{ $colors.terminal.foreground }},bold] #I:#W #[bg={{ $colors.terminal.background }},fg={{ $colors.ui.muted }}]"
+set -g status-right "#[fg={{ $colors.ui.secondary }}]#[bg={{ $colors.ui.secondary }},fg={{ $colors.terminal.background }}] %d %b #[bg={{ $colors.terminal.background }},fg={{ $colors.ui.secondary }}]#[fg={{ $colors.ui.accent }}]#[bg={{ $colors.ui.accent }},fg={{ $colors.terminal.background }}] %H:%M #[bg={{ $colors.terminal.background }},fg={{ $colors.ui.accent }}]"
 
 # Open new panes in the current window's directory.
 bind '"' split-window -v -c "#{pane_current_path}"
@@ -35,8 +36,8 @@ bind l select-pane -R
 
 # Pane borders
 set -g pane-border-lines heavy
-set -g pane-border-style fg=#414868
-set -g pane-active-border-style fg=#7aa2f7
+set -g pane-border-style fg={{ $colors.ui.muted }}
+set -g pane-active-border-style fg={{ $colors.ui.accent }}
 
 # Preserve last-window — moved off prefix-l
 bind Tab last-window
@@ -47,8 +48,8 @@ set -g @plugin 'tmux-plugins/tmux-sensible'
 set -g @plugin 'tmux-plugins/tmux-resurrect'
 
 # Pane number display colors
-set -g display-panes-colour "#414868"
-set -g display-panes-active-colour "#7aa2f7"
+set -g display-panes-colour "{{ $colors.ui.muted }}"
+set -g display-panes-active-colour "{{ $colors.ui.accent }}"
 set -g display-panes-time 2000
 
 # Make copy pasting easier by enabling vim keybindings for scroll mode.
