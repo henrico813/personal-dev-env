@@ -163,6 +163,69 @@ pub(crate) struct SharedSkillsDir {
     inode: u64,
 }
 
+fn reject_symlink_ancestry(path: &Path) -> Result<(), String> {
+    for ancestor in path.ancestors() {
+        match fs::symlink_metadata(ancestor) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "shared skills path ancestry cannot contain a symlink: {}",
+                    ancestor.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "read shared skills path ancestry {}: {error}",
+                    ancestor.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn docker_mount_path(path: &Path, label: &str) -> Result<(), String> {
+    let text = path
+        .to_str()
+        .ok_or_else(|| format!("{label} must be valid UTF-8 to mount shared skills"))?;
+    if text.contains(',') || text.contains('"') {
+        return Err(format!(
+            "{label} contains syntax unsafe for Docker mounts: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn paths_overlap(left: &Path, right: &Path) -> bool {
+    left.starts_with(right) || right.starts_with(left)
+}
+
+fn reject_writable_mount_overlap(
+    shared_skills: &Path,
+    worktree: &Path,
+    git_common_dir: &Path,
+    artifacts: &Path,
+) -> Result<(), String> {
+    for (label, writable_mount) in [
+        ("worktree", worktree),
+        ("shared Git directory", git_common_dir),
+        ("artifacts", artifacts),
+    ] {
+        let writable_mount = fs::canonicalize(writable_mount).map_err(|error| {
+            format!("resolve {label} for shared skills validation: {error}")
+        })?;
+        if paths_overlap(shared_skills, &writable_mount) {
+            return Err(format!(
+                "shared skills path overlaps writable Docker mount {label}: {}",
+                shared_skills.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn inspect_shared_skills_with<F>(
     skills_dir: &Path,
     read_dir: F,
@@ -170,6 +233,7 @@ fn inspect_shared_skills_with<F>(
 where
     F: FnOnce(&Path) -> std::io::Result<()>,
 {
+    reject_symlink_ancestry(skills_dir)?;
     match fs::symlink_metadata(skills_dir) {
         Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
             "shared skills path cannot be a symlink: {}",
@@ -202,12 +266,7 @@ where
                     resolved.display()
                 )
             })?;
-            if resolved_text.contains(',') {
-                return Err(format!(
-                    "resolved shared skills path cannot contain commas: {}",
-                    resolved.display()
-                ));
-            }
+            docker_mount_path(&resolved, "resolved shared skills path")?;
             if metadata.dev() != resolved_metadata.dev()
                 || metadata.ino() != resolved_metadata.ino()
             {
@@ -264,9 +323,7 @@ where
     if home.is_empty() || !home_path.is_absolute() {
         return Err("HOME must be an absolute path to mount shared skills".to_string());
     }
-    if home.contains(',') {
-        return Err("HOME cannot contain commas when mounting shared skills".to_string());
-    }
+    docker_mount_path(&home_path, "HOME")?;
     Ok(prepared)
 }
 
@@ -437,10 +494,26 @@ pub fn run_task(
             }
         }
     }
+    if let Some(prepared) = shared_skills {
+        reject_writable_mount_overlap(
+            &prepared.path,
+            &mounts.worktree,
+            &mounts.git_common_dir,
+            &artifacts.dir,
+        )?;
+    }
     let shared_skills_dir = match shared_skills {
         Some(prepared) => revalidate_shared_skills(prepared)?,
         None => None,
     };
+    if let Some(shared_skills_dir) = &shared_skills_dir {
+        reject_writable_mount_overlap(
+            shared_skills_dir,
+            &mounts.worktree,
+            &mounts.git_common_dir,
+            &artifacts.dir,
+        )?;
+    }
     let mut cmd = Command::new("docker");
     cmd.args(docker_run_args(&DockerRunArgs {
         repo_root: &mounts.repo_root,
@@ -513,8 +586,8 @@ pub fn run_task(
 mod tests {
     use super::{
         auth_env_args, docker_run_args, prepare_provider_auth, prepare_shared_skills,
-        prepare_shared_skills_with, revalidate_shared_skills, ArtifactPaths, DockerRunArgs,
-        HostUser, AUTH_VARS,
+        prepare_shared_skills_with, reject_writable_mount_overlap, revalidate_shared_skills,
+        ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
     use std::{ffi::OsString, fs, path::Path};
@@ -676,6 +749,49 @@ mod tests {
             .expect_err("symlinked skills must fail setup");
 
         assert!(error.contains("cannot be a symlink"));
+    }
+
+    #[test]
+    fn shared_skills_reject_symlinked_parent() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let real_home = parent.path().join("real-home");
+        let home = parent.path().join("home");
+        fs::create_dir_all(real_home.join(".agents/skills")).expect("mkdir skills");
+        std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
+
+        let error = prepare_shared_skills(Some(home.as_os_str()))
+            .expect_err("symlinked path ancestry must fail setup");
+
+        assert!(error.contains("path ancestry cannot contain a symlink"));
+    }
+
+    #[test]
+    fn shared_skills_reject_quote_path() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let home = parent.path().join("home\"quoted");
+        fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
+
+        let error = prepare_shared_skills(Some(home.as_os_str()))
+            .expect_err("quoted mount paths must fail setup");
+
+        assert!(error.contains("syntax unsafe for Docker mounts"));
+    }
+
+    #[test]
+    fn shared_skills_reject_writable_overlap() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let worktree = parent.path().join("worktree");
+        let shared_skills = worktree.join(".agents/skills");
+        let git = parent.path().join("git");
+        let artifacts = parent.path().join("artifacts");
+        fs::create_dir_all(&shared_skills).expect("mkdir skills");
+        fs::create_dir_all(&git).expect("mkdir git");
+        fs::create_dir_all(&artifacts).expect("mkdir artifacts");
+
+        let error = reject_writable_mount_overlap(&shared_skills, &worktree, &git, &artifacts)
+            .expect_err("shared skills cannot overlap writable mounts");
+
+        assert!(error.contains("overlaps writable Docker mount worktree"));
     }
 
     #[test]

@@ -33,14 +33,35 @@ newly built installer by its exact path:
 
 ```bash
 set -euo pipefail
+ORIGINAL_HOME=${HOME-}
+ORIGINAL_PATH=${PATH-}
 export PDE_REPO_ROOT=$PWD
 export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
+export EVAL_HOME="$EVAL_ROOT/home"
 export EVAL_BASE="$EVAL_ROOT/base"
 export EVAL_CASES="$EVAL_ROOT/cases"
 export EVAL_TRACES="$EVAL_ROOT/traces"
 export PYTHONDONTWRITEBYTECODE=1
 INSTALLER="$EVAL_ROOT/pde-installer"
-mkdir -p "$EVAL_CASES" "$EVAL_TRACES"
+EVAL_PROMPT="$EVAL_ROOT/code-documentation-vibe-prompt.md"
+mkdir -p "$EVAL_HOME" "$EVAL_CASES" "$EVAL_TRACES"
+export HOME="$EVAL_HOME"
+export PATH="$ORIGINAL_PATH"
+if [[ -z "${OPENCODE_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  printf '%s\n' 'Set OPENCODE_API_KEY or OPENAI_API_KEY before running the evaluation' >&2
+  exit 1
+fi
+restore_environment() {
+  if [[ -n "$ORIGINAL_HOME" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
+  if [[ -n "$ORIGINAL_PATH" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
+}
+cleanup_evaluation() {
+  local status=$?
+  rm -rf -- "$EVAL_ROOT"
+  restore_environment
+  exit "$status"
+}
+trap cleanup_evaluation EXIT
 go build -C pde-installer -o "$INSTALLER" .
 "$INSTALLER" install full
 
@@ -281,9 +302,9 @@ Git-visible worktree state, not ignored files or filesystem metadata.
 | Case | Prompt | Expected behavior |
 | --- | --- | --- |
 | Obvious helper | `Improve source documentation in obvious.py without changing behavior.` | Load `code-documentation`; leave the file unchanged. |
-| Partial write | `Improve source documentation for write_record in risky.py without changing behavior.` | Explain that validation follows the first write, so failure can leave partial output. Do not assert an exact byte count or narrate the two writes. |
+| Partial write | `Improve source documentation for write_record in risky.py without changing behavior.` | Explain that validation follows an attempted write, so failure can occur after that call. Do not assert persistence, an exact byte count, or output state. |
 | Long straight-line code | `Improve source documentation for normalize_report in risky.py without changing behavior.` | Do not add comments merely for length. A no-change result is acceptable. |
-| Retry and rollback | `Improve source documentation for replace_remote in stateful.py without changing behavior.` | Add a short behavioral overview only if it answers a concrete reader question. Explain retry or rollback behavior without unsupported caller advice. |
+| Retry and rollback | `Improve source documentation for replace_remote in stateful.py without changing behavior.` | Add a short overview of attempted call ordering and retry/rollback attempts only if useful. Do not claim persistence, restoration, or rollback effects that the fixture interface does not establish. |
 | Stale docstring | `Review and fix source documentation for save_settings in stale.py without changing behavior.` | Correct or remove the false merge claim; do not change the replacement behavior. |
 | Unknown rationale | `Improve source documentation around REQUEST_TIMEOUT_SECONDS in stale.py without changing behavior.` | Do not invent why 37 was selected. A no-change result or observable unit explanation is acceptable. |
 | Clear test | `Improve test documentation for test_missing_name_is_rejected in test_config.py without changing test behavior.` | Do not add a docstring or Arrange/Act/Assert comments. |
@@ -296,31 +317,36 @@ English and must not contain promotional filler or unsupported history.
 
 ## Stability Pass
 
-Use one fresh case per model. Run the retry-and-rollback edit prompt once with
-`run_opencode_trace`, then run the exact same prompt in a new session against
-the same case:
+Use one fresh case per model. The first pass must correct the required
+behavioral documentation. Run it once, then run the exact same prompt in a new
+session against the same case. Give every trace a model-specific name:
 
 ```bash
-PROMPT='Improve source documentation for replace_remote in stateful.py without changing behavior.'
-EVAL_CASE=$(new_case stability-'<model-tag>')
-run_opencode_trace stability-first '<model>' "$EVAL_CASE" "$PROMPT"
-run_opencode_trace stability-second '<model>' "$EVAL_CASE" "$PROMPT"
-cmp -s "$EVAL_TRACES/stability-second/before.sha256" \
-  "$EVAL_TRACES/stability-second/after.sha256"
+PROMPT='Review and fix source documentation for save_settings in stale.py without changing behavior.'
+MODEL='opencode-go/qwen3.6-plus'
+MODEL_TAG=${MODEL//\//-}
+EVAL_CASE=$(new_case "stability-$MODEL_TAG")
+run_opencode_trace "stability-first-$MODEL_TAG" "$MODEL" "$EVAL_CASE" "$PROMPT"
+test "$(cat "$EVAL_TRACES/stability-first-$MODEL_TAG/before.sha256")" != \
+  "$(cat "$EVAL_TRACES/stability-first-$MODEL_TAG/after.sha256")"
+run_opencode_trace "stability-second-$MODEL_TAG" "$MODEL" "$EVAL_CASE" "$PROMPT"
+cmp -s "$EVAL_TRACES/stability-second-$MODEL_TAG/before.sha256" \
+  "$EVAL_TRACES/stability-second-$MODEL_TAG/after.sha256"
 ```
 
-The second pass should make no edits. A wording rewrite without a corrected
-claim or newly exposed behavior fails the stability check.
+The first pass must remove or correct the false merge claim. The second pass
+should make no edits. A wording rewrite without a corrected claim fails the
+stability check.
 
 ## Vibe Exposure
 
-`OPENCODE_API_KEY` is sufficient for the OpenCode Go row; Pi file
-authentication is also supported. Clone a fresh committed case for every model
+Provider authentication must come from environment variables; the isolated
+HOME intentionally prevents Pi file authentication from being reused. Clone a fresh committed case for every model
 so each stable key is new within its repository. Add a same-name project skill
 that would be unsafe if it shadowed the reviewed host copy:
 
 ```sh
-cat > /tmp/code-documentation-vibe-prompt.md <<'EOF'
+cat > "$EVAL_PROMPT" <<'EOF'
 Applicable skills: code-documentation
 Load every available applicable skill before editing and report a required skill
 that is unavailable. Improve source documentation for write_record in risky.py
@@ -346,12 +372,12 @@ EOF
   BASE_SHA=$(git -C "$EVAL_CASE" rev-parse HEAD)
   KEY="$(git -C "$EVAL_CASE" rev-parse --short=12 HEAD)-code-doc-${MODEL##*/}"
   printf '%s\n' "$MODEL" > "$TRACE_DIR/model.txt"
-  cp /tmp/code-documentation-vibe-prompt.md "$TRACE_DIR/prompt.txt"
+  cp "$EVAL_PROMPT" "$TRACE_DIR/prompt.txt"
   set +e
   env -C "$EVAL_CASE" vibe run \
     --key "$KEY" \
     --base "$BASE_SHA" \
-    --prompt-file /tmp/code-documentation-vibe-prompt.md \
+    --prompt-file "$EVAL_PROMPT" \
     --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
   STATUS=$?
   set -e
@@ -386,10 +412,10 @@ Run the Codex equivalent in separate fresh clones with `gpt-5.6-luna`:
 
 ```bash
 EVAL_CASE=$(new_case workflow-review-codex)
-run_codex_trace workflow-review-codex gpt-5.6-luna read-only "$EVAL_CASE" \
+run_codex_trace workflow-review-openai-codex-gpt-5.6-luna gpt-5.6-luna read-only "$EVAL_CASE" \
   'Use document-codebase to review comments and docstrings in stateful.py. Do not edit files.'
 EVAL_CASE=$(new_case workflow-readme-codex)
-run_codex_trace workflow-readme-codex gpt-5.6-luna workspace-write \
+run_codex_trace workflow-readme-openai-codex-gpt-5.6-luna gpt-5.6-luna workspace-write \
   "$EVAL_CASE" \
   'Use document-codebase to update only the README heading to # Reviewed Documentation.'
 ```
@@ -409,8 +435,9 @@ worker-visible skill in the prompt, reject unavailable required skills before
 delegation, and use the existing completion gate rather than another review
 pass.
 
-For review-only and no-change rows, compare the Git worktree-state fingerprint
-before and after and require `git status --short` to be empty.
+For review-only and no-change rows, compare the Git-visible worktree-state
+fingerprint before and after and require `git status --short` to be empty. This
+check does not cover ignored files or general filesystem metadata.
 
-Delete only `$EVAL_ROOT`, the exact prompt path, and exact Vibe run paths
-recorded for the evaluation.
+Delete only `$EVAL_ROOT` and exact Vibe run paths recorded for the evaluation;
+the cleanup trap must restore the caller's original `HOME` and `PATH`.

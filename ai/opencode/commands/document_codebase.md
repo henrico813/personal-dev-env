@@ -60,8 +60,10 @@ work and require each worker to load available listed skills before working.
 Run each review-mode delegation in an isolated checkout with no concurrent
 writer. Before delegation, record a local Git worktree-state fingerprint from
 the current revision, staged and unstaged binary diffs, status, and hashes of
-non-ignored untracked files. Do not put untracked contents or supplied external
-files into the delegated prompt merely to create the fingerprint. Compare the
+non-ignored untracked files. For explicitly supplied external files, include
+their paths and local hashes in the fingerprint without copying their contents
+into the delegated prompt. Do not put untracked contents into the delegated
+prompt merely to create the fingerprint. Compare the
 fingerprint immediately after the reviewer returns. On a mismatch, stop, report
 the unexpected state change without attributing it to the reviewer, and do not
 use the review response.

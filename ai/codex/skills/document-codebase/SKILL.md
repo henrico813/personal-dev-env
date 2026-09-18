@@ -57,8 +57,10 @@ delegate review mode to an editing specialist.
 Run each review-mode pass in an isolated checkout with no concurrent writer.
 Before review, record a local Git worktree-state fingerprint from the current
 revision, staged and unstaged binary diffs, status, and hashes of non-ignored
-untracked files. Do not include untracked contents or supplied external files in
-another worker's prompt merely to create the fingerprint. Compare the
+untracked files. For explicitly supplied external files, include their paths and
+local hashes in the fingerprint without copying their contents into another
+worker's prompt. Do not include untracked contents in a worker's prompt merely
+to create the fingerprint. Compare the
 fingerprint immediately after the review. On a mismatch, stop, report the
 unexpected state change without attributing it to the reviewer, and do not use
 the review response.

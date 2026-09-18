@@ -169,7 +169,8 @@ The shared-skill mount is independent of provider authentication. A directory
 missing at setup or launch-time revalidation is allowed for standalone Vibe
 use. A non-directory, symlinked, changed, unreadable, or Docker-unsafe resolved
 path fails validation instead of letting Docker create, redirect, or rewrite
-it. Pi disables normal skill discovery and loads the mounted host directory
+it. These checks narrow same-user replacement races but cannot eliminate the
+interval between the final check and Docker resolving the bind source. Pi disables normal skill discovery and loads the mounted host directory
 explicitly, so a project skill cannot shadow a reviewed host skill. Vibe treats
 every installed host skill as trusted executor input; the read-only mount
 protects host files from writes but does not vet their instructions.
