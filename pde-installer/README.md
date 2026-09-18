@@ -52,8 +52,9 @@ inspect full.
 The independent color selection accepts `tokyo-night`, `everforest-dark`, or
 `gruvbox-dark`. Missing state defaults to Tokyo Night. All installs coordinate
 tmux, Powerlevel10k, fzf, and bat. Full installs also coordinate Alacritty,
-WezTerm, and Neovim; terminal installs retain those full-only files unchanged.
-Static rendering never recolors the local terminal during SSH sessions.
+WezTerm, Neovim, and OpenCode; terminal installs retain those full-only files
+unchanged. Static rendering never recolors the local terminal during SSH
+sessions. Restart OpenCode after changing profiles.
 
 ## Documentation
 

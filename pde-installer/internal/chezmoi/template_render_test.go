@@ -790,6 +790,11 @@ func TestColorDataHasCompletePalettes(t *testing.T) {
 	if len(profiles) != len(wantProfiles) {
 		t.Fatalf("colorProfiles count = %d, want %d", len(profiles), len(wantProfiles))
 	}
+	wantOpenCode := map[colorprofile.Profile]string{
+		colorprofile.TokyoNight:     "tokyonight",
+		colorprofile.EverforestDark: "everforest",
+		colorprofile.GruvboxDark:    "gruvbox",
+	}
 	hexColor := regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 	for _, name := range wantProfiles {
 		profileData, ok := profiles[string(name)].(map[string]any)
@@ -824,6 +829,9 @@ func TestColorDataHasCompletePalettes(t *testing.T) {
 			if value, ok := profileData[field].(string); !ok || value == "" {
 				t.Errorf("colorProfiles[%q].%s is missing", name, field)
 			}
+		}
+		if got, ok := profileData["opencode"].(string); !ok || got != wantOpenCode[name] {
+			t.Errorf("colorProfiles[%q].opencode = %v, want %q", name, profileData["opencode"], wantOpenCode[name])
 		}
 		nvim, ok := profileData["nvim"].(map[string]any)
 		colorscheme, colorschemeOK := nvim["colorscheme"].(string)

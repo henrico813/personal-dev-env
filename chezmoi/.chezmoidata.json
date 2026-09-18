@@ -43,6 +43,7 @@
         "colorscheme": "tokyonight-night",
         "lualine": "tokyonight"
       },
+      "opencode": "tokyonight",
       "bat": "TwoDark"
     },
     "everforest-dark": {
@@ -88,6 +89,7 @@
         "colorscheme": "everforest",
         "lualine": "everforest"
       },
+      "opencode": "everforest",
       "bat": "zenburn"
     },
     "gruvbox-dark": {
@@ -133,6 +135,7 @@
         "colorscheme": "gruvbox",
         "lualine": "gruvbox"
       },
+      "opencode": "gruvbox",
       "bat": "gruvbox-dark"
     }
   }
