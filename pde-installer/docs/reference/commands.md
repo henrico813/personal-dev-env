@@ -13,7 +13,7 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ## Commands
 
-### `pde-installer install [terminal|full] [--dry-run]`
+### `pde-installer install [terminal|full] [--color-profile NAME] [--dry-run]`
 
 Reconciles tools and managed home configuration for one selection. A fresh HOME
 must specify `terminal` or `full`; bare `install` exits with an error when no
@@ -21,6 +21,19 @@ saved or legacy selection exists. An explicit selection is saved in
 `~/.config/pde/config.json`. Bare `install` reuses the saved selection.
 Existing `paths.env` state or a config containing `install_path` without
 `profile` is legacy full state and is saved during the next install.
+
+`--color-profile` accepts `tokyo-night`, `everforest-dark`, or `gruvbox-dark`.
+This per-machine setting is independent of the terminal/full component
+selection. Missing state defaults to `tokyo-night`; the next successful install
+saves it as `color_profile`. A valid explicit flag can replace an invalid saved
+color value.
+
+Every selection renders tmux, Powerlevel10k, fzf, and bat colors. Full installs
+also render Alacritty, WezTerm, and Neovim; terminal installs leave any retained
+full-only files unchanged until the next full install. Rendering is static and
+does not emit terminal palette escape sequences. An SSH client therefore keeps
+its local terminal palette while a remote PDE prompt and tmux session use the
+remote host's selected RGB colors.
 
 A successful explicit argument may switch either direction; a pre-commit
 failure preserves the prior selection. Switching from full to terminal stops

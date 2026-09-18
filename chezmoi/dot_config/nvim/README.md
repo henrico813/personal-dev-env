@@ -56,7 +56,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 
 | File | Plugin | Provides |
 |---|---|---|
-| `colorscheme.lua` | tokyonight | theme |
+| `colorscheme.lua` | tokyonight, everforest, gruvbox | machine-selected theme |
 | `ui.lua` | lualine, bufferline | statusline, tabline, tab rename |
 | `fzf.lua` | fzf-lua | pickers (files, grep, buffers) |
 | `completion.lua` | blink.cmp | autocomplete (manual trigger) |
@@ -128,6 +128,10 @@ Add `require("plugins.<name>")` to `init.lua`. Restart nvim.
 
 To make this reproducible on a fresh machine, add the plugin archive and its
 SHA-256 checksum to `chezmoi/.chezmoiexternal.toml.tmpl`.
+
+PDE renders `colorscheme.lua` and `ui.lua` from the saved machine color profile.
+Change it with `pde-installer install --color-profile NAME` rather than editing
+the rendered files under `~/.config/nvim`.
 
 ### Add a keymap
 
