@@ -21,9 +21,15 @@ events in the pull request.
 Before running the matrix, verify the selectors rather than guessing aliases:
 
 ```sh
-env OPENCODE_API_KEY="${OPENCODE_API_KEY-}" opencode models
-env OPENCODE_API_KEY="${OPENCODE_API_KEY-}" pi --list-models qwen3.6
-env OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models gpt-5.6-luna
+env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY \
+  -u DEEPSEEK_API_KEY -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL \
+  OPENCODE_API_KEY="${OPENCODE_API_KEY-}" opencode models
+env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY \
+  -u DEEPSEEK_API_KEY -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL \
+  OPENCODE_API_KEY="${OPENCODE_API_KEY-}" pi --list-models qwen3.6
+env -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u DEEPSEEK_API_KEY \
+  -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL -u OPENCODE_API_KEY \
+  OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models gpt-5.6-luna
 ```
 
 ## Install the Reviewed Sources
