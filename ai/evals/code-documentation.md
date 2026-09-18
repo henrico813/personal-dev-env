@@ -207,8 +207,8 @@ done
 ```
 
 Inspect each returned run directory and Pi events. Confirm the container read
-`/vibe-home/.agents/skills/code-documentation/SKILL.md` and the result meets
-the partial-write expectation. If the event stream does not expose file reads,
+`/vibe-home/.agents/skills/code-documentation/SKILL.md` and the result meets the
+partial-write expectation. If the event stream does not expose file reads,
 record skill loading as unsupported rather than passed. The Rust mount test,
 not Pi events, verifies that the Docker mount is read-only.
 
