@@ -37,10 +37,17 @@ ORIGINAL_HOME=${HOME-}
 ORIGINAL_PATH=${PATH-}
 ORIGINAL_HOME_SET=${HOME+x}
 ORIGINAL_PATH_SET=${PATH+x}
-ORIGINAL_OPENCODE_API_KEY=${OPENCODE_API_KEY-}
-ORIGINAL_OPENAI_API_KEY=${OPENAI_API_KEY-}
-ORIGINAL_OPENCODE_API_KEY_SET=${OPENCODE_API_KEY+x}
-ORIGINAL_OPENAI_API_KEY_SET=${OPENAI_API_KEY+x}
+declare -A ORIGINAL_PROVIDER_VALUES=()
+declare -A ORIGINAL_PROVIDER_SET=()
+PROVIDER_VARIABLES=(
+  ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY
+  AZURE_OPENAI_API_KEY AZURE_OPENAI_BASE_URL OPENCODE_API_KEY
+)
+for provider in "${PROVIDER_VARIABLES[@]}"; do
+  ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
+  if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
+done
+for provider in "${PROVIDER_VARIABLES[@]}"; do unset "$provider"; done
 export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
 export EVAL_HOME="$EVAL_ROOT/home"
 export EVAL_BASE="$EVAL_ROOT/base"
@@ -52,21 +59,31 @@ EVAL_PROMPT="$EVAL_ROOT/code-documentation-vibe-prompt.md"
 restore_environment() {
   if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
   if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
-  if [[ -n "$ORIGINAL_OPENCODE_API_KEY_SET" ]]; then export OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY"; else unset OPENCODE_API_KEY; fi
-  if [[ -n "$ORIGINAL_OPENAI_API_KEY_SET" ]]; then export OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY"; else unset OPENAI_API_KEY; fi
+  for provider in "${PROVIDER_VARIABLES[@]}"; do
+    if (( ORIGINAL_PROVIDER_SET[$provider] )); then
+      export "$provider=${ORIGINAL_PROVIDER_VALUES[$provider]}"
+    else
+      unset "$provider"
+    fi
+  done
 }
 cleanup_evaluation() {
   local status=$?
-  restore_environment
   if [[ "$status" -eq 0 ]]; then
-    rm -rf -- "$EVAL_ROOT"
+    if [[ -n "$ORIGINAL_PATH_SET" ]]; then PATH="$ORIGINAL_PATH"; else unset PATH; fi
+    if ! rm -rf -- "$EVAL_ROOT"; then
+      status=1
+      printf '%s\n' "$EVAL_ROOT" >&2
+    fi
   else
-    printf 'evaluation artifacts preserved at %s\n' "$EVAL_ROOT" >&2
+    printf '%s\n' "$EVAL_ROOT" >&2
   fi
+  restore_environment
   exit "$status"
 }
 trap cleanup_evaluation EXIT
-if [[ -z "$ORIGINAL_OPENCODE_API_KEY" || -z "$ORIGINAL_OPENAI_API_KEY" ]]; then
+MODEL_FAILURE=0
+if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
   printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
   exit 1
 fi
@@ -258,17 +275,18 @@ run_opencode_trace() {
   worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
   set +e
   if [[ -n "$command" ]]; then
-    env OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" opencode run --pure --dir "$case_dir" --model "$model" \
+    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode run --pure --dir "$case_dir" --model "$model" \
       --command "$command" --format json -- "$prompt" \
       > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   else
-    env OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" opencode run --pure --dir "$case_dir" --model "$model" \
+    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode run --pure --dir "$case_dir" --model "$model" \
       --format json -- "$prompt" \
       > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   fi
   local status=$?
   set -e
   printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
+  if (( status != 0 )); then MODEL_FAILURE=1; fi
   worktree_fingerprint "$case_dir" > "$trace_dir/after.sha256"
   git -C "$case_dir" status --porcelain=v1 --untracked-files=all \
     > "$trace_dir/status.txt"
@@ -288,12 +306,13 @@ run_codex_trace() {
   codex --version > "$trace_dir/version.txt"
   worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
   set +e
-  env OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY" codex exec --ephemeral --json --sandbox "$sandbox" -m "$model" \
+  env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" codex exec --ephemeral --json --sandbox "$sandbox" -m "$model" \
     -C "$case_dir" "$prompt" \
     > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   local status=$?
   set -e
   printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
+  if (( status != 0 )); then MODEL_FAILURE=1; fi
   worktree_fingerprint "$case_dir" > "$trace_dir/after.sha256"
   git -C "$case_dir" status --porcelain=v1 --untracked-files=all \
     > "$trace_dir/status.txt"
@@ -389,13 +408,13 @@ EOF
   cp "$EVAL_PROMPT" "$TRACE_DIR/prompt.txt"
   set +e
   if [[ "$MODEL" == openai-codex/* ]]; then
-    env -C "$EVAL_CASE" OPENAI_API_KEY="$ORIGINAL_OPENAI_API_KEY" vibe run \
+    env -C "$EVAL_CASE" OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" vibe run \
       --key "$KEY" \
       --base "$BASE_SHA" \
       --prompt-file "$EVAL_PROMPT" \
       --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
   else
-    env -C "$EVAL_CASE" OPENCODE_API_KEY="$ORIGINAL_OPENCODE_API_KEY" vibe run \
+    env -C "$EVAL_CASE" OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" vibe run \
       --key "$KEY" \
       --base "$BASE_SHA" \
       --prompt-file "$EVAL_PROMPT" \
@@ -404,6 +423,7 @@ EOF
   STATUS=$?
   set -e
   printf '%s\n' "$STATUS" > "$TRACE_DIR/exit-status.txt"
+  if (( STATUS != 0 )); then MODEL_FAILURE=1; fi
 done
 ```
 
@@ -440,6 +460,10 @@ EVAL_CASE=$(new_case workflow-readme-codex)
 run_codex_trace workflow-readme-openai-codex-gpt-5.6-luna gpt-5.6-luna workspace-write \
   "$EVAL_CASE" \
   'Use document-codebase to update only the README heading to # Reviewed Documentation.'
+```
+
+```bash
+if (( MODEL_FAILURE != 0 )); then exit "$MODEL_FAILURE"; fi
 ```
 
 The review row must use one read-only `docs-reviewer` pass in OpenCode, report
