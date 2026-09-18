@@ -42,6 +42,7 @@ func writeInvalidFullMetadata(t *testing.T, cfg config) {
 	for _, path := range []string{
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode.json"),
 		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+		filepath.Join(cfg.RepoRoot, "chezmoi", "dot_config", "opencode", "modify_tui.jsonc"),
 		filepath.Join(cfg.RepoRoot, "pde-installer", "package.json"),
 		filepath.Join(cfg.RepoRoot, "pde-installer", "package-lock.json"),
 	} {

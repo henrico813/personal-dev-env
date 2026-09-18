@@ -257,6 +257,7 @@ func (m Manager) Validate() error {
 			filepath.Join(m.Source(), "dot_config", "nvim", "lua", "plugins", "ui.lua.tmpl"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode.json"),
 			filepath.Join(m.Source(), "dot_config", "opencode", "modify_opencode-mem.jsonc"),
+			filepath.Join(m.Source(), "dot_config", "opencode", "modify_tui.jsonc"),
 		)
 	}
 	for index, path := range required {

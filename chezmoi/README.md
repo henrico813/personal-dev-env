@@ -18,6 +18,8 @@ go run . install --repo-root ..
 ```
 
 The installer snapshots changed targets before apply. A failed apply restores
-the snapshot. Modifier scripts preserve selected user-owned settings.
+the snapshot. Modifier scripts preserve selected user-owned settings. A JSONC
+modify-template preserves parsed values but may normalize formatting and remove
+comments when it emits the merged file.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
