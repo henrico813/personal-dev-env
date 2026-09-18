@@ -35,5 +35,5 @@ artifacts confirm the run's observable workflow rather than reproducing every
 launch argument.
 
 Only install skills you are willing to trust as executor instructions. The
-read-only mount prevents writes through the mount; it does not make skill
-instructions safe or untrusted.
+read-only mount prevents writes through the mount, but it does not review, vet,
+or sandbox the skill instructions.

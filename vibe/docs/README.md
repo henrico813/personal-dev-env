@@ -1,10 +1,17 @@
-# Vibe documentation
+# Vibe Documentation
 
-Vibe's documentation follows four practical views:
+## Tutorials
 
-- [How-to: use shared skills](how-to/use-shared-skills.md) — install reviewed host skills, run Vibe, and inspect a run.
-- [Explanation: shared-skill trust boundary](explanation/shared-skill-trust-boundary.md) — understand mounting, validation, and trust.
-- [Reference: runtime inputs](reference/runtime-inputs.md) — look up mounts, credentials, validation, and artifact exclusions.
+- [Run Vibe](../README.md#run)
 
-The [Vibe README](../README.md) remains the quick start for building, testing,
-installing, running, recovery, and the artifact list.
+## How-to Guides
+
+- [Use shared skills](how-to/use-shared-skills.md)
+
+## Explanation
+
+- [Shared-skill trust boundary](explanation/shared-skill-trust-boundary.md)
+
+## Reference
+
+- [Runtime inputs](reference/runtime-inputs.md)
