@@ -10,12 +10,64 @@ responses.
 From the worktree under review:
 
 ```bash
-set -eu
-export PDE_REPO_ROOT=$PWD
-mkdir -p "$HOME/.local/bin"
-go build -C pde-installer -o "$HOME/.local/bin/pde-installer" .
-export PATH="$HOME/.local/bin:$PATH"
-pde-installer install full
+set -euo pipefail
+ORIGINAL_HOME=${HOME-}
+ORIGINAL_PATH=${PATH-}
+ORIGINAL_HOME_SET=${HOME+x}
+ORIGINAL_PATH_SET=${PATH+x}
+declare -A ORIGINAL_PROVIDER_VALUES=()
+declare -A ORIGINAL_PROVIDER_SET=()
+PROVIDER_VARIABLES=(
+  ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY
+  AZURE_OPENAI_API_KEY AZURE_OPENAI_BASE_URL OPENCODE_API_KEY
+)
+for provider in "${PROVIDER_VARIABLES[@]}"; do
+  ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
+  if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
+done
+if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
+  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
+  exit 1
+fi
+EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plan-workflow-eval.XXXXXX")
+export EVAL_ROOT
+export EVAL_HOME="$EVAL_ROOT/home"
+export EVAL_REPO="$EVAL_ROOT/repo"
+export EVAL_OUTPUT="$EVAL_ROOT/traces"
+INSTALLER="$EVAL_ROOT/pde-installer"
+restore_environment() {
+  if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
+  if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
+  for provider in "${PROVIDER_VARIABLES[@]}"; do
+    if (( ORIGINAL_PROVIDER_SET[$provider] )); then
+      export "$provider=${ORIGINAL_PROVIDER_VALUES[$provider]}"
+    else
+      unset "$provider"
+    fi
+  done
+}
+cleanup_evaluation() {
+  local status=$?
+  if [[ "$status" -eq 0 ]]; then
+    if [[ -n "$ORIGINAL_PATH_SET" ]]; then PATH="$ORIGINAL_PATH"; else unset PATH; fi
+    if ! rm -rf -- "$EVAL_ROOT"; then
+      status=1
+      printf '%s\n' "$EVAL_ROOT" >&2
+    fi
+  else
+    printf '%s\n' "$EVAL_ROOT" >&2
+  fi
+  restore_environment
+  exit "$status"
+}
+trap cleanup_evaluation EXIT
+for provider in "${PROVIDER_VARIABLES[@]}"; do unset "$provider"; done
+export HOME="$EVAL_HOME"
+export PATH="$ORIGINAL_PATH"
+mkdir -p "$EVAL_HOME" "$EVAL_REPO" "$EVAL_OUTPUT"
+go build -C pde-installer -o "$INSTALLER" .
+PDE_REPO_ROOT="$PWD" "$INSTALLER" install full
+export PATH="$EVAL_HOME/.local/bin:$ORIGINAL_PATH"
 cmp ai/codex/skills/create-plan/SKILL.md \
   "$HOME/.codex/skills/create-plan/SKILL.md"
 cmp ai/codex/skills/review-plan/SKILL.md \
@@ -37,8 +89,7 @@ Create a fresh fixture for each independent scenario and harness. The guarded
 correction scenario follows bounded creation in the same fixture.
 
 ````bash
-set -eu
-export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/plan-workflow-eval.XXXXXX")"
+set -euo pipefail
 export EVAL_REPO="$EVAL_ROOT/repo"
 export EVAL_OUTPUT="$EVAL_ROOT/traces"
 mkdir -p "$EVAL_REPO/bin" "$EVAL_REPO/cmd/eval" "$EVAL_REPO/docs" \
@@ -317,11 +368,8 @@ planner check "$EVAL_REPO/plans/review.md" --json-errors
 planner check "$EVAL_REPO/plans/implement.md" --json-errors
 ````
 
-Delete only the recorded fixture root when finished:
-
-```bash
-rm -rf "$EVAL_ROOT"
-```
+The EXIT trap removes the evaluation-owned root on successful exit. Failed
+setup or model execution preserves it for inspection and prints only its path.
 
 ## Invocation
 
@@ -329,14 +377,15 @@ Define helpers once per fixture. Codex uses natural prompts because its skills
 are prompt-triggered. OpenCode uses the command named by each scenario.
 The defaults use lower-tier Codex Spark and OpenCode Luna models. Scenarios
 marked below override OpenCode with `opencode-go/qwen3.6-plus` to represent
-local-model behavior; confirm it appears in `opencode models` or record that
+local-model behavior; confirm it appears in `env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode models` or record that
 variant as unsupported.
 
 ```bash
 run_codex() {
   SCENARIO=$1
   CODEX_REQUEST=$2
-  codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
+  env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" \
+    codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
     -C "$EVAL_REPO" "$CODEX_REQUEST" \
     > "$EVAL_OUTPUT/$SCENARIO-codex.jsonl"
 }
@@ -346,11 +395,13 @@ run_opencode() {
   OPENCODE_COMMAND=$2
   OPENCODE_ARGUMENTS=${3-}
   if [ "$#" -eq 2 ]; then
-    opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
+    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
+      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
       --command "$OPENCODE_COMMAND" \
       --format json > "$EVAL_OUTPUT/$SCENARIO-opencode.jsonl"
   else
-    opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
+    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
+      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
       --command "$OPENCODE_COMMAND" \
       --format json -- "$OPENCODE_ARGUMENTS" \
       > "$EVAL_OUTPUT/$SCENARIO-opencode.jsonl"
