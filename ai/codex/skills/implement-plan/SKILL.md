@@ -39,10 +39,9 @@ unchanged with `--model`.
 Before each step, inspect the checkout that will actually execute the step.
 
 - For a candidate new Vibe key, resolve a clean full commit SHA and choose a key
-  of at most 48 characters matching `[a-z0-9]+(?:-[a-z0-9]+)*`, beginning with
-  its short SHA, so Vibe normalization does not change it. Run
-  `vibe status --key <key> --long`; treat only its specific
-  no-record error as absence. Also inspect Git's worktree list,
+  of at most 48 characters matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Run
+  `vibe status --key <key> --long`; treat only its specific no-record error as
+  absence. Also inspect Git's worktree list,
   `refs/heads/vibe/<key>`, and the expected `worktrees/<key>` path. Use
   `--base <full-sha>` only when none exists. Vibe rejects a concurrent run or
   existing managed state atomically. Stop if relevant dirty content is not
