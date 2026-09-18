@@ -18,6 +18,7 @@ assert_absent_packages() {
 assert_absent_packages
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
+export PATH="$HOME/.local/share/aquaproj-aqua/bin:$PATH"
 assert_absent_packages
 [[ -f "$HOME/.config/pde/config.json" ]]
 jq -e '.profile == "terminal" and .color_profile == "tokyo-night"' "$HOME/.config/pde/config.json" >/dev/null
