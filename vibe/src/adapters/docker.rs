@@ -951,7 +951,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
+        let result = prepare_provider_auth(home.path().to_str(), "azure-openai/gpt-5.4");
 
         restore_env(saved);
 
@@ -972,7 +972,7 @@ mod tests {
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
         std::env::set_var("AZURE_OPENAI_BASE_URL", "https://example.invalid");
 
-        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
+        let result = prepare_provider_auth(home.path().to_str(), "azure-openai/gpt-5.4");
 
         restore_env(saved);
 
@@ -989,7 +989,7 @@ mod tests {
         clear_auth_env();
         std::env::set_var("AZURE_OPENAI_API_KEY", "azure-key");
 
-        let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
+        let result = prepare_provider_auth(home.path().to_str(), "azure-openai/gpt-5.4");
 
         restore_env(saved);
 
