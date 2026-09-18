@@ -85,7 +85,9 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	}
 	nvimVersion, goVersion := version("neovim"), version("go")
 	rustVersion, nodeVersion := version("rust"), version("node")
-	moshiVersion, herdrVersion := strings.TrimPrefix(version("moshi-hook"), "v"), version("herdr")
+	moshiTag := version("moshi-hook")
+	moshiVersion := strings.TrimPrefix(moshiTag, "v")
+	herdrVersion := version("herdr")
 	nvimArchive := "nvim-linux-" + nvimArch + ".tar.gz"
 	goArchive := "go" + goVersion + ".linux-" + goarch + ".tar.gz"
 	rustArchive := "rust-" + rustVersion + "-" + rustArch + "-unknown-linux-gnu.tar.xz"
@@ -98,7 +100,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		{Name: "rust", Version: rustVersion, Archive: rustArchive, URL: "https://static.rust-lang.org/dist/" + rustArchive, SHA256: checksums["rust"], Directory: "rust", Binary: "rustc", VersionPrefix: "rustc ", Target: rustArch + "-unknown-linux-gnu", Links: []string{"cargo", "rustc", "rustdoc"}, VersionArgs: []string{"--version"}, Kind: rustTool},
 		{Name: "node", Version: nodeVersion, Archive: nodeArchive, URL: "https://nodejs.org/dist/v" + nodeVersion + "/" + nodeArchive, SHA256: checksums["node"], Directory: "node", Binary: "node", VersionPrefix: "v", Links: []string{"corepack", "node", "npm", "npx"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "keychain", Version: version("keychain"), Archive: "keychain-2.9.8", URL: "https://github.com/danielrobbins/keychain/releases/download/2.9.8/keychain", SHA256: "f8b4e8a2a630907bb81737d455a2dec2cb8308e3210840665239ef9c49bbeadb", Directory: "keychain", Binary: "keychain", VersionPrefix: "keychain ", Links: []string{"keychain"}, VersionArgs: []string{"--version"}, Kind: fileTool},
-		{Name: "moshi-hook", Version: moshiVersion, Archive: moshiArchive, URL: "https://cdn.getmoshi.app/hook/" + moshiVersion + "/" + moshiArchive, SHA256: checksums["moshi-hook"], Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
+		{Name: "moshi-hook", Version: moshiVersion, Archive: moshiArchive, URL: "https://cdn.getmoshi.app/hook/" + moshiTag + "/" + moshiArchive, SHA256: checksums["moshi-hook"], Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
 		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
 	}, nil
 }
