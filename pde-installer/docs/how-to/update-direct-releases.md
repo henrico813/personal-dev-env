@@ -1,6 +1,7 @@
 # Update Direct Releases
 
-Direct releases contain full-only runtimes, Neovim, Keychain, and fonts.
+Direct releases contain full-only runtimes, Neovim, Keychain, Moshi Hook,
+Herdr, and fonts.
 Terminal installs skip these components.
 
 ## Tools and Runtimes
