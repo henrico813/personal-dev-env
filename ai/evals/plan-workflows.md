@@ -15,6 +15,18 @@ ORIGINAL_HOME=${HOME-}
 ORIGINAL_PATH=${PATH-}
 ORIGINAL_HOME_SET=${HOME+x}
 ORIGINAL_PATH_SET=${PATH+x}
+ORIGINAL_EVAL_ROOT=${EVAL_ROOT-}
+ORIGINAL_EVAL_ROOT_SET=${EVAL_ROOT+x}
+ORIGINAL_EVAL_HOME=${EVAL_HOME-}
+ORIGINAL_EVAL_HOME_SET=${EVAL_HOME+x}
+ORIGINAL_EVAL_REPO=${EVAL_REPO-}
+ORIGINAL_EVAL_REPO_SET=${EVAL_REPO+x}
+ORIGINAL_EVAL_OUTPUT=${EVAL_OUTPUT-}
+ORIGINAL_EVAL_OUTPUT_SET=${EVAL_OUTPUT+x}
+ORIGINAL_INSTALLER=${INSTALLER-}
+ORIGINAL_INSTALLER_SET=${INSTALLER+x}
+ORIGINAL_PDE_REPO_ROOT=${PDE_REPO_ROOT-}
+ORIGINAL_PDE_REPO_ROOT_SET=${PDE_REPO_ROOT+x}
 declare -A ORIGINAL_PROVIDER_VALUES=()
 declare -A ORIGINAL_PROVIDER_SET=()
 PROVIDER_VARIABLES=(
@@ -38,6 +50,12 @@ INSTALLER="$EVAL_ROOT/pde-installer"
 restore_environment() {
   if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
   if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
+  if [[ -n "$ORIGINAL_EVAL_ROOT_SET" ]]; then export EVAL_ROOT="$ORIGINAL_EVAL_ROOT"; else unset EVAL_ROOT; fi
+  if [[ -n "$ORIGINAL_EVAL_HOME_SET" ]]; then export EVAL_HOME="$ORIGINAL_EVAL_HOME"; else unset EVAL_HOME; fi
+  if [[ -n "$ORIGINAL_EVAL_REPO_SET" ]]; then export EVAL_REPO="$ORIGINAL_EVAL_REPO"; else unset EVAL_REPO; fi
+  if [[ -n "$ORIGINAL_EVAL_OUTPUT_SET" ]]; then export EVAL_OUTPUT="$ORIGINAL_EVAL_OUTPUT"; else unset EVAL_OUTPUT; fi
+  if [[ -n "$ORIGINAL_INSTALLER_SET" ]]; then INSTALLER="$ORIGINAL_INSTALLER"; else unset INSTALLER; fi
+  if [[ -n "$ORIGINAL_PDE_REPO_ROOT_SET" ]]; then export PDE_REPO_ROOT="$ORIGINAL_PDE_REPO_ROOT"; else unset PDE_REPO_ROOT; fi
   for provider in "${PROVIDER_VARIABLES[@]}"; do
     if (( ORIGINAL_PROVIDER_SET[$provider] )); then
       export "$provider=${ORIGINAL_PROVIDER_VALUES[$provider]}"
@@ -382,30 +400,64 @@ variant as unsupported.
 
 ```bash
 run_codex() {
-  SCENARIO=$1
-  CODEX_REQUEST=$2
+  local scenario=$1 request=$2
+  local trace_dir="$EVAL_OUTPUT/$scenario/codex"
+  mkdir -p "$trace_dir"
+  codex --version > "$trace_dir/version.txt" 2>&1
+  printf '%s\n' "$CODEX_MODEL" > "$trace_dir/model.txt"
+  printf '%s\n' "$request" > "$trace_dir/request.txt"
+  printf '%q ' codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
+    -C "$EVAL_REPO" "$request" > "$trace_dir/arguments.txt"
+  printf '\n' >> "$trace_dir/arguments.txt"
+  git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
+  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
+  set +e
   env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" \
     codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
-    -C "$EVAL_REPO" "$CODEX_REQUEST" \
-    > "$EVAL_OUTPUT/$SCENARIO-codex.jsonl"
+    -C "$EVAL_REPO" "$request" \
+    > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
+  local status=$?
+  set -e
+  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
+  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status-after.txt"
+  return "$status"
 }
 
 run_opencode() {
-  SCENARIO=$1
-  OPENCODE_COMMAND=$2
-  OPENCODE_ARGUMENTS=${3-}
+  local scenario=$1 command=$2 arguments=${3-}
+  local trace_dir="$EVAL_OUTPUT/$scenario/opencode"
+  mkdir -p "$trace_dir"
+  opencode --version > "$trace_dir/version.txt" 2>&1
+  printf '%s\n' "$OPENCODE_MODEL" > "$trace_dir/model.txt"
+  printf '%s\n' "$command" > "$trace_dir/command.txt"
+  printf '%s\n' "$arguments" > "$trace_dir/request.txt"
+  if [ "$#" -eq 2 ]; then
+    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
+      --command "$command" --format json > "$trace_dir/arguments.txt"
+  else
+    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
+      --command "$command" --format json -- "$arguments" > "$trace_dir/arguments.txt"
+  fi
+  printf '\n' >> "$trace_dir/arguments.txt"
+  git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
+  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
+  set +e
   if [ "$#" -eq 2 ]; then
     env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
       opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$OPENCODE_COMMAND" \
-      --format json > "$EVAL_OUTPUT/$SCENARIO-opencode.jsonl"
+      --command "$command" --format json \
+      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   else
     env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
       opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$OPENCODE_COMMAND" \
-      --format json -- "$OPENCODE_ARGUMENTS" \
-      > "$EVAL_OUTPUT/$SCENARIO-opencode.jsonl"
+      --command "$command" --format json -- "$arguments" \
+      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   fi
+  local status=$?
+  set -e
+  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
+  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status-after.txt"
+  return "$status"
 }
 ```
 
