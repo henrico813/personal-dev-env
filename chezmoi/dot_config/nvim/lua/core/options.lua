@@ -22,11 +22,6 @@ opt.mouse = "a"
 opt.fillchars = { vert = "│", eob = " " }
 opt.winbar = "%=%t %m"
 
-vim.api.nvim_set_hl(0, "VertSplit",  { fg = "#7aa2f7", bg = "NONE" })
-vim.api.nvim_set_hl(0, "NormalNC",   { bg = "#0c0e14" })
-vim.api.nvim_set_hl(0, "WinBar",     { fg = "#7dcfff", bg = "#292e42", bold = true })
-vim.api.nvim_set_hl(0, "WinBarNC",   { fg = "#3b4261", bg = "#0c0e14" })
-
 local ai_filetypes = {
   "codecompanion",
   "codecompanion_input",
