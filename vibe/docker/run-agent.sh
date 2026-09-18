@@ -30,9 +30,15 @@ PI_ARGS=(
   --mode json
   --no-session
   --no-extensions
+  --no-skills
   -e /opt/vibe/extensions/jsonl-observer.mjs
   -e /opt/vibe/extensions/git-snapshot.mjs
 )
+
+shared_skills_dir="$HOME/.agents/skills"
+if [[ -d "${shared_skills_dir}" ]]; then
+  PI_ARGS+=(--skill "${shared_skills_dir}")
+fi
 
 PI_ARGS+=(--model "${VIBE_MODEL}")
 

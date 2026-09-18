@@ -165,11 +165,14 @@ This lets Pi persist rotated OAuth credentials and share its refresh lock across
 When `auth.json` supplies authentication, the same mount exposes sibling configuration such as `models.json` and `models-store.json`.
 Auth is never copied into the run artifact directory.
 Prefer provider API keys for disposable or concurrent automation.
-The shared-skill mount is independent of provider authentication. A missing
-`~/.agents/skills` directory is allowed for standalone Vibe use; a non-directory
-or unreadable path fails setup instead of letting Docker create or rewrite it.
-Vibe treats every installed host skill as trusted executor input; the read-only
-mount protects host files from writes but does not vet their instructions.
+The shared-skill mount is independent of provider authentication. A directory
+missing at setup or launch-time revalidation is allowed for standalone Vibe
+use. A non-directory, symlinked, changed, unreadable, or Docker-unsafe resolved
+path fails validation instead of letting Docker create, redirect, or rewrite
+it. Pi disables normal skill discovery and loads the mounted host directory
+explicitly, so a project skill cannot shadow a reviewed host skill. Vibe treats
+every installed host skill as trusted executor input; the read-only mount
+protects host files from writes but does not vet their instructions.
 
 Recovery notes:
 
