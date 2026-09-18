@@ -312,7 +312,7 @@ export EVAL_FIXTURE_COMMIT="$(git -C "$EVAL_REPO" rev-parse HEAD)"
 export EVAL_KEY="$(printf '%.12s' "$EVAL_FIXTURE_COMMIT")-workflow-eval"
 export CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex-spark}"
 export CODEX_SANDBOX="${CODEX_SANDBOX:-workspace-write}"
-export OPENCODE_MODEL="${OPENCODE_MODEL:-openai/gpt-5.6-luna}"
+export OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/gpt-5.6-luna}"
 planner check "$EVAL_REPO/plans/review.md" --json-errors
 planner check "$EVAL_REPO/plans/implement.md" --json-errors
 ````
@@ -429,9 +429,9 @@ run_codex multiple-skills \
 
 Expected behavior:
 
-- Loads `go-development` and `behavior-focused-testing` before broader
-  repository research.
-- Names both skills in any delegation.
+- Loads `go-development`, `behavior-focused-testing`, and `code-documentation`
+  before broader repository research.
+- Names all three skills in any delegation.
 - Produces complete implementation and test diffs.
 
 ### Late Skill Discovery
@@ -446,7 +446,8 @@ run_codex late-skill \
 Expected behavior:
 
 - Reads the document before the late skill check.
-- Loads Go and testing skills before affected implementation decisions.
+- Loads Go, testing, and code-documentation skills before affected
+  implementation decisions.
 - Revisits any affected decision made before those skills loaded.
 
 ### Guarded Correction
@@ -525,6 +526,8 @@ Expected behavior:
 
 - Delegates focused architecture, bug, and completeness reviews in parallel.
 - Gives every reviewer the applicable loaded skills and exact review focus.
+- Assigns source-documentation findings to completeness; it adds no fourth
+  reviewer.
 - Reconciles repository-backed findings without treating repetition as proof.
 - Leaves the plan and repository byte-for-byte unchanged.
 
@@ -550,6 +553,10 @@ Expected behavior:
   prior state, branch, HEAD, and cleanliness, and omits `--base`.
 - Rechecks the current step's files, callers, tests, and config in the execution
   checkout before each step.
+- Passes every applicable worker-visible skill in the execution prompt and
+  refuses Vibe delegation when a required worker skill is unavailable.
+- Applies the existing completion gate to source and test documentation without
+  adding a separate review pass.
 - Leaves the managed worktree clean between runs and does not perform a remote
   action.
 - Runs the complete verification suite, reviews the cumulative diff, and updates
