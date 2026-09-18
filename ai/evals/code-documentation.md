@@ -207,7 +207,7 @@ done
 ```
 
 Inspect each returned run directory and Pi events. Confirm the container read
-the `/vibe-home/.agents/skills/code-documentation/SKILL.md` and the result meets
+`/vibe-home/.agents/skills/code-documentation/SKILL.md` and the result meets
 the partial-write expectation. If the event stream does not expose file reads,
 record skill loading as unsupported rather than passed. The Rust mount test,
 not Pi events, verifies that the Docker mount is read-only.
@@ -251,8 +251,8 @@ worker-visible skill in the prompt, reject unavailable required skills before
 delegation, and use the existing completion gate rather than another review
 pass.
 
-For review-only and no-change rows, compare the complete fingerprint before
-and after and require `git status --short` to be empty.
+For review-only and no-change rows, compare the complete fingerprint before and
+after and require `git status --short` to be empty.
 
 Delete only the exact temporary base, case, prompt, and Vibe run paths recorded
 for the evaluation.
