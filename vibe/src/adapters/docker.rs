@@ -139,7 +139,10 @@ pub(crate) fn prepare_provider_auth(home: Option<&str>) -> Result<Option<PathBuf
             .duration_since(UNIX_EPOCH)
             .ok()?
             .as_nanos();
-        let probe = pi_agent_dir.join(format!(".vibe-write-check-{}-{nonce}", std::process::id()));
+        let probe = pi_agent_dir.join(format!(
+            ".vibe-write-check-{}-{nonce}",
+            std::process::id()
+        ));
         OpenOptions::new()
             .write(true)
             .create_new(true)
