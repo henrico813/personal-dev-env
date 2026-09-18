@@ -1,0 +1,28 @@
+onboarding = false
+
+[keys]
+prefix = "ctrl+b"
+
+[theme]
+name = "vesper"
+auto_switch = false
+
+[ui]
+# Use the status header and full-screen switcher at every terminal width.
+mobile_width_threshold = 65535
+sidebar_start_collapsed = true
+sidebar_collapsed_mode = "compact"
+tab_bar_position = "top"
+hide_tab_bar_when_single_tab = true
+tab_bar_right = []
+agent_panel_sort = "spaces"
+status_indicators = "symbols"
+pane_borders = "auto"
+pane_gaps = false
+pane_outer_borders = false
+pane_scrollbars = false
+show_agent_labels_on_pane_borders = false
+window_title = "{hostname}: {workspace} - {tab}"
+
+[ui.toast]
+delivery = "system"
