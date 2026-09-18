@@ -161,10 +161,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         return RunResult::setup_error(error);
     }
     let prepared_auth =
-        match docker::prepare_provider_auth(
-            std::env::var("HOME").ok().as_deref(),
-            &args.model,
-        ) {
+        match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };

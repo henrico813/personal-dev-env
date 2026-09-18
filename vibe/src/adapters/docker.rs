@@ -126,9 +126,7 @@ fn has_provider_env(model: &str) -> bool {
 
 fn auth_env_args(model: &str) -> Vec<String> {
     let Some(keys) =
-        required_auth_group(model).filter(|keys| {
-            keys.iter().all(|key| env_var_is_set(key))
-        })
+        required_auth_group(model).filter(|keys| keys.iter().all(|key| env_var_is_set(key)))
     else {
         return Vec::new();
     };
