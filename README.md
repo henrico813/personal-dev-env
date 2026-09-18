@@ -73,8 +73,8 @@ pde-installer install full
 ```
 
 The full install includes the AI tooling. It installs planner, Codex,
-OpenCode, the OpenCode inline shim, Pi, Surveil, and Vibe binaries plus
-repo-managed AI config.
+OpenCode, the OpenCode inline shim, Pi, Moshi Hook, Herdr, Surveil, and Vibe
+binaries plus repo-managed AI config.
 
 ## AI Source Tree
 
@@ -104,6 +104,8 @@ repo-managed AI config.
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
+| Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
+| Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
