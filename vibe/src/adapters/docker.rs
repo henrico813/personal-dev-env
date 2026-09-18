@@ -121,14 +121,15 @@ fn required_auth_group(model: &str) -> Option<&'static [&'static str]> {
 }
 
 fn has_provider_env(model: &str) -> bool {
-    required_auth_group(model)
-        .is_some_and(|keys| keys.iter().all(|key| env_var_is_set(key)))
+    required_auth_group(model).is_some_and(|keys| keys.iter().all(|key| env_var_is_set(key)))
 }
 
 fn auth_env_args(model: &str) -> Vec<String> {
-    let Some(keys) = required_auth_group(model).filter(|keys| {
-        keys.iter().all(|key| env_var_is_set(key))
-    }) else {
+    let Some(keys) =
+        required_auth_group(model).filter(|keys| {
+            keys.iter().all(|key| env_var_is_set(key))
+        })
+    else {
         return Vec::new();
     };
     keys.iter()
