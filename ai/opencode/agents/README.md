@@ -16,8 +16,8 @@ Specialized task agents spawned by commands and reviewers to conduct parallel re
 |-------|---------|
 | `docs-locator` | Discover what documents exist about a topic |
 | `docs-analyzer` | Extract insights from specific documents |
-| `docs-reviewer` | Analyze documentation for gaps and outdated content |
-| `docs-writer` | Implement documentation changes (docstrings, comments, READMEs) based on review findings |
+| `docs-reviewer` | Review scoped work for stale, misleading, noisy, or missing documentation |
+| `docs-writer` | Implement supported documentation findings without changing behavior |
 
 ## Plan Review Agents
 
@@ -35,13 +35,14 @@ Specialized task agents spawned by commands and reviewers to conduct parallel re
 
 ## How They Work
 
-Commands may spawn focused agents when the task benefits from delegation:
+Commands use these agents when their scope benefits from focused delegation:
 - Each agent receives a focused prompt
-- Agents work concurrently to maximize efficiency
+- Independent agents may work concurrently
 - Results are synthesized when all complete
 
 `/create_plan` and `/review_plan` scale delegation to uncertainty and review
 risk; bounded changes may be handled directly. `/implement_plan` delegates only
 when an implementation step benefits from separate execution.
 
-Most agents are read-only. The exception is `docs-writer`, which modifies files.
+Most agents are read-only. The exception is `docs-writer`, which may modify
+documentation within its delegated scope.

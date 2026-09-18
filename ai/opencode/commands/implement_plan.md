@@ -20,6 +20,7 @@ If no plan reference is provided, ask for one and stop.
 - Resolve the plan using the loaded shared Planning Docs guidance.
 - Identify affected domains and load matching skills before reading broader
   source, tests, or configuration.
+- Keep the exact ordered skill names for any delegated execution prompt.
 - Read every file named by the current step.
 - Create a todo list and identify the first incomplete implementation step.
 - Use Vibe only when the user explicitly authorizes its managed snapshot, step,
@@ -80,7 +81,14 @@ mismatch, and get the proposal corrected before expanding scope.
 ## Execution
 
 Run one incomplete implementation step at a time. Pass the exact current step
-as the execution prompt. When a prompt file is required:
+as the execution prompt, add an `Applicable skills:` line with every loaded
+skill needed for the step, and require the worker to load available listed
+skills before editing and report required skills that are unavailable.
+
+Before delegating through Vibe, verify every required worker skill is readable
+at `~/.agents/skills/<name>/SKILL.md`. If one is unavailable, do not delegate;
+execute in the parent harness when safe or stop and report the missing
+requirement. When a prompt file is required:
 
 ```bash
 prompt_dir="$(mktemp -d "${TMPDIR:-/tmp}/implement-plan-prompt.XXXXXX")"
@@ -104,9 +112,9 @@ create its branch or worktree manually.
 After each run, parse the final JSON. Stop on any non-empty
 `persistence_error`, regardless of status. Otherwise handle status as follows:
 
-- `completed`: for a new key confirm `pre_run_commit` equals `$BASE`, then
-  inspect the commit and full diff, run verification, update the plan, and
-  continue.
+- `completed`: for a new key confirm `pre_run_commit` equals `$BASE`, confirm
+  required skill-read evidence when the harness exposes it, inspect the commit
+  and full diff, run verification, update the plan, and continue.
 - `noop`: continue only when the step was already complete or intentionally a
   no-op and verified.
 - `agent_failed`: inspect artifacts, the reported commit, and the complete diff.
@@ -124,6 +132,8 @@ Before the next step, confirm:
 - no unrelated files changed
 - no secrets or generated artifacts were committed
 - relevant verification passes
+- changed source and tests satisfy `code-documentation`: existing explanations
+  remain accurate, useful missing context is present, and no filler was added
 
 Remove only drift introduced by the run, verify it, and create a separate
 cleanup commit before continuing. The managed worktree must be clean before the
@@ -165,7 +175,10 @@ Before finishing:
 
 - Confirm all approved steps are implemented or explicitly blocked.
 - Run the complete verification suite from the plan.
-- Review the final cumulative diff for scope and correctness.
+- Review the final cumulative diff for scope, correctness, and source
+  documentation quality.
+- Reopen documentation approved in an earlier step only when later work made it
+  stale, contradictory, or unsupported; do not rewrite it only for style.
 - Update plan status and checklists truthfully.
 
 Summarize:
