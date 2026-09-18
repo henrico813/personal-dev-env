@@ -47,15 +47,18 @@ for provider in "${PROVIDER_VARIABLES[@]}"; do
   ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
   if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
 done
-for provider in "${PROVIDER_VARIABLES[@]}"; do unset "$provider"; done
+if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
+  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
+  exit 1
+fi
 export EVAL_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")"
 export EVAL_HOME="$EVAL_ROOT/home"
 export EVAL_BASE="$EVAL_ROOT/base"
 export EVAL_CASES="$EVAL_ROOT/cases"
 export EVAL_TRACES="$EVAL_ROOT/traces"
-export PYTHONDONTWRITEBYTECODE=1
 INSTALLER="$EVAL_ROOT/pde-installer"
 EVAL_PROMPT="$EVAL_ROOT/code-documentation-vibe-prompt.md"
+MODEL_FAILURE=0
 restore_environment() {
   if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
   if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
@@ -69,6 +72,9 @@ restore_environment() {
 }
 cleanup_evaluation() {
   local status=$?
+  if [[ "$status" -eq 0 && "$MODEL_FAILURE" -ne 0 ]]; then
+    status=$MODEL_FAILURE
+  fi
   if [[ "$status" -eq 0 ]]; then
     if [[ -n "$ORIGINAL_PATH_SET" ]]; then PATH="$ORIGINAL_PATH"; else unset PATH; fi
     if ! rm -rf -- "$EVAL_ROOT"; then
@@ -82,12 +88,8 @@ cleanup_evaluation() {
   exit "$status"
 }
 trap cleanup_evaluation EXIT
-MODEL_FAILURE=0
-if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
-  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
-  exit 1
-fi
-unset OPENCODE_API_KEY OPENAI_API_KEY
+for provider in "${PROVIDER_VARIABLES[@]}"; do unset "$provider"; done
+export PYTHONDONTWRITEBYTECODE=1
 export PDE_REPO_ROOT=$PWD
 export HOME="$EVAL_HOME"
 export PATH="$ORIGINAL_PATH"
