@@ -21,7 +21,8 @@ If no plan reference was provided, ask for it and stop.
   affected domains, and load matching skills.
 - Read every file named in the current step after that skill gate.
 - If delegating work, include the exact names of applicable loaded skills and
-  require the subagent to load available skills before working.
+  require the subagent to load available skills before working and report
+  required skills that are unavailable.
 - Use Vibe only when the user explicitly authorizes its managed snapshot, step,
   progress, cleanup, and failed-run commits. When authorized, Vibe solely owns
   branch and worktree setup; otherwise follow the plan's checkout instructions
@@ -77,6 +78,14 @@ For each step:
 5. Run the step's verification commands.
 6. Inspect the full diff against the pre-step commit, not only the latest commit
    or summary.
+
+Pass the exact current step to a Vibe worker with an `Applicable skills:` line
+containing every loaded skill needed for the step. Require the worker to load
+available listed skills before editing and report required skills that are
+unavailable. Before delegation, verify every required worker skill is readable
+at `~/.agents/skills/<name>/SKILL.md`; if one is unavailable, execute in the
+parent harness when safe or stop and report the missing requirement.
+
 7. Remove unsupported drift before continuing.
 8. Update the plan's progress only after code and verification agree.
 
@@ -91,7 +100,8 @@ Inspect the JSON result explicitly. Stop on any non-empty `persistence_error`,
 regardless of status. Otherwise handle status as follows:
 
 - `completed`: for a new key confirm `pre_run_commit` equals the full base SHA,
-  then inspect the commit and full diff, run verification, update the plan, and
+  confirm required skill-read evidence when the harness exposes it, then
+  inspect the commit and full diff, run verification, update the plan, and
   continue.
 - `noop`: inspect the worktree and artifacts; continue only if the step was
   already satisfied and verified.
@@ -138,7 +148,10 @@ Before finishing:
 
 - Confirm all approved steps are implemented or explicitly blocked.
 - Run the complete verification suite from the plan.
-- Review the final cumulative diff for scope and correctness.
+- Review the final cumulative diff for scope, correctness, and source
+  documentation quality.
+- Reopen documentation approved in an earlier step only when later work made it
+  stale, contradictory, or unsupported; do not rewrite it only for style.
 - Update plan status and checklists truthfully.
 - Summarize what changed, verification performed, justified deviations, and
   remaining blockers.
