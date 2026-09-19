@@ -8,8 +8,8 @@ name = "vesper"
 auto_switch = false
 
 [ui]
-# Use the status header and full-screen switcher at every terminal width.
-mobile_width_threshold = 65535
+# Keep desktop and phone clients responsive without sharing tmux dimensions.
+mobile_width_threshold = 72
 sidebar_start_collapsed = true
 sidebar_collapsed_mode = "compact"
 tab_bar_position = "top"
