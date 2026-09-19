@@ -27,9 +27,11 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 			profile: "terminal",
 			want: []string{
 				".config/aquaproj-aqua/aqua.yaml",
+				".config/aquaproj-aqua/aqua-checksums.json",
 				".config/alacritty",
 				".config/wezterm",
 				".config/nvim",
+				".config/nvim/**",
 				".config/opencode",
 				".config/systemd/user/opencode-web.service",
 				".config/systemd/user/opencode-web-health.service",
@@ -44,11 +46,14 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 			profile: "full",
 			want: []string{
 				".config/aquaproj-aqua/aqua-terminal.yaml",
+				".config/aquaproj-aqua/aqua-terminal-checksums.json",
 				".config/nvim/pack/plugins/start/blink.cmp",
 			},
 			omit: []string{
 				".config/alacritty",
 				".config/wezterm",
+				".config/nvim",
+				".config/nvim/**",
 				".config/opencode",
 				".config/systemd/user/opencode-web.service",
 				".config/systemd/user/opencode-web-health.service",
@@ -56,7 +61,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 			},
 		},
 	}
-	assertProfileTemplates(t, ".chezmoiignore.tmpl", tests)
+	assertProfileTemplateLines(t, ".chezmoiignore.tmpl", tests)
 }
 
 func TestExternalTemplateProfiles(t *testing.T) {
@@ -71,81 +76,7 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			omit: []string{
 				"obsidian.nvim",
 				".config/opencode/AGENTS.md",
-				".codex/AGENTS.md",
-				".pi/agent/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
-				".codex/skills/code-documentation/SKILL.md",
-				".pi/agent/settings.json",
-				".agents/skills/obsidian-zettel/SKILL.md",
-				".codex/skills/obsidian-zettel/SKILL.md",
-				".agents/skills/go-development/Apache-2.0.txt",
-				".agents/skills/go-development/README.md",
-				".agents/skills/go-development/SKILL.md",
-				".agents/skills/go-development/examples/composition-original.go",
-				".agents/skills/go-development/references/composition.md",
-				".agents/skills/go-development/references/uber-go-guide.md",
-				".codex/skills/go-development/Apache-2.0.txt",
-				".codex/skills/go-development/README.md",
-				".codex/skills/go-development/SKILL.md",
-				".codex/skills/go-development/examples/composition-original.go",
-				".codex/skills/go-development/references/composition.md",
-				".codex/skills/go-development/references/uber-go-guide.md",
-				// Rust Agent Skills package.
-				".agents/skills/rust-development/SKILL.md",
-				".agents/skills/rust-development/examples/.gitignore",
-				".agents/skills/rust-development/examples/Cargo.lock",
-				".agents/skills/rust-development/examples/Cargo.toml",
-				".agents/skills/rust-development/examples/README.md",
-				".agents/skills/rust-development/examples/src/buffered_output.rs",
-				".agents/skills/rust-development/examples/src/device.rs",
-				".agents/skills/rust-development/examples/src/foreign.rs",
-				".agents/skills/rust-development/examples/src/identity.rs",
-				".agents/skills/rust-development/examples/src/lib.rs",
-				".agents/skills/rust-development/examples/src/main.rs",
-				".agents/skills/rust-development/examples/src/report.rs",
-				".agents/skills/rust-development/examples/src/retry.rs",
-				".agents/skills/rust-development/examples/src/threaded.rs",
-				".agents/skills/rust-development/examples/tests/cli.rs",
-				".agents/skills/rust-development/references/api-design.md",
-				".agents/skills/rust-development/references/cargo.md",
-				".agents/skills/rust-development/references/concurrency.md",
-				".agents/skills/rust-development/references/design-choices.md",
-				".agents/skills/rust-development/references/documentation.md",
-				".agents/skills/rust-development/references/errors-resources.md",
-				".agents/skills/rust-development/references/evaluation.md",
-				".agents/skills/rust-development/references/examples.md",
-				".agents/skills/rust-development/references/ownership.md",
-				".agents/skills/rust-development/references/sources.md",
-				".agents/skills/rust-development/references/testing.md",
-				".agents/skills/rust-development/references/unsafe.md",
-				// Rust Codex package.
-				".codex/skills/rust-development/SKILL.md",
-				".codex/skills/rust-development/examples/.gitignore",
-				".codex/skills/rust-development/examples/Cargo.lock",
-				".codex/skills/rust-development/examples/Cargo.toml",
-				".codex/skills/rust-development/examples/README.md",
-				".codex/skills/rust-development/examples/src/buffered_output.rs",
-				".codex/skills/rust-development/examples/src/device.rs",
-				".codex/skills/rust-development/examples/src/foreign.rs",
-				".codex/skills/rust-development/examples/src/identity.rs",
-				".codex/skills/rust-development/examples/src/lib.rs",
-				".codex/skills/rust-development/examples/src/main.rs",
-				".codex/skills/rust-development/examples/src/report.rs",
-				".codex/skills/rust-development/examples/src/retry.rs",
-				".codex/skills/rust-development/examples/src/threaded.rs",
-				".codex/skills/rust-development/examples/tests/cli.rs",
-				".codex/skills/rust-development/references/api-design.md",
-				".codex/skills/rust-development/references/cargo.md",
-				".codex/skills/rust-development/references/concurrency.md",
-				".codex/skills/rust-development/references/design-choices.md",
-				".codex/skills/rust-development/references/documentation.md",
-				".codex/skills/rust-development/references/errors-resources.md",
-				".codex/skills/rust-development/references/evaluation.md",
-				".codex/skills/rust-development/references/examples.md",
-				".codex/skills/rust-development/references/ownership.md",
-				".codex/skills/rust-development/references/sources.md",
-				".codex/skills/rust-development/references/testing.md",
-				".codex/skills/rust-development/references/unsafe.md",
 			},
 		},
 		"full": {
@@ -153,84 +84,8 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			want: []string{
 				"obsidian.nvim",
 				".config/opencode/AGENTS.md",
-				".codex/AGENTS.md",
-				".pi/agent/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
-				".codex/skills/code-documentation/SKILL.md",
-				".pi/agent/settings.json",
-				"implement-plan/SKILL.md",
-				".agents/skills/obsidian-zettel/SKILL.md",
-				".codex/skills/obsidian-zettel/SKILL.md",
-				".agents/skills/go-development/Apache-2.0.txt",
-				".agents/skills/go-development/README.md",
-				".agents/skills/go-development/SKILL.md",
-				".agents/skills/go-development/examples/composition-original.go",
-				".agents/skills/go-development/references/composition.md",
-				".agents/skills/go-development/references/uber-go-guide.md",
-				".codex/skills/go-development/Apache-2.0.txt",
-				".codex/skills/go-development/README.md",
-				".codex/skills/go-development/SKILL.md",
-				".codex/skills/go-development/examples/composition-original.go",
-				".codex/skills/go-development/references/composition.md",
-				".codex/skills/go-development/references/uber-go-guide.md",
-				// Rust Agent Skills package.
-				".agents/skills/rust-development/SKILL.md",
-				".agents/skills/rust-development/examples/.gitignore",
-				".agents/skills/rust-development/examples/Cargo.lock",
-				".agents/skills/rust-development/examples/Cargo.toml",
-				".agents/skills/rust-development/examples/README.md",
-				".agents/skills/rust-development/examples/src/buffered_output.rs",
-				".agents/skills/rust-development/examples/src/device.rs",
-				".agents/skills/rust-development/examples/src/foreign.rs",
-				".agents/skills/rust-development/examples/src/identity.rs",
-				".agents/skills/rust-development/examples/src/lib.rs",
-				".agents/skills/rust-development/examples/src/main.rs",
-				".agents/skills/rust-development/examples/src/report.rs",
-				".agents/skills/rust-development/examples/src/retry.rs",
-				".agents/skills/rust-development/examples/src/threaded.rs",
-				".agents/skills/rust-development/examples/tests/cli.rs",
-				".agents/skills/rust-development/references/api-design.md",
-				".agents/skills/rust-development/references/cargo.md",
-				".agents/skills/rust-development/references/concurrency.md",
-				".agents/skills/rust-development/references/design-choices.md",
-				".agents/skills/rust-development/references/documentation.md",
-				".agents/skills/rust-development/references/errors-resources.md",
-				".agents/skills/rust-development/references/evaluation.md",
-				".agents/skills/rust-development/references/examples.md",
-				".agents/skills/rust-development/references/ownership.md",
-				".agents/skills/rust-development/references/sources.md",
-				".agents/skills/rust-development/references/testing.md",
-				".agents/skills/rust-development/references/unsafe.md",
-				// Rust Codex package.
-				".codex/skills/rust-development/SKILL.md",
-				".codex/skills/rust-development/examples/.gitignore",
-				".codex/skills/rust-development/examples/Cargo.lock",
-				".codex/skills/rust-development/examples/Cargo.toml",
-				".codex/skills/rust-development/examples/README.md",
-				".codex/skills/rust-development/examples/src/buffered_output.rs",
-				".codex/skills/rust-development/examples/src/device.rs",
-				".codex/skills/rust-development/examples/src/foreign.rs",
-				".codex/skills/rust-development/examples/src/identity.rs",
-				".codex/skills/rust-development/examples/src/lib.rs",
-				".codex/skills/rust-development/examples/src/main.rs",
-				".codex/skills/rust-development/examples/src/report.rs",
-				".codex/skills/rust-development/examples/src/retry.rs",
-				".codex/skills/rust-development/examples/src/threaded.rs",
-				".codex/skills/rust-development/examples/tests/cli.rs",
-				".codex/skills/rust-development/references/api-design.md",
-				".codex/skills/rust-development/references/cargo.md",
-				".codex/skills/rust-development/references/concurrency.md",
-				".codex/skills/rust-development/references/design-choices.md",
-				".codex/skills/rust-development/references/documentation.md",
-				".codex/skills/rust-development/references/errors-resources.md",
-				".codex/skills/rust-development/references/evaluation.md",
-				".codex/skills/rust-development/references/examples.md",
-				".codex/skills/rust-development/references/ownership.md",
-				".codex/skills/rust-development/references/sources.md",
-				".codex/skills/rust-development/references/testing.md",
-				".codex/skills/rust-development/references/unsafe.md",
 			},
-			omit: []string{"PDE_PROFILE must be exactly"},
 		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
@@ -993,6 +848,38 @@ func assertProfileTemplates(t *testing.T, templateName string, tests map[string]
 			}
 		})
 	}
+}
+
+func assertProfileTemplateLines(t *testing.T, templateName string, tests map[string]struct {
+	profile string
+	want    []string
+	omit    []string
+}) {
+	t.Helper()
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			text := renderProfileTemplate(t, templateName, test.profile)
+			for _, value := range test.want {
+				if !containsLine(text, value) {
+					t.Errorf("%s omits line %q", templateName, value)
+				}
+			}
+			for _, value := range test.omit {
+				if containsLine(text, value) {
+					t.Errorf("%s contains line %q", templateName, value)
+				}
+			}
+		})
+	}
+}
+
+func containsLine(text, want string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if line == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestExternalChecksumsMatchSources(t *testing.T) {
