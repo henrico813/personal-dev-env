@@ -8,7 +8,7 @@ name = "vesper"
 auto_switch = false
 
 [ui]
-# Keep desktop and phone clients responsive without sharing tmux dimensions.
+# Use mobile chrome at phone widths; shared Herdr panes retain one terminal size.
 mobile_width_threshold = 72
 sidebar_start_collapsed = true
 sidebar_collapsed_mode = "hidden"
@@ -27,7 +27,7 @@ window_title = "{hostname}: {workspace} - {tab}"
 
 [ui.sidebar.agents]
 row_gap = 0
-rows = [["state_icon", "tab"], ["machine", "agent"]]
+rows = [["state_icon", "tab"], ["machine", "workspace", "agent"]]
 
 [ui.toast]
 delivery = "system"

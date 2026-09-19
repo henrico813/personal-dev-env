@@ -25,20 +25,22 @@ comments when it emits the merged file.
 ## Terminal Workspaces
 
 Use tmux as the attachment and recovery layer, with separate presentation
-sessions so a phone cannot resize the desktop. Start or resume the environment
-for the current directory with one command:
+sessions so phone-sized tmux geometry does not resize the desktop session. Start
+or resume the environment for the current directory with one command:
 
 ```bash
 tm
 ```
 
-`tm` creates `hub` and `pocket` sessions containing Herdr and an empty shell,
-plus a `dash` session containing the four-pane `tw` layout. It attaches `pocket`
-at 72 columns and below and `hub` at larger widths. Use `tm hub`, `tm pocket`,
-or `tm dash` to select a view explicitly. All three sessions record the project
-root and use names derived from its absolute path, so environments for multiple
-directories can coexist. Hub and Pocket both attach Herdr's `default` session so
-they expose the same agents.
+`tm` requires Herdr on `PATH`; the full profile installs it. The command creates
+`hub` and `pocket` sessions containing Herdr and an empty shell, plus a `dash`
+session containing the four-pane `tw` layout. It attaches `pocket` at 72 columns
+and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or `tm dash` to
+select a view explicitly. All three sessions record the project root and use
+names derived from its absolute path, so environments for multiple directories
+can coexist. Hub and Pocket both attach Herdr's `default` session, so they expose
+the same agents. Herdr owns those shared agent panes and their PTY dimensions;
+the separate tmux sessions isolate only the surrounding presentation geometry.
 
 Plain `tw DIR` remains available for adding another project window with left,
 top, bottom, and right panes, using positional commands or the project's
