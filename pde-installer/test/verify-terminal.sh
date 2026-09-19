@@ -147,6 +147,13 @@ tmux_socket="pde-terminal-$$"
 trap 'tmux -L "$tmux_socket" kill-server 2>/dev/null || true' EXIT
 workspace="$HOME/tw-workspace"
 mkdir -p "$workspace"
+cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'config=%s args=%s\n' "${HERDR_CONFIG_PATH:-}" "$*" >>"$HOME/herdr-invocations"
+exec sleep 300
+SCRIPT
+chmod 755 "$HOME/.local/bin/herdr"
+: >"$HOME/herdr-invocations"
 cat >"$HOME/.config/pde/tw.yml" <<YAML
 herdr: printf 'herdr\n' >> '$workspace/startups'
 wallace: printf 'wallace\n' >> '$workspace/startups'
@@ -154,6 +161,49 @@ shell: ""
 YAML
 chmod 600 "$HOME/.config/pde/tw.yml"
 : >"$workspace/startups"
+
+tm_workspace="$HOME/tm-workspace"
+mkdir -p "$tm_workspace"
+tm_hash="$(printf '%s' "$tm_workspace" | sha256sum)"
+tm_hash="${tm_hash%% *}"
+tm_scope="tm-${tm_workspace##*/}-${tm_hash:0:8}"
+tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -s controller -n shell -c "$tm_workspace" \
+	"zsh -ic 'if tm --no-attach \"$tm_workspace\"; then print 0 >\"$tm_workspace/status\"; else print 1 >\"$tm_workspace/status\"; fi; tmux wait-for -S tm-ready; exec zsh'"
+timeout 20 tmux -L "$tmux_socket" wait-for tm-ready
+[[ "$(cat "$tm_workspace/status")" == 0 ]]
+expected_sessions="$(printf '%s\n' controller "${tm_scope}-dash" "${tm_scope}-hub" "${tm_scope}-pocket" | sort)"
+[[ "$(tmux -L "$tmux_socket" list-sessions -F '#{session_name}' | sort)" == "$expected_sessions" ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-hub" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-pocket" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-dash" -F '#{window_name}:#{window_panes}')" == 'main:4' ]]
+timeout 20 bash -c 'until [[ $(wc -l <"$1") -eq 2 ]]; do sleep 0.1; done' _ "$HOME/herdr-invocations"
+[[ "$(sort "$HOME/herdr-invocations")" == $'config= args=--session default\nconfig= args=--session default' ]]
+for role in hub pocket dash; do
+	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${tm_scope}-${role}" @tm-root)" == "$tm_workspace" ]]
+done
+hub_pane="$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{pane_id}')"
+tmux -L "$tmux_socket" resize-window -t "${tm_scope}-hub:herdr" -x 120 -y 40
+tmux -L "$tmux_socket" resize-window -t "${tm_scope}-pocket:herdr" -x 46 -y 22
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{window_width}x#{window_height}')" == 120x40 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-pocket:herdr" '#{window_width}x#{window_height}')" == 46x22 ]]
+controller_pane="$(tmux -L "$tmux_socket" display-message -p -t controller:shell '#{pane_id}')"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/repeat-status'; tmux wait-for -S tm-repeat" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-repeat
+[[ "$(cat "$tm_workspace/repeat-status")" == 0 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{pane_id}')" == "$hub_pane" ]]
+
+other_tm_workspace="$HOME/tm-other-workspace"
+mkdir -p "$other_tm_workspace"
+other_tm_hash="$(printf '%s' "$other_tm_workspace" | sha256sum)"
+other_tm_hash="${other_tm_hash%% *}"
+other_tm_scope="tm-${other_tm_workspace##*/}-${other_tm_hash:0:8}"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$other_tm_workspace'; print \$? >'$other_tm_workspace/status'; tmux wait-for -S tm-other" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-other
+[[ "$(cat "$other_tm_workspace/status")" == 0 ]]
+for role in hub pocket dash; do
+	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${other_tm_scope}-${role}" @tm-root)" == "$other_tm_workspace" ]]
+done
+
 tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -x 46 -y 22 -s workspace -n zsh -c "$HOME" \
 	"zsh -ic 'if tw init \"$workspace\"; then print 0 >\"$workspace/init-status\"; else print 1 >\"$workspace/init-status\"; fi; tmux wait-for -S tw-ready; exec zsh'"
 timeout 20 tmux -L "$tmux_socket" wait-for tw-ready

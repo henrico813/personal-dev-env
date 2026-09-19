@@ -215,6 +215,98 @@ setopt EXTENDED_HISTORY       # Save timestamp and duration with each command
 setopt APPEND_HISTORY         # Append to history file rather than overwriting
 setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
 
+# Terminal Multiplexer - create isolated desktop, mobile, and dashboard views.
+# Usage: tm [hub|pocket|dash] [directory]
+tm() {
+    local attach=true target="" dir role root pane_id signal layout_window_id
+    local slug hash scope session dash_session target_session
+    if [[ "${1:-}" == --no-attach ]]; then
+        attach=false
+        shift
+    fi
+    if [[ "${1:-}" == hub || "${1:-}" == pocket || "${1:-}" == dash ]]; then
+        target="$1"
+        shift
+    fi
+    if (( $# > 1 )); then
+        print -u2 -- "Usage: tm [hub|pocket|dash] [directory]"
+        return 1
+    fi
+
+    dir="${1:-.}"
+    dir="$(cd "$dir" 2>/dev/null && pwd)" || {
+        print -u2 -- "Error: Directory not found: ${1:-.}"
+        return 1
+    }
+    slug="${dir:t}"
+    slug="${slug//[^A-Za-z0-9_-]/-}"
+    [[ -n "$slug" ]] || slug=root
+    slug="${slug[1,24]}"
+    hash="$(print -rn -- "$dir" | command sha256sum)" || return 1
+    hash="${hash%% *}"
+    scope="tm-${slug}-${hash[1,8]}"
+    if [[ -z "$target" ]]; then
+        if (( COLUMNS <= 72 )); then
+            target=pocket
+        else
+            target=hub
+        fi
+    fi
+
+    for role in hub pocket dash; do
+        session="${scope}-${role}"
+        if tmux has-session -t "$session" 2>/dev/null; then
+            root="$(tmux show-option -qv -t "$session" @tm-root)" || return 1
+            if [[ -z "$root" || "$root" != "$dir" ]]; then
+                print -u2 -- "Error: tmux session $session belongs to ${root:-an unmanaged environment}"
+                return 1
+            fi
+        fi
+    done
+
+    for role in hub pocket; do
+        session="${scope}-${role}"
+        if ! tmux has-session -t "$session" 2>/dev/null; then
+            pane_id="$(tmux new-session -d -s "$session" -n herdr -c "$dir" -P -F '#{pane_id}')" || return 1
+            tmux set-option -t "$session" @tm-root "$dir" || return 1
+            tmux set-option -t "$session" @tm-role "$role" || return 1
+            tmux send-keys -t "$pane_id" -l -- "command herdr --session default" || return 1
+            tmux send-keys -t "$pane_id" C-m || return 1
+            tmux new-window -d -t "$session" -n shell -c "$dir" || return 1
+            tmux select-window -t "${session}:=herdr" || return 1
+        fi
+    done
+
+    dash_session="${scope}-dash"
+    if ! tmux has-session -t "$dash_session" 2>/dev/null; then
+        pane_id="$(tmux new-session -d -s "$dash_session" -n bootstrap -c "$dir" -P -F '#{pane_id}')" || return 1
+        tmux set-option -t "$dash_session" @tm-root "$dir" || return 1
+        tmux set-option -t "$dash_session" @tm-role dash || return 1
+        signal="tm-dash-${$}-${RANDOM}"
+        tmux send-keys -t "$pane_id" -l -- "tw ${(q)dir}; tmux wait-for -S ${(q)signal}" || return 1
+        tmux send-keys -t "$pane_id" C-m || return 1
+        tmux wait-for "$signal" || return 1
+        layout_window_id="$(tmux list-windows -t "$dash_session" -f '#{!=:#{window_name},bootstrap}' -F '#{window_id}')" || return 1
+        if [[ -z "$layout_window_id" || "$layout_window_id" == *$'\n'* ]]; then
+            print -u2 -- "Error: Failed to create the dash layout"
+            return 1
+        fi
+        tmux rename-window -t "$layout_window_id" main || return 1
+        tmux kill-window -t "${dash_session}:=bootstrap" || return 1
+        tmux select-window -t "${dash_session}:=main" || return 1
+    fi
+
+    if [[ "$attach" == false ]]; then
+        return
+    fi
+    target_session="${scope}-${target}"
+    if [[ -n "$TMUX" ]]; then
+        tmux switch-client -t "$target_session"
+    else
+        tmux attach-session -t "$target_session"
+    fi
+}
+
 # Tmux Window - create a VSCode-style window or initialize role windows.
 # Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]
 #        tw init [directory]
