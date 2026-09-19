@@ -147,6 +147,31 @@ tmux_socket="pde-terminal-$$"
 trap 'tmux -L "$tmux_socket" kill-server 2>/dev/null || true' EXIT
 workspace="$HOME/tw-workspace"
 mkdir -p "$workspace"
+tm_workspace="$HOME/tm-workspace"
+mkdir -p "$tm_workspace"
+if PATH="$HOME/.local/bin:/usr/bin:/bin" zsh -ic "tm --no-attach '$tm_workspace'" 2>"$tm_workspace/no-herdr-error"; then
+	printf 'tm unexpectedly started without Herdr\n' >&2
+	exit 1
+fi
+grep -Fq 'Error: tm requires Herdr' "$tm_workspace/no-herdr-error"
+
+cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 1
+SCRIPT
+chmod 755 "$HOME/.local/bin/herdr"
+
+tm_hash="$(printf '%s' "$tm_workspace" | sha256sum)"
+tm_hash="${tm_hash%% *}"
+tm_scope="tm-${tm_workspace##*/}-${tm_hash:0:8}"
+tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -s controller -n shell -c "$tm_workspace" \
+	"zsh -ic 'if tm --no-attach \"$tm_workspace\"; then print 0 >\"$tm_workspace/start-failure-status\"; else print 1 >\"$tm_workspace/start-failure-status\"; fi; tmux wait-for -S tm-start-failure; exec zsh'"
+timeout 20 tmux -L "$tmux_socket" wait-for tm-start-failure
+[[ "$(cat "$tm_workspace/start-failure-status")" == 1 ]]
+for role in hub pocket dash; do
+	tmux -L "$tmux_socket" kill-session -t "${tm_scope}-${role}" 2>/dev/null || true
+done
+
 cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
 #!/usr/bin/env bash
 printf 'config=%s args=%s\n' "${HERDR_CONFIG_PATH:-}" "$*" >>"$HOME/herdr-invocations"
@@ -154,23 +179,17 @@ exec sleep 300
 SCRIPT
 chmod 755 "$HOME/.local/bin/herdr"
 : >"$HOME/herdr-invocations"
-cat >"$HOME/.config/pde/tw.yml" <<YAML
-herdr: printf 'herdr\n' >> '$workspace/startups'
-wallace: printf 'wallace\n' >> '$workspace/startups'
-shell: ""
-YAML
-chmod 600 "$HOME/.config/pde/tw.yml"
-: >"$workspace/startups"
 
-tm_workspace="$HOME/tm-workspace"
-mkdir -p "$tm_workspace"
-tm_hash="$(printf '%s' "$tm_workspace" | sha256sum)"
-tm_hash="${tm_hash%% *}"
-tm_scope="tm-${tm_workspace##*/}-${tm_hash:0:8}"
-tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -s controller -n shell -c "$tm_workspace" \
-	"zsh -ic 'if tm --no-attach \"$tm_workspace\"; then print 0 >\"$tm_workspace/status\"; else print 1 >\"$tm_workspace/status\"; fi; tmux wait-for -S tm-ready; exec zsh'"
+controller_pane="$(tmux -L "$tmux_socket" display-message -p -t controller:shell '#{pane_id}')"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/status'; tmux wait-for -S tm-ready" C-m
 timeout 20 tmux -L "$tmux_socket" wait-for tm-ready
-[[ "$(cat "$tm_workspace/status")" == 0 ]]
+if [[ "$(cat "$tm_workspace/status")" != 0 ]]; then
+	tmux -L "$tmux_socket" list-sessions >&2
+	tmux -L "$tmux_socket" list-windows -t "${tm_scope}-dash" >&2 || true
+	tmux -L "$tmux_socket" capture-pane -p -t "${tm_scope}-dash:bootstrap" >&2 || true
+	tmux -L "$tmux_socket" capture-pane -p -t controller:shell >&2
+	exit 1
+fi
 expected_sessions="$(printf '%s\n' controller "${tm_scope}-dash" "${tm_scope}-hub" "${tm_scope}-pocket" | sort)"
 [[ "$(tmux -L "$tmux_socket" list-sessions -F '#{session_name}' | sort)" == "$expected_sessions" ]]
 [[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-hub" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
@@ -186,11 +205,22 @@ tmux -L "$tmux_socket" resize-window -t "${tm_scope}-hub:herdr" -x 120 -y 40
 tmux -L "$tmux_socket" resize-window -t "${tm_scope}-pocket:herdr" -x 46 -y 22
 [[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{window_width}x#{window_height}')" == 120x40 ]]
 [[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-pocket:herdr" '#{window_width}x#{window_height}')" == 46x22 ]]
-controller_pane="$(tmux -L "$tmux_socket" display-message -p -t controller:shell '#{pane_id}')"
 tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/repeat-status'; tmux wait-for -S tm-repeat" C-m
 timeout 20 tmux -L "$tmux_socket" wait-for tm-repeat
 [[ "$(cat "$tm_workspace/repeat-status")" == 0 ]]
 [[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{pane_id}')" == "$hub_pane" ]]
+
+notes_pane="$(tmux -L "$tmux_socket" new-window -d -t "${tm_scope}-hub" -n notes -c "$tm_workspace" -P -F '#{pane_id}' 'exec sleep 300')"
+tmux -L "$tmux_socket" kill-window -t "${tm_scope}-hub:shell"
+tmux -L "$tmux_socket" kill-window -t "${tm_scope}-pocket:herdr"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/repair-status'; tmux wait-for -S tm-repair" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-repair
+[[ "$(cat "$tm_workspace/repair-status")" == 0 ]]
+timeout 20 bash -c 'until [[ $(wc -l <"$1") -ge 3 ]]; do sleep 0.1; done' _ "$HOME/herdr-invocations"
+[[ "$(wc -l <"$HOME/herdr-invocations")" -eq 3 ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-hub" -F '#{window_name}' | sort)" == $'herdr\nnotes\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-pocket" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:notes" '#{pane_id}')" == "$notes_pane" ]]
 
 other_tm_workspace="$HOME/tm-other-workspace"
 mkdir -p "$other_tm_workspace"
@@ -204,91 +234,27 @@ for role in hub pocket dash; do
 	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${other_tm_scope}-${role}" @tm-root)" == "$other_tm_workspace" ]]
 done
 
-tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -x 46 -y 22 -s workspace -n zsh -c "$HOME" \
-	"zsh -ic 'if tw init \"$workspace\"; then print 0 >\"$workspace/init-status\"; else print 1 >\"$workspace/init-status\"; fi; tmux wait-for -S tw-ready; exec zsh'"
-timeout 20 tmux -L "$tmux_socket" wait-for tw-ready
-if [[ "$(cat "$workspace/init-status")" != 0 ]]; then
-	tmux -L "$tmux_socket" list-windows -t workspace >&2
-	tmux -L "$tmux_socket" capture-pane -p -t workspace:shell >&2
-	exit 1
-fi
-timeout 20 bash -c 'until [[ -f "$1" && $(wc -l <"$1") -eq 2 ]]; do sleep 0.1; done' _ "$workspace/startups"
-[[ "$(sort "$workspace/startups")" == $'herdr\nwallace' ]]
-[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_index}:#{window_name}')" == $'1:herdr\n2:wallace\n3:shell' ]]
-for role in herdr wallace shell; do
-	[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:$role '#{pane_current_path}')" == "$workspace" ]]
-done
-[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_name}:#{window_width}x#{window_height}' | grep '^herdr:')" == 'herdr:46x22' ]]
-[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
+cat >"$workspace/.tw.yml" <<YAML
+left: touch '$workspace/config-left'
+top: touch '$workspace/config-top'
+bottom: touch '$workspace/config-bottom'
+right: touch '$workspace/config-right'
+YAML
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tw '$workspace'; print \$? >'$workspace/config-status'; tmux wait-for -S tw-config" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tw-config
+[[ "$(cat "$workspace/config-status")" == 0 ]]
+timeout 20 bash -c 'until [[ -e "$1/config-left" && -e "$1/config-top" && -e "$1/config-bottom" && -e "$1/config-right" ]]; do sleep 0.1; done' _ "$workspace"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{window_panes}')" == 4 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{pane_current_path} #{pane_active}')" == "$workspace 1" ]]
+tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
 
-shell_pane="$(tmux -L "$tmux_socket" display-message -p -t workspace:shell '#{pane_id}')"
-tmux -L "$tmux_socket" select-window -t workspace:shell
-tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw '$workspace' \"touch '$workspace/left-started'\" \"touch '$workspace/top-started'\" \"touch '$workspace/bottom-started'\" \"touch '$workspace/right-started'\" && touch '$workspace/open-succeeded'" C-m
-timeout 20 bash -c 'until [[ -e "$1/open-succeeded" && -e "$1/left-started" && -e "$1/top-started" && -e "$1/bottom-started" && -e "$1/right-started" ]]; do sleep 0.1; done' _ "$workspace"
-[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{window_panes}')" == 4 ]]
-[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{pane_current_path} #{pane_active}')" == "$workspace 1" ]]
-tmux -L "$tmux_socket" kill-window -t workspace:tw_workspace
-tmux -L "$tmux_socket" select-window -t workspace:shell
-tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw && touch '$workspace/open-default-succeeded'" C-m
-timeout 20 bash -c 'until [[ -e "$1" ]]; do sleep 0.1; done' _ "$workspace/open-default-succeeded"
-[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:tw_workspace '#{window_panes}')" == 4 ]]
-tmux -L "$tmux_socket" kill-window -t workspace:tw_workspace
-
-tmux -L "$tmux_socket" new-window -d -t workspace -n notes -c "$workspace"
-tmux -L "$tmux_socket" split-window -d -t workspace:herdr -c "$workspace"
-tmux -L "$tmux_socket" kill-window -t workspace:wallace
-tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw init '$workspace' || touch '$workspace/repeat-failed'" C-m
-timeout 20 bash -c 'until [[ -f "$1" && $(wc -l <"$1") -eq 3 ]]; do sleep 0.1; done' _ "$workspace/startups"
-[[ ! -e "$workspace/repeat-failed" ]]
-[[ "$(sort "$workspace/startups")" == $'herdr\nwallace\nwallace' ]]
-[[ "$(tmux -L "$tmux_socket" list-windows -t workspace -F '#{window_name}' | sort)" == $'herdr\nnotes\nshell\nwallace' ]]
-[[ "$(tmux -L "$tmux_socket" display-message -p -t workspace:herdr '#{window_panes}')" == 2 ]]
-[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
-
-other_workspace="$HOME/tw-other"
-mkdir -p "$other_workspace"
-tmux -L "$tmux_socket" send-keys -t "$shell_pane" "tw init '$other_workspace' && touch '$workspace/root-unexpected'; tmux wait-for -S tw-root" C-m
-timeout 20 tmux -L "$tmux_socket" wait-for tw-root
-[[ ! -e "$workspace/root-unexpected" ]]
-[[ "$(tmux -L "$tmux_socket" show-option -qv -t workspace @tw-root)" == "$workspace" ]]
-
-uninitialized="$HOME/tw-uninitialized"
-mkdir -p "$uninitialized"
-tmux -L "$tmux_socket" new-session -d -s uninitialized -n herdr -x 46 -y 22 -c "$uninitialized" \
-	"zsh -ic \"tw '$uninitialized' && touch '$uninitialized/opened'; tmux wait-for -S tw-uninitialized; exec zsh\""
-timeout 20 tmux -L "$tmux_socket" wait-for tw-uninitialized
-[[ -e "$uninitialized/opened" ]]
-[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t uninitialized @tw-root)" ]]
-[[ "$(tmux -L "$tmux_socket" display-message -p -t uninitialized:tw_uninitialized '#{window_panes}')" == 4 ]]
-
-project_config="$HOME/tw-project-config"
-mkdir -p "$project_config"
-printf 'herdr: touch %s/project-config-unexpected\nwallace: ""\nshell: ""\n' "$project_config" >"$project_config/.tw.yml"
-tmux -L "$tmux_socket" new-session -d -s project-config -x 46 -y 22 -c "$project_config" \
-	"zsh -ic \"tw init '$project_config' && touch '$project_config/initialized'; tmux wait-for -S tw-project; exec zsh\""
-timeout 20 tmux -L "$tmux_socket" wait-for tw-project
-[[ -e "$project_config/initialized" ]]
-[[ ! -e "$project_config/project-config-unexpected" ]]
-[[ "$(tmux -L "$tmux_socket" show-option -qv -t project-config @tw-root)" == "$project_config" ]]
-
-tmux -L "$tmux_socket" new-session -d -s duplicate -n herdr -x 46 -y 22 -c "$workspace" \
-	"zsh -ic 'tmux wait-for tw-duplicate-start; tw init \"$workspace\" && touch \"$workspace/duplicate-unexpected\"; tmux wait-for -S tw-duplicate; exec zsh'"
-tmux -L "$tmux_socket" new-window -d -t duplicate:2 -n herdr -c "$workspace"
-tmux -L "$tmux_socket" wait-for -S tw-duplicate-start
-timeout 20 tmux -L "$tmux_socket" wait-for tw-duplicate
-[[ ! -e "$workspace/duplicate-unexpected" ]]
-[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t duplicate @tw-root)" ]]
-
-insecure_config="$HOME/tw-insecure-config"
-mkdir -p "$insecure_config"
-chmod 644 "$HOME/.config/pde/tw.yml"
-tmux -L "$tmux_socket" new-session -d -s insecure-config -x 46 -y 22 -c "$insecure_config" \
-	"zsh -ic \"tw init '$insecure_config' && touch '$insecure_config/unexpected'; tmux wait-for -S tw-insecure; exec zsh\""
-timeout 20 tmux -L "$tmux_socket" wait-for tw-insecure
-[[ ! -e "$insecure_config/unexpected" ]]
-[[ -z "$(tmux -L "$tmux_socket" show-option -qv -t insecure-config @tw-root)" ]]
-[[ "$(tmux -L "$tmux_socket" list-windows -t insecure-config -F '#{window_index}' | wc -l)" -eq 1 ]]
-chmod 600 "$HOME/.config/pde/tw.yml"
+rm "$workspace/.tw.yml"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tw '$workspace' \"touch '$workspace/left-started'\" \"touch '$workspace/top-started'\" \"touch '$workspace/bottom-started'\" \"touch '$workspace/right-started'\"; print \$? >'$workspace/position-status'; tmux wait-for -S tw-position" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tw-position
+[[ "$(cat "$workspace/position-status")" == 0 ]]
+timeout 20 bash -c 'until [[ -e "$1/left-started" && -e "$1/top-started" && -e "$1/bottom-started" && -e "$1/right-started" ]]; do sleep 0.1; done' _ "$workspace"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{window_panes}')" == 4 ]]
+tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
 
 [[ "$(tmux -L "$tmux_socket" show-options -gqv base-index)" == 1 ]]
 [[ "$(tmux -L "$tmux_socket" show-options -gwqv pane-base-index)" == 1 ]]

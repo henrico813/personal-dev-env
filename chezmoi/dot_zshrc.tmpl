@@ -219,7 +219,8 @@ setopt INC_APPEND_HISTORY     # Write to history file immediately, not on exit
 # Usage: tm [hub|pocket|dash] [directory]
 tm() {
     local attach=true target="" dir role root pane_id signal layout_window_id
-    local slug hash scope session dash_session target_session
+    local slug hash scope session dash_session target_session herdr_bin window matches dash_command
+    local herdr_started
     if [[ "${1:-}" == --no-attach ]]; then
         attach=false
         shift
@@ -245,6 +246,10 @@ tm() {
     hash="$(print -rn -- "$dir" | command sha256sum)" || return 1
     hash="${hash%% *}"
     scope="tm-${slug}-${hash[1,8]}"
+    herdr_bin="$(command -v herdr)" || {
+        print -u2 -- "Error: tm requires Herdr"
+        return 1
+    }
     if [[ -z "$target" ]]; then
         if (( COLUMNS <= 72 )); then
             target=pocket
@@ -266,25 +271,47 @@ tm() {
 
     for role in hub pocket; do
         session="${scope}-${role}"
+        herdr_started=false
         if ! tmux has-session -t "$session" 2>/dev/null; then
-            pane_id="$(tmux new-session -d -s "$session" -n herdr -c "$dir" -P -F '#{pane_id}')" || return 1
+            pane_id="$(tmux new-session -d -s "$session" -n herdr -c "$dir" -P -F '#{pane_id}' "exec ${(q)herdr_bin} --session default")" || return 1
             tmux set-option -t "$session" @tm-root "$dir" || return 1
             tmux set-option -t "$session" @tm-role "$role" || return 1
-            tmux send-keys -t "$pane_id" -l -- "command herdr --session default" || return 1
-            tmux send-keys -t "$pane_id" C-m || return 1
-            tmux new-window -d -t "$session" -n shell -c "$dir" || return 1
-            tmux select-window -t "${session}:=herdr" || return 1
+            herdr_started=true
         fi
+
+        for window in herdr shell; do
+            matches="$(tmux list-windows -t "$session" -f "#{==:#{window_name},$window}" -F '#{window_id}')" || return 1
+            if [[ "$matches" == *$'\n'* ]]; then
+                print -u2 -- "Error: tmux session $session has duplicate $window windows"
+                return 1
+            fi
+            if [[ -z "$matches" ]]; then
+                if [[ "$window" == herdr ]]; then
+                    pane_id="$(tmux new-window -d -t "$session" -n herdr -c "$dir" -P -F '#{pane_id}' "exec ${(q)herdr_bin} --session default")" || return 1
+                    herdr_started=true
+                else
+                    tmux new-window -d -t "$session" -n shell -c "$dir" || return 1
+                fi
+            fi
+        done
+        if [[ "$herdr_started" == true ]]; then
+            command sleep 0.2
+            matches="$(tmux list-windows -t "$session" -f '#{==:#{window_name},herdr}' -F '#{window_id}')" || return 1
+            if [[ -z "$matches" ]]; then
+                print -u2 -- "Error: Herdr failed to start in tmux session $session"
+                return 1
+            fi
+        fi
+        tmux select-window -t "${session}:=herdr" || return 1
     done
 
     dash_session="${scope}-dash"
     if ! tmux has-session -t "$dash_session" 2>/dev/null; then
-        pane_id="$(tmux new-session -d -s "$dash_session" -n bootstrap -c "$dir" -P -F '#{pane_id}')" || return 1
+        signal="tm-dash-${$}-${RANDOM}"
+        dash_command="tw ${(q)dir}; tmux wait-for -S ${(q)signal}"
+        pane_id="$(tmux new-session -d -s "$dash_session" -n bootstrap -c "$dir" -P -F '#{pane_id}' "exec zsh -ic ${(q)dash_command}")" || return 1
         tmux set-option -t "$dash_session" @tm-root "$dir" || return 1
         tmux set-option -t "$dash_session" @tm-role dash || return 1
-        signal="tm-dash-${$}-${RANDOM}"
-        tmux send-keys -t "$pane_id" -l -- "tw ${(q)dir}; tmux wait-for -S ${(q)signal}" || return 1
-        tmux send-keys -t "$pane_id" C-m || return 1
         tmux wait-for "$signal" || return 1
         layout_window_id="$(tmux list-windows -t "$dash_session" -f '#{!=:#{window_name},bootstrap}' -F '#{window_id}')" || return 1
         if [[ -z "$layout_window_id" || "$layout_window_id" == *$'\n'* ]]; then
@@ -292,7 +319,7 @@ tm() {
             return 1
         fi
         tmux rename-window -t "$layout_window_id" main || return 1
-        tmux kill-window -t "${dash_session}:=bootstrap" || return 1
+        tmux kill-window -t "${dash_session}:=bootstrap" 2>/dev/null || true
         tmux select-window -t "${dash_session}:=main" || return 1
     fi
 
@@ -307,169 +334,72 @@ tm() {
     fi
 }
 
-# Tmux Window - create a VSCode-style window or initialize role windows.
+# Tmux Window - create a VSCode-style four-pane project window.
 # Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]
-#        tw init [directory]
 tw() {
     if [[ -z "$TMUX" ]]; then
         print -u2 -- "Error: tw must be run inside tmux"
-        print -u2 -- "Start with: moshi . or tmux new-session -s project"
+        print -u2 -- "Start with: tm"
+        return 1
+    fi
+    if (( $# > 5 )); then
+        print -u2 -- "Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]"
         return 1
     fi
 
-    if [[ "${1:-}" != init ]]; then
-        local dir="${1:-.}"
-        dir="$(cd "$dir" 2>/dev/null && pwd)" || {
-            print -u2 -- "Error: Directory not found: ${1:-.}"
-            return 1
-        }
-
-        local name="$(basename "$dir" | tr ':.[]-' '_')"
-        [[ "$name" == "/" ]] && name="root"
-        [[ -z "$name" ]] && name="unnamed"
-
-        local config="$dir/.tw.yml"
-        local cmd_left="" cmd_top="" cmd_bottom="" cmd_right=""
-        if [[ -f "$config" ]]; then
-            if ! command -v yq &>/dev/null; then
-                print -u2 -- "Error: yq is required to parse .tw.yml but not installed"
-                print -u2 -- "Run the PDE installer to install it"
-                return 1
-            fi
-            if ! yq -e '.' "$config" &>/dev/null; then
-                print -u2 -- "Error: Invalid YAML in $config"
-                return 1
-            fi
-            cmd_left="$(yq -r '.left // ""' "$config")"
-            cmd_top="$(yq -r '.top // ""' "$config")"
-            cmd_bottom="$(yq -r '.bottom // ""' "$config")"
-            cmd_right="$(yq -r '.right // ""' "$config")"
-            [[ "$cmd_left" == "null" ]] && cmd_left=""
-            [[ "$cmd_top" == "null" ]] && cmd_top=""
-            [[ "$cmd_bottom" == "null" ]] && cmd_bottom=""
-            [[ "$cmd_right" == "null" ]] && cmd_right=""
-        elif (( $# > 1 )); then
-            cmd_left="${2:-}"
-            cmd_top="${3:-}"
-            cmd_bottom="${4:-}"
-            cmd_right="${5:-}"
-        fi
-
-        local window_id
-        window_id="$(tmux new-window -n "$name" -c "$dir" -P -F '#{window_id}')" || return 1
-        if [[ -z "$window_id" ]]; then
-            print -u2 -- "Error: Failed to create tmux window"
-            return 1
-        fi
-
-        local pane_middle pane_left pane_right pane_bottom
-        pane_middle="$(tmux display-message -p -t "$window_id" '#{pane_id}')" || return 1
-        pane_left="$(tmux split-window -t "$pane_middle" -hb -l 15% -c "$dir" -P -F '#{pane_id}')" || return 1
-        pane_right="$(tmux split-window -t "$pane_middle" -h -l 18% -c "$dir" -P -F '#{pane_id}')" || return 1
-        pane_bottom="$(tmux split-window -t "$pane_middle" -v -c "$dir" -P -F '#{pane_id}')" || return 1
-
-        [[ -n "$cmd_left" ]] && { tmux send-keys -t "$pane_left" -l -- "$cmd_left" && tmux send-keys -t "$pane_left" C-m; }
-        [[ -n "$cmd_top" ]] && { tmux send-keys -t "$pane_middle" -l -- "$cmd_top" && tmux send-keys -t "$pane_middle" C-m; }
-        [[ -n "$cmd_bottom" ]] && { tmux send-keys -t "$pane_bottom" -l -- "$cmd_bottom" && tmux send-keys -t "$pane_bottom" C-m; }
-        [[ -n "$cmd_right" ]] && { tmux send-keys -t "$pane_right" -l -- "$cmd_right" && tmux send-keys -t "$pane_right" C-m; }
-        tmux select-pane -t "$pane_middle"
-        return
-    fi
-
-    shift
-    if (( $# > 1 )); then
-        print -u2 -- "Usage: tw init [directory]"
-        return 1
-    fi
-
-    local session_name root dir
-    session_name="$(tmux display-message -p '#S')" || return 1
-    root="$(tmux show-option -qv -t "$session_name" @tw-root)"
-    dir="${1:-.}"
+    local dir="${1:-.}"
     dir="$(cd "$dir" 2>/dev/null && pwd)" || {
         print -u2 -- "Error: Directory not found: ${1:-.}"
         return 1
     }
-    if [[ -n "$root" && "$root" != "$dir" ]]; then
-        print -u2 -- "Error: tw session root is $root, not $dir"
-        return 1
-    fi
 
-    local -a roles=(herdr wallace shell)
-    local -A existing
-    local -i window_count=0
-    local bootstrap_window_name="" window_name
-    while IFS= read -r window_name; do
-        (( ++window_count ))
-        bootstrap_window_name="$window_name"
-        existing[$window_name]=$(( ${existing[$window_name]:-0} + 1 ))
-    done < <(tmux list-windows -t "$session_name" -F '#{window_name}')
+    local name="$(basename "$dir" | tr ':.[]-' '_')"
+    [[ "$name" == "/" ]] && name="root"
+    [[ -z "$name" ]] && name="unnamed"
 
-    local config="$HOME/.config/pde/tw.yml"
-    if [[ ! -f "$config" ]]; then
-        print -u2 -- "Error: tw config not found at $config"
-        return 1
-    fi
-    local -A config_stat
-    if ! zmodload -F zsh/stat b:zstat || ! zstat -H config_stat +mode "$config"; then
-        print -u2 -- "Error: Cannot inspect $config"
-        return 1
-    fi
-    if [[ -L "$config" || ! -O "$config" ]] || (( config_stat[mode] & 8#077 )); then
-        print -u2 -- "Error: $config must be an owned, private regular file"
-        return 1
-    fi
-    if ! command -v yq &>/dev/null; then
-        print -u2 -- "Error: yq is required to parse $config"
-        return 1
-    fi
-    if ! yq -e 'tag == "!!map" and has("herdr") and has("wallace") and has("shell")' "$config" &>/dev/null; then
-        print -u2 -- "Error: $config must be a YAML mapping with herdr, wallace, and shell strings"
-        return 1
-    fi
-    if yq -e 'has("left") or has("top") or has("bottom") or has("right") or has("work") or has("test")' "$config" &>/dev/null; then
-        print -u2 -- "Error: Replace legacy .tw.yml keys with herdr, wallace, and shell"
-        return 1
-    fi
-
-    local key command role role_count pane_id
-    local -A commands
-    for key in herdr wallace shell; do
-        if ! yq -e ".$key | tag == \"!!str\"" "$config" &>/dev/null; then
-            print -u2 -- "Error: .$key in $config must be a string"
+    local config="$dir/.tw.yml"
+    local cmd_left="" cmd_top="" cmd_bottom="" cmd_right=""
+    if [[ -f "$config" ]]; then
+        if ! command -v yq &>/dev/null; then
+            print -u2 -- "Error: yq is required to parse .tw.yml but not installed"
+            print -u2 -- "Run the PDE installer to install it"
             return 1
         fi
-        commands[$key]="$(yq -r ".$key" "$config")"
-    done
-
-    for role in "${roles[@]}"; do
-        role_count=${existing[$role]:-0}
-        if (( role_count > 1 )); then
-            print -u2 -- "Error: tw session has duplicate $role windows"
+        if ! yq -e '.' "$config" &>/dev/null; then
+            print -u2 -- "Error: Invalid YAML in $config"
             return 1
         fi
-    done
-
-    tmux set-option -t "$session_name" base-index 1 || return 1
-    tmux set-window-option -t "$session_name" pane-base-index 1 || return 1
-    tmux set-option -t "$session_name" @tw-root "$dir" || return 1
-    if [[ -z "$root" && "$bootstrap_window_name" == zsh ]] && (( window_count == 1 )); then
-        tmux rename-window -t "${session_name}:zsh" shell || return 1
-        tmux move-window -s "${session_name}:shell" -t "${session_name}:3" || return 1
-        existing[shell]=1
-        builtin cd -- "$dir" || return 1
+        cmd_left="$(yq -r '.left // ""' "$config")"
+        cmd_top="$(yq -r '.top // ""' "$config")"
+        cmd_bottom="$(yq -r '.bottom // ""' "$config")"
+        cmd_right="$(yq -r '.right // ""' "$config")"
+        [[ "$cmd_left" == "null" ]] && cmd_left=""
+        [[ "$cmd_top" == "null" ]] && cmd_top=""
+        [[ "$cmd_bottom" == "null" ]] && cmd_bottom=""
+        [[ "$cmd_right" == "null" ]] && cmd_right=""
+    elif (( $# > 1 )); then
+        cmd_left="${2:-}"
+        cmd_top="${3:-}"
+        cmd_bottom="${4:-}"
+        cmd_right="${5:-}"
     fi
-    for role in "${roles[@]}"; do
-        if (( ${existing[$role]:-0} == 0 )); then
-            pane_id="$(tmux new-window -d -t "$session_name" -n "$role" -c "$dir" -P -F '#{pane_id}')" || return 1
-            tmux send-keys -t "$pane_id" -l -- "cd -- ${(q)dir}" || return 1
-            tmux send-keys -t "$pane_id" C-m || return 1
-            command="${commands[$role]}"
-            if [[ -n "$command" ]]; then
-                tmux send-keys -t "$pane_id" -l -- "$command" || return 1
-                tmux send-keys -t "$pane_id" C-m || return 1
-            fi
-        fi
-    done
-    tmux select-window -t "${session_name}:=herdr"
+
+    local window_id
+    window_id="$(tmux new-window -n "$name" -c "$dir" -P -F '#{window_id}')" || return 1
+    if [[ -z "$window_id" ]]; then
+        print -u2 -- "Error: Failed to create tmux window"
+        return 1
+    fi
+
+    local pane_middle pane_left pane_right pane_bottom
+    pane_middle="$(tmux display-message -p -t "$window_id" '#{pane_id}')" || return 1
+    pane_left="$(tmux split-window -t "$pane_middle" -hb -l 15% -c "$dir" -P -F '#{pane_id}')" || return 1
+    pane_right="$(tmux split-window -t "$pane_middle" -h -l 18% -c "$dir" -P -F '#{pane_id}')" || return 1
+    pane_bottom="$(tmux split-window -t "$pane_middle" -v -c "$dir" -P -F '#{pane_id}')" || return 1
+
+    [[ -n "$cmd_left" ]] && { tmux send-keys -t "$pane_left" -l -- "$cmd_left" && tmux send-keys -t "$pane_left" C-m; }
+    [[ -n "$cmd_top" ]] && { tmux send-keys -t "$pane_middle" -l -- "$cmd_top" && tmux send-keys -t "$pane_middle" C-m; }
+    [[ -n "$cmd_bottom" ]] && { tmux send-keys -t "$pane_bottom" -l -- "$cmd_bottom" && tmux send-keys -t "$pane_bottom" C-m; }
+    [[ -n "$cmd_right" ]] && { tmux send-keys -t "$pane_right" -l -- "$cmd_right" && tmux send-keys -t "$pane_right" C-m; }
+    tmux select-pane -t "$pane_middle"
 }
