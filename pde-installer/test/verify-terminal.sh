@@ -103,6 +103,7 @@ tmux -L pde-color -f "$HOME/.tmux.conf" new-session -d -s config-check
 [[ "$(tmux -L pde-color show-option -gv pane-active-border-style)" == 'fg=#7fbbb3' ]]
 tmux -L pde-color kill-server
 ! grep -Eq '](4|10|11|12);' "$HOME/.zshrc" "$HOME/.p10k.zsh" "$HOME/.tmux.conf"
+[[ ! -e "$HOME/.config/herdr" ]]
 
 rm -rf "$HOME/.local/share/aquaproj-aqua"
 aqua_root="$HOME/.local/share/aquaproj-aqua"
@@ -113,12 +114,13 @@ printf '{"profile":"full","color_profile":"gruvbox-dark"}\n' >"$HOME/.config/pde
 printf '#!/bin/sh\nprintf '\''gopls-retained\\n'\''\n' >"$full_only_package"
 chmod 0755 "$full_only_package"
 ln -s "$full_only_package" "$full_only_launcher"
-mkdir -p "$HOME/.config/nvim" "$HOME/.agents" "$HOME/.codex"
+mkdir -p "$HOME/.config/nvim" "$HOME/.agents" "$HOME/.codex" "$HOME/.config/herdr"
 printf 'retain-opencode\n' >"$HOME/.config/opencode"
 printf 'retain-nvim\n' >"$HOME/.config/nvim/init.lua"
 printf 'retain-agents\n' >"$HOME/.agents/marker"
 printf 'retain-codex\n' >"$HOME/.codex/marker"
 rm "$HOME/.tmux.conf"
+printf 'retain-herdr\n' >"$HOME/.config/herdr/config.toml"
 
 pde-installer install terminal --repo-root "$REPO_ROOT"
 assert_absent_packages
@@ -135,11 +137,132 @@ bat --list-themes | grep -Fxq gruvbox-dark
 [[ "$(cat "$HOME/.config/nvim/init.lua")" == "retain-nvim" ]]
 [[ "$(cat "$HOME/.agents/marker")" == "retain-agents" ]]
 [[ "$(cat "$HOME/.codex/marker")" == "retain-codex" ]]
+[[ "$(cat "$HOME/.config/herdr/config.toml")" == "retain-herdr" ]]
 
 [[ "$(tmux -V)" == 'tmux 3.7b' ]]
 tmux_binary="$HOME/.local/share/pde/tmux/3.7b/bin/tmux"
 [[ -x "$tmux_binary" ]]
 file "$tmux_binary" | grep -qi static
+tmux_socket="pde-terminal-$$"
+trap 'tmux -L "$tmux_socket" kill-server 2>/dev/null || true' EXIT
+workspace="$HOME/tw-workspace"
+mkdir -p "$workspace"
+tm_workspace="$HOME/tm-workspace"
+mkdir -p "$tm_workspace"
+if PATH="$HOME/.local/bin:/usr/bin:/bin" zsh -ic "tm --no-attach '$tm_workspace'" 2>"$tm_workspace/no-herdr-error"; then
+	printf 'tm unexpectedly started without Herdr\n' >&2
+	exit 1
+fi
+grep -Fq 'Error: tm requires Herdr' "$tm_workspace/no-herdr-error"
+
+cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 1
+SCRIPT
+chmod 755 "$HOME/.local/bin/herdr"
+
+tm_hash="$(printf '%s' "$tm_workspace" | sha256sum)"
+tm_hash="${tm_hash%% *}"
+tm_scope="tm-${tm_workspace##*/}-${tm_hash:0:8}"
+tmux -L "$tmux_socket" -f "$HOME/.tmux.conf" new-session -d -s controller -n shell -c "$tm_workspace" \
+	"zsh -ic 'if tm --no-attach \"$tm_workspace\"; then print 0 >\"$tm_workspace/start-failure-status\"; else print 1 >\"$tm_workspace/start-failure-status\"; fi; tmux wait-for -S tm-start-failure; exec zsh'"
+timeout 20 tmux -L "$tmux_socket" wait-for tm-start-failure
+[[ "$(cat "$tm_workspace/start-failure-status")" == 1 ]]
+for role in hub pocket dash; do
+	tmux -L "$tmux_socket" kill-session -t "${tm_scope}-${role}" 2>/dev/null || true
+done
+
+cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
+#!/usr/bin/env bash
+printf 'config=%s args=%s\n' "${HERDR_CONFIG_PATH:-}" "$*" >>"$HOME/herdr-invocations"
+exec sleep 300
+SCRIPT
+chmod 755 "$HOME/.local/bin/herdr"
+: >"$HOME/herdr-invocations"
+
+controller_pane="$(tmux -L "$tmux_socket" display-message -p -t controller:shell '#{pane_id}')"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/status'; tmux wait-for -S tm-ready" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-ready
+if [[ "$(cat "$tm_workspace/status")" != 0 ]]; then
+	tmux -L "$tmux_socket" list-sessions >&2
+	tmux -L "$tmux_socket" list-windows -t "${tm_scope}-dash" >&2 || true
+	tmux -L "$tmux_socket" capture-pane -p -t "${tm_scope}-dash:bootstrap" >&2 || true
+	tmux -L "$tmux_socket" capture-pane -p -t controller:shell >&2
+	exit 1
+fi
+expected_sessions="$(printf '%s\n' controller "${tm_scope}-dash" "${tm_scope}-hub" "${tm_scope}-pocket" | sort)"
+[[ "$(tmux -L "$tmux_socket" list-sessions -F '#{session_name}' | sort)" == "$expected_sessions" ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-hub" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-pocket" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-dash" -F '#{window_name}:#{window_panes}')" == 'main:4' ]]
+timeout 20 bash -c 'until [[ $(wc -l <"$1") -eq 2 ]]; do sleep 0.1; done' _ "$HOME/herdr-invocations"
+[[ "$(sort "$HOME/herdr-invocations")" == $'config= args=--session default\nconfig= args=--session default' ]]
+for role in hub pocket dash; do
+	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${tm_scope}-${role}" @tm-root)" == "$tm_workspace" ]]
+done
+hub_pane="$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{pane_id}')"
+tmux -L "$tmux_socket" resize-window -t "${tm_scope}-hub:herdr" -x 120 -y 40
+tmux -L "$tmux_socket" resize-window -t "${tm_scope}-pocket:herdr" -x 46 -y 22
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{window_width}x#{window_height}')" == 120x40 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-pocket:herdr" '#{window_width}x#{window_height}')" == 46x22 ]]
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/repeat-status'; tmux wait-for -S tm-repeat" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-repeat
+[[ "$(cat "$tm_workspace/repeat-status")" == 0 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:herdr" '#{pane_id}')" == "$hub_pane" ]]
+
+notes_pane="$(tmux -L "$tmux_socket" new-window -d -t "${tm_scope}-hub" -n notes -c "$tm_workspace" -P -F '#{pane_id}' 'exec sleep 300')"
+tmux -L "$tmux_socket" kill-window -t "${tm_scope}-hub:shell"
+tmux -L "$tmux_socket" kill-window -t "${tm_scope}-pocket:herdr"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$tm_workspace'; print \$? >'$tm_workspace/repair-status'; tmux wait-for -S tm-repair" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-repair
+[[ "$(cat "$tm_workspace/repair-status")" == 0 ]]
+timeout 20 bash -c 'until [[ $(wc -l <"$1") -ge 3 ]]; do sleep 0.1; done' _ "$HOME/herdr-invocations"
+[[ "$(wc -l <"$HOME/herdr-invocations")" -eq 3 ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-hub" -F '#{window_name}' | sort)" == $'herdr\nnotes\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-pocket" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "${tm_scope}-hub:notes" '#{pane_id}')" == "$notes_pane" ]]
+
+other_tm_workspace="$HOME/tm-other-workspace"
+mkdir -p "$other_tm_workspace"
+other_tm_hash="$(printf '%s' "$other_tm_workspace" | sha256sum)"
+other_tm_hash="${other_tm_hash%% *}"
+other_tm_scope="tm-${other_tm_workspace##*/}-${other_tm_hash:0:8}"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tm --no-attach '$other_tm_workspace'; print \$? >'$other_tm_workspace/status'; tmux wait-for -S tm-other" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tm-other
+[[ "$(cat "$other_tm_workspace/status")" == 0 ]]
+for role in hub pocket dash; do
+	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${other_tm_scope}-${role}" @tm-root)" == "$other_tm_workspace" ]]
+done
+
+cat >"$workspace/.tw.yml" <<YAML
+left: touch '$workspace/config-left'
+top: touch '$workspace/config-top'
+bottom: touch '$workspace/config-bottom'
+right: touch '$workspace/config-right'
+YAML
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tw '$workspace'; print \$? >'$workspace/config-status'; tmux wait-for -S tw-config" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tw-config
+[[ "$(cat "$workspace/config-status")" == 0 ]]
+timeout 20 bash -c 'until [[ -e "$1/config-left" && -e "$1/config-top" && -e "$1/config-bottom" && -e "$1/config-right" ]]; do sleep 0.1; done' _ "$workspace"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{window_panes}')" == 4 ]]
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{pane_current_path} #{pane_active}')" == "$workspace 1" ]]
+tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
+
+rm "$workspace/.tw.yml"
+tmux -L "$tmux_socket" send-keys -t "$controller_pane" "tw '$workspace' \"touch '$workspace/left-started'\" \"touch '$workspace/top-started'\" \"touch '$workspace/bottom-started'\" \"touch '$workspace/right-started'\"; print \$? >'$workspace/position-status'; tmux wait-for -S tw-position" C-m
+timeout 20 tmux -L "$tmux_socket" wait-for tw-position
+[[ "$(cat "$workspace/position-status")" == 0 ]]
+timeout 20 bash -c 'until [[ -e "$1/left-started" && -e "$1/top-started" && -e "$1/bottom-started" && -e "$1/right-started" ]]; do sleep 0.1; done' _ "$workspace"
+[[ "$(tmux -L "$tmux_socket" display-message -p -t controller:tw_workspace '#{window_panes}')" == 4 ]]
+tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
+
+[[ "$(tmux -L "$tmux_socket" show-options -gqv base-index)" == 1 ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gwqv pane-base-index)" == 1 ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gqv renumber-windows)" == off ]]
+[[ "$(tmux -L "$tmux_socket" show-options -gqv status-justify)" == left ]]
+tmux -L "$tmux_socket" show-options -gqv status-right | grep -Fq '%H:%M'
+tmux -L "$tmux_socket" kill-server
+trap - EXIT
 
 pde-installer install --repo-root "$REPO_ROOT"
 pde-installer doctor --repo-root "$REPO_ROOT"
