@@ -33,6 +33,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim",
 				".config/nvim/**",
 				".config/opencode",
+				".config/herdr",
 				".config/systemd/user/opencode-web.service",
 				".config/systemd/user/opencode-web-health.service",
 				".config/systemd/user/opencode-web-health.timer",
@@ -55,6 +56,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim",
 				".config/nvim/**",
 				".config/opencode",
+				".config/herdr",
 				".config/systemd/user/opencode-web.service",
 				".config/systemd/user/opencode-web-health.service",
 				".config/systemd/user/opencode-web-health.timer",
@@ -132,6 +134,15 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"aqua-terminal-checksums.json",
 				"colored-man-pages",
 				"HISTSIZE=1000000",
+				"Usage: tm [hub|pocket|dash] [directory]",
+				"scope=\"tm-${slug}-${hash[1,8]}\"",
+				"herdr_bin=\"$(command -v herdr)\"",
+				"tmux new-session -d -s \"$session\" -n herdr",
+				"exec ${(q)herdr_bin} --session default",
+				"for window in herdr shell",
+				"@tm-root",
+				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",
+				".left // \"\"",
 			},
 			omit: []string{
 				"keychain --eval",
@@ -145,6 +156,11 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"EDITOR=$(which nvim)",
 				"/aqua.yaml",
 				"/aqua-checksums.json",
+				"local -a roles=(work test shell)",
+				"tw init [directory]",
+				"$HOME/.config/pde/tw.yml",
+				"local -a roles=(herdr wallace shell)",
+				"@tw-root",
 			},
 		},
 		"full": {
@@ -158,10 +174,24 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"health_url=\"$url/global/health\"",
 				"--write-out '%{http_code}'",
 				"start|restart|status",
+				"Usage: tm [hub|pocket|dash] [directory]",
+				"scope=\"tm-${slug}-${hash[1,8]}\"",
+				"herdr_bin=\"$(command -v herdr)\"",
+				"tmux new-session -d -s \"$session\" -n herdr",
+				"exec ${(q)herdr_bin} --session default",
+				"for window in herdr shell",
+				"@tm-root",
+				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",
+				".left // \"\"",
 			},
 			omit: []string{
 				"aqua-terminal.yaml",
 				"aqua-terminal-checksums.json",
+				"local -a roles=(work test shell)",
+				"tw init [directory]",
+				"$HOME/.config/pde/tw.yml",
+				"local -a roles=(herdr wallace shell)",
+				"@tw-root",
 			},
 		},
 	}
@@ -652,8 +682,8 @@ func TestTmuxTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
-		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on"}, omit: []string{"@resurrect-processes 'ssh'"}},
+		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'", "set -g base-index 1"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
+		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
 	}
 	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
 }
