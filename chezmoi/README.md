@@ -22,4 +22,35 @@ the snapshot. Modifier scripts preserve selected user-owned settings. A JSONC
 modify-template preserves parsed values but may normalize formatting and remove
 comments when it emits the merged file.
 
+## Terminal Workspaces
+
+Use tmux as the attachment and recovery layer, with separate presentation
+sessions so phone-sized tmux geometry does not resize the desktop session. Start
+or resume the environment for the current directory with one command:
+
+```bash
+tm
+```
+
+`tm` requires Herdr on `PATH`; the full profile installs it. The command creates
+`hub` and `pocket` sessions containing Herdr and an empty shell, plus a `dash`
+session containing the four-pane `tw` layout. It attaches `pocket` at 72 columns
+and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or `tm dash` to
+select a view explicitly. All three sessions record the project root and use
+names derived from its absolute path, so environments for multiple directories
+can coexist. Hub and Pocket both attach Herdr's `default` session, so they expose
+the same agents. Herdr owns those shared agent panes and their PTY dimensions;
+the separate tmux sessions isolate only the surrounding presentation geometry.
+
+Plain `tw DIR` remains available for adding another project window with left,
+top, bottom, and right panes, using positional commands or the project's
+`left`, `top`, `bottom`, and `right` keys. It still reads project `.tw.yml`, so
+inspect that file before trusting it. Herdr's saved-machine catalog remains
+user-owned state.
+
+Use `Ctrl-A` for tmux and `Ctrl-B` for Herdr. Herdr uses its mobile status header
+and full-screen machine switcher at 72 columns and below. Machine labels
+distinguish Local and Wallace agents. The managed config is validated with Herdr
+0.9.1, so run `herdr config check` after upgrades.
+
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).

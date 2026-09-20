@@ -1,0 +1,33 @@
+onboarding = false
+
+[keys]
+prefix = "ctrl+b"
+
+[theme]
+name = "vesper"
+auto_switch = false
+
+[ui]
+# Use mobile chrome at phone widths; shared Herdr panes retain one terminal size.
+mobile_width_threshold = 72
+sidebar_start_collapsed = true
+sidebar_collapsed_mode = "hidden"
+tab_bar_position = "top"
+hide_tab_bar_when_single_tab = true
+tab_bar_right = []
+prompt_new_tab_name = false
+agent_panel_sort = "spaces"
+status_indicators = "symbols"
+pane_borders = "auto"
+pane_gaps = false
+pane_outer_borders = false
+pane_scrollbars = false
+show_agent_labels_on_pane_borders = false
+window_title = "{hostname}: {workspace} - {tab}"
+
+[ui.sidebar.agents]
+row_gap = 0
+rows = [["state_icon", "tab"], ["machine", "workspace", "agent"]]
+
+[ui.toast]
+delivery = "system"

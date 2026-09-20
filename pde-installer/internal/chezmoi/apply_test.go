@@ -308,6 +308,7 @@ func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profi
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-checksums.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-terminal.yaml"), "registries: []\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "aquaproj-aqua", "aqua-terminal-checksums.json"), "{}\n")
+	writeApplyFile(t, filepath.Join(source, "dot_config", "herdr", "config.toml"), "onboarding = false\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode.json"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_opencode-mem.jsonc"), "{}\n")
 	writeApplyFile(t, filepath.Join(source, "dot_config", "opencode", "modify_tui.jsonc"), "{}\n")
