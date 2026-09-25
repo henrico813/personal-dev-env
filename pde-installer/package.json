@@ -5,6 +5,6 @@
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@openai/codex": "0.155.1",
     "obsidian-headless": "0.0.14",
-    "opencode-ai": "1.18.31"
+    "opencode-ai": "1.18.32"
   }
 }
