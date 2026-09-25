@@ -22,7 +22,7 @@ type packageSpec struct {
 func packages() []packageSpec {
 	specs := []packageSpec{
 		{Name: "opencode-ai", Binary: "opencode", Integrity: "sha512-SCrZWdq44y/EoH2+fE4HLcXS+DzpVqHPzmXk3p2RrufYy8LWvpfhRhKtijb5ktvx8r94ScqToqwHxR0BwS65OQ=="},
-		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-02fAAGyBtlA1zPjEo3kTj/bOSYbPz5DvjLwRZJdV7weFFEDzNFOMjQGmZ/+5CuirYV0hE+AZTrnjzwXYU4AdAQ=="},
+		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-st1R2MhP3ndngOqj2SVh1qk6ED1lpgtlDxipDUyxlKfbsna0imwU2FdTnCjohFQpVh4bR5D5m1hA05AuW2v8Xg=="},
 		{Name: "@earendil-works/pi-coding-agent", Binary: "pi", Integrity: "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ=="},
 		{Name: "obsidian-headless", Binary: "ob", Integrity: "sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw=="},
 	}
