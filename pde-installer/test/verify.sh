@@ -45,7 +45,7 @@ for item in \
 	FiraCode \
 	repository-config \
 	ai-config \
-	claude; do
+	@anthropic-ai/claude-code; do
 	[[ "$inventory" == *$'\t'"$item"$'\t'* ]]
 done
 
