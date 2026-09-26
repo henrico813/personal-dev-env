@@ -73,6 +73,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 | `header.ansi` | — | chafa-generated colored image used by the dashboard |
 | `render-markdown.lua` | render-markdown | markdown + CodeCompanion chat rendering |
 | `codecompanion.lua` | henrico813/codecompanion.nvim | OpenCode-backed chat UI |
+| `copilot.lua` | zbirenbaum/copilot.lua | GitHub Copilot FIM ghost-text suggestions |
 
 ---
 
@@ -101,6 +102,9 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 | `<leader>pi` | Run the inline prompt |
 | `<leader>pI` | Restart the inline shim |
 | `<leader>pa…` | Attach context (buffer, file, diff, diagnostics) |
+| `<M-l>` | Accept the Copilot suggestion |
+| `<M-]>` / `<M-[>` | Next / previous Copilot suggestion |
+| `<C-]>` | Dismiss the Copilot suggestion |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
 | `<C-/>` | Open a terminal split |
@@ -144,6 +148,17 @@ vim.keymap.set("n", "<leader>xx", "<cmd>SomeCommand<cr>", { desc = "What it does
 The `desc` field is what which-key displays. Restart nvim to pick it up.
 
 If the keymap logically belongs under a new group (e.g. `<leader>t` for "test"), add the group to `lua/plugins/whichkey.lua`'s `spec` so which-key labels it.
+
+### GitHub Copilot FIM
+
+Copilot shows inline ghost-text suggestions while you type in Insert mode. Run
+`:Copilot auth` once to sign in; credentials are stored outside this repository
+at `~/.config/github-copilot/auth.db`. Press `<M-l>` to accept a suggestion,
+`<M-]>` or `<M-[>` to cycle suggestions, and `<C-]>` to dismiss one. Copilot
+hides its suggestion while blink's `<C-Space>` completion menu is open.
+
+Alt key delivery varies by terminal and tmux configuration. Use `:Copilot auth info`
+to confirm authentication, then test these mappings in the terminal you normally use.
 
 ### Add an LSP server
 
