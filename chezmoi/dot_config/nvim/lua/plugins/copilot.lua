@@ -4,6 +4,12 @@ require("copilot").setup({
     enabled = true,
     auto_trigger = true,
     hide_during_completion = true,
+    keymap = {
+      accept = "<C-l>",
+      dismiss = "<C-]>",
+      next = false,
+      prev = false,
+    },
   },
 })
 
