@@ -1,5 +1,5 @@
 require("blink.cmp").setup({
-  keymap = { preset = "default" },
+  keymap = { preset = "enter" },
   sources = {
     default = { "lsp", "path", "buffer" },
     per_filetype = {
@@ -11,5 +11,6 @@ require("blink.cmp").setup({
     documentation = { auto_show = true },
     trigger = { show_on_insert_on_trigger_character = false },
     menu = { auto_show = false },
+    list = { selection = { preselect = false } },
   },
 })

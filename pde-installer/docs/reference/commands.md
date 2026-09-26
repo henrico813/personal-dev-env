@@ -73,6 +73,11 @@ checks are full-profile-only; common archive and fetch checks apply to both
 profiles. It exits with an error if any applicable check
 fails.
 
+For the full profile, `doctor` also reports whether the managed Copilot plugin
+and its local credential file are present. Missing Copilot files are warnings,
+not doctor failures. The credential check does not validate GitHub access; use
+`:Copilot auth info` in Neovim for the authenticated account's live status.
+
 ### `pde-installer list`
 
 Prints tab-separated columns:
