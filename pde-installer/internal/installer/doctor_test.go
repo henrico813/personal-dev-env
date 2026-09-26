@@ -161,38 +161,62 @@ func assertCopilotOutput(t *testing.T, output, want string) {
 	}
 }
 
-func TestCopilotStatusReportsInstalled(t *testing.T) {
+type copilotStatusCase struct {
+	name        string
+	createFiles bool
+	want        string
+}
+
+func TestCopilotStatusOutput(t *testing.T) {
+	for _, tt := range copilotStatusCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			home, xdgConfig := newCopilotStatusFixture(t)
+			if tt.createFiles {
+				createCopilotStatusFiles(t, home, xdgConfig)
+			}
+
+			output := runCopilotStatus(t, home)
+			assertExactCopilotOutput(t, output, tt.want)
+		})
+	}
+}
+
+func copilotStatusCases() []copilotStatusCase {
+	return []copilotStatusCase{
+		{
+			name:        "reports installed files",
+			createFiles: true,
+			want: "status  GitHub Copilot plugin: installed\n" +
+				"status  GitHub Copilot credentials: present\n",
+		},
+		{
+			name: "warns about missing files",
+			want: "warning GitHub Copilot plugin: missing; run pde-installer install\n" +
+				"warning GitHub Copilot credentials: missing; run :Copilot auth in Neovim\n",
+		},
+	}
+}
+
+func newCopilotStatusFixture(t *testing.T) (string, string) {
+	t.Helper()
 	home := t.TempDir()
 	xdgConfig := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgConfig)
-	for _, path := range []string{
-		filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", "copilot.lua", "lua", "copilot", "init.lua"),
-		filepath.Join(xdgConfig, "github-copilot", "auth.db"),
-	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	return home, xdgConfig
+}
 
+func runCopilotStatus(t *testing.T, home string) string {
+	t.Helper()
 	var output bytes.Buffer
 	if err := reportCopilotStatus(home, &output); err != nil {
 		t.Fatalf("reportCopilotStatus() error = %v", err)
 	}
-	if got := output.String(); got != "status  GitHub Copilot plugin: installed\nstatus  GitHub Copilot credentials: present\n" {
-		t.Fatalf("Copilot status = %q", got)
-	}
+	return output.String()
 }
 
-func TestCopilotStatusWarnsWhenMissing(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
-	var output bytes.Buffer
-	if err := reportCopilotStatus(t.TempDir(), &output); err != nil {
-		t.Fatalf("reportCopilotStatus() error = %v", err)
-	}
-	if got := output.String(); got != "warning GitHub Copilot plugin: missing; run pde-installer install\nwarning GitHub Copilot credentials: missing; run :Copilot auth in Neovim\n" {
-		t.Fatalf("Copilot status = %q", got)
+func assertExactCopilotOutput(t *testing.T, output, want string) {
+	t.Helper()
+	if output != want {
+		t.Fatalf("Copilot status = %q, want %q", output, want)
 	}
 }
