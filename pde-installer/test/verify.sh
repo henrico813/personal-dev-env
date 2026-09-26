@@ -39,7 +39,7 @@ for item in \
 	keychain \
 	moshi-hook \
 	herdr \
-	opencode-ai \
+	@opencode/cli \
 	planner \
 	blink.cmp \
 	FiraCode \

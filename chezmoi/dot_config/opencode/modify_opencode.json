@@ -6,7 +6,7 @@ if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
     input='{}'
 fi
 
-printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "@openchamber/opencode-claude@0.14.0" '
+printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "@openchamber/opencode-claude@1.1.0" '
     def is_managed_plugin:
         if type == "string" then
             test("^(opencode-mem|opencode-claude|opencode-claude-code|@openchamber/opencode-claude)(@.*)?$")
@@ -36,5 +36,6 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
     else
         .permission.external_directory |= ((. // {}) | del(.[$path]) + {($path): "allow"})
     end
-    | .plugin = (((.plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
+    | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
+    | del(.plugin)
 '
