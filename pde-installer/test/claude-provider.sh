@@ -13,8 +13,8 @@ trap 'rm -rf "$home"' EXIT
 mkdir -p "$home/.config/opencode"
 cat >"$home/.config/opencode/opencode.jsonc" <<'JSON'
 {
-  "plugin": [
-    "@openchamber/opencode-claude@0.14.0",
+  "plugins": [
+    "@openchamber/opencode-claude@1.1.0",
   ],
 }
 JSON

@@ -77,7 +77,7 @@ func Items() []Item {
 		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Terminal: true}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Terminal: true},
 		{Name: "gopls", Version: "v0.23.0", Owner: Aqua},
 		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua},
-		{Name: "opencode-ai", Version: "1.18.32", Owner: NPM},
+		{Name: "@opencode/cli", Version: "2.0.18", Owner: NPM},
 		{Name: "@openai/codex", Version: "0.157.0", Owner: NPM},
 		{Name: "@earendil-works/pi-coding-agent", Version: "0.85.1", Owner: NPM},
 		{Name: "obsidian-headless", Version: "0.0.14", Owner: NPM},
