@@ -118,6 +118,17 @@ Shared configuration lives in `chezmoi/`, including local-file mappings for the 
 
 The installer snapshots changed chezmoi targets before apply. A scoped modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`; unrelated settings remain in place and failures roll back the snapshot.
 
+PDE owns the installed Claude Code package and the OpenCode Claude adapter
+configuration. Installation does not authenticate Claude Code; authenticate it
+with `claude auth login --claudeai`. The supported pairing is:
+
+- OpenCode: `1.18.32`,
+- Claude adapter: `@openchamber/opencode-claude@0.14.0`,
+
+The managed-plugin merge removes stale entries for managed Claude and memory
+plugins, preserves unrelated plugins and settings, and appends the pinned
+adapter.
+
 OpenCode memory stores local profile data under `~/.opencode-mem/`. When
 corrected, OpenCode saves the durable behavior as an explicit profile
 preference without requiring the user to organize memory. Automatic transcript

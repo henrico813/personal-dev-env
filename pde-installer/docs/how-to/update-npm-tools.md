@@ -5,7 +5,9 @@
 3. Copy the package's new SHA-512 integrity value into its entry in
    `internal/npm/npm.go`.
 4. Set the same version in `internal/manifest/manifest.go`.
-5. Run:
+5. If changing OpenCode or its Claude adapter, synchronize the exact pins in
+   `chezmoi/dot_config/opencode/modify_opencode.json` and its modifier tests.
+6. Run:
 
    ```bash
    go test ./...
@@ -13,7 +15,7 @@
    go run . install --repo-root ..
    ```
 
-The installer requires exactly the four declared top-level packages. It uses
+The installer requires exactly the five declared top-level packages. It uses
 the managed Node.js and npm release, runs `npm ci` from the complete lock, runs
 required install scripts in staging, verifies each command's version, and then
 activates the prefix and launchers.
