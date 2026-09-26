@@ -40,6 +40,26 @@ if [[ -d "${shared_skills_dir}" ]]; then
   PI_ARGS+=(--skill "${shared_skills_dir}")
 fi
 
+if [[ "${VIBE_MODEL}" == openai-compatible/* ]]; then
+  mkdir -p "$HOME/.pi/agent"
+  node -e '
+    const fs = require("fs");
+    const path = process.argv[1];
+    const config = {
+      providers: {
+        "openai-compatible": {
+          baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL,
+          api: "openai-completions",
+          apiKey: "$OPENAI_COMPATIBLE_API_KEY",
+          discoverModels: true,
+        },
+      },
+    };
+    fs.writeFileSync(path, JSON.stringify(config));
+  ' "$HOME/.pi/agent/models.json"
+  PI_ARGS+=(-e /opt/vibe/.pi/agent/npm/node_modules/pi-models-discovery/index.ts)
+fi
+
 PI_ARGS+=(--model "${VIBE_MODEL}")
 
 export VIBE_EVENTS_LOG=/artifacts/events.jsonl

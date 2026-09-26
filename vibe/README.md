@@ -21,11 +21,15 @@ make -C vibe check
 make -C vibe test
 ```
 
-The live integration test is compiled but not run by `make check` or `make
-test`. On Linux, run `make -C vibe integration` with Docker, GNU `timeout`,
-network access, and valid `~/.pi/agent/auth.json` credentials. It uses an
-isolated Vibe home but links the real Pi agent directory, so OAuth refreshes
-can persist.
+The live integration tests are compiled but not run by `make check` or `make
+test`. On Linux, `make -C vibe integration` runs the file-auth test
+`vibe_forwards_model_selector_to_pi`; it requires Docker, GNU `timeout`, network
+access, and valid `~/.pi/agent/auth.json` credentials. It uses an isolated Vibe
+home but links the real Pi agent directory, so OAuth refreshes can persist.
+`make -C vibe integration-compatible` runs `vibe_discovers_compatible_model`.
+That test uses `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
+`OPENAI_COMPATIBLE_MODEL`; the model variable names an advertised endpoint model
+and is required for the live test. It does not mount host Pi state.
 
 ## Install
 
@@ -57,7 +61,9 @@ vibe status --key pdev-049-demo
 ```
 
 Choose a `provider/model` selector. Vibe passes it unchanged to Pi; bare model
-names can be ambiguous. Use `--base <revision>` to seed a new managed
+names can be ambiguous. Compatible selectors discover models from the endpoint;
+see [Runtime inputs](docs/reference/runtime-inputs.md). Use `--base <revision>`
+to seed a new managed
 worktree. Reusing a key keeps its managed branch and must omit `--base`.
 Concurrent keys that normalize to the same slug are rejected.
 
