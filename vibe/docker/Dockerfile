@@ -4,7 +4,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends bash git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @earendil-works/pi-coding-agent@0.85.1
+RUN npm install -g @earendil-works/pi-coding-agent@0.85.1 \
+    && HOME=/opt/vibe pi install npm:pi-models-discovery@1.4.0
 
 ENV NPM_CONFIG_PREFIX=/vibe-home/.npm-global
 ENV PATH=/vibe-home/.npm-global/bin:$PATH

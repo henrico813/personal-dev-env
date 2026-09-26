@@ -190,6 +190,10 @@ mod tests {
             .position(|arg| *arg == b"--skill")
             .expect("Pi receives --skill");
         assert!(pi_args.iter().any(|arg| *arg == b"--no-skills"));
+        assert!(!pi_args.iter().any(
+            |arg| *arg == b"/opt/vibe/.pi/agent/npm/node_modules/pi-models-discovery/index.ts"
+        ));
+        assert!(!home.join(".pi/agent/models.json").exists());
         assert_eq!(
             std::str::from_utf8(pi_args[skill_position + 1]).expect("UTF-8 skill path"),
             home.join(".agents/skills").to_string_lossy()
@@ -198,5 +202,107 @@ mod tests {
             fs::read(&capture).expect("read captured prompt"),
             b"Line one\nLine two\n"
         );
+    }
+
+    #[test]
+    fn compatible_shell_writes_discovery_config() {
+        let temp = tempdir().expect("tempdir");
+        let bin = temp.path().join("bin");
+        let home = temp.path().join("home");
+        let repo_root = temp.path().join("repo");
+        let args_capture = temp.path().join("captured-args.bin");
+        let combined_prompt = temp.path().join("combined-prompt.txt");
+        let script = temp.path().join("run-agent.sh");
+
+        fs::create_dir_all(&bin).expect("mkdir bin");
+        fs::create_dir_all(&home).expect("mkdir home");
+        fs::create_dir_all(&repo_root).expect("mkdir repo");
+        fs::write(&combined_prompt, b"Prompt\n").expect("write prompt");
+        let real_node = Command::new("node")
+            .arg("-p")
+            .arg("process.execPath")
+            .output()
+            .expect("resolve Node executable")
+            .stdout;
+        let real_node = String::from_utf8(real_node)
+            .expect("Node executable path is UTF-8")
+            .trim()
+            .to_owned();
+        fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
+        let mut script_perms = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
+        script_perms.set_mode(0o755);
+        fs::set_permissions(&script, script_perms).expect("chmod script");
+        write_executable(
+            &bin.join("git"),
+            "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        );
+        write_executable(
+            &bin.join("node"),
+            concat!(
+                "#!/usr/bin/env bash\n",
+                "set -euo pipefail\n",
+                "if [[ \"${1:-}\" == \"-e\" ]]; then\n",
+                "  exec \"$REAL_NODE\" \"$@\"\n",
+                "fi\n",
+                "cat >/dev/null\n",
+            ),
+        );
+        write_executable(
+            &bin.join("pi"),
+            concat!(
+                "#!/usr/bin/env bash\n",
+                "set -euo pipefail\n",
+                "printf '%s\\0' \"$@\" > \"$PI_ARGS_CAPTURE_FILE\"\n",
+            ),
+        );
+
+        let status = Command::new(&script)
+            .current_dir(&repo_root)
+            .env("HOME", &home)
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    bin.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("PI_ARGS_CAPTURE_FILE", &args_capture)
+            .env("REAL_NODE", real_node)
+            .env("VIBE_REPO_ROOT", &repo_root)
+            .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
+            .env("VIBE_MODEL", "openai-compatible/example-model")
+            .env("OPENAI_COMPATIBLE_BASE_URL", "https://models.example/v1")
+            .env("OPENAI_COMPATIBLE_API_KEY", "unused")
+            .output()
+            .expect("run runtime shell");
+
+        assert!(
+            status.status.success(),
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&status.stdout),
+            String::from_utf8_lossy(&status.stderr),
+        );
+
+        let captured_args = fs::read(&args_capture).expect("read captured Pi arguments");
+        let pi_args: Vec<&[u8]> = captured_args
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .collect();
+        assert!(pi_args.iter().any(
+            |arg| *arg == b"/opt/vibe/.pi/agent/npm/node_modules/pi-models-discovery/index.ts"
+        ));
+        let config: serde_json::Value = serde_json::from_slice(
+            &fs::read(home.join(".pi/agent/models.json")).expect("read models config"),
+        )
+        .expect("parse models config");
+        let provider = &config["providers"]["openai-compatible"];
+        assert_eq!(provider["baseUrl"], "https://models.example/v1");
+        assert_eq!(provider["api"], "openai-completions");
+        assert_eq!(provider["apiKey"], "$OPENAI_COMPATIBLE_API_KEY");
+        assert_eq!(provider["discoverModels"], true);
+        assert!(provider.get("models").is_none());
     }
 }
