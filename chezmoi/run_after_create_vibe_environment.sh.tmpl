@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+[ "${PDE_PROFILE:-}" = "full" ] || exit 0
+
+env_dir="$HOME/.config/vibe"
+env_file="$env_dir/openai-compatible.env"
+
+if [ -e "$env_file" ] || [ -L "$env_file" ]; then
+    exit 0
+fi
+if [ -L "$HOME/.config" ] || [ -L "$env_dir" ]; then
+    printf '%s\n' "Vibe environment path is symlinked: $env_dir" >&2
+    exit 1
+fi
+
+install -d -m 700 "$env_dir"
+chmod 700 "$env_dir"
+umask 077
+cat >"$env_file" <<'EOF'
+# Fill in the compatible endpoint and key before sourcing this file.
+export OPENAI_COMPATIBLE_BASE_URL='https://models.example/v1'
+export OPENAI_COMPATIBLE_API_KEY=''
+export OPENAI_COMPATIBLE_MODEL='example-model'
+EOF
+chmod 600 "$env_file"
+printf '%s\n' "Created Vibe environment template: $env_file"
