@@ -106,7 +106,7 @@ binaries plus repo-managed AI config.
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/`, `~/.codex/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,tui.jsonc}`, `opencode.json` permission merge | OpenCode commands, agents, and synchronized TUI theme |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
-| OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | `opencode-mem@2.25.0`, `~/.opencode-mem/` | Explicit correction retention |
+| OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
@@ -118,19 +118,18 @@ Shared configuration lives in `chezmoi/`, including local-file mappings for the 
 
 The installer snapshots changed chezmoi targets before apply. A scoped modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`; unrelated settings remain in place and failures roll back the snapshot.
 
-OpenCode memory stores local profile data under `~/.opencode-mem/`. When
-corrected, OpenCode saves the durable behavior as an explicit profile
-preference without requiring the user to organize memory. Automatic transcript
-capture and the plugin web server are disabled for this focused integration.
-The installer preserves unrelated strict-JSON memory settings and uses global
-`git user.email` as the stable profile identity. Commented JSONC fails safely
-instead of being overwritten, and the older `opencode-mem.json` filename must
-be migrated first. Changing the global email starts a new profile; the email
-is stored in local plugin data. This PoC assumes one correction writer at a
-time. Project or environment overrides can replace these global settings and
-void the privacy guarantees. This integration is OpenCode-only; Codex and Pi
-continue without persistent memory. OpenCode downloads the plugin and local
-embedding model on first use, which may require network access.
+PDE owns the installed Claude Code package and the OpenCode Claude adapter
+configuration. Installation does not authenticate Claude Code; authenticate it
+with `claude auth login --claudeai`. The supported pairing is:
+
+- OpenCode: `1.18.32`,
+- Claude adapter: `@openchamber/opencode-claude@0.14.0`,
+
+The managed-plugin merge removes stale entries for managed Claude and memory
+plugins, preserves unrelated plugins and settings, and appends the pinned
+adapter. OpenCode memory is intentionally unsupported with this integration.
+Existing `~/.opencode-mem/` data remains on disk, but the full installation
+removes its plugin entry and OpenCode does not load it.
 
 ## Using OpenCode Commands
 
