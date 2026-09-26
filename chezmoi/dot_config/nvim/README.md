@@ -242,7 +242,11 @@ The right column lists the 5 most recent persistence.nvim sessions (mtime-sorted
 
 ## Known quirks
 
-- **Blink completion is manual-trigger.** The menu does not pop on every keystroke — press `<C-Space>` to open it. CodeCompanion registers its own blink source for `codecompanion` and `codecompanion_input` buffers.
+- **Blink completion is manual-trigger.** The menu does not pop on every
+  keystroke. Press `<C-Space>` to open it, choose an item, then press `Enter`
+  to accept it. The first item is not preselected, so `Enter` inserts a newline
+  until you choose one. CodeCompanion registers its own blink source for
+  `codecompanion` and `codecompanion_input` buffers.
 - **LSP keymaps are buffer-local.** They only exist in buffers where a server has attached (via the `LspAttach` autocmd in `lsp.lua`). If you don't see `<leader>c*` in which-key, no LSP is attached to that filetype.
 - **Utility panels use `winfixbuf`.** Clicking a bufferline tab from inside a locked panel would normally error — bufferline's `left_mouse_command` override jumps to the first non-locked window first. Same wrapper protects `<S-h>` / `<S-l>` buffer cycling.
 - **Which-key helix preset is heavy.** We've tuned it with `icons.mappings = false` and a `desc`-only filter. If it's still slow on your machine, change `preset` to `modern` or `classic` in `whichkey.lua`.
