@@ -6,12 +6,12 @@ if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
     input='{}'
 fi
 
-printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "opencode-mem@2.25.0" '
-    def is_memory_plugin:
+printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "@openchamber/opencode-claude@0.14.0" '
+    def is_managed_plugin:
         if type == "string" then
-            test("^opencode-mem(@.*)?$")
+            test("^(opencode-mem|opencode-claude|opencode-claude-code|@openchamber/opencode-claude)(@.*)?$")
         elif type == "array" and length > 0 and (.[0] | type) == "string" then
-            .[0] | test("^opencode-mem(@.*)?$")
+            .[0] | test("^(opencode-mem|opencode-claude|opencode-claude-code|@openchamber/opencode-claude)(@.*)?$")
         else
             false
         end;
@@ -36,5 +36,5 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
     else
         .permission.external_directory |= ((. // {}) | del(.[$path]) + {($path): "allow"})
     end
-    | .plugin = (((.plugin // []) | map(select(is_memory_plugin | not))) + [$plugin])
+    | .plugin = (((.plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
 '

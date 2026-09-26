@@ -46,6 +46,13 @@ jobs:
         with:
           go-version-file: pde-installer/go.mod
           cache-dependency-path: pde-installer/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: npm
+          cache-dependency-path: pde-installer/package-lock.json
+      - name: install Node packages
+        run: npm ci
       - name: install zsh
         run: sudo apt-get update && sudo apt-get install --yes zsh
       - name: format
@@ -56,6 +63,7 @@ jobs:
           go test -race ./...
           go vet ./...
           bash -n test/*.sh
+          ./test/claude-provider.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest

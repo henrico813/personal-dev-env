@@ -21,7 +21,7 @@ func TestListSkipsFullMetadata(t *testing.T) {
 	if !strings.Contains(output.String(), "aqua\tya\tv25.5.31\t\tmissing\n") {
 		t.Fatalf("list output omits exact ya row: %s", output.String())
 	}
-	if strings.Contains(output.String(), "opencode-ai") || strings.Contains(output.String(), "neovim") {
+	if strings.Contains(output.String(), "opencode-ai") || strings.Contains(output.String(), "claude") || strings.Contains(output.String(), "neovim") {
 		t.Fatalf("list output includes full-only item: %s", output.String())
 	}
 }

@@ -25,6 +25,11 @@ func packages() []packageSpec {
 		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-st1R2MhP3ndngOqj2SVh1qk6ED1lpgtlDxipDUyxlKfbsna0imwU2FdTnCjohFQpVh4bR5D5m1hA05AuW2v8Xg=="},
 		{Name: "@earendil-works/pi-coding-agent", Binary: "pi", Integrity: "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ=="},
 		{Name: "obsidian-headless", Binary: "ob", Integrity: "sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw=="},
+		{
+			Name:      "@anthropic-ai/claude-code",
+			Binary:    "claude",
+			Integrity: "sha512-/8Y1pe7M15qMOU7RwUEjpFcM8XGVXNzWrWRXXp/0HlGm1k8FcOCxYMA9VR237JUUzzx5DkcQaGvELAo4si7TwA==",
+		},
 	}
 	for index := range specs {
 		item, _ := manifest.Find(specs[index].Name, manifest.NPM)

@@ -81,6 +81,11 @@ func Items() []Item {
 		{Name: "@openai/codex", Version: "0.157.0", Owner: NPM},
 		{Name: "@earendil-works/pi-coding-agent", Version: "0.85.1", Owner: NPM},
 		{Name: "obsidian-headless", Version: "0.0.14", Owner: NPM},
+		{
+			Name:    "@anthropic-ai/claude-code",
+			Version: "2.1.283",
+			Owner:   NPM,
+		},
 		{Name: "planner", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
 		{Name: "surveil", Owner: Local}, {Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
 		{Name: "FiraCode", Version: "v3.2.1", Owner: Direct},
