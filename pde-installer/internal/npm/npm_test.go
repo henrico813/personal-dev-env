@@ -57,6 +57,7 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertNPMInstall(t, manager)
+	assertNPMCommands(t, logPath, "ci --ignore-scripts --no-audit --no-fund\nrebuild --foreground-scripts --no-audit --no-fund\n")
 	assertNoNPMCache(t, home)
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
@@ -107,7 +108,7 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 func writeNPMFixture(t *testing.T, path, logPath string) {
 	t.Helper()
 	var script strings.Builder
-	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$1\" >> %q\n", logPath)
+	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$*\" >> %q\n", logPath)
 	script.WriteString("mkdir -p \"$npm_config_cache\"\nprintf '%s\\n' cache > \"$npm_config_cache/content\"\n")
 	script.WriteString("[ \"$1\" = ci ] || exit 0\nmkdir -p node_modules/.bin\n")
 	for _, spec := range packages() {
@@ -166,6 +167,17 @@ func assertNPMFile(t *testing.T, path, want string) {
 	}
 	if string(data) != want {
 		t.Fatalf("%s = %q, want %q", path, data, want)
+	}
+}
+
+func assertNPMCommands(t *testing.T, logPath, want string) {
+	t.Helper()
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("npm commands = %q, want %q", got, want)
 	}
 }
 
