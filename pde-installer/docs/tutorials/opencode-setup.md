@@ -54,6 +54,7 @@ Claude Code. In a login shell, authenticate with:
 ```bash
 claude auth login --claudeai
 claude auth status --json
+opencode auth login claude-code
 ```
 
 Restart OpenCode after authenticating Claude Code or changing its credentials so
@@ -66,7 +67,7 @@ ocw restart
 List the Claude Code models available through the managed adapter with:
 
 ```bash
-opencode models claude-code
+opencode models --standalone | grep '^claude-code/'
 ```
 
 See [OpenCode supervision](../how-to/supervise-opencode.md) for recovery tests

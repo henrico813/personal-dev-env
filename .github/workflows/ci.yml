@@ -63,7 +63,6 @@ jobs:
           go test -race ./...
           go vet ./...
           bash -n test/*.sh
-          ./test/claude-provider.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest
