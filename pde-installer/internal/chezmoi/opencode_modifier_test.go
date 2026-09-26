@@ -6,23 +6,59 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestModifierMergesMemoryPlugin(t *testing.T) {
+func TestModifierReplacesManagedPlugins(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
-		want  []string
+		want  []any
 	}{
-		{name: "empty", input: "", want: []string{"opencode-mem@2.25.0"}},
-		{name: "existing", input: `{"plugin":["example@1","opencode-mem@2.25.0"]}`, want: []string{"example@1", "opencode-mem@2.25.0"}},
-		{name: "duplicate", input: `{"plugin":["opencode-mem@2.25.0","opencode-mem@2.25.0"]}`, want: []string{"opencode-mem@2.25.0"}},
-		{name: "unversioned", input: `{"plugin":["opencode-mem"]}`, want: []string{"opencode-mem@2.25.0"}},
-		{name: "other version", input: `{"plugin":["opencode-mem@2.24.0"]}`, want: []string{"opencode-mem@2.25.0"}},
-		{name: "tuple", input: `{"plugin":[["opencode-mem@2.24.0",{}]]}`, want: []string{"opencode-mem@2.25.0"}},
+		{
+			name:  "empty",
+			input: "",
+			want: []any{
+				"@openchamber/opencode-claude@0.14.0",
+			},
+		},
+		{
+			name: "stale entries",
+			input: `{
+				"plugin": [
+					"opencode-claude@1",
+					"opencode-mem@2.25.0"
+				]
+			},
+			want: []any{
+				"@openchamber/opencode-claude@0.14.0",
+			},
+		},
+		{
+			name: "unrelated values",
+			input: `{
+				"plugin": [
+					"example@1",
+					[
+						"other@2",
+						{"enabled": true}
+					],
+					"opencode-mem"
+				],
+				"theme": "dark"
+			},
+			want: []any{
+				"example@1",
+				[]any{
+					"other@2",
+					map[string]any{"enabled": true},
+				},
+				"@openchamber/opencode-claude@0.14.0",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -31,15 +67,41 @@ func TestModifierMergesMemoryPlugin(t *testing.T) {
 				t.Fatal(err)
 			}
 			var config struct {
-				Plugin []string `json:"plugin"`
+				Plugin []any `json:"plugin"`
 			}
 			if err := json.Unmarshal(output, &config); err != nil {
 				t.Fatal(err)
 			}
-			if strings.Join(config.Plugin, "|") != strings.Join(tt.want, "|") {
-				t.Fatalf("plugin = %v, want %v", config.Plugin, tt.want)
+			if !reflect.DeepEqual(config.Plugin, tt.want) {
+				t.Fatalf("plugin = %#v, want %#v", config.Plugin, tt.want)
 			}
 		})
+	}
+}
+
+func TestModifierPreservesSettings(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{
+		"plugin": [
+			[
+				"other@1",
+				{}
+			]
+		],
+		"theme": "dark",
+		"permission": {
+			"edit": "allow"
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["theme"] != "dark" || config["permission"].(map[string]any)["edit"] != "allow" {
+		t.Fatalf("config = %#v", config)
 	}
 }
 
