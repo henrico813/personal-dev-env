@@ -35,6 +35,22 @@ func TestNPMLockIncludesPinnedPackages(t *testing.T) {
 	}
 }
 
+func TestNPMRunsRebuildAfterCI(t *testing.T) {
+	home := t.TempDir()
+	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(t.TempDir(), "npm.log")
+	writeNPMFixture(t, filepath.Join(home, ".local", "bin", "npm"), logPath)
+	manager := New(home, repoRoot, run.Runner{})
+
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	assertNPMCommands(t, logPath, "ci --ignore-scripts --no-audit --no-fund\nrebuild --foreground-scripts --no-audit --no-fund\n")
+}
+
 // Reconciliation must activate exact packages and preserve prior installs.
 func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	home := t.TempDir()
@@ -107,7 +123,7 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 func writeNPMFixture(t *testing.T, path, logPath string) {
 	t.Helper()
 	var script strings.Builder
-	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$1\" >> %q\n", logPath)
+	fmt.Fprintf(&script, "#!/bin/sh\nset -eu\nprintf '%%s\\n' \"$*\" >> %q\n", logPath)
 	script.WriteString("mkdir -p \"$npm_config_cache\"\nprintf '%s\\n' cache > \"$npm_config_cache/content\"\n")
 	script.WriteString("[ \"$1\" = ci ] || exit 0\nmkdir -p node_modules/.bin\n")
 	for _, spec := range packages() {
@@ -166,6 +182,17 @@ func assertNPMFile(t *testing.T, path, want string) {
 	}
 	if string(data) != want {
 		t.Fatalf("%s = %q, want %q", path, data, want)
+	}
+}
+
+func assertNPMCommands(t *testing.T, logPath, want string) {
+	t.Helper()
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("npm commands = %q, want %q", got, want)
 	}
 }
 
