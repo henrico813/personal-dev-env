@@ -21,6 +21,8 @@ const AUTH_VARS: &[&str] = &[
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_BASE_URL",
     "OPENCODE_API_KEY",
+    "OPENAI_COMPATIBLE_BASE_URL",
+    "OPENAI_COMPATIBLE_API_KEY",
 ];
 // These provider IDs match Pi's model selectors; unknown IDs cannot use env auth.
 const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
@@ -33,6 +35,10 @@ const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
         &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
     ),
     (&["opencode", "opencode-go"], &["OPENCODE_API_KEY"]),
+    (
+        &["openai-compatible"],
+        &["OPENAI_COMPATIBLE_BASE_URL", "OPENAI_COMPATIBLE_API_KEY"],
+    ),
 ];
 const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
@@ -140,6 +146,14 @@ pub(crate) fn prepare_provider_auth(
     home: Option<&str>,
     model: &str,
 ) -> Result<Option<PathBuf>, String> {
+    if model.starts_with("openai-compatible/") {
+        // This provider requires environment configuration and does not use host Pi state.
+        if has_provider_env(model) {
+            return Ok(None);
+        }
+        return Err("vibe requires both OpenAI-compatible endpoint variables".to_string());
+    }
+
     let pi_agent_dir = home.and_then(|home| {
         let pi_agent_dir = PathBuf::from(home).join(".pi/agent");
         let auth_file = pi_agent_dir.join("auth.json");
@@ -910,6 +924,82 @@ mod tests {
     }
 
     #[test]
+    fn compatible_auth_isolates_pi_state() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let auth_dir = home.path().join(".pi/agent");
+        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
+        fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid");
+        std::env::set_var("OPENAI_COMPATIBLE_API_KEY", "compatible");
+
+        let pi_agent_dir = prepare_provider_auth(home.path().to_str(), "openai-compatible/model")
+            .expect("compatible auth");
+        let auth_args = auth_env_args("openai-compatible/model");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+        let docker_args = docker_run_args(&DockerRunArgs {
+            repo_root: temp.path(),
+            git_common_dir: temp.path(),
+            worktree: temp.path(),
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-compatible/model",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: pi_agent_dir.as_deref(),
+            shared_skills_dir: None,
+        });
+
+        restore_env(saved);
+        assert_eq!(pi_agent_dir, None);
+        assert_eq!(
+            auth_args,
+            [
+                "-e",
+                "OPENAI_COMPATIBLE_BASE_URL",
+                "-e",
+                "OPENAI_COMPATIBLE_API_KEY"
+            ]
+        );
+        assert!(!docker_args
+            .iter()
+            .any(|arg| arg.contains("/vibe-home/.pi/agent")));
+    }
+
+    #[test]
+    fn compatible_auth_rejects_missing_key() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let auth_dir = home.path().join(".pi/agent");
+        fs::create_dir_all(&auth_dir).expect("mkdir auth dir");
+        fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
+        let saved = save_auth_env();
+
+        std::env::set_var("HOME", home.path());
+        clear_auth_env();
+        std::env::set_var("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid");
+
+        let result = prepare_provider_auth(home.path().to_str(), "openai-compatible/model");
+
+        restore_env(saved);
+        assert_eq!(
+            result.expect_err("incomplete compatible auth"),
+            "vibe requires both OpenAI-compatible endpoint variables"
+        );
+    }
+
+    #[test]
     fn provider_auth_accepts_empty_pi_object() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
@@ -1035,6 +1125,33 @@ mod tests {
 
         restore_env(saved);
         assert_eq!(args, ["-e", "OPENAI_API_KEY"]);
+    }
+
+    #[test]
+    fn forwards_compatible_credentials_only() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let saved = save_auth_env();
+        clear_auth_env();
+        for (key, value) in [
+            ("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid"),
+            ("OPENAI_COMPATIBLE_API_KEY", "compatible"),
+            ("OPENAI_API_KEY", "openai"),
+        ] {
+            std::env::set_var(key, value);
+        }
+
+        let args = auth_env_args("openai-compatible/model");
+
+        restore_env(saved);
+        assert_eq!(
+            args,
+            [
+                "-e",
+                "OPENAI_COMPATIBLE_BASE_URL",
+                "-e",
+                "OPENAI_COMPATIBLE_API_KEY"
+            ]
+        );
     }
 
     #[test]
