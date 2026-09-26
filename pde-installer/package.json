@@ -2,6 +2,7 @@
   "name": "pde-managed-cli-packages",
   "private": true,
   "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.283",
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@openai/codex": "0.157.0",
     "obsidian-headless": "0.0.14",

@@ -10,9 +10,11 @@ Run from the repository root:
 pde-installer install full
 ```
 
-The configuration installs the shell helpers and systemd units. With a regular
-credential file, the setup hook enables the units, restarts the service, and
-starts the health timer. Until credentials exist, both units stay disabled.
+The configuration installs the shell helpers and systemd units. It also
+prepares Claude Code and the managed OpenCode Claude adapter, but it does not
+authenticate Claude Code. With a regular credential file, the setup hook
+enables the units, restarts the service, and starts the health timer. Until
+credentials exist, both units stay disabled.
 
 ## 2. Create Credentials
 
@@ -43,6 +45,29 @@ oca
 
 Open `https://opencode.googungus.com` from a separate device and authenticate.
 The existing edge route reaches the home listener; no route change is needed.
+
+## 4. Authenticate Claude Code and Discover Models
+
+Installation prepares Claude Code and its adapter but does not authenticate
+Claude Code. In a login shell, authenticate with:
+
+```bash
+claude auth login --claudeai
+claude auth status --json
+```
+
+Restart OpenCode after authenticating Claude Code or changing its credentials so
+that the adapter can observe the updated authentication state:
+
+```bash
+ocw restart
+```
+
+List the Claude Code models available through the managed adapter with:
+
+```bash
+opencode models claude-code
+```
 
 See [OpenCode supervision](../how-to/supervise-opencode.md) for recovery tests
 and troubleshooting.
