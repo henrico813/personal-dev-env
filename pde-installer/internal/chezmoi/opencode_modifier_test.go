@@ -32,7 +32,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 					"opencode-claude@1",
 					"opencode-mem@2.25.0"
 				]
-			},
+			}`,
 			want: []any{
 				"@openchamber/opencode-claude@0.14.0",
 			},
@@ -49,7 +49,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 					"opencode-mem"
 				],
 				"theme": "dark"
-			},
+			}`,
 			want: []any{
 				"example@1",
 				[]any{
