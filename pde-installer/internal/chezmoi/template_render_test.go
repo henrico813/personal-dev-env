@@ -77,6 +77,7 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			want:    []string{".tmux/plugins/tmux-resurrect", "type = \"archive\""},
 			omit: []string{
 				"obsidian.nvim",
+				"copilot.lua",
 				".config/opencode/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
 			},
@@ -85,6 +86,7 @@ func TestExternalTemplateProfiles(t *testing.T) {
 			profile: "full",
 			want: []string{
 				"obsidian.nvim",
+				"copilot.lua",
 				".config/opencode/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
 			},

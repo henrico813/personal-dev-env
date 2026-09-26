@@ -81,7 +81,7 @@ func terminalTestConfig(t *testing.T) config {
 func terminalProbeBin(t *testing.T, missing string) string {
 	t.Helper()
 	bin := t.TempDir()
-	for _, name := range []string{"apt-get", "dpkg-query", "sudo", "sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file", "curl", "cc", "gcc", "clang", "c++", "g++", "clang++"} {
+	for _, name := range []string{"apt-get", "dpkg-query", "sudo", "sh", "tar", "gzip", "xz", "unzip", "sed", "awk", "grep", "file", "curl", "cc", "gcc", "clang", "c++", "g++", "clang++", "make", "bzip2", "patch"} {
 		if name == missing || missing == "compiler" && (name == "cc" || name == "gcc" || name == "clang" || name == "c++" || name == "g++" || name == "clang++") {
 			continue
 		}
