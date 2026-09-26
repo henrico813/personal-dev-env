@@ -32,25 +32,11 @@ installer copies the shared `AGENTS.md` into each harness config, backs
 up managed paths it replaces, and backs up `opencode.json` only when the
 permission merge changes it.
 
-OpenCode loads the pinned `opencode-mem@2.25.0` plugin. A chezmoi modifier
-preserves unrelated strict-JSON settings in `opencode-mem.jsonc`, requires
-global `git user.email` for stable profile identity, and disables prompt
-storage, automatic capture, and the local web server. Commented JSONC is
-rejected without changing the target, and an existing `opencode-mem.json` must
-be migrated before installation. The plugin keeps memory under
-`~/.opencode-mem/`; PDE does not edit or organize its runtime data. The email is
-stored in that local data, changing it starts a new profile, and this PoC
-supports one correction writer at a time.
-
-Shared workflow instructions tell OpenCode to read the profile before its first
-substantive response and save explicit behavior corrections immediately.
-OpenCode downloads the plugin and local embedding model on first use. The inherited
-`memory` tool also exposes project-memory operations outside this focused flow.
-Project `.opencode/opencode-mem.*` files and OpenCode environment configuration
-have higher precedence; using them voids PDE's pin and privacy guarantees.
-
-This first integration guarantees no Codex or Pi memory parity. Their shared
-instructions apply the memory workflow only when a `memory` tool is available.
+OpenCode memory is intentionally unsupported with the managed Claude adapter.
+The chezmoi modifier removes `opencode-mem` from the OpenCode plugin list;
+existing `~/.opencode-mem/` data remains on disk but is not loaded. Shared
+memory instructions apply only when a memory tool is available; this
+installation does not configure one for OpenCode.
 
 The `promote-memory` skill turns an explicitly requested learning into a
 reviewed source change. It targets this repository by default from any
