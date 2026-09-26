@@ -84,6 +84,7 @@ Don't memorize a table here. The live source of truth is which-key.
 - Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` ai/chat, `q` session, `<Tab>` tabs, and so on).
 - Press `<leader>?` to see only the keymaps active for the *current buffer* (useful in LSP-attached files).
 - Inside a specific plugin (e.g. lazygit's floating window or Mason's UI), press `g?` for that plugin's own keybindings.
+- See the [completion reference](docs/reference/neovim_completion_reference.md) for Copilot and blink bindings.
 
 A few non-obvious bindings worth memorizing because you'll use them constantly:
 
