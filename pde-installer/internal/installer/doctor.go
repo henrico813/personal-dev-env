@@ -2,6 +2,7 @@ package installer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -114,6 +115,11 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 			failures = append(failures, "unwritable destination: "+path+" (fix ownership or permissions on "+ancestor+")")
 		}
 	}
+	if mode == preflightReport && config.Profile == profile.Full {
+		if err := reportCopilotStatus(config.Home, runner.Out()); err != nil {
+			return fmt.Errorf("write GitHub Copilot status: %w", err)
+		}
+	}
 	if len(failures) > 0 {
 		for _, failure := range failures {
 			if _, err := fmt.Fprintln(runner.Err(), "error   "+failure); err != nil {
@@ -123,6 +129,39 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		return fmt.Errorf("doctor found %d problem(s)", len(failures))
 	}
 	return nil
+}
+
+func reportCopilotStatus(home string, out io.Writer) error {
+	plugin := filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", "copilot.lua", "lua", "copilot", "init.lua")
+	if regularFile(plugin) {
+		if _, err := fmt.Fprintln(out, "status  GitHub Copilot plugin: installed"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintln(out, "warning GitHub Copilot plugin: missing; run pde-installer install"); err != nil {
+		return err
+	}
+
+	credentials := filepath.Join(xdgConfigHome(home), "github-copilot", "auth.db")
+	if regularFile(credentials) {
+		if _, err := fmt.Fprintln(out, "status  GitHub Copilot credentials: present"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintln(out, "warning GitHub Copilot credentials: missing; run :Copilot auth in Neovim"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func xdgConfigHome(home string) string {
+	if configured := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(configured) {
+		return configured
+	}
+	return filepath.Join(home, ".config")
+}
+
+func regularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func probeArgs(tool string) []string {

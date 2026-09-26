@@ -73,6 +73,7 @@ Each plugin file calls its plugin's `.setup({...})` and registers any keymaps th
 | `header.ansi` | — | chafa-generated colored image used by the dashboard |
 | `render-markdown.lua` | render-markdown | markdown + CodeCompanion chat rendering |
 | `codecompanion.lua` | henrico813/codecompanion.nvim | OpenCode-backed chat UI |
+| `copilot.lua` | zbirenbaum/copilot.lua | GitHub Copilot FIM ghost-text suggestions |
 
 ---
 
@@ -83,6 +84,7 @@ Don't memorize a table here. The live source of truth is which-key.
 - Press `<leader>` and pause — which-key pops a panel showing every leader binding, grouped by prefix (`b` buffer, `c` code, `g` git, `p` ai/chat, `q` session, `<Tab>` tabs, and so on).
 - Press `<leader>?` to see only the keymaps active for the *current buffer* (useful in LSP-attached files).
 - Inside a specific plugin (e.g. lazygit's floating window or Mason's UI), press `g?` for that plugin's own keybindings.
+- See the [completion reference](docs/reference/neovim_completion_reference.md) for Copilot and blink bindings.
 
 A few non-obvious bindings worth memorizing because you'll use them constantly:
 
@@ -101,6 +103,8 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 | `<leader>pi` | Run the inline prompt |
 | `<leader>pI` | Restart the inline shim |
 | `<leader>pa…` | Attach context (buffer, file, diff, diagnostics) |
+| `<C-l>` | Accept the Copilot suggestion |
+| `<C-]>` | Dismiss the Copilot suggestion |
 | `<leader>qs` | Restore this directory's last session |
 | `<leader>?` | Show keymaps for the current buffer |
 | `<C-/>` | Open a terminal split |
@@ -144,6 +148,15 @@ vim.keymap.set("n", "<leader>xx", "<cmd>SomeCommand<cr>", { desc = "What it does
 The `desc` field is what which-key displays. Restart nvim to pick it up.
 
 If the keymap logically belongs under a new group (e.g. `<leader>t` for "test"), add the group to `lua/plugins/whichkey.lua`'s `spec` so which-key labels it.
+
+### GitHub Copilot FIM
+
+Copilot shows inline ghost-text suggestions while you type in Insert mode. Run
+`:Copilot auth` once to sign in; credentials are stored outside this repository
+at `${XDG_CONFIG_HOME:-~/.config}/github-copilot/auth.db`. Press `<C-l>` to
+accept a suggestion or
+`<C-]>` to dismiss one. Copilot hides its suggestion while blink's `<C-Space>`
+completion menu is open.
 
 ### Add an LSP server
 
@@ -231,7 +244,11 @@ The right column lists the 5 most recent persistence.nvim sessions (mtime-sorted
 
 ## Known quirks
 
-- **Blink completion is manual-trigger.** The menu does not pop on every keystroke — press `<C-Space>` to open it. CodeCompanion registers its own blink source for `codecompanion` and `codecompanion_input` buffers.
+- **Blink completion is manual-trigger.** The menu does not pop on every
+  keystroke. Press `<C-Space>` to open it, choose an item, then press `Enter`
+  to accept it. The first item is not preselected, so `Enter` inserts a newline
+  until you choose one. CodeCompanion registers its own blink source for
+  `codecompanion` and `codecompanion_input` buffers.
 - **LSP keymaps are buffer-local.** They only exist in buffers where a server has attached (via the `LspAttach` autocmd in `lsp.lua`). If you don't see `<leader>c*` in which-key, no LSP is attached to that filetype.
 - **Utility panels use `winfixbuf`.** Clicking a bufferline tab from inside a locked panel would normally error — bufferline's `left_mouse_command` override jumps to the first non-locked window first. Same wrapper protects `<S-h>` / `<S-l>` buffer cycling.
 - **Which-key helix preset is heavy.** We've tuned it with `icons.mappings = false` and a `desc`-only filter. If it's still slow on your machine, change `preset` to `modern` or `classic` in `whichkey.lua`.
