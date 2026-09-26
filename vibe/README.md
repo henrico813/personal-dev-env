@@ -31,6 +31,10 @@ That test uses `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
 `OPENAI_COMPATIBLE_MODEL`; the model variable names an advertised endpoint model
 and is required for the live test. It does not mount host Pi state.
 
+Full PDE installs create `~/.config/vibe/openai-compatible.env` when it does not
+already exist. Fill in its endpoint and key, then run `source
+~/.config/vibe/openai-compatible.env` before a compatible-provider command.
+
 ## Install
 
 ```bash
