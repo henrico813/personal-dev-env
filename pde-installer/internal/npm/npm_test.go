@@ -35,6 +35,22 @@ func TestNPMLockIncludesPinnedPackages(t *testing.T) {
 	}
 }
 
+func TestNPMRunsRebuildAfterCI(t *testing.T) {
+	home := t.TempDir()
+	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(t.TempDir(), "npm.log")
+	writeNPMFixture(t, filepath.Join(home, ".local", "bin", "npm"), logPath)
+	manager := New(home, repoRoot, run.Runner{})
+
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	assertNPMCommands(t, logPath, "ci --ignore-scripts --no-audit --no-fund\nrebuild --foreground-scripts --no-audit --no-fund\n")
+}
+
 // Reconciliation must activate exact packages and preserve prior installs.
 func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 	home := t.TempDir()
@@ -57,7 +73,6 @@ func TestNPMCacheCleanupPreservesRollback(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertNPMInstall(t, manager)
-	assertNPMCommands(t, logPath, "ci --ignore-scripts --no-audit --no-fund\nrebuild --foreground-scripts --no-audit --no-fund\n")
 	assertNoNPMCache(t, home)
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
