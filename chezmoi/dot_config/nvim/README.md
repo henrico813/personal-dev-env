@@ -153,7 +153,8 @@ If the keymap logically belongs under a new group (e.g. `<leader>t` for "test"),
 
 Copilot shows inline ghost-text suggestions while you type in Insert mode. Run
 `:Copilot auth` once to sign in; credentials are stored outside this repository
-at `~/.config/github-copilot/auth.db`. Press `<C-l>` to accept a suggestion or
+at `${XDG_CONFIG_HOME:-~/.config}/github-copilot/auth.db`. Press `<C-l>` to
+accept a suggestion or
 `<C-]>` to dismiss one. Copilot hides its suggestion while blink's `<C-Space>`
 completion menu is open.
 

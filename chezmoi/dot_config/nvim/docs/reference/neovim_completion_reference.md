@@ -24,7 +24,7 @@ open.
 | `:Copilot auth info` | Show the current authentication state. |
 
 Copilot stores its authentication credentials at
-`~/.config/github-copilot/auth.db`, outside this repository.
+`${XDG_CONFIG_HOME:-~/.config}/github-copilot/auth.db`, outside this repository.
 
 ## blink Completion Menu
 
