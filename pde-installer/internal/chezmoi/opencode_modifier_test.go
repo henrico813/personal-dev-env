@@ -22,7 +22,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 			name:  "empty",
 			input: "",
 			want: []any{
-				"@openchamber/opencode-claude@0.14.0",
+				"@openchamber/opencode-claude@1.1.0",
 			},
 		},
 		{
@@ -34,7 +34,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 				]
 			}`,
 			want: []any{
-				"@openchamber/opencode-claude@0.14.0",
+				"@openchamber/opencode-claude@1.1.0",
 			},
 		},
 		{
@@ -56,7 +56,7 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 					"other@2",
 					map[string]any{"enabled": true},
 				},
-				"@openchamber/opencode-claude@0.14.0",
+				"@openchamber/opencode-claude@1.1.0",
 			},
 		},
 	}
@@ -67,13 +67,13 @@ func TestModifierReplacesManagedPlugins(t *testing.T) {
 				t.Fatal(err)
 			}
 			var config struct {
-				Plugin []any `json:"plugin"`
+				Plugins []any `json:"plugins"`
 			}
 			if err := json.Unmarshal(output, &config); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(config.Plugin, tt.want) {
-				t.Fatalf("plugin = %#v, want %#v", config.Plugin, tt.want)
+			if !reflect.DeepEqual(config.Plugins, tt.want) {
+				t.Fatalf("plugins = %#v, want %#v", config.Plugins, tt.want)
 			}
 		})
 	}

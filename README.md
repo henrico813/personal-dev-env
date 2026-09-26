@@ -122,8 +122,8 @@ PDE owns the installed Claude Code package and the OpenCode Claude adapter
 configuration. Installation does not authenticate Claude Code; authenticate it
 with `claude auth login --claudeai`. The supported pairing is:
 
-- OpenCode: `1.18.32`,
-- Claude adapter: `@openchamber/opencode-claude@0.14.0`,
+- OpenCode: `@opencode/cli@2.0.18`,
+- Claude adapter: `@openchamber/opencode-claude@1.1.0`,
 
 The managed-plugin merge removes stale entries for managed Claude and memory
 plugins, preserves unrelated plugins and settings, and appends the pinned
