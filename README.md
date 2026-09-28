@@ -104,7 +104,7 @@ binaries plus repo-managed AI config.
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/`, `~/.codex/skills/obsidian-zettel/` | Template-aligned vault note creation |
-| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,tui.jsonc}`, `opencode.json` permission merge | OpenCode commands, agents, and synchronized TUI theme |
+| OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, and bidirectional agent cycling (`Tab` next, `Shift+Tab` previous) |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |

@@ -1,0 +1,20 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $colors := index .colorProfiles (env "PDE_COLOR_PROFILE") -}}
+{{- $config := dict -}}
+{{- if ne (.chezmoi.stdin | trim) "" -}}
+{{- $config = .chezmoi.stdin | fromJson -}}
+{{- end -}}
+{{- if not (kindIs "map" $config) -}}
+{{- fail "OpenCode CLI config must be an object" -}}
+{{- end -}}
+{{- $keybinds := dict -}}
+{{- if hasKey $config "keybinds" -}}
+{{- $keybinds = get $config "keybinds" -}}
+{{- end -}}
+{{- if not (kindIs "map" $keybinds) -}}
+{{- fail "OpenCode CLI keybinds must be an object" -}}
+{{- end -}}
+{{- $config = $config | setValueAtPath "theme.name" $colors.opencode -}}
+{{- $keybinds = mergeOverwrite $keybinds (dict "agent.cycle" "tab" "agent.cycle.reverse" "shift+tab") -}}
+{{- $config = set $config "keybinds" $keybinds -}}
+{{ $config | toPrettyJson }}

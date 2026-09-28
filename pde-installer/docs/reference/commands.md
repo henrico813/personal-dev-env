@@ -31,10 +31,10 @@ color value.
 Every selection renders tmux, Powerlevel10k, fzf, and bat colors. Full installs
 also render Alacritty, WezTerm, Neovim, and OpenCode; terminal installs leave
 any retained full-only files unchanged until the next full install. The
-OpenCode modifier replaces `theme` while retaining other parsed `tui.jsonc`
-values. It emits normalized JSON, so comments and original formatting are not
-retained. Restart OpenCode after changing profiles because it reads TUI config
-at startup.
+OpenCode modifier sets the selected theme and bidirectional agent cycling in
+`cli.json` while retaining other parsed values. It emits normalized JSON, so
+original formatting is not retained. Restart OpenCode after changing profiles
+because it reads CLI configuration at startup.
 
 Rendering is static and does not emit terminal palette escape sequences. An SSH
 client keeps its local terminal palette while a remote PDE prompt and tmux
