@@ -166,7 +166,7 @@ pub fn execute(args: RunArgs) -> RunResult {
             Err(error) => return RunResult::setup_error(error),
         };
     let home = std::env::var_os("HOME");
-    let shared_skills = match docker::prepare_shared_skills(home.as_deref()) {
+    let user_skills = match docker::prepare_user_skills(home.as_deref()) {
         Ok(prepared) => prepared,
         Err(error) => return RunResult::setup_error(error),
     };
@@ -177,6 +177,19 @@ pub fn execute(args: RunArgs) -> RunResult {
     let session = match worktree::prepare(&args.key, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
+    };
+    let repository_skills = match docker::prepare_repository_skills(&session.worktree) {
+        Ok(prepared) => prepared,
+        Err(err) => return RunResult::setup_error(err),
+    };
+    if repository_skills.is_some() {
+        if let Err(err) = worktree::validate_repository_skills(&session.worktree) {
+            return RunResult::setup_error(err);
+        }
+    }
+    let prepared_skills = docker::PreparedSkills {
+        user: user_skills,
+        repository: repository_skills,
     };
     let run_id = ledger::run_id();
     let created_at = ledger::created_at().unwrap_or(0);
@@ -268,7 +281,6 @@ pub fn execute(args: RunArgs) -> RunResult {
             ),
         );
     }
-
     if let Err(err) = persist_phase(
         &artifacts,
         RunPhase::ReadingPreRunCommit,
@@ -326,6 +338,24 @@ pub fn execute(args: RunArgs) -> RunResult {
         );
     }
     let mounts = session.sandbox_mounts(&args.inputs);
+    if prepared_skills.repository.is_some() {
+        if let Err(err) = worktree::validate_repository_skills(&session.worktree) {
+            return finish_result(
+                &artifacts,
+                build_result(
+                    &session,
+                    &artifacts,
+                    &args.model,
+                    ResultParts::failure(
+                        Some(pre_run_commit.clone()),
+                        Status::WrapperFailed,
+                        Vec::new(),
+                        Some(err),
+                    ),
+                ),
+            );
+        }
+    }
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
             &artifacts,
@@ -349,7 +379,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         args.stderr_level.as_str(),
         args.insecure_tls,
         prepared_auth.as_deref(),
-        shared_skills.as_ref(),
+        &prepared_skills,
     ) {
         Ok(code) => code,
         Err(err) => {
