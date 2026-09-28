@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn compatible_shell_writes_discovery_config() {
+    fn goog_shell_writes_discovery_config() {
         let temp = tempdir().expect("tempdir");
         let bin = temp.path().join("bin");
         let home = temp.path().join("home");
@@ -273,9 +273,9 @@ mod tests {
             .env("REAL_NODE", real_node)
             .env("VIBE_REPO_ROOT", &repo_root)
             .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
-            .env("VIBE_MODEL", "openai-compatible/example-model")
-            .env("OPENAI_COMPATIBLE_BASE_URL", "https://models.example/v1")
-            .env("OPENAI_COMPATIBLE_API_KEY", "unused")
+            .env("VIBE_MODEL", "goog/qwen3.8")
+            .env("GOOG_BASE_URL", "https://models.example/v1")
+            .env("GOOG_API_KEY", "unused")
             .output()
             .expect("run runtime shell");
 
@@ -298,10 +298,10 @@ mod tests {
             &fs::read(home.join(".pi/agent/models.json")).expect("read models config"),
         )
         .expect("parse models config");
-        let provider = &config["providers"]["openai-compatible"];
+        let provider = &config["providers"]["goog"];
         assert_eq!(provider["baseUrl"], "https://models.example/v1");
         assert_eq!(provider["api"], "openai-completions");
-        assert_eq!(provider["apiKey"], "$OPENAI_COMPATIBLE_API_KEY");
+        assert_eq!(provider["apiKey"], "$GOOG_API_KEY");
         assert_eq!(provider["discoverModels"], true);
         assert!(provider.get("models").is_none());
     }

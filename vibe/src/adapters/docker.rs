@@ -21,8 +21,8 @@ const AUTH_VARS: &[&str] = &[
     "AZURE_OPENAI_API_KEY",
     "AZURE_OPENAI_BASE_URL",
     "OPENCODE_API_KEY",
-    "OPENAI_COMPATIBLE_BASE_URL",
-    "OPENAI_COMPATIBLE_API_KEY",
+    "GOOG_BASE_URL",
+    "GOOG_API_KEY",
 ];
 // These provider IDs match Pi's model selectors; unknown IDs cannot use env auth.
 const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
@@ -35,10 +35,7 @@ const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
         &["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL"],
     ),
     (&["opencode", "opencode-go"], &["OPENCODE_API_KEY"]),
-    (
-        &["openai-compatible"],
-        &["OPENAI_COMPATIBLE_BASE_URL", "OPENAI_COMPATIBLE_API_KEY"],
-    ),
+    (&["goog"], &["GOOG_BASE_URL", "GOOG_API_KEY"]),
 ];
 const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
@@ -147,11 +144,18 @@ pub(crate) fn prepare_provider_auth(
     model: &str,
 ) -> Result<Option<PathBuf>, String> {
     if model.starts_with("openai-compatible/") {
-        // This provider requires environment configuration and does not use host Pi state.
+        return Err("vibe no longer supports openai-compatible; use goog/<model>".to_string());
+    }
+
+    if let Some(model_name) = model.strip_prefix("goog/") {
+        if model_name.trim().is_empty() {
+            return Err("vibe requires a model after goog/".to_string());
+        }
+        // Goog requires endpoint credentials and never falls back to host Pi state.
         if has_provider_env(model) {
             return Ok(None);
         }
-        return Err("vibe requires both OpenAI-compatible endpoint variables".to_string());
+        return Err("vibe requires both Goog endpoint variables".to_string());
     }
 
     let pi_agent_dir = home.and_then(|home| {
@@ -924,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn compatible_auth_isolates_pi_state() {
+    fn goog_auth_isolates_pi_state() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_dir = home.path().join(".pi/agent");
@@ -934,12 +938,12 @@ mod tests {
 
         std::env::set_var("HOME", home.path());
         clear_auth_env();
-        std::env::set_var("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid");
-        std::env::set_var("OPENAI_COMPATIBLE_API_KEY", "compatible");
+        std::env::set_var("GOOG_BASE_URL", "https://example.invalid");
+        std::env::set_var("GOOG_API_KEY", "goog");
 
-        let pi_agent_dir = prepare_provider_auth(home.path().to_str(), "openai-compatible/model")
-            .expect("compatible auth");
-        let auth_args = auth_env_args("openai-compatible/model");
+        let pi_agent_dir =
+            prepare_provider_auth(home.path().to_str(), "goog/qwen3.8").expect("Goog auth");
+        let auth_args = auth_env_args("goog/qwen3.8");
         let temp = tempfile::tempdir().expect("tempdir");
         let artifacts = test_artifacts(temp.path());
         let user = HostUser {
@@ -952,7 +956,7 @@ mod tests {
             worktree: temp.path(),
             inputs: &[],
             artifacts: &artifacts,
-            model: "openai-compatible/model",
+            model: "goog/qwen3.8",
             stderr_level: "info",
             insecure_tls: false,
             snapshot_ref: "refs/vibe/snapshots/run",
@@ -963,22 +967,14 @@ mod tests {
 
         restore_env(saved);
         assert_eq!(pi_agent_dir, None);
-        assert_eq!(
-            auth_args,
-            [
-                "-e",
-                "OPENAI_COMPATIBLE_BASE_URL",
-                "-e",
-                "OPENAI_COMPATIBLE_API_KEY"
-            ]
-        );
+        assert_eq!(auth_args, ["-e", "GOOG_BASE_URL", "-e", "GOOG_API_KEY"]);
         assert!(!docker_args
             .iter()
             .any(|arg| arg.contains("/vibe-home/.pi/agent")));
     }
 
     #[test]
-    fn compatible_auth_rejects_missing_key() {
+    fn goog_auth_rejects_incomplete_environment() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let home = tempfile::tempdir().expect("tempdir");
         let auth_dir = home.path().join(".pi/agent");
@@ -986,16 +982,64 @@ mod tests {
         fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
         let saved = save_auth_env();
 
-        std::env::set_var("HOME", home.path());
+        let tests = [
+            ("missing key", Some("https://example.invalid"), None),
+            ("blank key", Some("https://example.invalid"), Some(" ")),
+            ("missing base URL", None, Some("goog")),
+            ("blank base URL", Some(" "), Some("goog")),
+        ];
+        for (name, base_url, api_key) in tests {
+            std::env::set_var("HOME", home.path());
+            clear_auth_env();
+            if let Some(base_url) = base_url {
+                std::env::set_var("GOOG_BASE_URL", base_url);
+            }
+            if let Some(api_key) = api_key {
+                std::env::set_var("GOOG_API_KEY", api_key);
+            }
+
+            let result = prepare_provider_auth(home.path().to_str(), "goog/qwen3.8");
+
+            assert_eq!(
+                result.expect_err(name),
+                "vibe requires both Goog endpoint variables",
+                "{name}"
+            );
+        }
+
+        restore_env(saved);
+    }
+
+    #[test]
+    fn goog_auth_rejects_empty_model() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let saved = save_auth_env();
         clear_auth_env();
-        std::env::set_var("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid");
+        std::env::set_var("GOOG_BASE_URL", "https://example.invalid");
+        std::env::set_var("GOOG_API_KEY", "goog");
+
+        let result = prepare_provider_auth(None, "goog/");
+
+        restore_env(saved);
+        assert_eq!(
+            result.expect_err("empty model must fail"),
+            "vibe requires a model after goog/"
+        );
+    }
+
+    #[test]
+    fn legacy_compatible_selector_is_rejected() {
+        let _guard = auth_env_lock().lock().expect("lock auth env");
+        let home = tempfile::tempdir().expect("tempdir");
+        let saved = save_auth_env();
+        clear_auth_env();
 
         let result = prepare_provider_auth(home.path().to_str(), "openai-compatible/model");
 
         restore_env(saved);
         assert_eq!(
-            result.expect_err("incomplete compatible auth"),
-            "vibe requires both OpenAI-compatible endpoint variables"
+            result.expect_err("legacy selector must fail"),
+            "vibe no longer supports openai-compatible; use goog/<model>"
         );
     }
 
@@ -1128,30 +1172,22 @@ mod tests {
     }
 
     #[test]
-    fn forwards_compatible_credentials_only() {
+    fn forwards_goog_credentials_only() {
         let _guard = auth_env_lock().lock().expect("lock auth env");
         let saved = save_auth_env();
         clear_auth_env();
         for (key, value) in [
-            ("OPENAI_COMPATIBLE_BASE_URL", "https://example.invalid"),
-            ("OPENAI_COMPATIBLE_API_KEY", "compatible"),
+            ("GOOG_BASE_URL", "https://example.invalid"),
+            ("GOOG_API_KEY", "goog"),
             ("OPENAI_API_KEY", "openai"),
         ] {
             std::env::set_var(key, value);
         }
 
-        let args = auth_env_args("openai-compatible/model");
+        let args = auth_env_args("goog/qwen3.8");
 
         restore_env(saved);
-        assert_eq!(
-            args,
-            [
-                "-e",
-                "OPENAI_COMPATIBLE_BASE_URL",
-                "-e",
-                "OPENAI_COMPATIBLE_API_KEY"
-            ]
-        );
+        assert_eq!(args, ["-e", "GOOG_BASE_URL", "-e", "GOOG_API_KEY"]);
     }
 
     #[test]

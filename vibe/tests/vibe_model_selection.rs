@@ -4,8 +4,8 @@
 //!
 //! The ignored tests require Docker, network access, and their respective
 //! credentials. `integration` exercises file authentication and links the host
-//! Pi state; `integration-compatible` uses only the compatible provider
-//! variables and an isolated home without host Pi state.
+//! Pi state; `integration-goog` uses only the Goog provider variables and an
+//! isolated home without host Pi state.
 //!
 //! The result's `model` field confirms what Vibe reports receiving. The
 //! assistant `message_start` event comes from Pi and independently confirms
@@ -167,8 +167,8 @@ fn vibe_forwards_model_selector_to_pi() {
 }
 
 #[test]
-#[ignore = "requires Docker, network, and compatible endpoint"]
-fn vibe_discovers_compatible_model() {
+#[ignore = "requires Docker, network, and Goog endpoint"]
+fn vibe_discovers_goog_model() {
     let temp = tempfile::tempdir().expect("tempdir");
     let test_home = temp.path().join("home");
     let repo = temp.path().join("repo");
@@ -196,8 +196,7 @@ fn vibe_discovers_compatible_model() {
     );
     let prompt = temp.path().join("prompt.txt");
     fs::write(&prompt, "Inspect the repository and make no changes.\n").expect("write prompt");
-    let model =
-        std::env::var("OPENAI_COMPATIBLE_MODEL").expect("OPENAI_COMPATIBLE_MODEL is required");
+    let model = std::env::var("GOOG_MODEL").expect("GOOG_MODEL is required");
 
     let mut command = Command::new("timeout");
     command
@@ -209,25 +208,23 @@ fn vibe_discovers_compatible_model() {
             env!("CARGO_BIN_EXE_vibe"),
             "run",
         ])
-        .args(["--key", "pi-compatible-discovery"])
+        .args(["--key", "pi-goog-discovery"])
         .args(["--base", "HEAD"])
         .arg("--prompt-file")
         .arg(&prompt)
-        .args(["--model", &format!("openai-compatible/{model}")])
+        .args(["--model", &format!("goog/{model}")])
         .env("HOME", &test_home);
     for key in FILE_AUTH_VARS {
         command.env_remove(key);
     }
     command
         .env(
-            "OPENAI_COMPATIBLE_BASE_URL",
-            std::env::var("OPENAI_COMPATIBLE_BASE_URL")
-                .expect("OPENAI_COMPATIBLE_BASE_URL is required"),
+            "GOOG_BASE_URL",
+            std::env::var("GOOG_BASE_URL").expect("GOOG_BASE_URL is required"),
         )
         .env(
-            "OPENAI_COMPATIBLE_API_KEY",
-            std::env::var("OPENAI_COMPATIBLE_API_KEY")
-                .expect("OPENAI_COMPATIBLE_API_KEY is required"),
+            "GOOG_API_KEY",
+            std::env::var("GOOG_API_KEY").expect("GOOG_API_KEY is required"),
         );
     let output = command.output().expect("run Vibe");
 
@@ -250,7 +247,7 @@ fn vibe_discovers_compatible_model() {
         result["status"].as_str(),
         Some("noop") | Some("completed")
     ));
-    assert_eq!(result["model"], format!("openai-compatible/{model}"));
+    assert_eq!(result["model"], format!("goog/{model}"));
 
     let events_path = result["events_log_path"].as_str().expect("events log path");
     let events = fs::read_to_string(events_path).expect("read events");
@@ -260,5 +257,5 @@ fn vibe_discovers_compatible_model() {
         .find(|event| event["type"] == "message_start" && event["message"]["role"] == "assistant")
         .expect("assistant model selection event");
     assert_eq!(selection["message"]["model"], model);
-    assert_eq!(selection["message"]["provider"], "openai-compatible");
+    assert_eq!(selection["message"]["provider"], "goog");
 }
