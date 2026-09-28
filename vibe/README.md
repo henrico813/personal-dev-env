@@ -26,10 +26,18 @@ test`. On Linux, `make -C vibe integration` runs the file-auth test
 `vibe_forwards_model_selector_to_pi`; it requires Docker, GNU `timeout`, network
 access, and valid `~/.pi/agent/auth.json` credentials. It uses an isolated Vibe
 home but links the real Pi agent directory, so OAuth refreshes can persist.
-`make -C vibe integration-compatible` runs `vibe_discovers_compatible_model`.
-That test uses `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY`, and
-`OPENAI_COMPATIBLE_MODEL`; the model variable names an advertised endpoint model
-and is required for the live test. It does not mount host Pi state.
+`make -C vibe integration-goog` runs `vibe_discovers_goog_model`. That test uses
+`GOOG_BASE_URL`, `GOOG_API_KEY`, and `GOOG_MODEL`; set the model variable to
+`qwen3.8` when the endpoint advertises that ID. It does not mount host Pi state.
+
+Full PDE installs create `~/.config/vibe/goog.env` when it does not already
+exist. Fill in its endpoint and key; the file already exports `GOOG_MODEL`.
+Run this complete live integration command (the explicit model assignment keeps
+the example pinned to the advertised model):
+
+```bash
+set -a; source ~/.config/vibe/goog.env; set +a; GOOG_MODEL=qwen3.8 make -C vibe integration-goog
+```
 
 ## Install
 
@@ -61,9 +69,10 @@ vibe status --key pdev-049-demo
 ```
 
 Choose a `provider/model` selector. Vibe passes it unchanged to Pi; bare model
-names can be ambiguous. Compatible selectors discover models from the endpoint;
-see [Runtime inputs](docs/reference/runtime-inputs.md). Use `--base <revision>`
-to seed a new managed
+names can be ambiguous. For `goog/<model>`, Vibe discovers models from
+`GOOG_BASE_URL`; use `goog/qwen3.8` when the endpoint advertises `qwen3.8`. See
+[Runtime inputs](docs/reference/runtime-inputs.md). Use `--base <revision>` to
+seed a new managed
 worktree. Reusing a key keeps its managed branch and must omit `--base`.
 Concurrent keys that normalize to the same slug are rejected.
 

@@ -40,17 +40,17 @@ if [[ -d "${shared_skills_dir}" ]]; then
   PI_ARGS+=(--skill "${shared_skills_dir}")
 fi
 
-if [[ "${VIBE_MODEL}" == openai-compatible/* ]]; then
+if [[ "${VIBE_MODEL}" == goog/* ]]; then
   mkdir -p "$HOME/.pi/agent"
   node -e '
     const fs = require("fs");
     const path = process.argv[1];
     const config = {
       providers: {
-        "openai-compatible": {
-          baseUrl: process.env.OPENAI_COMPATIBLE_BASE_URL,
+        goog: {
+          baseUrl: process.env.GOOG_BASE_URL,
           api: "openai-completions",
-          apiKey: "$OPENAI_COMPATIBLE_API_KEY",
+          apiKey: "$GOOG_API_KEY",
           discoverModels: true,
         },
       },
