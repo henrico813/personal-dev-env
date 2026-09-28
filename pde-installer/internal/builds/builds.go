@@ -16,7 +16,7 @@ import (
 	"pde-installer/internal/run"
 )
 
-// Manager builds repository binaries for one installation.
+// Manager builds and installs repository artifacts for one installation.
 type Manager struct {
 	Home, RepoRoot string
 	Runner         run.Runner
@@ -208,6 +208,69 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if err := journal.Activate(stateStage, m.statePath()); err != nil {
 		return nil, journal.Revert(fmt.Errorf("activate build state: %w", err))
 	}
+	return journal, nil
+}
+
+// InstallPlugin copies a repository plugin's Lua runtime into the managed home.
+func (m Manager) InstallPlugin(name string) (*fsutil.Journal, error) {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		return nil, fmt.Errorf("invalid plugin name %q", name)
+	}
+	source := filepath.Join(m.RepoRoot, "nvim-plugins", name, "lua")
+	destination := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", name)
+	sourceHash, err := hashTree(source)
+	if err != nil {
+		return nil, fmt.Errorf("hash %s source: %w", name, err)
+	}
+	if info, statErr := os.Lstat(destination); statErr == nil && info.IsDir() {
+		installedHash, hashErr := hashTree(filepath.Join(destination, "lua"))
+		if hashErr == nil && installedHash == sourceHash {
+			return &fsutil.Journal{}, nil
+		}
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("inspect installed plugin %s: %w", name, statErr)
+	}
+	if m.Runner.DryRun {
+		if err := m.Runner.Plan("install and atomically activate "+name, nil); err != nil {
+			return nil, err
+		}
+		return &fsutil.Journal{}, nil
+	}
+	stateDir := filepath.Join(m.Home, ".local", "state", "pde")
+	if err := fsutil.GuardHome(m.Home, stateDir); err != nil {
+		return nil, err
+	}
+	if err := fsutil.GuardHomeAllowLeafSymlink(m.Home, destination); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create plugin state directory: %w", err)
+	}
+	workspace, err := os.MkdirTemp(stateDir, ".nvim-plugin-")
+	if err != nil {
+		return nil, fmt.Errorf("create %s staging directory: %w", name, err)
+	}
+	tracked := false
+	defer func() {
+		if !tracked {
+			_ = os.RemoveAll(workspace)
+		}
+	}()
+	stage := filepath.Join(workspace, "plugin")
+	if err := fsutil.CopyTree(source, filepath.Join(stage, "lua")); err != nil {
+		return nil, fmt.Errorf("stage plugin %s: %w", name, err)
+	}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
+	if err := journal.Activate(stage, destination); err != nil {
+		return nil, journal.Revert(fmt.Errorf("activate plugin %s: %w", name, err))
+	}
+	if err := journal.AddCleanup(workspace); err != nil {
+		return nil, journal.Revert(err)
+	}
+	tracked = true
 	return journal, nil
 }
 
