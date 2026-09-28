@@ -40,6 +40,7 @@ for item in \
 	moshi-hook \
 	herdr \
 	@opencode/cli \
+	opencode-inline-shim \
 	planner \
 	blink.cmp \
 	FiraCode \

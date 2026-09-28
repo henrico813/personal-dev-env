@@ -9,6 +9,7 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
 - `pde-installer/test/`: Docker-based installer tests and verification scripts.
 - `chezmoi/`: home configuration plus pinned external assets.
 - `cli/`: vault-only `pde` command.
+- `nvim-plugins/`: custom Neovim plugins that must also install outside PDE.
 
 ## Working Rules
 

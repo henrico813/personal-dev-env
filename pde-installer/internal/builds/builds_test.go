@@ -38,7 +38,7 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "cli", "surveil", "vibe"} {
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "surveil", "vibe"} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
 	logPath := filepath.Join(t.TempDir(), "build.log")

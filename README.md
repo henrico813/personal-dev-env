@@ -90,6 +90,7 @@ binaries plus repo-managed AI config.
 - `ai/pi/agent/` holds Pi settings and package resources.
 - `surveil/` holds the Surveil task-doc CLI docs.
 - `pde/AGENTS.md` holds repo-local PDE notes.
+- `nvim-plugins/` holds custom Neovim plugins that also install outside PDE.
 
 ## Installed Layout
 
@@ -107,7 +108,7 @@ binaries plus repo-managed AI config.
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, and bidirectional agent cycling (`Tab` next, `Shift+Tab` previous) |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
-| OpenCode Inline Shim | `cli/cmd/opencode-inline-shim/` | `~/.local/bin/opencode-inline-shim` | Local OpenAI-compatible bridge |
+| OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
 | Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
