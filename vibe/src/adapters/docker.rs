@@ -1724,6 +1724,43 @@ mod tests {
     }
 
     #[test]
+    fn docker_mounts_user_skills_alone() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let user_skills_dir = temp.path().join("home/.agents/skills");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: temp.path(),
+            git_common_dir: temp.path(),
+            worktree: temp.path(),
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: None,
+            user_skills_dir: Some(&user_skills_dir),
+            repository_skills_dir: None,
+        });
+
+        assert!(args.iter().any(|arg| {
+            arg == &format!(
+                "type=bind,src={},dst=/vibe-home/.agents/skills,readonly",
+                user_skills_dir.display()
+            )
+        }));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.starts_with("VIBE_REPO_SKILLS_DIR=")));
+    }
+
+    #[test]
     fn docker_mounts_repository_skills_alone() {
         let temp = tempfile::tempdir().expect("tempdir");
         let repository_skills_dir = temp.path().join("worktree/.agents/skills");

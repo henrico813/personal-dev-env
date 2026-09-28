@@ -261,6 +261,17 @@ pub fn validate_repository_skills(repo: &Path) -> Result<(), String> {
         }
     }
 
+    let fsmonitor = git_paths_z(
+        repo,
+        &["ls-files", "--stage", "-f", "-z", "--", ".agents/skills"],
+    )?;
+    if fsmonitor
+        .iter()
+        .any(|entry| entry.split_whitespace().next() != Some("H"))
+    {
+        return Err("repository skills cannot use fsmonitor-valid index flags".to_string());
+    }
+
     let changes = git_paths_z(
         repo,
         &[
@@ -343,6 +354,7 @@ pub fn commit_all(
 #[cfg(test)]
 mod tests {
     use super::{changed_files_in_worktree, ensure_worktree, head_sha, validate_repository_skills};
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process::Command;
     use tempfile::{tempdir, TempDir};
@@ -386,13 +398,19 @@ mod tests {
         run(&repo, &["config", "user.email", "test@example.com"]);
         std::fs::write(repo.join("seed.txt"), "seed\n").expect("write seed");
         run(&repo, &["add", "seed.txt"]);
-        run(&repo, &["commit", "-m", "seed"]);
+        run(
+            &repo,
+            &["-c", "core.hooksPath=/dev/null", "commit", "-m", "seed"],
+        );
         run(&repo, &["branch", "-M", "main"]);
         run(&repo, &["push", "-u", "origin", "main"]);
         run(&repo, &["checkout", "-b", "feature"]);
         std::fs::write(repo.join("feature.txt"), "feature\n").expect("write feature");
         run(&repo, &["add", "feature.txt"]);
-        run(&repo, &["commit", "-m", "feature"]);
+        run(
+            &repo,
+            &["-c", "core.hooksPath=/dev/null", "commit", "-m", "feature"],
+        );
         run(&repo, &["push", "origin", "feature"]);
         run(&repo, &["checkout", "main"]);
         run(&repo, &["update-ref", "-d", "refs/remotes/origin/feature"]);
@@ -477,7 +495,13 @@ mod tests {
         assert!(add.status.success());
 
         let commit = Command::new("git")
-            .args(["commit", "-m", "seed"])
+            .args([
+                "-c",
+                "core.hooksPath=/dev/null",
+                "commit",
+                "-m",
+                "seed",
+            ])
             .current_dir(repo)
             .output()
             .expect("git commit");
@@ -568,6 +592,37 @@ mod tests {
     }
 
     #[test]
+    fn repository_skills_reject_fsmonitor_valid() {
+        let (_temp, repo) = setup_repository_skills();
+        let hook = repo.join("no-fsmonitor-changes");
+        std::fs::write(&hook, "#!/bin/sh\nprintf 'token\\0'\n").expect("write fsmonitor hook");
+        let mut permissions = std::fs::metadata(&hook)
+            .expect("fsmonitor hook metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&hook, permissions).expect("chmod fsmonitor hook");
+        run(
+            &repo,
+            &["config", "core.fsmonitor", hook.to_str().expect("hook path")],
+        );
+        run(&repo, &["update-index", "--fsmonitor"]);
+        run(
+            &repo,
+            &[
+                "update-index",
+                "--fsmonitor-valid",
+                ".agents/skills/reviewed/SKILL.md",
+            ],
+        );
+        std::fs::write(repo.join(".agents/skills/reviewed/SKILL.md"), "changed\n")
+            .expect("change skill");
+
+        let error = validate_repository_skills(&repo).expect_err("index flag must fail");
+
+        assert!(error.contains("fsmonitor-valid"), "{error}");
+    }
+
+    #[test]
     fn repository_skills_reject_ignored_files() {
         let (_temp, repo) = setup_repository_skills();
         std::fs::write(repo.join(".gitignore"), ".agents/skills/local.txt\n")
@@ -631,7 +686,10 @@ mod tests {
         let remote_main = output(&repo, &["rev-parse", "origin/main"]);
         std::fs::write(repo.join("local.txt"), "local\n").expect("write local");
         run(&repo, &["add", "local.txt"]);
-        run(&repo, &["commit", "-m", "local"]);
+        run(
+            &repo,
+            &["-c", "core.hooksPath=/dev/null", "commit", "-m", "local"],
+        );
         let worktree = repo.join("worktrees/default-main");
         std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
 
