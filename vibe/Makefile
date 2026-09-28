@@ -1,4 +1,4 @@
-.PHONY: build check test integration integration-compatible clean install
+.PHONY: build check test integration integration-goog clean install
 
 build:
 	cargo build --release
@@ -17,8 +17,8 @@ test:
 integration:
 	cargo test --test vibe_model_selection vibe_forwards_model_selector_to_pi -- --ignored --exact
 
-integration-compatible:
-	cargo test --test vibe_model_selection vibe_discovers_compatible_model -- --ignored --exact
+integration-goog:
+	cargo test --test vibe_model_selection vibe_discovers_goog_model -- --ignored --exact
 
 install:
 	cargo install --path . --root $(HOME)/.local
