@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,19 +22,24 @@ import (
 )
 
 const (
-	defaultPort            = "4141"
-	defaultOpenCodeBaseURL = "http://127.0.0.1:4199"
-	transportModel         = "opencode-inline"
-	defaultAgent           = "inline"
-	defaultTimeout         = 60 * time.Second
-	backendPollInterval    = 150 * time.Millisecond
+	defaultPort         = "4141"
+	defaultOpenCodeURL  = "http://127.0.0.1:4199"
+	defaultOpenCodeUser = "opencode"
+	transportModel      = "opencode-inline"
+	defaultAgent        = "inline"
+	defaultTimeout      = 60 * time.Second
+	backendPollInterval = 150 * time.Millisecond
 )
+
+// errBackendDown means no server answered, so auto-starting OpenCode may help.
+var errBackendDown = errors.New("OpenCode is not reachable")
 
 type config struct {
 	port            string
 	opencodeBaseURL string
-	inlineModel     string
 	inlineAgent     string
+	username        string
+	password        string
 	timeout         time.Duration
 }
 
@@ -46,12 +50,6 @@ type backendManager struct {
 
 func inlinePlacements() []string {
 	return []string{"replace", "add", "before", "new"}
-}
-
-type pdeJSONConfig struct {
-	OpenCodeBaseURL        string `json:"opencode_base_url"`
-	OpenCodeInlineShimPort string `json:"opencode_inline_shim_port"`
-	OpenCodeInlineModel    string `json:"opencode_inline_model"`
 }
 
 type chatRequest struct {
@@ -73,46 +71,35 @@ type structuredInline struct {
 type inlineModel struct {
 	ProviderID string
 	ModelID    string
-	Thinking   string
+	Variant    string
 }
 
 type sessionResponse struct {
-	ID string `json:"id"`
+	Data struct {
+		ID string `json:"id"`
+	} `json:"data"`
 }
 
-type sessionMessageResponse struct {
-	Info struct {
-		Error *struct {
-			Message string `json:"message"`
-			Data    struct {
-				Message string `json:"message"`
-			} `json:"data"`
-		} `json:"error"`
-		Structured *structuredInline `json:"structured"`
-	} `json:"info"`
+type generateResponse struct {
+	Data struct {
+		Text string `json:"text"`
+	} `json:"data"`
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	var healthcheck bool
-	var showHelp bool
-	flag.BoolVar(&healthcheck, "healthcheck", false, "Exit 0 when the local shim is reachable")
-	flag.BoolVar(&showHelp, "help", false, "Show usage")
-	flag.Parse()
-
-	cfg, err := loadConfig()
+func run(args []string) error {
+	cfg, healthcheck, err := loadConfig(args)
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
 	if err != nil {
 		return err
-	}
-	if showHelp {
-		fmt.Fprintf(os.Stdout, "opencode-inline-shim serves /healthz, /v1/models, and /v1/chat/completions on 127.0.0.1:%s\n", cfg.port)
-		return nil
 	}
 	if healthcheck {
 		return runHealthcheck(cfg)
@@ -120,45 +107,27 @@ func run() error {
 	return runServer(cfg)
 }
 
-func loadConfig() (config, error) {
-	cfg := config{
-		port:            defaultPort,
-		opencodeBaseURL: defaultOpenCodeBaseURL,
-		inlineModel:     "",
-		inlineAgent:     getenv("OPENCODE_INLINE_AGENT", defaultAgent),
-		timeout:         defaultTimeout,
+// loadConfig reads flags plus the OPENCODE_SERVER_* credentials that
+// `opencode serve` itself uses, so an auto-started server shares them.
+func loadConfig(args []string) (config, bool, error) {
+	cfg := config{timeout: defaultTimeout}
+	var healthcheck bool
+	flags := flag.NewFlagSet("opencode-inline-shim", flag.ContinueOnError)
+	flags.StringVar(&cfg.port, "port", defaultPort, "loopback port for the shim")
+	flags.StringVar(&cfg.opencodeBaseURL, "opencode-url", defaultOpenCodeURL, "OpenCode 2 server URL")
+	flags.StringVar(&cfg.inlineAgent, "agent", defaultAgent, "OpenCode agent for inline sessions")
+	flags.BoolVar(&healthcheck, "healthcheck", false, "exit 0 when the shim and OpenCode are reachable")
+	flags.Usage = func() {
+		fmt.Fprintln(flags.Output(), "opencode-inline-shim serves /healthz, /v1/models, and /v1/chat/completions on 127.0.0.1:<port>")
+		flags.PrintDefaults()
 	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return config{}, fmt.Errorf("get user home directory: %w", err)
+	if err := flags.Parse(args); err != nil {
+		return config{}, false, err
 	}
-
-	configPath := filepath.Join(homeDir, ".config", "pde", "config.json")
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil
-		}
-		return config{}, fmt.Errorf("read %s: %w", configPath, err)
-	}
-
-	var persisted pdeJSONConfig
-	if err := json.Unmarshal(data, &persisted); err != nil {
-		return config{}, fmt.Errorf("decode %s: %w", configPath, err)
-	}
-	if value := strings.TrimSpace(persisted.OpenCodeInlineShimPort); value != "" {
-		cfg.port = value
-	}
-	if value := strings.TrimSpace(persisted.OpenCodeBaseURL); value != "" {
-		cfg.opencodeBaseURL = strings.TrimRight(value, "/")
-	}
-	if value := strings.TrimSpace(persisted.OpenCodeInlineModel); value != "" {
-		cfg.inlineModel = value
-	}
-
-	return cfg, nil
+	cfg.opencodeBaseURL = strings.TrimRight(strings.TrimSpace(cfg.opencodeBaseURL), "/")
+	cfg.username = getenv("OPENCODE_SERVER_USERNAME", defaultOpenCodeUser)
+	cfg.password = os.Getenv("OPENCODE_SERVER_PASSWORD")
+	return cfg, healthcheck, nil
 }
 
 func getenv(name, fallback string) string {
@@ -166,6 +135,12 @@ func getenv(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func (c config) authorize(request *http.Request) {
+	if c.password != "" {
+		request.SetBasicAuth(c.username, c.password)
+	}
 }
 
 func runHealthcheck(cfg config) error {
@@ -186,21 +161,26 @@ func runHealthcheck(cfg config) error {
 	return nil
 }
 
+// backendReachable wraps errBackendDown only when nothing answered. A server
+// that answers but rejects the request is not replaced by auto-start.
 func backendReachable(ctx context.Context, cfg config) error {
-	backendURL, err := url.Parse(cfg.opencodeBaseURL)
-	if err != nil {
-		return fmt.Errorf("parse OpenCode base URL: %w", err)
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, backendURL.String(), nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.opencodeBaseURL+"/api/info", nil)
 	if err != nil {
 		return err
 	}
+	cfg.authorize(request)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errBackendDown, err)
 	}
 	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, response.Body)
+	if response.StatusCode == http.StatusUnauthorized {
+		return errors.New("OpenCode rejected the server password; set OPENCODE_SERVER_PASSWORD to match the running server")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("OpenCode /api/info returned %s; OpenCode 2 is required", response.Status)
+	}
 	return nil
 }
 
@@ -237,6 +217,10 @@ func startBackendProcess(cfg config) error {
 	if err != nil {
 		return err
 	}
+	// OpenCode 2 generates a random password when none is set, which the shim could not send.
+	if cfg.password == "" {
+		return errors.New("set OPENCODE_SERVER_PASSWORD so the shim can authenticate to the OpenCode server it starts")
+	}
 	bin, err := exec.LookPath("opencode")
 	if err != nil {
 		return fmt.Errorf("find opencode: %w", err)
@@ -253,23 +237,23 @@ func startBackendProcess(cfg config) error {
 }
 
 func (m *backendManager) ensureReachable(ctx context.Context) error {
-	if err := backendReachable(ctx, m.cfg); err == nil {
-		return nil
+	if err := backendReachable(ctx, m.cfg); !errors.Is(err, errBackendDown) {
+		return err
 	}
 
 	m.startMu.Lock()
 	defer m.startMu.Unlock()
 
-	if err := backendReachable(ctx, m.cfg); err == nil {
-		return nil
+	if err := backendReachable(ctx, m.cfg); !errors.Is(err, errBackendDown) {
+		return err
 	}
 	if err := startBackendProcess(m.cfg); err != nil {
 		return err
 	}
 
 	for {
-		if err := backendReachable(ctx, m.cfg); err == nil {
-			return nil
+		if err := backendReachable(ctx, m.cfg); !errors.Is(err, errBackendDown) {
+			return err
 		}
 		select {
 		case <-ctx.Done():
@@ -341,7 +325,7 @@ func handleChatCompletions(backend *backendManager, w http.ResponseWriter, r *ht
 		return
 	}
 
-	selectedModel, err := selectedInlineModel(requestBody, cfg)
+	selectedModel, err := selectedInlineModel(requestBody)
 	if err != nil {
 		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
 		return
@@ -353,7 +337,7 @@ func handleChatCompletions(backend *backendManager, w http.ResponseWriter, r *ht
 		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
 		return
 	}
-	structured, err := requestStructuredInline(ctx, cfg, requestBody, selectedModel)
+	structured, err := requestInline(ctx, cfg, requestBody, selectedModel)
 	if err != nil {
 		writeInlineErrorCompletion(w, responseModel(requestBody), normalizeInlineError(err))
 		return
@@ -379,88 +363,61 @@ func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
 	return requestBody, nil
 }
 
-func requestStructuredInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel *inlineModel) (*structuredInline, error) {
-	prompt, system := buildPrompt(requestBody.Messages)
+// requestInline uses OpenCode 2.0.18's one-shot session generate route. It
+// accepts only a prompt and returns text, so JSON is requested in the prompt
+// and validated here instead of by a server-side schema.
+func requestInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel *inlineModel) (*structuredInline, error) {
 	sessionPayload := map[string]any{
-		"title": "CodeCompanion Inline",
-		"permission": []map[string]string{
-			{"permission": "*", "pattern": "*", "action": "deny"},
-			{"permission": "StructuredOutput", "pattern": "*", "action": "allow"},
-		},
+		"title":       "CodeCompanion Inline",
+		"permissions": []map[string]string{{"action": "*", "resource": "*", "effect": "deny"}},
 	}
-	var session sessionResponse
-	if err := postJSON(ctx, cfg, "/session", sessionPayload, &session); err != nil {
-		return nil, err
-	}
-	defer cleanupSession(cfg, session.ID)
-
-	payload := map[string]any{
-		"agent": cfg.inlineAgent,
-		"system": strings.Join(append([]string{
-			"You are an inline editing backend for CodeCompanion.",
-			"Use StructuredOutput exactly once and do not call other tools.",
-			"This endpoint only supports edit responses, never chat or explanation mode.",
-			"Return code suitable for direct insertion into the current buffer.",
-			"Do not answer in chat or explanation mode; return edit-only JSON.",
-		}, system...), "\n"),
-		"format": map[string]any{
-			"type":       "json_schema",
-			"retryCount": 0,
-			"schema": map[string]any{
-				"type":     "object",
-				"required": []string{"code", "placement"},
-				"properties": map[string]any{
-					"code":     map[string]string{"type": "string"},
-					"language": map[string]string{"type": "string"},
-					"placement": map[string]any{
-						"type": "string",
-						"enum": inlinePlacements(),
-					},
-				},
-				"additionalProperties": false,
-			},
-		},
-		"parts": []map[string]string{{"type": "text", "text": prompt}},
+	// OpenCode rejects unknown agents; an empty --agent uses its default agent.
+	if cfg.inlineAgent != "" {
+		sessionPayload["agent"] = cfg.inlineAgent
 	}
 	if selectedModel != nil {
-		payload["model"] = openCodeModel(selectedModel)
+		sessionPayload["model"] = openCodeModel(selectedModel)
 	}
-
-	var response sessionMessageResponse
-	if err := postJSON(ctx, cfg, "/session/"+session.ID+"/message", payload, &response); err != nil {
+	var session sessionResponse
+	if err := postJSON(ctx, cfg, "/api/session", sessionPayload, &session); err != nil {
 		return nil, err
 	}
-	if response.Info.Error != nil {
-		message := strings.TrimSpace(response.Info.Error.Message)
-		if message == "" {
-			message = bestErrorMessage([]byte(response.Info.Error.Data.Message))
-		}
-		if message == "" {
-			message = "OpenCode returned an error"
-		}
-		return nil, errors.New(message)
+	if strings.TrimSpace(session.Data.ID) == "" {
+		return nil, errors.New("OpenCode did not return a session ID")
 	}
-	return response.Info.Structured, nil
+	defer cleanupSession(cfg, session.Data.ID)
+
+	var generated generateResponse
+	path := "/api/session/" + url.PathEscape(session.Data.ID) + "/generate"
+	if err := postJSON(ctx, cfg, path, map[string]string{"prompt": buildPrompt(requestBody.Messages)}, &generated); err != nil {
+		return nil, err
+	}
+	return parseInlineText(generated.Data.Text)
 }
 
-func buildPrompt(messages []chatMessage) (string, []string) {
-	var system []string
-	var prompt []string
+func buildPrompt(messages []chatMessage) string {
+	instructions := []string{
+		"You are an inline editing backend for CodeCompanion.",
+		"This endpoint only supports edit responses, never chat or explanation mode.",
+		fmt.Sprintf(`Respond with only one JSON object: {"code": "...", "language": "...", "placement": "%s"}.`, strings.Join(inlinePlacements(), "|")),
+		"Return code suitable for direct insertion into the current buffer.",
+	}
+	var conversation []string
 	for _, message := range messages {
 		text := strings.TrimSpace(contentToText(message.Content))
 		if text == "" {
 			continue
 		}
 		if message.Role == "system" {
-			system = append(system, text)
+			instructions = append(instructions, text)
 			continue
 		}
-		prompt = append(prompt, fmt.Sprintf("<message role=\"%s\">\n%s\n</message>", message.Role, text))
+		conversation = append(conversation, fmt.Sprintf("<message role=\"%s\">\n%s\n</message>", message.Role, text))
 	}
-	if len(prompt) == 0 {
-		prompt = append(prompt, "<message role=\"user\">Return a replace edit.</message>")
+	if len(conversation) == 0 {
+		conversation = append(conversation, "<message role=\"user\">Return a replace edit.</message>")
 	}
-	return strings.Join(prompt, "\n\n"), system
+	return "<instructions>\n" + strings.Join(instructions, "\n") + "\n</instructions>\n\n" + strings.Join(conversation, "\n\n")
 }
 
 func contentToText(content any) string {
@@ -485,6 +442,20 @@ func contentToText(content any) string {
 	}
 }
 
+// parseInlineText accepts bare JSON or one fenced JSON block.
+func parseInlineText(text string) (*structuredInline, error) {
+	trimmed := strings.TrimSpace(text)
+	if strings.HasPrefix(trimmed, "```") {
+		_, body, _ := strings.Cut(trimmed, "\n")
+		trimmed = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body), "```"))
+	}
+	var value structuredInline
+	if err := json.Unmarshal([]byte(trimmed), &value); err != nil {
+		return nil, errors.New("OpenCode returned text that is not inline edit JSON")
+	}
+	return &value, nil
+}
+
 func cleanupSession(cfg config, sessionID string) {
 	if strings.TrimSpace(sessionID) == "" {
 		return
@@ -492,10 +463,11 @@ func cleanupSession(cfg config, sessionID string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, cfg.opencodeBaseURL+"/session/"+sessionID, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, cfg.opencodeBaseURL+"/api/session/"+url.PathEscape(sessionID), nil)
 	if err != nil {
 		return
 	}
+	cfg.authorize(request)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return
@@ -514,6 +486,7 @@ func postJSON(ctx context.Context, cfg config, path string, payload any, out any
 		return err
 	}
 	request.Header.Set("content-type", "application/json")
+	cfg.authorize(request)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
@@ -552,8 +525,9 @@ func responseModel(requestBody chatRequest) string {
 	return model
 }
 
-func configuredInlineModel(cfg config) (*inlineModel, error) {
-	model := strings.TrimSpace(cfg.inlineModel)
+// selectedInlineModel returns nil for the transport alias so OpenCode uses its default model.
+func selectedInlineModel(requestBody chatRequest) (*inlineModel, error) {
+	model := strings.TrimSpace(requestBody.Model)
 	if model == "" || model == transportModel {
 		return nil, nil
 	}
@@ -564,39 +538,27 @@ func configuredInlineModel(cfg config) (*inlineModel, error) {
 	return &parsed, nil
 }
 
-func selectedInlineModel(requestBody chatRequest, cfg config) (*inlineModel, error) {
-	model := strings.TrimSpace(requestBody.Model)
-	if model == "" || model == transportModel {
-		return configuredInlineModel(cfg)
-	}
-	parsed, err := parseInlineModel(model)
-	if err != nil {
-		return nil, err
-	}
-	return &parsed, nil
-}
-
+// parseInlineModel accepts provider/model[#variant]. Only the first slash
+// separates the provider because OpenCode 2 model IDs can contain slashes.
 func parseInlineModel(model string) (inlineModel, error) {
 	raw := strings.TrimSpace(model)
-	parts := strings.Split(raw, "/")
-	if len(parts) < 2 || len(parts) > 3 {
-		return inlineModel{}, fmt.Errorf("invalid inline model %q; expected provider/model[/thinking]", model)
+	base, variant, hasVariant := strings.Cut(raw, "#")
+	provider, id, ok := strings.Cut(base, "/")
+	if !ok || provider == "" || id == "" {
+		return inlineModel{}, fmt.Errorf("invalid inline model %q; expected provider/model[#variant]", model)
 	}
-	if parts[0] == "" || parts[1] == "" {
-		return inlineModel{}, fmt.Errorf("invalid inline model %q; provider and model must be non-empty", model)
+	if hasVariant && variant == "" {
+		return inlineModel{}, fmt.Errorf("invalid inline model %q; variant must be non-empty", model)
 	}
-	out := inlineModel{ProviderID: parts[0], ModelID: parts[1]}
-	if len(parts) == 3 {
-		if parts[2] == "" {
-			return inlineModel{}, fmt.Errorf("invalid inline model %q; thinking level must be non-empty", model)
-		}
-		out.Thinking = parts[2]
-	}
-	return out, nil
+	return inlineModel{ProviderID: provider, ModelID: id, Variant: variant}, nil
 }
 
 func openCodeModel(model *inlineModel) map[string]string {
-	return map[string]string{"providerID": model.ProviderID, "modelID": model.ModelID}
+	ref := map[string]string{"providerID": model.ProviderID, "id": model.ModelID}
+	if model.Variant != "" {
+		ref["variant"] = model.Variant
+	}
+	return ref
 }
 
 func writeInlineCompletion(w http.ResponseWriter, model, content string) {

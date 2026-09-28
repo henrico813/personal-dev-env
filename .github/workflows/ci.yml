@@ -35,6 +35,20 @@ jobs:
       - name: test
         run: go test ./...
 
+  opencode-inline-nvim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nvim-plugins/opencode-inline.nvim
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: nvim-plugins/opencode-inline.nvim/go.mod
+          cache: false
+      - name: check
+        run: make check
+
   pde-installer:
     runs-on: ubuntu-latest
     defaults:

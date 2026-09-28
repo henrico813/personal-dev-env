@@ -29,10 +29,10 @@ require("lualine").setup({
     lualine_x = {
       {
         function()
-          return vim.g.pde_inline_status or ""
+          return require("opencode-inline").status()
         end,
         cond = function()
-          return type(vim.g.pde_inline_status) == "string" and vim.g.pde_inline_status ~= ""
+          return require("opencode-inline").status() ~= ""
         end,
         color = { fg = "{{ $colors.ui.warning }}" },
       },
