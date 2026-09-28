@@ -113,6 +113,101 @@ chmod +x "$output"
 `, shellQuote(logPath))
 }
 
+func TestInstallPluginReplacesBrokenSymlink(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := t.TempDir()
+	name := "fixture.nvim"
+	source := filepath.Join(repoRoot, "nvim-plugins", name, "lua")
+	writeBuildFile(t, filepath.Join(source, "fixture", "init.lua"), "return {}\n", 0o644)
+	destination := filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", name)
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	removedSource := filepath.Join(repoRoot, "removed")
+	if err := os.Symlink(removedSource, destination); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := New(home, repoRoot, run.Runner{}).InstallPlugin(name)
+	if err != nil {
+		t.Fatalf("InstallPlugin() error = %v", err)
+	}
+	info, err := os.Lstat(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("destination mode = %s, want directory", info.Mode())
+	}
+	assertBuildFile(t, filepath.Join(destination, "lua", "fixture", "init.lua"), "return {}\n")
+	if err := journal.Rollback(); err != nil {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	link, err := os.Readlink(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link != removedSource {
+		t.Fatalf("restored symlink = %q, want %q", link, removedSource)
+	}
+}
+
+func TestInstallPluginSkipsUnchangedTree(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := t.TempDir()
+	name := "fixture.nvim"
+	source := filepath.Join(repoRoot, "nvim-plugins", name, "lua")
+	writeBuildFile(t, filepath.Join(source, "init.lua"), "return {}\n", 0o644)
+	manager := New(home, repoRoot, run.Runner{})
+
+	journal, err := manager.InstallPlugin(name)
+	if err != nil {
+		t.Fatalf("first InstallPlugin() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	journal, err = manager.InstallPlugin(name)
+	if err != nil {
+		t.Fatalf("second InstallPlugin() error = %v", err)
+	}
+	if len(journal.Changes) != 0 {
+		t.Fatalf("unchanged InstallPlugin() changes = %d, want 0", len(journal.Changes))
+	}
+}
+
+func TestInstallPluginSurvivesSourceRemoval(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := t.TempDir()
+	name := "fixture.nvim"
+	source := filepath.Join(repoRoot, "nvim-plugins", name, "lua")
+	writeBuildFile(t, filepath.Join(source, "init.lua"), "return {}\n", 0o644)
+	manager := New(home, repoRoot, run.Runner{})
+	journal, err := manager.InstallPlugin(name)
+	if err != nil {
+		t.Fatalf("InstallPlugin() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(repoRoot, "nvim-plugins")); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(home, ".config", "nvim", "pack", "plugins", "start", name)
+	assertBuildFile(t, filepath.Join(destination, "lua", "init.lua"), "return {}\n")
+}
+
+func TestInstallPluginRejectsInvalidName(t *testing.T) {
+	for _, name := range []string{"", ".", "..", "nested/plugin.nvim"} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(t.TempDir(), t.TempDir(), run.Runner{}).InstallPlugin(name)
+			if err == nil {
+				t.Fatal("InstallPlugin() error = nil")
+			}
+		})
+	}
+}
+
 func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
