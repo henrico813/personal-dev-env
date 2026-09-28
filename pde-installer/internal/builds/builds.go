@@ -108,14 +108,14 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		},
 		{
 			name:   "opencode-inline-shim",
-			source: filepath.Join(m.RepoRoot, "cli"),
+			source: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
 			output: filepath.Join(stageRoot, "opencode-inline-shim"),
 			command: run.Command{
 				Name: goBinary,
 				Args: []string{
 					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "opencode-inline-shim"), "./cmd/opencode-inline-shim",
 				},
-				Dir: filepath.Join(m.RepoRoot, "cli"), Env: environment,
+				Dir: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), Env: environment,
 			},
 		},
 		{
@@ -381,7 +381,7 @@ func (m Manager) BlinkStatus() (string, error) {
 
 func (m Manager) inputs() (map[string]string, error) {
 	inputs := map[string]string{}
-	for name, source := range map[string]string{"planner": filepath.Join(m.RepoRoot, "planner"), "opencode-inline-shim": filepath.Join(m.RepoRoot, "cli"), "surveil": filepath.Join(m.RepoRoot, "surveil"), "vibe": filepath.Join(m.RepoRoot, "vibe")} {
+	for name, source := range map[string]string{"planner": filepath.Join(m.RepoRoot, "planner"), "opencode-inline-shim": filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), "surveil": filepath.Join(m.RepoRoot, "surveil"), "vibe": filepath.Join(m.RepoRoot, "vibe")} {
 		hash, err := hashTree(source)
 		if err != nil {
 			return nil, err
