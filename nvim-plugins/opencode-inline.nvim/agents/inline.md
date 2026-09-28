@@ -1,4 +1,5 @@
 ---
+name: inline
 description: Text-only backend for CodeCompanion inline edits.
 mode: all
 hidden: true
