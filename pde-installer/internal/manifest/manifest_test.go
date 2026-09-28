@@ -40,7 +40,26 @@ func TestTerminalInventory(t *testing.T) {
 	}{
 		{owner: Ubuntu, names: []string{"zsh", "git", "xclip", "unzip"}},
 		{owner: Direct, names: []string{"tmux"}},
-		{owner: Aqua, names: []string{"aqua", "fd", "fzf", "ripgrep", "bat", "jq", "chezmoi", "eza", "zoxide", "bottom", "yq", "yazi", "ya"}},
+		{
+			owner: Aqua,
+			names: []string{
+				"aqua",
+				"fd",
+				"fzf",
+				"ripgrep",
+				"bat",
+				"jq",
+				"gh",
+				"delta",
+				"chezmoi",
+				"eza",
+				"zoxide",
+				"bottom",
+				"yq",
+				"yazi",
+				"ya",
+			},
+		},
 		{owner: Chezmoi, names: []string{"repository-config", "antidote", "tpm", "ohmyzsh", "powerlevel10k", "zsh-z", "zsh-autosuggestions", "zsh-completions", "zsh-syntax-highlighting", "zsh-history-substring-search", "tmux-sensible", "tmux-resurrect"}},
 	}
 	type inventoryItem struct {

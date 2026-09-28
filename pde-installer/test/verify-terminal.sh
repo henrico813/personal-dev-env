@@ -28,6 +28,13 @@ jq -e '.profile == "terminal" and .color_profile == "tokyo-night"' "$HOME/.confi
 grep -Fq 'export BAT_THEME="TwoDark"' "$HOME/.zshrc"
 grep -Fq '#7aa2f7' "$HOME/.tmux.conf"
 grep -Fq '#7aa2f7' "$HOME/.p10k.zsh"
+gh --version | grep -Fq 'gh version 2.101.0'
+[[ "$(delta --version)" == 'delta 0.19.2' ]]
+[[ "$(git config --includes --global --get core.pager)" == delta ]]
+[[ "$(git config --includes --global --get interactive.diffFilter)" == 'delta --color-only' ]]
+[[ "$(git config --includes --global --get delta.navigate)" == true ]]
+[[ "$(git config --includes --global --get delta.line-numbers)" == true ]]
+[[ "$(git config --includes --global --get merge.conflictStyle)" == zdiff3 ]]
 bat --list-themes | grep -Fxq TwoDark
 
 cli_home="$(mktemp -d)"
@@ -278,7 +285,7 @@ pde-installer install --repo-root "$REPO_ROOT"
 pde-installer doctor --repo-root "$REPO_ROOT"
 
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
-expected_items='zsh git xclip unzip tmux aqua fd fzf ripgrep bat jq chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect'
+expected_items='zsh git xclip unzip tmux aqua fd fzf ripgrep bat jq gh delta chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect'
 actual_items="$(awk -F '\t' 'NR > 1 { print $2 }' <<<"$inventory" | paste -sd ' ' -)"
 [[ "$actual_items" == "$expected_items" ]]
 item_status() {
@@ -288,7 +295,7 @@ item_status() {
 for item in zsh git xclip unzip; do
 	item_status "$item" installed
 done
-for item in tmux aqua fd fzf ripgrep bat jq chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect; do
+for item in tmux aqua fd fzf ripgrep bat jq gh delta chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect; do
 	item_status "$item" current
 done
 for item in build-essential bison gopls lua-language-server '@opencode/cli' opencode-inline-shim '@openai/codex' '@earendil-works/pi-coding-agent' '@anthropic-ai/claude-code' planner blink.cmp FiraCode JetBrainsMono neovim go rust node keychain; do
