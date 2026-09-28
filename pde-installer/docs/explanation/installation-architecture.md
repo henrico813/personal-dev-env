@@ -28,9 +28,10 @@ The full order is:
 7. Install direct-release fonts and run `fc-cache`.
 8. Build repository applications with the managed toolchains.
 9. Migrate legacy PDE and Neovim configuration.
-10. Apply the chezmoi source.
-11. Build and verify the `blink.cmp` native library.
-12. Commit journals and remove backups.
+10. Install the inline plugin runtime.
+11. Apply the chezmoi source.
+12. Build and verify the `blink.cmp` native library.
+13. Commit journals and remove backups.
 
 This order gives each stage the tools and files it needs. A later failure rolls
 back completed journaled stages in reverse order.
