@@ -46,6 +46,9 @@ local sync_states = {
 
 local cached_sync_status = ""
 
+-- `ob sync` retries a failed connection forever, so `timeout` bounds each run.
+M.sync_timeout_seconds = 300
+
 local function is_configured(vault)
   return vault.path and vault.path ~= "" and vim.fn.isdirectory(vault.path) == 1
 end
@@ -162,13 +165,15 @@ local function sync_vault(key)
   end
 
   local stderr_buf = {}
+  local timeout = M.sync_timeout_seconds
   state.running = true
   state.last_error = nil
   state.last_message = "syncing"
   refresh_sync_status()
   vim.notify("Syncing " .. vault.name .. "...", vim.log.levels.INFO)
 
-  local job_id = vim.fn.jobstart({ "ob", "sync" }, {
+  local cmd = { "timeout", "--kill-after=10", tostring(timeout), "ob", "sync", "--path", vault.path }
+  local job_id = vim.fn.jobstart(cmd, {
     cwd = vault.path,
     on_stdout = function(_, data)
       local line = first_nonempty(data)
@@ -181,6 +186,12 @@ local function sync_vault(key)
       if line then
         table.insert(stderr_buf, line)
         state.last_message = line
+        -- Show the first error now; a retrying sync may not exit until the timeout.
+        if #stderr_buf == 1 then
+          vim.schedule(function()
+            vim.notify("Sync error: " .. vault.name .. " - " .. line, vim.log.levels.WARN)
+          end)
+        end
       end
     end,
     on_exit = function(_, code)
@@ -190,6 +201,11 @@ local function sync_vault(key)
         state.last_ok_at = os.time()
         state.last_error = nil
         state.last_message = "synced"
+      elseif code == 124 or code == 137 then
+        -- `timeout` exits 124 after SIGTERM (`ob` itself exits 0), 137 after SIGKILL.
+        local cause = stderr_buf[1]
+        state.last_error = "timed out after " .. timeout .. "s" .. (cause and (": " .. cause) or "")
+        state.last_message = state.last_error
       else
         state.last_error = stderr_buf[1] or ("exit " .. code)
         state.last_message = state.last_error

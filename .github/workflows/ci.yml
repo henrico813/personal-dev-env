@@ -67,8 +67,8 @@ jobs:
           cache-dependency-path: pde-installer/package-lock.json
       - name: install Node packages
         run: npm ci
-      - name: install zsh
-        run: sudo apt-get update && sudo apt-get install --yes zsh
+      - name: install test dependencies
+        run: sudo apt-get update && sudo apt-get install --yes neovim zsh
       - name: format
         run: test -z "$(gofmt -l .)"
       - name: test production paths
@@ -77,6 +77,7 @@ jobs:
           go test -race ./...
           go vet ./...
           bash -n test/*.sh
+          test/nvim-obsidian-sync.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest
