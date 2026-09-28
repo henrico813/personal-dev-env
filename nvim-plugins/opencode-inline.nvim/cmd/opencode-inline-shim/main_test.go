@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ func TestLoadConfigReadsFlagsAndCredentials(t *testing.T) {
 	t.Setenv("OPENCODE_SERVER_PASSWORD", "secret")
 
 	cfg, healthcheck, err := loadConfig([]string{"--port", "5151", "--opencode-url", "http://127.0.0.1:5000/", "--agent", "edit", "--healthcheck"})
+
 	if err != nil {
 		t.Fatalf("loadConfig() error = %v", err)
 	}
@@ -29,42 +31,66 @@ func TestLoadConfigReadsFlagsAndCredentials(t *testing.T) {
 	}
 }
 
+// The installer verifies the binary with --help, so it must exit successfully.
 func TestRunHelpSucceeds(t *testing.T) {
 	if err := run([]string{"--help"}); err != nil {
 		t.Fatalf("run(--help) error = %v", err)
 	}
 }
 
-func TestDecodeChatRequestAllowsCompatibleFields(t *testing.T) {
-	body := io.NopCloser(strings.NewReader(`{"model":"opencode-inline","messages":[{"role":"user","content":"hello"}],"stream":false,"temperature":0}`))
+func TestDecodeChatRequestAllowsOpenAICompatibleFields(t *testing.T) {
+	body := io.NopCloser(strings.NewReader(`{
+		"model":"opencode-inline",
+		"messages":[{"role":"user","content":"hello"}],
+		"stream":false,
+		"temperature":0,
+		"top_p":1,
+		"presence_penalty":0,
+		"frequency_penalty":0,
+		"max_tokens":512
+	}`))
 
 	requestBody, err := decodeChatRequest(body)
 	if err != nil {
-		t.Fatalf("decodeChatRequest() error = %v", err)
+		t.Fatalf("decode request body: %v", err)
 	}
-	if requestBody.Model != transportModel || len(requestBody.Messages) != 1 {
-		t.Fatalf("request = %#v", requestBody)
+	if requestBody.Model != "opencode-inline" {
+		t.Fatalf("model = %q", requestBody.Model)
 	}
-}
-
-func TestSelectedInlineModelSupportsVariants(t *testing.T) {
-	got, err := selectedInlineModel(chatRequest{Model: "openrouter/z-ai/glm-5.3-prime#high"})
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
-	}
-	want := &inlineModel{ProviderID: "openrouter", ModelID: "z-ai/glm-5.3-prime", Variant: "high"}
-	if *got != *want {
-		t.Fatalf("model = %#v, want %#v", got, want)
+	if len(requestBody.Messages) != 1 {
+		t.Fatalf("messages = %d", len(requestBody.Messages))
 	}
 }
 
-func TestSelectedInlineModelUsesDefaultAlias(t *testing.T) {
-	got, err := selectedInlineModel(chatRequest{Model: transportModel})
-	if err != nil {
-		t.Fatalf("selectedInlineModel() error = %v", err)
+func TestSelectedInlineModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  *inlineModel
+	}{
+		{name: "opencode default", model: transportModel},
+		{
+			name:  "slash in model id",
+			model: "openrouter/z-ai/glm-5.3-prime",
+			want:  &inlineModel{ProviderID: "openrouter", ModelID: "z-ai/glm-5.3-prime"},
+		},
+		{
+			name:  "variant suffix",
+			model: "openai/gpt-5.4-mini#high",
+			want:  &inlineModel{ProviderID: "openai", ModelID: "gpt-5.4-mini", Variant: "high"},
+		},
 	}
-	if got != nil {
-		t.Fatalf("model = %#v, want nil", got)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := selectedInlineModel(chatRequest{Model: tt.model})
+			if err != nil {
+				t.Fatalf("selectedInlineModel() error = %v", err)
+			}
+			if (got == nil) != (tt.want == nil) || got != nil && *got != *tt.want {
+				t.Fatalf("selectedInlineModel() = %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -78,28 +104,40 @@ func TestParseInlineModelRejectsMalformedVariants(t *testing.T) {
 	}
 }
 
-func TestBackendReachableClassifiesResponses(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		status int
-		want   bool
+func TestOpenCodeModelOmitsEmptyVariant(t *testing.T) {
+	got := openCodeModel(&inlineModel{ProviderID: "openai", ModelID: "gpt-5.4-mini"})
+
+	if len(got) != 2 || got["providerID"] != "openai" || got["id"] != "gpt-5.4-mini" {
+		t.Fatalf("model = %#v", got)
+	}
+}
+
+func TestBackendReachableClassifiesServerResponses(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		wantErr  bool
+		wantDown bool
 	}{
-		{name: "success", status: http.StatusOK},
-		{name: "unauthorized", status: http.StatusUnauthorized, want: true},
-		{name: "not opencode", status: http.StatusNotFound, want: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+		{name: "opencode 2 info", status: http.StatusOK},
+		{name: "rejected password", status: http.StatusUnauthorized, wantErr: true},
+		{name: "not opencode 2", status: http.StatusNotFound, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/api/info" {
 					http.NotFound(w, r)
 					return
 				}
-				w.WriteHeader(test.status)
+				w.WriteHeader(tt.status)
 			}))
 			defer server.Close()
 
 			err := backendReachable(context.Background(), config{opencodeBaseURL: server.URL})
-			if (err != nil) != test.want {
+
+			if (err != nil) != tt.wantErr {
 				t.Fatalf("backendReachable() error = %v", err)
 			}
 			if errors.Is(err, errBackendDown) {
@@ -111,18 +149,22 @@ func TestBackendReachableClassifiesResponses(t *testing.T) {
 
 func TestBackendReachableReportsDownServer(t *testing.T) {
 	err := backendReachable(context.Background(), config{opencodeBaseURL: "http://127.0.0.1:1"})
+
 	if !errors.Is(err, errBackendDown) {
-		t.Fatalf("backendReachable() error = %v", err)
+		t.Fatalf("backendReachable() error = %v, want errBackendDown", err)
 	}
 }
 
+// A live server with another password must be reported, not replaced by auto-start.
 func TestEnsureReachableReportsRejectedPassword(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
+	backend := &backendManager{cfg: config{opencodeBaseURL: server.URL, username: "opencode", password: "stale"}}
 
-	err := (&backendManager{cfg: config{opencodeBaseURL: server.URL, password: "stale"}}).ensureReachable(context.Background())
+	err := backend.ensureReachable(context.Background())
+
 	if err == nil || !strings.Contains(err.Error(), "rejected the server password") {
 		t.Fatalf("ensureReachable() error = %v", err)
 	}
@@ -130,26 +172,9 @@ func TestEnsureReachableReportsRejectedPassword(t *testing.T) {
 
 func TestStartBackendRequiresServerPassword(t *testing.T) {
 	err := startBackendProcess(config{opencodeBaseURL: "http://127.0.0.1:4199"})
+
 	if err == nil || !strings.Contains(err.Error(), "OPENCODE_SERVER_PASSWORD") {
 		t.Fatalf("startBackendProcess() error = %v", err)
-	}
-}
-
-func TestParseInlineTextAcceptsJSON(t *testing.T) {
-	for _, text := range []string{`{"code":"x","placement":"replace"}`, "```json\n{\"code\":\"x\",\"placement\":\"replace\"}\n```"} {
-		got, err := parseInlineText(text)
-		if err != nil {
-			t.Fatalf("parseInlineText() error = %v", err)
-		}
-		if got.Code != "x" || got.Placement != "replace" {
-			t.Fatalf("parseInlineText() = %#v", got)
-		}
-	}
-}
-
-func TestParseInlineTextRejectsProse(t *testing.T) {
-	if _, err := parseInlineText("Here is the edit you asked for."); err == nil {
-		t.Fatal("expected prose to be rejected")
 	}
 }
 
@@ -160,50 +185,90 @@ func TestBestErrorMessagePrefersStructuredMessages(t *testing.T) {
 	}
 }
 
+func TestParseInlineTextAcceptsBareAndFencedJSON(t *testing.T) {
+	for name, text := range map[string]string{
+		"bare":   `{"code":"x","placement":"replace"}`,
+		"fenced": "```json\n{\"code\":\"x\",\"placement\":\"replace\"}\n```",
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseInlineText(text)
+			if err != nil {
+				t.Fatalf("parseInlineText() error = %v", err)
+			}
+			if got.Code != "x" || got.Placement != "replace" {
+				t.Fatalf("parseInlineText() = %#v", got)
+			}
+		})
+	}
+}
+
+func TestParseInlineTextRejectsProse(t *testing.T) {
+	if _, err := parseInlineText("Here is the edit you asked for."); err == nil {
+		t.Fatal("expected prose to be rejected")
+	}
+}
+
+func TestValidateStructuredInline(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   *structuredInline
+		wantErr string
+	}{
+		{name: "nil", value: nil, wantErr: "OpenCode did not return structured output"},
+		{name: "missing code", value: &structuredInline{Placement: "replace"}, wantErr: "OpenCode returned structured output without code"},
+		{name: "bad placement", value: &structuredInline{Code: "x", Placement: "sideways"}, wantErr: "OpenCode returned unsupported placement \"sideways\""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateStructuredInline(tt.value)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if err.Error() != tt.wantErr {
+				t.Fatalf("error = %q", err.Error())
+			}
+		})
+	}
+}
+
 func TestNormalizeInlineErrorTimeout(t *testing.T) {
 	if got := normalizeInlineError(context.DeadlineExceeded); got != "Inline request timed out" {
 		t.Fatalf("normalizeInlineError() = %q", got)
 	}
 }
 
-func TestValidateStructuredInlineRejectsInvalidValues(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		value *structuredInline
-	}{
-		{name: "nil"},
-		{name: "missing code", value: &structuredInline{Placement: "replace"}},
-		{name: "bad placement", value: &structuredInline{Code: "x", Placement: "sideways"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if err := validateStructuredInline(test.value); err == nil {
-				t.Fatal("expected validation error")
-			}
-		})
+func TestHandleChatCompletionsReturnsInlineFailureEnvelope(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/info":
+			w.WriteHeader(http.StatusOK)
+		case "/api/session":
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"_tag":"InvalidRequestError","message":"provider config failed"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer backend.Close()
+
+	cfg := config{opencodeBaseURL: backend.URL, timeout: time.Second}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+
+	handleChatCompletions(&backendManager{cfg: cfg}, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if content := completionContent(t, rec); content != `{"error":"provider config failed"}` {
+		t.Fatalf("content = %q", content)
 	}
 }
 
-func TestBackendServeArgsAcceptsLoopbackTargets(t *testing.T) {
-	got, err := backendServeArgs(config{opencodeBaseURL: "http://127.0.0.1:4203"})
-	if err != nil {
-		t.Fatalf("backendServeArgs() error = %v", err)
-	}
-	want := []string{"serve", "--hostname", "127.0.0.1", "--port", "4203"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("args = %#v, want %#v", got, want)
-	}
-}
-
-func TestBackendServeArgsRejectsUnsupportedTargets(t *testing.T) {
-	for _, target := range []string{"http://example.com:4199", "http://127.0.0.1", "http://127.0.0.1:4199/api"} {
-		t.Run(target, func(t *testing.T) {
-			if _, err := backendServeArgs(config{opencodeBaseURL: target}); err == nil {
-				t.Fatal("expected backendServeArgs to fail")
-			}
-		})
-	}
-}
-
+// Protects the full OpenCode 2 exchange: session options, generate prompt,
+// authenticated cleanup, and the edit JSON returned to CodeCompanion.
 func TestChatCompletionUsesOpenCodeV2Session(t *testing.T) {
 	var session, generate map[string]any
 	var deleted bool
@@ -230,24 +295,90 @@ func TestChatCompletionUsesOpenCodeV2Session(t *testing.T) {
 		}
 	}))
 	defer backend.Close()
-
 	cfg := config{opencodeBaseURL: backend.URL, inlineAgent: "inline", username: "opencode", password: "secret", timeout: time.Second}
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"openrouter/z-ai/glm-5.3-prime#high","messages":[{"role":"system","content":"Use tabs."},{"role":"user","content":"set x"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{
+		"model":"openrouter/z-ai/glm-5.3-prime#high",
+		"messages":[{"role":"system","content":"Use tabs."},{"role":"user","content":"set x"}]
+	}`))
 	rec := httptest.NewRecorder()
+
 	handleChatCompletions(&backendManager{cfg: cfg}, rec, req)
 
 	if content := completionContent(t, rec); content != `{"code":"x = 1","placement":"replace"}` {
 		t.Fatalf("content = %q", content)
 	}
-	if session["agent"] != "inline" || !deleted {
-		t.Fatalf("session = %#v, deleted = %v", session, deleted)
+	if session["agent"] != "inline" {
+		t.Fatalf("session agent = %#v", session["agent"])
 	}
-	model := session["model"].(map[string]any)
+	model, _ := session["model"].(map[string]any)
 	if model["providerID"] != "openrouter" || model["id"] != "z-ai/glm-5.3-prime" || model["variant"] != "high" {
-		t.Fatalf("model = %#v", model)
+		t.Fatalf("session model = %#v", session["model"])
 	}
-	if !strings.Contains(generate["prompt"].(string), "Use tabs.") {
-		t.Fatalf("prompt = %q", generate["prompt"])
+	permissions, _ := session["permissions"].([]any)
+	if len(permissions) != 1 {
+		t.Fatalf("session permissions = %#v", session["permissions"])
+	}
+	prompt, _ := generate["prompt"].(string)
+	if !strings.Contains(prompt, "Use tabs.") || !strings.Contains(prompt, "<message role=\"user\">\nset x\n</message>") {
+		t.Fatalf("prompt = %q", prompt)
+	}
+	if !deleted {
+		t.Fatal("session was not deleted")
+	}
+}
+
+func TestBuildPromptDefaultsToEditOnly(t *testing.T) {
+	prompt := buildPrompt(nil)
+
+	if !strings.HasSuffix(prompt, "<message role=\"user\">Return a replace edit.</message>") {
+		t.Fatalf("prompt = %q", prompt)
+	}
+}
+
+func TestBackendServeArgsAcceptsLoopbackTargets(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want []string
+	}{
+		{
+			name: "localhost",
+			url:  "http://localhost:4199",
+			want: []string{"serve", "--hostname", "localhost", "--port", "4199"},
+		},
+		{
+			name: "loopback ip",
+			url:  "http://127.0.0.1:4203",
+			want: []string{"serve", "--hostname", "127.0.0.1", "--port", "4203"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := backendServeArgs(config{opencodeBaseURL: tt.url})
+			if err != nil {
+				t.Fatalf("backendServeArgs: %v", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("args = %#v", got)
+			}
+		})
+	}
+}
+
+func TestBackendServeArgsRejectsUnsupportedTargets(t *testing.T) {
+	tests := []string{
+		"http://example.com:4199",
+		"http://127.0.0.1",
+		"http://127.0.0.1:4199/api",
+	}
+
+	for _, target := range tests {
+		t.Run(target, func(t *testing.T) {
+			if _, err := backendServeArgs(config{opencodeBaseURL: target}); err == nil {
+				t.Fatal("expected backendServeArgs to fail")
+			}
+		})
 	}
 }
 

@@ -420,20 +420,6 @@ func buildPrompt(messages []chatMessage) string {
 	return "<instructions>\n" + strings.Join(instructions, "\n") + "\n</instructions>\n\n" + strings.Join(conversation, "\n\n")
 }
 
-// parseInlineText accepts bare JSON or one fenced JSON block.
-func parseInlineText(text string) (*structuredInline, error) {
-	trimmed := strings.TrimSpace(text)
-	if strings.HasPrefix(trimmed, "```") {
-		_, body, _ := strings.Cut(trimmed, "\n")
-		trimmed = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body), "```"))
-	}
-	var value structuredInline
-	if err := json.Unmarshal([]byte(trimmed), &value); err != nil {
-		return nil, errors.New("OpenCode returned text that is not inline edit JSON")
-	}
-	return &value, nil
-}
-
 func contentToText(content any) string {
 	switch value := content.(type) {
 	case string:
@@ -454,6 +440,20 @@ func contentToText(content any) string {
 	default:
 		return ""
 	}
+}
+
+// parseInlineText accepts bare JSON or one fenced JSON block.
+func parseInlineText(text string) (*structuredInline, error) {
+	trimmed := strings.TrimSpace(text)
+	if strings.HasPrefix(trimmed, "```") {
+		_, body, _ := strings.Cut(trimmed, "\n")
+		trimmed = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body), "```"))
+	}
+	var value structuredInline
+	if err := json.Unmarshal([]byte(trimmed), &value); err != nil {
+		return nil, errors.New("OpenCode returned text that is not inline edit JSON")
+	}
+	return &value, nil
 }
 
 func cleanupSession(cfg config, sessionID string) {
