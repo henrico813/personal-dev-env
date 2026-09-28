@@ -495,13 +495,7 @@ mod tests {
         assert!(add.status.success());
 
         let commit = Command::new("git")
-            .args([
-                "-c",
-                "core.hooksPath=/dev/null",
-                "commit",
-                "-m",
-                "seed",
-            ])
+            .args(["-c", "core.hooksPath=/dev/null", "commit", "-m", "seed"])
             .current_dir(repo)
             .output()
             .expect("git commit");
@@ -603,7 +597,11 @@ mod tests {
         std::fs::set_permissions(&hook, permissions).expect("chmod fsmonitor hook");
         run(
             &repo,
-            &["config", "core.fsmonitor", hook.to_str().expect("hook path")],
+            &[
+                "config",
+                "core.fsmonitor",
+                hook.to_str().expect("hook path"),
+            ],
         );
         run(&repo, &["update-index", "--fsmonitor"]);
         run(
