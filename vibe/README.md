@@ -86,7 +86,7 @@ inside Docker. Provider credential selection and shared skills are described in
 - Docker is the execution boundary and runs as the host UID/GID
 - bundled assets are extracted under `~/.local/share/vibe/<version>/`
 - Vibe mounts the worktree, shared Git metadata, and `/artifacts`
-- the host skills directory is mounted read-only when present
+- user and repository skill directories are mounted read-only when present
 - the host Pi agent directory is writable only for file-auth fallback
 - the executor uses the combined prompt artifact
 
