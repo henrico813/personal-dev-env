@@ -39,6 +39,10 @@ shared_skills_dir="$HOME/.agents/skills"
 if [[ -d "${shared_skills_dir}" ]]; then
   PI_ARGS+=(--skill "${shared_skills_dir}")
 fi
+repository_skills_dir="${VIBE_REPO_SKILLS_DIR:-}"
+if [[ -n "${repository_skills_dir}" && -d "${repository_skills_dir}" ]]; then
+  PI_ARGS+=(--skill "${repository_skills_dir}")
+fi
 
 if [[ "${VIBE_MODEL}" == goog/* ]]; then
   mkdir -p "$HOME/.pi/agent"

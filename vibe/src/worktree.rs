@@ -137,6 +137,10 @@ pub fn refuse_if_dirty(worktree: &Path) -> Result<(), String> {
     }
 }
 
+pub fn validate_repository_skills(worktree: &Path) -> Result<(), String> {
+    git::validate_repository_skills(worktree)
+}
+
 pub fn pre_run_commit(worktree: &Path) -> Result<String, String> {
     git::head_sha(worktree)
 }

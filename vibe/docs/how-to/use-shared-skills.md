@@ -1,4 +1,4 @@
-# Use shared skills
+# Use user and repository skills
 
 Shared skills are reviewed host instructions installed under
 `~/.agents/skills`. Create one directory per reviewed skill and place its
@@ -9,7 +9,11 @@ mkdir -p ~/.agents/skills/reviewed-skill
 cp ./reviewed-skill/* ~/.agents/skills/reviewed-skill/
 ```
 
-The automatic directory mount is Vibe's shared-skill mechanism.
+Repository-specific skills can instead be committed under `.agents/skills` in
+the target repository. Vibe reads them from the exact revision checked out in
+the managed worktree; do not copy them into the user directory. Vibe rejects
+repository skill roots with changed, untracked, ignored, symlinked, or
+multiply-linked contents, and rejects index flags that can hide changes.
 
 Run Vibe normally after installing them:
 
@@ -20,10 +24,12 @@ vibe run \
   --model openai-codex/gpt-5.6-luna
 ```
 
-Vibe automatically mounts `~/.agents/skills` read-only when it is present.
-Inside the container Pi disables normal skill discovery with `--no-skills` and
-then explicitly selects `/vibe-home/.agents/skills` with `--skill`. A missing
-`~/.agents/skills` directory is allowed.
+Vibe mounts each existing skill root read-only. The user root appears at
+`/vibe-home/.agents/skills`. The repository root remains at
+`<managed-worktree>/.agents/skills`, where its nested mount protects the files
+from writes through the worktree mount. Inside the container Pi disables normal
+skill discovery with `--no-skills`, then explicitly selects the user root first
+and the repository root second. Either directory may be missing.
 
 Find the run under `~/.local/state/vibe/<repo>/<key>/runs/` and inspect
 `system-prompt.txt`, `combined-prompt.txt`, `events.jsonl`, and
@@ -34,6 +40,6 @@ result. The Docker command itself is not stored in the artifacts, so these
 artifacts confirm the run's observable workflow rather than reproducing every
 launch argument.
 
-Only install skills you are willing to trust as executor instructions. The
-read-only mount prevents writes through the mount, but it does not review, vet,
-or sandbox the skill instructions.
+Only install or commit skills you are willing to trust as executor
+instructions. Read-only mounts prevent writes through the mounted paths, but
+Vibe does not review, vet, or sandbox the instructions.
