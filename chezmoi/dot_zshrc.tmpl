@@ -34,6 +34,12 @@ alias vim='nvim'
 {{- end }}
 # checkout branch using fzf
 alias gcob='git branch | fzf | xargs git checkout'
+# View a GitHub pull request diff with delta.
+prd() (
+    setopt pipefail
+    command gh pr diff "$@" --color=never | command delta --navigate
+)
+
 {{- if eq (env "PDE_PROFILE") "full" }}
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
