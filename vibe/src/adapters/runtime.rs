@@ -116,7 +116,8 @@ mod tests {
         fs::create_dir_all(&bin).expect("mkdir bin");
         fs::create_dir_all(&home).expect("mkdir home");
         fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
-        fs::create_dir_all(&repo_root).expect("mkdir repo");
+        let repository_skills = repo_root.join(".agents/skills");
+        fs::create_dir_all(&repository_skills).expect("mkdir repository skills");
         fs::write(&combined_prompt, b"Line one\nLine two\n").expect("write prompt");
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
         let mut script_perms = fs::metadata(&script)
@@ -158,6 +159,7 @@ mod tests {
             .env("PI_CAPTURE_FILE", &capture)
             .env("PI_ARGS_CAPTURE_FILE", &args_capture)
             .env("VIBE_REPO_ROOT", &repo_root)
+            .env("VIBE_REPO_SKILLS_DIR", &repository_skills)
             .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
             .env("VIBE_MODEL", "fake-provider/fake-model")
             .output()
@@ -185,18 +187,22 @@ mod tests {
             std::str::from_utf8(pi_args[model_position + 1]).expect("UTF-8 model selector"),
             "fake-provider/fake-model"
         );
-        let skill_position = pi_args
-            .iter()
-            .position(|arg| *arg == b"--skill")
-            .expect("Pi receives --skill");
+        let selected_skills: Vec<&[u8]> = pi_args
+            .windows(2)
+            .filter(|pair| pair[0] == b"--skill")
+            .map(|pair| pair[1])
+            .collect();
         assert!(pi_args.iter().any(|arg| *arg == b"--no-skills"));
         assert!(!pi_args.iter().any(
             |arg| *arg == b"/opt/vibe/.pi/agent/npm/node_modules/pi-models-discovery/index.ts"
         ));
         assert!(!home.join(".pi/agent/models.json").exists());
         assert_eq!(
-            std::str::from_utf8(pi_args[skill_position + 1]).expect("UTF-8 skill path"),
-            home.join(".agents/skills").to_string_lossy()
+            selected_skills,
+            [
+                home.join(".agents/skills").to_string_lossy().as_bytes(),
+                repository_skills.to_string_lossy().as_bytes(),
+            ]
         );
         assert_eq!(
             fs::read(&capture).expect("read captured prompt"),
