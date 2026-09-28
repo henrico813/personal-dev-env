@@ -41,6 +41,8 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".agents",
 				".pi",
 				".config/nvim/pack/plugins/start/blink.cmp",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
 			},
 		},
 		"full": {
@@ -49,6 +51,8 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/aquaproj-aqua/aqua-terminal.yaml",
 				".config/aquaproj-aqua/aqua-terminal-checksums.json",
 				".config/nvim/pack/plugins/start/blink.cmp",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
 			},
 			omit: []string{
 				".config/alacritty",
@@ -1006,19 +1010,6 @@ func TestExternalChecksumsMatchSources(t *testing.T) {
 		if got := hex.EncodeToString(hash[:]); got != match[2] {
 			t.Errorf("checksum for %s = %s, want %s", match[1], got, match[2])
 		}
-	}
-}
-
-// PDE installs the repository plugin through a symlink, not a pinned archive.
-func TestInlinePluginSymlinkTargetsRepository(t *testing.T) {
-	target := strings.TrimSpace(renderProfileTemplate(t, "dot_config/nvim/pack/plugins/start/symlink_opencode-inline.nvim.tmpl", "full"))
-
-	want := filepath.Join(repoRoot(t), "nvim-plugins", "opencode-inline.nvim")
-	if target != want {
-		t.Fatalf("symlink target = %q, want %q", target, want)
-	}
-	if _, err := os.Stat(filepath.Join(target, "lua", "opencode-inline", "init.lua")); err != nil {
-		t.Fatalf("plugin entry point: %v", err)
 	}
 }
 

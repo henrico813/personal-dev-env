@@ -206,6 +206,13 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("PDE config migration", err)
 	}
 	journals = append(journals, migrationJournal)
+	if config.Profile == profile.Full {
+		pluginJournal, err := buildManager.InstallPlugin("opencode-inline.nvim")
+		if err != nil {
+			return fail("opencode-inline.nvim", err)
+		}
+		journals = append(journals, pluginJournal)
+	}
 	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
