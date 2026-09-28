@@ -113,6 +113,7 @@ chmod +x "$output"
 `, shellQuote(logPath))
 }
 
+// A broken plugin symlink is replaced and restored by rollback.
 func TestInstallPluginReplacesBrokenSymlink(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
@@ -152,6 +153,7 @@ func TestInstallPluginReplacesBrokenSymlink(t *testing.T) {
 	}
 }
 
+// An unchanged plugin installation produces no journal changes.
 func TestInstallPluginSkipsUnchangedTree(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
@@ -176,6 +178,7 @@ func TestInstallPluginSkipsUnchangedTree(t *testing.T) {
 	}
 }
 
+// The installed runtime remains after its source tree is removed.
 func TestInstallPluginSurvivesSourceRemoval(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
@@ -197,6 +200,7 @@ func TestInstallPluginSurvivesSourceRemoval(t *testing.T) {
 	assertBuildFile(t, filepath.Join(destination, "lua", "init.lua"), "return {}\n")
 }
 
+// Invalid plugin names are rejected before source paths are used.
 func TestInstallPluginRejectsInvalidName(t *testing.T) {
 	for _, name := range []string{"", ".", "..", "nested/plugin.nvim"} {
 		t.Run(name, func(t *testing.T) {
