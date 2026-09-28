@@ -495,7 +495,7 @@ mod tests {
         assert!(add.status.success());
 
         let commit = Command::new("git")
-            .args(["-c", "core.hooksPath=/dev/null", "commit", "-m", "seed"])
+            .args(["commit", "-m", "seed"])
             .current_dir(repo)
             .output()
             .expect("git commit");
