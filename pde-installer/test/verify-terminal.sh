@@ -291,7 +291,7 @@ done
 for item in tmux aqua fd fzf ripgrep bat jq chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect; do
 	item_status "$item" current
 done
-for item in build-essential bison gopls lua-language-server opencode-ai '@openai/codex' '@earendil-works/pi-coding-agent' planner blink.cmp FiraCode JetBrainsMono neovim go rust node keychain; do
+for item in build-essential bison gopls lua-language-server '@opencode/cli' opencode-inline-shim '@openai/codex' '@earendil-works/pi-coding-agent' '@anthropic-ai/claude-code' planner blink.cmp FiraCode JetBrainsMono neovim go rust node keychain; do
 	! awk -F '\t' -v item="$item" 'NR > 1 && $2 == item { found=1 } END { exit found }' <<<"$inventory"
 done
 

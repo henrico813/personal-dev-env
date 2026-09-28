@@ -3,6 +3,7 @@
 worktrees
 planner/planner
 cli/pde
+nvim-plugins/opencode-inline.nvim/bin
 pde-installer/pde-installer
 vibe/target
 surveil/target
