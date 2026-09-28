@@ -22,6 +22,49 @@ the snapshot. Modifier scripts preserve selected user-owned settings. A JSONC
 modify-template preserves parsed values but may normalize formatting and remove
 comments when it emits the merged file.
 
+## GitHub Pull Request Reviews
+
+The terminal and full profiles install `gh` and `delta`. Git uses delta as its
+pager with line numbers and file navigation. Press `n` or `N` to move between
+files, `/` to search, and `q` to quit.
+
+Inspect the pull request context before reading its patch:
+
+```bash
+gh pr view 123
+gh pr checks 123
+gh pr diff 123 --name-only
+```
+
+Use `prd` with a pull request number, URL, branch, or no argument for the
+current branch's pull request. Additional `gh pr diff` flags pass through:
+
+```bash
+prd 123
+prd https://github.com/OWNER/REPO/pull/123
+prd 123 --exclude 'generated/*'
+```
+
+For side-by-side output on a wide terminal, invoke the underlying tools:
+
+```bash
+gh pr diff 123 --color=never |
+  delta --side-by-side --line-numbers --navigate
+```
+
+Check out a pull request when review requires repository search or tests. Use
+the merge base to isolate changes introduced by its branch:
+
+```bash
+gh pr checkout 123
+base="$(gh pr view 123 --json baseRefName --jq .baseRefName)"
+git fetch origin "$base"
+git diff "origin/$base"...HEAD
+```
+
+Delta only displays changes. Submit the overall review with `gh pr review`, or
+use `gh pr diff 123 --web` when line-specific comments are needed.
+
 ## Terminal Workspaces
 
 Use tmux as the attachment and recovery layer, with separate presentation

@@ -123,6 +123,29 @@ func TestSharedWorkflowMappings(t *testing.T) {
 	}
 }
 
+func TestGitConfigEnablesDelta(t *testing.T) {
+	path := filepath.Join(repoRoot(t), "chezmoi", "dot_config", "pde", "gitconfig")
+	tests := map[string]string{
+		"core.pager":             "delta",
+		"interactive.diffFilter": "delta --color-only",
+		"delta.navigate":         "true",
+		"delta.line-numbers":     "true",
+		"merge.conflictStyle":    "zdiff3",
+	}
+	for key, want := range tests {
+		t.Run(key, func(t *testing.T) {
+			command := exec.Command("git", "config", "--file", path, "--get", key)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("git config failed: %v\n%s", err, output)
+			}
+			if got := strings.TrimSpace(string(output)); got != want {
+				t.Fatalf("%s = %q, want %q", key, got, want)
+			}
+		})
+	}
+}
+
 func TestZshTemplateProfiles(t *testing.T) {
 	tests := map[string]struct {
 		profile string
@@ -145,6 +168,8 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"@tm-root",
 				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",
 				".left // \"\"",
+				"prd() (",
+				"command gh pr diff \"$@\" --color=never | command delta --navigate",
 			},
 			omit: []string{
 				"keychain --eval",
@@ -185,6 +210,8 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"@tm-root",
 				"Usage: tw [directory] [left_cmd] [top_cmd] [bottom_cmd] [right_cmd]",
 				".left // \"\"",
+				"prd() (",
+				"command gh pr diff \"$@\" --color=never | command delta --navigate",
 			},
 			omit: []string{
 				"aqua-terminal.yaml",
@@ -223,6 +250,14 @@ printf '%s\n' "$*" >>"$HOME/systemctl-arguments"
 	fakeSleepScript = `#!/bin/sh
 exit 0
 `
+	fakeGHScript = `#!/bin/sh
+printf '%s\n' "$@" >"$HOME/gh-arguments"
+printf 'diff body\n'
+`
+	fakeDeltaScript = `#!/bin/sh
+printf '%s\n' "$@" >"$HOME/delta-arguments"
+cat >"$HOME/delta-input"
+`
 	validOpenCodeCredentials = `OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=secret
 `
@@ -247,6 +282,44 @@ printf '%s\n' "$OPENCODE_ATTACH_URL" >"$HOME/opencode-attach-url"
 printf '%s\n' "$@" >"$HOME/opencode-arguments"
 `
 )
+
+func TestPRDForwardsDiffArguments(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "gh"), fakeGHScript)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "delta"), fakeDeltaScript)
+
+	command := openCodeZshCommand(home, `prd 123 --exclude 'generated/*'`)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("prd failed: %v\n%s", err, output)
+	}
+
+	for path, want := range map[string]string{
+		"gh-arguments":    "pr\ndiff\n123\n--exclude\ngenerated/*\n--color=never\n",
+		"delta-arguments": "--navigate\n",
+		"delta-input":     "diff body\n",
+	} {
+		data, err := os.ReadFile(filepath.Join(home, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(data); got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+}
+
+func TestPRDPropagatesGitHubFailure(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "gh"), "#!/bin/sh\nexit 9\n")
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "delta"), "#!/bin/sh\ncat >/dev/null\n")
+
+	command := openCodeZshCommand(home, `prd 123`)
+	if output, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("prd succeeded: %s", output)
+	}
+}
 
 func TestOCWDispatchesServiceActions(t *testing.T) {
 	tests := []struct {
