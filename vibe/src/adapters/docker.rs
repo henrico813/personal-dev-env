@@ -190,18 +190,39 @@ pub(crate) fn prepare_provider_auth(
 }
 
 #[derive(Debug)]
-pub(crate) struct SharedSkillsDir {
+pub(crate) struct PreparedSkillRoot {
     path: PathBuf,
     device: u64,
     inode: u64,
+    source: SkillRootSource,
 }
 
-fn reject_symlink_ancestry(path: &Path) -> Result<(), String> {
+pub(crate) struct PreparedSkills {
+    pub(crate) user: Option<PreparedSkillRoot>,
+    pub(crate) repository: Option<PreparedSkillRoot>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SkillRootSource {
+    User,
+    Repository,
+}
+
+impl SkillRootSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::User => "user skills",
+            Self::Repository => "repository skills",
+        }
+    }
+}
+
+fn reject_symlink_ancestry(path: &Path, label: &str) -> Result<(), String> {
     for ancestor in path.ancestors() {
         match fs::symlink_metadata(ancestor) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 return Err(format!(
-                    "shared skills path ancestry cannot contain a symlink: {}",
+                    "{label} path ancestry cannot contain a symlink: {}",
                     ancestor.display()
                 ));
             }
@@ -209,7 +230,7 @@ fn reject_symlink_ancestry(path: &Path) -> Result<(), String> {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
                 return Err(format!(
-                    "read shared skills path ancestry {}: {error}",
+                    "read {label} path ancestry {}: {error}",
                     ancestor.display()
                 ));
             }
@@ -221,7 +242,7 @@ fn reject_symlink_ancestry(path: &Path) -> Result<(), String> {
 fn docker_mount_path(path: &Path, label: &str) -> Result<(), String> {
     let text = path
         .to_str()
-        .ok_or_else(|| format!("{label} must be valid UTF-8 to mount shared skills"))?;
+        .ok_or_else(|| format!("{label} must be valid UTF-8 to mount skills"))?;
     if text.contains(',') || text.contains('"') || text.contains('\n') || text.contains('\r') {
         return Err(format!(
             "{label} contains syntax unsafe for Docker mounts: {}",
@@ -236,54 +257,129 @@ fn paths_overlap(left: &Path, right: &Path) -> bool {
 }
 
 fn reject_writable_mount_overlap(
-    shared_skills: &Path,
+    skills: &Path,
+    skills_label: &str,
+    mount_label: &str,
+    writable_mount: &Path,
+) -> Result<(), String> {
+    let writable_mount = fs::canonicalize(writable_mount)
+        .map_err(|error| format!("resolve {mount_label} for skills validation: {error}"))?;
+    if paths_overlap(skills, &writable_mount) {
+        return Err(format!(
+            "{skills_label} path overlaps writable Docker mount {mount_label}: {}",
+            skills.display()
+        ));
+    }
+    Ok(())
+}
+
+fn reject_user_skills_writable_overlap(
+    skills: &Path,
     worktree: &Path,
     git_common_dir: &Path,
     artifacts: &Path,
     pi_agent_dir: Option<&Path>,
 ) -> Result<(), String> {
-    let mut writable_mounts = vec![
+    for (label, writable_mount) in [
         ("worktree", worktree),
         ("shared Git directory", git_common_dir),
         ("artifacts", artifacts),
-    ];
-    if let Some(pi_agent_dir) = pi_agent_dir {
-        writable_mounts.push(("Pi state directory", pi_agent_dir));
+    ] {
+        reject_writable_mount_overlap(skills, "user skills", label, writable_mount)?;
     }
-    for (label, writable_mount) in writable_mounts {
-        let writable_mount = fs::canonicalize(writable_mount)
-            .map_err(|error| format!("resolve {label} for shared skills validation: {error}"))?;
-        if paths_overlap(shared_skills, &writable_mount) {
-            return Err(format!(
-                "shared skills path overlaps writable Docker mount {label}: {}",
-                shared_skills.display()
-            ));
+    if let Some(pi_agent_dir) = pi_agent_dir {
+        reject_writable_mount_overlap(skills, "user skills", "Pi state directory", pi_agent_dir)?;
+    }
+    Ok(())
+}
+
+fn validate_repository_skills_mount(
+    skills: &Path,
+    worktree: &Path,
+    git_common_dir: &Path,
+    artifacts: &Path,
+    pi_agent_dir: Option<&Path>,
+) -> Result<(), String> {
+    let expected = fs::canonicalize(worktree.join(".agents/skills"))
+        .map_err(|error| format!("resolve repository skills in worktree: {error}"))?;
+    if skills != expected {
+        return Err(format!(
+            "repository skills path moved outside the managed worktree: {}",
+            skills.display()
+        ));
+    }
+    for (label, writable_mount) in [
+        ("shared Git directory", git_common_dir),
+        ("artifacts", artifacts),
+    ] {
+        reject_writable_mount_overlap(skills, "repository skills", label, writable_mount)?;
+    }
+    if let Some(pi_agent_dir) = pi_agent_dir {
+        reject_writable_mount_overlap(
+            skills,
+            "repository skills",
+            "Pi state directory",
+            pi_agent_dir,
+        )?;
+    }
+    Ok(())
+}
+
+fn reject_descendant_symlinks(root: &Path, label: &str) -> Result<(), String> {
+    let mut directories = vec![root.to_path_buf()];
+    while let Some(directory) = directories.pop() {
+        let entries = fs::read_dir(&directory)
+            .map_err(|error| format!("read {label} {}: {error}", directory.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| {
+                format!("read {label} entry in {}: {error}", directory.display())
+            })?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| format!("read {label} metadata {}: {error}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "{label} cannot contain symlinks: {}",
+                    path.display()
+                ));
+            }
+            if metadata.is_file() && metadata.nlink() > 1 {
+                return Err(format!(
+                    "{label} cannot contain multiply-linked files: {}",
+                    path.display()
+                ));
+            }
+            if metadata.is_dir() {
+                directories.push(path);
+            }
         }
     }
     Ok(())
 }
 
-fn inspect_shared_skills_with<F>(
+fn inspect_skill_root_with<F>(
     skills_dir: &Path,
+    source: SkillRootSource,
     read_dir: F,
-) -> Result<Option<SharedSkillsDir>, String>
+) -> Result<Option<PreparedSkillRoot>, String>
 where
     F: FnOnce(&Path) -> std::io::Result<()>,
 {
+    let label = source.label();
     let metadata = match fs::symlink_metadata(skills_dir) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
             return Err(format!(
-                "read shared skills metadata {}: {error}",
+                "read {label} metadata {}: {error}",
                 skills_dir.display()
             ))
         }
     };
-    reject_symlink_ancestry(skills_dir)?;
+    reject_symlink_ancestry(skills_dir, label)?;
     match metadata {
         metadata if metadata.file_type().is_symlink() => Err(format!(
-            "shared skills path cannot be a symlink: {}",
+            "{label} path cannot be a symlink: {}",
             skills_dir.display()
         )),
         metadata if metadata.is_dir() => {
@@ -291,10 +387,7 @@ where
                 Ok(resolved) => resolved,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(error) => {
-                    return Err(format!(
-                        "resolve shared skills {}: {error}",
-                        skills_dir.display()
-                    ))
+                    return Err(format!("resolve {label} {}: {error}", skills_dir.display()))
                 }
             };
             let resolved_metadata = match fs::metadata(&resolved) {
@@ -302,44 +395,47 @@ where
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(error) => {
                     return Err(format!(
-                        "read shared skills metadata {}: {error}",
+                        "read {label} metadata {}: {error}",
                         resolved.display()
                     ))
                 }
             };
-            docker_mount_path(&resolved, "resolved shared skills path")?;
+            docker_mount_path(&resolved, label)?;
             if metadata.dev() != resolved_metadata.dev()
                 || metadata.ino() != resolved_metadata.ino()
             {
                 return Err(format!(
-                    "shared skills path changed during validation: {}",
+                    "{label} path changed during validation: {}",
                     skills_dir.display()
                 ));
             }
             match read_dir(&resolved) {
-                Ok(()) => Ok(Some(SharedSkillsDir {
-                    path: resolved,
-                    device: metadata.dev(),
-                    inode: metadata.ino(),
-                })),
+                Ok(()) => {
+                    if source == SkillRootSource::Repository {
+                        reject_descendant_symlinks(&resolved, label)?;
+                    }
+                    Ok(Some(PreparedSkillRoot {
+                        path: resolved,
+                        device: metadata.dev(),
+                        inode: metadata.ino(),
+                        source,
+                    }))
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-                Err(error) => Err(format!(
-                    "read shared skills {}: {error}",
-                    resolved.display()
-                )),
+                Err(error) => Err(format!("read {label} {}: {error}", resolved.display())),
             }
         }
         _ => Err(format!(
-            "shared skills path is not a directory: {}",
+            "{label} path is not a directory: {}",
             skills_dir.display()
         )),
     }
 }
 
-fn prepare_shared_skills_with<F>(
+fn prepare_user_skills_with<F>(
     home: Option<&OsStr>,
     read_dir: F,
-) -> Result<Option<SharedSkillsDir>, String>
+) -> Result<Option<PreparedSkillRoot>, String>
 where
     F: FnOnce(&Path) -> std::io::Result<()>,
 {
@@ -348,36 +444,48 @@ where
     };
     let home_path = PathBuf::from(home);
     let skills_dir = home_path.join(".agents/skills");
-    let prepared = inspect_shared_skills_with(&skills_dir, read_dir)?;
+    let prepared = inspect_skill_root_with(&skills_dir, SkillRootSource::User, read_dir)?;
     if prepared.is_none() {
         return Ok(None);
     }
 
     let home = home
         .to_str()
-        .ok_or_else(|| "HOME must be valid UTF-8 to mount shared skills".to_string())?;
+        .ok_or_else(|| "HOME must be valid UTF-8 to mount user skills".to_string())?;
     if home.is_empty() || !home_path.is_absolute() {
-        return Err("HOME must be an absolute path to mount shared skills".to_string());
+        return Err("HOME must be an absolute path to mount user skills".to_string());
     }
     docker_mount_path(&home_path, "HOME")?;
     Ok(prepared)
 }
 
-pub(crate) fn prepare_shared_skills(
+pub(crate) fn prepare_user_skills(
     home: Option<&OsStr>,
-) -> Result<Option<SharedSkillsDir>, String> {
-    prepare_shared_skills_with(home, |path| fs::read_dir(path).map(|_| ()))
+) -> Result<Option<PreparedSkillRoot>, String> {
+    prepare_user_skills_with(home, |path| fs::read_dir(path).map(|_| ()))
 }
 
-fn revalidate_shared_skills(prepared: &SharedSkillsDir) -> Result<Option<PathBuf>, String> {
-    let Some(current) =
-        inspect_shared_skills_with(&prepared.path, |path| fs::read_dir(path).map(|_| ()))?
+pub(crate) fn prepare_repository_skills(
+    worktree: &Path,
+) -> Result<Option<PreparedSkillRoot>, String> {
+    inspect_skill_root_with(
+        &worktree.join(".agents/skills"),
+        SkillRootSource::Repository,
+        |path| fs::read_dir(path).map(|_| ()),
+    )
+}
+
+fn revalidate_skill_root(prepared: &PreparedSkillRoot) -> Result<Option<PathBuf>, String> {
+    let Some(current) = inspect_skill_root_with(&prepared.path, prepared.source, |path| {
+        fs::read_dir(path).map(|_| ())
+    })?
     else {
         return Ok(None);
     };
     if current.device != prepared.device || current.inode != prepared.inode {
         return Err(format!(
-            "shared skills path changed after validation: {}",
+            "{} path changed after validation: {}",
+            prepared.source.label(),
             prepared.path.display()
         ));
     }
@@ -396,7 +504,8 @@ struct DockerRunArgs<'a> {
     snapshot_ref: &'a str,
     user: &'a HostUser,
     pi_agent_dir: Option<&'a Path>,
-    shared_skills_dir: Option<&'a Path>,
+    user_skills_dir: Option<&'a Path>,
+    repository_skills_dir: Option<&'a Path>,
 }
 
 /// Keep prompt/env wiring pure so tests can lock the Docker seam.
@@ -413,7 +522,8 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         snapshot_ref,
         user,
         pi_agent_dir,
-        shared_skills_dir,
+        user_skills_dir,
+        repository_skills_dir,
     } = args;
 
     let mut run_args = vec![
@@ -469,13 +579,25 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
             ),
         ]);
     }
-    if let Some(shared_skills_dir) = shared_skills_dir {
+    if let Some(user_skills_dir) = user_skills_dir {
         run_args.extend([
             "--mount".to_string(),
             format!(
                 "type=bind,src={},dst=/vibe-home/.agents/skills,readonly",
-                shared_skills_dir.display()
+                user_skills_dir.display()
             ),
+        ]);
+    }
+    if let Some(repository_skills_dir) = repository_skills_dir {
+        run_args.extend([
+            "--mount".to_string(),
+            format!(
+                "type=bind,src={},dst={},readonly",
+                repository_skills_dir.display(),
+                repository_skills_dir.display()
+            ),
+            "-e".to_string(),
+            format!("VIBE_REPO_SKILLS_DIR={}", repository_skills_dir.display()),
         ]);
     }
     if let Some(pi_agent_dir) = pi_agent_dir {
@@ -500,7 +622,7 @@ pub fn run_task(
     stderr_level: &str,
     insecure_tls: bool,
     pi_agent_dir: Option<&Path>,
-    shared_skills: Option<&SharedSkillsDir>,
+    prepared_skills: &PreparedSkills,
 ) -> Result<i32, String> {
     let stderr_log =
         File::create(&artifacts.stderr_log).map_err(|e| format!("create stderr log: {e}"))?;
@@ -530,13 +652,26 @@ pub fn run_task(
             }
         }
     }
-    let shared_skills_dir = match shared_skills {
-        Some(prepared) => revalidate_shared_skills(prepared)?,
+    let user_skills_dir = match prepared_skills.user.as_ref() {
+        Some(prepared) => revalidate_skill_root(prepared)?,
         None => None,
     };
-    if let Some(shared_skills_dir) = &shared_skills_dir {
-        reject_writable_mount_overlap(
-            shared_skills_dir,
+    if let Some(user_skills_dir) = &user_skills_dir {
+        reject_user_skills_writable_overlap(
+            user_skills_dir,
+            &mounts.worktree,
+            &mounts.git_common_dir,
+            &artifacts.dir,
+            pi_agent_dir,
+        )?;
+    }
+    let repository_skills_dir = match prepared_skills.repository.as_ref() {
+        Some(prepared) => revalidate_skill_root(prepared)?,
+        None => None,
+    };
+    if let Some(repository_skills_dir) = &repository_skills_dir {
+        validate_repository_skills_mount(
+            repository_skills_dir,
             &mounts.worktree,
             &mounts.git_common_dir,
             &artifacts.dir,
@@ -556,7 +691,8 @@ pub fn run_task(
         snapshot_ref: &snapshot_ref,
         user: &user,
         pi_agent_dir,
-        shared_skills_dir: shared_skills_dir.as_deref(),
+        user_skills_dir: user_skills_dir.as_deref(),
+        repository_skills_dir: repository_skills_dir.as_deref(),
     }));
     cmd.args(auth_env_args(model));
     cmd.args(git_env_args);
@@ -614,9 +750,10 @@ pub fn run_task(
 #[cfg(test)]
 mod tests {
     use super::{
-        auth_env_args, docker_run_args, prepare_provider_auth, prepare_shared_skills,
-        prepare_shared_skills_with, reject_writable_mount_overlap, revalidate_shared_skills,
-        ArtifactPaths, DockerRunArgs, HostUser, AUTH_VARS,
+        auth_env_args, docker_run_args, prepare_provider_auth, prepare_repository_skills,
+        prepare_user_skills, prepare_user_skills_with, reject_user_skills_writable_overlap,
+        revalidate_skill_root, validate_repository_skills_mount, ArtifactPaths, DockerRunArgs,
+        HostUser, AUTH_VARS,
     };
     use crate::state::home_env_lock;
     use std::{ffi::OsString, fs, path::Path};
@@ -714,7 +851,7 @@ mod tests {
     fn shared_skills_accept_missing_directory() {
         let home = tempfile::tempdir().expect("tempdir");
 
-        assert!(prepare_shared_skills(Some(home.path().as_os_str()))
+        assert!(prepare_user_skills(Some(home.path().as_os_str()))
             .expect("missing skills are optional")
             .is_none());
     }
@@ -725,7 +862,7 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
 
-        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+        let prepared = prepare_user_skills(Some(home.path().as_os_str()))
             .expect("read skills path")
             .expect("skills path");
 
@@ -736,16 +873,86 @@ mod tests {
     }
 
     #[test]
+    fn repository_skills_accept_missing_directory() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+
+        assert!(prepare_repository_skills(worktree.path())
+            .expect("missing repository skills are optional")
+            .is_none());
+    }
+
+    #[test]
+    fn repository_skills_find_directory() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let skills_dir = worktree.path().join(".agents/skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+
+        let prepared = prepare_repository_skills(worktree.path())
+            .expect("read repository skills")
+            .expect("repository skills path");
+
+        assert_eq!(
+            prepared.path,
+            fs::canonicalize(skills_dir).expect("resolve skills")
+        );
+    }
+
+    #[test]
+    fn repository_skills_reject_file() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let skills_dir = worktree.path().join(".agents/skills");
+        fs::create_dir_all(skills_dir.parent().expect("skills parent")).expect("mkdir parent");
+        fs::write(&skills_dir, b"not a directory").expect("write skills file");
+
+        let error = prepare_repository_skills(worktree.path())
+            .expect_err("a file cannot be mounted as repository skills");
+
+        assert!(error.contains("repository skills path is not a directory"));
+    }
+
+    #[test]
+    fn repository_skills_reject_descendant_symlinks() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let skills_dir = worktree.path().join(".agents/skills/reviewed");
+        let target = worktree.path().join("README.md");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+        fs::write(&target, "outside skills\n").expect("write target");
+        std::os::unix::fs::symlink(&target, skills_dir.join("SKILL.md"))
+            .expect("symlink skill file");
+
+        let error = prepare_repository_skills(worktree.path())
+            .expect_err("descendant symlinks must fail setup");
+
+        assert!(error.contains("repository skills cannot contain symlinks"));
+    }
+
+    #[test]
+    fn repository_skills_reject_hard_links() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let skills_dir = worktree.path().join(".agents/skills/reviewed");
+        let skill = skills_dir.join("SKILL.md");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+        fs::write(&skill, "reviewed\n").expect("write skill");
+        fs::hard_link(&skill, worktree.path().join("writable-alias.md"))
+            .expect("link skill outside root");
+
+        let error =
+            prepare_repository_skills(worktree.path()).expect_err("hard links must fail setup");
+
+        assert!(error.contains("repository skills cannot contain multiply-linked files"));
+    }
+
+    #[test]
     fn shared_skills_reject_file() {
         let home = tempfile::tempdir().expect("tempdir");
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(skills_dir.parent().expect("skills parent")).expect("mkdir parent");
         fs::write(&skills_dir, b"not a directory").expect("write skills file");
 
-        let error = prepare_shared_skills(Some(home.path().as_os_str()))
+        let error = prepare_user_skills(Some(home.path().as_os_str()))
             .expect_err("a file cannot be mounted as the skills directory");
 
-        assert!(error.contains("shared skills path is not a directory"));
+        assert!(error.contains("user skills path is not a directory"));
     }
 
     #[test]
@@ -753,7 +960,7 @@ mod tests {
         let home = tempfile::tempdir().expect("tempdir");
         let missing = home.path().join("missing,home");
 
-        assert!(prepare_shared_skills(Some(missing.as_os_str()))
+        assert!(prepare_user_skills(Some(missing.as_os_str()))
             .expect("missing skills are optional")
             .is_none());
     }
@@ -764,7 +971,7 @@ mod tests {
         let home = parent.path().join("home,with-comma");
         fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
 
-        assert!(prepare_shared_skills(Some(home.as_os_str())).is_err());
+        assert!(prepare_user_skills(Some(home.as_os_str())).is_err());
     }
 
     #[test]
@@ -776,7 +983,7 @@ mod tests {
         fs::create_dir_all(skills_dir.parent().expect("skills parent")).expect("mkdir parent");
         std::os::unix::fs::symlink(target, &skills_dir).expect("symlink skills");
 
-        let error = prepare_shared_skills(Some(home.path().as_os_str()))
+        let error = prepare_user_skills(Some(home.path().as_os_str()))
             .expect_err("symlinked skills must fail setup");
 
         assert!(error.contains("path ancestry cannot contain a symlink"));
@@ -790,7 +997,7 @@ mod tests {
         fs::create_dir_all(&real_home).expect("mkdir home");
         std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
 
-        assert!(prepare_shared_skills(Some(home.as_os_str()))
+        assert!(prepare_user_skills(Some(home.as_os_str()))
             .expect("missing skills remain optional")
             .is_none());
     }
@@ -803,7 +1010,7 @@ mod tests {
         fs::create_dir_all(real_home.join(".agents/skills")).expect("mkdir skills");
         std::os::unix::fs::symlink(&real_home, &home).expect("symlink home");
 
-        let error = prepare_shared_skills(Some(home.as_os_str()))
+        let error = prepare_user_skills(Some(home.as_os_str()))
             .expect_err("existing skills cannot use symlinked home");
 
         assert!(error.contains("path ancestry cannot contain a symlink"));
@@ -815,7 +1022,7 @@ mod tests {
         let home = parent.path().join("home\nnewline");
         fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
 
-        let error = prepare_shared_skills(Some(home.as_os_str()))
+        let error = prepare_user_skills(Some(home.as_os_str()))
             .expect_err("newline mount paths must fail setup");
 
         assert!(error.contains("syntax unsafe for Docker mounts"));
@@ -827,7 +1034,7 @@ mod tests {
         let home = parent.path().join("home\"quoted");
         fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
 
-        let error = prepare_shared_skills(Some(home.as_os_str()))
+        let error = prepare_user_skills(Some(home.as_os_str()))
             .expect_err("quoted mount paths must fail setup");
 
         assert!(error.contains("syntax unsafe for Docker mounts"));
@@ -845,7 +1052,7 @@ mod tests {
         fs::create_dir_all(&artifacts).expect("mkdir artifacts");
 
         let error =
-            reject_writable_mount_overlap(&shared_skills, &worktree, &git, &artifacts, None)
+            reject_user_skills_writable_overlap(&shared_skills, &worktree, &git, &artifacts, None)
                 .expect_err("shared skills cannot overlap writable mounts");
 
         assert!(error.contains("overlaps writable Docker mount worktree"));
@@ -865,7 +1072,7 @@ mod tests {
         fs::create_dir_all(&artifacts).expect("mkdir artifacts");
         std::os::unix::fs::symlink(&shared_skills, &pi_agent_dir).expect("symlink pi state");
 
-        let error = reject_writable_mount_overlap(
+        let error = reject_user_skills_writable_overlap(
             &shared_skills,
             &worktree,
             &git,
@@ -878,16 +1085,68 @@ mod tests {
     }
 
     #[test]
+    fn repository_skills_allow_exact_subtree() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let worktree = parent.path().join("worktree");
+        let skills = worktree.join(".agents/skills");
+        let git = parent.path().join("git");
+        let artifacts = parent.path().join("artifacts");
+        fs::create_dir_all(&skills).expect("mkdir skills");
+        fs::create_dir_all(&git).expect("mkdir git");
+        fs::create_dir_all(&artifacts).expect("mkdir artifacts");
+        let skills = fs::canonicalize(skills).expect("resolve skills");
+
+        validate_repository_skills_mount(&skills, &worktree, &git, &artifacts, None)
+            .expect("exact repository subtree is protected by nested mount");
+    }
+
+    #[test]
+    fn repository_skills_reject_wrong_subtree() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let worktree = parent.path().join("worktree");
+        let expected = worktree.join(".agents/skills");
+        let other = worktree.join("other-skills");
+        let git = parent.path().join("git");
+        let artifacts = parent.path().join("artifacts");
+        fs::create_dir_all(&expected).expect("mkdir expected skills");
+        fs::create_dir_all(&other).expect("mkdir other skills");
+        fs::create_dir_all(&git).expect("mkdir git");
+        fs::create_dir_all(&artifacts).expect("mkdir artifacts");
+        let other = fs::canonicalize(other).expect("resolve other skills");
+
+        let error = validate_repository_skills_mount(&other, &worktree, &git, &artifacts, None)
+            .expect_err("other worktree subtrees stay writable");
+
+        assert!(error.contains("moved outside the managed worktree"));
+    }
+
+    #[test]
+    fn repository_skills_reject_git_overlap() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let worktree = parent.path().join("worktree");
+        let skills = worktree.join(".agents/skills");
+        let artifacts = parent.path().join("artifacts");
+        fs::create_dir_all(&skills).expect("mkdir skills");
+        fs::create_dir_all(&artifacts).expect("mkdir artifacts");
+        let skills = fs::canonicalize(skills).expect("resolve skills");
+
+        let error = validate_repository_skills_mount(&skills, &worktree, &skills, &artifacts, None)
+            .expect_err("Git overlap must stay writable");
+
+        assert!(error.contains("shared Git directory"));
+    }
+
+    #[test]
     fn shared_skills_omit_disappeared_directory() {
         let home = tempfile::tempdir().expect("tempdir");
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
-        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+        let prepared = prepare_user_skills(Some(home.path().as_os_str()))
             .expect("read skills path")
             .expect("skills path");
         fs::remove_dir(&skills_dir).expect("remove skills");
 
-        assert!(revalidate_shared_skills(&prepared)
+        assert!(revalidate_skill_root(&prepared)
             .expect("disappeared skills are optional")
             .is_none());
     }
@@ -898,16 +1157,34 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         let original = home.path().join("original-skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
-        let prepared = prepare_shared_skills(Some(home.path().as_os_str()))
+        let prepared = prepare_user_skills(Some(home.path().as_os_str()))
             .expect("read skills path")
             .expect("skills path");
         fs::rename(&skills_dir, &original).expect("move original skills");
         fs::create_dir(&skills_dir).expect("replace skills");
 
         let error =
-            revalidate_shared_skills(&prepared).expect_err("replacement must fail before launch");
+            revalidate_skill_root(&prepared).expect_err("replacement must fail before launch");
 
         assert!(error.contains("changed after validation"));
+    }
+
+    #[test]
+    fn repository_skills_reject_replacement() {
+        let worktree = tempfile::tempdir().expect("tempdir");
+        let skills_dir = worktree.path().join(".agents/skills");
+        let original = worktree.path().join("original-skills");
+        fs::create_dir_all(&skills_dir).expect("mkdir skills");
+        let prepared = prepare_repository_skills(worktree.path())
+            .expect("read repository skills")
+            .expect("repository skills path");
+        fs::rename(&skills_dir, &original).expect("move original skills");
+        fs::create_dir(&skills_dir).expect("replace skills");
+
+        let error =
+            revalidate_skill_root(&prepared).expect_err("replacement must fail before launch");
+
+        assert!(error.contains("repository skills path changed after validation"));
     }
 
     #[test]
@@ -916,7 +1193,7 @@ mod tests {
         let skills_dir = home.path().join(".agents/skills");
         fs::create_dir_all(&skills_dir).expect("mkdir skills");
 
-        let error = prepare_shared_skills_with(Some(home.path().as_os_str()), |_| {
+        let error = prepare_user_skills_with(Some(home.path().as_os_str()), |_| {
             Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "permission denied",
@@ -924,7 +1201,7 @@ mod tests {
         })
         .expect_err("unreadable skills must fail setup");
 
-        assert!(error.contains("read shared skills"));
+        assert!(error.contains("read user skills"));
     }
 
     #[test]
@@ -962,7 +1239,8 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: pi_agent_dir.as_deref(),
-            shared_skills_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
         });
 
         restore_env(saved);
@@ -1255,7 +1533,8 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: None,
-            shared_skills_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
         });
 
         assert!(args
@@ -1305,7 +1584,8 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: None,
-            shared_skills_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
         });
 
         assert!(args
@@ -1338,7 +1618,8 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: Some(&pi_agent_dir),
-            shared_skills_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
         });
 
         // This checks Vibe's mount only; Pi owns refresh behavior.
@@ -1347,12 +1628,13 @@ mod tests {
     }
 
     #[test]
-    fn docker_mounts_shared_skills_read_only() {
+    fn docker_mounts_both_skill_roots_read_only() {
         let temp = tempfile::tempdir().expect("tempdir");
         let repo_root = temp.path().join("repo");
         let git_common_dir = temp.path().join("git");
         let worktree = temp.path().join("worktree");
-        let shared_skills_dir = temp.path().join(".agents/skills");
+        let user_skills_dir = temp.path().join("home/.agents/skills");
+        let repository_skills_dir = worktree.join(".agents/skills");
         let artifacts = test_artifacts(temp.path());
         let user = HostUser {
             uid: "1000".to_string(),
@@ -1371,19 +1653,112 @@ mod tests {
             snapshot_ref: "refs/vibe/snapshots/run",
             user: &user,
             pi_agent_dir: None,
-            shared_skills_dir: Some(&shared_skills_dir),
+            user_skills_dir: Some(&user_skills_dir),
+            repository_skills_dir: Some(&repository_skills_dir),
         });
-        let expected_mount = format!(
+        let expected_user_mount = format!(
             "type=bind,src={},dst=/vibe-home/.agents/skills,readonly",
-            shared_skills_dir.display()
+            user_skills_dir.display()
+        );
+        let expected_repository_mount = format!(
+            "type=bind,src={},dst={},readonly",
+            repository_skills_dir.display(),
+            repository_skills_dir.display()
         );
 
         assert!(args
             .windows(2)
-            .any(|pair| pair[0] == "--mount" && pair[1] == expected_mount));
+            .any(|pair| pair[0] == "--mount" && pair[1] == expected_user_mount));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--mount" && pair[1] == expected_repository_mount));
+        let worktree_mount = format!("{}:{}", worktree.display(), worktree.display());
+        let worktree_position = args
+            .iter()
+            .position(|arg| arg == &worktree_mount)
+            .expect("worktree mount");
+        let repository_position = args
+            .iter()
+            .position(|arg| arg == &expected_repository_mount)
+            .expect("repository skills mount");
+        assert!(repository_position > worktree_position);
+        assert!(args.iter().any(|arg| {
+            arg == &format!("VIBE_REPO_SKILLS_DIR={}", repository_skills_dir.display())
+        }));
         assert!(!args
             .iter()
             .any(|arg| arg.contains("/vibe-home/.agents/skills:rw")));
+    }
+
+    #[test]
+    fn docker_omits_missing_skill_roots() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: temp.path(),
+            git_common_dir: temp.path(),
+            worktree: temp.path(),
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
+        });
+
+        assert!(!args
+            .iter()
+            .any(|arg| arg.contains("/vibe-home/.agents/skills")));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.starts_with("VIBE_REPO_SKILLS_DIR=")));
+    }
+
+    #[test]
+    fn docker_mounts_repository_skills_alone() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repository_skills_dir = temp.path().join("worktree/.agents/skills");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: temp.path(),
+            git_common_dir: temp.path(),
+            worktree: temp.path(),
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: Some(&repository_skills_dir),
+        });
+
+        assert!(args.iter().any(|arg| {
+            arg == &format!(
+                "type=bind,src={},dst={},readonly",
+                repository_skills_dir.display(),
+                repository_skills_dir.display()
+            )
+        }));
+        assert!(!args
+            .iter()
+            .any(|arg| arg.contains("dst=/vibe-home/.agents/skills")));
     }
 
     #[test]
