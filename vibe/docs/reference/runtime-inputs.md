@@ -31,6 +31,11 @@ that group is set:
 | `azure-openai` | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_BASE_URL` |
 | `opencode`, `opencode-go` | `OPENCODE_API_KEY` |
 | `goog` | `GOOG_BASE_URL`, `GOOG_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
+
+Vibe selects credentials using the leading `openrouter` prefix of a selector
+such as `openrouter/z-ai/glm-5.3-prime` and passes the full selector to Pi
+unchanged.
 
 For `goog/<model>`, set `GOOG_BASE_URL` to an API root that implements `GET
 /models`. Its chat endpoint must be compatible with Pi's internal
