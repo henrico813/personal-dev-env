@@ -92,6 +92,7 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 |---|---|
 | `<leader><leader>` | Find files (fzf) |
 | `<leader>/` | Fuzzy search current buffer |
+| `<leader>os` | Sync configured Obsidian vaults |
 | `<leader>pc` | Toggle CodeCompanion chat |
 | `<leader>pn` | Open a new chat buffer |
 | `<leader>ps` | Send the current chat, or add the current selection |
@@ -113,6 +114,16 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 ---
 
 ## Workflows
+
+### Sync Obsidian vaults
+
+`<leader>os` starts one `ob sync` process for each configured main and work
+vault. Lualine shows each vault as syncing, failed, or last synced. A sync is
+stopped after five minutes so `ob` connection retries cannot leave it running
+indefinitely.
+
+The first sync error appears as a Neovim notification. Full sync activity is
+recorded in `~/.config/obsidian-headless/sync/<vault-id>/sync.log`.
 
 ### Add a plugin
 
