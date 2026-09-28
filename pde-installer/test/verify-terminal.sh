@@ -30,49 +30,59 @@ grep -Fq '#7aa2f7' "$HOME/.tmux.conf"
 grep -Fq '#7aa2f7' "$HOME/.p10k.zsh"
 bat --list-themes | grep -Fxq TwoDark
 
-tui_home="$(mktemp -d)"
-mkdir -p "$tui_home/.config/opencode"
-cat >"$tui_home/.config/opencode/tui.jsonc" <<'EOF'
+cli_home="$(mktemp -d)"
+mkdir -p "$cli_home/.config/opencode"
+cat >"$cli_home/.config/opencode/cli.json" <<'EOF'
 {
-  // Existing OpenCode TUI settings remain user-owned.
   "mouse": false,
-  "scroll_speed": 2,
+  "scroll": {
+    "speed": 2
+  },
+  "keybinds": {
+    "agent.list": "ctrl+a"
+  }
 }
 EOF
-render_opencode_tui() {
+render_opencode_cli() {
 	local profile="$1"
 	PDE_PROFILE=full \
 	PDE_COLOR_PROFILE="$profile" \
 	PDE_REPO_ROOT="$REPO_ROOT" \
-	PDE_SURVEIL_STATE_PATTERN="$tui_home/.local/state/surveil/**" \
+	PDE_SURVEIL_STATE_PATTERN="$cli_home/.local/state/surveil/**" \
 	chezmoi \
 		--config /dev/null \
 		--config-format toml \
 		--source "$REPO_ROOT/chezmoi" \
-		--destination "$tui_home" \
-		--persistent-state "$tui_home/chezmoi.boltdb" \
+		--destination "$cli_home" \
+		--persistent-state "$cli_home/chezmoi.boltdb" \
 		--color false \
 		--refresh-externals=never \
-		cat "$tui_home/.config/opencode/tui.jsonc"
+		cat "$cli_home/.config/opencode/cli.json"
 }
 for mapping in tokyo-night:tokyonight everforest-dark:everforest gruvbox-dark:gruvbox; do
 	profile="${mapping%%:*}"
 	theme="${mapping#*:}"
-	rendered="$(render_opencode_tui "$profile")"
+	rendered="$(render_opencode_cli "$profile")"
 	jq -e --arg theme "$theme" \
-		'.theme == $theme and .mouse == false and .scroll_speed == 2' \
+		'.theme.name == $theme and .mouse == false and .scroll.speed == 2 and .keybinds["agent.list"] == "ctrl+a" and .keybinds["agent.cycle"] == "tab" and .keybinds["agent.cycle.reverse"] == "shift+tab"' \
 		<<<"$rendered" >/dev/null
 done
-printf '[]\n' >"$tui_home/.config/opencode/tui.jsonc"
-if render_opencode_tui everforest-dark >/dev/null 2>&1; then
-	printf 'non-object OpenCode TUI config unexpectedly rendered\n' >&2
+printf '[]\n' >"$cli_home/.config/opencode/cli.json"
+if render_opencode_cli everforest-dark >/dev/null 2>&1; then
+	printf 'non-object OpenCode CLI config unexpectedly rendered\n' >&2
 	exit 1
 fi
-grep -Fxq '[]' "$tui_home/.config/opencode/tui.jsonc"
-rm "$tui_home/.config/opencode/tui.jsonc"
-rendered="$(render_opencode_tui everforest-dark)"
-jq -e '. == {"theme":"everforest"}' <<<"$rendered" >/dev/null
-rm -rf "$tui_home"
+grep -Fxq '[]' "$cli_home/.config/opencode/cli.json"
+printf '{"keybinds":[]}\n' >"$cli_home/.config/opencode/cli.json"
+if render_opencode_cli everforest-dark >/dev/null 2>&1; then
+	printf 'non-object OpenCode CLI keybinds unexpectedly rendered\n' >&2
+	exit 1
+fi
+grep -Fxq '{"keybinds":[]}' "$cli_home/.config/opencode/cli.json"
+rm "$cli_home/.config/opencode/cli.json"
+rendered="$(render_opencode_cli everforest-dark)"
+jq -e '. == {"theme":{"name":"everforest"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
+rm -rf "$cli_home"
 
 before_rollback="$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")"
 zsh_template="$REPO_ROOT/chezmoi/dot_zshrc.tmpl"
