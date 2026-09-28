@@ -147,6 +147,8 @@ func aquaRepository(t *testing.T, name string) string {
 	repositories := map[string]string{
 		"fd": "sharkdp/fd", "fzf": "junegunn/fzf", "ripgrep": "BurntSushi/ripgrep", "bat": "sharkdp/bat",
 		"jq": "jqlang/jq", "chezmoi": "twpayne/chezmoi", "eza": "eza-community/eza", "zoxide": "ajeetdsouza/zoxide",
+		"gh":     "cli/cli",
+		"delta":  "dandavison/delta",
 		"bottom": "ClementTsang/bottom", "yq": "mikefarah/yq", "yazi": "sxyazi/yazi", "gopls": "golang.org/x/tools/gopls",
 		"lua-language-server": "LuaLS/lua-language-server",
 	}
@@ -208,6 +210,20 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 	for _, test := range []struct {
 		name, version, path, argument, output string
 	}{
+		{
+			name:     "gh",
+			version:  "v2.101.0",
+			path:     "github_release/github.com/cli/cli/v2.101.0/gh_2.101.0_linux_amd64/bin/gh",
+			argument: "--version",
+			output:   "gh version 2.101.0",
+		},
+		{
+			name:     "delta",
+			version:  "0.19.2",
+			path:     "github_release/github.com/dandavison/delta/0.19.2/delta-0.19.2-x86_64-unknown-linux-musl/delta",
+			argument: "--version",
+			output:   "delta 0.19.2",
+		},
 		{name: "gopls", version: "v0.23.0", path: "golang.org/x/tools/gopls/v0.23.0/bin/gopls", argument: "version", output: "golang.org/x/tools/gopls v0.23.0"},
 		{name: "jq", version: "jq-1.7.1", path: "github_release/github.com/jqlang/jq/jq-1.7.1/jq-linux-" + runtime.GOARCH + "/jq-linux-" + runtime.GOARCH, argument: "--version", output: "jq-1.7.1"},
 		{name: "yq", version: "v4.53.3", path: "github_release/github.com/mikefarah/yq/v4.53.3/yq_linux_" + runtime.GOARCH + "/yq_linux_" + runtime.GOARCH, argument: "--version", output: "yq version v4.53.3"},
