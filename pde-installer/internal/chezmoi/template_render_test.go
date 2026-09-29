@@ -184,6 +184,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"ocw()",
 				"ocw-password()",
 				"server.env",
+				"vibe() (",
 				"EDITOR=$(which nvim)",
 				"/aqua.yaml",
 				"/aqua-checksums.json",
@@ -200,6 +201,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"oca() (",
 				"ocw() (",
 				"ocw-password() (",
+				"vibe() (",
 				"$HOME/.config/opencode/server.env",
 				"url=\"http://127.0.0.1:4096\"",
 				"health_url=\"$url/global/health\"",
@@ -262,6 +264,10 @@ printf 'diff body\n'
 printf '%s\n' "$@" >"$HOME/delta-arguments"
 cat >"$HOME/delta-input"
 `
+	fakeVibeScript = `#!/bin/sh
+printf '%s\n' "${GOOG_BASE_URL-}" "${GOOG_API_KEY-}" "${GOOG_MODEL-}" >"$HOME/vibe-environment"
+printf '%s\n' "$@" >"$HOME/vibe-arguments"
+`
 	validOpenCodeCredentials = `OPENCODE_SERVER_USERNAME=opencode
 OPENCODE_SERVER_PASSWORD=secret
 `
@@ -302,6 +308,36 @@ func TestPRDForwardsDiffArguments(t *testing.T) {
 		"gh-arguments":    "pr\ndiff\n123\n--exclude\ngenerated/*\n--color=never\n",
 		"delta-arguments": "--navigate\n",
 		"delta-input":     "diff body\n",
+	} {
+		data, err := os.ReadFile(filepath.Join(home, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(data); got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+}
+
+func TestVibeScopesGoogEnvironment(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
+	writeOpenCodeCredentialsAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
+export GOOG_API_KEY=demo-key
+export GOOG_MODEL=goog/qwen3.8
+`)
+
+	command := openCodeZshCommand(home, `vibe run --key demo --model goog/qwen3.8
+print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-caller"`)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("vibe failed: %v\n%s", err, output)
+	}
+
+	for path, want := range map[string]string{
+		"vibe-environment": "https://goog.example.test\ndemo-key\ngoog/qwen3.8\n",
+		"vibe-arguments":   "run\n--key\ndemo\n--model\ngoog/qwen3.8\n",
+		"vibe-caller":      "::\n",
 	} {
 		data, err := os.ReadFile(filepath.Join(home, path))
 		if err != nil {
@@ -714,6 +750,7 @@ func writeOpenCodeZshRuntime(t *testing.T, home string) {
 		writeApplyFile(t, path, "")
 	}
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "opencode"), fakeOpenCodeScript)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "curl"), fakeCurlScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "sleep"), fakeSleepScript)
