@@ -58,6 +58,8 @@ fn acquire_run_lock_in(target: &RunTarget, home: &Path) -> Result<RunLock, Strin
         .truncate(false)
         .open(state_dir.join("run.lock"))
         .map_err(|error| format!("open Vibe run lock for {}: {error}", target.slug()))?;
+    // Claim the slug only after locking it; otherwise different keys could race
+    // and both write the same claim.
     match file.try_lock() {
         Ok(()) => {
             target.check_stored_key(home)?;

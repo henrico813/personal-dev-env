@@ -38,7 +38,7 @@ pub struct Cli {
 pub enum Command {
     #[command(
         about = "Run one agent task inside a managed worktree.",
-        after_help = "Example:\n  vibe run --key pdev-049-demo --prompt-file /tmp/vibe-task.txt --model openai-codex/gpt-5.4\n\nArtifacts:\n  ~/.local/state/vibe/<repo>/<slug>/runs/..."
+        after_help = "Example:\n  vibe run --key pdev-049-demo --prompt-file /tmp/vibe-task.txt --model openai-codex/gpt-5.4\n\nArtifacts:\n  ~/.local/state/vibe/<basename>-<16-hex-git-common-dir-hash>/<slug>/runs/..."
     )]
     Run(RunArgs),
     #[command(about = "Show the latest persisted run state for one key.")]
