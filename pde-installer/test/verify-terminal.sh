@@ -278,6 +278,27 @@ tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
 [[ "$(tmux -L "$tmux_socket" show-options -gqv renumber-windows)" == off ]]
 [[ "$(tmux -L "$tmux_socket" show-options -gqv status-justify)" == left ]]
 tmux -L "$tmux_socket" show-options -gqv status-right | grep -Fq '%H:%M'
+[[ "$(tmux -L "$tmux_socket" show-options -sqv set-clipboard)" == on ]]
+[[ -z "$(tmux -L "$tmux_socket" show-options -sqv copy-command)" ]]
+tmux -L "$tmux_socket" list-keys -T copy-mode-vi y | grep -Fq 'send-keys -X copy-selection-and-cancel'
+
+# A config reload must clear the blocking command from an already-running server.
+tmux -L "$tmux_socket" set-option -s copy-command 'xclip -in -selection clipboard'
+tmux -L "$tmux_socket" source-file "$HOME/.tmux.conf"
+[[ -z "$(tmux -L "$tmux_socket" show-options -sqv copy-command)" ]]
+
+# Exercise the configured key rather than tmux's copy command directly.
+clipboard_pane="$(tmux -L "$tmux_socket" new-window -d -t controller -n clipboard -P -F '#{pane_id}' "printf 'pde-copy-marker\n'; exec sleep 300")"
+timeout 20 bash -c 'until tmux -L "$1" capture-pane -p -t "$2" | grep -Fq pde-copy-marker; do sleep 0.1; done' _ "$tmux_socket" "$clipboard_pane"
+tmux -L "$tmux_socket" copy-mode -t "$clipboard_pane"
+tmux -L "$tmux_socket" send-keys -X -t "$clipboard_pane" cursor-up
+tmux -L "$tmux_socket" send-keys -X -t "$clipboard_pane" start-of-line
+tmux -L "$tmux_socket" send-keys -X -t "$clipboard_pane" begin-selection
+tmux -L "$tmux_socket" send-keys -X -t "$clipboard_pane" end-of-line
+tmux -L "$tmux_socket" send-keys -t "$clipboard_pane" y
+[[ "$(tmux -L "$tmux_socket" display-message -p -t "$clipboard_pane" '#{pane_in_mode}')" == 0 ]]
+[[ "$(tmux -L "$tmux_socket" save-buffer -)" == pde-copy-marker ]]
+tmux -L "$tmux_socket" kill-pane -t "$clipboard_pane"
 tmux -L "$tmux_socket" kill-server
 trap - EXIT
 
