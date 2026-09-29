@@ -5,7 +5,9 @@ use crate::{
     ledger::{RunPhase, TerminalOutcome},
     observe, prompts,
     result::{RunResult, Status},
-    sandbox, snapshot, worktree,
+    sandbox, snapshot,
+    target::RunTarget,
+    worktree,
 };
 use std::{
     fs,
@@ -135,7 +137,7 @@ pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
 }
 
 /// Execute one Vibe task end-to-end and return the stable JSON result.
-pub fn execute(args: RunArgs) -> RunResult {
+pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
     if let Err(error) = validate_inputs(&args.inputs) {
         return RunResult::setup_error(error);
     }
@@ -143,7 +145,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(prompt) => prompt,
         Err(error) => return RunResult::setup_error(error),
     };
-    if let Err(error) = worktree::validate_base_target(&args.key, args.base.as_deref()) {
+    if let Err(error) = worktree::validate_base_target(target, args.base.as_deref()) {
         return RunResult::setup_error(error);
     }
     let prepared_auth =
@@ -160,7 +162,7 @@ pub fn execute(args: RunArgs) -> RunResult {
         Ok(root) => root,
         Err(error) => return RunResult::setup_error(error),
     };
-    let session = match worktree::prepare(&args.key, args.base.as_deref()) {
+    let session = match worktree::prepare(target, args.base.as_deref()) {
         Ok(session) => session,
         Err(err) => return RunResult::setup_error(err),
     };
@@ -179,7 +181,7 @@ pub fn execute(args: RunArgs) -> RunResult {
     };
     let run_id = ledger::run_id();
     let created_at = ledger::created_at().unwrap_or(0);
-    let artifacts = match observe::create_artifacts(session.repo_root(), &session.slug, &run_id) {
+    let artifacts = match observe::create_artifacts(target, &run_id) {
         Ok(paths) => paths,
         Err(err) => return RunResult::setup_error(err),
     };
