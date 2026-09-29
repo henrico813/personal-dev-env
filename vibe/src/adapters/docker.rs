@@ -11,7 +11,7 @@ use std::{
 
 use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
 
-const IMAGE: &str = "vibe-pi:0.7.0";
+const IMAGE: &str = "vibe-pi:0.7.1";
 #[cfg(test)]
 const AUTH_VARS: &[&str] = &[
     "ANTHROPIC_API_KEY",
@@ -755,13 +755,18 @@ mod tests {
         revalidate_skill_root, validate_repository_skills_mount, ArtifactPaths, DockerRunArgs,
         HostUser, AUTH_VARS,
     };
-    use crate::state::home_env_lock;
-    use std::{ffi::OsString, fs, path::Path};
+    use std::{
+        ffi::OsString,
+        fs,
+        path::Path,
+        sync::{Mutex, OnceLock},
+    };
 
     const ERROR_MESSAGE: &str = "vibe requires provider auth via env vars or ~/.pi/agent/auth.json";
 
-    fn auth_env_lock() -> &'static std::sync::Mutex<()> {
-        home_env_lock()
+    fn auth_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     fn save_env(keys: &[&str]) -> Vec<(String, Option<OsString>)> {
@@ -801,7 +806,6 @@ mod tests {
             system_prompt_txt: artifacts.join("system-prompt.txt"),
             combined_prompt_txt: artifacts.join("combined-prompt.txt"),
             system_prompt_versions_txt: artifacts.join("system-prompt-versions.txt"),
-            state_json: artifacts.join("run.json"),
             result_json: artifacts.join("result.json"),
             run_json: artifacts.join("run.json"),
             vibe_log: artifacts.join("vibe.log"),
@@ -1525,7 +1529,7 @@ mod tests {
             repo_root: &repo_root,
             git_common_dir: &git_common_dir,
             worktree: &worktree,
-            inputs: &[input.clone()],
+            inputs: std::slice::from_ref(&input),
             artifacts: &artifacts,
             model: "vibe-fixture/dynamic-model",
             stderr_level: "info",
@@ -1835,6 +1839,7 @@ mod tests {
         fs::write(auth_dir.join("auth.json"), b"{}").expect("write auth file");
 
         let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
+        let original_mode = std::os::unix::fs::PermissionsExt::mode(&permissions);
         permissions.set_readonly(true);
         fs::set_permissions(&auth_dir, permissions).expect("readonly auth dir");
         let saved = save_auth_env();
@@ -1843,7 +1848,7 @@ mod tests {
         let result = prepare_provider_auth(home.path().to_str(), "openai-codex/gpt-5.4");
 
         let mut permissions = fs::metadata(&auth_dir).expect("metadata").permissions();
-        permissions.set_readonly(false);
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, original_mode);
         fs::set_permissions(&auth_dir, permissions).expect("restore auth dir");
         restore_env(saved);
 
