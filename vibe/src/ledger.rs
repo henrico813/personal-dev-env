@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::{
     observe::ArtifactPaths,
     result::{RunResult, Status},
+    target::RunTarget,
 };
 
 const SUMMARY_FILE: &str = "summary.json";
@@ -133,22 +134,8 @@ pub fn created_at() -> Result<u64, String> {
         .map_err(|e| e.to_string())
 }
 
-fn repo_id(repo_root: &Path) -> String {
-    repo_root
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("repo")
-        .to_string()
-}
-
-pub fn runs_root(home: &Path, repo_root: &Path, slug: &str) -> PathBuf {
-    home.join(".local/state/vibe")
-        .join(repo_id(repo_root))
-        .join(slug)
-}
-
-pub fn runs_index_path(home: &Path, repo_root: &Path, slug: &str) -> PathBuf {
-    runs_root(home, repo_root, slug).join(RUNS_INDEX_FILE)
+pub fn runs_index_path(home: &Path, target: &RunTarget) -> PathBuf {
+    target.state_dir(home).join(RUNS_INDEX_FILE)
 }
 
 fn read_run_record(path: &Path) -> Result<RunRecord, String> {
@@ -475,43 +462,35 @@ pub fn persist_result_from_run(path: &Path, result_path: &Path) -> Result<(), St
     write_json_atomic(result_path, &RunResult::try_from(&record)?, "result")
 }
 
-pub fn latest_summary_for_key(repo_root: &Path, key: &str) -> Result<RunSummary, String> {
+pub fn latest_summary_for_target(target: &RunTarget) -> Result<RunSummary, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    latest_summary_for_key_in(Path::new(&home), repo_root, key)
+    latest_summary_for_target_in(Path::new(&home), target)
 }
 
-pub fn latest_summary_for_key_in(
-    home: &Path,
-    repo_root: &Path,
-    key: &str,
-) -> Result<RunSummary, String> {
-    let slug = crate::worktree::slugify(key);
-    let path = latest_run_json_for_key(home, repo_root, &slug)?;
+pub fn latest_summary_for_target_in(home: &Path, target: &RunTarget) -> Result<RunSummary, String> {
+    target.check_stored_key(home)?;
+    let path = latest_run_json_for_target(home, target)?;
     status_summary_from_path(&path)
 }
 
-pub fn latest_record_json_for_key(
-    repo_root: &Path,
-    key: &str,
-) -> Result<serde_json::Value, String> {
+pub fn latest_record_json_for_target(target: &RunTarget) -> Result<serde_json::Value, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    latest_record_json_for_key_in(Path::new(&home), repo_root, key)
+    latest_record_json_for_target_in(Path::new(&home), target)
 }
 
-pub fn latest_record_json_for_key_in(
+pub fn latest_record_json_for_target_in(
     home: &Path,
-    repo_root: &Path,
-    key: &str,
+    target: &RunTarget,
 ) -> Result<serde_json::Value, String> {
-    let slug = crate::worktree::slugify(key);
-    let path = latest_run_json_for_key(home, repo_root, &slug)?;
+    target.check_stored_key(home)?;
+    let path = latest_run_json_for_target(home, target)?;
     record_json_from_path(&path)
 }
 
-fn latest_run_json_for_key(home: &Path, repo_root: &Path, slug: &str) -> Result<PathBuf, String> {
-    let index = runs_index_path(home, repo_root, slug);
+fn latest_run_json_for_target(home: &Path, target: &RunTarget) -> Result<PathBuf, String> {
+    let index = runs_index_path(home, target);
     let entries = read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
-    let runs_dir = runs_root(home, repo_root, slug).join("runs");
+    let runs_dir = target.state_dir(home).join("runs");
     let canonical_runs_dir = runs_dir.canonicalize().ok();
 
     let mut candidates = Vec::new();
@@ -566,7 +545,7 @@ fn latest_run_json_for_key(home: &Path, repo_root: &Path, slug: &str) -> Result<
             },
         )
         .map(|(_, path)| path)
-        .ok_or_else(|| format!("no run.json artifacts found for key {slug}"))
+        .ok_or_else(|| format!("no run.json artifacts found for key {}", target.slug()))
 }
 
 fn trusted_run_json_candidate(path: &Path, canonical_runs_dir: Option<&Path>) -> Option<PathBuf> {
@@ -584,13 +563,14 @@ fn trusted_run_json_candidate(path: &Path, canonical_runs_dir: Option<&Path>) ->
 #[cfg(test)]
 mod tests {
     use super::{
-        latest_record_json_for_key_in, latest_summary_for_key_in, persist_terminal_run,
+        latest_record_json_for_target_in, latest_summary_for_target_in, persist_terminal_run,
         read_run_record, read_runs_index, record_late_persistence_error, ArtifactPaths, RunRecord,
         RunSummary, TerminalOutcome,
     };
     use super::{start_run, RunPhase};
     use crate::result::{RunResult, Status};
-    use std::path::Path;
+    use crate::target::RunTarget;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
     fn sample_result(artifacts_dir: &std::path::Path, summary_path: &std::path::Path) -> RunResult {
@@ -842,15 +822,17 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let runs = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let runs = target.state_dir(temp.path()).join("runs");
         let run_path = runs.join("1778000000-42/run.json");
         write_run_json(&run_path, "run-id", 1778000000);
 
-        let summary = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest summary");
+        let summary = latest_summary_for_target_in(temp.path(), &target).expect("latest summary");
         assert_eq!(summary.run_id, "run-id");
         assert_eq!(summary.phase, RunPhase::Finished);
         assert_eq!(summary.status, Some(Status::Completed));
@@ -861,13 +843,16 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let runs = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let runs = target.state_dir(temp.path()).join("runs");
         std::fs::create_dir_all(runs.join("1778000004-46")).expect("run dir");
 
-        let err = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
+        let err = latest_summary_for_target_in(temp.path(), &target)
             .expect_err("missing run json should fail");
 
         assert!(err.contains("no run.json artifacts found"));
@@ -878,14 +863,17 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let runs = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let runs = target.state_dir(temp.path()).join("runs");
         write_run_json(&runs.join("a-uuid/run.json"), "newer-run", 20);
 
-        let latest = latest_record_json_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest record json");
+        let latest =
+            latest_record_json_for_target_in(temp.path(), &target).expect("latest record json");
         assert_eq!(latest["run_id"], "newer-run");
     }
 
@@ -894,10 +882,13 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let runs = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let runs = target.state_dir(temp.path()).join("runs");
         let parent = runs.join("a-uuid");
         std::fs::create_dir_all(&parent).expect("run dir");
         std::fs::write(
@@ -929,8 +920,7 @@ mod tests {
         )
         .expect("write run json");
 
-        let summary = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest summary");
+        let summary = latest_summary_for_target_in(temp.path(), &target).expect("latest summary");
         assert_eq!(summary.run_id, "in-progress-run");
         assert_eq!(summary.phase, RunPhase::RunningAgent);
         assert_eq!(summary.status, None);
@@ -941,10 +931,13 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let slug_root = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key");
+        let slug_root = target.state_dir(temp.path());
         let runs = slug_root.join("runs");
         let older_run = runs.join("1778000000-42/run.json");
         write_run_json(&older_run, "older-run", 1778000000);
@@ -960,8 +953,7 @@ mod tests {
         )
         .expect("write runs index");
 
-        let summary = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest summary");
+        let summary = latest_summary_for_target_in(temp.path(), &target).expect("latest summary");
         assert_eq!(summary.run_id, "older-run");
     }
 
@@ -970,15 +962,18 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let runs = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        let runs = target.state_dir(temp.path()).join("runs");
         write_run_json(&runs.join("z-uuid/run.json"), "lexically-later", 10);
         write_run_json(&runs.join("a-uuid/run.json"), "created-later", 20);
 
-        let latest = latest_record_json_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest record json");
+        let latest =
+            latest_record_json_for_target_in(temp.path(), &target).expect("latest record json");
         assert_eq!(latest["run_id"], "created-later");
     }
 
@@ -987,10 +982,13 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let repo_root = temp.path().join("personal-dev-env");
         std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "PDEV-055 demo/key",
+            repo_root.clone(),
+            repo_root.join(".git"),
+        );
 
-        let slug_root = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-055-demo-key");
+        let slug_root = target.state_dir(temp.path());
         let runs = slug_root.join("runs");
         let trusted_run = runs.join("1778000000-42/run.json");
         let untrusted_run = temp.path().join("escaped/run.json");
@@ -1008,8 +1006,8 @@ mod tests {
         )
         .expect("write runs index");
 
-        let latest = latest_record_json_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key")
-            .expect("latest record json");
+        let latest =
+            latest_record_json_for_target_in(temp.path(), &target).expect("latest record json");
         assert_eq!(latest["run_id"], "trusted-run");
     }
     #[test]
@@ -1150,5 +1148,20 @@ mod tests {
             .as_deref()
             .expect("persistence error")
             .starts_with("write summary:"));
+    }
+
+    #[test]
+    fn status_rejects_stored_key_conflict() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts("demo-key", repo_root, PathBuf::from("/git/one"));
+        std::fs::create_dir_all(target.state_dir(temp.path())).expect("state dir");
+        std::fs::write(target.key_path(temp.path()), "other-key").expect("stored key");
+
+        let error = latest_summary_for_target_in(temp.path(), &target)
+            .expect_err("mismatched key should fail");
+
+        assert_eq!(error, "slug demo-key already belongs to key other-key");
     }
 }
