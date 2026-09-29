@@ -82,6 +82,36 @@ struct RunRecord {
     pub persistence_error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TerminalOutcome {
+    pub status: Status,
+    pub pre_run_commit: Option<String>,
+    pub commit: Option<String>,
+    pub snapshot_commits: Vec<String>,
+    pub changed_files: Vec<String>,
+    pub error_message: Option<String>,
+    pub persistence_error: Option<String>,
+}
+
+impl TerminalOutcome {
+    pub fn failure(
+        pre_run_commit: Option<String>,
+        status: Status,
+        snapshot_commits: Vec<String>,
+        error_message: Option<String>,
+    ) -> Self {
+        Self {
+            status,
+            pre_run_commit,
+            commit: None,
+            snapshot_commits,
+            changed_files: Vec::new(),
+            error_message,
+            persistence_error: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RunIndexEntry {
@@ -153,42 +183,66 @@ fn append_log(path: &Path, message: &str) -> Result<(), String> {
     writeln!(log, "{message}").map_err(|e| format!("write log for index append: {e}"))
 }
 
-fn run_summary(record: &RunRecord) -> RunSummary {
-    RunSummary {
-        run_id: record.run_id.clone(),
-        key: record.key.clone(),
-        slug: record.slug.clone(),
-        created_at: record.created_at,
-        phase: record.phase.clone(),
-        status: record.terminal_status.clone(),
-        branch: record.branch.clone(),
-        worktree: record.worktree.clone(),
-        model: record.model.clone(),
-        pre_run_commit: record.pre_run_commit.clone(),
-        commit: record.commit.clone(),
-        snapshot_commits: record.snapshot_commits.clone(),
-        changed_files: record.changed_files.clone(),
-        artifacts_dir: record.artifacts_dir.clone(),
-        summary_path: record.summary_path.clone(),
-        result_path: record.result_path.clone(),
-        events_log_path: record.events_log_path.clone(),
-        stderr_path: record.stderr_path.clone(),
-        error_message: record.error_message.clone(),
-        persistence_error: record.persistence_error.clone(),
+impl From<&RunRecord> for RunSummary {
+    fn from(record: &RunRecord) -> Self {
+        Self {
+            run_id: record.run_id.clone(),
+            key: record.key.clone(),
+            slug: record.slug.clone(),
+            created_at: record.created_at,
+            phase: record.phase.clone(),
+            status: record.terminal_status.clone(),
+            branch: record.branch.clone(),
+            worktree: record.worktree.clone(),
+            model: record.model.clone(),
+            pre_run_commit: record.pre_run_commit.clone(),
+            commit: record.commit.clone(),
+            snapshot_commits: record.snapshot_commits.clone(),
+            changed_files: record.changed_files.clone(),
+            artifacts_dir: record.artifacts_dir.clone(),
+            summary_path: record.summary_path.clone(),
+            result_path: record.result_path.clone(),
+            events_log_path: record.events_log_path.clone(),
+            stderr_path: record.stderr_path.clone(),
+            error_message: record.error_message.clone(),
+            persistence_error: record.persistence_error.clone(),
+        }
     }
 }
 
-fn record_run_persistence_error(
-    result: &mut RunResult,
-    run_path: &Path,
-    message: String,
-) -> Result<(), String> {
-    let merged = merge_persistence_error(result.persistence_error.as_deref(), &message);
-    result.persistence_error = Some(merged.clone());
+impl TryFrom<&RunRecord> for RunResult {
+    type Error = String;
 
-    let mut record = read_run_record(run_path)?;
+    fn try_from(record: &RunRecord) -> Result<Self, Self::Error> {
+        let status = record
+            .terminal_status
+            .clone()
+            .ok_or_else(|| "run record has no terminal status".to_string())?;
+        Ok(Self {
+            run_id: Some(record.run_id.clone()),
+            status,
+            branch: record.branch.clone(),
+            worktree: record.worktree.clone(),
+            model: record.model.clone(),
+            pre_run_commit: record.pre_run_commit.clone(),
+            commit: record.commit.clone(),
+            snapshot_commits: record.snapshot_commits.clone(),
+            artifacts_dir: Some(record.artifacts_dir.clone()),
+            events_log_path: Some(record.events_log_path.clone()),
+            stderr_path: Some(record.stderr_path.clone()),
+            run_path: Some(record.run_path.clone()),
+            summary_path: Some(record.summary_path.clone()),
+            changed_files: record.changed_files.clone(),
+            persistence_error: record.persistence_error.clone(),
+            error_message: record.error_message.clone(),
+        })
+    }
+}
+
+fn record_run_persistence_error(record: &mut RunRecord, message: String) -> Result<(), String> {
+    let merged = merge_persistence_error(record.persistence_error.as_deref(), &message);
     record.persistence_error = Some(merged);
-    write_run_record(run_path, &record)
+    write_run_record(Path::new(&record.run_path), record)
 }
 
 // The wrapper already has these values separately at run start, so keep the
@@ -243,7 +297,7 @@ pub fn persist_pre_run_commit(path: &Path, pre_run_commit: &str) -> Result<(), S
 }
 
 pub fn status_summary_from_path(path: &Path) -> Result<RunSummary, String> {
-    read_run_record(path).map(|record| run_summary(&record))
+    read_run_record(path).map(|record| RunSummary::from(&record))
 }
 
 pub fn record_json_from_path(path: &Path) -> Result<serde_json::Value, String> {
@@ -281,7 +335,7 @@ fn summary_path_from_run_path(run_path: &Path) -> Result<PathBuf, String> {
 
 fn rewrite_summary_from_run_path(run_path: &Path, record: &RunRecord) -> Result<(), String> {
     let summary_path = summary_path_from_run_path(run_path)?;
-    write_summary(&summary_path, &run_summary(record))
+    write_summary(&summary_path, &RunSummary::from(record))
 }
 
 pub fn append_run_index(path: &Path, entry: &RunIndexEntry, log_path: &Path) -> Result<(), String> {
@@ -359,23 +413,22 @@ pub fn record_late_persistence_error(
 
 pub fn persist_terminal_run(
     artifacts: &ArtifactPaths,
-    result: &mut RunResult,
-) -> Result<(), String> {
+    outcome: &TerminalOutcome,
+) -> Result<RunResult, String> {
     let mut record = read_run_record(&artifacts.run_json)?;
     record.phase = RunPhase::Finished;
-    record.terminal_status = Some(result.status.clone());
-    record.pre_run_commit = result.pre_run_commit.clone();
-    record.commit = result.commit.clone();
-    record.snapshot_commits = result.snapshot_commits.clone();
-    record.changed_files = result.changed_files.clone();
-    record.error_message = result.error_message.clone();
-    record.persistence_error = result.persistence_error.clone();
+    record.terminal_status = Some(outcome.status.clone());
+    record.pre_run_commit = outcome.pre_run_commit.clone();
+    record.commit = outcome.commit.clone();
+    record.snapshot_commits = outcome.snapshot_commits.clone();
+    record.changed_files = outcome.changed_files.clone();
+    record.error_message = outcome.error_message.clone();
+    record.persistence_error = outcome.persistence_error.clone();
     write_run_record(&artifacts.run_json, &record)?;
 
-    let summary = run_summary(&record);
-    if let Err(err) = write_summary(&artifacts.summary_json, &summary) {
-        record_run_persistence_error(result, &artifacts.run_json, format!("write summary: {err}"))?;
-        return Ok(());
+    if let Err(err) = write_summary(&artifacts.summary_json, &RunSummary::from(&record)) {
+        record_run_persistence_error(&mut record, format!("write summary: {err}"))?;
+        return RunResult::try_from(&record);
     }
 
     if let Err(err) = append_run_index(
@@ -388,33 +441,17 @@ pub fn persist_terminal_run(
         },
         &artifacts.vibe_log,
     ) {
-        record_late_persistence_error(result, format!("append runs_index.jsonl: {err}"))?;
+        let mut result = RunResult::try_from(&record)?;
+        record_late_persistence_error(&mut result, format!("append runs_index.jsonl: {err}"))?;
+        return Ok(result);
     }
 
-    Ok(())
+    RunResult::try_from(&record)
 }
 
 pub fn persist_result_from_run(path: &Path, result_path: &Path) -> Result<(), String> {
     let record = read_run_record(path)?;
-    let result = RunResult {
-        run_id: Some(record.run_id),
-        status: record.terminal_status.expect("terminal record status"),
-        branch: record.branch,
-        worktree: record.worktree,
-        model: record.model,
-        pre_run_commit: record.pre_run_commit,
-        commit: record.commit,
-        snapshot_commits: record.snapshot_commits,
-        artifacts_dir: Some(record.artifacts_dir),
-        events_log_path: Some(record.events_log_path),
-        stderr_path: Some(record.stderr_path),
-        run_path: Some(record.run_path),
-        summary_path: Some(record.summary_path),
-        changed_files: record.changed_files,
-        persistence_error: record.persistence_error,
-        error_message: record.error_message,
-    };
-    write_json_atomic(result_path, &result, "result")
+    write_json_atomic(result_path, &RunResult::try_from(&record)?, "result")
 }
 
 pub fn latest_summary_for_key(repo_root: &Path, key: &str) -> Result<RunSummary, String> {
@@ -529,6 +566,7 @@ mod tests {
     use super::{
         latest_record_json_for_key_in, latest_summary_for_key_in, persist_terminal_run,
         read_run_record, read_runs_index, record_late_persistence_error, ArtifactPaths, RunRecord,
+        RunSummary, TerminalOutcome,
     };
     use crate::result::{RunResult, Status};
     use tempfile::tempdir;
@@ -631,6 +669,100 @@ mod tests {
             .to_string(),
         )
         .expect("write run json");
+    }
+
+    fn sorted_keys(value: &serde_json::Value) -> Vec<String> {
+        let mut keys = value
+            .as_object()
+            .expect("object")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        keys.sort();
+        keys
+    }
+
+    #[test]
+    fn record_conversions_preserve_output_schema() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("run.json");
+        write_run_json(&path, "run-id", 1778000000);
+        let record = read_run_record(&path).expect("read run record");
+
+        let summary = serde_json::to_value(RunSummary::from(&record)).expect("serialize summary");
+        let result = serde_json::to_value(RunResult::try_from(&record).expect("convert result"))
+            .expect("serialize result");
+
+        assert_eq!(
+            sorted_keys(&summary),
+            vec![
+                "artifacts_dir",
+                "branch",
+                "changed_files",
+                "commit",
+                "created_at",
+                "error_message",
+                "events_log_path",
+                "key",
+                "model",
+                "persistence_error",
+                "phase",
+                "pre_run_commit",
+                "result_path",
+                "run_id",
+                "slug",
+                "snapshot_commits",
+                "status",
+                "stderr_path",
+                "summary_path",
+                "worktree",
+            ]
+        );
+        assert_eq!(
+            sorted_keys(&result),
+            vec![
+                "artifacts_dir",
+                "branch",
+                "changed_files",
+                "commit",
+                "error_message",
+                "events_log_path",
+                "model",
+                "persistence_error",
+                "pre_run_commit",
+                "run_id",
+                "run_path",
+                "snapshot_commits",
+                "status",
+                "stderr_path",
+                "summary_path",
+                "worktree",
+            ]
+        );
+        assert_eq!(summary["run_id"], "run-id");
+        assert_eq!(summary["phase"], "finished");
+        assert_eq!(summary["status"], "completed");
+        assert_eq!(summary["result_path"], "/tmp/run/result.json");
+        assert_eq!(summary["persistence_error"], serde_json::Value::Null);
+        assert_eq!(result["run_id"], "run-id");
+        assert_eq!(result["status"], "completed");
+        assert_eq!(result["run_path"], "/tmp/run/run.json");
+        assert_eq!(result["summary_path"], "/tmp/run/summary.json");
+        assert_eq!(result["changed_files"], serde_json::json!([]));
+        assert_eq!(result["error_message"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn non_terminal_record_rejects_result_conversion() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("run.json");
+        write_run_json(&path, "run-id", 1778000000);
+        let mut record = read_run_record(&path).expect("read run record");
+        record.terminal_status = None;
+
+        let error = RunResult::try_from(&record).expect_err("active record should be rejected");
+
+        assert_eq!(error, "run record has no terminal status");
     }
 
     #[test]
@@ -834,7 +966,7 @@ mod tests {
         let record_path = artifacts_dir.join("run.json");
         let state = sample_record(&summary_path, &artifacts_dir);
         super::write_run_record(&record_path, &state).expect("write record");
-        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
+        super::write_summary(&summary_path, &RunSummary::from(&state)).expect("write summary");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
@@ -875,7 +1007,7 @@ mod tests {
         let mut state = sample_record(&summary_path, &artifacts_dir);
         state.summary_path = outside_summary_path.display().to_string();
         super::write_run_record(&record_path, &state).expect("write record");
-        super::write_summary(&summary_path, &super::run_summary(&state)).expect("write summary");
+        super::write_summary(&summary_path, &RunSummary::from(&state)).expect("write summary");
         let mut result = sample_result(&artifacts_dir, &summary_path);
 
         record_late_persistence_error(&mut result, "append runs_index.jsonl: boom".to_string())
@@ -905,9 +1037,17 @@ mod tests {
         let summary_path = artifacts.summary_json.clone();
         let persisted = sample_record(&summary_path, &artifacts_dir);
         super::write_run_record(&artifacts.run_json, &persisted).expect("write record");
-        let mut result = sample_result(&artifacts_dir, &summary_path);
+        let outcome = TerminalOutcome {
+            status: Status::Completed,
+            pre_run_commit: Some("abc".to_string()),
+            commit: Some("def".to_string()),
+            snapshot_commits: vec!["snap".to_string()],
+            changed_files: Vec::new(),
+            error_message: None,
+            persistence_error: None,
+        };
 
-        persist_terminal_run(&artifacts, &mut result).expect("persist terminal run");
+        persist_terminal_run(&artifacts, &outcome).expect("persist terminal run");
 
         let repaired = read_run_record(&artifacts.run_json).expect("read repaired record");
         assert_eq!(repaired.phase, RunPhase::Finished);
