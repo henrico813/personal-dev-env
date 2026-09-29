@@ -2,7 +2,7 @@ use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::adapters::git;
+use crate::{adapters::git, target::RunTarget};
 
 pub struct WorktreeSession {
     pub key: String,
@@ -32,10 +32,6 @@ impl Drop for RunLock {
 }
 
 impl WorktreeSession {
-    pub fn repo_root(&self) -> &Path {
-        &self.repo_root
-    }
-
     pub fn sandbox_mounts(&self, inputs: &[PathBuf]) -> SandboxMounts {
         SandboxMounts {
             repo_root: self.repo_root.clone(),
@@ -46,86 +42,73 @@ impl WorktreeSession {
     }
 }
 
-pub fn slugify(key: &str) -> String {
-    let mut out = String::new();
-    let mut dash = false;
-    for ch in key.to_lowercase().chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch);
-            dash = false;
-        } else if !dash {
-            out.push('-');
-            dash = true;
-        }
-    }
-    let trimmed: String = out.trim_matches('-').chars().take(48).collect();
-    if trimmed.is_empty() {
-        "vibe".to_string()
-    } else {
-        trimmed
-    }
-}
-
-pub fn acquire_run_lock(key: &str) -> Result<RunLock, String> {
-    let repo = git::repo_layout()?;
+pub fn acquire_run_lock(target: &RunTarget) -> Result<RunLock, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let repo_id = repo
-        .repo_root
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("repo");
-    let lock_dir = Path::new(&home)
-        .join(".local/state/vibe")
-        .join(repo_id)
-        .join("locks");
-    acquire_run_lock_in(&lock_dir, key)
+    acquire_run_lock_in(target, Path::new(&home))
 }
 
-fn acquire_run_lock_in(lock_dir: &Path, key: &str) -> Result<RunLock, String> {
-    let slug = slugify(key);
-    std::fs::create_dir_all(lock_dir)
-        .map_err(|error| format!("create Vibe lock directory: {error}"))?;
+fn acquire_run_lock_in(target: &RunTarget, home: &Path) -> Result<RunLock, String> {
+    let state_dir = target.state_dir(home);
+    std::fs::create_dir_all(&state_dir)
+        .map_err(|error| format!("create Vibe state directory: {error}"))?;
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(lock_dir.join(format!("{slug}.lock")))
-        .map_err(|error| format!("open Vibe run lock for {slug}: {error}"))?;
+        .open(state_dir.join("run.lock"))
+        .map_err(|error| format!("open Vibe run lock for {}: {error}", target.slug()))?;
     match file.try_lock() {
-        Ok(()) => Ok(RunLock { _file: file }),
-        Err(TryLockError::WouldBlock) => Err(format!("vibe run already active for slug {slug}")),
-        Err(TryLockError::Error(error)) => Err(format!("lock Vibe run for {slug}: {error}")),
+        Ok(()) => {
+            target.check_stored_key(home)?;
+            write_key_atomic(&target.key_path(home), target.key())?;
+            Ok(RunLock { _file: file })
+        }
+        Err(TryLockError::WouldBlock) => Err(format!(
+            "vibe run already active for slug {}",
+            target.slug()
+        )),
+        Err(TryLockError::Error(error)) => {
+            Err(format!("lock Vibe run for {}: {error}", target.slug()))
+        }
     }
 }
 
-pub fn validate_base_target(key: &str, base: Option<&str>) -> Result<(), String> {
-    let repo = git::repo_layout()?;
-    let slug = slugify(key);
-    let branch = format!("vibe/{slug}");
-    let worktree = repo.repo_root.join("worktrees").join(&slug);
-    git::validate_base_target(&repo.repo_root, &worktree, &branch, base)
+fn write_key_atomic(path: &Path, key: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("key path has no parent: {}", path.display()))?;
+    let tmp = parent.join(".key.tmp");
+    std::fs::write(&tmp, key).map_err(|error| format!("write Vibe key: {error}"))?;
+    std::fs::rename(&tmp, path).map_err(|error| format!("rename Vibe key: {error}"))
 }
 
-pub fn prepare(key: &str, base: Option<&str>) -> Result<WorktreeSession, String> {
-    let repo = git::repo_layout()?;
-    let slug = slugify(key);
-    let branch = format!("vibe/{slug}");
-    let worktree = repo.repo_root.join("worktrees").join(&slug);
+pub fn validate_base_target(target: &RunTarget, base: Option<&str>) -> Result<(), String> {
+    git::validate_base_target(
+        target.repo_root(),
+        &target.worktree_path(),
+        &target.branch(),
+        base,
+    )
+}
+
+pub fn prepare(target: &RunTarget, base: Option<&str>) -> Result<WorktreeSession, String> {
+    let worktree = target.worktree_path();
+    let branch = target.branch();
     git::ensure_worktree(
-        &repo.repo_root,
+        target.repo_root(),
         &worktree,
         &branch,
-        &repo.git_common_dir,
+        target.git_common_dir(),
         base,
     )?;
     Ok(WorktreeSession {
-        key: key.to_string(),
-        slug,
+        key: target.key().to_string(),
+        slug: target.slug().to_string(),
         branch,
         worktree,
-        repo_root: repo.repo_root,
-        git_common_dir: repo.git_common_dir,
+        repo_root: target.repo_root().to_path_buf(),
+        git_common_dir: target.git_common_dir().to_path_buf(),
     })
 }
 
@@ -190,28 +173,64 @@ pub fn commit_result(worktree: &Path, message: &str, hooks_dir: &Path) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::{acquire_run_lock_in, slugify};
+    use super::acquire_run_lock_in;
+    use crate::target::RunTarget;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
     #[test]
-    fn slugify_normalizes_keys() {
-        assert_eq!(slugify("PDEV-049 demo/key"), "pdev-049-demo-key");
-    }
+    fn same_slug_rejects_different_keys() {
+        let temp = tempdir().expect("tempdir");
+        let first_target = RunTarget::from_parts(
+            "Demo/key",
+            PathBuf::from("/repo"),
+            PathBuf::from("/git/one"),
+        );
+        let cases = ["demo-key", "DEMO key"];
+        let first = acquire_run_lock_in(&first_target, temp.path()).expect("first claim");
+        drop(first);
 
-    #[test]
-    fn empty_slug_falls_back() {
-        assert_eq!(slugify("---"), "vibe");
+        for candidate in cases {
+            let target =
+                RunTarget::from_parts(candidate, PathBuf::from("/repo"), PathBuf::from("/git/one"));
+            let error =
+                acquire_run_lock_in(&target, temp.path()).expect_err("collision should fail");
+            assert_eq!(
+                error, "slug demo-key already belongs to key Demo/key",
+                "case {candidate}"
+            );
+        }
     }
 
     #[test]
     fn same_slug_blocks_until_release() {
         let temp = tempdir().expect("tempdir");
-        let first = acquire_run_lock_in(temp.path(), "Demo/key").expect("first lock");
-
-        let error = acquire_run_lock_in(temp.path(), "demo-key").expect_err("second lock");
+        let target = RunTarget::from_parts(
+            "Demo/key",
+            PathBuf::from("/repo"),
+            PathBuf::from("/git/one"),
+        );
+        let first = acquire_run_lock_in(&target, temp.path()).expect("first lock");
+        let error = acquire_run_lock_in(&target, temp.path()).expect_err("second lock");
         assert!(error.contains("already active"), "{error}");
-
         drop(first);
-        acquire_run_lock_in(temp.path(), "demo-key").expect("released lock");
+        acquire_run_lock_in(&target, temp.path()).expect("released lock");
+    }
+
+    #[test]
+    fn same_key_reuses_claimed_slug() {
+        let temp = tempdir().expect("tempdir");
+        let target = RunTarget::from_parts(
+            "Demo/key",
+            PathBuf::from("/repo"),
+            PathBuf::from("/git/one"),
+        );
+        let first = acquire_run_lock_in(&target, temp.path()).expect("first lock");
+        drop(first);
+        acquire_run_lock_in(&target, temp.path()).expect("same key should reuse");
+        assert_eq!(
+            std::fs::read_to_string(target.state_dir(Path::new(temp.path())).join("key")).unwrap(),
+            "Demo/key"
+        );
     }
 }
