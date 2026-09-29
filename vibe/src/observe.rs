@@ -1,4 +1,4 @@
-use crate::prompts::RenderedPrompt;
+use crate::{prompts::RenderedPrompt, target::RunTarget};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -23,21 +23,11 @@ pub struct ArtifactPaths {
 
 fn create_artifacts_in(
     home: &Path,
-    repo_root: &Path,
-    key: &str,
+    target: &RunTarget,
     run_id: &str,
 ) -> Result<ArtifactPaths, String> {
-    let repo_id = repo_root
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("repo");
-    let dir = home
-        .join(".local/state/vibe")
-        .join(repo_id)
-        .join(key)
-        .join("runs")
-        .join(run_id);
-    let key_dir = home.join(".local/state/vibe").join(repo_id).join(key);
+    let dir = target.state_dir(home).join("runs").join(run_id);
+    let key_dir = target.state_dir(home);
     fs::create_dir_all(&dir).map_err(|e| format!("create run dir: {e}"))?;
     let snapshots_jsonl = dir.join("snapshots.jsonl");
     File::create(&snapshots_jsonl).map_err(|e| format!("seed snapshots artifact: {e}"))?;
@@ -60,13 +50,9 @@ fn create_artifacts_in(
     })
 }
 
-pub fn create_artifacts(
-    repo_root: &Path,
-    key: &str,
-    run_id: &str,
-) -> Result<ArtifactPaths, String> {
+pub fn create_artifacts(target: &RunTarget, run_id: &str) -> Result<ArtifactPaths, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    create_artifacts_in(Path::new(&home), repo_root, key, run_id)
+    create_artifacts_in(Path::new(&home), target, run_id)
 }
 
 fn write_text(dst: &Path, text: &str, label: &str) -> Result<(), String> {
@@ -101,22 +87,23 @@ pub(crate) fn write_rendered_prompt(
 #[cfg(test)]
 mod tests {
     use super::{create_artifacts_in, write_prompt_artifact, write_rendered_prompt};
-    use crate::prompts::RenderedPrompt;
+    use crate::{prompts::RenderedPrompt, target::RunTarget};
+    use std::path::PathBuf;
     use tempfile::tempdir;
 
     #[test]
     fn artifacts_use_expected_layout() {
         let temp = tempdir().expect("tempdir");
-        let repo_root = temp.path().join("personal-dev-env");
-        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let target = RunTarget::from_parts(
+            "pdev-049-demo",
+            PathBuf::from("/repo"),
+            PathBuf::from("/git/one"),
+        );
 
         let paths =
-            create_artifacts_in(temp.path(), &repo_root, "pdev-049-demo", "1700000000-4242")
-                .expect("artifact paths");
+            create_artifacts_in(temp.path(), &target, "1700000000-4242").expect("artifact paths");
 
-        let dir = temp
-            .path()
-            .join(".local/state/vibe/personal-dev-env/pdev-049-demo/runs/1700000000-4242");
+        let dir = target.state_dir(temp.path()).join("runs/1700000000-4242");
         assert_eq!(paths.dir, dir);
         assert_eq!(paths.run_id, "1700000000-4242");
         assert_eq!(paths.prompt_txt, dir.join("prompt.txt"));
@@ -136,8 +123,7 @@ mod tests {
         assert_eq!(paths.summary_json, dir.join("summary.json"));
         assert_eq!(
             paths.runs_index_jsonl,
-            temp.path()
-                .join(".local/state/vibe/personal-dev-env/pdev-049-demo/runs_index.jsonl")
+            target.state_dir(temp.path()).join("runs_index.jsonl")
         );
         assert_eq!(
             std::fs::read_to_string(&paths.snapshots_jsonl).expect("snapshots"),
@@ -148,10 +134,9 @@ mod tests {
     #[test]
     fn writes_prompt_artifacts_exactly() {
         let temp = tempdir().expect("tempdir");
-        let repo_root = temp.path().join("repo");
-        std::fs::create_dir_all(&repo_root).expect("repo dir");
-        let paths =
-            create_artifacts_in(temp.path(), &repo_root, "demo", "run").expect("artifact paths");
+        let target =
+            RunTarget::from_parts("demo", PathBuf::from("/repo"), PathBuf::from("/git/one"));
+        let paths = create_artifacts_in(temp.path(), &target, "run").expect("artifact paths");
         let rendered = RenderedPrompt {
             system_prompt: "system text".to_string(),
             combined_prompt: "combined text".to_string(),
