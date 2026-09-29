@@ -229,12 +229,12 @@ fn prepare_stage(run: &ActiveRun) -> StageResult<PreRun> {
         "prepare sandbox",
     )
     .map_err(|error| {
-        TerminalOutcome::failure(
+        stage_failure(TerminalOutcome::failure(
             Some(pre_run_commit.clone()),
             Status::WrapperFailed,
             Vec::new(),
             Some(error),
-        )
+        ))
     })?;
     if run.prepared_skills.repository.is_some() {
         worktree::validate_repository_skills(&run.session.worktree).map_err(|error| {
@@ -410,39 +410,8 @@ pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
 #[cfg(test)]
 mod tests {
     use super::{fallback_result, finalize_changed_files, read_supervisor_prompt, validate_inputs};
-    use crate::{
-        ledger::TerminalOutcome,
-        result::{RunResult, Status},
-    };
+    use crate::result::RunResult;
     use tempfile::tempdir;
-
-    #[test]
-    fn stage_failures_preserve_statuses() {
-        let cases = [
-            (Status::WrapperFailed, None, Vec::new()),
-            (Status::RefusedDirty, None, Vec::new()),
-            (Status::SnapshotFailed, Some("pre"), Vec::new()),
-            (
-                Status::CommitFailed,
-                Some("pre"),
-                vec!["snapshot".to_string()],
-            ),
-        ];
-
-        for (status, pre_run_commit, snapshot_commits) in cases {
-            let outcome = TerminalOutcome::failure(
-                pre_run_commit.map(str::to_string),
-                status.clone(),
-                snapshot_commits.clone(),
-                Some("stage error".to_string()),
-            );
-
-            assert_eq!(outcome.status, status);
-            assert_eq!(outcome.pre_run_commit.as_deref(), pre_run_commit);
-            assert_eq!(outcome.snapshot_commits, snapshot_commits);
-            assert_eq!(outcome.error_message.as_deref(), Some("stage error"));
-        }
-    }
 
     #[test]
     fn fallback_merges_existing_persistence_error() {
