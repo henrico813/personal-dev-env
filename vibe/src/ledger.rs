@@ -1,3 +1,8 @@
+//! Persisted run records are Vibe's authoritative run data.
+//!
+//! `summary.json` and `result.json` are derived views of `run.json`;
+//! `runs_index.jsonl` is a best-effort lookup index.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
@@ -57,6 +62,7 @@ pub struct RunSummary {
     pub persistence_error: Option<String>,
 }
 
+/// Authoritative persisted state for one run.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 struct RunRecord {
@@ -83,6 +89,7 @@ struct RunRecord {
     pub persistence_error: Option<String>,
 }
 
+/// Terminal values collected by the stage chain before persistence.
 #[derive(Debug, Clone)]
 pub struct TerminalOutcome {
     pub status: Status,
@@ -95,6 +102,7 @@ pub struct TerminalOutcome {
 }
 
 impl TerminalOutcome {
+    /// Build a failure with no result commit or changed-file list.
     pub fn failure(
         pre_run_commit: Option<String>,
         status: Status,
@@ -197,6 +205,9 @@ impl From<&RunRecord> for RunSummary {
     }
 }
 
+/// Convert a terminal record into the emitted run result.
+///
+/// Active records are rejected because they have no terminal status.
 impl TryFrom<&RunRecord> for RunResult {
     type Error = String;
 
@@ -414,6 +425,12 @@ pub fn record_late_persistence_error(
     }
 }
 
+/// Persist terminal state in order, retaining partial failures in the record.
+///
+/// The record is read and written before derived outputs. A summary write
+/// failure is recorded in `run.json`; an index failure is reported as a late
+/// persistence error. Reading or writing `run.json`, recording a later failure,
+/// converting the record, or repairing an index failure can still return `Err`.
 pub fn persist_terminal_run(
     artifacts: &ArtifactPaths,
     outcome: &TerminalOutcome,
