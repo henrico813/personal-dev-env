@@ -11,7 +11,7 @@ use std::{
 
 use crate::{observe::ArtifactPaths, worktree::SandboxMounts};
 
-const IMAGE: &str = "vibe-pi:0.7.2";
+const IMAGE: &str = "vibe-pi:0.8.0";
 #[cfg(test)]
 const AUTH_VARS: &[&str] = &[
     "ANTHROPIC_API_KEY",
