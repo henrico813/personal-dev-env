@@ -325,7 +325,7 @@ func TestVibeScopesGoogEnvironment(t *testing.T) {
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
 	writeOpenCodeCredentialsAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
 export GOOG_API_KEY=demo-key
-export GOOG_MODEL=goog/qwen3.8
+export GOOG_MODEL=qwen3.8
 `)
 
 	command := openCodeZshCommand(home, `vibe run --key demo --model goog/qwen3.8
@@ -335,7 +335,7 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 	}
 
 	for path, want := range map[string]string{
-		"vibe-environment": "https://goog.example.test\ndemo-key\ngoog/qwen3.8\n",
+		"vibe-environment": "https://goog.example.test\ndemo-key\nqwen3.8\n",
 		"vibe-arguments":   "run\n--key\ndemo\n--model\ngoog/qwen3.8\n",
 		"vibe-caller":      "::\n",
 	} {
@@ -750,7 +750,6 @@ func writeOpenCodeZshRuntime(t *testing.T, home string) {
 		writeApplyFile(t, path, "")
 	}
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "opencode"), fakeOpenCodeScript)
-	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "curl"), fakeCurlScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "sleep"), fakeSleepScript)
