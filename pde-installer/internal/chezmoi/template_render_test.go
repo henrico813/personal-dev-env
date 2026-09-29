@@ -761,10 +761,43 @@ func TestTmuxTemplateProfiles(t *testing.T) {
 		want    []string
 		omit    []string
 	}{
-		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'", "set -g base-index 1"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
-		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
+		"terminal": {
+			profile: "terminal",
+			want: []string{
+				"set -s set-clipboard on",
+				"set -s copy-command ''",
+				"bind-key -T copy-mode-vi y send -X copy-selection-and-cancel",
+				"set -g allow-passthrough on",
+				"set -g @resurrect-processes 'ssh'",
+				"set -g base-index 1",
+			},
+			omit: []string{
+				"set -s copy-command 'xclip -in -selection clipboard'",
+				"bind-key -T copy-mode-vi y send -X copy-pipe-and-cancel 'xclip -in -selection clipboard'",
+				"set -g @resurrect-strategy-vim 'session'",
+				"set -g @resurrect-strategy-nvim 'session'",
+				"set -g @resurrect-processes 'ssh vim nvim'",
+			},
+		},
+		"full": {
+			profile: "full",
+			want: []string{
+				"set -g @resurrect-strategy-vim 'session'",
+				"set -g @resurrect-strategy-nvim 'session'",
+				"set -g @resurrect-processes 'ssh vim nvim'",
+				"set -s set-clipboard on",
+				"set -s copy-command ''",
+				"bind-key -T copy-mode-vi y send -X copy-selection-and-cancel",
+				"set -g base-index 1",
+			},
+			omit: []string{
+				"set -s copy-command 'xclip -in -selection clipboard'",
+				"bind-key -T copy-mode-vi y send -X copy-pipe-and-cancel 'xclip -in -selection clipboard'",
+				"set -g @resurrect-processes 'ssh'",
+			},
+		},
 	}
-	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
+	assertProfileTemplateLines(t, "dot_tmux.conf.tmpl", tests)
 }
 
 func TestTemplatesRejectInvalidProfiles(t *testing.T) {
