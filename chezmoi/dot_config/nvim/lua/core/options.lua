@@ -14,6 +14,24 @@ opt.wrap = false
 opt.ignorecase = true
 opt.smartcase = true
 opt.clipboard = "unnamedplus"
+if vim.env.SSH_TTY or vim.env.SSH_CONNECTION then
+  -- Over SSH, copy via OSC 52 to the local terminal; paste from Neovim's register because terminals usually block OSC 52 reads.
+  local osc52 = require("vim.ui.clipboard.osc52")
+  local function paste()
+    return { vim.fn.split(vim.fn.getreg(""), "\n"), vim.fn.getregtype("") }
+  end
+  vim.g.clipboard = {
+    name = "osc52",
+    copy = {
+      ["+"] = osc52.copy("+"),
+      ["*"] = osc52.copy("*"),
+    },
+    paste = {
+      ["+"] = paste,
+      ["*"] = paste,
+    },
+  }
+end
 opt.undofile = true
 opt.updatetime = 200
 opt.cursorline = true
