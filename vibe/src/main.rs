@@ -7,7 +7,6 @@ mod prompts;
 mod result;
 mod sandbox;
 mod snapshot;
-mod state;
 mod worktree;
 
 use std::process;
@@ -60,14 +59,14 @@ fn main() {
                 process::exit(2);
             });
             let json = if args.long {
-                let record = state::latest_record_json_for_key(&repo.repo_root, &args.key)
+                let record = ledger::latest_record_json_for_key(&repo.repo_root, &args.key)
                     .unwrap_or_else(|err| {
                         eprintln!("{err}");
                         process::exit(2);
                     });
                 serde_json::to_string_pretty(&record).expect("serialize record")
             } else {
-                let summary = state::latest_summary_for_key(&repo.repo_root, &args.key)
+                let summary = ledger::latest_summary_for_key(&repo.repo_root, &args.key)
                     .unwrap_or_else(|err| {
                         eprintln!("{err}");
                         process::exit(2);
@@ -153,7 +152,7 @@ mod tests {
             key: "pdev-099b".to_string(),
             slug: "pdev-099b".to_string(),
             created_at: 1778781975,
-            phase: crate::state::RunPhase::Finished,
+            phase: crate::ledger::RunPhase::Finished,
             status: Some(Status::Completed),
             branch: Some("vibe/pdev-099b".to_string()),
             worktree: Some("/tmp/worktree".to_string()),

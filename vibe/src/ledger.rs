@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -8,16 +9,25 @@ use uuid::Uuid;
 use crate::{
     observe::ArtifactPaths,
     result::{RunResult, Status},
-    state::RunPhase,
 };
 
-#[cfg_attr(not(test), allow(dead_code))]
 const SUMMARY_FILE: &str = "summary.json";
-#[cfg_attr(not(test), allow(dead_code))]
-const RUN_RECORD_FILE: &str = "run.json";
 const RUNS_INDEX_FILE: &str = "runs_index.jsonl";
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RunPhase {
+    PreparingArtifacts,
+    CopyingPrompt,
+    CheckingDirty,
+    ReadingPreRunCommit,
+    PreparingSandbox,
+    RunningAgent,
+    ReadingSnapshots,
+    CommittingResult,
+    Finished,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RunSummary {
@@ -72,48 +82,11 @@ struct RunRecord {
     pub persistence_error: Option<String>,
 }
 
-impl RunSummary {
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn from_run_result(
-        run_id: &str,
-        key: &str,
-        slug: &str,
-        result: &RunResult,
-        changed_files: Vec<String>,
-        persistence_error: Option<String>,
-    ) -> Self {
-        Self {
-            run_id: run_id.to_string(),
-            key: key.to_string(),
-            slug: slug.to_string(),
-            created_at: 0,
-            phase: RunPhase::Finished,
-            status: Some(result.status.clone()),
-            branch: result.branch.clone(),
-            worktree: result.worktree.clone(),
-            model: result.model.clone(),
-            pre_run_commit: result.pre_run_commit.clone(),
-            commit: result.commit.clone(),
-            snapshot_commits: result.snapshot_commits.clone(),
-            changed_files,
-            artifacts_dir: result.artifacts_dir.clone().unwrap_or_default(),
-            summary_path: result.summary_path.clone().unwrap_or_default(),
-            result_path: String::new(),
-            events_log_path: result.events_log_path.clone().unwrap_or_default(),
-            stderr_path: result.stderr_path.clone().unwrap_or_default(),
-            error_message: result.error_message.clone(),
-            persistence_error,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RunIndexEntry {
     pub run_id: String,
     pub created_at: u64,
-    #[serde(default)]
-    pub state_path: String,
     #[serde(default)]
     pub record_path: String,
     pub summary_path: String,
@@ -148,16 +121,6 @@ pub fn runs_index_path(home: &Path, repo_root: &Path, slug: &str) -> PathBuf {
     runs_root(home, repo_root, slug).join(RUNS_INDEX_FILE)
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn summary_path(artifacts_dir: &Path) -> PathBuf {
-    artifacts_dir.join(SUMMARY_FILE)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn run_record_path(artifacts_dir: &Path) -> PathBuf {
-    artifacts_dir.join(RUN_RECORD_FILE)
-}
-
 fn read_run_record(path: &Path) -> Result<RunRecord, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read run record: {e}"))?;
     serde_json::from_str(&text).map_err(|e| format!("parse run record: {e}"))
@@ -181,7 +144,6 @@ pub fn read_runs_index(path: &Path) -> Result<Vec<RunIndexEntry>, String> {
     Ok(entries)
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn append_log(path: &Path, message: &str) -> Result<(), String> {
     let mut log = OpenOptions::new()
         .create(true)
@@ -322,7 +284,6 @@ fn rewrite_summary_from_run_path(run_path: &Path, record: &RunRecord) -> Result<
     write_summary(&summary_path, &run_summary(record))
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn append_run_index(path: &Path, entry: &RunIndexEntry, log_path: &Path) -> Result<(), String> {
     let existing = read_runs_index(path)?;
     if existing.iter().any(|it| it.run_id == entry.run_id) {
@@ -346,16 +307,7 @@ pub fn append_run_index(path: &Path, entry: &RunIndexEntry, log_path: &Path) -> 
     Ok(())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn state_path_from_summary(summary_path: &Path) -> Option<String> {
-    Some(
-        summary_path
-            .to_str()?
-            .replace(SUMMARY_FILE, "run-state.json"),
-    )
-}
-
-fn state_path_from_result(result: &RunResult) -> Option<PathBuf> {
+fn run_path_from_result(result: &RunResult) -> Option<PathBuf> {
     result.run_path.as_deref().map(PathBuf::from).or_else(|| {
         result
             .artifacts_dir
@@ -381,7 +333,7 @@ pub fn record_late_persistence_error(
 
     let mut repair_errors = Vec::new();
 
-    if let Some(run_path) = state_path_from_result(result) {
+    if let Some(run_path) = run_path_from_result(result) {
         match read_run_record(&run_path) {
             Ok(mut record) => {
                 if let Ok(summary_path) = summary_path_from_run_path(&run_path) {
@@ -431,7 +383,6 @@ pub fn persist_terminal_run(
         &RunIndexEntry {
             run_id: record.run_id.clone(),
             created_at: record.created_at,
-            state_path: String::new(),
             record_path: artifacts.run_json.display().to_string(),
             summary_path: artifacts.summary_json.display().to_string(),
         },
@@ -466,16 +417,89 @@ pub fn persist_result_from_run(path: &Path, result_path: &Path) -> Result<(), St
     write_json_atomic(result_path, &result, "result")
 }
 
+pub fn latest_summary_for_key(repo_root: &Path, key: &str) -> Result<RunSummary, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    latest_summary_for_key_in(Path::new(&home), repo_root, key)
+}
+
+pub fn latest_summary_for_key_in(
+    home: &Path,
+    repo_root: &Path,
+    key: &str,
+) -> Result<RunSummary, String> {
+    let slug = crate::worktree::slugify(key);
+    let path = latest_run_json_for_key(home, repo_root, &slug)?;
+    status_summary_from_path(&path)
+}
+
+pub fn latest_record_json_for_key(
+    repo_root: &Path,
+    key: &str,
+) -> Result<serde_json::Value, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    latest_record_json_for_key_in(Path::new(&home), repo_root, key)
+}
+
+pub fn latest_record_json_for_key_in(
+    home: &Path,
+    repo_root: &Path,
+    key: &str,
+) -> Result<serde_json::Value, String> {
+    let slug = crate::worktree::slugify(key);
+    let path = latest_run_json_for_key(home, repo_root, &slug)?;
+    record_json_from_path(&path)
+}
+
+fn latest_run_json_for_key(home: &Path, repo_root: &Path, slug: &str) -> Result<PathBuf, String> {
+    let index = runs_index_path(home, repo_root, slug);
+    let entries = read_runs_index(&index).map_err(|err| format!("read runs index: {err}"))?;
+    let runs_dir = runs_root(home, repo_root, slug).join("runs");
+    let canonical_runs_dir = runs_dir.canonicalize().ok();
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    for entry in entries {
+        if entry.record_path.is_empty() { continue; }
+        let Some(path) = trusted_run_json_candidate(Path::new(&entry.record_path), canonical_runs_dir.as_deref()) else { continue; };
+        if seen.insert(path.clone()) { candidates.push(path); }
+    }
+    if runs_dir.exists() {
+        for entry in fs::read_dir(&runs_dir).map_err(|err| format!("read runs dir: {err}"))? {
+            let entry = entry.map_err(|err| format!("read runs entry: {err}"))?;
+            let run_dir = entry.path();
+            if !run_dir.is_dir() { continue; }
+            let Some(path) = trusted_run_json_candidate(&run_dir.join("run.json"), canonical_runs_dir.as_deref()) else { continue; };
+            if seen.insert(path.clone()) { candidates.push(path); }
+        }
+    }
+    candidates.into_iter()
+        .filter_map(|path| {
+            let record = record_json_from_path(&path).ok()?;
+            let created_at = record.get("created_at")?.as_u64()?;
+            Some((created_at, path))
+        })
+        .max_by(|(left_created_at, left_path), (right_created_at, right_path)| {
+            left_created_at.cmp(right_created_at).then_with(|| left_path.cmp(right_path))
+        })
+        .map(|(_, path)| path)
+        .ok_or_else(|| format!("no run.json artifacts found for key {slug}"))
+}
+
+fn trusted_run_json_candidate(path: &Path, canonical_runs_dir: Option<&Path>) -> Option<PathBuf> {
+    if path.file_name()? != "run.json" || !path.exists() { return None; }
+    let canonical_path = path.canonicalize().ok()?;
+    let canonical_runs_dir = canonical_runs_dir?;
+    canonical_path.starts_with(canonical_runs_dir).then_some(canonical_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        persist_terminal_run, read_run_record, record_late_persistence_error, ArtifactPaths,
-        RunRecord, RunSummary,
+        latest_record_json_for_key_in, latest_summary_for_key_in, persist_terminal_run,
+        read_run_record, read_runs_index, record_late_persistence_error, ArtifactPaths, RunRecord,
     };
-    use crate::{
-        result::{RunResult, Status},
-        state::RunPhase,
-    };
+    use super::RunPhase;
+    use crate::result::{RunResult, Status};
     use tempfile::tempdir;
 
     fn sample_result(artifacts_dir: &std::path::Path, summary_path: &std::path::Path) -> RunResult {
@@ -533,7 +557,6 @@ mod tests {
             system_prompt_txt: dir.join("system-prompt.txt"),
             combined_prompt_txt: dir.join("combined-prompt.txt"),
             system_prompt_versions_txt: dir.join("system-prompt-versions.txt"),
-            state_json: dir.join("run-state.json"),
             result_json: dir.join("result.json"),
             run_json: dir.join("run.json"),
             vibe_log: dir.join("vibe.log"),
@@ -641,28 +664,60 @@ mod tests {
     }
 
     #[test]
-    fn run_summary_round_trip_preserves_new_terminal_fields() {
+    fn runs_index_reads_legacy_state_path() {
         let temp = tempdir().expect("tempdir");
-        let artifacts_dir = temp.path().join("run");
-        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
-        let summary_path = artifacts_dir.join("summary.json");
-        let result = sample_result(&artifacts_dir, &summary_path);
-        let summary = RunSummary::from_run_result(
-            "run-id",
-            "pdev-099b",
-            "pdev-099b",
-            &result,
-            vec!["vibe/src/ledger.rs".to_string()],
-            Some("boom".to_string()),
-        );
-
-        let value = serde_json::to_value(summary).expect("serialize summary");
-
-        assert_eq!(value["phase"], "finished");
-        assert_eq!(value["summary_path"], summary_path.display().to_string());
-        assert_eq!(value["result_path"], "");
-        assert_eq!(value["created_at"], 0);
-        assert_eq!(value["status"], "completed");
-        assert_eq!(value["persistence_error"], "boom");
+        let path = temp.path().join("runs_index.jsonl");
+        std::fs::write(&path, "{\"run_id\":\"legacy-run\",\"created_at\":1,\"state_path\":\"\",\"record_path\":\"/tmp/run.json\",\"summary_path\":\"/tmp/summary.json\"}\n").expect("write runs index");
+        let entries = read_runs_index(&path).expect("read runs index");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].record_path, "/tmp/run.json");
     }
+
+    fn write_run_json(path: &std::path::Path, run_id: &str, created_at: u64, phase: &str) {
+        std::fs::create_dir_all(path.parent().expect("run dir")).expect("run dir");
+        std::fs::write(path, serde_json::json!({
+            "run_id": run_id, "key": "PDEV-055 demo/key", "slug": "pdev-055-demo-key",
+            "created_at": created_at, "phase": phase, "terminal_status": if phase == "finished" { Some("completed") } else { None::<&str> },
+            "branch": null, "worktree": null, "model": null, "pre_run_commit": null, "commit": null,
+            "snapshot_commits": [], "changed_files": [], "artifacts_dir": "/tmp/run",
+            "run_path": "/tmp/run/run.json", "summary_path": "/tmp/run/summary.json",
+            "result_path": "/tmp/run/result.json", "events_log_path": "/tmp/run/events.jsonl",
+            "stderr_path": "/tmp/run/agent.stderr.log", "error_message": null, "persistence_error": null
+        }).to_string()).expect("write run json");
+    }
+
+    #[test]
+    fn latest_summary_reads_run_json() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let run = temp.path().join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs/a/run.json");
+        write_run_json(&run, "run-id", 20, "finished");
+        let summary = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key").expect("latest summary");
+        assert_eq!(summary.run_id, "run-id");
+        assert_eq!(summary.phase, RunPhase::Finished);
+        assert_eq!(summary.status, Some(Status::Completed));
+    }
+
+    #[test]
+    fn latest_record_orders_by_created_at() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let runs = temp.path().join(".local/state/vibe/personal-dev-env/pdev-055-demo-key/runs");
+        write_run_json(&runs.join("z/run.json"), "old", 10, "finished");
+        write_run_json(&runs.join("a/run.json"), "new", 20, "running_agent");
+        let latest = latest_record_json_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key").expect("latest record");
+        assert_eq!(latest["run_id"], "new");
+    }
+
+    #[test]
+    fn latest_summary_errors_without_run() {
+        let temp = tempdir().expect("tempdir");
+        let repo_root = temp.path().join("personal-dev-env");
+        std::fs::create_dir_all(&repo_root).expect("repo dir");
+        let err = latest_summary_for_key_in(temp.path(), &repo_root, "PDEV-055 demo/key").expect_err("missing run");
+        assert!(err.contains("no run.json artifacts found"));
+    }
+
 }
