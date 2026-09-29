@@ -153,7 +153,6 @@ pub fn changed_files(worktree: &Path) -> Result<Vec<String>, String> {
     git::changed_files_in_worktree(worktree)
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn changed_files_since(
     worktree: &Path,
     from: &str,

@@ -1,11 +1,11 @@
 use crate::{
     adapters::docker,
     cli::RunArgs,
-    ledger, observe, prompts,
+    ledger,
+    ledger::RunPhase,
+    observe, prompts,
     result::{RunResult, Status},
-    sandbox, snapshot,
-    state::RunPhase,
-    worktree,
+    sandbox, snapshot, worktree,
 };
 use std::{
     fs,
@@ -561,7 +561,7 @@ mod tests {
         let input = temp.path().join("input,notes.txt");
         std::fs::write(&input, "notes").expect("write input");
 
-        let error = validate_inputs(&[input.clone()]).expect_err("invalid input path");
+        let error = validate_inputs(std::slice::from_ref(&input)).expect_err("invalid input path");
 
         assert_eq!(
             error,
