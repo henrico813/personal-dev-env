@@ -280,7 +280,7 @@ tmux -L "$tmux_socket" kill-window -t controller:tw_workspace
 tmux -L "$tmux_socket" show-options -gqv status-right | grep -Fq '%H:%M'
 [[ "$(tmux -L "$tmux_socket" show-options -sqv set-clipboard)" == on ]]
 [[ -z "$(tmux -L "$tmux_socket" show-options -sqv copy-command)" ]]
-tmux -L "$tmux_socket" list-keys -T copy-mode-vi y | grep -Fq 'send-keys -X copy-selection-and-cancel'
+tmux -L "$tmux_socket" list-keys -T copy-mode-vi | grep -Fq ' y                 send-keys -X copy-selection-and-cancel'
 
 # A config reload must clear the blocking command from an already-running server.
 tmux -L "$tmux_socket" set-option -s copy-command 'xclip -in -selection clipboard'
