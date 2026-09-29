@@ -81,10 +81,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::persist_emitted_result;
-    use crate::{
-        ledger::RunSummary,
-        result::{RunResult, Status},
-    };
+    use crate::result::{RunResult, Status};
     use tempfile::tempdir;
 
     fn sample_result(artifacts_dir: &std::path::Path, summary_path: &std::path::Path) -> RunResult {
@@ -146,34 +143,6 @@ mod tests {
         std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
         let summary_path = artifacts_dir.join("summary.json");
         write_sample_run_record(&summary_path, &artifacts_dir);
-
-        let summary = RunSummary {
-            run_id: "run-id".to_string(),
-            key: "pdev-099b".to_string(),
-            slug: "pdev-099b".to_string(),
-            created_at: 1778781975,
-            phase: crate::ledger::RunPhase::Finished,
-            status: Some(Status::Completed),
-            branch: Some("vibe/pdev-099b".to_string()),
-            worktree: Some("/tmp/worktree".to_string()),
-            model: Some("gpt-5.4-mini".to_string()),
-            pre_run_commit: Some("abc".to_string()),
-            commit: Some("def".to_string()),
-            snapshot_commits: vec!["snap".to_string()],
-            changed_files: vec!["vibe/src/main.rs".to_string()],
-            artifacts_dir: artifacts_dir.display().to_string(),
-            summary_path: summary_path.display().to_string(),
-            result_path: artifacts_dir.join("result.json").display().to_string(),
-            events_log_path: artifacts_dir.join("events.jsonl").display().to_string(),
-            stderr_path: artifacts_dir.join("agent.stderr.log").display().to_string(),
-            error_message: None,
-            persistence_error: None,
-        };
-        std::fs::write(
-            &summary_path,
-            serde_json::to_string_pretty(&summary).expect("serialize summary"),
-        )
-        .expect("write summary");
 
         let invalid_artifacts_dir = temp.path().join("not-a-dir");
         std::fs::write(&invalid_artifacts_dir, "file").expect("write file path");
