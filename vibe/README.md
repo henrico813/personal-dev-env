@@ -90,7 +90,11 @@ inside Docker. Provider credential selection and shared skills are described in
 - the host Pi agent directory is writable only for file-auth fallback
 - the executor uses the combined prompt artifact
 
-Artifacts are under `~/.local/state/vibe/<repo>/<slug>/runs/.../`. `stdout`
+Artifacts are under
+`~/.local/state/vibe/<repo>-<16-hex-git-common-dir-hash>/<slug>/runs/.../`.
+The original-key claim is stored in that slug directory. State under the old
+`~/.local/state/vibe/<basename>/` layout is intentionally orphaned and is not
+migrated. `stdout`
 returns one machine-readable Vibe JSON result; `events.jsonl` stores the raw Pi
 JSONL stream. `stderr` and `agent.stderr.log` provide the structured caller
 stream, while `extension-events.jsonl` stores progress events.
@@ -108,5 +112,5 @@ Inspect these artifacts when dogfooding:
 - `summary.json` is the default derived status view; `result.json` is the saved command-result view.
 - `runs_index.jsonl` is a best-effort lookup index, and `run-state.json` is no longer supported.
 - Late persistence failures populate `persistence_error` without rewriting execution status.
-- `vibe status --key ...` reads the latest readable state for the normalized key; run it inside the target checkout.
+- `vibe status --key ...` reads the latest readable state for the normalized key after checking the stored original key; run it inside the target checkout.
 - `vibe status --long` shows the full saved run record.

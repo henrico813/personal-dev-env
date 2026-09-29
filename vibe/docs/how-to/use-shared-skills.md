@@ -31,7 +31,10 @@ from writes through the worktree mount. Inside the container Pi disables normal
 skill discovery with `--no-skills`, then explicitly selects the user root first
 and the repository root second. Either directory may be missing.
 
-Find the run under `~/.local/state/vibe/<repo>/<key>/runs/` and inspect
+Find the run under
+`~/.local/state/vibe/<repo>-<16-hex-git-common-dir-hash>/<slug>/runs/`.
+State under the old `~/.local/state/vibe/<basename>/` layout is intentionally
+orphaned and is not migrated. Inspect
 `system-prompt.txt`, `combined-prompt.txt`, `events.jsonl`, and
 `agent.stderr.log`. The prompt artifacts identify the executor prompt used;
 the event and stderr logs provide the observable record of the agent's run and
