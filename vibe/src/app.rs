@@ -52,7 +52,8 @@ struct ActiveRun {
     created_at: u64,
 }
 
-/// Box stage failures so the success path stays stack-sized.
+/// Box stage failures because `TerminalOutcome` is large enough to trigger
+/// Clippy's `result_large_err` lint when returned inline.
 type StageResult<T> = Result<T, Box<TerminalOutcome>>;
 
 fn stage_failure(outcome: TerminalOutcome) -> Box<TerminalOutcome> {
@@ -373,6 +374,9 @@ fn finish_stage(run: &ActiveRun, snapshot: SnapshotRun) -> StageResult<TerminalO
     })
 }
 
+// Failures before the pre-run commit is read report none; later failures keep it.
+// Snapshot commits are kept once read; snapshot reads use SnapshotFailed, while
+// other stage errors use WrapperFailed. See docs/reference/internals.md.
 fn run_stages(run: &ActiveRun) -> StageResult<TerminalOutcome> {
     let pre_run = prepare_stage(run)?;
     let agent = agent_stage(run, pre_run)?;
@@ -380,6 +384,13 @@ fn run_stages(run: &ActiveRun) -> StageResult<TerminalOutcome> {
     finish_stage(run, snapshot)
 }
 
+/// Execute one Vibe task end-to-end and return the stable JSON result.
+///
+/// Setup errors return [`RunResult::setup_error`] before `run.json` exists.
+/// If [`ledger::start_run`] fails, the result is returned without terminal
+/// persistence because no `run.json` record exists. Every later failure goes
+/// through [`finish_result`], which writes the terminal record and derived
+/// outputs.
 pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
     let run = match prepare_active_run(target, args) {
         Ok(run) => run,
@@ -407,6 +418,7 @@ pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
     };
     finish_result(&run, outcome)
 }
+
 #[cfg(test)]
 mod tests {
     use super::{fallback_result, finalize_changed_files, read_supervisor_prompt, validate_inputs};

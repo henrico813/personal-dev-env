@@ -78,6 +78,10 @@ pub fn setup_fixture(key: &str) -> Fixture {
     );
     let prompt = temp.path().join("prompt.txt");
     fs::write(&prompt, "Inspect the repository and make no changes.\n").expect("write prompt");
+    // The fake finds the worktree and artifacts through `-v` mounts, writes the
+    // snapshots file consumed by the snapshot stage, removes it for
+    // `snapshot_failed`, and supports noop, completed, agent_failed, and
+    // snapshot_failed through VIBE_FAKE_MODE.
     write_executable(
         &bin.join("docker"),
         r##"#!/usr/bin/env bash

@@ -6,6 +6,7 @@ use crate::adapters::git::RepoLayout;
 
 const KEY_FILE: &str = "key";
 
+/// Identity and paths shared by one run invocation.
 pub(crate) struct RunTarget {
     key: String,
     slug: String,
@@ -15,6 +16,8 @@ pub(crate) struct RunTarget {
 }
 
 impl RunTarget {
+    /// Keep the raw Git common directory for Git and Docker; hash its resolved
+    /// path so symlinked checkouts share the same state identity.
     pub(crate) fn from_repo(key: &str, repo: RepoLayout) -> Result<Self, String> {
         let hash_input = repo
             .git_common_dir
@@ -83,6 +86,7 @@ impl RunTarget {
         self.state_dir(home).join(KEY_FILE)
     }
 
+    /// The first stored key owns this slug; a missing key leaves it unclaimed.
     pub(crate) fn check_stored_key(&self, home: &Path) -> Result<(), String> {
         match fs::read_to_string(self.key_path(home)) {
             Ok(stored) if stored != self.key => Err(format!(
@@ -116,6 +120,8 @@ pub(crate) fn slugify(key: &str) -> String {
     }
 }
 
+// `DefaultHasher` is not stable across Rust releases; changing this hash would
+// move existing state directories.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325;
     for byte in bytes {
