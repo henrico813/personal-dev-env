@@ -41,44 +41,66 @@ fn persist_phase(
     append_wrapper_log(&artifacts.vibe_log, note)
 }
 
-fn build_result(
-    session: &worktree::WorktreeSession,
-    artifacts: &observe::ArtifactPaths,
-    model: &str,
-    parts: TerminalOutcome,
-) -> RunResult {
+struct ActiveRun {
+    args: RunArgs,
+    supervisor_prompt: String,
+    prepared_auth: Option<PathBuf>,
+    prepared_skills: docker::PreparedSkills,
+    asset_root: PathBuf,
+    session: worktree::WorktreeSession,
+    artifacts: observe::ArtifactPaths,
+    created_at: u64,
+}
+
+/// Box stage failures so the success path stays stack-sized.
+type StageResult<T> = Result<T, Box<TerminalOutcome>>;
+
+fn stage_failure(outcome: TerminalOutcome) -> Box<TerminalOutcome> {
+    Box::new(outcome)
+}
+
+struct PreRun {
+    pre_run_commit: String,
+    mounts: worktree::SandboxMounts,
+}
+
+struct AgentRun {
+    pre_run_commit: String,
+    agent_exit: i32,
+}
+
+struct SnapshotRun {
+    pre_run_commit: String,
+    agent_exit: i32,
+    snapshot_commits: Vec<String>,
+    dirty_after: bool,
+}
+
+fn build_result(run: &ActiveRun, outcome: TerminalOutcome) -> RunResult {
     RunResult {
-        run_id: Some(artifacts.run_id.clone()),
-        status: parts.status,
-        branch: Some(session.branch.clone()),
-        worktree: Some(session.worktree.display().to_string()),
-        model: Some(model.to_string()),
-        pre_run_commit: parts.pre_run_commit,
-        commit: parts.commit,
-        snapshot_commits: parts.snapshot_commits,
-        artifacts_dir: Some(artifacts.dir.display().to_string()),
-        events_log_path: Some(artifacts.events_jsonl.display().to_string()),
-        stderr_path: Some(artifacts.stderr_log.display().to_string()),
-        run_path: Some(artifacts.run_json.display().to_string()),
-        summary_path: Some(artifacts.summary_json.display().to_string()),
-        changed_files: parts.changed_files,
-        persistence_error: parts.persistence_error,
-        error_message: parts.error_message,
+        run_id: Some(run.artifacts.run_id.clone()),
+        status: outcome.status,
+        branch: Some(run.session.branch.clone()),
+        worktree: Some(run.session.worktree.display().to_string()),
+        model: Some(run.args.model.clone()),
+        pre_run_commit: outcome.pre_run_commit,
+        commit: outcome.commit,
+        snapshot_commits: outcome.snapshot_commits,
+        artifacts_dir: Some(run.artifacts.dir.display().to_string()),
+        events_log_path: Some(run.artifacts.events_jsonl.display().to_string()),
+        stderr_path: Some(run.artifacts.stderr_log.display().to_string()),
+        run_path: Some(run.artifacts.run_json.display().to_string()),
+        summary_path: Some(run.artifacts.summary_json.display().to_string()),
+        changed_files: outcome.changed_files,
+        persistence_error: outcome.persistence_error,
+        error_message: outcome.error_message,
     }
 }
 
-fn finish_result(
-    artifacts: &observe::ArtifactPaths,
-    session: &worktree::WorktreeSession,
-    model: &str,
-    outcome: TerminalOutcome,
-) -> RunResult {
-    match ledger::persist_terminal_run(artifacts, &outcome) {
+fn finish_result(run: &ActiveRun, outcome: TerminalOutcome) -> RunResult {
+    match ledger::persist_terminal_run(&run.artifacts, &outcome) {
         Ok(result) => result,
-        Err(err) => {
-            let result = build_result(session, artifacts, model, outcome);
-            fallback_result(result, err)
-        }
+        Err(err) => fallback_result(build_result(run, outcome), err),
     }
 }
 
@@ -136,44 +158,19 @@ pub fn validate_inputs(inputs: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
-/// Execute one Vibe task end-to-end and return the stable JSON result.
-pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
-    if let Err(error) = validate_inputs(&args.inputs) {
-        return RunResult::setup_error(error);
-    }
-    let supervisor_prompt = match read_supervisor_prompt(&args.prompt_file) {
-        Ok(prompt) => prompt,
-        Err(error) => return RunResult::setup_error(error),
-    };
-    if let Err(error) = worktree::validate_base_target(target, args.base.as_deref()) {
-        return RunResult::setup_error(error);
-    }
+fn prepare_active_run(target: &RunTarget, args: RunArgs) -> Result<ActiveRun, String> {
+    validate_inputs(&args.inputs)?;
+    let supervisor_prompt = read_supervisor_prompt(&args.prompt_file)?;
+    worktree::validate_base_target(target, args.base.as_deref())?;
     let prepared_auth =
-        match docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model) {
-            Ok(prepared) => prepared,
-            Err(error) => return RunResult::setup_error(error),
-        };
+        docker::prepare_provider_auth(std::env::var("HOME").ok().as_deref(), &args.model)?;
     let home = std::env::var_os("HOME");
-    let user_skills = match docker::prepare_user_skills(home.as_deref()) {
-        Ok(prepared) => prepared,
-        Err(error) => return RunResult::setup_error(error),
-    };
-    let asset_root = match sandbox::prepare_agent_image() {
-        Ok(root) => root,
-        Err(error) => return RunResult::setup_error(error),
-    };
-    let session = match worktree::prepare(target, args.base.as_deref()) {
-        Ok(session) => session,
-        Err(err) => return RunResult::setup_error(err),
-    };
-    let repository_skills = match docker::prepare_repository_skills(&session.worktree) {
-        Ok(prepared) => prepared,
-        Err(err) => return RunResult::setup_error(err),
-    };
+    let user_skills = docker::prepare_user_skills(home.as_deref())?;
+    let asset_root = sandbox::prepare_agent_image()?;
+    let session = worktree::prepare(target, args.base.as_deref())?;
+    let repository_skills = docker::prepare_repository_skills(&session.worktree)?;
     if repository_skills.is_some() {
-        if let Err(err) = worktree::validate_repository_skills(&session.worktree) {
-            return RunResult::setup_error(err);
-        }
+        worktree::validate_repository_skills(&session.worktree)?;
     }
     let prepared_skills = docker::PreparedSkills {
         user: user_skills,
@@ -181,302 +178,271 @@ pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
     };
     let run_id = ledger::run_id();
     let created_at = ledger::created_at().unwrap_or(0);
-    let artifacts = match observe::create_artifacts(target, &run_id) {
-        Ok(paths) => paths,
-        Err(err) => return RunResult::setup_error(err),
-    };
-    if let Err(err) = ledger::start_run(
-        &artifacts,
-        &session.key,
-        &session.slug,
-        &session.branch,
-        &session.worktree,
-        &args.model,
+    let artifacts = observe::create_artifacts(target, &run_id)?;
+    Ok(ActiveRun {
+        args,
+        supervisor_prompt,
+        prepared_auth,
+        prepared_skills,
+        asset_root,
+        session,
+        artifacts,
         created_at,
-        run_id,
-    ) {
-        return build_result(
-            &session,
-            &artifacts,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = persist_phase(&artifacts, RunPhase::CopyingPrompt, "copy prompt") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    let rendered_prompt = prompts::render_executor_prompt(&supervisor_prompt);
-    if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = persist_phase(&artifacts, RunPhase::CheckingDirty, "check dirty") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = persist_phase(
-        &artifacts,
+    })
+}
+
+fn prepare_stage(run: &ActiveRun) -> StageResult<PreRun> {
+    let failure = |error| {
+        stage_failure(TerminalOutcome::failure(
+            None,
+            Status::WrapperFailed,
+            Vec::new(),
+            Some(error),
+        ))
+    };
+    append_wrapper_log(&run.artifacts.vibe_log, "artifacts prepared").map_err(failure)?;
+    persist_phase(&run.artifacts, RunPhase::CopyingPrompt, "copy prompt").map_err(failure)?;
+    observe::write_prompt_artifact(&run.artifacts.prompt_txt, &run.supervisor_prompt)
+        .map_err(failure)?;
+    let rendered_prompt = prompts::render_executor_prompt(&run.supervisor_prompt);
+    observe::write_rendered_prompt(&run.artifacts, &rendered_prompt).map_err(failure)?;
+    persist_phase(&run.artifacts, RunPhase::CheckingDirty, "check dirty").map_err(failure)?;
+    worktree::refuse_if_dirty(&run.session.worktree).map_err(|error| {
+        stage_failure(TerminalOutcome::failure(
+            None,
+            Status::RefusedDirty,
+            Vec::new(),
+            Some(error),
+        ))
+    })?;
+    persist_phase(
+        &run.artifacts,
         RunPhase::ReadingPreRunCommit,
         "read pre-run commit",
-    ) {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    let pre_run_commit = match worktree::pre_run_commit(&session.worktree) {
-        Ok(sha) => sha,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            )
-        }
-    };
-    if let Err(err) = ledger::persist_pre_run_commit(&artifacts.run_json, &pre_run_commit) {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-        );
-    }
-    if let Err(err) = persist_phase(&artifacts, RunPhase::PreparingSandbox, "prepare sandbox") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(
+    )
+    .map_err(failure)?;
+    let pre_run_commit = worktree::pre_run_commit(&run.session.worktree).map_err(failure)?;
+    ledger::persist_pre_run_commit(&run.artifacts.run_json, &pre_run_commit).map_err(failure)?;
+    persist_phase(
+        &run.artifacts,
+        RunPhase::PreparingSandbox,
+        "prepare sandbox",
+    )
+    .map_err(|error| {
+        TerminalOutcome::failure(
+            Some(pre_run_commit.clone()),
+            Status::WrapperFailed,
+            Vec::new(),
+            Some(error),
+        )
+    })?;
+    if run.prepared_skills.repository.is_some() {
+        worktree::validate_repository_skills(&run.session.worktree).map_err(|error| {
+            stage_failure(TerminalOutcome::failure(
                 Some(pre_run_commit.clone()),
                 Status::WrapperFailed,
                 Vec::new(),
-                Some(err),
-            ),
-        );
+                Some(error),
+            ))
+        })?;
     }
-    let mounts = session.sandbox_mounts(&args.inputs);
-    if prepared_skills.repository.is_some() {
-        if let Err(err) = worktree::validate_repository_skills(&session.worktree) {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
-            );
-        }
-    }
-    if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(
-                Some(pre_run_commit.clone()),
-                Status::WrapperFailed,
-                Vec::new(),
-                Some(err),
-            ),
-        );
-    }
-    let agent_exit = match sandbox::run_agent(
-        &mounts,
-        &artifacts,
-        &args.model,
-        args.stderr_level.as_str(),
-        args.insecure_tls,
-        prepared_auth.as_deref(),
-        &prepared_skills,
-    ) {
-        Ok(code) => code,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
-            )
-        }
-    };
-    if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(
-                Some(pre_run_commit.clone()),
-                Status::WrapperFailed,
-                Vec::new(),
-                Some("combined prompt artifact unavailable inside sandbox".to_string()),
-            ),
-        );
-    }
+    Ok(PreRun {
+        pre_run_commit,
+        mounts: run.session.sandbox_mounts(&run.args.inputs),
+    })
+}
 
-    if let Err(err) = persist_phase(&artifacts, RunPhase::ReadingSnapshots, "read snapshots") {
-        return finish_result(
-            &artifacts,
-            &session,
-            &args.model,
-            TerminalOutcome::failure(
-                Some(pre_run_commit.clone()),
-                Status::WrapperFailed,
-                Vec::new(),
-                Some(err),
-            ),
-        );
+fn agent_stage(run: &ActiveRun, pre_run: PreRun) -> StageResult<AgentRun> {
+    let failure = |error| {
+        stage_failure(TerminalOutcome::failure(
+            Some(pre_run.pre_run_commit.clone()),
+            Status::WrapperFailed,
+            Vec::new(),
+            Some(error),
+        ))
+    };
+    persist_phase(&run.artifacts, RunPhase::RunningAgent, "run agent").map_err(failure)?;
+    let agent_exit = sandbox::run_agent(
+        &pre_run.mounts,
+        &run.artifacts,
+        &run.args.model,
+        run.args.stderr_level.as_str(),
+        run.args.insecure_tls,
+        run.prepared_auth.as_deref(),
+        &run.prepared_skills,
+    )
+    .map_err(failure)?;
+    if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
+        return Err(failure(
+            "combined prompt artifact unavailable inside sandbox".to_string(),
+        ));
     }
-    let snapshot_commits = match snapshot::read_snapshot_shas(&artifacts.snapshots_jsonl) {
-        Ok(shas) => shas,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::SnapshotFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
-            );
-        }
+    Ok(AgentRun {
+        pre_run_commit: pre_run.pre_run_commit,
+        agent_exit,
+    })
+}
+
+fn snapshot_stage(run: &ActiveRun, agent: AgentRun) -> StageResult<SnapshotRun> {
+    let failure = |snapshot_commits, error| {
+        stage_failure(TerminalOutcome::failure(
+            Some(agent.pre_run_commit.clone()),
+            Status::WrapperFailed,
+            snapshot_commits,
+            Some(error),
+        ))
     };
-    let dirty_after = match worktree::is_dirty(&session.worktree) {
-        Ok(dirty) => dirty,
-        Err(err) => {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(
-                    Some(pre_run_commit),
-                    Status::WrapperFailed,
-                    snapshot_commits,
-                    Some(err),
-                ),
-            );
-        }
-    };
-    let mut status = if agent_exit == 0 {
+    persist_phase(&run.artifacts, RunPhase::ReadingSnapshots, "read snapshots")
+        .map_err(|error| failure(Vec::new(), error))?;
+    let snapshot_commits =
+        snapshot::read_snapshot_shas(&run.artifacts.snapshots_jsonl).map_err(|error| {
+            stage_failure(TerminalOutcome::failure(
+                Some(agent.pre_run_commit.clone()),
+                Status::SnapshotFailed,
+                Vec::new(),
+                Some(error),
+            ))
+        })?;
+    let dirty_after = worktree::is_dirty(&run.session.worktree)
+        .map_err(|error| failure(snapshot_commits.clone(), error))?;
+    Ok(SnapshotRun {
+        pre_run_commit: agent.pre_run_commit,
+        agent_exit: agent.agent_exit,
+        snapshot_commits,
+        dirty_after,
+    })
+}
+
+fn finish_stage(run: &ActiveRun, snapshot: SnapshotRun) -> StageResult<TerminalOutcome> {
+    let mut status = if snapshot.agent_exit == 0 {
         Status::Noop
     } else {
         Status::AgentFailed
     };
     let mut commit = None;
     let mut error_message = None;
-
-    if dirty_after {
-        if let Err(err) = persist_phase(&artifacts, RunPhase::CommittingResult, "commit result") {
-            return finish_result(
-                &artifacts,
-                &session,
-                &args.model,
-                TerminalOutcome::failure(
-                    Some(pre_run_commit.clone()),
+    if snapshot.dirty_after {
+        persist_phase(&run.artifacts, RunPhase::CommittingResult, "commit result").map_err(
+            |error| {
+                stage_failure(TerminalOutcome::failure(
+                    Some(snapshot.pre_run_commit.clone()),
                     Status::WrapperFailed,
-                    snapshot_commits.clone(),
-                    Some(err),
-                ),
-            );
-        }
-        let message = args
+                    snapshot.snapshot_commits.clone(),
+                    Some(error),
+                ))
+            },
+        )?;
+        let message = run
+            .args
             .commit_message
             .clone()
-            .unwrap_or_else(|| format!("vibe: run {}", session.key));
-        match worktree::commit_result(&session.worktree, &message, &asset_root.join("hooks")) {
+            .unwrap_or_else(|| format!("vibe: run {}", run.session.key));
+        match worktree::commit_result(
+            &run.session.worktree,
+            &message,
+            &run.asset_root.join("hooks"),
+        ) {
             Ok(sha) => {
                 commit = Some(sha);
-                status = if agent_exit == 0 {
+                status = if snapshot.agent_exit == 0 {
                     Status::Completed
                 } else {
                     Status::AgentFailed
                 };
             }
-            Err(err) => {
+            Err(error) => {
                 status = Status::CommitFailed;
-                error_message = Some(err);
+                error_message = Some(error);
             }
         }
     }
-
     let (changed_files, persistence_error) = finalize_changed_files(
-        &session.worktree,
-        &pre_run_commit,
+        &run.session.worktree,
+        &snapshot.pre_run_commit,
         commit.as_deref(),
-        dirty_after,
+        snapshot.dirty_after,
     );
-
-    finish_result(
-        &artifacts,
-        &session,
-        &args.model,
-        TerminalOutcome {
-            pre_run_commit: Some(pre_run_commit),
-            status,
-            commit,
-            snapshot_commits,
-            changed_files,
-            error_message,
-            persistence_error,
-        },
-    )
+    Ok(TerminalOutcome {
+        pre_run_commit: Some(snapshot.pre_run_commit),
+        status,
+        commit,
+        snapshot_commits: snapshot.snapshot_commits,
+        changed_files,
+        error_message,
+        persistence_error,
+    })
 }
 
+fn run_stages(run: &ActiveRun) -> StageResult<TerminalOutcome> {
+    let pre_run = prepare_stage(run)?;
+    let agent = agent_stage(run, pre_run)?;
+    let snapshot = snapshot_stage(run, agent)?;
+    finish_stage(run, snapshot)
+}
+
+pub fn execute(target: &RunTarget, args: RunArgs) -> RunResult {
+    let run = match prepare_active_run(target, args) {
+        Ok(run) => run,
+        Err(error) => return RunResult::setup_error(error),
+    };
+    let run_id = run.artifacts.run_id.clone();
+    if let Err(error) = ledger::start_run(
+        &run.artifacts,
+        &run.session.key,
+        &run.session.slug,
+        &run.session.branch,
+        &run.session.worktree,
+        &run.args.model,
+        run.created_at,
+        run_id,
+    ) {
+        return build_result(
+            &run,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(error)),
+        );
+    }
+    let outcome = match run_stages(&run) {
+        Ok(outcome) => outcome,
+        Err(outcome) => *outcome,
+    };
+    finish_result(&run, outcome)
+}
 #[cfg(test)]
 mod tests {
     use super::{fallback_result, finalize_changed_files, read_supervisor_prompt, validate_inputs};
-    use crate::result::RunResult;
+    use crate::{
+        ledger::TerminalOutcome,
+        result::{RunResult, Status},
+    };
     use tempfile::tempdir;
+
+    #[test]
+    fn stage_failures_preserve_statuses() {
+        let cases = [
+            (Status::WrapperFailed, None, Vec::new()),
+            (Status::RefusedDirty, None, Vec::new()),
+            (Status::SnapshotFailed, Some("pre"), Vec::new()),
+            (
+                Status::CommitFailed,
+                Some("pre"),
+                vec!["snapshot".to_string()],
+            ),
+        ];
+
+        for (status, pre_run_commit, snapshot_commits) in cases {
+            let outcome = TerminalOutcome::failure(
+                pre_run_commit.map(str::to_string),
+                status.clone(),
+                snapshot_commits.clone(),
+                Some("stage error".to_string()),
+            );
+
+            assert_eq!(outcome.status, status);
+            assert_eq!(outcome.pre_run_commit.as_deref(), pre_run_commit);
+            assert_eq!(outcome.snapshot_commits, snapshot_commits);
+            assert_eq!(outcome.error_message.as_deref(), Some("stage error"));
+        }
+    }
 
     #[test]
     fn fallback_merges_existing_persistence_error() {
