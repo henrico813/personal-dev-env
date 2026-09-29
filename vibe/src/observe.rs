@@ -69,7 +69,6 @@ pub fn create_artifacts(
     create_artifacts_in(Path::new(&home), repo_root, key, run_id)
 }
 
-
 fn write_text(dst: &Path, text: &str, label: &str) -> Result<(), String> {
     fs::write(dst, text).map_err(|e| format!("write {label}: {e}"))
 }
@@ -180,5 +179,4 @@ mod tests {
         );
         assert!(paths.dir.exists());
     }
-
 }
