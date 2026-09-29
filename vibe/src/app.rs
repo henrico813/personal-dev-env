@@ -2,7 +2,7 @@ use crate::{
     adapters::docker,
     cli::RunArgs,
     ledger,
-    ledger::RunPhase,
+    ledger::{RunPhase, TerminalOutcome},
     observe, prompts,
     result::{RunResult, Status},
     sandbox, snapshot, worktree,
@@ -39,38 +39,11 @@ fn persist_phase(
     append_wrapper_log(&artifacts.vibe_log, note)
 }
 
-struct ResultParts {
-    pre_run_commit: Option<String>,
-    status: Status,
-    commit: Option<String>,
-    snapshot_commits: Vec<String>,
-    changed_files: Vec<String>,
-    error_message: Option<String>,
-}
-
-impl ResultParts {
-    fn failure(
-        pre_run_commit: Option<String>,
-        status: Status,
-        snapshot_commits: Vec<String>,
-        error_message: Option<String>,
-    ) -> Self {
-        Self {
-            pre_run_commit,
-            status,
-            commit: None,
-            snapshot_commits,
-            changed_files: Vec::new(),
-            error_message,
-        }
-    }
-}
-
 fn build_result(
     session: &worktree::WorktreeSession,
     artifacts: &observe::ArtifactPaths,
     model: &str,
-    parts: ResultParts,
+    parts: TerminalOutcome,
 ) -> RunResult {
     RunResult {
         run_id: Some(artifacts.run_id.clone()),
@@ -87,15 +60,28 @@ fn build_result(
         run_path: Some(artifacts.run_json.display().to_string()),
         summary_path: Some(artifacts.summary_json.display().to_string()),
         changed_files: parts.changed_files,
-        persistence_error: None,
+        persistence_error: parts.persistence_error,
         error_message: parts.error_message,
     }
 }
 
-fn finish_result(artifacts: &observe::ArtifactPaths, mut result: RunResult) -> RunResult {
-    if let Err(err) = ledger::persist_terminal_run(artifacts, &mut result) {
-        let _ = ledger::record_late_persistence_error(&mut result, err);
+fn finish_result(
+    artifacts: &observe::ArtifactPaths,
+    session: &worktree::WorktreeSession,
+    model: &str,
+    outcome: TerminalOutcome,
+) -> RunResult {
+    match ledger::persist_terminal_run(artifacts, &outcome) {
+        Ok(result) => result,
+        Err(err) => {
+            let result = build_result(session, artifacts, model, outcome);
+            fallback_result(result, err)
+        }
     }
+}
+
+fn fallback_result(mut result: RunResult, persistence_error: String) -> RunResult {
+    let _ = ledger::record_late_persistence_error(&mut result, persistence_error);
     result
 }
 
@@ -211,74 +197,56 @@ pub fn execute(args: RunArgs) -> RunResult {
             &session,
             &artifacts,
             &args.model,
-            ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = append_wrapper_log(&artifacts.vibe_log, "artifacts prepared") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = persist_phase(&artifacts, RunPhase::CopyingPrompt, "copy prompt") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = observe::write_prompt_artifact(&artifacts.prompt_txt, &supervisor_prompt) {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     let rendered_prompt = prompts::render_executor_prompt(&supervisor_prompt);
     if let Err(err) = observe::write_rendered_prompt(&artifacts, &rendered_prompt) {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = persist_phase(&artifacts, RunPhase::CheckingDirty, "check dirty") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = worktree::refuse_if_dirty(&session.worktree) {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::RefusedDirty, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = persist_phase(
@@ -288,12 +256,9 @@ pub fn execute(args: RunArgs) -> RunResult {
     ) {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     let pre_run_commit = match worktree::pre_run_commit(&session.worktree) {
@@ -301,39 +266,30 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-                ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
             )
         }
     };
     if let Err(err) = ledger::persist_pre_run_commit(&artifacts.run_json, &pre_run_commit) {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
-            ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(None, Status::WrapperFailed, Vec::new(), Some(err)),
         );
     }
     if let Err(err) = persist_phase(&artifacts, RunPhase::PreparingSandbox, "prepare sandbox") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(
+                Some(pre_run_commit.clone()),
+                Status::WrapperFailed,
+                Vec::new(),
+                Some(err),
             ),
         );
     }
@@ -342,16 +298,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         if let Err(err) = worktree::validate_repository_skills(&session.worktree) {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::WrapperFailed,
-                        Vec::new(),
-                        Some(err),
-                    ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some(err),
                 ),
             );
         }
@@ -359,16 +312,13 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = persist_phase(&artifacts, RunPhase::RunningAgent, "run agent") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(
+                Some(pre_run_commit.clone()),
+                Status::WrapperFailed,
+                Vec::new(),
+                Some(err),
             ),
         );
     }
@@ -385,16 +335,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::WrapperFailed,
-                        Vec::new(),
-                        Some(err),
-                    ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    Vec::new(),
+                    Some(err),
                 ),
             )
         }
@@ -402,16 +349,13 @@ pub fn execute(args: RunArgs) -> RunResult {
     if agent_exit == COMBINED_PROMPT_MISSING_EXIT {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some("combined prompt artifact unavailable inside sandbox".to_string()),
-                ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(
+                Some(pre_run_commit.clone()),
+                Status::WrapperFailed,
+                Vec::new(),
+                Some("combined prompt artifact unavailable inside sandbox".to_string()),
             ),
         );
     }
@@ -419,16 +363,13 @@ pub fn execute(args: RunArgs) -> RunResult {
     if let Err(err) = persist_phase(&artifacts, RunPhase::ReadingSnapshots, "read snapshots") {
         return finish_result(
             &artifacts,
-            build_result(
-                &session,
-                &artifacts,
-                &args.model,
-                ResultParts::failure(
-                    Some(pre_run_commit.clone()),
-                    Status::WrapperFailed,
-                    Vec::new(),
-                    Some(err),
-                ),
+            &session,
+            &args.model,
+            TerminalOutcome::failure(
+                Some(pre_run_commit.clone()),
+                Status::WrapperFailed,
+                Vec::new(),
+                Some(err),
             ),
         );
     }
@@ -437,16 +378,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::SnapshotFailed,
-                        Vec::new(),
-                        Some(err),
-                    ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::SnapshotFailed,
+                    Vec::new(),
+                    Some(err),
                 ),
             );
         }
@@ -456,16 +394,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         Err(err) => {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit),
-                        Status::WrapperFailed,
-                        snapshot_commits,
-                        Some(err),
-                    ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(
+                    Some(pre_run_commit),
+                    Status::WrapperFailed,
+                    snapshot_commits,
+                    Some(err),
                 ),
             );
         }
@@ -482,16 +417,13 @@ pub fn execute(args: RunArgs) -> RunResult {
         if let Err(err) = persist_phase(&artifacts, RunPhase::CommittingResult, "commit result") {
             return finish_result(
                 &artifacts,
-                build_result(
-                    &session,
-                    &artifacts,
-                    &args.model,
-                    ResultParts::failure(
-                        Some(pre_run_commit.clone()),
-                        Status::WrapperFailed,
-                        snapshot_commits.clone(),
-                        Some(err),
-                    ),
+                &session,
+                &args.model,
+                TerminalOutcome::failure(
+                    Some(pre_run_commit.clone()),
+                    Status::WrapperFailed,
+                    snapshot_commits.clone(),
+                    Some(err),
                 ),
             );
         }
@@ -522,27 +454,41 @@ pub fn execute(args: RunArgs) -> RunResult {
         dirty_after,
     );
 
-    let mut result = build_result(
-        &session,
+    finish_result(
         &artifacts,
+        &session,
         &args.model,
-        ResultParts {
+        TerminalOutcome {
             pre_run_commit: Some(pre_run_commit),
             status,
             commit,
             snapshot_commits,
             changed_files,
             error_message,
+            persistence_error,
         },
-    );
-    result.persistence_error = persistence_error;
-    finish_result(&artifacts, result)
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{finalize_changed_files, read_supervisor_prompt, validate_inputs};
+    use super::{fallback_result, finalize_changed_files, read_supervisor_prompt, validate_inputs};
+    use crate::result::RunResult;
     use tempfile::tempdir;
+
+    #[test]
+    fn fallback_merges_existing_persistence_error() {
+        let temp = tempdir().expect("tempdir");
+        let mut result = RunResult::setup_error("terminal persist failed");
+        result.run_path = Some(temp.path().join("missing/run.json").display().to_string());
+        result.persistence_error = Some("collect changed_files: x".to_string());
+
+        let result = fallback_result(result, "persist terminal run: missing record".to_string());
+
+        let error = result.persistence_error.expect("persistence error");
+        assert!(error.starts_with("collect changed_files: x"));
+        assert!(error.contains("persist terminal run: missing record"));
+    }
 
     #[test]
     fn rejects_non_utf8_prompt_file() {
