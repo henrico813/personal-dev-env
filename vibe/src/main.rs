@@ -7,6 +7,7 @@ mod prompts;
 mod result;
 mod sandbox;
 mod snapshot;
+mod target;
 mod worktree;
 
 use std::process;
@@ -37,12 +38,12 @@ fn persist_emitted_result(result: &mut RunResult) {
     }
 }
 
-fn execute_run(args: cli::RunArgs) -> RunResult {
-    let _run_lock = match worktree::acquire_run_lock(&args.key) {
+fn execute_run(args: cli::RunArgs, target: &target::RunTarget) -> RunResult {
+    let _run_lock = match worktree::acquire_run_lock(target) {
         Ok(lock) => lock,
         Err(error) => return RunResult::setup_error(error),
     };
-    let mut result = app::execute(args);
+    let mut result = app::execute(target, args);
     persist_emitted_result(&mut result);
     result
 }
@@ -50,7 +51,21 @@ fn execute_run(args: cli::RunArgs) -> RunResult {
 fn main() {
     match cli::parse() {
         ParsedCommand::Run(args) => {
-            let result = execute_run(args);
+            let repo = match adapters::git::repo_layout() {
+                Ok(repo) => repo,
+                Err(err) => {
+                    let result = RunResult::setup_error(err);
+                    emit_and_exit(&result, result.exit_code());
+                }
+            };
+            let target = match target::RunTarget::from_repo(&args.key, repo) {
+                Ok(target) => target,
+                Err(err) => {
+                    let result = RunResult::setup_error(err);
+                    emit_and_exit(&result, result.exit_code());
+                }
+            };
+            let result = execute_run(args, &target);
             emit_and_exit(&result, result.exit_code());
         }
         ParsedCommand::Status(args) => {
@@ -58,19 +73,21 @@ fn main() {
                 eprintln!("vibe status requires a target repo checkout: {err}");
                 process::exit(2);
             });
+            let target = target::RunTarget::from_repo(&args.key, repo).unwrap_or_else(|err| {
+                eprintln!("{err}");
+                process::exit(2);
+            });
             let json = if args.long {
-                let record = ledger::latest_record_json_for_key(&repo.repo_root, &args.key)
-                    .unwrap_or_else(|err| {
-                        eprintln!("{err}");
-                        process::exit(2);
-                    });
+                let record = ledger::latest_record_json_for_target(&target).unwrap_or_else(|err| {
+                    eprintln!("{err}");
+                    process::exit(2);
+                });
                 serde_json::to_string_pretty(&record).expect("serialize record")
             } else {
-                let summary = ledger::latest_summary_for_key(&repo.repo_root, &args.key)
-                    .unwrap_or_else(|err| {
-                        eprintln!("{err}");
-                        process::exit(2);
-                    });
+                let summary = ledger::latest_summary_for_target(&target).unwrap_or_else(|err| {
+                    eprintln!("{err}");
+                    process::exit(2);
+                });
                 serde_json::to_string_pretty(&summary).expect("serialize summary")
             };
             println!("{json}");
