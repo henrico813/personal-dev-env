@@ -539,6 +539,8 @@ fn docker_run_args(args: &DockerRunArgs<'_>) -> Vec<String> {
         format!("{}:{}", git_common_dir.display(), git_common_dir.display()),
         "-v".to_string(),
         format!("{}:/artifacts", artifacts.dir.display()),
+        "-v".to_string(),
+        format!("{}:/artifacts/run.json:ro", artifacts.run_json.display()),
         "-w".to_string(),
         worktree.to_str().unwrap_or("").to_string(),
         "-e".to_string(),
@@ -1253,6 +1255,48 @@ mod tests {
         assert!(!docker_args
             .iter()
             .any(|arg| arg.contains("/vibe-home/.pi/agent")));
+    }
+
+    #[test]
+    fn docker_protects_run_record_mount_order() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let artifacts = test_artifacts(temp.path());
+        let user = HostUser {
+            uid: "1000".to_string(),
+            gid: "1001".to_string(),
+        };
+
+        let args = docker_run_args(&DockerRunArgs {
+            repo_root: temp.path(),
+            git_common_dir: temp.path(),
+            worktree: temp.path(),
+            inputs: &[],
+            artifacts: &artifacts,
+            model: "openai-codex/gpt-5.4",
+            stderr_level: "info",
+            insecure_tls: false,
+            snapshot_ref: "refs/vibe/snapshots/run",
+            user: &user,
+            pi_agent_dir: None,
+            user_skills_dir: None,
+            repository_skills_dir: None,
+        });
+
+        let writable_mount = format!("{}:/artifacts", artifacts.dir.display());
+        let record_mount = format!("{}:/artifacts/run.json:ro", artifacts.run_json.display());
+        let writable_index = args
+            .windows(2)
+            .position(|pair| pair[0] == "-v" && pair[1] == writable_mount)
+            .expect("writable artifacts mount");
+        let record_index = args
+            .windows(2)
+            .position(|pair| pair[0] == "-v" && pair[1] == record_mount)
+            .expect("read-only run record mount");
+
+        assert!(writable_index < record_index);
+        assert!(!args.iter().any(|arg| {
+            arg.ends_with(":/artifacts:ro") || arg.ends_with(":/artifacts:readonly")
+        }));
     }
 
     #[test]
