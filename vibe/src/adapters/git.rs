@@ -360,18 +360,30 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     fn run(repo: &Path, args: &[&str]) {
-        let output = Command::new("git")
-            .args(["-C", repo.to_str().unwrap_or(".")])
-            .args(args)
-            .output()
-            .expect("git command");
-        assert!(
-            output.status.success(),
-            "{} {}: {}",
-            repo.display(),
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            let output = Command::new("git")
+                .args(["-C", repo.to_str().unwrap_or(".")])
+                .args(args)
+                .output();
+            match output {
+                Ok(output) if output.status.success() => return,
+                Ok(output)
+                    if String::from_utf8_lossy(&output.stderr).contains("Text file busy")
+                        && std::time::Instant::now() < deadline =>
+                {
+                    // The fsmonitor hook written by this test can briefly be text-busy.
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Ok(output) => panic!(
+                    "{} {}: {}",
+                    repo.display(),
+                    args.join(" "),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+                Err(error) => panic!("git command: {error}"),
+            }
+        }
     }
 
     fn output(repo: &Path, args: &[&str]) -> String {

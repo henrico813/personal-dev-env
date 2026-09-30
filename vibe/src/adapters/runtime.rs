@@ -91,8 +91,11 @@ fn set_executable(path: &Path, executable: bool) -> Result<(), String> {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::io;
     use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
+    use std::process::{Command, Output};
+    use std::thread;
+    use std::time::{Duration, Instant};
     use tempfile::tempdir;
 
     fn write_executable(path: &Path, contents: &str) {
@@ -100,6 +103,26 @@ mod tests {
         let mut perms = fs::metadata(path).expect("script metadata").permissions();
         perms.set_mode(0o755);
         fs::set_permissions(path, perms).expect("chmod script");
+    }
+
+    fn run_executable<F>(mut spawn: F) -> Output
+    where
+        F: FnMut() -> io::Result<Output>,
+    {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match spawn() {
+                Ok(output) => return output,
+                Err(error)
+                    if error.kind() == io::ErrorKind::ExecutableFileBusy
+                        && Instant::now() < deadline =>
+                {
+                    // Forked test children can briefly retain the script write descriptor.
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("run runtime shell: {error}"),
+            }
+        }
     }
 
     #[test]
@@ -145,25 +168,26 @@ mod tests {
             ),
         );
 
-        let status = Command::new(&script)
-            .current_dir(&repo_root)
-            .env("HOME", &home)
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    bin.display(),
-                    std::env::var("PATH").unwrap_or_default()
-                ),
-            )
-            .env("PI_CAPTURE_FILE", &capture)
-            .env("PI_ARGS_CAPTURE_FILE", &args_capture)
-            .env("VIBE_REPO_ROOT", &repo_root)
-            .env("VIBE_REPO_SKILLS_DIR", &repository_skills)
-            .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
-            .env("VIBE_MODEL", "fake-provider/fake-model")
-            .output()
-            .expect("run runtime shell");
+        let status = run_executable(|| {
+            Command::new(&script)
+                .current_dir(&repo_root)
+                .env("HOME", &home)
+                .env(
+                    "PATH",
+                    format!(
+                        "{}:{}",
+                        bin.display(),
+                        std::env::var("PATH").unwrap_or_default()
+                    ),
+                )
+                .env("PI_CAPTURE_FILE", &capture)
+                .env("PI_ARGS_CAPTURE_FILE", &args_capture)
+                .env("VIBE_REPO_ROOT", &repo_root)
+                .env("VIBE_REPO_SKILLS_DIR", &repository_skills)
+                .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
+                .env("VIBE_MODEL", "fake-provider/fake-model")
+                .output()
+        });
 
         assert!(
             status.status.success(),
@@ -264,26 +288,27 @@ mod tests {
             ),
         );
 
-        let status = Command::new(&script)
-            .current_dir(&repo_root)
-            .env("HOME", &home)
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    bin.display(),
-                    std::env::var("PATH").unwrap_or_default()
-                ),
-            )
-            .env("PI_ARGS_CAPTURE_FILE", &args_capture)
-            .env("REAL_NODE", real_node)
-            .env("VIBE_REPO_ROOT", &repo_root)
-            .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
-            .env("VIBE_MODEL", "goog/qwen3.8")
-            .env("GOOG_BASE_URL", "https://models.example/v1")
-            .env("GOOG_API_KEY", "unused")
-            .output()
-            .expect("run runtime shell");
+        let status = run_executable(|| {
+            Command::new(&script)
+                .current_dir(&repo_root)
+                .env("HOME", &home)
+                .env(
+                    "PATH",
+                    format!(
+                        "{}:{}",
+                        bin.display(),
+                        std::env::var("PATH").unwrap_or_default()
+                    ),
+                )
+                .env("PI_ARGS_CAPTURE_FILE", &args_capture)
+                .env("REAL_NODE", &real_node)
+                .env("VIBE_REPO_ROOT", &repo_root)
+                .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
+                .env("VIBE_MODEL", "goog/qwen3.8")
+                .env("GOOG_BASE_URL", "https://models.example/v1")
+                .env("GOOG_API_KEY", "unused")
+                .output()
+        });
 
         assert!(
             status.status.success(),

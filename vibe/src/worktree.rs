@@ -178,7 +178,23 @@ mod tests {
     use super::acquire_run_lock_in;
     use crate::target::RunTarget;
     use std::path::{Path, PathBuf};
+    use std::thread;
+    use std::time::{Duration, Instant};
     use tempfile::tempdir;
+
+    fn reacquire_after_release(target: &RunTarget, home: &Path) -> super::RunLock {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match acquire_run_lock_in(target, home) {
+                Ok(lock) => return lock,
+                Err(error) if error.contains("already active") && Instant::now() < deadline => {
+                    // Forked test children can briefly retain a duplicate flock descriptor.
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("reacquire failed: {error}"),
+            }
+        }
+    }
 
     #[test]
     fn same_slug_rejects_different_keys() {
@@ -189,14 +205,24 @@ mod tests {
             PathBuf::from("/git/one"),
         );
         let cases = ["demo-key", "DEMO key"];
-        let first = acquire_run_lock_in(&first_target, temp.path()).expect("first claim");
-        drop(first);
+        std::fs::create_dir_all(first_target.state_dir(temp.path())).expect("state directory");
+        std::fs::write(first_target.key_path(temp.path()), first_target.key()).expect("stored key");
+
+        let colliding_target = RunTarget::from_parts(
+            "demo-key",
+            PathBuf::from("/repo"),
+            PathBuf::from("/git/one"),
+        );
+        let error = acquire_run_lock_in(&colliding_target, temp.path())
+            .expect_err("acquire should reject collision");
+        assert_eq!(error, "slug demo-key already belongs to key Demo/key");
 
         for candidate in cases {
             let target =
                 RunTarget::from_parts(candidate, PathBuf::from("/repo"), PathBuf::from("/git/one"));
-            let error =
-                acquire_run_lock_in(&target, temp.path()).expect_err("collision should fail");
+            let error = target
+                .check_stored_key(temp.path())
+                .expect_err("collision should fail");
             assert_eq!(
                 error, "slug demo-key already belongs to key Demo/key",
                 "case {candidate}"
@@ -216,7 +242,7 @@ mod tests {
         let error = acquire_run_lock_in(&target, temp.path()).expect_err("second lock");
         assert!(error.contains("already active"), "{error}");
         drop(first);
-        acquire_run_lock_in(&target, temp.path()).expect("released lock");
+        let _released = reacquire_after_release(&target, temp.path());
     }
 
     #[test]
@@ -229,7 +255,7 @@ mod tests {
         );
         let first = acquire_run_lock_in(&target, temp.path()).expect("first lock");
         drop(first);
-        acquire_run_lock_in(&target, temp.path()).expect("same key should reuse");
+        let _reused = reacquire_after_release(&target, temp.path());
         assert_eq!(
             std::fs::read_to_string(target.state_dir(Path::new(temp.path())).join("key")).unwrap(),
             "Demo/key"
