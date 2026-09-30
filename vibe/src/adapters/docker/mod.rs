@@ -18,7 +18,7 @@ use skills::{
     reject_user_skills_writable_overlap, revalidate_skill_root, validate_repository_skills_mount,
 };
 
-const IMAGE: &str = "vibe-pi:0.8.4";
+const IMAGE: &str = "vibe-pi:0.8.5";
 
 struct HostUser {
     uid: String,
