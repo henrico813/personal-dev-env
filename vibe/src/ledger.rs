@@ -583,13 +583,14 @@ fn trusted_run_json_candidate(path: &Path, canonical_runs_dir: Option<&Path>) ->
 
 #[cfg(test)]
 mod tests {
-    use super::RunPhase;
     use super::{
         latest_record_json_for_key_in, latest_summary_for_key_in, persist_terminal_run,
         read_run_record, read_runs_index, record_late_persistence_error, ArtifactPaths, RunRecord,
         RunSummary, TerminalOutcome,
     };
+    use super::{start_run, RunPhase};
     use crate::result::{RunResult, Status};
+    use std::path::Path;
     use tempfile::tempdir;
 
     fn sample_result(artifacts_dir: &std::path::Path, summary_path: &std::path::Path) -> RunResult {
@@ -657,6 +658,39 @@ mod tests {
             summary_json: dir.join("summary.json"),
             runs_index_jsonl: dir.join("runs_index.jsonl"),
         }
+    }
+
+    #[test]
+    fn start_run_preserves_observable_metadata() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("artifacts");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        let artifacts = sample_artifacts(&artifacts_dir);
+
+        start_run(
+            &artifacts,
+            "PDEV-194 protect records",
+            "pdev-194-protect-records",
+            "vibe/pdev-194",
+            Path::new("/tmp/vibe-worktree"),
+            "openai-codex/gpt-5.4",
+            1_778_000_123,
+            "run-pdev-194".to_string(),
+        )
+        .expect("write initial run record");
+
+        let record: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&artifacts.run_json).expect("read initial run record"),
+        )
+        .expect("parse initial run record");
+
+        assert_eq!(record["run_id"], "run-pdev-194");
+        assert_eq!(record["key"], "PDEV-194 protect records");
+        assert_eq!(record["slug"], "pdev-194-protect-records");
+        assert_eq!(record["branch"], "vibe/pdev-194");
+        assert_eq!(record["worktree"], "/tmp/vibe-worktree");
+        assert_eq!(record["model"], "openai-codex/gpt-5.4");
+        assert_eq!(record["created_at"], 1_778_000_123);
     }
 
     fn write_run_json(path: &std::path::Path, run_id: &str, created_at: u64) {
