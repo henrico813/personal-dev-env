@@ -239,10 +239,26 @@ impl TryFrom<&RunRecord> for RunResult {
     }
 }
 
-fn record_run_persistence_error(record: &mut RunRecord, message: String) -> Result<(), String> {
+impl RunRecord {
+    // The agent can rewrite run.json through /artifacts, so host writes use trusted paths.
+    fn bind_paths(&mut self, artifacts: &ArtifactPaths) {
+        self.artifacts_dir = artifacts.dir.display().to_string();
+        self.run_path = artifacts.run_json.display().to_string();
+        self.summary_path = artifacts.summary_json.display().to_string();
+        self.result_path = artifacts.result_json.display().to_string();
+        self.events_log_path = artifacts.events_jsonl.display().to_string();
+        self.stderr_path = artifacts.stderr_log.display().to_string();
+    }
+}
+
+fn record_run_persistence_error(
+    path: &Path,
+    record: &mut RunRecord,
+    message: String,
+) -> Result<(), String> {
     let merged = merge_persistence_error(record.persistence_error.as_deref(), &message);
     record.persistence_error = Some(merged);
-    write_run_record(Path::new(&record.run_path), record)
+    write_run_record(path, record)
 }
 
 // The wrapper already has these values separately at run start, so keep the
@@ -416,6 +432,7 @@ pub fn persist_terminal_run(
     outcome: &TerminalOutcome,
 ) -> Result<RunResult, String> {
     let mut record = read_run_record(&artifacts.run_json)?;
+    record.bind_paths(artifacts);
     record.phase = RunPhase::Finished;
     record.terminal_status = Some(outcome.status.clone());
     record.pre_run_commit = outcome.pre_run_commit.clone();
@@ -427,7 +444,11 @@ pub fn persist_terminal_run(
     write_run_record(&artifacts.run_json, &record)?;
 
     if let Err(err) = write_summary(&artifacts.summary_json, &RunSummary::from(&record)) {
-        record_run_persistence_error(&mut record, format!("write summary: {err}"))?;
+        record_run_persistence_error(
+            &artifacts.run_json,
+            &mut record,
+            format!("write summary: {err}"),
+        )?;
         return RunResult::try_from(&record);
     }
 
@@ -1057,5 +1078,43 @@ mod tests {
             repaired.persistence_error.as_deref(),
             Some("write summary: rename summary temp: Is a directory (os error 21)")
         );
+    }
+
+    #[test]
+    fn terminal_run_ignores_agent_written_paths() {
+        let temp = tempdir().expect("tempdir");
+        let artifacts_dir = temp.path().join("run");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+        std::fs::create_dir_all(&outside).expect("outside dir");
+        std::fs::create_dir_all(artifacts_dir.join("summary.json")).expect("block summary file");
+        let artifacts = sample_artifacts(&artifacts_dir);
+        let mut tampered = sample_record(&outside.join("summary.json"), &outside);
+        tampered.run_path = outside.join("target").display().to_string();
+        super::write_run_record(&artifacts.run_json, &tampered).expect("write record");
+        let outcome = TerminalOutcome::failure(None, Status::Completed, Vec::new(), None);
+
+        let result = persist_terminal_run(&artifacts, &outcome).expect("persist terminal run");
+
+        assert_eq!(
+            std::fs::read_dir(&outside).expect("read outside").count(),
+            0,
+            "host wrote outside the artifact directory"
+        );
+        assert_eq!(
+            result.artifacts_dir,
+            Some(artifacts_dir.display().to_string())
+        );
+        assert_eq!(
+            result.run_path,
+            Some(artifacts.run_json.display().to_string())
+        );
+        let repaired = read_run_record(&artifacts.run_json).expect("read repaired record");
+        assert_eq!(repaired.run_path, artifacts.run_json.display().to_string());
+        assert!(repaired
+            .persistence_error
+            .as_deref()
+            .expect("persistence error")
+            .starts_with("write summary:"));
     }
 }
