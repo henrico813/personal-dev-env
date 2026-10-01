@@ -1,14 +1,14 @@
 ---
 name: python-development
 description: >-
-  Use for substantive Python implementation, debugging, review, test design,
-  and test work, including unittest, fixtures, mocks, and fakes, plus typing,
-  packaging, concurrency, errors, resources, or formatter-only work. Python
-  project test design, test review, import patching/mocking, fixture, and fake
-  work is in scope even when the request omits Python; if repository inspection
-  first reveals Python as the target, load this skill before any implementation,
-  design, test, or review decision. Do not use for basic syntax explanations,
-  README-only edits, or non-Python tasks.
+  Plans, writes, reviews, refactors, and tests maintainable Python code. Use
+  when planning changes to Python code or working on `.py` files, Python
+  implementation, debugging, API design, code review, documentation, tests
+  (pytest or unittest, fixtures, mocks, patching, fakes), type hints,
+  `pyproject.toml`, packaging, concurrency, errors, or resource cleanup,
+  including when inspection shows the target is Python. Do not use it for basic
+  syntax explanations, README-only edits, or merely because a repository
+  contains Python.
 ---
 
 # Python development
@@ -52,20 +52,23 @@ registry, plugin system, async layer, or dependency-injection framework for
 hypothetical reuse. Add a boundary when it owns a real rule, resource,
 variation, or external effect.
 
-Required reference procedure:
+Reference procedure:
 
-1. Classify the task from the request and directly referenced context.
-2. When Python is already clear, load this skill before repository research.
-3. If inspection first reveals Python as the target, stop and load this skill
-   before making a substantive implementation, design, test, or review decision.
-4. Match every applicable row below and open every linked Python reference with
-   the file-reading tool. Loading this `SKILL.md` or shared testing or
-   documentation guidance does not count as reading a listed Python reference.
-5. Decide or edit only after all matched references are open.
+1. Classify the task from the request and directly referenced context. When
+   Python is already clear, load this skill before repository research. If
+   inspection first reveals Python as the target, load it before making a
+   substantive implementation, design, test, or review decision.
+2. Match the rows below that the task touches. A change confined to a comment,
+   string, or typo needs no reference.
+3. Open each matched reference with the file-reading tool, scan its contents,
+   and read the sections that bear on the task, not every file in full.
+   Loading this `SKILL.md` or the shared testing and documentation skills does
+   not count as reading a Python reference.
+4. Decide or edit only after those sections are read.
 
 | Task touches | Read first |
 | --- | --- |
-| Formatting, naming, imports, or general style | [PEP 8 guide](references/pep8-guide.md) |
+| Naming, imports, or layout that repository conventions and tools do not settle | [PEP 8 guide](references/pep8-guide.md) |
 | Functions, classes, composition, data models, or boundaries | [Design choices](references/design-choices.md) |
 | API wrappers, validation, or missing values | [Design choices](references/design-choices.md) + [API design](references/api-design.md) |
 | Public names, exports, value semantics, compatibility, or deprecation | [API design](references/api-design.md) |
