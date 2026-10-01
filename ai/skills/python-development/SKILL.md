@@ -3,8 +3,12 @@ name: python-development
 description: >-
   Use for substantive Python implementation, debugging, review, test design,
   and test work, including unittest, fixtures, mocks, and fakes, plus typing,
-  packaging, concurrency, errors, resources, or formatter-only work. Do not use
-  for basic syntax explanations, README-only edits, or non-Python tasks.
+  packaging, concurrency, errors, resources, or formatter-only work. Python
+  project test design, test review, import patching/mocking, fixture, and fake
+  work is in scope even when the request omits Python; if repository inspection
+  first reveals Python as the target, load this skill before any implementation,
+  design, test, or review decision. Do not use for basic syntax explanations,
+  README-only edits, or non-Python tasks.
 ---
 
 # Python development
@@ -48,22 +52,31 @@ registry, plugin system, async layer, or dependency-injection framework for
 hypothetical reuse. Add a boundary when it owns a real rule, resource,
 variation, or external effect.
 
-After reading directly referenced context, classify the request. For
-substantive Python work, load this skill before repository research. Before
-making an implementation, design, test, or review decision, open every matching
-Python reference below. Shared testing and documentation skills do not replace
-these listed Python references.
+Required reference procedure:
+
+1. Classify the task from the request and directly referenced context.
+2. When Python is already clear, load this skill before repository research.
+3. If inspection first reveals Python as the target, stop and load this skill
+   before making a substantive implementation, design, test, or review decision.
+4. Match every applicable row below and open every linked Python reference with
+   the file-reading tool. Loading this `SKILL.md` or shared testing or
+   documentation guidance does not count as reading a listed Python reference.
+5. Decide or edit only after all matched references are open.
 
 | Task touches | Read first |
 | --- | --- |
 | Formatting, naming, imports, or general style | [PEP 8 guide](references/pep8-guide.md) |
 | Functions, classes, composition, data models, or boundaries | [Design choices](references/design-choices.md) |
+| API wrappers, validation, or missing values | [Design choices](references/design-choices.md) + [API design](references/api-design.md) |
 | Public names, exports, value semantics, compatibility, or deprecation | [API design](references/api-design.md) |
 | Annotations, narrowing, protocols, ABCs, or checker output | [Typing](references/typing.md) |
 | Exceptions, context managers, setup, completion, or cleanup | [Errors and resources](references/errors-resources.md) |
 | Async code, tasks, queues, threads, processes, or shared state | [Concurrency](references/concurrency.md) |
-| Tests, fixtures, mocks, fakes, plugins, or property checks | [Testing](references/testing.md) |
+| Async task ownership or large work sets | [Concurrency](references/concurrency.md) + [Design choices](references/design-choices.md) |
+| Test design, fixtures, import patching/mocking, or fakes | [Testing](references/testing.md); setup/cleanup or partial acquisition also requires [Errors and resources](references/errors-resources.md) |
+| Supported Python versions plus test runner or CI | [Testing](references/testing.md) + [Typing](references/typing.md) + [Packaging](references/packaging.md) |
 | Docstrings, comments, API prose, or executable examples | [Documentation](references/documentation.md) |
+| Exception handling plus docstrings | [Errors and resources](references/errors-resources.md) + [Documentation](references/documentation.md) |
 | Project metadata, layouts, dependencies, lockfiles, builds, or commands | [Packaging](references/packaging.md) |
 
 The [example index](references/examples.md) links decisions to complete source.
