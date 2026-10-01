@@ -31,7 +31,8 @@
   `go-development` skill.
 - When planning changes to, changing, or reviewing Rust code, load and follow
   the `rust-development` skill.
-- If writing Python, always use PyTest for tests and use pytest features like parametrize, fixtures, and pytest.param.id
+- When planning changes to, changing, or reviewing Python code, load and follow
+  the `python-development` skill.
 
 ## Source Documentation
 
