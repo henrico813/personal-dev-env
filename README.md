@@ -101,6 +101,7 @@ binaries plus repo-managed AI config.
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/`, `~/.codex/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/`, `~/.codex/skills/code-documentation/` | Proportional source and test explanations |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/`, `~/.codex/skills/go-development/` | Shared Go development guidance |
+| Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/`, `~/.codex/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/`, `~/.codex/skills/rust-development/` | Shared Rust development guidance |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |

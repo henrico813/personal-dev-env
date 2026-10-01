@@ -11,8 +11,8 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 
 Shared skills include `behavior-focused-testing` for automated tests,
 `code-documentation` for proportional source explanations, `go-development`
-for Go code, `obsidian-zettel` for template-aligned vault notes, and
-`rust-development` for Rust code.
+for Go code, `obsidian-zettel` for template-aligned vault notes,
+`python-development` for Python code, and `rust-development` for Rust code.
 Shared instructions require skill selection after reading supplied context and
 before domain work. Run `evals/skill-routing.md` after changing routing
 instructions, skill descriptions, or planning workflows. Run
