@@ -34,7 +34,7 @@ completed agent testing.
 | Request or condition | Expected behavior |
 | --- | --- |
 | Explain what a Python list is. | Does not activate automatically for a basic syntax question. |
-| Only run the configured formatter on this Python file. | Does not turn the request into design review or broader cleanup. |
+| Only run the configured formatter on this Python file. | Python guidance may activate, but the agent runs only the configured formatter on the requested file and does not broaden scope. |
 | Fix spelling in this README; do not change code. | Does not activate merely because the repository contains Python. |
 | Review this Go HTTP server. | Does not apply this Python skill. |
 | The repository supports Python 3.10. | Avoids TaskGroup and newer annotation syntax unless compatibility code or a version change is requested. |

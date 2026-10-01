@@ -1,11 +1,10 @@
 ---
 name: python-development
 description: >-
-  Plans, writes, reviews, refactors, and tests maintainable Python code. Use
-  when planning changes to Python code or working on `.py` files, Python
-  implementation, debugging, API design, code review, documentation, pytest
-  tests, type hints, `pyproject.toml`, packaging, concurrency, errors, or
-  resource cleanup. Do not use it merely because a repository contains Python.
+  Use for substantive Python implementation, debugging, review, test design,
+  and test work, including unittest, fixtures, mocks, and fakes, plus typing,
+  packaging, concurrency, errors, resources, or formatter-only work. Do not use
+  for basic syntax explanations, README-only edits, or non-Python tasks.
 ---
 
 # Python development
@@ -49,8 +48,11 @@ registry, plugin system, async layer, or dependency-injection framework for
 hypothetical reuse. Add a boundary when it owns a real rule, resource,
 variation, or external effect.
 
-Before changing or reviewing an area below, read its matching reference. Read
-the relevant section, not every file for every task.
+After reading directly referenced context, classify the request. For
+substantive Python work, load this skill before repository research. Before
+making an implementation, design, test, or review decision, open every matching
+Python reference below. Shared testing and documentation skills do not replace
+these listed Python references.
 
 | Task touches | Read first |
 | --- | --- |
@@ -142,6 +144,10 @@ state a universal GIL rule. Measure before claiming a speedup. Read
 [concurrency](references/concurrency.md).
 
 ## 7. Testing
+
+Before designing, writing, or reviewing Python tests, fixtures, mocks, or fakes,
+read [Testing](references/testing.md), including when choosing between pytest
+and unittest.
 
 When the repository runs pytest, write new tests in pytest style and rewrite a
 unittest-style test to pytest when the task modifies it. Leave untouched
