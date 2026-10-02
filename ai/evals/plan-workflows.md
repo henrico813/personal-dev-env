@@ -382,8 +382,8 @@ export EVAL_KEY="$(printf '%.12s' "$EVAL_FIXTURE_COMMIT")-workflow-eval"
 export CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex-spark}"
 export CODEX_SANDBOX="${CODEX_SANDBOX:-workspace-write}"
 export OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/gpt-5.6-luna}"
-planner check "$EVAL_REPO/plans/review.md" --json-errors
-planner check "$EVAL_REPO/plans/implement.md" --json-errors
+planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
+planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
 ````
 
 The EXIT trap removes the evaluation-owned root on successful exit. Failed
@@ -502,9 +502,11 @@ Expected behavior:
 
 - Reads the README directly without Surveil or delegated research.
 - Reserves the destination with `planner new`.
+- Records `$EVAL_FIXTURE_COMMIT` as the baseline in Current State.
 - Proposes only the README change and relevant verification.
 - Produces complete, applicable diffs without placeholders.
-- Passes `planner check plans/bounded.md --json-errors`.
+- Passes `planner check plans/bounded.md --repo "$EVAL_REPO" --base
+  "$EVAL_FIXTURE_COMMIT" --json-errors`.
 
 ### Occupied Destination
 
@@ -566,10 +568,15 @@ run_codex guarded-correction \
 
 Expected behavior:
 
-- Runs `planner inspect` immediately before correction.
-- Uses one guarded `planner patch` `Update Diff` with the current token.
+- Reuses the baseline recorded in Current State (`$EVAL_FIXTURE_COMMIT`), not
+  the current HEAD.
+- Runs targeted `planner inspect --target ... --repo ... --base ... --code-out
+  ...` immediately before the correction.
+- Edits the ordinary scratch source and runs `planner patch --target ...
+  --expect ... --after-file ... --repo ... --base ...`.
 - Does not directly edit the existing fenced diff.
-- Preserves unrelated sections and passes Planner validation again.
+- Preserves unrelated sections and passes repository-aware `planner check
+  plans/bounded.md --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT"` again.
 
 ### Complex Research
 

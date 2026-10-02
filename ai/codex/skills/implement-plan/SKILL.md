@@ -130,11 +130,24 @@ Use `planner help` when needed.
 
 - For ordinary prose, status, and checklist updates, write or edit Markdown
   directly with range-targeted changes.
+- Read the plan baseline from Current State: the full source commit recorded
+  when the plan was created. Always pass it as `--base`, never a worktree's
+  current HEAD, because Vibe commits after each step. If no baseline is
+  recorded, stop and ask the user.
 - Before every revision to an existing fenced code diff, run
-  `planner inspect <plan.md>` immediately, then use its current
-  `update_diff_expect` token in a single-operation guarded `planner patch`
-  `Update Diff`.
-- Run `planner check <plan.md> --json-errors` after every update.
+  `planner inspect <plan.md> --target <selector> --repo <repo> --base <commit>
+  --code-out <new-scratch-file>`, edit the ordinary scratch source, then run
+  `planner patch <plan.md> --target <selector> --expect <edit_expect>
+  --after-file <scratch-file> --repo <repo> --base <commit>`. Never edit that
+  diff directly or use an unguarded command. Patch replays the base through the
+  edited change only, and later changes are checked by `planner check --repo
+  --base`.
+- For coupled edits, after changing an earlier step, run `planner check
+  <plan.md> --repo <repo> --base <commit>` and fix each later change it reports,
+  in order.
+- Run `planner check <plan.md> --repo <repo> --base <commit> --json-errors` after
+  every code change; this is the only whole-plan readiness check. Plain
+  `planner check <plan.md> --json-errors` follows prose-only updates.
 - Stop if parsing fails or collateral content changed.
 - Do not mark manual verification complete unless the user confirms it.
 - If the plan is inside the managed worktree, include its verified progress

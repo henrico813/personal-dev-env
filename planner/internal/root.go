@@ -19,8 +19,11 @@ Usage:
   planner help
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
   planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
+  planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
   planner inspect <plan.md>
+  planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> [<out.md>]
+  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
   planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod current-state set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
   planner dod module-shape set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
@@ -57,15 +60,21 @@ Markdown-first authoring flow:
   5. If parsing fails, stop and escalate before rendering or applying more edits.
 
 Partial update flow:
-  1. Run planner inspect <plan.md> to see the parsed plan JSON and update_diff_expect tokens.
-  2. Prefer planner patch <plan.md> [<out.md>] for scalar, checklist, and diff edits.
-  3. planner patch preserves wrapped frontmatter but rerenders the body canonically.
-  4. Use behavioral commands for structural edits that patch does not cover.
+  1. Run planner inspect <plan.md> to see the parsed plan JSON.
+  2. Prefer planner patch <plan.md> [<out.md>] for scalar and checklist edits.
+     The structured form takes no subcommand flags; only global flags such as
+     --json-errors.
+  3. For fenced code-diff edits, use the guarded inspect and patch commands
+     below. They export source from a recorded baseline and regenerate diffs.
+  4. planner patch preserves wrapped frontmatter but rerenders the body in the
+     standard layout.
+  5. Use behavioral commands for structural edits that patch does not cover.
 
 planner patch:
   Reads a structured patch from stdin and applies all operations to one plan.
-  planner patch accepts no subcommand flags; only global flags such as
-  --json-errors.
+  The structured form takes no subcommand flags; only global flags such as
+  --json-errors. Code-diff edits use the guarded patch form listed with the
+  guarded source-code revisions below.
 
   Supported operations:
     *** Update Field: <selector>
@@ -119,9 +128,9 @@ behavioral edit flags:
   --diff-stdin                     Read structured add diff body from stdin.
   --diff                           Print preview diff to stdout; additive.
   --dry-run                        Do not write the output; with --diff, exit 1 on drift.
-
-Validation rules:
 `
+
+const validationRulesHeader = "\nValidation rules:\n"
 
 var jsonErrorOutput bool
 
@@ -142,10 +151,19 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "new":
 		return runNew(args[1:], stdout, stderr)
 	case "check":
+		if hasArg(args[1:], "--repo") || hasArg(args[1:], "--base") {
+			return runGuardedCheck(args[1:], stdout, stderr)
+		}
 		return runCheck("check", args[1:], stdout, stderr)
 	case "inspect":
+		if hasArg(args[1:], "--target") {
+			return runGuardedInspect(args[1:], stdout, stderr)
+		}
 		return runInspect(args[1:], stdout, stderr)
 	case "patch":
+		if hasArg(args[1:], "--target") {
+			return runGuardedPatch(args[1:], stdout, stderr)
+		}
 		return runPatch(args[1:], stdout, stderr)
 	case "dod", "implementation", "verification":
 		return runBehavioralEdit(args, stdout, stderr)
@@ -312,6 +330,8 @@ func printHelp(w io.Writer) {
 func buildHelpText() string {
 	var b strings.Builder
 	b.WriteString(helpText)
+	b.WriteString(guardedHelp)
+	b.WriteString(validationRulesHeader)
 	for _, rule := range ValidationRules() {
 		b.WriteString("  - " + rule + "\n")
 	}
