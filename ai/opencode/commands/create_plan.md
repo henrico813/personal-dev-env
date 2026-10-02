@@ -175,18 +175,20 @@ mandatory approval stage.
    "<plan.md>" --target <selector> --expect <edit_expect> --after-file
    <scratch-file> --repo <repo> --base <commit>`. Planner generates hunk counts
    and replays the base through the edited change only; later changes are not
-   checked. Do not hand-maintain hunks or put a Git diff inside the legacy `***`
-   patch envelope.
+   checked. Do not hand-maintain hunks.
 10. `inspect --before` exports pre-change source for a new or broken change.
     Reconstruct accepted intent before replacing a broken diff. Use `/dev/null`
     as `--after-file` only to delete a file.
-11. Coupled edits: after editing an earlier change, run `planner check
+11. To move a change to a different file, add a new file-change block with a
+    PLACEHOLDER fence, fill it with `inspect --before` and `patch`, then delete
+    the old block by hand. A step must keep at least one file change.
+12. Coupled edits: after editing an earlier change, run `planner check
     "<plan.md>" --repo <repo> --base <commit>`, then fix each later change it
     reports, in order.
-12. On stale state, reread and reconcile; never refresh only the token and
+13. On stale state, reread and reconcile; never refresh only the token and
     retry the old replacement. Inspect and patch must use the same `--repo` and
     `--base`.
-13. Validate every final or revised proposal with `planner check
+14. Validate every final or revised proposal with `planner check
     "<output.md>" --repo <repo> --base <commit> --json-errors`; this is the only
     whole-plan readiness check. Plain `planner check` is document-only.
 

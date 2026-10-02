@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -141,5 +142,66 @@ func TestBadSpanAndCRLFRejected(t *testing.T) {
 	}
 	if !bytes.Equal(raw, copyOfRaw) {
 		t.Fatal("changed original input")
+	}
+}
+
+// Two concurrent planner new runs must not both create the same plan. The loser
+// has to fail instead of replacing the winner's file, or one creation would
+// silently destroy the other's plan.
+func TestWriteNewAllowsOneWriter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.md")
+	contents := [][]byte{[]byte("first\n"), []byte("second\n")}
+	errs := make(chan error, len(contents))
+	var wg sync.WaitGroup
+	for _, content := range contents {
+		content := content
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- WriteNew(path, content)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	succeeded := 0
+	for err := range errs {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		if !os.IsExist(err) {
+			t.Fatalf("losing writer error=%v, want destination-exists error", err)
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("successful writers=%d, want 1", succeeded)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != "first\n" && string(got) != "second\n" {
+		t.Fatalf("unexpected content: %q", got)
+	}
+}
+
+// Rerunning planner new on a finished plan must fail and leave the plan bytes
+// alone, or a stray invocation would wipe an approved plan.
+func TestWriteNewKeepsExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte("human edit"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteNew(path, []byte("replacement")); err == nil {
+		t.Fatal("overwrote existing file")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "human edit" {
+		t.Fatalf("existing bytes changed: %q", got)
 	}
 }
