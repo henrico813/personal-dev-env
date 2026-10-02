@@ -87,39 +87,6 @@ func TestWrappedInspect(t *testing.T) {
 	}
 }
 
-func TestWrappedEdit(t *testing.T) {
-	for _, fixture := range []string{"wrapped_issue_topics.md", "wrapped_issue_extra_tag.md"} {
-		fixture := fixture
-		t.Run(fixture, func(t *testing.T) {
-			path := copyFixture(t, fixture)
-			beforeRaw, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
-			withStdin(t, patch, func() {
-				var stdout bytes.Buffer
-				var stderr bytes.Buffer
-				if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-					t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-				}
-			})
-
-			afterRaw, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasPrefix(string(afterRaw), wrappedPrefix(string(beforeRaw))) {
-				t.Fatalf("frontmatter changed:\n%s", string(afterRaw))
-			}
-			if !strings.Contains(string(afterRaw), "Updated overview") {
-				t.Fatalf("overview not updated:\n%s", string(afterRaw))
-			}
-		})
-	}
-}
-
 func TestWrappedDecodeFailures(t *testing.T) {
 	fixtures := []string{
 		"wrapped_issue_bad_tag.md",
@@ -152,20 +119,6 @@ func TestWrappedDecodeFailures(t *testing.T) {
 				return exit, stderr.String()
 			},
 		},
-		{
-			name: "patch",
-			run: func(t *testing.T, path string) (int, string) {
-				t.Helper()
-				var stdout bytes.Buffer
-				var stderr bytes.Buffer
-				patch := []byte("*** Begin Patch\n*** Update Field: overview\n-Overview text.\n+Updated overview.\n*** End Patch\n")
-				exit := 0
-				withStdin(t, patch, func() {
-					exit = Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr)
-				})
-				return exit, stderr.String()
-			},
-		},
 	}
 
 	for _, fixture := range fixtures {
@@ -185,6 +138,9 @@ func TestWrappedDecodeFailures(t *testing.T) {
 	}
 }
 
+// Help must advertise only the commands that still exist and must not revive
+// removed grammar. An AI discovering the surface from `planner help` alone
+// would otherwise try deleted structured patch or behavioral commands.
 func TestHelpTextIncludesRules(t *testing.T) {
 	help := buildHelpText()
 
@@ -204,36 +160,54 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		t.Fatal("buildHelpText() must not mention planner validate")
 	}
 
-	// Negative anchors: deleted commands and removed flags must not reappear.
-	for _, banned := range []string{"show-schema", "planner generate", "planner replace", "--write"} {
+	// Negative anchors: deleted commands and removed grammar must not reappear.
+	for _, banned := range []string{
+		"show-schema",
+		"planner generate",
+		"planner replace",
+		"--write",
+		"planner dod",
+		"planner implementation",
+		"planner verification",
+		"*** Update Field",
+		"*** Update Diff",
+		"*** Begin Patch",
+		"behavioral edit flags",
+	} {
 		if strings.Contains(help, banned) {
 			t.Fatalf("buildHelpText() still mentions removed token %q", banned)
 		}
 	}
 }
 
+// Help must describe the single write path: prose and structure edited in the
+// Markdown file, code diffs only through guarded patch, and check --repo --base
+// as the final gate. Losing this guidance would let an author hand-maintain
+// hunks or skip whole-plan validation.
 func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 	help := buildHelpText()
 	for _, want := range []string{
 		"planner new plan.md.",
-		"fails without changing an existing destination",
-		"planner check plan.md --json-errors.",
-		"<out.md> may be the same path as <plan.md>",
-		"planner patch <plan.md> [<out.md>]",
-		"*** Update Diff: <selector>",
-		"*** Expect: sha256:<token>",
-		"implementation[N].file_changes[N]",
-		"Update Diff is a dedicated single-op patch form.",
-		"implementation[N].title",
-		"implementation[N].summary",
-		"implementation[N].file_changes[N].filename",
-		"implementation[N].file_changes[N].explanation",
-		"Nested selectors use 1-based indices.",
-		"planner patch preserves wrapped frontmatter",
-		"same-file updates",
+		"It fails without changing an existing destination.",
+		"Edit prose and structure directly in the Markdown file.",
+		"Change code diffs only through guarded patch",
+		"copy a PLACEHOLDER fence",
+		"planner check plan.md --repo DIR --base COMMIT as the final gate.",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("buildHelpText() missing %q", want)
+		}
+	}
+	for _, banned := range []string{
+		"*** Update Field",
+		"*** Update Diff",
+		"*** Begin Patch",
+		"planner dod",
+		"planner implementation",
+		"planner verification",
+	} {
+		if strings.Contains(help, banned) {
+			t.Fatalf("buildHelpText() still mentions removed %q", banned)
 		}
 	}
 }
@@ -262,48 +236,6 @@ func TestHelpPlacesGuardedSectionBeforeRules(t *testing.T) {
 			t.Fatalf("buildHelpText() missing %q", want)
 		}
 	}
-}
-
-func TestReadRawScalarStripsTrailingNewline(t *testing.T) {
-	t.Run("stdin_lf", func(t *testing.T) {
-		withStdin(t, []byte("raw text\n"), func() {
-			got, err := readRawScalar("", true)
-			if err != nil {
-				t.Fatalf("readRawScalar(stdin): %v", err)
-			}
-			if string(got) != "raw text" {
-				t.Fatalf("readRawScalar(stdin) = %q, want %q", got, "raw text")
-			}
-		})
-	})
-	t.Run("file_crlf", func(t *testing.T) {
-		dir := t.TempDir()
-		path := dir + "/raw.txt"
-		if err := os.WriteFile(path, []byte("raw text\r\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readRawScalar(path, false)
-		if err != nil {
-			t.Fatalf("readRawScalar(file): %v", err)
-		}
-		if string(got) != "raw text" {
-			t.Fatalf("readRawScalar(file) = %q, want %q", got, "raw text")
-		}
-	})
-	t.Run("file_double_lf", func(t *testing.T) {
-		dir := t.TempDir()
-		path := dir + "/raw.txt"
-		if err := os.WriteFile(path, []byte("raw text\n\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readRawScalar(path, false)
-		if err != nil {
-			t.Fatalf("readRawScalar(file): %v", err)
-		}
-		if string(got) != "raw text\n" {
-			t.Fatalf("readRawScalar(file) = %q, want %q", got, "raw text\n")
-		}
-	})
 }
 
 func TestNewRejectsNonMarkdownOutput(t *testing.T) {
@@ -399,49 +331,6 @@ func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
 	}
 	if !strings.HasPrefix(inspected.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
 		t.Fatalf("token=%q", inspected.Implementation[0].FileChanges[0].UpdateDiffExpect)
-	}
-}
-
-func TestNewScaffoldSupportsSamePathEdits(t *testing.T) {
-	cases := []struct {
-		name  string
-		args  func(string) []string
-		check func(*testing.T, Plan)
-	}{
-		{
-			name: "goal_set",
-			args: func(path string) []string {
-				return []string{"dod", "goal", "set", path, path, "--goal", "1", "updated goal"}
-			},
-			check: func(t *testing.T, plan Plan) {
-				if got := plan.DefinitionOfDone.Goals[0].Text; got != "updated goal" {
-					t.Fatalf("goal text = %q, want updated goal", got)
-				}
-			},
-		},
-		{
-			name: "step_summary_set",
-			args: func(path string) []string {
-				return []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "updated summary"}
-			},
-			check: func(t *testing.T, plan Plan) {
-				if got := plan.Implementation[0].Summary; got != "updated summary" {
-					t.Fatalf("step summary = %q, want updated summary", got)
-				}
-			},
-		},
-	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			path := writeNewScaffold(t, t.TempDir())
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-			if exit := Execute(tc.args(path), &stdout, &stderr); exit != 0 {
-				t.Fatalf("Execute(%v) exit = %d, stderr = %q", tc.args(path), exit, stderr.String())
-			}
-			assertParsed(t, path, func(plan Plan) { tc.check(t, plan) })
-		})
 	}
 }
 
@@ -689,325 +578,48 @@ func TestValidateCommandRemoved(t *testing.T) {
 	}
 }
 
-func TestPatchCommandUsage(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"patch", "--help"}, &stdout, &stderr); exit != 2 {
-		t.Fatalf("exit=%d want 2; stderr=%q stdout=%q", exit, stderr.String(), stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "usage: planner patch <plan.md> [<out.md>]") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
-	}
-}
-
-func TestPatchRejectsUnsupportedSelector(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	if !strings.Contains(stderr.String(), "unsupported patch selector") {
-		t.Fatalf("stderr missing unsupported-selector error: %q", stderr.String())
-	}
-}
-
-func TestBehavioralFallbackStillWorks(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	var stdout, stderr bytes.Buffer
-	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", path, path, "--step", "1", "--change", "1", "--stdin"}, []byte("raw diff bytes"))
-	assertParsed(t, path, func(plan Plan) {
-		if plan.Implementation[0].FileChanges[0].Diff != "raw diff bytes" {
-			t.Fatalf("diff=%q", plan.Implementation[0].FileChanges[0].Diff)
-		}
-	})
-}
-
-func TestPatchRejectsStructuralSelectorJSONErrors(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Add Item: implementation[1].file_changes\n+oops\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
-}
-
-func TestPatchRejectsUnsupportedSelectorJSONErrors(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].file_changes[1].diff\n-old\n+new\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "use the documented selector grammar or fall back to a behavioral command")
-}
-
-func TestPatchRejectsNestedMismatchJSONErrors(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Update Field: implementation[1].summary\n-old\n+new\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "refresh the old value from planner inspect or the current file, then retry")
-}
-
-func TestPatchRejectsStaleDiffTokenJSONErrors(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	patch := []byte("*** Begin Patch\n*** Update Diff: implementation[1].file_changes[1]\n*** Expect: sha256:deadbeef\n@@ -1 +1 @@\n-old\n+new")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", "--json-errors", path}, &stdout, &stderr); exit != 1 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertPlannerJSONError(t, &stderr, "VALIDATE_INPUT", "refresh update_diff_expect from planner inspect, then retry")
-}
-
-func TestPatchPreservesWrappedFrontmatter(t *testing.T) {
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
-	path := filepath.Join(t.TempDir(), "plan.md")
-	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	raw, err := os.ReadFile(path)
+// planner patch always routes to the guarded handler. A missing --target must
+// fail as a usage error before touching the plan, so a stray patch invocation
+// cannot rewrite an approved plan.
+func TestPatchWithoutTargetIsUsageError(t *testing.T) {
+	path := writeNewScaffold(t, t.TempDir())
+	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(raw), frontmatter) {
-		t.Fatalf("frontmatter changed:\n%s", string(raw))
-	}
-	assertParsed(t, path, func(plan Plan) {
-		if plan.Title != "Renamed" {
-			t.Fatalf("title=%q", plan.Title)
-		}
-	})
-}
 
-func TestPatchRerendersCanonically(t *testing.T) {
-	path := writeBehavioralPlan(t, t.TempDir())
-	raw, err := os.ReadFile(path)
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--target is required") {
+		t.Fatalf("stderr missing --target usage: %q", stderr.String())
+	}
+	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mutated := strings.Replace(string(raw), "## Verification\n---\n", "## Verification\n---\n\n", 1)
-	if err := os.WriteFile(path, []byte(mutated), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	updated, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(updated), "## Verification\n---\n\n") {
-		t.Fatalf("expected canonical rerender:\n%s", string(updated))
+	if !bytes.Equal(before, after) {
+		t.Fatal("failed patch changed the plan")
 	}
 }
 
-func TestPatchWritesAlternateOutputPath(t *testing.T) {
-	dir := t.TempDir()
-	sourcePath := writeBehavioralPlan(t, dir)
-	outPath := filepath.Join(dir, "out.md")
-	patch := []byte("*** Begin Patch\n*** Update Field: title\n-T\n+Renamed\n*** End Patch\n")
-	var stdout, stderr bytes.Buffer
-	withStdin(t, patch, func() {
-		if exit := Execute([]string{"patch", sourcePath, outPath}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-	assertParsed(t, sourcePath, func(plan Plan) {
-		if plan.Title != "T" {
-			t.Fatalf("source title changed: %q", plan.Title)
-		}
-	})
-	assertParsed(t, outPath, func(plan Plan) {
-		if plan.Title != "Renamed" {
-			t.Fatalf("out title=%q", plan.Title)
-		}
-	})
-}
-
-func TestBehavioralEditsCoverApprovedGrammar(t *testing.T) {
-	dir := t.TempDir()
-	out := writeBehavioralPlan(t, dir)
-
-	runPlannerOK(t, []string{"dod", "goal", "set", out, out, "--goal", "1", "renamed goal"}, nil)
-	assertParsed(t, out, func(p Plan) {
-		if p.DefinitionOfDone.Goals[0].Text != "renamed goal" || p.DefinitionOfDone.Goals[0].Status != StatusDone {
-			t.Fatalf("goal not updated with status preserved: %#v", p.DefinitionOfDone.Goals[0])
-		}
-	})
-
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "add", out, out, "--step", "1", "--filename", "g", "--explanation", "second", "--diff-stdin"}, []byte("@@ -1 +1 @@\n-x\n+y"))
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "filename", "set", out, out, "--step", "1", "--change", "2", "renamed"}, nil)
-	runPlannerOK(t, []string{"implementation", "step", "file-change", "diff", "set", out, out, "--step", "1", "--change", "2", "--stdin"}, []byte("raw diff bytes"))
-	assertParsed(t, out, func(p Plan) {
-		if got := p.Implementation[0].FileChanges[1].Filename; got != "renamed" {
-			t.Fatalf("second filename=%q", got)
-		}
-		if got := p.Implementation[0].FileChanges[1].Diff; got != "raw diff bytes" {
-			t.Fatalf("second diff=%q", got)
-		}
-	})
-
-	runPlannerOK(t, []string{"verification", "automated", "set", out, out, "--item", "1", "new automated"}, nil)
-	assertParsed(t, out, func(p Plan) {
-		if p.Verification.Automated[0].Text != "new automated" || p.Verification.Automated[0].Status != StatusDone {
-			t.Fatalf("automated not updated with status preserved: %#v", p.Verification.Automated[0])
-		}
-	})
-}
-
-func TestBehavioralRemovalAndUsageFailures(t *testing.T) {
-	dir := t.TempDir()
-	planPath := writeBehavioralPlan(t, dir)
-	out := dir + "/out.md"
-
-	for _, tc := range []struct {
-		name string
-		args []string
-		want string
-	}{
-		{"goal", []string{"dod", "goal", "remove", planPath, out, "--goal", "1"}, "cannot remove the final definition_of_done goal"},
-		{"step", []string{"implementation", "step", "remove", planPath, out, "--step", "1"}, "cannot remove the final implementation step"},
-		{"change", []string{"implementation", "step", "file-change", "remove", planPath, out, "--step", "1", "--change", "1"}, "cannot remove the final file change from a step"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+// The dod, implementation, and verification setter commands were removed. They
+// must be unknown commands so automation cannot keep depending on a deleted
+// write path.
+func TestBehavioralCommandsRemoved(t *testing.T) {
+	for _, command := range []string{"dod", "implementation", "verification"} {
+		command := command
+		t.Run(command, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if exit := Execute(tc.args, &stdout, &stderr); exit != 2 {
-				t.Fatalf("exit=%d want 2 stderr=%q", exit, stderr.String())
+			if exit := Execute([]string{command}, &stdout, &stderr); exit != 2 {
+				t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
 			}
-			if !strings.Contains(stderr.String(), tc.want) {
-				t.Fatalf("stderr missing %q: %q", tc.want, stderr.String())
+			if !strings.Contains(stderr.String(), "unknown command: "+command) {
+				t.Fatalf("stderr %q missing unknown-command error for %s", stderr.String(), command)
 			}
 		})
 	}
-}
-
-func TestStructuredBehavioralEditMalformedMarkdownJSONError(t *testing.T) {
-	dir := t.TempDir()
-	bad := dir + "/bad.md"
-	out := dir + "/out.md"
-	if err := os.WriteFile(bad, []byte("not a valid planner plan"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	exit := Execute([]string{"--json-errors", "dod", "goal", "set", bad, out, "--goal", "1", "renamed"}, &stdout, &stderr)
-	if exit != 1 {
-		t.Fatalf("exit=%d want 1 stderr=%q", exit, stderr.String())
-	}
-	code, _ := firstStderrJSON(t, &stderr)
-	if code != "DECODE_INPUT" {
-		t.Fatalf("code=%q want DECODE_INPUT", code)
-	}
-	if _, err := os.Stat(out); !os.IsNotExist(err) {
-		t.Fatalf("output should not be written, stat err = %v", err)
-	}
-}
-
-func TestPatchOverviewSameFilePreservesFrontmatter(t *testing.T) {
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
-	path := filepath.Join(t.TempDir(), "plan.md")
-	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	patch := []byte("*** Begin Patch\n*** Update Field: overview\n-O\n+Updated overview\n*** End Patch\n")
-	withStdin(t, patch, func() {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		if exit := Execute([]string{"patch", path}, &stdout, &stderr); exit != 0 {
-			t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
-		}
-	})
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if !strings.HasPrefix(string(raw), frontmatter) {
-		t.Fatalf("frontmatter changed:\n%s", string(raw))
-	}
-	assertParsed(t, path, func(p Plan) {
-		if p.Overview != "Updated overview" {
-			t.Fatalf("overview=%q", p.Overview)
-		}
-	})
-}
-
-func TestImplementationStepSummarySetSameFilePreservesWrappedFrontmatter(t *testing.T) {
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
-	path := filepath.Join(t.TempDir(), "plan.md")
-	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	runPlannerOK(t, []string{"implementation", "step", "summary", "set", path, path, "--step", "1", "Updated summary"}, nil)
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if !strings.HasPrefix(string(raw), frontmatter) {
-		t.Fatalf("frontmatter changed:\n%s", string(raw))
-	}
-	assertParsed(t, path, func(p Plan) {
-		if p.Implementation[0].Summary != "Updated summary" {
-			t.Fatalf("summary=%q", p.Implementation[0].Summary)
-		}
-	})
 }
 
 // withStdin routes data through os.Stdin for the duration of fn via a real
@@ -1038,68 +650,43 @@ func writeNewScaffold(t *testing.T, dir string) string {
 	return path
 }
 
-func writeBehavioralPlan(t *testing.T, dir string) string {
-	t.Helper()
-	path := dir + "/plan.md"
-	plan, err := DecodePlan(mustJSON(Plan{
-		Title:    "T",
-		Overview: "O",
+// twoStepPlan is a two-step implementation fixture shared by selector tests.
+func twoStepPlan() Plan {
+	return Plan{
+		Title:    "Plan",
+		Overview: "Overview",
 		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g", Status: StatusDone}},
-			CurrentState: "C",
-			ModuleShape:  "M",
+			Narrative:    "Narrative",
+			Goals:        []ChecklistItem{{Text: "Goal"}},
+			CurrentState: "Current",
+			ModuleShape:  "Shape",
 		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "@@ -1 +1 @@\n-a\n+b",
-			}},
-		}},
+		Implementation: []Step{
+			{
+				Title:   "First",
+				Summary: "Summary1",
+				FileChanges: []FileChange{{
+					Filename:    "a.go",
+					Explanation: "why",
+					Diff:        "@@ -1 +1 @@\n-old\n+new",
+				}},
+			},
+			{
+				Title:   "Second",
+				Summary: "Summary2",
+				FileChanges: []FileChange{{
+					Filename:    "b.go",
+					Explanation: "why",
+					Diff:        "@@ -1 +1 @@\n-old\n+new",
+				}},
+			},
+		},
 		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A", Status: StatusDone}},
-			Manual:    []ChecklistItem{{Text: "M"}},
+			Summary:   "Summary",
+			Automated: []ChecklistItem{{Text: "go test ./..."}},
+			Manual:    []ChecklistItem{{Text: "smoke"}},
 		},
-	}))
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
 	}
-	if err := CreatePlanFromStruct(plan, path); err != nil {
-		t.Fatalf("CreatePlanFromStruct: %v", err)
-	}
-	return path
-}
-
-func runPlannerOK(t *testing.T, args []string, stdin []byte) {
-	t.Helper()
-	run := func() {
-		var stdout, stderr bytes.Buffer
-		if exit := Execute(args, &stdout, &stderr); exit != 0 {
-			t.Fatalf("Execute(%v) exit=%d stderr=%q stdout=%q", args, exit, stderr.String(), stdout.String())
-		}
-	}
-	if stdin != nil {
-		withStdin(t, stdin, run)
-		return
-	}
-	run()
-}
-
-func assertParsed(t *testing.T, path string, check func(Plan)) {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	parsed, err := ParseMarkdown(string(raw))
-	if err != nil {
-		t.Fatalf("ParseMarkdown: %v\n%s", err, string(raw))
-	}
-	check(parsed.Plan)
 }
 
 func validPlanJSON() []byte {
@@ -1137,6 +724,8 @@ func mustJSON(v any) []byte {
 	return raw
 }
 
+// inspect must accept a rendered plan file and emit valid inspect JSON with a
+// stable selector and edit token, without depending on a removed writer.
 func TestInspectOutputIsValidPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
@@ -1144,8 +733,12 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodePlan: %v", err)
 	}
-	if err := CreatePlanFromStruct(plan, src); err != nil {
-		t.Fatalf("CreatePlanFromStruct: %v", err)
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	if err := os.WriteFile(src, []byte(rendered), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -1282,12 +875,4 @@ func copyFixture(t *testing.T, name string) string {
 		t.Fatalf("WriteFile(fixture): %v", err)
 	}
 	return path
-}
-
-func wrappedPrefix(input string) string {
-	frontmatter, _, err := splitFrontmatter(input)
-	if err != nil {
-		return ""
-	}
-	return frontmatter
 }

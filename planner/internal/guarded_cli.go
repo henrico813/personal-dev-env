@@ -11,7 +11,7 @@ import (
 )
 
 const guardedHelp = `
-Guarded source-code revisions (legacy commands remain available):
+Guarded source-code revisions:
   planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT
       [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT
