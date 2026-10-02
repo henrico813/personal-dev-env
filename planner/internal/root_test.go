@@ -239,6 +239,32 @@ func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
 	}
 }
 
+// Help must present the guarded commands before the validation rules, with a
+// blank line between the two lists, and it must show the repository-aware check
+// usage. A reader should not mistake the guarded flags for validation rules or
+// miss how to run the whole-plan check.
+func TestHelpPlacesGuardedSectionBeforeRules(t *testing.T) {
+	help := buildHelpText()
+	guarded := strings.Index(help, "Guarded source-code revisions")
+	rules := strings.Index(help, "Validation rules:")
+	if guarded < 0 || rules < 0 || guarded > rules {
+		t.Fatalf("guarded help must precede validation rules: guarded=%d rules=%d", guarded, rules)
+	}
+	if !strings.Contains(help, "\n\nValidation rules:\n") {
+		t.Fatal("validation rules need a blank line before the header")
+	}
+	for _, want := range []string{
+		"planner inspect <plan.md> --target SELECTOR",
+		"planner patch <plan.md> --target SELECTOR --expect TOKEN",
+		"planner check <plan.md> --repo DIR --base COMMIT",
+		"edit_expect from targeted inspect",
+	} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("buildHelpText() missing %q", want)
+		}
+	}
+}
+
 func TestReadRawScalarStripsTrailingNewline(t *testing.T) {
 	t.Run("stdin_lf", func(t *testing.T) {
 		withStdin(t, []byte("raw text\n"), func() {
