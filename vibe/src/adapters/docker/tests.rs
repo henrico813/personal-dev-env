@@ -784,6 +784,29 @@ fn forwards_opencode_credentials_only() {
 }
 
 #[test]
+fn forwards_openrouter_credentials_only() {
+    let _guard = auth_env_lock().lock().expect("lock auth env");
+    let home = tempfile::tempdir().expect("tempdir");
+    let saved = save_auth_env();
+    clear_auth_env();
+    for (key, value) in [
+        ("ANTHROPIC_API_KEY", "anthropic"),
+        ("OPENAI_API_KEY", "openai"),
+        ("OPENROUTER_API_KEY", "openrouter"),
+    ] {
+        std::env::set_var(key, value);
+    }
+
+    let pi_agent_dir = prepare_provider_auth(home.path().to_str(), "openrouter/z-ai/glm-5.3-prime")
+        .expect("OpenRouter auth");
+    let args = auth_env_args("openrouter/z-ai/glm-5.3-prime");
+
+    restore_env(saved);
+    assert_eq!(pi_agent_dir, None);
+    assert_eq!(args, ["-e", "OPENROUTER_API_KEY"]);
+}
+
+#[test]
 fn rejects_unknown_provider_environment_auth() {
     let _guard = auth_env_lock().lock().expect("lock auth env");
     let home = tempfile::tempdir().expect("tempdir");

@@ -8,6 +8,7 @@ use std::{
 pub(super) const AUTH_VARS: &[&str] = &[
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
     "GEMINI_API_KEY",
     "DEEPSEEK_API_KEY",
     "AZURE_OPENAI_API_KEY",
@@ -28,6 +29,7 @@ const AUTH_GROUPS: &[(&[&str], &[&str])] = &[
     ),
     (&["opencode", "opencode-go"], &["OPENCODE_API_KEY"]),
     (&["goog"], &["GOOG_BASE_URL", "GOOG_API_KEY"]),
+    (&["openrouter"], &["OPENROUTER_API_KEY"]),
 ];
 pub(super) const HOST_GIT_CONFIG_KEYS: &[(&str, &str)] = &[
     ("user.name", "VIBE_GIT_USER_NAME"),
