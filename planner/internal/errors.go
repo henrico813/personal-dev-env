@@ -2,7 +2,6 @@ package internal
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -93,15 +92,4 @@ func newPlannerCLIError(code PlannerErrorCode, err error, subject string) *Plann
 		Message: msg,
 		Err:     err,
 	}
-}
-
-func plannerExitCode(err error) int {
-	var cliErr *PlannerCLIError
-	if errors.As(err, &cliErr) && cliErr.Code == PlannerUsageError {
-		return 2
-	}
-	if err != nil {
-		return 1
-	}
-	return 0
 }

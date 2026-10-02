@@ -126,16 +126,6 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	return ParseResult{Plan: plan, Sections: spansTyped, Steps: stepSpans, DiffContents: diffSpans}, nil
 }
 
-// splitFrontmatter strips the supported YAML frontmatter block from the start
-// of input and returns the raw consumed bytes plus the remaining body.
-func splitFrontmatter(input string) (string, string, error) {
-	envelope, err := splitMarkdownEnvelope(input)
-	if err != nil {
-		return "", "", err
-	}
-	return envelope.Frontmatter, envelope.Body, nil
-}
-
 // splitMarkdownEnvelope separates the supported vault issue wrapper from the
 // planner body while leaving plain planner markdown unchanged.
 func splitMarkdownEnvelope(input string) (markdownEnvelope, error) {
@@ -622,4 +612,11 @@ func parseFence(line string) (string, bool) {
 		return "", false
 	}
 	return string(runes[:i]), true
+}
+
+func rawAt(raw string, span Span) string {
+	if span.Start < 0 || span.End > len(raw) || span.Start >= span.End {
+		return ""
+	}
+	return raw[span.Start:span.End]
 }

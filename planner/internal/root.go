@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,112 +23,21 @@ Usage:
   planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> [<out.md>]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
-  planner dod narrative set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner dod current-state set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner dod module-shape set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner dod goal add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
-  planner dod goal set <plan.md> <out.md> --goal N <text> [--diff] [--dry-run] [--json-errors]
-  planner dod goal remove <plan.md> <out.md> --goal N [--diff] [--dry-run] [--json-errors]
-  planner implementation step add <plan.md> <out.md> --title T --summary S --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
-  planner implementation step remove <plan.md> <out.md> --step N [--diff] [--dry-run] [--json-errors]
-  planner implementation step title set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step summary set <plan.md> <out.md> --step N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change add <plan.md> <out.md> --step N --filename F --explanation E --diff-stdin [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change remove <plan.md> <out.md> --step N --change N [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change filename set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change explanation set <plan.md> <out.md> --step N --change N [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner implementation step file-change diff set <plan.md> <out.md> --step N --change N --stdin [--diff] [--dry-run] [--json-errors]
-  planner verification summary set <plan.md> <out.md> [<text>] [--stdin] [--diff] [--dry-run] [--json-errors]
-  planner verification automated add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
-  planner verification automated set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
-  planner verification automated remove <plan.md> <out.md> --item N [--diff] [--dry-run] [--json-errors]
-  planner verification manual add <plan.md> <out.md> <text> [--diff] [--dry-run] [--json-errors]
-  planner verification manual set <plan.md> <out.md> --item N <text> [--diff] [--dry-run] [--json-errors]
-  planner verification manual remove <plan.md> <out.md> --item N [--diff] [--dry-run] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
-Markdown-first authoring flow:
-  1. Run planner new plan.md. It fails without changing an existing destination,
-     including during --dry-run.
-  2. Edit the markdown directly, or use behavioral edit commands for same-path updates.
-  3. For behavioral edit commands, <out.md> may be the same path as <plan.md>
-     for same-file updates.
-  4. Run planner check plan.md --json-errors.
-  5. If parsing fails, stop and escalate before rendering or applying more edits.
-
-Partial update flow:
-  1. Run planner inspect <plan.md> to see the parsed plan JSON.
-  2. Prefer planner patch <plan.md> [<out.md>] for scalar and checklist edits.
-     The structured form takes no subcommand flags; only global flags such as
-     --json-errors.
-  3. For fenced code-diff edits, use the guarded inspect and patch commands
-     below. They export source from a recorded baseline and regenerate diffs.
-  4. planner patch preserves wrapped frontmatter but rerenders the body in the
-     standard layout.
-  5. Use behavioral commands for structural edits that patch does not cover.
-
-planner patch:
-  Reads a structured patch from stdin and applies all operations to one plan.
-  The structured form takes no subcommand flags; only global flags such as
-  --json-errors. Code-diff edits use the guarded patch form listed with the
-  guarded source-code revisions below.
-
-  Supported operations:
-    *** Update Field: <selector>
-    -<old line>
-    +<new line>
-
-    *** Update Diff: <selector>
-    *** Expect: sha256:<token>
-    <raw diff body through EOF>
-
-    *** Add Item: <selector>
-    +<new checklist item>
-
-  Supported field selectors:
-    title
-    overview
-    definition_of_done.narrative
-    definition_of_done.current_state
-    definition_of_done.module_shape
-    implementation[N].title
-    implementation[N].summary
-    implementation[N].file_changes[N].filename
-    implementation[N].file_changes[N].explanation
-    verification.summary
-
-  Supported checklist selectors:
-    definition_of_done.goals
-    verification.automated
-    verification.manual
-
-  Supported diff selectors:
-    implementation[N].file_changes[N]
-
-  Notes:
-    - Nested selectors use 1-based indices.
-    - Patch body lines beginning with *** start the next patch operation.
-    - Update Diff is a dedicated single-op patch form.
-    - Update Diff tokens come from planner inspect.
-    - Checklist edits must be single-line.
-    - Only verification.summary may be set to an empty value.
-    - Structural edits should use behavioral commands.
-
-behavioral edit flags:
-  --goal N                         1-based definition_of_done goal selector.
-  --item N                         1-based verification checklist selector.
-  --step N                         1-based implementation step selector.
-  --change N                       1-based FileChange selector within --step.
-  --filename <path>                FileChange filename for structured add.
-  --explanation <text>             FileChange explanation for structured add.
-  --stdin                          Read scalar values or file-change diff set from stdin.
-  --diff-stdin                     Read structured add diff body from stdin.
-  --diff                           Print preview diff to stdout; additive.
-  --dry-run                        Do not write the output; with --diff, exit 1 on drift.
+Markdown-first authoring:
+  1. Run planner new plan.md. It fails without changing an existing destination.
+  2. Edit prose and structure directly in the Markdown file.
+  3. Change code diffs only through guarded patch: inspect with --code-out to
+     export the source and read edit_expect, edit that source, then patch with
+     --after-file.
+  4. Add or remove a file change by hand: copy a PLACEHOLDER fence, fill it with
+     inspect --before and patch, then delete the old block. A step keeps at
+     least one file change.
+  5. Finish with planner check plan.md --repo DIR --base COMMIT as the final gate.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
@@ -163,12 +71,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		return runInspect(args[1:], stdout, stderr)
 	case "patch":
-		if hasArg(args[1:], "--target") {
-			return runGuardedPatch(args[1:], stdout, stderr)
-		}
-		return runPatch(args[1:], stdout, stderr)
-	case "dod", "implementation", "verification":
-		return runBehavioralEdit(args, stdout, stderr)
+		return runGuardedPatch(args[1:], stdout, stderr)
 	default:
 		reportError(stderr, "planner", newPlannerCLIError(PlannerUsageError, nil, fmt.Sprintf("unknown command: %s", args[0])))
 		// Help text is verbose human-oriented prose; under --json-errors the
@@ -399,34 +302,6 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 	return kept, pf, nil
 }
 
-// readRawSource reads patch input as raw bytes without JSON repair. It mirrors
-// readJSONSource's stdin/path selection but preserves the byte stream exactly.
-func readRawSource(path string, useStdin bool) ([]byte, error) {
-	if useStdin {
-		return io.ReadAll(os.Stdin)
-	}
-	if path == "" {
-		return nil, fmt.Errorf("no patch path and --stdin not set")
-	}
-	return os.ReadFile(path)
-}
-
-// readRawScalar reads raw patch input and strips exactly one trailing line
-// ending before the value is handed to scalar string patch targets.
-func readRawScalar(path string, useStdin bool) ([]byte, error) {
-	data, err := readRawSource(path, useStdin)
-	if err != nil {
-		return nil, err
-	}
-	if bytes.HasSuffix(data, []byte("\r\n")) {
-		return data[:len(data)-2], nil
-	}
-	if bytes.HasSuffix(data, []byte("\n")) {
-		return data[:len(data)-1], nil
-	}
-	return data, nil
-}
-
 func patchSourceLabel(path string, useStdin bool) string {
 	if useStdin {
 		return "stdin"
@@ -435,58 +310,6 @@ func patchSourceLabel(path string, useStdin bool) string {
 		return "JSON input"
 	}
 	return path
-}
-
-// mapReplaceCLIError translates internal replace package failures into CLI
-// envelopes. Subject strings describe data ("result", "patch JSON"), not the
-// command name; the cmd argument to reportError owns the CLI label.
-func mapReplaceCLIError(err error, sourcePath string) *PlannerCLIError {
-	var replaceErr *ReplaceError
-	if !errors.As(err, &replaceErr) {
-		return newPlannerCLIError(PlannerValidateInputError, err, "result")
-	}
-	switch replaceErr.Code {
-	case ReplaceInvalidOptionsError:
-		return newPlannerCLIError(PlannerUsageError, err, err.Error())
-	case ReplaceReadSourceError:
-		return newPlannerCLIError(PlannerReadInputError, err, sourcePath)
-	case ReplaceParseSourceError:
-		return plannerMarkdownDecodeError(nil, err)
-	case ReplaceDecodePatchError:
-		return newPlannerCLIError(PlannerDecodeInputError, err, "patch JSON")
-	case ReplaceRenderResultError:
-		return newPlannerCLIError(PlannerRenderOutputError, err, "updated plan markdown")
-	case ReplaceValidateResultError:
-		return newPlannerCLIError(PlannerValidateInputError, err, "updated plan")
-	case ReplaceFileNotFoundError:
-		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
-		e.RecoveryHint = "run planner inspect <plan.md> to list valid filenames in the targeted step"
-		return e
-	case ReplaceFileAmbiguousError:
-		e := newPlannerCLIError(PlannerUsageError, err, err.Error())
-		e.RecoveryHint = "rename or consolidate duplicate FileChange filenames before patching"
-		return e
-	case ReplaceParseSplicedSourceError:
-		e := newPlannerCLIError(PlannerValidateInputError, err, "spliced plan markdown")
-		e.RecoveryHint = "remove or escape triple-backtick fences in the diff body, then patch again"
-		return e
-	case ReplacePatchSyntaxError:
-		return newPlannerCLIError(PlannerDecodeInputError, err, "structured patch")
-	case ReplacePatchSelectorError:
-		e := newPlannerCLIError(PlannerValidateInputError, err, "structured patch")
-		e.RecoveryHint = "use the documented selector grammar or fall back to a behavioral command"
-		return e
-	case ReplacePatchMismatchError:
-		e := newPlannerCLIError(PlannerValidateInputError, err, "patch old value")
-		e.RecoveryHint = "refresh the old value from planner inspect or the current file, then retry"
-		return e
-	case ReplacePatchExpectMismatchError:
-		e := newPlannerCLIError(PlannerValidateInputError, err, "patch diff token")
-		e.RecoveryHint = "refresh update_diff_expect from planner inspect, then retry"
-		return e
-	default:
-		return newPlannerCLIError(PlannerValidateInputError, err, "result")
-	}
 }
 
 type InspectPlan struct {
@@ -578,13 +401,6 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 		return 1
 	}
 	return 0
-}
-
-// runPreviewAgainstSource is runPreview with sourcePath as the baseline,
-// used by patch so the diff shows what the patch changes in the source,
-// not the difference from some unrelated output file.
-func runPreviewAgainstSource(stdout, stderr io.Writer, pf previewFlags, rendered, sourcePath, outputPath, cmdName string, doWrite func() error) int {
-	return runPreview(stdout, stderr, pf, rendered, sourcePath, cmdName, doWrite, "")
 }
 
 // readBaseline returns the existing file content for diff comparison. A
