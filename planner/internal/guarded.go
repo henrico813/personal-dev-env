@@ -1,0 +1,492 @@
+package internal
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"reflect"
+	"strings"
+
+	"planner/internal/planpatch"
+)
+
+// Guarded-specific failure codes. Shared categories (USAGE, READ_INPUT,
+// DECODE_INPUT, VALIDATE_INPUT, WRITE_OUTPUT) are not redefined here; the
+// guarded emitter asks errors.go for them through plannerCode so the guarded and
+// structured-stdin front ends cannot drift onto two spellings of one category.
+const (
+	codeSourceCheck        = "SOURCE_CHECK"
+	codePatchInput         = "PATCH_INPUT"
+	codeValidateResult     = "VALIDATE_RESULT"
+	codePlanEdit           = "PLAN_EDIT"
+	codeCollateralChange   = "PLAN_COLLATERAL_CHANGE"
+	codeOutputReportFailed = "OUTPUT_REPORT_FAILED"
+)
+
+// plannerCode returns the string registered for a legacy PlannerErrorCode.
+func plannerCode(code PlannerErrorCode) string { return plannerErrorCodeNames[code] }
+
+// usageError tags an invalid option combination as USAGE without involving the
+// CLI flag grammar, so each options type can validate itself.
+func usageError(message string) error {
+	return &planpatch.Error{Code: plannerCode(PlannerUsageError), Cause: errors.New(message)}
+}
+
+// codedError tags an untagged error with a default code. Errors that already
+// carry a planpatch code keep it so a specific failure is not flattened.
+func codedError(code string, err error) error {
+	var patchErr *planpatch.Error
+	if errors.As(err, &patchErr) {
+		return err
+	}
+	return &planpatch.Error{Code: code, Cause: err}
+}
+
+// guardedInspectOptions selects one fenced change and optionally exports the
+// proposed source that precedes or follows it. Repo and Base are required so the
+// returned edit_expect binds the recorded baseline.
+type guardedInspectOptions struct {
+	PlanPath string
+	Target   string
+	Repo     string
+	Base     string
+	CodeOut  string
+	Before   bool
+}
+
+func (o guardedInspectOptions) validate() error {
+	switch {
+	case o.Target == "":
+		return usageError("--target is required")
+	case o.Repo == "" || o.Base == "":
+		return usageError("--repo and --base are required")
+	case o.Before && o.CodeOut == "":
+		return usageError("--before requires --code-out")
+	}
+	return nil
+}
+
+// guardedInspectResult is the JSON view returned to a revision caller. The
+// code_* fields are present only when --code-out exported source.
+type guardedInspectResult struct {
+	Selector    string `json:"selector"`
+	Filename    string `json:"filename"`
+	StepTitle   string `json:"step_title"`
+	StepSummary string `json:"step_summary"`
+	Explanation string `json:"explanation"`
+	Base        string `json:"base"`
+	EditExpect  string `json:"edit_expect"`
+	Validation  string `json:"validation"`
+	Diff        string `json:"diff,omitempty"`
+	CodeExists  *bool  `json:"code_exists,omitempty"`
+	CodeState   string `json:"code_state,omitempty"`
+	Mode        string `json:"mode,omitempty"`
+	CodeOut     string `json:"code_out,omitempty"`
+}
+
+func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
+	var result guardedInspectResult
+	if err := opts.validate(); err != nil {
+		return result, err
+	}
+	raw, err := readGuardedInput(opts.PlanPath)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+	}
+	step, change, selector, err := selectedChange(parsed, opts.Target)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerUsageError), err)
+	}
+	selected := parsed.Plan.Implementation[step].FileChanges[change]
+	result = guardedInspectResult{
+		Selector:    selector,
+		Filename:    selected.Filename,
+		StepTitle:   parsed.Plan.Implementation[step].Title,
+		StepSummary: parsed.Plan.Implementation[step].Summary,
+		Explanation: selected.Explanation,
+		Base:        opts.Base,
+		EditExpect:  planpatch.Expect(raw, selector, opts.Base),
+		Validation:  "inspection_only",
+	}
+	if opts.CodeOut == "" {
+		result.Diff = selected.Diff
+		return result, nil
+	}
+	s, err := sessionBefore(opts.Repo, opts.Base, parsed.Plan, step, change)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	defer s.Close()
+	if !opts.Before {
+		err = s.Apply(planpatch.Change{
+			Target:   selector,
+			Filename: selected.Filename,
+			Diff:     []byte(selected.Diff),
+		})
+		if err != nil {
+			return result, codedError(codeSourceCheck, err)
+		}
+	}
+	file, err := s.Read(selected.Filename)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	var code []byte
+	exists := file != nil
+	if file != nil {
+		code = file.Data
+		result.Mode = file.Mode
+	}
+	result.CodeExists = &exists
+	result.CodeState = "after_selected_change"
+	if opts.Before {
+		result.CodeState = "before_selected_change"
+	}
+	if err := writeNewScratch(opts.CodeOut, code); err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	result.CodeOut = opts.CodeOut
+	return result, nil
+}
+
+// guardedPatchOptions replaces one fenced change from ordinary source or a raw
+// diff, guarded by the edit_expect token and mandatory repository replay.
+type guardedPatchOptions struct {
+	PlanPath  string
+	Target    string
+	Expect    string
+	AfterFile string
+	DiffFile  string
+	Repo      string
+	Base      string
+	DryRun    bool
+	Diff      bool
+}
+
+func (o guardedPatchOptions) validate() error {
+	switch {
+	case o.Target == "":
+		return usageError("--target is required")
+	case o.Expect == "":
+		return usageError("--expect is required")
+	case o.Repo == "" || o.Base == "":
+		return usageError("--repo and --base are required")
+	case (o.AfterFile == "") == (o.DiffFile == ""):
+		return usageError("exactly one of --after-file and --diff-file is required")
+	}
+	return nil
+}
+
+// guardedPatchResult reports what was checked and whether the plan was written.
+// Preview is the Git-generated review delta for --diff and is not JSON encoded.
+type guardedPatchResult struct {
+	Path              string `json:"path"`
+	PlanSHA256        string `json:"plan_sha256"`
+	Written           bool   `json:"written"`
+	StructureValid    bool   `json:"structure_valid"`
+	PatchSyntaxValid  bool   `json:"patch_syntax_valid"`
+	PrefixReplayed    bool   `json:"prefix_replayed"`
+	DownstreamChecked bool   `json:"downstream_checked"`
+	Base              string `json:"base"`
+	BehaviorChecked   bool   `json:"behavior_checked"`
+	Preview           []byte `json:"-"`
+}
+
+func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
+	var result guardedPatchResult
+	if err := opts.validate(); err != nil {
+		return result, err
+	}
+	raw, err := readGuardedInput(opts.PlanPath)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+	}
+	step, change, selector, err := selectedChange(parsed, opts.Target)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerUsageError), err)
+	}
+	// The token binds the plan bytes, the normalized selector, and the base. Now
+	// that inspect and patch always have a baseline, any mismatch is PLAN_STALE.
+	if opts.Expect != planpatch.Expect(raw, selector, opts.Base) {
+		return result, &planpatch.Error{
+			Code:  planpatch.CodePlanStale,
+			Cause: errors.New("plan, target, or baseline changed since inspection"),
+		}
+	}
+	selected := parsed.Plan.Implementation[step].FileChanges[change]
+	s, err := sessionBefore(opts.Repo, opts.Base, parsed.Plan, step, change)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	defer s.Close()
+	var replacement []byte
+	if opts.AfterFile != "" {
+		before, err := s.Read(selected.Filename)
+		if err != nil {
+			return result, codedError(codeSourceCheck, err)
+		}
+		var after *planpatch.File
+		if opts.AfterFile != os.DevNull {
+			data, err := readGuardedInput(opts.AfterFile)
+			if err != nil {
+				return result, codedError(plannerCode(PlannerReadInputError), err)
+			}
+			mode := "100644"
+			if before != nil {
+				mode = before.Mode
+			}
+			after = &planpatch.File{Data: data, Mode: mode}
+		}
+		replacement, err = planpatch.Generate(selected.Filename, before, after)
+		if err != nil {
+			return result, codedError(codePatchInput, err)
+		}
+	} else {
+		replacement, err = readGuardedInput(opts.DiffFile)
+		if err != nil {
+			return result, codedError(codePatchInput, err)
+		}
+	}
+	// Prefix replay: apply the edited change on top of the baseline plus every
+	// earlier change. Later changes are deliberately not replayed; only
+	// planner check --repo --base validates the whole plan for readiness.
+	if err := s.Apply(planpatch.Change{
+		Target:   selector,
+		Filename: selected.Filename,
+		Diff:     replacement,
+	}); err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	span := parsed.DiffContents[step][change]
+	updated, err := planpatch.ReplaceDiff(raw, span.Start, span.End, replacement)
+	if err != nil {
+		return result, codedError(codePlanEdit, err)
+	}
+	candidate, err := ParseMarkdown(string(updated))
+	if err != nil {
+		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+	}
+	if !reflect.DeepEqual(expectedPlan(parsed.Plan, step, change, replacement), candidate.Plan) {
+		return result, &planpatch.Error{
+			Code:  codeCollateralChange,
+			Cause: errors.New("replacement changed another parsed field"),
+		}
+	}
+	if err := validateGuardedPlan(candidate.Plan); err != nil {
+		return result, codedError(codeValidateResult, err)
+	}
+	if opts.Diff && !bytes.Equal(raw, updated) {
+		preview, err := planpatch.Generate("plan.md",
+			&planpatch.File{Data: raw, Mode: "100644"},
+			&planpatch.File{Data: updated, Mode: "100644"})
+		if err != nil {
+			return result, codedError(codePatchInput, err)
+		}
+		result.Preview = preview
+	}
+	if !opts.DryRun {
+		if err := planpatch.WriteIfUnchanged(opts.PlanPath, raw, updated); err != nil {
+			return result, codedError(plannerCode(PlannerWriteOutputError), err)
+		}
+	}
+	result.Path = opts.PlanPath
+	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(updated))
+	result.Written = !opts.DryRun
+	result.StructureValid = true
+	result.PatchSyntaxValid = true
+	result.PrefixReplayed = true
+	result.DownstreamChecked = false
+	result.Base = opts.Base
+	result.BehaviorChecked = false
+	return result, nil
+}
+
+// expectedPlan is the pre-edit plan with only the selected diff replaced, used
+// to detect a fence collision that rewrote an unrelated parsed field.
+func expectedPlan(plan Plan, step, change int, replacement []byte) Plan {
+	expected := plan
+	expected.Implementation = append([]Step(nil), plan.Implementation...)
+	expected.Implementation[step].FileChanges =
+		append([]FileChange(nil), plan.Implementation[step].FileChanges...)
+	expected.Implementation[step].FileChanges[change].Diff =
+		strings.TrimRight(string(replacement), "\n")
+	return expected
+}
+
+type guardedCheckOptions struct {
+	PlanPath string
+	Repo     string
+	Base     string
+}
+
+func (o guardedCheckOptions) validate() error {
+	if o.Repo == "" || o.Base == "" {
+		return usageError("--repo and --base are required")
+	}
+	return nil
+}
+
+type guardedCheckResult struct {
+	PlanSHA256           string `json:"plan_sha256"`
+	StructureValid       bool   `json:"structure_valid"`
+	ApplicabilityChecked bool   `json:"applicability_checked"`
+	ChangesReplayed      int    `json:"changes_replayed"`
+	Base                 string `json:"base"`
+	SourceState          string `json:"source_state"`
+	BehaviorChecked      bool   `json:"behavior_checked"`
+}
+
+func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
+	var result guardedCheckResult
+	if err := opts.validate(); err != nil {
+		return result, err
+	}
+	raw, err := readGuardedInput(opts.PlanPath)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+	}
+	if err := validateGuardedPlan(parsed.Plan); err != nil {
+		return result, codedError(plannerCode(PlannerValidateInputError), err)
+	}
+	changes := orderedChanges(parsed.Plan)
+	if err := planpatch.Replay(opts.Repo, opts.Base, changes); err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
+	result.StructureValid = true
+	result.ApplicabilityChecked = true
+	result.ChangesReplayed = len(changes)
+	result.Base = opts.Base
+	result.SourceState = "committed_snapshot_only"
+	result.BehaviorChecked = false
+	return result, nil
+}
+
+// selectedChange resolves selector to zero-based plan indices and its
+// normalized spelling. Indices are parsed numerically, so leading zeros address
+// the same change and normalize to one spelling for tokens, results, and replay.
+func selectedChange(parsed ParseResult, selector string) (step, change int, normalized string, err error) {
+	step, change, err = parsePatchFileChangeSelector(selector)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	if step > len(parsed.Plan.Implementation) ||
+		change > len(parsed.Plan.Implementation[step-1].FileChanges) {
+		return 0, 0, "", fmt.Errorf("target out of range: %s", selector)
+	}
+	return step - 1, change - 1,
+		fmt.Sprintf("implementation[%d].file_changes[%d]", step, change), nil
+}
+
+func orderedChanges(plan Plan) []planpatch.Change {
+	var out []planpatch.Change
+	for i, step := range plan.Implementation {
+		for j, change := range step.FileChanges {
+			out = append(out, planpatch.Change{
+				Target:   fmt.Sprintf("implementation[%d].file_changes[%d]", i+1, j+1),
+				Filename: change.Filename,
+				Diff:     []byte(change.Diff),
+			})
+		}
+	}
+	return out
+}
+
+// sessionBefore replays the baseline and every change before (step, change),
+// returning an open session positioned just before the selected change. The
+// caller owns the session and must Close it. Comparison is by parsed indices, so
+// any spelling of the selector, including leading zeros, selects the same change.
+func sessionBefore(repo, base string, plan Plan, step, change int) (*planpatch.Session, error) {
+	s, err := planpatch.Open(repo, base)
+	if err != nil {
+		return nil, err
+	}
+	for i, planStep := range plan.Implementation {
+		for j, fileChange := range planStep.FileChanges {
+			if i == step && j == change {
+				return s, nil
+			}
+			if err := s.Apply(planpatch.Change{
+				Target:   fmt.Sprintf("implementation[%d].file_changes[%d]", i+1, j+1),
+				Filename: fileChange.Filename,
+				Diff:     []byte(fileChange.Diff),
+			}); err != nil {
+				s.Close()
+				return nil, err
+			}
+		}
+	}
+	s.Close()
+	return nil, fmt.Errorf("target out of range: implementation[%d].file_changes[%d]",
+		step+1, change+1)
+}
+
+// writeNewScratch never overwrites a file, including a symlink or the plan.
+func writeNewScratch(name string, raw []byte) error {
+	f, err := os.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(raw)
+	closeErr := f.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(name)
+	}
+	return err
+}
+
+func validateGuardedPlan(plan Plan) error {
+	violations := ValidatePlanAll(plan)
+	if len(violations) == 0 {
+		return nil
+	}
+	messages := make([]string, len(violations))
+	for i, v := range violations {
+		messages[i] = v.Message
+	}
+	return errors.New(strings.Join(messages, "\n"))
+}
+
+// readGuardedInput reads plan, diff, or scratch input. "-" selects stdin, and a
+// non-regular file is rejected so a directory or device is never read as text.
+func readGuardedInput(name string) ([]byte, error) {
+	var reader io.Reader = os.Stdin
+	if name != "-" {
+		f, err := os.Open(name)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = f.Close() }()
+		info, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("expected regular file: %s", name)
+		}
+		reader = f
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, planpatch.MaxPayload+1))
+	if err == nil && len(raw) > planpatch.MaxPayload {
+		err = fmt.Errorf("input exceeds %d bytes", planpatch.MaxPayload)
+	}
+	return raw, err
+}
