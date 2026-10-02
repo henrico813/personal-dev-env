@@ -8,15 +8,16 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"planner/internal/planpatch"
 )
 
 // Guarded-specific failure codes. Shared categories (USAGE, READ_INPUT,
-// DECODE_INPUT, VALIDATE_INPUT, WRITE_OUTPUT) are not redefined here; the
-// guarded emitter asks errors.go for them through plannerCode so the guarded and
-// structured-stdin front ends cannot drift onto two spellings of one category.
+// DECODE_INPUT, VALIDATE_INPUT, WRITE_OUTPUT) are defined in errors.go, and the
+// guarded emitter reads their registered names through plannerCode.
 const (
 	codeSourceCheck        = "SOURCE_CHECK"
 	codePatchInput         = "PATCH_INPUT"
@@ -26,7 +27,7 @@ const (
 	codeOutputReportFailed = "OUTPUT_REPORT_FAILED"
 )
 
-// plannerCode returns the string registered for a legacy PlannerErrorCode.
+// plannerCode returns the registered string for a shared PlannerErrorCode.
 func plannerCode(code PlannerErrorCode) string { return plannerErrorCodeNames[code] }
 
 // usageError tags an invalid option combination as USAGE without involving the
@@ -375,6 +376,39 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
 	return result, nil
+}
+
+var patchFileChangeSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)
+
+func parsePatchFileChangeSelector(selector string) (int, int, error) {
+	match := patchFileChangeSelectorRE.FindStringSubmatch(selector)
+	if match == nil {
+		return 0, 0, fmt.Errorf("unsupported patch selector %q", selector)
+	}
+	stepIdx, err := parsePatchSelectorIndex(match[1], selector, "step")
+	if err != nil {
+		return 0, 0, err
+	}
+	changeIdx, err := parsePatchSelectorIndex(match[2], selector, "file change")
+	if err != nil {
+		return 0, 0, err
+	}
+	return stepIdx, changeIdx, nil
+}
+
+func parsePatchSelectorIndex(raw, selector, segment string) (int, error) {
+	idx, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("unsupported patch selector %q", selector)
+	}
+	if idx < 1 {
+		return 0, patchSelectorRangeError(selector, segment, idx, 0)
+	}
+	return idx, nil
+}
+
+func patchSelectorRangeError(selector, segment string, idx, have int) error {
+	return fmt.Errorf("patch selector %q %s %d out of range (have %d)", selector, segment, idx, have)
 }
 
 // selectedChange resolves selector to zero-based plan indices and its
