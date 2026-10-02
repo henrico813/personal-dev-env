@@ -144,11 +144,25 @@ next Vibe run.
   checkboxes to implementation steps.
 - Direct range-targeted Markdown edits are allowed when they preserve
   wrapped-issue frontmatter and unrelated reviewed sections.
+- Read the plan baseline from Current State: the full source commit recorded
+  when the plan was created. Always pass it as `--base`, never a worktree's
+  current HEAD, because Vibe commits after each step. If no baseline is
+  recorded, stop and ask the user.
 - If an approved correction changes an existing fenced code diff, run
-  `planner inspect` immediately before a single guarded `planner patch`
-  `Update Diff`. Never edit that diff directly or use an unguarded command.
+  `planner inspect <plan.md> --target <selector> --repo <repo> --base <commit>
+  --code-out <new-scratch-file>`, edit the ordinary scratch source, then run
+  `planner patch <plan.md> --target <selector> --expect <edit_expect>
+  --after-file <scratch-file> --repo <repo> --base <commit>`. Never edit that
+  diff directly or use an unguarded command. Patch replays the base through the
+  edited change only, and later changes are checked by `planner check --repo
+  --base`.
+- For coupled edits, after changing an earlier step, run `planner check
+  <plan.md> --repo <repo> --base <commit>` and fix each later change it reports,
+  in order.
 - Inspect the complete before/after plan diff after every update.
-- Run `planner check <plan.md> --json-errors` after every update.
+- Run `planner check <plan.md> --repo <repo> --base <commit> --json-errors` after
+  every code change; this is the only whole-plan readiness check. Plain
+  `planner check <plan.md> --json-errors` follows prose-only updates.
 - Stop if parsing fails or collateral content changed.
 - Do not mark manual verification complete unless the user confirms it.
 - If the plan is inside the managed worktree, include its verified progress

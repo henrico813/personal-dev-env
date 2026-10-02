@@ -142,12 +142,43 @@ mandatory approval stage.
 4. For an existing plan, keep direct edits range-targeted and verify that
    wrapped-issue frontmatter and unrelated accepted sections remain byte-for-byte
    unchanged.
-5. Before every revision to an existing fenced code diff, run
-   `planner inspect <plan.md>` immediately, then use its current
-   `update_diff_expect` token in a single-operation guarded `planner patch`
-   `Update Diff`. Do not directly edit that diff or use an unguarded command.
-6. Validate every final or revised proposal with
-   `planner check <output.md> --json-errors`.
+5. For a new plan, resolve `git -C <repo> rev-parse HEAD` once at creation and
+   record that full commit ID in Current State. Dirty and untracked source is
+   not included; do not stage, stash, reset, or commit the user's changes.
+6. For an existing plan, always pass the recorded commit as `--base`; never use
+   a worktree's current HEAD, because Vibe commits after each implementation
+   step. If no baseline is recorded, stop and ask the user.
+7. For a new plan, `planner new` scaffolds each code change as a PLACEHOLDER
+   diff. Work through the file changes in plan order: run `planner inspect
+   <plan.md> --target <selector> --repo <repo> --base <commit> --before
+   --code-out <new-scratch-file>`, edit the scratch file, then run `planner
+   patch <plan.md> --target <selector> --expect <edit_expect> --after-file
+   <scratch-file> --repo <repo> --base <commit>`. Copy the PLACEHOLDER fence
+   when adding a change by hand; never leave an empty fence. Finish with
+   `planner check <plan.md> --repo <repo> --base <commit>`.
+8. For code revisions to an existing plan, run `planner inspect <plan.md>
+   --target <selector> --repo <repo> --base <commit> --code-out
+   <new-scratch-file>`. Keep its small JSON result and `edit_expect` token. The
+   scratch file holds proposed source after earlier steps and the selected
+   change.
+9. Edit ordinary scratch source with native tools, then run `planner patch
+   <plan.md> --target <selector> --expect <edit_expect> --after-file
+   <scratch-file> --repo <repo> --base <commit>`. Planner generates hunk counts
+   and replays the base through the edited change only; later changes are not
+   checked. Do not hand-maintain hunks or put a Git diff inside the legacy `***`
+   patch envelope.
+10. `inspect --before` exports pre-change source for a new or broken change.
+    Reconstruct accepted intent before replacing a broken diff. Use `/dev/null`
+    as `--after-file` only to delete a file.
+11. Coupled edits: after editing an earlier change, run `planner check
+    <plan.md> --repo <repo> --base <commit>`, then fix each later change it
+    reports, in order.
+12. On stale state, reread and reconcile; never refresh only the token and
+    retry the old replacement. Inspect and patch must use the same `--repo` and
+    `--base`.
+13. Validate every final or revised proposal with `planner check
+    <output.md> --repo <repo> --base <commit> --json-errors`; this is the only
+    whole-plan readiness check. Plain `planner check` is document-only.
 
 #### Revisions After Human Feedback
 
@@ -163,7 +194,8 @@ Treat review as a correction loop, not a restart:
 
 ### Step 5: Validate and Report
 
-1. Run `planner check <output.md> --json-errors`.
+1. Run `planner check <output.md> --repo <repo> --base <commit> --json-errors`
+   on the final plan; plain `planner check` does not show that the diffs apply.
 2. Compare every proposed diff with current source. Confirm that it applies to
    the intended file, includes every required line without placeholders,
    follows repository patterns, and excludes unrelated work.
