@@ -166,3 +166,40 @@ func WriteIfUnchanged(filename string, before, after []byte) error {
 	}
 	return nil
 }
+
+// WriteNew creates filename from data without replacing an existing file. It
+// writes a synced temporary file beside the destination and links it into
+// place, so a crash cannot publish partial bytes and a losing creator fails
+// instead of replacing a plan.
+func WriteNew(filename string, data []byte) error {
+	dir := filepath.Dir(filename)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(dir, ".planner-new-*")
+	if err != nil {
+		return err
+	}
+	name := temp.Name()
+	removeTemp := func() { _ = os.Remove(name) }
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
+		removeTemp()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		removeTemp()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		removeTemp()
+		return err
+	}
+	if err := os.Link(name, filename); err != nil {
+		removeTemp()
+		return err
+	}
+	removeTemp()
+	return nil
+}

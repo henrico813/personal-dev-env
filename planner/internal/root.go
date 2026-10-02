@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"planner/internal/planpatch"
 )
 
 const helpText = `planner provides markdown-first implementation-plan workflows.
@@ -316,7 +318,7 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
-		if err := WriteNewAtomic(outputPath, []byte(rendered)); err != nil {
+		if err := planpatch.WriteNew(outputPath, []byte(rendered)); err != nil {
 			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
 		}
 		return nil

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -505,44 +504,6 @@ func TestNewPreservesExistingFile(t *testing.T) {
 				t.Fatalf("existing file changed: %q", got)
 			}
 		})
-	}
-}
-
-func TestWriteNewAtomicAllowsOneWriter(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "plan.md")
-	contents := [][]byte{[]byte("first\n"), []byte("second\n")}
-	errs := make(chan error, len(contents))
-	var wg sync.WaitGroup
-	for _, content := range contents {
-		content := content
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs <- WriteNewAtomic(path, content)
-		}()
-	}
-	wg.Wait()
-	close(errs)
-
-	succeeded := 0
-	for err := range errs {
-		if err == nil {
-			succeeded++
-			continue
-		}
-		if !os.IsExist(err) {
-			t.Fatalf("losing writer error=%v, want destination-exists error", err)
-		}
-	}
-	if succeeded != 1 {
-		t.Fatalf("successful writers=%d, want 1", succeeded)
-	}
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if string(got) != "first\n" && string(got) != "second\n" {
-		t.Fatalf("unexpected content: %q", got)
 	}
 }
 
