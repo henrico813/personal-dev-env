@@ -518,7 +518,7 @@ func TestCheckAppliesPlanDiffs(t *testing.T) {
 // checked, so a wrapped plan with an applicable diff still passes.
 func TestCheckAcceptsIssueFrontmatter(t *testing.T) {
 	repo, base, name := checkPlanFixture(t)
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-199\ndate_created: 2026-10-02\ntopics: []\n---\n\n"
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-201\ndate_created: 2026-10-02\ntopics: []\n---\n\n"
 	raw, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
