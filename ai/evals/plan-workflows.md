@@ -502,11 +502,12 @@ Expected behavior:
 
 - Reads the README directly without Surveil or delegated research.
 - Reserves the destination with `planner new`.
-- Records `$EVAL_FIXTURE_COMMIT` as the baseline in Current State.
+- Starts Current State with `Baseline commit: $EVAL_FIXTURE_COMMIT`. Check it
+  with `grep -qx "Baseline commit: $EVAL_FIXTURE_COMMIT"
+  "$EVAL_REPO/plans/bounded.md"`.
 - Proposes only the README change and relevant verification.
 - Produces complete, applicable diffs without placeholders.
-- Passes `planner check plans/bounded.md --repo "$EVAL_REPO" --base
-  "$EVAL_FIXTURE_COMMIT" --json-errors`.
+- Passes `planner check plans/bounded.md --repo "$EVAL_REPO" --json-errors`.
 
 ### Occupied Destination
 
@@ -557,26 +558,52 @@ Expected behavior:
 
 ### Guarded Correction
 
-Run bounded creation first, then use a fresh session in the same fixture:
+Run bounded creation first. Then commit the planned README change, as an
+implementation run would, so HEAD no longer equals the baseline. A correction
+that uses HEAD as `--base` fails because the README diff no longer applies.
+Use a fresh session in the same fixture:
 
 ```bash
+prepare_guarded_correction() {
+  local harness=$1
+  if [ "$(git -C "$EVAL_REPO" rev-parse HEAD)" = "$EVAL_FIXTURE_COMMIT" ]; then
+    printf '%s\n' '# Evaluated Plan' > "$EVAL_REPO/README.md"
+    git -C "$EVAL_REPO" commit -qm "Implement bounded plan" -- README.md
+  fi
+  test "$(git -C "$EVAL_REPO" rev-parse HEAD)" != "$EVAL_FIXTURE_COMMIT"
+  mkdir -p "$EVAL_OUTPUT/guarded-correction/$harness"
+  cp "$EVAL_REPO/plans/bounded.md" \
+    "$EVAL_OUTPUT/guarded-correction/$harness/plan-before.md"
+}
+prepare_guarded_correction opencode
 run_opencode guarded-correction create_plan \
   'Revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
+prepare_guarded_correction codex
 run_codex guarded-correction \
   'Use create-plan to revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
 ```
 
+After each run, list the bases the agent passed and compare the plan:
+
+```bash
+for trace_dir in "$EVAL_OUTPUT"/guarded-correction/*/; do
+  grep -o -- '--base [0-9a-f]\{7,40\}' "$trace_dir/stdout.jsonl" | sort -u
+  diff "$trace_dir/plan-before.md" "$EVAL_REPO/plans/bounded.md" || true
+done
+```
+
 Expected behavior:
 
-- Reuses the baseline recorded in Current State (`$EVAL_FIXTURE_COMMIT`), not
-  the current HEAD.
+- Passes `--base $EVAL_FIXTURE_COMMIT` from the `Baseline commit:` line to
+  every guarded command, never the new HEAD. Record a base passed through a
+  shell variable as unclear.
 - Runs targeted `planner inspect --target ... --repo ... --base ... --code-out
   ...` immediately before the correction.
 - Edits the ordinary scratch source and runs `planner patch --target ...
   --expect ... --after-file ... --repo ... --base ...`.
 - Does not directly edit the existing fenced diff.
 - Preserves unrelated sections and passes repository-aware `planner check
-  plans/bounded.md --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT"` again.
+  plans/bounded.md --repo "$EVAL_REPO" --json-errors` again.
 
 ### Complex Research
 
