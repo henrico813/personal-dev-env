@@ -1,8 +1,8 @@
 """Check planner commands embedded in the planning prompts.
 
 Agents copy planner commands verbatim from the prompts. Go tests prove that
-the planner works, but not that prompt text still matches it; the only other
-check was a token-spending manual eval that nobody ran. This suite catches an
+the planner works, but not that prompt text still matches it; the manual eval
+spends model tokens, so it rarely runs. This suite catches an
 unquoted ``implementation[1].file_changes[1]`` selector that zsh rejects with
 "no matches found", and prompts that retain ``planner dod``,
 ``planner implementation``, or ``planner verification`` subcommands.
@@ -10,22 +10,31 @@ unquoted ``implementation[1].file_changes[1]`` selector that zsh rejects with
 
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import tempfile
+from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_SUBCOMMANDS = {"help", "new", "check", "inspect", "patch"}
 PLANNER_COMMAND = re.compile(r"`(planner\b[^`]*)`", re.DOTALL)
 TARGET_COMMAND = re.compile(r"^planner (inspect|patch|check)\b")
+REQUIRED_COMMANDS = {
+    "create": {"new", "inspect", "patch", "check"},
+    "implement": {"inspect", "patch", "check"},
+}
+
+
+def subcommand(command: str) -> str:
+    """Return the second whitespace-separated command word."""
+    words = command.split()
+    return words[1] if len(words) > 1 else ""
 
 
 def extract_commands(path: Path) -> list[str]:
-    """Extract and whitespace-normalize backtick-quoted planner commands."""
+    """Extract commands, collapsing whitespace from wrapped prompt lines."""
     return [
         " ".join(match.group(1).split())
         for match in PLANNER_COMMAND.finditer(path.read_text())
@@ -41,11 +50,13 @@ def prompt_files() -> list[Path]:
 def prompt_kind(path: Path) -> str | None:
     """Return the workflow kind for prompts that execute plan commands."""
     if path.name == "create_plan.md" or path.parts[-2:] == (
-        "create-plan", "SKILL.md"
+        "create-plan",
+        "SKILL.md",
     ):
         return "create"
     if path.name == "implement_plan.md" or path.parts[-2:] == (
-        "implement-plan", "SKILL.md"
+        "implement-plan",
+        "SKILL.md",
     ):
         return "implement"
     return None
@@ -59,12 +70,22 @@ def prompt_id(path: Path) -> str:
 
 
 @pytest.fixture(scope="session")
-def planner_environment(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
+def planner_environment(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> dict[str, str]:
     """Build the checkout's planner and put it first on PATH."""
     build_root = tmp_path_factory.mktemp("planner")
     planner = build_root / "planner"
     result = subprocess.run(
-        ["go", "build", "-C", str(ROOT / "planner"), "-o", str(planner), "./main"],
+        [
+            "go",
+            "build",
+            "-C",
+            str(ROOT / "planner"),
+            "-o",
+            str(planner),
+            "./main",
+        ],
         capture_output=True,
         text=True,
     )
@@ -76,41 +97,32 @@ def planner_environment(tmp_path_factory: pytest.TempPathFactory) -> dict[str, s
 
 PROMPTS = [pytest.param(path, id=prompt_id(path)) for path in prompt_files()]
 PLAN_PROMPTS = [
-    pytest.param(path, id=prompt_id(path))
+    pytest.param(path, kind, id=prompt_id(path))
     for path in prompt_files()
-    if prompt_kind(path)
+    if (kind := prompt_kind(path)) is not None
 ]
 
 
 @pytest.mark.parametrize("prompt", PROMPTS)
 def test_prompt_uses_only_existing_subcommands(prompt: Path) -> None:
-    # Guards removed planner dod/implementation/verification commands left in prompts.
+    # Guards removed planner dod/implementation/verification commands.
     for command in extract_commands(prompt):
-        words = command.split()
-        subcommand = words[1] if len(words) > 1 else ""
-        assert subcommand in ALLOWED_SUBCOMMANDS, (
+        command_name = subcommand(command)
+        assert command_name in ALLOWED_SUBCOMMANDS, (
             f"prompt {prompt} uses unknown planner subcommand "
-            f"'{subcommand}': {command}"
+            f"'{command_name}': {command}"
         )
 
 
-@pytest.mark.parametrize("prompt", PLAN_PROMPTS)
-def test_planning_prompt_keeps_required_commands(prompt: Path) -> None:
-    # Guards a prompt edit dropping planner check so agents stop validating plans.
-    required = {
-        "create": {"new", "inspect", "patch", "check"},
-        "implement": {"inspect", "patch", "check"},
-    }
-    kind = prompt_kind(prompt)
-    present = {
-        words[1]
-        for command in extract_commands(prompt)
-        for words in [command.split()]
-        if len(words) > 1
-    }
-    assert required[kind] <= present, (
+@pytest.mark.parametrize(("prompt", "kind"), PLAN_PROMPTS)
+def test_planning_prompt_keeps_required_commands(
+    prompt: Path, kind: str
+) -> None:
+    # Guards a prompt edit dropping planner check.
+    present = {subcommand(command) for command in extract_commands(prompt)}
+    assert REQUIRED_COMMANDS[kind] <= present, (
         f"prompt {prompt} is missing planner commands "
-        f"{sorted(required[kind] - present)}"
+        f"{sorted(REQUIRED_COMMANDS[kind] - present)}"
     )
 
 
@@ -129,13 +141,21 @@ def run_checked(
 def new_fixture(directory: Path, env: dict[str, str]) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     run_checked(["git", "init", "-q"], cwd=directory, env=env)
-    (directory / "go.mod").write_text("module example.com/prompt-eval\n\ngo 1.21\n")
+    (directory / "go.mod").write_text(
+        "module example.com/prompt-eval\n\ngo 1.21\n"
+    )
     (directory / "main.go").write_text("package main\n\nfunc main() {}\n")
     run_checked(["git", "add", "-A"], cwd=directory, env=env)
     run_checked(
         [
-            "git", "-c", "user.name=eval", "-c", "user.email=eval@example.com",
-            "commit", "-qm", "init",
+            "git",
+            "-c",
+            "user.name=eval",
+            "-c",
+            "user.email=eval@example.com",
+            "commit",
+            "-qm",
+            "init",
         ],
         cwd=directory,
         env=env,
@@ -146,14 +166,28 @@ def seed_plan(
     repo: Path, plan: Path, tmp_root: Path, env: dict[str, str]
 ) -> str:
     run_checked(["planner", "new", str(plan)], env=env)
-    plan.write_text(plan.read_text().replace("`path/to/file`", "`main.go`"))
+    scaffold = "`path/to/file`"
+    contents = plan.read_text()
+    assert scaffold in contents, (
+        "planner new scaffold changed; update seed_plan's placeholder"
+    )
+    plan.write_text(contents.replace(scaffold, "`main.go`"))
     base = run_checked(["git", "rev-parse", "HEAD"], cwd=repo, env=env).strip()
     scratch = Path(tempfile.mkdtemp(dir=tmp_root, prefix="seed.")) / "source"
     output = run_checked(
         [
-            "planner", "inspect", str(plan), "--target",
-            "implementation[1].file_changes[1]", "--repo", str(repo),
-            "--base", base, "--before", "--code-out", str(scratch),
+            "planner",
+            "inspect",
+            str(plan),
+            "--target",
+            "implementation[1].file_changes[1]",
+            "--repo",
+            str(repo),
+            "--base",
+            base,
+            "--before",
+            "--code-out",
+            str(scratch),
         ],
         env=env,
     )
@@ -161,20 +195,34 @@ def seed_plan(
     scratch.write_text(scratch.read_text() + "\nvar seeded = true\n")
     run_checked(
         [
-            "planner", "patch", str(plan), "--target",
-            "implementation[1].file_changes[1]", "--expect", token,
-            "--repo", str(repo), "--base", base, "--after-file", str(scratch),
+            "planner",
+            "patch",
+            str(plan),
+            "--target",
+            "implementation[1].file_changes[1]",
+            "--expect",
+            token,
+            "--repo",
+            str(repo),
+            "--base",
+            base,
+            "--after-file",
+            str(scratch),
         ],
         env=env,
     )
     return base
 
 
-@pytest.mark.parametrize("prompt", PLAN_PROMPTS)
+@pytest.mark.parametrize(("prompt", "kind"), PLAN_PROMPTS)
 def test_prompt_commands_run_in_zsh(
-    prompt: Path, tmp_path: Path, planner_environment: dict[str, str]
+    prompt: Path,
+    kind: str,
+    tmp_path: Path,
+    planner_environment: dict[str, str],
 ) -> None:
-    # Guards unquoted implementation[1].file_changes[1] failing with zsh's "no matches found".
+    # Running commands in zsh exposes glob expansion failures that text
+    # matching misses, such as an unquoted bracket selector.
     fixture = tmp_path / "fixture"
     (fixture / "plans").mkdir(parents=True)
     new_fixture(fixture, planner_environment)
@@ -183,20 +231,31 @@ def test_prompt_commands_run_in_zsh(
     selector = "implementation[1].file_changes[1]"
     token = ""
     scratch = ""
+    ran: set[str] = set()
 
     for original in extract_commands(prompt):
         if not TARGET_COMMAND.match(original):
             continue
-        if "--repo <repo>" not in original or "--base <commit>" not in original:
+        if (
+            "--repo <repo>" not in original
+            or "--base <commit>" not in original
+        ):
             continue
+        ran.add(subcommand(original))
         if original.startswith("planner inspect "):
-            scratch = str(Path(tempfile.mkdtemp(dir=tmp_path, prefix="run.")) / "source")
+            scratch = str(
+                Path(tempfile.mkdtemp(dir=tmp_path, prefix="run.")) / "source"
+            )
         command = original
         replacements = {
-            "<plan.md>": str(plan), "<output.md>": str(plan),
-            "<selector>": selector, "<repo>": str(fixture),
-            "<commit>": base, "<new-scratch-file>": scratch,
-            "<scratch-file>": scratch, "<edit_expect>": token,
+            "<plan.md>": str(plan),
+            "<output.md>": str(plan),
+            "<selector>": selector,
+            "<repo>": str(fixture),
+            "<commit>": base,
+            "<new-scratch-file>": scratch,
+            "<scratch-file>": scratch,
+            "<edit_expect>": token,
         }
         for placeholder, value in replacements.items():
             command = command.replace(placeholder, value)
@@ -214,3 +273,8 @@ def test_prompt_commands_run_in_zsh(
         )
         if command.startswith("planner inspect "):
             token = json.loads(result.stdout)["edit_expect"]
+
+    assert {"inspect", "patch", "check"} <= ran, (
+        f"prompt {prompt} command text no longer matched the expected "
+        f"placeholders; ran {sorted(ran)}"
+    )
