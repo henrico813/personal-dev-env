@@ -20,11 +20,12 @@ Guarded source-code revisions:
 
   SELECTOR is implementation[N].file_changes[M], with 1-based indices. Leading
   zeros are accepted and the normalized selector is echoed in results.
-  inspect and patch require --repo and --base. check validates structure and
-  applies every diff at the baseline; it does not run tests or check behavior.
-  --base is the full commit ID recorded in the plan's Current State when the
-  plan was created, not the current HEAD of a worktree. Without --base, check
-  reads the first line of Current State, "Baseline commit: <full commit ID>".
+  inspect and patch require --repo and --base. check validates structure, then
+  starts with the original code version recorded in the plan and tries every
+  planned change in order. It does not run tests or check behavior. --base is
+  the full commit ID recorded in the plan's Current State when the plan was
+  created, not the current HEAD of a worktree. Without --base, check reads the
+  first line of Current State, "Baseline commit: <full commit ID>".
   Without --repo, check uses the current working directory's Git repository.
   Dirty and untracked source files are excluded; Planner does not stage, stash,
   reset, or commit them.
@@ -42,9 +43,9 @@ Guarded source-code revisions:
   Without --code-out, inspect returns JSON with the selected diff and edit_expect.
   With --code-out, inspect writes the file after the selected change, or before
   it with --before, to a new file.
-  patch replays the baseline plus every change through the edited one, never
-  later changes, and reports prefix_replayed: true with downstream_checked:
-  false. Run planner check for whole-plan readiness.
+  patch starts with the original code version and tries every change through the
+  edited one, never later changes, and reports prefix_replayed: true with
+  downstream_checked: false. Run planner check for whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
   edit_expect binds the plan bytes, the normalized selector, and the base, so
   any edit to the plan invalidates it.

@@ -37,7 +37,8 @@ Markdown-first authoring:
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
   5. Finish with planner check plan.md as the final gate. It reports every
-     structure violation and applies every diff at the baseline.
+     structure violation and tries every planned change against the original
+     code version recorded in the plan.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
