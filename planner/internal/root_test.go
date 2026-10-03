@@ -227,10 +227,11 @@ func TestHelpPlacesGuardedSectionBeforeRules(t *testing.T) {
 		t.Fatal("validation rules need a blank line before the header")
 	}
 	for _, want := range []string{
-		"planner inspect <plan.md> --target SELECTOR",
-		"planner patch <plan.md> --target SELECTOR --expect TOKEN",
+		"planner inspect <plan.md> --target 'SELECTOR'",
+		"planner patch <plan.md> --target 'SELECTOR' --expect TOKEN",
 		"planner check <plan.md> --repo DIR --base COMMIT",
 		"edit_expect from targeted inspect",
+		"zsh expands unquoted brackets",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("buildHelpText() missing %q", want)
