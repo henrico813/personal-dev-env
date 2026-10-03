@@ -30,7 +30,7 @@ func sourceRepo(t *testing.T) (string, string) {
 	gitOK(t, repo, "add", "--", "foo.txt")
 	gitOK(t, repo, "-c", "user.name=Planner Test",
 		"-c", "user.email=planner@example.invalid",
-		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "baseline")
+		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base commit")
 	return repo, gitOK(t, repo, "rev-parse", "HEAD")
 }
 
@@ -86,7 +86,7 @@ func snapshot(t *testing.T, root string) map[string][32]byte {
 // user's checkout, index, and untracked files alone. Without both rules, coupled
 // edits fail and validation can silently disturb the working tree.
 func TestReplayUsesPriorStepsOnly(t *testing.T) {
-	repo, base := sourceRepo(t)
+	repo, baseCommit := sourceRepo(t)
 	local := []byte("unrelated local edit\n")
 	if err := os.WriteFile(filepath.Join(repo, "foo.txt"), local, 0644); err != nil {
 		t.Fatal(err)
@@ -104,10 +104,10 @@ func TestReplayUsesPriorStepsOnly(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(repo, ".git"))
 	t.Setenv("GIT_WORK_TREE", repo)
 	t.Setenv("GIT_EXTERNAL_DIFF", "this-command-must-not-run")
-	if err := Replay(repo, base, []Change{first, second}); err != nil {
+	if err := Replay(repo, baseCommit, []Change{first, second}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Replay(repo, base, []Change{second}); err == nil {
+	if err := Replay(repo, baseCommit, []Change{second}); err == nil {
 		t.Fatal("accepted out-of-order replay")
 	} else if failureCode(t, err) != CodePatchNotApplicable {
 		t.Fatalf("wrong-order replay: %v", err)
@@ -178,7 +178,7 @@ func TestGenerateRoundTripsContentAndExistence(t *testing.T) {
 // Each case checks the exact error code, because callers branch on the code
 // instead of matching Git's changing error text.
 func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
-	repo, base := sourceRepo(t)
+	repo, baseCommit := sourceRepo(t)
 	good := generated(t, text("A\n"), text("B\n"))
 	cases := []struct {
 		name     string
@@ -213,7 +213,7 @@ func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			before := snapshot(t, repo)
-			err := Replay(repo, base, []Change{tc.change})
+			err := Replay(repo, baseCommit, []Change{tc.change})
 			if err == nil {
 				t.Fatal("accepted invalid patch")
 			}
@@ -266,24 +266,25 @@ func TestGeneratedPatchHandlesSeparatedHunks(t *testing.T) {
 	}
 }
 
-// The baseline is the full commit ID the plan's source is measured against, so
-// Open rejects a moving name like HEAD instead of reading whatever the branch
-// points at now. BASE_REQUIRED and BASE_UNAVAILABLE stay distinct so a caller
-// can tell a wrong argument shape from a commit the repository does not have.
-func TestOpenRejectsNonCommitBaseline(t *testing.T) {
+// The base commit is the full commit ID the plan's source is measured against,
+// so Open rejects a moving name like HEAD instead of reading whatever the
+// branch points at now. BASE_COMMIT_INVALID and BASE_UNAVAILABLE stay distinct
+// so a caller can tell a wrong argument shape from a commit the repository does
+// not have.
+func TestOpenRejectsNonCommitBaseCommit(t *testing.T) {
 	repo, _ := sourceRepo(t)
 	cases := []struct {
-		name, base, wantCode string
+		name, baseCommit, wantCode string
 	}{
-		{"branch name", "HEAD", CodeBaseRequired},
-		{"short name", "main", CodeBaseRequired},
+		{"branch name", "HEAD", CodeBaseCommitInvalid},
+		{"short name", "main", CodeBaseCommitInvalid},
 		{"missing commit", strings.Repeat("a", 40), CodeBaseUnavailable},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Open(repo, tc.base)
+			_, err := Open(repo, tc.baseCommit)
 			if err == nil {
-				t.Fatalf("accepted baseline %q", tc.base)
+				t.Fatalf("accepted base commit %q", tc.baseCommit)
 			}
 			if got := failureCode(t, err); got != tc.wantCode {
 				t.Fatalf("code = %q, want %q: %v", got, tc.wantCode, err)

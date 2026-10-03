@@ -5,7 +5,7 @@ import "fmt"
 // Error codes reported by the patch engine. Callers branch on these constants
 // instead of matching Git diagnostic prose, which is not a stable interface.
 const (
-	CodeBaseRequired       = "BASE_REQUIRED"
+	CodeBaseCommitInvalid  = "BASE_COMMIT_INVALID"
 	CodeBaseUnavailable    = "BASE_UNAVAILABLE"
 	CodeUnsupportedPath    = "UNSUPPORTED_PATH"
 	CodePatchInvalid       = "PATCH_INVALID"

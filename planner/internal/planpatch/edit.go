@@ -11,10 +11,11 @@ import (
 )
 
 // Expect binds an edit to the entire plan snapshot, selected change, and source
-// baseline. Changes to earlier steps invalidate it, even if the target is intact.
-func Expect(raw []byte, target, base string) string {
+// base commit. Changes to earlier steps invalidate it, even if the target is
+// intact.
+func Expect(raw []byte, target, baseCommit string) string {
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte("planner-edit-v1"), raw, []byte(target), []byte(base)} {
+	for _, part := range [][]byte{[]byte("planner-edit-v1"), raw, []byte(target), []byte(baseCommit)} {
 		_, _ = h.Write(part)
 		_, _ = h.Write([]byte{0})
 	}
