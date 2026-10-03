@@ -54,6 +54,11 @@ credentials in `auth.json` to the container.
 
 Goog requires both environment variables and never falls back to host Pi state.
 
+The `goog` group belongs to Vibe only. OpenCode keeps its own Goog credential
+in `~/.config/opencode/goog.key`, referenced as `settings.apiKey` in its
+`providers.goog` entry, and the two tools deliberately use separate LiteLLM
+keys so usage stays attributable per tool.
+
 Docker networking does not make host `localhost` reachable from the container;
 use an address reachable from inside Docker for the Goog endpoint.
 
