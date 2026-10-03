@@ -200,9 +200,9 @@ func TestNewJSONErrorsReportsUsage(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "non_md", args: []string{"--json-errors", "new", badOut}, want: "planner new requires an output path ending in .md: usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
-		{name: "missing_output", args: []string{"new", "--json-errors"}, want: "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
-		{name: "extra_output", args: []string{"new", badOut, "extra", "--json-errors"}, want: "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
+		{name: "non_md", args: []string{"--json-errors", "new", badOut}, want: "planner new requires an output path ending in .md: usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
+		{name: "missing_output", args: []string{"new", "--json-errors"}, want: "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
+		{name: "extra_output", args: []string{"new", badOut, "extra", "--json-errors"}, want: "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
 	}
 	for _, tc := range cases {
 		tc := tc

@@ -99,3 +99,12 @@ running plan evaluations. An eval that creates a plan, commits an implementation
 step, and then revises the plan will catch a workflow that used `HEAD`: the edit
 fails because the diff no longer applies. When checking such a run, confirm that
 every guarded command used the base commit, not the new `HEAD`.
+
+## Issue frontmatter
+
+`planner new` writes a plain scaffold by default. When the plan belongs in the
+PDE vault, pass `--issue --project <name>` to prepend the vault issue
+frontmatter. `--project` is required with `--issue` and rejected without it,
+`date_created` is today's local date, and `--diff`/`--dry-run` preview the same
+bytes that would be written. The block matches what `planner check` accepts, so
+a wrapped plan keeps parsing without further edits.
