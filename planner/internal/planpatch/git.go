@@ -112,24 +112,25 @@ func emptySession(format string) (*Session, error) {
 }
 
 // Open requires a full immutable commit ID. Dirty and untracked source files
-// are intentionally not part of this baseline. It does not stage or stash them.
-func Open(repo, base string) (*Session, error) {
-	if !objectID.MatchString(base) {
-		return nil, failure(CodeBaseRequired, "use a full commit ID, not HEAD or a branch name")
+// are intentionally not part of this base commit. It does not stage or stash
+// them.
+func Open(repo, baseCommit string) (*Session, error) {
+	if !objectID.MatchString(baseCommit) {
+		return nil, failure(CodeBaseCommitInvalid, "use a full commit ID, not HEAD or a branch name")
 	}
 	root, err := filepath.Abs(repo)
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := runGit(root, nil, "rev-parse", "--verify", "--end-of-options", base+"^{commit}")
+	resolved, err := runGit(root, nil, "rev-parse", "--verify", "--end-of-options", baseCommit+"^{commit}")
 	if err != nil {
 		return nil, failure(CodeBaseUnavailable, "%w", err)
 	}
-	if strings.TrimSpace(string(resolved)) != base {
-		return nil, failure(CodeBaseRequired, "expected a commit, not a tag object")
+	if strings.TrimSpace(string(resolved)) != baseCommit {
+		return nil, failure(CodeBaseCommitInvalid, "expected a commit, not a tag object")
 	}
 	format := "sha1"
-	if len(base) == 64 {
+	if len(baseCommit) == 64 {
 		format = "sha256"
 	}
 	objects, err := runGit(root, nil, "rev-parse", "--path-format=absolute", "--git-path", "objects")
@@ -149,7 +150,7 @@ func Open(repo, base string) (*Session, error) {
 	err = os.WriteFile(filepath.Join(s.dir, "objects", "info", "alternates"),
 		[]byte(objectDir+"\n"), 0600)
 	if err == nil {
-		_, err = s.git(nil, "read-tree", base)
+		_, err = s.git(nil, "read-tree", baseCommit)
 	}
 	if err != nil {
 		s.Close()
@@ -293,11 +294,11 @@ func (s *Session) Apply(change Change) error {
 	return nil
 }
 
-// Replay applies each change in order on top of base in a disposable
+// Replay applies each change in order on top of the base commit in a disposable
 // repository. It stops at the first failure and never writes to the source
 // repository. The caller decides whether changes is a full plan or a prefix.
-func Replay(repo, base string, changes []Change) error {
-	s, err := Open(repo, base)
+func Replay(repo, baseCommit string, changes []Change) error {
+	s, err := Open(repo, baseCommit)
 	if err != nil {
 		return err
 	}

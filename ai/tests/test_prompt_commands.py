@@ -153,7 +153,7 @@ def seed_plan(
         [
             "planner", "inspect", str(plan), "--target",
             "implementation[1].file_changes[1]", "--repo", str(repo),
-            "--base", base, "--before", "--code-out", str(scratch),
+            "--base-commit", base, "--before", "--code-out", str(scratch),
         ],
         env=env,
     )
@@ -163,7 +163,8 @@ def seed_plan(
         [
             "planner", "patch", str(plan), "--target",
             "implementation[1].file_changes[1]", "--expect", token,
-            "--repo", str(repo), "--base", base, "--after-file", str(scratch),
+            "--repo", str(repo), "--base-commit", base,
+            "--after-file", str(scratch),
         ],
         env=env,
     )
@@ -187,7 +188,7 @@ def test_prompt_commands_run_in_zsh(
     for original in extract_commands(prompt):
         if not TARGET_COMMAND.match(original):
             continue
-        if "--repo <repo>" not in original or "--base <commit>" not in original:
+        if "--repo <repo>" not in original or "--base-commit <commit>" not in original:
             continue
         if original.startswith("planner inspect "):
             scratch = str(Path(tempfile.mkdtemp(dir=tmp_path, prefix="run.")) / "source")
