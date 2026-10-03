@@ -34,9 +34,6 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim/**",
 				".config/opencode",
 				".config/herdr",
-				".config/systemd/user/opencode-web.service",
-				".config/systemd/user/opencode-web-health.service",
-				".config/systemd/user/opencode-web-health.timer",
 				".codex",
 				".agents",
 				".pi",
@@ -61,9 +58,6 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim/**",
 				".config/opencode",
 				".config/herdr",
-				".config/systemd/user/opencode-web.service",
-				".config/systemd/user/opencode-web-health.service",
-				".config/systemd/user/opencode-web-health.timer",
 			},
 		},
 	}
@@ -222,9 +216,6 @@ func TestZshTemplateProfiles(t *testing.T) {
 }
 
 const (
-	fakeSystemctlScript = `#!/bin/sh
-printf '%s\n' "$*" >>"$HOME/systemctl-arguments"
-`
 	fakeGHScript = `#!/bin/sh
 printf '%s\n' "$@" >"$HOME/gh-arguments"
 printf 'diff body\n'
@@ -236,9 +227,6 @@ cat >"$HOME/delta-input"
 	fakeVibeScript = `#!/bin/sh
 printf '%s\n' "${GOOG_BASE_URL-}" "${GOOG_API_KEY-}" "${GOOG_MODEL-}" >"$HOME/vibe-environment"
 printf '%s\n' "$@" >"$HOME/vibe-arguments"
-`
-	validOpenCodeCredentials = `OPENCODE_SERVER_USERNAME=opencode
-OPENCODE_SERVER_PASSWORD=secret
 `
 )
 
@@ -272,7 +260,7 @@ func TestVibeScopesGoogEnvironment(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
-	writeOpenCodeCredentialsAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
+	writeSecretFileAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
 export GOOG_API_KEY=demo-key
 export GOOG_MODEL=qwen3.8
 `)
@@ -314,9 +302,7 @@ func openCodeZshCommand(home, script string) *exec.Cmd {
 	command := exec.Command("zsh", "-i", "-c", script)
 	for _, value := range os.Environ() {
 		if !strings.HasPrefix(value, "HOME=") &&
-			!strings.HasPrefix(value, "ZDOTDIR=") &&
-			!strings.HasPrefix(value, "OPENCODE_SERVER_USERNAME=") &&
-			!strings.HasPrefix(value, "OPENCODE_SERVER_PASSWORD=") {
+			!strings.HasPrefix(value, "ZDOTDIR=") {
 			command.Env = append(command.Env, value)
 		}
 	}
@@ -345,12 +331,7 @@ func zshPluginPath(home, plugin, file string) string {
 	return filepath.Join(home, ".local", "share", "zsh", "plugins", filepath.FromSlash(plugin), file)
 }
 
-func writeOpenCodeCredentials(t *testing.T, home, contents string) {
-	t.Helper()
-	writeOpenCodeCredentialsAt(t, filepath.Join(home, ".config", "opencode", "server.env"), contents)
-}
-
-func writeOpenCodeCredentialsAt(t *testing.T, path, contents string) {
+func writeSecretFileAt(t *testing.T, path, contents string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
