@@ -12,14 +12,15 @@ planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-er
 Writes a new plan scaffold and fails without changing an existing destination.
 The output path must end in `.md`.
 
-- `--issue --project NAME` prepends the vault issue frontmatter. `--project` is
-  required with `--issue` and rejected without it, and `date_created` is today's
-  local date. The block matches the shape planner accepts, so a wrapped plan
-  keeps parsing without further edits.
+- `--issue --project NAME` prepends the vault issue frontmatter. PDE vault
+  plans are issue documents, so this frontmatter records the project, status,
+  and topics for vault views. `--project` is required with `--issue` and
+  rejected without it, and `date_created` is today's local date.
 - `--diff` prints a review preview of the bytes that would be written. It is
   additive and still writes the file.
 - `--dry-run` suppresses the write. Use `--diff --dry-run` to preview without
-  writing; it exits 1 when the preview is non-empty.
+  writing; it exits 1 when the preview is non-empty, a diff-style status that
+  says the preview has content to review, not that the command failed.
 
 ## planner inspect
 
@@ -65,7 +66,8 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - `--diff-file FILE` imports a raw unified diff. `-` reads stdin.
 - `--expect TOKEN` is the `edit_expect` from the targeted inspect.
 - `--dry-run` validates without writing the plan.
-- `--diff` prints a Git-generated review preview.
+- `--diff` prints the Git-generated review preview to stdout instead of the
+  normal JSON result.
 
 Patch replays the baseline plus every change through the edited one and never
 later changes.
@@ -108,16 +110,17 @@ compiles or passes tests.
 - Guarded replay validation applies every diff against the baseline in a
   disposable Git repository. It confirms applicability, not behavior.
 
-## Frontmatter flag
+## Issue frontmatter
 
-`planner new --issue --project NAME` writes the vault issue frontmatter that the
-parser accepts. The supported shape starts with `---` and contains a `tags` list
-with `"#Ticket"`, `type: issue`, a `status` of `open`, `in-progress`, or `done`,
-`template_version: 1`, a non-empty `project`, a `date_created` in `YYYY-MM-DD`
-form, and a `topics` list. Any other wrapper is rejected. The frontmatter is
-stripped before the plan body is parsed. As with a plain scaffold, `--diff`
-alone still writes the plan; combine it with `--dry-run` to preview the
-frontmatter without writing.
+PDE vault plans are issue documents, and the vault tracks each one through YAML
+frontmatter. `planner new` writes a plain plan by default; pass `--issue
+--project NAME` to prepend that frontmatter. The supported shape starts with
+`---` and contains a `tags` list with `"#Ticket"`, `type: issue`, a `status` of
+`open`, `in-progress`, or `done`, `template_version: 1`, a non-empty `project`,
+a `date_created` in `YYYY-MM-DD` form, and a `topics` list. Any other wrapper is
+rejected. The frontmatter is stripped before the plan body is parsed. As with a
+plain scaffold, `--diff` alone still writes the plan; combine it with
+`--dry-run` to preview the frontmatter without writing.
 
 ## Global flags
 
@@ -126,5 +129,6 @@ frontmatter without writing.
 ## Exit codes
 
 - `0`: success.
-- `1`: read, decode, validation, source, or write failure.
+- `1`: read, decode, validation, source, or write failure. `--diff --dry-run`
+  also exits 1 for a non-empty preview as a diff-style status, not a failure.
 - `2`: usage error.

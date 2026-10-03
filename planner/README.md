@@ -24,72 +24,6 @@ Guarded commands take `--repo` and `--base` together:
         (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
     planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
 
-## The baseline commit
-
-A plan's baseline is the full commit ID of the source repository at the moment
-the plan was created. Every fenced diff describes a change measured against that
-commit. The create-plan prompts record the full baseline in the plan's
-`### Current State`, and the implement-plan prompts read it and pass it as
-`--base`. Planner does not parse that text: the baseline is a convention between
-the prompts and the caller for the source commit recorded at creation, not a
-value Planner enforces. `--base` must be a full commit ID; `HEAD`, branch names,
-and tags are rejected so the same bytes can still be found after the branch has
-moved.
-
-## Why replay starts at the recorded baseline
-
-Plan creation reads the source at commit A and records A. Each implementation
-step is then committed, moving `HEAD` forward:
-
-    A  plan created; diffs measured against A
-    B  implementation step 1 committed
-    C  implementation step 2 committed    <- HEAD is now C
-
-The plan's diffs still describe A to B and B to C, so replay must start at A and
-apply each diff in order:
-
-    base A -> apply step 1 -> apply step 2
-
-Starting at C fails or matches the wrong content: step 1's diff expects the file
-as it was at A, but the file at C already contains step 1's changes. A guarded
-command given the current `HEAD` can then report readiness for a plan that does
-not match the tree it will be applied to.
-
-## What each guarded command does with the baseline
-
-- `planner inspect` computes `edit_expect` from the plan bytes, the normalized
-  selector, and the baseline without opening the baseline. With `--code-out` it
-  opens a disposable repository at the baseline, replays every change before the
-  selected one, and exports the source just before or just after that change.
-  The JSON result carries `selector`, `filename`, `step_title`, `step_summary`,
-  `explanation`, `base`, `edit_expect`, and `validation: "inspection_only"`,
-  plus `diff`; with `--code-out` it adds `code_exists`, `code_state`, `mode`, and
-  `code_out`.
-- `planner patch` re-checks `edit_expect`, replays the baseline plus every change
-  through the edited one, and only then writes the plan. It replays no later
-  changes and reports `prefix_replayed: true`, `downstream_checked: false`, and
-  `behavior_checked: false`. Add `--dry-run` to validate without writing or
-  `--diff` for a Git-generated review preview.
-- `planner check --repo --base` replays every diff from the baseline and reports
-  `applicability_checked: true`, `changes_replayed`, `source_state` as
-  `committed_snapshot_only`, and `behavior_checked: false`.
-
-The disposable repository shares read-only Git objects with your repository and
-is removed afterwards. Planner never stages, stashes, resets, or commits your
-worktree, and uncommitted or untracked files are not part of the baseline.
-
-## What the baseline does not protect against
-
-The baseline identifies a starting point for replay. It does not:
-
-- prove the commit is trusted, signed, or safe, and it is not an approval step;
-- lock the plan to a branch, remote, or author;
-- include uncommitted or untracked source;
-- guarantee the applied result compiles or passes tests;
-- stop someone from passing a different valid commit ID for the same plan.
-
-It makes replay repeatable. It does not make it authorized or correct.
-
 ## Quick orientation
 
 ```bash
@@ -100,8 +34,24 @@ planner check plan.md --repo "$REPO" --base "$BASE"
 
 `planner new` writes a scaffold and fails without changing an existing
 destination. `planner check plan.md` validates the structure. The guarded form
-adds `--repo` and `--base` and replays every diff against the recorded baseline.
-For a vault issue, add `--issue --project <name>` to `planner new`.
+adds `--repo` and `--base`; guarded `planner check` and `planner patch` replay
+diffs from the recorded baseline.
+
+## Issue frontmatter
+
+PDE vault plans are issue documents, and PDE records the project, status, and
+topics in YAML frontmatter. `planner new` writes a plain plan by default. Pass
+`--issue --project <name>` to prepend that frontmatter. See the [command
+reference](docs/reference/commands.md) for the supported fields and the preview
+flags.
+
+## Baseline commit
+
+A plan's baseline is the full Git commit ID of the source repository when the
+plan was created, and every fenced diff is measured against it. Pass it as
+`--base` to the guarded commands. See [Baseline
+replay](docs/explanation/baseline-replay.md) for how it is recorded and why the
+original commit is required.
 
 ## Documentation
 
@@ -112,18 +62,3 @@ For a vault issue, add `--issue --project <name>` to `planner new`.
 - [Baseline replay](docs/explanation/baseline-replay.md)
 
 The full index is [docs/README.md](docs/README.md).
-
-## Issue frontmatter
-
-`planner new` writes a plain scaffold by default. Pass `--issue --project
-<name>` to prepend the vault issue frontmatter that `planner check` accepts. See
-the [command reference](docs/reference/commands.md) for the required fields and
-the preview flags.
-
-## Baseline commit
-
-A plan's baseline is the full Git commit ID of the source repository at the
-moment the plan was created, and every fenced diff is measured against it. Pass
-it as `--base` to the guarded commands. See [Baseline
-replay](docs/explanation/baseline-replay.md) for how it is recorded and why the
-original commit is required.
