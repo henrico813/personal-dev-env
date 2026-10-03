@@ -12,14 +12,16 @@ import (
 
 const guardedHelp = `
 Guarded source-code revisions:
-  planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT
+  planner inspect <plan.md> --target 'SELECTOR' --repo DIR --base COMMIT
       [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT
+  planner patch <plan.md> --target 'SELECTOR' --expect TOKEN --repo DIR --base COMMIT
       (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
   planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
 
   SELECTOR is implementation[N].file_changes[M], with 1-based indices. Leading
-  zeros are accepted and the normalized selector is echoed in results.
+  zeros are accepted and the normalized selector is echoed in results. Quote
+  SELECTOR, because zsh expands unquoted brackets; for example,
+  'implementation[1].file_changes[1]'.
   --repo and --base are required for all three commands. --base is the full
   commit ID recorded in the plan's Current State when the plan was created, not
   the current HEAD of a worktree. Dirty and untracked source files are excluded;

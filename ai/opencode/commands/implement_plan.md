@@ -149,9 +149,9 @@ next Vibe run.
   current HEAD, because Vibe commits after each step. If no baseline is
   recorded, stop and ask the user.
 - If an approved correction changes an existing fenced code diff, run
-  `planner inspect <plan.md> --target <selector> --repo <repo> --base <commit>
+  `planner inspect <plan.md> --target '<selector>' --repo <repo> --base <commit>
   --code-out <new-scratch-file>`, edit the ordinary scratch source, then run
-  `planner patch <plan.md> --target <selector> --expect <edit_expect>
+  `planner patch <plan.md> --target '<selector>' --expect <edit_expect>
   --after-file <scratch-file> --repo <repo> --base <commit>`. Never edit that
   diff directly or use an unguarded command. Patch replays the base through the
   edited change only, and later changes are checked by `planner check --repo
