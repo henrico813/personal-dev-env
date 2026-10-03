@@ -1,0 +1,136 @@
+# Commands
+
+Planner commands run from any directory; relative paths resolve against the
+current directory.
+
+## planner new
+
+```text
+planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
+```
+
+Writes a new plan scaffold and fails without changing an existing destination.
+The output path must end in `.md`.
+
+- `--issue --project NAME` prepends the vault issue frontmatter. PDE vault
+  plans are issue documents, so this frontmatter records the project, status,
+  and topics for vault views. `--project` is required with `--issue` and
+  rejected without it, and `date_created` is today's local date.
+- `--diff` prints a review preview of the bytes that would be written. It is
+  additive and still writes the file.
+- `--dry-run` suppresses the write. Use `--diff --dry-run` to preview without
+  writing; it exits 1 when the preview is non-empty, a diff-style status that
+  says the preview has content to review, not that the command failed.
+
+## planner inspect
+
+```text
+planner inspect <plan.md>
+planner inspect <plan.md> --target SELECTOR --repo DIR --base-commit COMMIT [--code-out NEWFILE [--before]]
+```
+
+Without `--target`, inspect prints a JSON view of the parsed plan. With
+`--target`, it is a guarded command.
+
+`SELECTOR` is `implementation[N].file_changes[M]` with 1-based indices. Quote
+it, because zsh expands unquoted brackets. Leading zeros are accepted and the
+normalized selector is echoed in results.
+
+`--code-out` writes the source after the selected change to a new scratch file,
+or before it with `--before`. `--before` requires `--code-out`.
+
+### Inspect result fields
+
+- `selector`: normalized target.
+- `filename`, `step_title`, `step_summary`, `explanation`: the selected change.
+- `base_commit`: the base commit passed in.
+- `edit_expect`: token binding the plan bytes, normalized selector, and base
+  commit.
+- `validation`: `inspection_only`.
+- `diff`: the selected diff, present without `--code-out`.
+- `code_exists`, `code_state`, `mode`, `code_out`: present when source was
+  exported.
+
+## planner patch
+
+```text
+planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base-commit COMMIT
+  (--after-file FILE | --diff-file FILE) [--dry-run] [--diff]
+```
+
+Patch replaces one fenced change. Exactly one of `--after-file` and
+`--diff-file` is required.
+
+- `--after-file FILE` generates a diff from ordinary source. Use `/dev/null` to
+  propose deleting the file. Existing file mode is retained; a new file
+  defaults to `100644`.
+- `--diff-file FILE` imports a raw unified diff. `-` reads stdin.
+- `--expect TOKEN` is the `edit_expect` from the targeted inspect.
+- `--dry-run` validates without writing the plan.
+- `--diff` prints the Git-generated review preview to stdout instead of the
+  normal JSON result.
+
+Patch replays the base commit plus every change through the edited one and
+never later changes.
+
+### Patch result fields
+
+- `path`: the plan path.
+- `plan_sha256`: hash of the updated plan.
+- `written`: whether the plan was written.
+- `structure_valid`, `patch_syntax_valid`: checks that ran.
+- `prefix_replayed`: always `true` on success.
+- `downstream_checked`: `false`; later changes are not replayed.
+- `base_commit`: the base commit passed in.
+- `behavior_checked`: `false`.
+
+## planner check
+
+```text
+planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
+```
+
+`planner check` validates the plan structure, then replays every change against
+the base commit. If `--base-commit` is omitted, the first line of `### Current
+State` must be `Base commit: <full commit ID>`. If `--repo` is omitted, Planner
+uses the current working directory's Git repository. `--stdin` reads the plan
+from stdin. `--format` is not accepted.
+
+The check opens a disposable repository at the base commit and replays the
+whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
+`applicability_checked: true`, `changes_replayed`, `base_commit`,
+`source_state: "committed_snapshot_only"`, and `behavior_checked: false`.
+`behavior_checked: false` means an applying patch is not proof that the result
+compiles or passes tests.
+
+## Validation modes
+
+- Structure validation runs on parsed plan fields. It enforces required
+  sections, non-empty fields, length limits, unique filenames per step, at
+  least one goal, at least one implementation step, and at least one file
+  change per step. It does not read source.
+- Guarded replay validation applies every diff against the base commit in a
+  disposable Git repository. It confirms applicability, not behavior.
+
+## Issue frontmatter
+
+PDE vault plans are issue documents, and the vault tracks each one through YAML
+frontmatter. `planner new` writes a plain plan by default; pass `--issue
+--project NAME` to prepend that frontmatter. The supported shape starts with
+`---` and contains a `tags` list with `"#Ticket"`, `type: issue`, a `status` of
+`open`, `in-progress`, or `done`, `template_version: 1`, a non-empty `project`,
+a `date_created` in `YYYY-MM-DD` form, and a `topics` list. Any other wrapper is
+rejected. The frontmatter is stripped before the plan body is parsed. As with a
+plain scaffold, `--diff` alone still writes the plan; combine it with
+`--dry-run` to preview the frontmatter without writing.
+
+## Global flags
+
+`--json-errors` emits failures as structured JSON to stderr.
+
+## Exit codes
+
+- `0`: success.
+- `1`: read, decode, validation, source, or write failure. `--diff --dry-run`
+  also exits 1 for a non-empty preview as a diff-style status, not a failure.
+- `2`: usage error.
