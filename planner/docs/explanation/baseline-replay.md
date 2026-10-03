@@ -28,12 +28,12 @@ If you pass the current `HEAD` instead of the recorded baseline:
 ## A/B/C example: why replay starts at A
 
 Plan creation reads the source at commit A and records A as the baseline. Each
-implementation step is then committed by Vibe, moving `HEAD` forward:
+implementation step is then committed, moving `HEAD` forward:
 
 ```text
 A  plan created; diffs measured against A
-B  Vibe commits step 1
-C  Vibe commits step 2        <- HEAD is now C
+B  step 1 committed
+C  step 2 committed        <- HEAD is now C
 ```
 
 The plan's diffs still describe changes from A to B and from B to C. Replay must
@@ -92,12 +92,10 @@ enforces; Planner uses only the full commit ID supplied by the caller as
 
 ## Who this matters to
 
-For ordinary users who run Planner through the create-plan and implement-plan
-prompts, the baseline is handled by the prompt and mostly invisible. The prompt
-should record it once and reuse it.
-
-It matters directly to maintainers of those prompts and to anyone writing or
-running plan evaluations. An eval that creates a plan, commits an implementation
-step, and then revises the plan will catch a workflow that used `HEAD`: the edit
-fails because the diff no longer applies. When checking such a run, confirm that
-every guarded command passed the original commit, not the new `HEAD`.
+When you run Planner through the create-plan and implement-plan prompts, the
+prompt records the baseline once and reuses it, so the value is mostly handled
+for you. Maintainers of those prompts and anyone testing the plan workflow need
+to watch it directly. A test that creates a plan, commits an implementation
+step, and then revises the plan fails if the workflow used `HEAD`, because the
+diff no longer applies. When checking such a run, confirm that every guarded
+command passed the original commit, not the new `HEAD`.

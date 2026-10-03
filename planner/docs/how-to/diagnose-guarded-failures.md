@@ -7,8 +7,11 @@ is set:
 {"code": "...", "message": "...", "recovery_hint": "..."}
 ```
 
-Without the flag they print `planner: CODE: message`. The process exits 2 for a
-usage error and 1 for other failures.
+`recovery_hint` is a short next action for that failure. `PLAN_STALE` and
+`PLAN_BUSY` get a specific hint; other codes get the general advice to fix the
+input or source assumption instead of retrying unchanged. Without `--json-errors`
+they print `planner: CODE: message`. The process exits 2 for a usage error and 1
+for other failures.
 
 ## Read the code first
 
@@ -34,6 +37,20 @@ The patch engine also reports `BASE_REQUIRED`, `BASE_UNAVAILABLE`,
 `UNSUPPORTED_PATH`, `PATCH_INVALID`, `PATCH_ENVELOPE`, `PATCH_PATH_MISMATCH`,
 `PATCH_UNSUPPORTED`, `PATCH_NOT_APPLICABLE`, `PATCH_NO_CHANGE`, and
 `PLAN_UNSUPPORTED` when a guarded operation reaches it.
+
+## What to do next
+
+- `SOURCE_CHECK`: pass the full commit ID recorded when the plan was created as
+  `--base`, not `HEAD`, a branch, or a tag. If a diff did not apply, export the
+  source at the baseline with `planner inspect --code-out` and rewrite the
+  change through `planner patch` instead of editing the fenced diff by hand.
+- `WRITE_OUTPUT`: check that the destination path exists and is writable, then
+  retry. `OUTPUT_REPORT_FAILED` is different: the plan may already have been
+  written, so inspect it before retrying.
+- `VALIDATE_RESULT`, `PLAN_EDIT`, `PLAN_COLLATERAL_CHANGE`, `PATCH_INPUT`: the
+  replacement changed the plan in an unsupported way. Reread the plan and make
+  the change through `planner inspect` and `planner patch` so the prefix
+  replays. Do not edit a guarded fence by hand.
 
 ## Common causes
 
