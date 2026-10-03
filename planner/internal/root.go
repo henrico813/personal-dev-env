@@ -19,19 +19,20 @@ const helpText = `planner provides markdown-first implementation-plan workflows.
 Usage:
   planner
   planner help
-  planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
-  planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
-  planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
+	planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
+  planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
   planner inspect <plan.md>
-  planner inspect <plan.md> --target 'SELECTOR' --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> --target 'SELECTOR' --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
+  planner inspect <plan.md> --target SELECTOR --repo DIR
+      --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
+      --base-commit COMMIT (--after-file FILE | --diff-file FILE)
+      [--dry-run] [--diff] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
 
 Markdown-first authoring:
   1. Run planner new plan.md. It fails without changing an existing destination.
-     Add --issue --project NAME when the destination is a vault issue.
   2. Edit prose and structure directly in the Markdown file.
   3. Change code diffs only through guarded patch: inspect with --code-out to
      export the source and read edit_expect, edit that source, then patch with
@@ -39,7 +40,9 @@ Markdown-first authoring:
   4. Add or remove a file change by hand: copy a PLACEHOLDER fence, fill it with
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
-  5. Finish with planner check plan.md --repo DIR --base COMMIT as the final gate.
+  5. Finish with planner check plan.md as the final gate. It reports every
+     structure violation and tries every planned change against the base commit
+     named by the "Base commit:" line.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
@@ -63,10 +66,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "new":
 		return runNew(args[1:], stdout, stderr)
 	case "check":
-		if hasArg(args[1:], "--repo") || hasArg(args[1:], "--base") {
-			return runGuardedCheck(args[1:], stdout, stderr)
-		}
-		return runCheck("check", args[1:], stdout, stderr)
+		return runGuardedCheck(args[1:], stdout, stderr)
 	case "inspect":
 		if hasArg(args[1:], "--target") {
 			return runGuardedInspect(args[1:], stdout, stderr)
@@ -135,63 +135,6 @@ func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 	return cliErr
 }
 
-// runCheck validates markdown plans and reports every violation.
-func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
-	const usage = "usage: planner check [<plan.md>] [--stdin] [--json-errors]"
-	for _, a := range args {
-		if a == "--format" {
-			reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
-			return 2
-		}
-	}
-	positional, pf, err := splitPreviewArgs(args, false, true)
-	if err != nil {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	if (len(positional) == 0 && !pf.stdin) || len(positional) > 1 {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
-		return 2
-	}
-
-	path := ""
-	if len(positional) == 1 {
-		path = positional[0]
-	}
-	if path != "" && strings.HasSuffix(strings.ToLower(path), ".json") {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "planner check no longer accepts JSON plan input: "+usage))
-		return 2
-	}
-
-	var raw []byte
-	if pf.stdin {
-		raw, err = io.ReadAll(os.Stdin)
-	} else {
-		raw, err = os.ReadFile(path)
-	}
-	if err != nil {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
-		return 1
-	}
-	parsed, parseErr := ParseMarkdown(string(raw))
-	if parseErr != nil {
-		reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
-		return 1
-	}
-	plan := parsed.Plan
-
-	if errs := ValidatePlanAll(plan); len(errs) > 0 {
-		messages := make([]string, len(errs))
-		for i, e := range errs {
-			messages[i] = e.Message
-		}
-		reportError(stderr, cmd, newPlannerCLIError(PlannerValidateInputError, errors.New(strings.Join(messages, "\n")), "plan"))
-		return 1
-	}
-	_, _ = io.WriteString(stdout, "OK\n")
-	return 0
-}
-
 func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 	const usage = "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"
 	const nonMarkdownUsage = "planner new requires an output path ending in .md: " + usage
@@ -246,9 +189,7 @@ type newIssueOptions struct {
 	project string
 }
 
-// parseNewIssueFlags removes --issue and --project and checks that they are
-// used together. It runs before output-path handling so a missing project fails
-// as a usage error without touching the destination.
+// parseNewIssueFlags removes issue flags and checks that they are used together.
 func parseNewIssueFlags(args []string) (newIssueOptions, []string, error) {
 	var opts newIssueOptions
 	kept := make([]string, 0, len(args))
@@ -355,16 +296,6 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 	return kept, pf, nil
 }
 
-func patchSourceLabel(path string, useStdin bool) string {
-	if useStdin {
-		return "stdin"
-	}
-	if path == "" {
-		return "JSON input"
-	}
-	return path
-}
-
 type InspectPlan struct {
 	Title            string           `json:"title"`
 	Overview         string           `json:"overview"`
@@ -430,13 +361,13 @@ func buildUpdateDiffExpect(selector, filename, explanation, diffRaw string) stri
 // is set. stdoutPathOnWrite is printed on successful writes when --diff is not
 // set, preserving the legacy "create prints the output path on success" stdout
 // contract.
-func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
-	baseline, err := readBaseline(basePath)
+func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, outputPath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
+	existing, err := readExistingOutput(outputPath)
 	if err != nil {
-		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, basePath))
+		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, outputPath))
 		return 1
 	}
-	d := diffLines(baseline, rendered)
+	d := diffLines(existing, rendered)
 	if pf.diff && d != "" {
 		_, _ = io.WriteString(stdout, d)
 	}
@@ -456,12 +387,10 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 	return 0
 }
 
-// readBaseline returns the existing file content for diff comparison. A
-// missing file is equivalent to an empty baseline (new-file diff). Any other
-// read error surfaces so permission-denied or EISDIR do not silently become
-// empty baselines.
-func readBaseline(path string) (string, error) {
-	data, err := os.ReadFile(path)
+// readExistingOutput returns the current contents of the file at outputPath,
+// or "" if none exists, so the --diff preview can show what the write changes.
+func readExistingOutput(outputPath string) (string, error) {
+	data, err := os.ReadFile(outputPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}

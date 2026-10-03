@@ -30,7 +30,7 @@ func revisionGit(t *testing.T, repo string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func revisionRepoContent(t *testing.T, content string, perm os.FileMode) (repo, base string) {
+func revisionRepoContent(t *testing.T, content string, perm os.FileMode) (repo, baseCommit string) {
 	t.Helper()
 	repo = t.TempDir()
 	revisionGit(t, repo, "init", "--quiet", "--template=")
@@ -40,11 +40,11 @@ func revisionRepoContent(t *testing.T, content string, perm os.FileMode) (repo, 
 	revisionGit(t, repo, "add", "foo.txt")
 	revisionGit(t, repo, "-c", "user.name=Test",
 		"-c", "user.email=test@example.invalid",
-		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "baseline")
+		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base commit")
 	return repo, revisionGit(t, repo, "rev-parse", "HEAD")
 }
 
-func revisionRepo(t *testing.T, perm os.FileMode) (repo, base string) {
+func revisionRepo(t *testing.T, perm os.FileMode) (repo, baseCommit string) {
 	t.Helper()
 	return revisionRepoContent(t, "A\n", perm)
 }
@@ -60,6 +60,33 @@ func fooDiff(t *testing.T, before, after, mode string) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSuffix(string(raw), "\n")
+}
+
+// writeRenderedPlan renders plan to a fresh temp Markdown file.
+func writeRenderedPlan(t *testing.T, plan Plan) string {
+	t.Helper()
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(name, []byte(rendered), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+// checkPlanFixture renders a plan whose single foo.txt diff applies and whose
+// Current State records the base commit as its first line, matching
+// create-plan output.
+func checkPlanFixture(t *testing.T) (repo, baseCommit, name string) {
+	t.Helper()
+	repo, baseCommit = revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100644")
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	return repo, baseCommit, writeRenderedPlan(t, plan)
 }
 
 // writeRevisionPlan renders the plan and inserts a human review note. A targeted
@@ -80,9 +107,9 @@ func writeRevisionPlan(t *testing.T, plan Plan) string {
 	return name
 }
 
-func revisionFixture(t *testing.T, twoSteps bool) (repo, base, name string) {
+func revisionFixture(t *testing.T, twoSteps bool) (repo, baseCommit, name string) {
 	t.Helper()
-	repo, base = revisionRepo(t, 0644)
+	repo, baseCommit = revisionRepo(t, 0644)
 	plan := BuildPlanExample()
 	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
 	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100644")
@@ -97,26 +124,26 @@ func revisionFixture(t *testing.T, twoSteps bool) (repo, base, name string) {
 			}},
 		})
 	}
-	return repo, base, writeRevisionPlan(t, plan)
+	return repo, baseCommit, writeRevisionPlan(t, plan)
 }
 
 // revisionExecutableFixture commits foo.txt with the executable bit so the
 // patch path can prove it retains mode 100755 instead of resetting to 100644.
-func revisionExecutableFixture(t *testing.T) (repo, base, name string) {
+func revisionExecutableFixture(t *testing.T) (repo, baseCommit, name string) {
 	t.Helper()
-	repo, base = revisionRepo(t, 0755)
+	repo, baseCommit = revisionRepo(t, 0755)
 	plan := BuildPlanExample()
 	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
 	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100755")
-	return repo, base, writeRevisionPlan(t, plan)
+	return repo, baseCommit, writeRevisionPlan(t, plan)
 }
 
 // revisionBrokenSecondFixture leaves step 2 as an unusable PLACEHOLDER. A new
 // plan can have a later change that is not written yet while an earlier step is
 // revised, so patch must not depend on every later change applying.
-func revisionBrokenSecondFixture(t *testing.T) (repo, base, name string) {
+func revisionBrokenSecondFixture(t *testing.T) (repo, baseCommit, name string) {
 	t.Helper()
-	repo, base = revisionRepo(t, 0644)
+	repo, baseCommit = revisionRepo(t, 0644)
 	plan := BuildPlanExample()
 	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
 	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100644")
@@ -129,7 +156,7 @@ func revisionBrokenSecondFixture(t *testing.T) (repo, base, name string) {
 			Diff:        "PLACEHOLDER",
 		}},
 	})
-	return repo, base, writeRevisionPlan(t, plan)
+	return repo, baseCommit, writeRevisionPlan(t, plan)
 }
 
 func revisionExecute(args ...string) (int, string, string) {
@@ -147,11 +174,11 @@ func decodeGuardedResult[T any](t *testing.T, raw string) T {
 	return value
 }
 
-func revisionInspect(t *testing.T, name, repo, base, target string,
+func revisionInspect(t *testing.T, name, repo, baseCommit, target string,
 	extras ...string) guardedInspectResult {
 	t.Helper()
 	args := []string{"inspect", name, "--target", target,
-		"--repo", repo, "--base", base}
+		"--repo", repo, "--base-commit", baseCommit}
 	code, out, diagnostic := revisionExecute(append(args, extras...)...)
 	if code != 0 {
 		t.Fatalf("inspect %s: exit %d: %s", target, code, diagnostic)
@@ -159,20 +186,20 @@ func revisionInspect(t *testing.T, name, repo, base, target string,
 	return decodeGuardedResult[guardedInspectResult](t, out)
 }
 
-func revisionPatch(t *testing.T, name, target, expect, repo, base string,
+func revisionPatch(t *testing.T, name, target, expect, repo, baseCommit string,
 	extras ...string) guardedPatchResult {
 	t.Helper()
 	code, out, diagnostic := revisionExecute(patchArgs(name, target, expect,
-		repo, base, extras...)...)
+		repo, baseCommit, extras...)...)
 	if code != 0 {
 		t.Fatalf("patch %s: exit %d: %s", target, code, diagnostic)
 	}
 	return decodeGuardedResult[guardedPatchResult](t, out)
 }
 
-func patchArgs(name, target, expect, repo, base string, extra ...string) []string {
+func patchArgs(name, target, expect, repo, baseCommit string, extra ...string) []string {
 	args := []string{"patch", name, "--target", target, "--expect", expect,
-		"--repo", repo, "--base", base}
+		"--repo", repo, "--base-commit", baseCommit}
 	return append(args, extra...)
 }
 
@@ -194,14 +221,14 @@ func requireGuardedError(t *testing.T, diagnostic, wantCode string) guardedError
 	return payload
 }
 
-// Inspect with --code-out exports ordinary source from the baseline (the full
-// commit ID the plan is measured against). A model edits a file instead of a
-// JSON-escaped code string, and the user's checkout is left untouched.
+// Inspect with --code-out exports ordinary source from the base commit (the
+// full commit ID the plan is measured against). A model edits a file instead of
+// a JSON-escaped code string, and the user's checkout is left untouched.
 func TestInspectExportsProposedSource(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	code, err := os.ReadFile(scratch)
 	if err != nil {
 		t.Fatal(err)
@@ -234,20 +261,20 @@ func TestInspectExportsProposedSource(t *testing.T) {
 // hand-counts hunk line numbers. The write changes only the selected diff, so
 // the human review note next to it stays in the file.
 func TestPatchWritesPlanFromScratch(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if err := os.WriteFile(scratch, []byte("C\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result := revisionPatch(t, name, target, view.EditExpect, repo, base,
+	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	if !result.Written || !result.PrefixReplayed || result.DownstreamChecked {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if result.PlanSHA256 == "" || result.Base != base {
-		t.Fatalf("result missing hash or base: %+v", result)
+	if result.PlanSHA256 == "" || result.BaseCommit != baseCommit {
+		t.Fatalf("result missing hash or base commit: %+v", result)
 	}
 	changed, err := os.ReadFile(name)
 	if err != nil {
@@ -257,20 +284,20 @@ func TestPatchWritesPlanFromScratch(t *testing.T) {
 		!bytes.Contains(changed, []byte("+C")) {
 		t.Fatalf("missing edit or review note: %s", changed)
 	}
-	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("final gate: %s", diagnostic)
 	}
 }
 
 // A stale edit_expect token (a hash of the plan, the selected change, and the
-// baseline) must fail before any write, and a malformed replacement diff must
-// report PATCH_INVALID. After either failure the plan file must be unchanged, so
-// a rejected edit cannot leave a half-written plan.
+// base commit) must fail before any write, and a malformed replacement diff
+// must report PATCH_INVALID. After either failure the plan file must be
+// unchanged, so a rejected edit cannot leave a half-written plan.
 func TestStaleTokenAndBadDiffRejected(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
-	view := revisionInspect(t, name, repo, base, target)
+	view := revisionInspect(t, name, repo, baseCommit, target)
 	raw, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
@@ -284,14 +311,14 @@ func TestStaleTokenAndBadDiffRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _, diagnostic := revisionExecute(patchArgs(name, target, view.EditExpect,
-		repo, base, "--diff-file", diff)...)
+		repo, baseCommit, "--diff-file", diff)...)
 	if code == 0 {
 		t.Fatal("stale token was accepted")
 	}
 	requireGuardedError(t, diagnostic, planpatch.CodePlanStale)
-	view = revisionInspect(t, name, repo, base, target)
+	view = revisionInspect(t, name, repo, baseCommit, target)
 	code, _, diagnostic = revisionExecute(patchArgs(name, target, view.EditExpect,
-		repo, base, "--diff-file", diff)...)
+		repo, baseCommit, "--diff-file", diff)...)
 	if code == 0 {
 		t.Fatal("bad diff was accepted")
 	}
@@ -309,15 +336,15 @@ func TestStaleTokenAndBadDiffRejected(t *testing.T) {
 // and leave the earlier export intact, so an inspection cannot overwrite reviewed
 // source or the plan itself.
 func TestInspectScratchReservation(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if view.CodeOut != scratch {
 		t.Fatalf("code_out = %q, want %q", view.CodeOut, scratch)
 	}
 	code, _, diagnostic := revisionExecute("inspect", name, "--target", target,
-		"--repo", repo, "--base", base, "--code-out", scratch)
+		"--repo", repo, "--base-commit", baseCommit, "--code-out", scratch)
 	if code == 0 {
 		t.Fatal("overwrote an existing scratch file")
 	}
@@ -334,10 +361,10 @@ func TestInspectScratchReservation(t *testing.T) {
 // Dry-run must validate the candidate without writing, so a model can check a
 // coupled edit before writing it. The plan bytes must be identical after.
 func TestDryRunLeavesPlanUnwritten(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if err := os.WriteFile(scratch, []byte("D\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +372,7 @@ func TestDryRunLeavesPlanUnwritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := revisionPatch(t, name, target, view.EditExpect, repo, base,
+	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch, "--dry-run")
 	if result.Written {
 		t.Fatal("dry-run reported a write")
@@ -362,15 +389,15 @@ func TestDryRunLeavesPlanUnwritten(t *testing.T) {
 // --diff prints a Git-generated preview for human review. It must show the new
 // line so a reviewer can approve the change without opening the plan.
 func TestPatchDiffPreviewShowsChange(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if err := os.WriteFile(scratch, []byte("D\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	code, out, diagnostic := revisionExecute(patchArgs(name, target, view.EditExpect,
-		repo, base, "--after-file", scratch, "--dry-run", "--diff")...)
+		repo, baseCommit, "--after-file", scratch, "--dry-run", "--diff")...)
 	if code != 0 {
 		t.Fatalf("dry-run preview: exit %d: %s", code, diagnostic)
 	}
@@ -379,24 +406,24 @@ func TestPatchDiffPreviewShowsChange(t *testing.T) {
 	}
 }
 
-// Prefix replay applies the baseline plus every change through the edited one,
-// never later changes. An earlier change must patch even when a later change is
-// a PLACEHOLDER; check --repo --base then reports the later target, and editing
-// that change in order makes check pass.
+// Prefix replay applies the base commit plus every change through the edited
+// one, never later changes. An earlier change must patch even when a later
+// change is a PLACEHOLDER; check --repo --base-commit then reports the later
+// target, and editing that change in order makes check pass.
 func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
-	repo, base, name := revisionBrokenSecondFixture(t)
+	repo, baseCommit, name := revisionBrokenSecondFixture(t)
 	first := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "first.txt")
-	view := revisionInspect(t, name, repo, base, first, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, first, "--code-out", scratch)
 	if err := os.WriteFile(scratch, []byte("D\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result := revisionPatch(t, name, first, view.EditExpect, repo, base,
+	result := revisionPatch(t, name, first, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	if !result.PrefixReplayed || result.DownstreamChecked {
 		t.Fatalf("prefix replay flags wrong: %+v", result)
 	}
-	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code == 0 {
 		t.Fatal("broken later change passed the readiness check")
 	}
@@ -406,7 +433,7 @@ func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
 	}
 	second := "implementation[2].file_changes[1]"
 	scratch = filepath.Join(t.TempDir(), "second.txt")
-	beforeView := revisionInspect(t, name, repo, base, second,
+	beforeView := revisionInspect(t, name, repo, baseCommit, second,
 		"--code-out", scratch, "--before")
 	current, err := os.ReadFile(scratch)
 	if err != nil {
@@ -418,9 +445,9 @@ func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
 	if err := os.WriteFile(scratch, []byte("E\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	revisionPatch(t, name, second, beforeView.EditExpect, repo, base,
+	revisionPatch(t, name, second, beforeView.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
-	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("completed revision failed: %s", diagnostic)
 	}
@@ -430,17 +457,17 @@ func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
 // malformed patch, which is PATCH_INVALID. A no-op replacement must return the
 // first code and leave the plan untouched.
 func TestUnchangedScratchReportsNoChange(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target,
+	view := revisionInspect(t, name, repo, baseCommit, target,
 		"--code-out", scratch, "--before")
 	before, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
 	code, _, diagnostic := revisionExecute(patchArgs(name, target, view.EditExpect,
-		repo, base, "--after-file", scratch)...)
+		repo, baseCommit, "--after-file", scratch)...)
 	if code == 0 {
 		t.Fatal("no-op replacement was accepted")
 	}
@@ -457,15 +484,15 @@ func TestUnchangedScratchReportsNoChange(t *testing.T) {
 // Binary replacement bytes have no valid source diff, so Generate must report
 // PATCH_UNSUPPORTED (not PATCH_INVALID) and leave the plan untouched.
 func TestBinaryScratchIsUnsupported(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if err := os.WriteFile(scratch, []byte("A\x00B\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	code, _, diagnostic := revisionExecute(patchArgs(name, target, view.EditExpect,
-		repo, base, "--after-file", scratch)...)
+		repo, baseCommit, "--after-file", scratch)...)
 	if code == 0 {
 		t.Fatal("binary replacement was accepted")
 	}
@@ -476,7 +503,7 @@ func TestBinaryScratchIsUnsupported(t *testing.T) {
 // other planner errors. Agents read code to decide what to do next, so the
 // message must not repeat it and the hint must not be empty.
 func TestGuardedErrorJSONShape(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	diff := filepath.Join(t.TempDir(), "change.diff")
 	raw := "--- a/foo.txt\n+++ b/foo.txt\n@@ -1 +1 @@\n-A\n+B\n"
@@ -484,7 +511,7 @@ func TestGuardedErrorJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _, diagnostic := revisionExecute(patchArgs(name, target,
-		"sha256:deadbeef", repo, base, "--diff-file", diff)...)
+		"sha256:deadbeef", repo, baseCommit, "--diff-file", diff)...)
 	if code == 0 {
 		t.Fatal("stale token was accepted")
 	}
@@ -498,43 +525,44 @@ func TestGuardedErrorJSONShape(t *testing.T) {
 }
 
 // Each options type validates itself, so the operation functions must reject bad
-// combinations with USAGE before reading anything. Testing through inspect,
-// patch, and check keeps that rule independent of the CLI flag grammar.
+// combinations with USAGE before reading anything. Testing through inspect and
+// patch keeps that rule independent of the CLI flag grammar; check defaults its
+// repo and base commit, so it has no required pair to reject.
 func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	const target = "implementation[1].file_changes[1]"
-	base := strings.Repeat("a", 40)
+	baseCommit := strings.Repeat("a", 40)
 	cases := []struct {
 		name     string
 		run      func() error
 		wantCode string
 	}{
 		{"inspect missing target", func() error {
-			_, err := guardedInspect(guardedInspectOptions{Repo: "repo", Base: base})
+			_, err := guardedInspect(guardedInspectOptions{Repo: "repo", BaseCommit: baseCommit})
 			return err
 		}, "USAGE"},
-		{"inspect missing repo base", func() error {
+		{"inspect missing repo and base commit", func() error {
 			_, err := guardedInspect(guardedInspectOptions{Target: target})
 			return err
 		}, "USAGE"},
 		{"inspect before without code-out", func() error {
 			_, err := guardedInspect(guardedInspectOptions{
-				Target: target, Repo: "repo", Base: base, Before: true,
+				Target: target, Repo: "repo", BaseCommit: baseCommit, Before: true,
 			})
 			return err
 		}, "USAGE"},
 		{"patch missing target", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
-				Expect: "sha256:x", AfterFile: "a", Repo: "repo", Base: base,
+				Expect: "sha256:x", AfterFile: "a", Repo: "repo", BaseCommit: baseCommit,
 			})
 			return err
 		}, "USAGE"},
 		{"patch missing expect", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
-				Target: target, AfterFile: "a", Repo: "repo", Base: base,
+				Target: target, AfterFile: "a", Repo: "repo", BaseCommit: baseCommit,
 			})
 			return err
 		}, "USAGE"},
-		{"patch missing repo base", func() error {
+		{"patch missing repo and base commit", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
 				Target: target, Expect: "sha256:x", AfterFile: "a",
 			})
@@ -542,19 +570,15 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 		}, "USAGE"},
 		{"patch no replacement source", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
-				Target: target, Expect: "sha256:x", Repo: "repo", Base: base,
+				Target: target, Expect: "sha256:x", Repo: "repo", BaseCommit: baseCommit,
 			})
 			return err
 		}, "USAGE"},
 		{"patch both replacement sources", func() error {
 			_, err := guardedPatch(guardedPatchOptions{
 				Target: target, Expect: "sha256:x",
-				AfterFile: "a", DiffFile: "b", Repo: "repo", Base: base,
+				AfterFile: "a", DiffFile: "b", Repo: "repo", BaseCommit: baseCommit,
 			})
-			return err
-		}, "USAGE"},
-		{"check missing repo base", func() error {
-			_, err := guardedCheck(guardedCheckOptions{})
 			return err
 		}, "USAGE"},
 	}
@@ -575,11 +599,11 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	}
 }
 
-// The guarded commands always need the repository and the baseline commit, so a
-// missing --repo or --base exits 2 with USAGE. Without a baseline the edit token
-// could not identify the source the change was prepared against.
-func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
-	repo, _, name := revisionFixture(t, false)
+// inspect and patch always need the repository and the base commit, so a
+// missing --repo or --base-commit exits 2 with USAGE. Without a base commit the
+// edit token could not identify the source the change was prepared against.
+func TestGuardedCommandsRequireBaseCommit(t *testing.T) {
+	_, _, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	cases := []struct {
 		name string
@@ -588,7 +612,6 @@ func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
 		{"inspect", []string{"inspect", name, "--target", target}},
 		{"patch", []string{"patch", name, "--target", target, "--expect", "sha256:x",
 			"--after-file", os.DevNull}},
-		{"check", []string{"check", name, "--repo", repo}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -601,15 +624,92 @@ func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
 	}
 }
 
+// --base-commit must override the recorded line, for example when re-pointing a
+// plan at a different base commit whose recorded value is no longer present.
+func TestCheckBaseCommitFlagOverridesPlan(t *testing.T) {
+	repo, baseCommit, name := checkPlanFixture(t)
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong := strings.Repeat("a", 40)
+	updated := strings.Replace(string(raw), "Base commit: "+baseCommit,
+		"Base commit: "+wrong, 1)
+	if updated == string(raw) {
+		t.Fatal("test setup did not replace the recorded base commit line")
+	}
+	if err := os.WriteFile(name, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
+	if code != 0 {
+		t.Fatalf("exit=%d want 0: %s", code, diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
+	}
+}
+
+// check must work from inside the repository without repeating --repo, so the
+// default repo is the current working directory's Git repository.
+func TestCheckDefaultsRepoToCwd(t *testing.T) {
+	repo, baseCommit, name := checkPlanFixture(t)
+	chdir(t, repo)
+
+	code, out, diagnostic := revisionExecute("check", name)
+	if code != 0 {
+		t.Fatalf("exit=%d want 0: %s", code, diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
+	}
+}
+
+// A plan without a recorded base commit and no --base-commit must fail with a
+// hint to add the line, never silently fall back to HEAD.
+func TestCheckRequiresBaseCommit(t *testing.T) {
+	repo, _, name := revisionFixture(t, false)
+
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo)
+	if code != 1 {
+		t.Fatalf("exit=%d want 1: %s", code, diagnostic)
+	}
+	payload := requireGuardedError(t, diagnostic, codeBaseCommitRequired)
+	if !strings.Contains(payload.RecoveryHint, "Base commit") {
+		t.Fatalf("recovery hint %q missing Base commit", payload.RecoveryHint)
+	}
+}
+
+// A PLACEHOLDER diff must fail a bare check. The original bug was that plain
+// check printed OK here, so an unapplicable plan reached review.
+func TestCheckRejectsBrokenDiff(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+	chdir(t, repo)
+
+	code, _, diagnostic := revisionExecute("check", name)
+	if code == 0 {
+		t.Fatal("PLACEHOLDER diff passed check")
+	}
+	requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
+}
+
 // Selectors are parsed as numbers, so implementation[01] and implementation[1]
 // pick the same change. Inspect echoes the normalized selector, and patch
 // accepts either spelling because the edit token is built from the normalized
 // one.
 func TestLeadingZeroSelectorNormalizesAndPatches(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	leading := "implementation[01].file_changes[1]"
 	normalized := "implementation[1].file_changes[1]"
-	view := revisionInspect(t, name, repo, base, leading)
+	view := revisionInspect(t, name, repo, baseCommit, leading)
 	if view.Selector != normalized {
 		t.Fatalf("selector = %q, want %q", view.Selector, normalized)
 	}
@@ -617,19 +717,19 @@ func TestLeadingZeroSelectorNormalizesAndPatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := planpatch.Expect(raw, normalized, base); view.EditExpect != want {
+	if want := planpatch.Expect(raw, normalized, baseCommit); view.EditExpect != want {
 		t.Fatalf("token not bound to normalized selector")
 	}
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
 	if err := os.WriteFile(scratch, []byte("D\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result := revisionPatch(t, name, leading, view.EditExpect, repo, base,
+	result := revisionPatch(t, name, leading, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	if !result.Written {
 		t.Fatalf("leading-zero selector did not patch: %+v", result)
 	}
-	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("patched plan failed check: %s", diagnostic)
 	}
@@ -639,17 +739,17 @@ func TestLeadingZeroSelectorNormalizesAndPatches(t *testing.T) {
 // diff must be a deletion, and a later inspect must report code_exists false so
 // a caller can distinguish deletion from an empty file.
 func TestDeletionViaDevNullAfterFile(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
-	view := revisionInspect(t, name, repo, base, target)
-	revisionPatch(t, name, target, view.EditExpect, repo, base,
+	view := revisionInspect(t, name, repo, baseCommit, target)
+	revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", os.DevNull)
-	after := revisionInspect(t, name, repo, base, target)
+	after := revisionInspect(t, name, repo, baseCommit, target)
 	if !strings.Contains(after.Diff, "+++ /dev/null") {
 		t.Fatalf("deletion diff missing /dev/null: %q", after.Diff)
 	}
 	scratch := filepath.Join(t.TempDir(), "deleted.txt")
-	codeView := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	codeView := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if codeView.CodeExists == nil || *codeView.CodeExists {
 		t.Fatalf("code_exists = %v, want false", codeView.CodeExists)
 	}
@@ -658,20 +758,20 @@ func TestDeletionViaDevNullAfterFile(t *testing.T) {
 // Patch keeps an existing file's executable bit instead of resetting it to
 // 100644. Mode loss is invisible in the diff text, so only this check catches it.
 func TestExecutableModeRetainedThroughPatch(t *testing.T) {
-	repo, base, name := revisionExecutableFixture(t)
+	repo, baseCommit, name := revisionExecutableFixture(t)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "proposed.txt")
-	view := revisionInspect(t, name, repo, base, target, "--code-out", scratch)
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
 	if view.Mode != "100755" {
 		t.Fatalf("inspect mode = %q, want 100755", view.Mode)
 	}
 	if err := os.WriteFile(scratch, []byte("C\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	revisionPatch(t, name, target, view.EditExpect, repo, base,
+	revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	again := filepath.Join(t.TempDir(), "after.txt")
-	patched := revisionInspect(t, name, repo, base, target, "--code-out", again)
+	patched := revisionInspect(t, name, repo, baseCommit, target, "--code-out", again)
 	if patched.Mode != "100755" {
 		t.Fatalf("patched mode = %q, want 100755", patched.Mode)
 	}
@@ -681,9 +781,9 @@ func TestExecutableModeRetainedThroughPatch(t *testing.T) {
 // tool hands Planner a diff without a scratch file. The patch must apply the
 // bytes exactly as if they came from a path.
 func TestDiffFileFromStdin(t *testing.T) {
-	repo, base, name := revisionFixture(t, false)
+	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
-	view := revisionInspect(t, name, repo, base, target)
+	view := revisionInspect(t, name, repo, baseCommit, target)
 	rawDiff, err := planpatch.Generate("foo.txt",
 		&planpatch.File{Data: []byte("A\n"), Mode: "100644"},
 		&planpatch.File{Data: []byte("C\n"), Mode: "100644"})
@@ -694,7 +794,7 @@ func TestDiffFileFromStdin(t *testing.T) {
 	var out, diagnostic string
 	withStdin(t, rawDiff, func() {
 		code, out, diagnostic = revisionExecute(patchArgs(name, target,
-			view.EditExpect, repo, base, "--diff-file", "-")...)
+			view.EditExpect, repo, baseCommit, "--diff-file", "-")...)
 	})
 	if code != 0 {
 		t.Fatalf("stdin diff: exit %d: %s", code, diagnostic)
@@ -703,7 +803,7 @@ func TestDiffFileFromStdin(t *testing.T) {
 	if !result.Written || !result.PrefixReplayed {
 		t.Fatalf("stdin diff result: %+v", result)
 	}
-	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("patched plan failed check: %s", diagnostic)
 	}
@@ -717,17 +817,17 @@ func TestPatchKeepsBacktickContextInsideFence(t *testing.T) {
 	// The original diff edits the last line, far from the backtick line, so it
 	// gets a three-backtick fence. The replacement edits near the backtick line,
 	// so its context contains a three-tick line that would close that fence.
-	baseline := "```\na\nb\nc\nd\ne\nf\ng\n"
-	repo, base := revisionRepoContent(t, baseline, 0644)
+	content := "```\na\nb\nc\nd\ne\nf\ng\n"
+	repo, baseCommit := revisionRepoContent(t, content, 0644)
 	plan := BuildPlanExample()
 	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
-	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, baseline,
+	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, content,
 		"```\na\nb\nc\nd\ne\nf\nG\n", "100644")
 	name := writeRevisionPlan(t, plan)
 	target := "implementation[1].file_changes[1]"
-	view := revisionInspect(t, name, repo, base, target)
+	view := revisionInspect(t, name, repo, baseCommit, target)
 	rawDiff, err := planpatch.Generate("foo.txt",
-		&planpatch.File{Data: []byte(baseline), Mode: "100644"},
+		&planpatch.File{Data: []byte(content), Mode: "100644"},
 		&planpatch.File{Data: []byte("```\nA\nb\nc\nd\ne\nf\ng\n"), Mode: "100644"})
 	if err != nil {
 		t.Fatal(err)
@@ -736,7 +836,7 @@ func TestPatchKeepsBacktickContextInsideFence(t *testing.T) {
 	if err := os.WriteFile(diff, rawDiff, 0600); err != nil {
 		t.Fatal(err)
 	}
-	result := revisionPatch(t, name, target, view.EditExpect, repo, base,
+	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--diff-file", diff)
 	if !result.PatchSyntaxValid {
 		t.Fatalf("backtick context rejected: %+v", result)
@@ -748,7 +848,7 @@ func TestPatchKeepsBacktickContextInsideFence(t *testing.T) {
 	if !bytes.Contains(changed, []byte("Human review note: keep this.")) {
 		t.Fatal("collateral edit lost the review note")
 	}
-	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base", base)
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("patched plan failed check: %s", diagnostic)
 	}
