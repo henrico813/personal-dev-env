@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"planner/internal/planpatch"
 )
@@ -18,7 +19,7 @@ const helpText = `planner provides markdown-first implementation-plan workflows.
 Usage:
   planner
   planner help
-  planner new <output.md> [--diff] [--dry-run] [--json-errors]
+  planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
   planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
   planner inspect <plan.md>
@@ -30,6 +31,7 @@ Global flags:
 
 Markdown-first authoring:
   1. Run planner new plan.md. It fails without changing an existing destination.
+     Add --issue --project NAME when the destination is a vault issue.
   2. Edit prose and structure directly in the Markdown file.
   3. Change code diffs only through guarded patch: inspect with --code-out to
      export the source and read edit_expect, edit that source, then patch with
@@ -191,10 +193,15 @@ func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int
 }
 
 func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
-	const usage = "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"
+	const usage = "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"
 	const nonMarkdownUsage = "planner new requires an output path ending in .md: " + usage
 
-	positional, pf, err := splitPreviewArgs(args, true, false)
+	issue, rest, err := parseNewIssueFlags(args)
+	if err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
+		return 2
+	}
+	positional, pf, err := splitPreviewArgs(rest, true, false)
 	if err != nil {
 		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
@@ -215,7 +222,12 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "new", newPlannerCLIError(PlannerReadInputError, err, outputPath))
 		return 1
 	}
-	rendered, err := renderCanonicalScaffold()
+	var rendered string
+	if issue.issue {
+		rendered, err = renderIssueScaffold(issue.project, time.Now())
+	} else {
+		rendered, err = renderCanonicalScaffold()
+	}
 	if err != nil {
 		reportError(stderr, "new", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 		return 1
@@ -226,6 +238,47 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		return nil
 	}, outputPath)
+}
+
+// newIssueOptions carries the optional issue-frontmatter flags for planner new.
+type newIssueOptions struct {
+	issue   bool
+	project string
+}
+
+// parseNewIssueFlags removes --issue and --project and checks that they are
+// used together. It runs before output-path handling so a missing project fails
+// as a usage error without touching the destination.
+func parseNewIssueFlags(args []string) (newIssueOptions, []string, error) {
+	var opts newIssueOptions
+	kept := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--issue":
+			if opts.issue {
+				return opts, nil, fmt.Errorf("duplicate flag --issue")
+			}
+			opts.issue = true
+		case "--project":
+			if opts.project != "" {
+				return opts, nil, fmt.Errorf("duplicate flag --project")
+			}
+			i++
+			if i >= len(args) || args[i] == "" || strings.HasPrefix(args[i], "--") {
+				return opts, nil, fmt.Errorf("--project requires a value")
+			}
+			opts.project = args[i]
+		default:
+			kept = append(kept, args[i])
+		}
+	}
+	if opts.project != "" && !opts.issue {
+		return opts, nil, fmt.Errorf("--project requires --issue")
+	}
+	if opts.issue && opts.project == "" {
+		return opts, nil, fmt.Errorf("--issue requires --project")
+	}
+	return opts, kept, nil
 }
 
 func printHelp(w io.Writer) {

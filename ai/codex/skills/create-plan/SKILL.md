@@ -55,6 +55,10 @@ research.
 - Classify the operation as a new plan or revision. Reserve every new
   destination with `planner new`; it fails atomically rather than overwriting an
   existing plan.
+- When the destination is inside the PDE vault, reserve it with `planner new
+  "<output.md>" --issue --project <project>` so the scaffold carries the issue
+  frontmatter. Use the `project:` value from existing issues in that folder; it
+  can differ from the folder name.
 - Determine the final output path before creating the plan and write the final
   plan to its real destination.
 - If the user says a legacy surface is being phased out, treat it as out of
