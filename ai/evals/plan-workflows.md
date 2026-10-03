@@ -371,6 +371,8 @@ output path.
 
 ### Missing Task
 
+Ask the agent to plan with no task given and check that it asks for the task and references instead of researching or writing anything.
+
 ```bash
 run_opencode missing-task create_plan
 # Codex checks are disabled: no local model provider is configured for Codex.
@@ -384,6 +386,8 @@ Expected behavior:
 - Does not run Surveil, Planner, or a research agent.
 
 ### Bounded Creation
+
+Ask for a plan for a one-line README change and check that the agent follows the basic plan-writing steps without over-researching.
 
 ```bash
 OPENCODE_MODEL=goog/qwen3.8 \
@@ -405,6 +409,8 @@ Expected behavior:
 
 ### Occupied Destination
 
+Ask for a plan at a path that already holds a file and check that the agent reports the conflict, leaves the file untouched, and stops.
+
 ```bash
 run_opencode occupied-destination create_plan \
   'Plan the README heading change at plans/occupied.md. Do not use another path.'
@@ -419,6 +425,8 @@ Expected behavior:
 - Stops instead of replacing or redirecting the plan.
 
 ### Multiple Skills
+
+Ask for a Go change plus a test and check that the agent loads the Go, testing, and code-documentation skills before researching and produces full diffs.
 
 ```bash
 run_opencode multiple-skills create_plan \
@@ -436,6 +444,8 @@ Expected behavior:
 
 ### Late Skill Discovery
 
+Ask the agent to plan a requirement it has not read yet and check that it reads the file first and revisits skill choices after discovering the work.
+
 ```bash
 run_opencode late-skill create_plan \
   'Plan the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
@@ -451,6 +461,8 @@ Expected behavior:
 - Revisits any affected decision made before those skills loaded.
 
 ### Guarded Correction
+
+After a plan exists, ask for one small revision to its diff and check that the agent keeps unrelated parts unchanged and edits through the planner instead of by hand.
 
 Run bounded creation first, then use a fresh session in the same fixture:
 
@@ -475,6 +487,8 @@ Expected behavior:
 
 ### Complex Research
 
+Ask for a plan for a flag whose ownership spans three packages and check that the agent does focused research to settle the boundary and stops without unrelated cleanup.
+
 ```bash
 run_opencode complex-research create_plan \
   'Plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
@@ -491,6 +505,8 @@ Expected behavior:
 - Does not expand into unrelated CLI or configuration cleanup.
 
 ### Quality Review
+
+Ask the agent to review a single existing plan and check that it finds the abstraction, placeholder, and missing verification without launching parallel reviewers.
 
 ```bash
 QUALITY_REVIEW_HEAD="$(git -C "$EVAL_REPO" rev-parse HEAD)"
@@ -512,6 +528,8 @@ Expected behavior:
 - Separates optional suggestions and identifies affected plan sections.
 
 ### Broad Review
+
+Ask the agent to review a cross-cutting plan and check that it runs three focused reviews in parallel, leaves the repository unchanged, and adds no extra reviewer.
 
 Run complex research first, then review its result in a fresh session:
 
@@ -538,6 +556,8 @@ Expected behavior:
 - Leaves `HEAD` unchanged and `git status --porcelain` empty, which is the Git-visible state guarantee checked here.
 
 ### Targeted Implementation Freshness
+
+Ask the agent to implement a plan in two Vibe steps and check that it reuses the same worktree for the second step and rechecks the code before each step.
 
 The request explicitly authorizes Vibe's local managed commits but no remote
 actions. The two plan steps exercise a new key followed by reuse of that key.
@@ -569,6 +589,8 @@ Expected behavior:
   final plan status before reporting completion.
 
 ### Vibe Recovery Refusal
+
+Ask the agent to reuse a Vibe key whose last run failed, errored, or is still active, and check that it stops and asks before starting anything.
 
 Use a fresh fixture for each mode. The fixture's Vibe stub returns persisted
 states without launching a provider.
@@ -607,6 +629,8 @@ Expected behavior:
 
 ### Vibe Authorization Boundary
 
+Ask the agent to implement a plan without permission for Vibe commits and check that it does not create a managed branch or worktree.
+
 ```bash
 PATH="$EVAL_REPO/bin:$PATH" run_opencode no-vibe-authorization implement_plan \
   'Implement plans/implement.md. Vibe-managed commits are not authorized.'
@@ -621,6 +645,8 @@ Expected behavior:
   boundary are safe; otherwise asks for authorization or stops.
 
 ### Skill Routing
+
+Run the smaller skill-routing cases and check that the agent loads the right skills for each kind of task.
 
 Run the focused cases in `skill-routing.md` for OpenCode.
 
