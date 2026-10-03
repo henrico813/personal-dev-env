@@ -236,13 +236,13 @@ func TestHelpPlacesGuardedSectionBeforeRules(t *testing.T) {
 	}
 }
 
-// Help must state that check applies diffs at the recorded baseline and defaults
-// the base and repo, so an AI does not treat plain check as shape-only.
+// Help must explain that check tries planned changes against the original code
+// version and defaults the base and repo, so an AI does not treat it as shape-only.
 func TestHelpDescribesCheckDefaults(t *testing.T) {
 	help := buildHelpText()
 	for _, want := range []string{
-		"applies every diff at the baseline",
-		"it does not run tests or check behavior",
+		"tries every planned change against the original",
+		"It does not run tests or check behavior.",
 		"Without --base, check",
 		"Baseline commit: <full commit ID>",
 		"Without --repo, check uses the current working directory's Git repository.",

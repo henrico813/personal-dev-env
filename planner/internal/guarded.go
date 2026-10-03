@@ -470,10 +470,10 @@ func orderedChanges(plan Plan) []planpatch.Change {
 	return out
 }
 
-// sessionBefore replays the baseline and every change before (step, change),
-// returning an open session positioned just before the selected change. The
-// caller owns the session and must Close it. Comparison is by parsed indices, so
-// any spelling of the selector, including leading zeros, selects the same change.
+// sessionBefore starts from the original code version and applies every change
+// before (step, change), returning an open session just before the selected
+// change. The caller owns the session and must Close it. Comparison is by parsed
+// indices, so a selector with leading zeros selects the same change.
 func sessionBefore(repo, base string, plan Plan, step, change int) (*planpatch.Session, error) {
 	s, err := planpatch.Open(repo, base)
 	if err != nil {

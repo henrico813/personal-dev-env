@@ -181,8 +181,8 @@ mandatory approval stage.
 9. Edit ordinary scratch source with native tools, then run `planner patch
    "<plan.md>" --target '<selector>' --expect <edit_expect> --after-file
    <scratch-file> --repo <repo> --base <commit>`. Planner generates hunk counts
-   and replays the base through the edited change only; later changes are not
-   checked. Do not hand-maintain hunks.
+   and starts with the original code version, trying each change through the
+   edited change only. Later changes are not checked. Do not hand-maintain hunks.
 10. `inspect --before` exports pre-change source for a new or broken change.
     Reconstruct accepted intent before replacing a broken diff. Use `/dev/null`
     as `--after-file` only to delete a file.
@@ -197,8 +197,9 @@ mandatory approval stage.
     `--base`.
 14. Validate every final or revised proposal with `planner check
     "<output.md>" --repo <repo> --json-errors`; this is the only whole-plan
-    readiness check. It applies every diff at the plan's recorded baseline and
-    does not run tests. Do not present or report the plan ready until it passes.
+    readiness check. It starts with the original code version named by the
+    `Baseline commit:` line and tries every planned change in order. It does not
+    run tests. Do not present or report the plan ready until it passes.
     Confirm Current State still starts with the `Baseline commit:` line.
 
 #### Revisions After Human Feedback
@@ -216,8 +217,9 @@ Treat review as a correction loop, not a restart:
 ### Step 5: Validate and Report
 
 1. Run `planner check "<output.md>" --repo <repo> --json-errors` on the final
-   plan. It applies every diff at the plan's recorded baseline and does not run
-   tests. Do not report the plan ready until it passes.
+   plan. It starts with the original code version named by the `Baseline commit:`
+   line and tries every planned change in order. It does not run tests. Do not
+   report the plan ready until it passes.
 2. Compare every proposed diff with current source. Confirm that it applies to
    the intended file, includes every required line without placeholders,
    follows repository patterns, and excludes unrelated work.
