@@ -12,6 +12,7 @@ __pycache__/
 *.so
 .Python
 venv/
+ai/.venv/
 ENV/
 
 # IDE / Editor

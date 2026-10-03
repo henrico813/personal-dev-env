@@ -1,118 +1,58 @@
 # Plan Workflow Checks
 
-Run these manual checks in fresh Codex and OpenCode sessions after changing a
-planning workflow. Use one model and version per harness for comparisons.
-Inspect event traces and generated artifacts instead of relying only on final
-responses.
+Run these manual checks in a fresh OpenCode session after changing a planning
+workflow. Codex checks are disabled until a local model provider is configured
+for Codex. The deterministic checks in `ai/tests/test_prompt_commands.py`
+(run with `cd ai && uv run pytest`) and
+`pde-installer/internal/chezmoi/template_render_test.go` run in CI and catch
+prompt command drift, checksum drift, and shell quoting failures. These manual
+checks cover what CI cannot: whether a model follows the instructions. Use one
+model and version per harness for comparisons. Inspect event traces and generated
+artifacts instead of relying only on final responses.
 
-## Install
+## How to Run
 
-From the worktree under review:
+The checks use your normal OpenCode and Codex logins. No API key environment
+variables, isolated home directory, or installer run are required.
+
+Create the disposable fixture in the next section first. It exports `EVAL_ROOT`,
+`EVAL_REPO`, `EVAL_OUTPUT`, `EVAL_FIXTURE_COMMIT`, and `EVAL_KEY`, and it builds
+the worktree's planner onto `PATH`.
+
+OpenCode does not expand slash commands in a non-interactive `opencode run`, so
+paste the command template with the frontmatter stripped and `$ARGUMENTS`
+substituted. `--auto` approves permissions that are not explicitly denied, so run
+it only inside the disposable fixture. The `run_opencode` helper below does this.
+
+To use the worktree's slash commands interactively without installing them, link
+them into the fixture and start OpenCode there:
 
 ```bash
-set -euo pipefail
-ORIGINAL_HOME=${HOME-}
-ORIGINAL_PATH=${PATH-}
-ORIGINAL_HOME_SET=${HOME+x}
-ORIGINAL_PATH_SET=${PATH+x}
-ORIGINAL_EVAL_ROOT=${EVAL_ROOT-}
-ORIGINAL_EVAL_ROOT_SET=${EVAL_ROOT+x}
-ORIGINAL_EVAL_HOME=${EVAL_HOME-}
-ORIGINAL_EVAL_HOME_SET=${EVAL_HOME+x}
-ORIGINAL_EVAL_REPO=${EVAL_REPO-}
-ORIGINAL_EVAL_REPO_SET=${EVAL_REPO+x}
-ORIGINAL_EVAL_OUTPUT=${EVAL_OUTPUT-}
-ORIGINAL_EVAL_OUTPUT_SET=${EVAL_OUTPUT+x}
-ORIGINAL_INSTALLER=${INSTALLER-}
-ORIGINAL_INSTALLER_SET=${INSTALLER+x}
-ORIGINAL_PDE_REPO_ROOT=${PDE_REPO_ROOT-}
-ORIGINAL_PDE_REPO_ROOT_SET=${PDE_REPO_ROOT+x}
-declare -A ORIGINAL_PROVIDER_VALUES=()
-declare -A ORIGINAL_PROVIDER_SET=()
-PROVIDER_VARIABLES=(
-  ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY
-  AZURE_OPENAI_API_KEY AZURE_OPENAI_BASE_URL OPENCODE_API_KEY
-)
-for provider in "${PROVIDER_VARIABLES[@]}"; do
-  ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
-  if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
-done
-if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
-  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
-  exit 1
-fi
-EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plan-workflow-eval.XXXXXX")
-export EVAL_ROOT
-export EVAL_HOME="$EVAL_ROOT/home"
-export EVAL_REPO="$EVAL_ROOT/repo"
-export EVAL_OUTPUT="$EVAL_ROOT/traces"
-INSTALLER="$EVAL_ROOT/pde-installer"
-restore_environment() {
-  if [[ -n "$ORIGINAL_HOME_SET" ]]; then export HOME="$ORIGINAL_HOME"; else unset HOME; fi
-  if [[ -n "$ORIGINAL_PATH_SET" ]]; then export PATH="$ORIGINAL_PATH"; else unset PATH; fi
-  if [[ -n "$ORIGINAL_EVAL_ROOT_SET" ]]; then export EVAL_ROOT="$ORIGINAL_EVAL_ROOT"; else unset EVAL_ROOT; fi
-  if [[ -n "$ORIGINAL_EVAL_HOME_SET" ]]; then export EVAL_HOME="$ORIGINAL_EVAL_HOME"; else unset EVAL_HOME; fi
-  if [[ -n "$ORIGINAL_EVAL_REPO_SET" ]]; then export EVAL_REPO="$ORIGINAL_EVAL_REPO"; else unset EVAL_REPO; fi
-  if [[ -n "$ORIGINAL_EVAL_OUTPUT_SET" ]]; then export EVAL_OUTPUT="$ORIGINAL_EVAL_OUTPUT"; else unset EVAL_OUTPUT; fi
-  if [[ -n "$ORIGINAL_INSTALLER_SET" ]]; then INSTALLER="$ORIGINAL_INSTALLER"; else unset INSTALLER; fi
-  if [[ -n "$ORIGINAL_PDE_REPO_ROOT_SET" ]]; then export PDE_REPO_ROOT="$ORIGINAL_PDE_REPO_ROOT"; else unset PDE_REPO_ROOT; fi
-  for provider in "${PROVIDER_VARIABLES[@]}"; do
-    if (( ORIGINAL_PROVIDER_SET[$provider] )); then
-      export "$provider=${ORIGINAL_PROVIDER_VALUES[$provider]}"
-    else
-      unset "$provider"
-    fi
-  done
-}
-cleanup_evaluation() {
-  local status=$?
-  if [[ "$status" -eq 0 ]]; then
-    if [[ -n "$ORIGINAL_PATH_SET" ]]; then PATH="$ORIGINAL_PATH"; else unset PATH; fi
-    if ! rm -rf -- "$EVAL_ROOT"; then
-      status=1
-      printf '%s\n' "$EVAL_ROOT" >&2
-    fi
-  else
-    printf '%s\n' "$EVAL_ROOT" >&2
-  fi
-  restore_environment
-  exit "$status"
-}
-trap cleanup_evaluation EXIT
-for provider in "${PROVIDER_VARIABLES[@]}"; do unset "$provider"; done
-export HOME="$EVAL_HOME"
-export PATH="$ORIGINAL_PATH"
-mkdir -p "$EVAL_HOME" "$EVAL_REPO" "$EVAL_OUTPUT"
-go build -C pde-installer -o "$INSTALLER" .
-PDE_REPO_ROOT="$PWD" "$INSTALLER" install full
-export PATH="$EVAL_HOME/.local/bin:$ORIGINAL_PATH"
-cmp ai/codex/skills/create-plan/SKILL.md \
-  "$HOME/.codex/skills/create-plan/SKILL.md"
-cmp ai/codex/skills/review-plan/SKILL.md \
-  "$HOME/.codex/skills/review-plan/SKILL.md"
-cmp ai/codex/skills/implement-plan/SKILL.md \
-  "$HOME/.codex/skills/implement-plan/SKILL.md"
-cmp ai/opencode/commands/create_plan.md \
-  "$HOME/.config/opencode/commands/create_plan.md"
-cmp ai/opencode/commands/review_plan.md \
-  "$HOME/.config/opencode/commands/review_plan.md"
-cmp ai/opencode/commands/implement_plan.md \
-  "$HOME/.config/opencode/commands/implement_plan.md"
+mkdir -p "$EVAL_REPO/.opencode"
+ln -sfn "$PWD/ai/opencode/commands" "$EVAL_REPO/.opencode/commands"
 ```
+
+Routine OpenCode runs use the configured `goog/qwen3.8` model.
 
 ## Disposable Fixture
 
 Run this setup in a shell whose current directory is the worktree under review.
 Create a fresh fixture for each independent scenario and harness. The guarded
-correction scenario follows bounded creation in the same fixture.
+correction scenario follows bounded creation in the same fixture. The block
+exports its paths and builds the worktree's planner so every later command uses
+the checkout under review.
 
 ````bash
 set -euo pipefail
+EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plan-workflow-eval.XXXXXX")
+export EVAL_ROOT
 export EVAL_REPO="$EVAL_ROOT/repo"
 export EVAL_OUTPUT="$EVAL_ROOT/traces"
 mkdir -p "$EVAL_REPO/bin" "$EVAL_REPO/cmd/eval" "$EVAL_REPO/docs" \
   "$EVAL_REPO/internal/config" "$EVAL_REPO/internal/output" \
   "$EVAL_REPO/plans" "$EVAL_OUTPUT"
+go build -C planner -o "$EVAL_OUTPUT/planner" ./main
+export PATH="$EVAL_OUTPUT:$PATH"
 cat > "$EVAL_REPO/README.md" <<'EOF'
 # Create Plan Evaluation
 EOF
@@ -379,108 +319,66 @@ git -C "$EVAL_REPO" add .
 git -C "$EVAL_REPO" commit -qm "Create evaluation fixture"
 export EVAL_FIXTURE_COMMIT="$(git -C "$EVAL_REPO" rev-parse HEAD)"
 export EVAL_KEY="$(printf '%.12s' "$EVAL_FIXTURE_COMMIT")-workflow-eval"
-export CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex-spark}"
-export CODEX_SANDBOX="${CODEX_SANDBOX:-workspace-write}"
-export OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/gpt-5.6-luna}"
+export OPENCODE_MODEL="${OPENCODE_MODEL:-goog/qwen3.8}"
 planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
 planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
 ````
 
-The EXIT trap removes the evaluation-owned root on successful exit. Failed
-setup or model execution preserves it for inspection and prints only its path.
+Remove `$EVAL_ROOT` when you are done. It is kept after each run so traces and
+generated plans can be inspected.
 
 ## Invocation
 
-Define helpers once per fixture. Codex uses natural prompts because its skills
-are prompt-triggered. OpenCode uses the command named by each scenario.
-The defaults use lower-tier Codex Spark and OpenCode Luna models. Scenarios
-marked below override OpenCode with `opencode-go/qwen3.6-plus` to represent
-local-model behavior; confirm it appears in `env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode models` or record that
-variant as unsupported.
+Define the OpenCode helper once per fixture. OpenCode uses the command named by
+each scenario and pastes its template, because `opencode run` does not expand
+slash commands. It runs with the `goog/qwen3.8` provider/model selector; confirm
+that selector appears in OpenCode's model list or record that variant as
+unsupported. Codex checks are disabled until a local model provider is
+configured for Codex, so the Codex examples below are commented out.
 
 ```bash
-run_codex() {
-  local scenario=$1 request=$2
-  local trace_dir="$EVAL_OUTPUT/$scenario/codex"
-  mkdir -p "$trace_dir"
-  codex --version > "$trace_dir/version.txt" 2>&1
-  printf '%s\n' "$CODEX_MODEL" > "$trace_dir/model.txt"
-  printf '%s\n' "$request" > "$trace_dir/request.txt"
-  printf '%q ' codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
-    -C "$EVAL_REPO" "$request" > "$trace_dir/arguments.txt"
-  printf '\n' >> "$trace_dir/arguments.txt"
-  git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
-  set +e
-  env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" \
-    codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
-    -C "$EVAL_REPO" "$request" \
-    > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  local status=$?
-  set -e
-  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status-after.txt"
-  return "$status"
-}
+# Codex checks are disabled: no local model provider is configured for Codex.
+# The run_codex helper and its CODEX_MODEL and CODEX_SANDBOX settings were
+# removed so no reader can invoke hosted Codex or assume a local route exists.
 
 run_opencode() {
-  local scenario=$1 command=$2 arguments=${3-}
-  local trace_dir="$EVAL_OUTPUT/$scenario/opencode"
-  mkdir -p "$trace_dir"
-  opencode --version > "$trace_dir/version.txt" 2>&1
-  printf '%s\n' "$OPENCODE_MODEL" > "$trace_dir/model.txt"
-  printf '%s\n' "$command" > "$trace_dir/command.txt"
-  printf '%s\n' "$arguments" > "$trace_dir/request.txt"
-  if [ "$#" -eq 2 ]; then
-    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json > "$trace_dir/arguments.txt"
-  else
-    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json -- "$arguments" > "$trace_dir/arguments.txt"
-  fi
-  printf '\n' >> "$trace_dir/arguments.txt"
-  git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
-  set +e
-  if [ "$#" -eq 2 ]; then
-    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
-      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  else
-    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
-      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json -- "$arguments" \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  fi
-  local status=$?
-  set -e
-  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status-after.txt"
-  return "$status"
+  local scenario=$1 command=$2 request=${3-}
+  local trace="$EVAL_OUTPUT/$scenario.opencode.jsonl"
+  local template
+  template=$(sed '1,/^---$/d' "ai/opencode/commands/$command.md")
+  template=${template//'$ARGUMENTS'/$request}
+  printf '%s\n' "$template" > "$trace.prompt"
+  opencode --version > "$trace.version" 2>&1
+  (cd "$EVAL_REPO" &&
+    opencode run --auto --model "$OPENCODE_MODEL" --format json \
+      "$template" > "$trace" 2> "$trace.stderr")
 }
 ```
 
-Do not disable host sandboxing or automatic approvals for these checks. If a
-harness cannot write to the disposable fixture under its normal sandbox, record
-that scenario as unsupported or run it in a disposable container or VM.
-`--pure` keeps unrelated OpenCode plugins from changing the eval behavior.
+Do not disable host sandboxing for these checks; `--auto` in `run_opencode` is
+the only approval change. If OpenCode cannot write to the disposable fixture
+under its normal sandbox, record that scenario as unsupported or run it in a
+disposable container or VM.
 
-Record each harness version, model, request, fixture commit and status, trace
+Record the OpenCode version, model, request, fixture commit and status, trace
 path, generated plan, Planner result, Surveil use, delegated agents, and
 unexpected behavior. Keep raw traces local.
 
-Paired commands show harness alternatives. Run each harness in its own fresh
-fixture rather than running both commands against one output path.
+Each scenario keeps its commented Codex example beside the OpenCode run for
+reference. Run each command in its own fresh fixture rather than reusing one
+output path.
 
 ## Scenarios
 
 ### Missing Task
 
+Ask the agent to plan with no task given and check that it asks for the task and references instead of researching or writing anything.
+
 ```bash
 run_opencode missing-task create_plan
-run_codex missing-task \
-  'Use create-plan, but no planning task or destination was provided.'
+# Codex checks are disabled: no local model provider is configured for Codex.
+# run_codex missing-task \
+#   'Use create-plan, but no planning task or destination was provided.'
 ```
 
 Expected behavior:
@@ -490,12 +388,14 @@ Expected behavior:
 
 ### Bounded Creation
 
+Ask for a plan for a one-line README change and check that the agent follows the basic plan-writing steps without over-researching.
+
 ```bash
-OPENCODE_MODEL=opencode-go/qwen3.6-plus \
+OPENCODE_MODEL=goog/qwen3.8 \
   run_opencode bounded-create create_plan \
   'Plan only changing the README heading to # Evaluated Plan. Write plans/bounded.md.'
-run_codex bounded-create \
-  'Use create-plan to plan only changing the README heading to # Evaluated Plan. Write plans/bounded.md.'
+# run_codex bounded-create \
+#   'Use create-plan to plan only changing the README heading to # Evaluated Plan. Write plans/bounded.md.'
 ```
 
 Expected behavior:
@@ -510,11 +410,13 @@ Expected behavior:
 
 ### Occupied Destination
 
+Ask for a plan at a path that already holds a file and check that the agent reports the conflict, leaves the file untouched, and stops.
+
 ```bash
 run_opencode occupied-destination create_plan \
   'Plan the README heading change at plans/occupied.md. Do not use another path.'
-run_codex occupied-destination \
-  'Use create-plan for the README heading change at plans/occupied.md. Do not use another path.'
+# run_codex occupied-destination \
+#   'Use create-plan for the README heading change at plans/occupied.md. Do not use another path.'
 ```
 
 Expected behavior:
@@ -525,11 +427,13 @@ Expected behavior:
 
 ### Multiple Skills
 
+Ask for a Go change plus a test and check that the agent loads the Go, testing, and code-documentation skills before researching and produces full diffs.
+
 ```bash
 run_opencode multiple-skills create_plan \
   'Plan changing cmd/eval/main.go to print evaluated and replacing the skipped test with a behavior assertion. Write plans/go-change.md.'
-run_codex multiple-skills \
-  'Use create-plan to plan changing cmd/eval/main.go to print evaluated and replacing the skipped test with a behavior assertion. Write plans/go-change.md.'
+# run_codex multiple-skills \
+#   'Use create-plan to plan changing cmd/eval/main.go to print evaluated and replacing the skipped test with a behavior assertion. Write plans/go-change.md.'
 ```
 
 Expected behavior:
@@ -541,11 +445,13 @@ Expected behavior:
 
 ### Late Skill Discovery
 
+Ask the agent to plan a requirement it has not read yet and check that it reads the file first and revisits skill choices after discovering the work.
+
 ```bash
 run_opencode late-skill create_plan \
   'Plan the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
-run_codex late-skill \
-  'Use create-plan for the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
+# run_codex late-skill \
+#   'Use create-plan for the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
 ```
 
 Expected behavior:
@@ -557,13 +463,15 @@ Expected behavior:
 
 ### Guarded Correction
 
+After a plan exists, ask for one small revision to its diff and check that the agent keeps unrelated parts unchanged and edits through the planner instead of by hand.
+
 Run bounded creation first, then use a fresh session in the same fixture:
 
 ```bash
 run_opencode guarded-correction create_plan \
   'Revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
-run_codex guarded-correction \
-  'Use create-plan to revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
+# run_codex guarded-correction \
+#   'Use create-plan to revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
 ```
 
 Expected behavior:
@@ -580,11 +488,13 @@ Expected behavior:
 
 ### Complex Research
 
+Ask for a plan for a flag whose ownership spans three packages and check that the agent does focused research to settle the boundary and stops without unrelated cleanup.
+
 ```bash
 run_opencode complex-research create_plan \
   'Plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
-run_codex complex-research \
-  'Use create-plan to plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
+# run_codex complex-research \
+#   'Use create-plan to plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
 ```
 
 Expected behavior:
@@ -597,12 +507,14 @@ Expected behavior:
 
 ### Quality Review
 
+Ask the agent to review a single existing plan and check that it finds the abstraction, placeholder, and missing verification without launching parallel reviewers.
+
 ```bash
 QUALITY_REVIEW_HEAD="$(git -C "$EVAL_REPO" rev-parse HEAD)"
-OPENCODE_MODEL=opencode-go/qwen3.6-plus \
+OPENCODE_MODEL=goog/qwen3.8 \
   run_opencode quality-review review_plan 'plans/review.md'
-CODEX_SANDBOX=read-only run_codex quality-review \
-  'Use review-plan to review plans/review.md for implementation readiness.'
+# CODEX_SANDBOX=read-only run_codex quality-review \
+#   'Use review-plan to review plans/review.md for implementation readiness.'
 test "$(git -C "$EVAL_REPO" rev-parse HEAD)" = "$QUALITY_REVIEW_HEAD"
 test -z "$(git -C "$EVAL_REPO" status --porcelain)"
 ```
@@ -618,6 +530,8 @@ Expected behavior:
 
 ### Broad Review
 
+Ask the agent to review a cross-cutting plan and check that it runs three focused reviews in parallel, leaves the repository unchanged, and adds no extra reviewer.
+
 Run complex research first, then review its result in a fresh session:
 
 ```bash
@@ -626,8 +540,8 @@ git -C "$EVAL_REPO" commit -qm 'Add complex plan fixture'
 BROAD_REVIEW_HEAD="$(git -C "$EVAL_REPO" rev-parse HEAD)"
 run_opencode broad-review review_plan \
   'plans/complex.md. Treat configuration precedence as a high-risk integration boundary.'
-CODEX_SANDBOX=read-only run_codex broad-review \
-  'Use review-plan on plans/complex.md. Treat configuration precedence as a high-risk integration boundary.'
+# CODEX_SANDBOX=read-only run_codex broad-review \
+#   'Use review-plan on plans/complex.md. Treat configuration precedence as a high-risk integration boundary.'
 test "$(git -C "$EVAL_REPO" rev-parse HEAD)" = "$BROAD_REVIEW_HEAD"
 test -z "$(git -C "$EVAL_REPO" status --porcelain)"
 ```
@@ -644,14 +558,16 @@ Expected behavior:
 
 ### Targeted Implementation Freshness
 
+Ask the agent to implement a plan in two Vibe steps and check that it reuses the same worktree for the second step and rechecks the code before each step.
+
 The request explicitly authorizes Vibe's local managed commits but no remote
 actions. The two plan steps exercise a new key followed by reuse of that key.
 
 ```bash
 run_opencode targeted-implementation implement_plan \
   "plans/implement.md. You may use Vibe key $EVAL_KEY and authorize its local managed commits. Do not push, open a pull request, or merge."
-run_codex targeted-implementation \
-  "Use implement-plan on plans/implement.md. You may use Vibe key $EVAL_KEY and authorize its local managed commits. Do not push, open a pull request, or merge."
+# run_codex targeted-implementation \
+#   "Use implement-plan on plans/implement.md. You may use Vibe key $EVAL_KEY and authorize its local managed commits. Do not push, open a pull request, or merge."
 ```
 
 Expected behavior:
@@ -675,30 +591,32 @@ Expected behavior:
 
 ### Vibe Recovery Refusal
 
-Use a fresh fixture for each mode and harness. The fixture's Vibe stub returns
-persisted states without launching a provider.
+Ask the agent to reuse a Vibe key whose last run failed, errored, or is still active, and check that it stops and asks before starting anything.
+
+Use a fresh fixture for each mode. The fixture's Vibe stub returns persisted
+states without launching a provider.
 
 ```bash
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=agent-failed \
   run_opencode failed-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY. Do not recover prior failures."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=agent-failed \
-  run_codex failed-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY. Do not recover prior failures."
+# PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=agent-failed \
+#   run_codex failed-reuse \
+#   "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY. Do not recover prior failures."
 
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=persistence-error \
   run_opencode persistence-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=persistence-error \
-  run_codex persistence-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
+# PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=persistence-error \
+#   run_codex persistence-reuse \
+#   "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
 
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=active \
   run_opencode active-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=active \
-  run_codex active-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
+# PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=active \
+#   run_codex active-reuse \
+#   "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
 ```
 
 Expected behavior:
@@ -712,11 +630,13 @@ Expected behavior:
 
 ### Vibe Authorization Boundary
 
+Ask the agent to implement a plan without permission for Vibe commits and check that it does not create a managed branch or worktree.
+
 ```bash
 PATH="$EVAL_REPO/bin:$PATH" run_opencode no-vibe-authorization implement_plan \
   'Implement plans/implement.md. Vibe-managed commits are not authorized.'
-PATH="$EVAL_REPO/bin:$PATH" run_codex no-vibe-authorization \
-  'Use implement-plan on plans/implement.md. Vibe-managed commits are not authorized.'
+# PATH="$EVAL_REPO/bin:$PATH" run_codex no-vibe-authorization \
+#   'Use implement-plan on plans/implement.md. Vibe-managed commits are not authorized.'
 ```
 
 Expected behavior:
@@ -727,7 +647,9 @@ Expected behavior:
 
 ### Skill Routing
 
-Run the focused cases in `skill-routing.md` for both harnesses.
+Run the smaller skill-routing cases and check that the agent loads the right skills for each kind of task.
+
+Run the focused cases in `skill-routing.md` for OpenCode.
 
 ## Acceptance
 
