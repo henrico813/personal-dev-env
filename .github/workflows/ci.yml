@@ -115,6 +115,9 @@ jobs:
 
   ai-prompts:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -123,5 +126,6 @@ jobs:
           cache-dependency-path: planner/go.sum
       - name: install test dependencies
         run: sudo apt-get update && sudo apt-get install --yes zsh
+      - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
-        run: zsh ./ai/evals/test-prompt-commands.zsh
+        run: uv sync --locked && uv run pytest

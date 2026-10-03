@@ -17,8 +17,8 @@ Shared instructions require skill selection after reading supplied context and
 before domain work. Run `evals/skill-routing.md` after changing routing
 instructions, skill descriptions, or planning workflows. Run
 `evals/plan-workflows.md` after changing planning skills or commands. CI runs
-`evals/test-prompt-commands.zsh` to check the planner command text in every
-prompt.
+`tests/test_prompt_commands.py` to check the planner command text in every
+prompt. Run it locally with `cd ai && uv run pytest`.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each

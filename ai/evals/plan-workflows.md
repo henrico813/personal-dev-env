@@ -2,8 +2,9 @@
 
 Run these manual checks in a fresh OpenCode session after changing a planning
 workflow. Codex checks are disabled until a local model provider is configured
-for Codex. The deterministic checks in `ai/evals/test-prompt-commands.zsh`
-and `pde-installer/internal/chezmoi/template_render_test.go` run in CI and catch
+for Codex. The deterministic checks in `ai/tests/test_prompt_commands.py`
+(run with `cd ai && uv run pytest`) and
+`pde-installer/internal/chezmoi/template_render_test.go` run in CI and catch
 prompt command drift, checksum drift, and shell quoting failures. These manual
 checks cover what CI cannot: whether a model follows the instructions. Use one
 model and version per harness for comparisons. Inspect event traces and generated
