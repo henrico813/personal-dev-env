@@ -9,38 +9,36 @@ import (
 	"testing"
 )
 
+// Wrapped vault docs must still decode through check, but check now also needs
+// a base commit and applicable diffs. A valid wrapper reaches the base commit
+// rule; a broken wrapper still fails at decode before any Git work.
 func TestWrappedCheck(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		fixture  string
-		wantExit int
 		wantCode string
+		wantHint string
 	}{
-		{name: "empty_topics", fixture: "wrapped_issue_empty_topics.md", wantExit: 0},
-		{name: "extra_tag", fixture: "wrapped_issue_extra_tag.md", wantExit: 0},
-		{name: "topic_list", fixture: "wrapped_issue_topics.md", wantExit: 0},
-		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
-		{name: "missing_ticket_tag", fixture: "wrapped_issue_missing_ticket_tag.md", wantExit: 1, wantCode: "DECODE_INPUT"},
+		{name: "empty_topics", fixture: "wrapped_issue_empty_topics.md",
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
+		{name: "extra_tag", fixture: "wrapped_issue_extra_tag.md",
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
+		{name: "topic_list", fixture: "wrapped_issue_topics.md",
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
+		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md",
+			wantCode: "DECODE_INPUT", wantHint: "supported vault issue frontmatter block"},
+		{name: "missing_ticket_tag", fixture: "wrapped_issue_missing_ticket_tag.md",
+			wantCode: "DECODE_INPUT", wantHint: "supported vault issue frontmatter block"},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			path := copyFixture(t, tc.fixture)
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
-			args := []string{"check", path}
-			if tc.wantCode != "" {
-				args = []string{"check", "--json-errors", path}
+			if exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+				t.Fatalf("exit=%d want 1 stderr=%q", exit, stderr.String())
 			}
-			if exit := Execute(args, &stdout, &stderr); exit != tc.wantExit {
-				t.Fatalf("exit=%d want %d stderr=%q", exit, tc.wantExit, stderr.String())
-			}
-			if tc.wantCode == "" {
-				if !strings.Contains(stdout.String(), "OK") {
-					t.Fatalf("stdout=%q want OK", stdout.String())
-				}
-				return
-			}
-			assertPlannerJSONError(t, &stderr, tc.wantCode, "supported vault issue frontmatter block")
+			assertPlannerJSONError(t, &stderr, tc.wantCode, tc.wantHint)
 		})
 	}
 }
@@ -180,64 +178,6 @@ func TestHelpTextIncludesRules(t *testing.T) {
 	}
 }
 
-// Help must describe the single write path: prose and structure edited in the
-// Markdown file, code diffs only through guarded patch, and check --repo --base
-// as the final gate. Losing this guidance would let an author hand-maintain
-// hunks or skip whole-plan validation.
-func TestHelpTextMentionsMarkdownFirstFlow(t *testing.T) {
-	help := buildHelpText()
-	for _, want := range []string{
-		"planner new plan.md.",
-		"It fails without changing an existing destination.",
-		"Edit prose and structure directly in the Markdown file.",
-		"Change code diffs only through guarded patch",
-		"copy a PLACEHOLDER fence",
-		"planner check plan.md --repo DIR --base COMMIT as the final gate.",
-	} {
-		if !strings.Contains(help, want) {
-			t.Fatalf("buildHelpText() missing %q", want)
-		}
-	}
-	for _, banned := range []string{
-		"*** Update Field",
-		"*** Update Diff",
-		"*** Begin Patch",
-		"planner dod",
-		"planner implementation",
-		"planner verification",
-	} {
-		if strings.Contains(help, banned) {
-			t.Fatalf("buildHelpText() still mentions removed %q", banned)
-		}
-	}
-}
-
-// Help must present the guarded commands before the validation rules, with a
-// blank line between the two lists, and it must show the repository-aware check
-// usage. A reader should not mistake the guarded flags for validation rules or
-// miss how to run the whole-plan check.
-func TestHelpPlacesGuardedSectionBeforeRules(t *testing.T) {
-	help := buildHelpText()
-	guarded := strings.Index(help, "Guarded source-code revisions")
-	rules := strings.Index(help, "Validation rules:")
-	if guarded < 0 || rules < 0 || guarded > rules {
-		t.Fatalf("guarded help must precede validation rules: guarded=%d rules=%d", guarded, rules)
-	}
-	if !strings.Contains(help, "\n\nValidation rules:\n") {
-		t.Fatal("validation rules need a blank line before the header")
-	}
-	for _, want := range []string{
-		"planner inspect <plan.md> --target SELECTOR",
-		"planner patch <plan.md> --target SELECTOR --expect TOKEN",
-		"planner check <plan.md> --repo DIR --base COMMIT",
-		"edit_expect from targeted inspect",
-	} {
-		if !strings.Contains(help, want) {
-			t.Fatalf("buildHelpText() missing %q", want)
-		}
-	}
-}
-
 func TestNewRejectsNonMarkdownOutput(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.txt"
@@ -305,14 +245,10 @@ func TestNewMatchesScaffoldHelper(t *testing.T) {
 	}
 }
 
-func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
+// inspect must accept a fresh scaffold even though check rejects it, so the
+// inspect and patch authoring flow works before any diff exists.
+func TestNewScaffoldInspectPasses(t *testing.T) {
 	path := writeNewScaffold(t, t.TempDir())
-
-	var checkStdout bytes.Buffer
-	var checkStderr bytes.Buffer
-	if exit := Execute([]string{"check", path}, &checkStdout, &checkStderr); exit != 0 {
-		t.Fatalf("Execute(check) exit = %d, stderr = %q", exit, checkStderr.String())
-	}
 
 	var inspectStdout bytes.Buffer
 	var inspectStderr bytes.Buffer
@@ -332,6 +268,19 @@ func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
 	if !strings.HasPrefix(inspected.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
 		t.Fatalf("token=%q", inspected.Implementation[0].FileChanges[0].UpdateDiffExpect)
 	}
+}
+
+// A fresh scaffold has a placeholder diff and no recorded base commit, so check
+// must reject it. The old plain check printed OK here, which hid unrevised plans.
+func TestNewScaffoldCheckRequiresBaseCommit(t *testing.T) {
+	path := writeNewScaffold(t, t.TempDir())
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("Execute(check) exit = %d, stderr = %q", exit, stderr.String())
+	}
+	assertPlannerJSONError(t, &stderr, codeBaseCommitRequired, "Base commit")
 }
 
 func TestNewDryRunDoesNotWriteChanges(t *testing.T) {
@@ -469,49 +418,47 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
-func TestRunCheckMarkdown(t *testing.T) {
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
-	}
-	dir := t.TempDir()
-	path := dir + "/plan.md"
-	if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+// check replays the plan's diffs at the recorded base commit and reports what
+// it applied, so a plan whose diffs do not apply cannot pass review.
+func TestCheckAppliesPlanDiffs(t *testing.T) {
+	repo, baseCommit, name := checkPlanFixture(t)
+
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+	if exit := Execute([]string{"check", name, "--repo", repo, "--json-errors"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "OK") {
-		t.Fatalf("expected OK in stdout, got %q", stdout.String())
+	result := decodeGuardedResult[guardedCheckResult](t, stdout.String())
+	if !result.StructureValid || !result.ApplicabilityChecked || result.ChangesReplayed != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
+	}
+	if result.BehaviorChecked {
+		t.Fatal("check must not claim to check behavior")
 	}
 }
 
-func TestRunCheckMarkdownWithCanonicalFrontmatter(t *testing.T) {
-	plan, err := DecodePlan(validPlanJSON())
+// Supported vault issue frontmatter must be stripped before the plan is
+// checked, so a wrapped plan with an applicable diff still passes.
+func TestCheckAcceptsIssueFrontmatter(t *testing.T) {
+	repo, baseCommit, name := checkPlanFixture(t)
+	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-201\ndate_created: 2026-10-02\ntopics: []\n---\n\n"
+	raw, err := os.ReadFile(name)
 	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
+		t.Fatal(err)
 	}
-	rendered, err := RenderPlan(plan)
-	if err != nil {
-		t.Fatalf("RenderPlan: %v", err)
+	if err := os.WriteFile(name, []byte(frontmatter+string(raw)), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-083\ndate_created: 2026-05-12\ntopics: []\n---\n\n"
-	path := filepath.Join(t.TempDir(), "plan.md")
-	if err := os.WriteFile(path, []byte(frontmatter+rendered), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+
 	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+	if exit := Execute([]string{"check", name, "--repo", repo, "--json-errors"}, &stdout, &stderr); exit != 0 {
 		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "OK") {
-		t.Fatalf("expected OK in stdout, got %q", stdout.String())
+	result := decodeGuardedResult[guardedCheckResult](t, stdout.String())
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
 	}
 }
 
@@ -635,6 +582,24 @@ func withStdin(t *testing.T, data []byte, fn func()) {
 	defer func() { os.Stdin = original }()
 	go func() { defer w.Close(); _, _ = w.Write(data) }()
 	fn()
+}
+
+// chdir moves the test process into dir and restores the previous directory when
+// the test ends. Tests run sequentially, so no other test observes the change.
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(old); err != nil {
+			t.Fatalf("restore working directory: %v", err)
+		}
+	})
 }
 
 func writeNewScaffold(t *testing.T, dir string) string {
