@@ -32,6 +32,12 @@ home but links the real Pi agent directory, so OAuth refreshes can persist.
 
 Full PDE installs create `~/.config/vibe/goog.env` when it does not already
 exist. Fill in its endpoint and key; the file already exports `GOOG_MODEL`.
+Vibe and OpenCode deliberately use separate LiteLLM keys so each tool's usage
+stays attributable: Vibe reads `GOOG_BASE_URL` and `GOOG_API_KEY` from this
+file, while OpenCode reads its own key from `~/.config/opencode/goog.key`
+(see the pde-installer OpenCode Goog how-to). Do not reuse one key for both
+tools.
+
 Run this complete live integration command (the explicit model assignment keeps
 the example pinned to the advertised model):
 

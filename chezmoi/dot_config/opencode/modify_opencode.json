@@ -1,12 +1,131 @@
 #!/bin/sh
 set -eu
 
+# Read the whole configuration first. curl later runs with --config -, so its
+# stdin must not consume the modifier input.
 input=$(cat)
 if [ -z "$(printf '%s' "$input" | tr -d '[:space:]')" ]; then
     input='{}'
 fi
 
-printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin "@openchamber/opencode-claude@1.1.0" '
+# The endpoint is not secret. Prefer an already migrated value, then the legacy
+# provider the operator is still running, so the live URL carries forward once.
+goog_base_url=$(printf '%s\n' "$input" | jq -r '
+    .providers.goog.settings.baseURL // .provider.ollama.options.baseURL // ""
+' 2>/dev/null) || goog_base_url=''
+
+# Discover endpoint models at apply time. The key is read from a local file and
+# never passed on a command line or written to the configuration.
+goog_models=''
+warned=''
+warn() {
+    if [ -z "$warned" ]; then
+        printf '%s\n' "$1" >&2
+        warned=1
+    fi
+}
+
+# Only an http or https URL without whitespace, quotes, or backslashes can be
+# requested. http is allowed only for a trusted LAN endpoint; https is preferred.
+if [ -n "$goog_base_url" ]; then
+    valid_base=false
+    case "$goog_base_url" in
+        http://*|https://*) valid_base=true ;;
+    esac
+    case "$goog_base_url" in
+        *[[:space:]]*|*\"*|*\'*|*\\*) valid_base=false ;;
+    esac
+    if [ "$valid_base" != true ]; then
+        warn 'OpenCode Goog base URL is invalid; keeping configured models.'
+        goog_base_url=''
+    fi
+fi
+
+if [ -n "${HOME:-}" ] && [ -n "$goog_base_url" ]; then
+    key_file="$HOME/.config/opencode/goog.key"
+    goog_key=''
+    if [ -L "$key_file" ]; then
+        warn 'OpenCode Goog key file is a symlink; keeping configured models.'
+    elif [ ! -e "$key_file" ]; then
+        warn 'OpenCode Goog key file is missing; keeping configured models.'
+    elif [ ! -f "$key_file" ]; then
+        warn 'OpenCode Goog key file is not a regular file; keeping configured models.'
+    elif [ "$(stat -c '%u' "$key_file" 2>/dev/null)" != "$(id -u)" ]; then
+        warn 'OpenCode Goog key file is not owned by this user; keeping configured models.'
+    else
+        key_mode=$(stat -c '%a' "$key_file" 2>/dev/null || printf '0')
+        key_group=$(( (key_mode / 10) % 10 ))
+        key_other=$(( key_mode % 10 ))
+        if [ $((key_group & 2)) -ne 0 ] || [ $((key_other & 2)) -ne 0 ]; then
+            warn 'OpenCode Goog key file is group or world writable; keeping configured models.'
+        else
+            # A single trailing newline is stripped. Reject empty, oversized,
+            # multi-line, quoted, or backslash-bearing values so the key cannot
+            # inject another directive into the curl config on stdin.
+            candidate=$(cat "$key_file")
+            case "$candidate" in
+                ''|*[!A-Za-z0-9._~+/=-]*)
+                    warn 'OpenCode Goog key file is not a valid key; keeping configured models.' ;;
+                *)
+                    if [ "${#candidate}" -gt 512 ]; then
+                        warn 'OpenCode Goog key file is not a valid key; keeping configured models.'
+                    else
+                        goog_key=$candidate
+                    fi ;;
+            esac
+        fi
+    fi
+
+    if [ -n "$goog_key" ]; then
+        response=$(printf 'header = "Authorization: Bearer %s"\n' "$goog_key" \
+            | curl --config - --silent --show-error --fail-with-body \
+                --proto '=https,http' \
+                --connect-timeout 5 --max-time 15 --max-filesize 1048576 \
+                "$goog_base_url/models" 2>/dev/null) || response=''
+        if [ -n "$response" ]; then
+            goog_models=$(printf '%s' "$response" | jq -c '
+                if (.data | type) == "array" then
+                    [ .data[] | .id ] as $ids
+                    | if ($ids | length) == 0 then empty
+                      elif ($ids | length) > 200 then empty
+                      elif any($ids[];
+                               (type != "string")
+                               or length == 0
+                               or length > 128
+                               or (test("^[A-Za-z0-9._:/-]+$") | not)) then empty
+                      else ($ids | unique | map({(.): {}}) | add)
+                      end
+                else empty
+                end
+            ' 2>/dev/null) || goog_models=''
+        fi
+        if [ -z "$goog_models" ]; then
+            warn 'OpenCode Goog model discovery unavailable; keeping configured models.'
+        fi
+    fi
+fi
+
+# Only write a provider with a non-empty model map. On a first-run failure the
+# legacy provider stays in place so the operator keeps a working configuration.
+write_goog=false
+if [ -n "$goog_base_url" ]; then
+    if [ -n "$goog_models" ]; then
+        write_goog=true
+    else
+        existing_models=$(printf '%s' "$input" | jq -r '(.providers.goog.models // {}) | length' 2>/dev/null) || existing_models=0
+        if [ "${existing_models:-0}" -gt 0 ]; then
+            write_goog=true
+        fi
+    fi
+fi
+
+printf '%s\n' "$input" | jq \
+    --arg path "$PDE_SURVEIL_STATE_PATTERN" \
+    --arg plugin "@openchamber/opencode-claude@1.1.0" \
+    --arg baseURL "$goog_base_url" \
+    --arg keyFile "{file:~/.config/opencode/goog.key}" \
+    --argjson googModels "${goog_models:-null}" \
+    --argjson writeGoog "$write_goog" '
     def is_managed_plugin:
         if type == "string" then
             test("^(opencode-mem|opencode-claude|opencode-claude-code|@openchamber/opencode-claude)(@.*)?$")
@@ -25,6 +144,10 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
         end
     elif has("permission") and (.permission | type) != "object" then
         error("permission must be a string or object")
+    elif has("providers") and (.providers | type) != "object" then
+        error("providers must be an object")
+    elif has("provider") and (.provider | type) != "object" then
+        error("provider must be an object")
     elif (.permission | has("external_directory")) and (.permission.external_directory | type) == "string" then
         if .permission.external_directory == "allow" then .
         elif .permission.external_directory == "ask" or .permission.external_directory == "deny" then
@@ -38,4 +161,20 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
     end
     | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
     | del(.plugin)
+    | (if $writeGoog then
+        (if (.provider? | type) == "object" then .provider |= del(.ollama) else . end)
+        | (if .provider? == {} then del(.provider) else . end)
+        | .providers = (.providers // {})
+        | .providers.goog = ((.providers.goog // {}) + {
+            name: "Goog",
+            package: "@opencode/ai/providers/openai-compatible",
+            settings: ((.providers.goog.settings // {}) + {
+                baseURL: $baseURL,
+                apiKey: $keyFile
+            }),
+            models: (if $googModels == null or ($googModels | length) == 0
+                     then (.providers.goog.models // {})
+                     else $googModels end)
+          })
+      else . end)
 '
