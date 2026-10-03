@@ -1,0 +1,68 @@
+# Diagnose guarded failures
+
+Guarded commands emit failures as a JSON object on stderr when `--json-errors`
+is set:
+
+```json
+{"code": "...", "message": "...", "recovery_hint": "..."}
+```
+
+`recovery_hint` is a short next action for that failure. `PLAN_STALE` and
+`PLAN_BUSY` get a specific hint; other codes get the general advice to fix the
+input or source assumption instead of retrying unchanged. Without `--json-errors`
+they print `planner: CODE: message`. The process exits 2 for a usage error and 1
+for other failures.
+
+## Read the code first
+
+The code names the failure category:
+
+- `USAGE`: bad flag combination or selector.
+- `READ_INPUT`, `DECODE_INPUT`, `VALIDATE_INPUT`: the plan, diff, or scratch
+  input could not be read, parsed, or validated.
+- `WRITE_OUTPUT`: the plan or exported source could not be written to disk.
+- `SOURCE_CHECK`: the base commit could not be opened or a diff did not apply.
+- `PATCH_INPUT`: the replacement source or diff was rejected before plumbing.
+- `PLAN_STALE`: the `edit_expect` token did not match. Reread the plan and
+  reconcile changes. Never refresh only the token and retry an old replacement.
+- `PLAN_BUSY`: another writer holds the plan lock. Wait for the active writer,
+  and remove a leftover lock only after confirming no writer is active.
+- `VALIDATE_RESULT`, `PLAN_EDIT`, `PLAN_COLLATERAL_CHANGE`: the replacement
+  changed the plan in an unsupported way.
+- `RUNTIME`: an untyped failure that the CLI could not classify.
+- `OUTPUT_REPORT_FAILED`: the result could not be reported. The plan may already
+  have been written, so inspect it before retrying.
+
+The patch engine also reports `BASE_COMMIT_INVALID`, `BASE_UNAVAILABLE`,
+`UNSUPPORTED_PATH`, `PATCH_INVALID`, `PATCH_ENVELOPE`, `PATCH_PATH_MISMATCH`,
+`PATCH_UNSUPPORTED`, `PATCH_NOT_APPLICABLE`, `PATCH_NO_CHANGE`, and
+`PLAN_UNSUPPORTED` when a guarded operation reaches it.
+
+`planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
+commit:` line and the command has no `--base-commit` override.
+
+## What to do next
+
+- `SOURCE_CHECK`: pass the full commit ID recorded when the plan was created as
+  `--base-commit`, not `HEAD`, a branch, or a tag. If a diff did not apply, export the
+  source at the base commit with `planner inspect --code-out` and rewrite the
+  change through `planner patch` instead of editing the fenced diff by hand.
+- `BASE_COMMIT_REQUIRED`: add `Base commit: <full commit ID>` as the first line
+  of `### Current State`, or pass `--base-commit` explicitly.
+- `WRITE_OUTPUT`: check that the destination path exists and is writable, then
+  retry. `OUTPUT_REPORT_FAILED` is different: the plan may already have been
+  written, so inspect it before retrying.
+- `VALIDATE_RESULT`, `PLAN_EDIT`, `PLAN_COLLATERAL_CHANGE`, `PATCH_INPUT`: the
+  replacement changed the plan in an unsupported way. Reread the plan and make
+  the change through `planner inspect` and `planner patch` so the prefix
+  replays. Do not edit a guarded fence by hand.
+
+## Common causes
+
+- `--base-commit` is `HEAD`, a branch name, or a tag. Use the full commit ID
+  recorded when the plan was created.
+- Diffs were written against the wrong commit, so a later change expects
+  content that is not present.
+- The plan was edited after inspect, so `edit_expect` no longer matches.
+- A step's diff no longer applies because an earlier change was edited without
+  replaying the prefix.
