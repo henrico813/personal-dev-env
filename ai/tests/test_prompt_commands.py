@@ -105,7 +105,8 @@ PLAN_PROMPTS = [
 
 @pytest.mark.parametrize("prompt", PROMPTS)
 def test_prompt_uses_only_existing_subcommands(prompt: Path) -> None:
-    # Guards removed planner dod/implementation/verification commands.
+    # Guards removed planner dod/implementation/verification commands left in
+    # prompts, which would send every agent to a command that no longer exists.
     for command in extract_commands(prompt):
         command_name = subcommand(command)
         assert command_name in ALLOWED_SUBCOMMANDS, (
@@ -118,7 +119,9 @@ def test_prompt_uses_only_existing_subcommands(prompt: Path) -> None:
 def test_planning_prompt_keeps_required_commands(
     prompt: Path, kind: str
 ) -> None:
-    # Guards a prompt edit dropping planner check.
+    # Guards a prompt edit dropping planner check, so agents would stop
+    # validating plans and nothing would notice because the unchecked plan
+    # still looks finished.
     present = {subcommand(command) for command in extract_commands(prompt)}
     assert REQUIRED_COMMANDS[kind] <= present, (
         f"prompt {prompt} is missing planner commands "
