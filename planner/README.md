@@ -11,13 +11,12 @@ A plan's baseline commit is the full Git commit ID of the source repository at
 the moment the plan was created. Every fenced diff in the plan describes a
 change measured against that commit.
 
-Create-plan records it in the plan. In the prompt version that has the
-`Baseline commit:` line, the first line of `### Current State` is:
+Create-plan records it as the first line of `### Current State`:
 
     Baseline commit: 4f9c...<full 40-character or 64-character SHA>
 
-Guarded commands take that value as `--base`. The planner does not read the line
-for you, and it never defaults to `HEAD`; the caller passes the full commit ID.
+`planner check` reads that line for the baseline; `planner inspect` and
+`planner patch` still require `--base`. No command defaults to `HEAD`.
 
 ## Why guarded commands need the original commit
 
@@ -58,7 +57,7 @@ or succeeds against content that only happens to match. Pass A, not C.
 
 ## What Planner does with the baseline
 
-`--base` is used in three places:
+The baseline is used in three places:
 
 - `planner inspect` opens a disposable repository at the baseline, replays every
   change before the selected one, and exports the source just before or just
@@ -67,8 +66,9 @@ or succeeds against content that only happens to match. Pass A, not C.
 - `planner patch` re-checks that token, replays the baseline plus every change
   through the edited one, and only then writes the plan. Later changes are not
   replayed here.
-- `planner check` replays the whole plan from the baseline to confirm every diff
-  applies in order.
+- `planner check` is the single readiness check: it reports every structure
+  violation and replays every diff at the baseline. It does not run tests or
+  check behavior.
 
 The disposable repository shares read-only Git objects with your repository and
 is removed afterwards. Planner never stages, stashes, resets, or commits your
@@ -87,18 +87,6 @@ The SHA identifies a starting point for replay. It does not:
 
 It makes replay repeatable. It does not make it authorized or correct.
 
-## Relationship to the unmerged 591184e fix
-
-Commit `591184e` ("fix: record plan baseline on a fixed line") is on the
-`vibe/pdev-197-guarded-planner` branch and is not merged into `main`. It changes
-the create-plan and implement-plan prompts so they always write and read
-`Baseline commit: <full SHA>` as a fixed line in Current State, instead of
-leaving the baseline implicit or copying whatever `HEAD` happens to be.
-
-The fix does not change Planner's Go code or replay behavior. The planner always
-required a full `--base`; `591184e` only makes the correct value easier to find
-and less likely to be replaced with `HEAD`.
-
 ## Who this matters to
 
 For ordinary users who run Planner through the create-plan and implement-plan
@@ -109,4 +97,4 @@ It matters directly to maintainers of those prompts and to anyone writing or
 running plan evaluations. An eval that creates a plan, commits an implementation
 step, and then revises the plan will catch a workflow that used `HEAD`: the edit
 fails because the diff no longer applies. When checking such a run, confirm that
-every guarded command passed the original commit, not the new `HEAD`.
+every guarded command used the original commit, not the new `HEAD`.
