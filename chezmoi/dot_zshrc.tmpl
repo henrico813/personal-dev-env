@@ -185,6 +185,21 @@ vibe() (
     fi
     command vibe "$@"
 )
+
+# Scope Goog credentials to one OpenCode invocation.
+opencode() (
+    local env_file="$HOME/.config/vibe/goog.env"
+
+    if [[ -e "$env_file" || -L "$env_file" ]]; then
+        if [[ ! -f "$env_file" || -L "$env_file" ]]; then
+            print -u2 "OpenCode environment is unavailable: $env_file"
+            return 1
+        fi
+        unset GOOG_BASE_URL GOOG_API_KEY GOOG_MODEL
+        source "$env_file" || return 1
+    fi
+    command opencode "$@"
+)
 {{- end }}
 # cat -> bat
 alias cat='bat'

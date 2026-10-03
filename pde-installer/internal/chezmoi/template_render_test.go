@@ -184,6 +184,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"ocw()",
 				"ocw-password()",
 				"server.env",
+				"opencode() (",
 				"vibe() (",
 				"EDITOR=$(which nvim)",
 				"/aqua.yaml",
@@ -201,6 +202,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"oca() (",
 				"ocw() (",
 				"ocw-password() (",
+				"opencode() (",
 				"vibe() (",
 				"$HOME/.config/opencode/server.env",
 				"url=\"http://127.0.0.1:4096\"",
@@ -291,6 +293,10 @@ printf '%s:%s\n' "$OPENCODE_SERVER_USERNAME" "$OPENCODE_SERVER_PASSWORD" >"$HOME
 printf '%s\n' "$OPENCODE_ATTACH_URL" >"$HOME/opencode-attach-url"
 printf '%s\n' "$@" >"$HOME/opencode-arguments"
 `
+	fakeOpenCodeGoogScript = `#!/bin/sh
+printf '%s\n' "${GOOG_BASE_URL-}" "${GOOG_API_KEY-}" "${GOOG_MODEL-}" >"$HOME/opencode-environment"
+printf '%s\n' "$@" >"$HOME/opencode-arguments"
+`
 )
 
 func TestPRDForwardsDiffArguments(t *testing.T) {
@@ -338,6 +344,36 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 		"vibe-environment": "https://goog.example.test\ndemo-key\nqwen3.8\n",
 		"vibe-arguments":   "run\n--key\ndemo\n--model\ngoog/qwen3.8\n",
 		"vibe-caller":      "::\n",
+	} {
+		data, err := os.ReadFile(filepath.Join(home, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(data); got != want {
+			t.Errorf("%s = %q, want %q", path, got, want)
+		}
+	}
+}
+
+func TestOpenCodeScopesGoogEnvironment(t *testing.T) {
+	home := t.TempDir()
+	writeOpenCodeZshRuntime(t, home)
+	writeExecutable(t, filepath.Join(home, ".local", "bin", "opencode"), fakeOpenCodeGoogScript)
+	writeOpenCodeCredentialsAt(t, filepath.Join(home, ".config", "vibe", "goog.env"), `export GOOG_BASE_URL=https://goog.example.test
+export GOOG_API_KEY=demo-key
+export GOOG_MODEL=qwen3.8
+`)
+
+	command := openCodeZshCommand(home, `opencode run --key demo --model goog/qwen3.8
+print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/opencode-caller"`)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("opencode failed: %v\n%s", err, output)
+	}
+
+	for path, want := range map[string]string{
+		"opencode-environment": "https://goog.example.test\ndemo-key\nqwen3.8\n",
+		"opencode-arguments":   "run\n--key\ndemo\n--model\ngoog/qwen3.8\n",
+		"opencode-caller":      "::\n",
 	} {
 		data, err := os.ReadFile(filepath.Join(home, path))
 		if err != nil {
