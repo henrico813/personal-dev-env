@@ -28,13 +28,27 @@ REQUIRED_COMMANDS = {
 
 
 def subcommand(command: str) -> str:
-    """Return the second whitespace-separated command word."""
+    """Return the second whitespace-separated command word.
+
+    Args:
+        command: Command text to split.
+
+    Returns:
+        The second word, or an empty string when absent.
+    """
     words = command.split()
     return words[1] if len(words) > 1 else ""
 
 
 def extract_commands(path: Path) -> list[str]:
-    """Extract commands, collapsing whitespace from wrapped prompt lines."""
+    """Extract planner commands and collapse wrapped whitespace.
+
+    Args:
+        path: Prompt file to read.
+
+    Returns:
+        Backtick-quoted planner commands with collapsed whitespace.
+    """
     return [
         " ".join(match.group(1).split())
         for match in PLANNER_COMMAND.finditer(path.read_text())
@@ -42,13 +56,25 @@ def extract_commands(path: Path) -> list[str]:
 
 
 def prompt_files() -> list[Path]:
+    """List the available OpenCode and Codex prompt files.
+
+    Returns:
+        Sorted prompt paths from the OpenCode and Codex prompt directories.
+    """
     return sorted((ROOT / "ai/opencode/commands").glob("*.md")) + sorted(
         (ROOT / "ai/codex/skills").glob("*/SKILL.md")
     )
 
 
 def prompt_kind(path: Path) -> str | None:
-    """Return the workflow kind for prompts that execute plan commands."""
+    """Identify the workflow kind for a plan prompt.
+
+    Args:
+        path: Prompt file to classify.
+
+    Returns:
+        ``"create"`` or ``"implement"``, or ``None`` for other prompts.
+    """
     if path.name == "create_plan.md" or path.parts[-2:] == (
         "create-plan",
         "SKILL.md",
@@ -63,6 +89,14 @@ def prompt_kind(path: Path) -> str | None:
 
 
 def prompt_id(path: Path) -> str:
+    """Build the test ID for a prompt path.
+
+    Args:
+        path: Prompt path relative to the repository root.
+
+    Returns:
+        A short OpenCode or Codex test ID.
+    """
     relative = path.relative_to(ROOT)
     if relative.parts[1] == "opencode":
         return f"opencode/{relative.name}"
@@ -73,7 +107,17 @@ def prompt_id(path: Path) -> str:
 def planner_environment(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> dict[str, str]:
-    """Build the checkout's planner and put it first on PATH."""
+    """Build the planner and put it first on PATH.
+
+    Args:
+        tmp_path_factory: Factory for the isolated build directory.
+
+    Returns:
+        The process environment with the built planner first on PATH.
+
+    Raises:
+        AssertionError: If building the planner fails.
+    """
     build_root = tmp_path_factory.mktemp("planner")
     planner = build_root / "planner"
     result = subprocess.run(
@@ -132,6 +176,19 @@ def test_planning_prompt_keeps_required_commands(
 def run_checked(
     args: list[str], *, cwd: Path | None = None, env: dict[str, str]
 ) -> str:
+    """Run a command and return its standard output.
+
+    Args:
+        args: Command and arguments to execute.
+        cwd: Working directory for the command, if any.
+        env: Environment for the subprocess.
+
+    Returns:
+        Captured standard output.
+
+    Raises:
+        AssertionError: If the command exits with a nonzero status.
+    """
     result = subprocess.run(
         args, cwd=cwd, env=env, capture_output=True, text=True
     )
@@ -142,6 +199,12 @@ def run_checked(
 
 
 def new_fixture(directory: Path, env: dict[str, str]) -> None:
+    """Create and commit a minimal Go repository.
+
+    Args:
+        directory: Directory for the fixture repository.
+        env: Environment for the git commands.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     run_checked(["git", "init", "-q"], cwd=directory, env=env)
     (directory / "go.mod").write_text(
@@ -168,6 +231,20 @@ def new_fixture(directory: Path, env: dict[str, str]) -> None:
 def seed_plan(
     repo: Path, plan: Path, tmp_root: Path, env: dict[str, str]
 ) -> str:
+    """Seed a plan with a committed file change.
+
+    Args:
+        repo: Fixture repository containing the source file.
+        plan: Plan file to create and update.
+        tmp_root: Directory for scratch files.
+        env: Environment for the planner commands.
+
+    Returns:
+        The base commit SHA used for planner operations.
+
+    Raises:
+        AssertionError: If the planner scaffold lacks its expected placeholder.
+    """
     run_checked(["planner", "new", str(plan)], env=env)
     scaffold = "`path/to/file`"
     contents = plan.read_text()
