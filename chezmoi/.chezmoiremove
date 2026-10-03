@@ -1,1 +1,4 @@
 .config/pde/paths.env
+.config/systemd/user/opencode-web.service
+.config/systemd/user/opencode-web-health.service
+.config/systemd/user/opencode-web-health.timer
