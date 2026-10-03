@@ -19,11 +19,11 @@ for unit in $units; do
     fi
 done
 
-bus_ok=false
+manager_ok=false
 disable_failed=false
 # systemctl --user only works when a systemd user manager is running.
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
-    bus_ok=true
+    manager_ok=true
     for unit in $units; do
         if ! systemctl --user disable --now "$unit" >/dev/null 2>&1; then
             disable_failed=true
@@ -49,7 +49,7 @@ for unit in $units; do
     done
 done
 
-if [ "$unit_present" = true ] && { [ "$bus_ok" = false ] || [ "$disable_failed" = true ]; }; then
+if [ "$unit_present" = true ] && { [ "$manager_ok" = false ] || [ "$disable_failed" = true ]; }; then
     printf '%s\n' \
         "WARNING: OpenCode web service cleanup could not confirm the service stopped." \
         "The unit files are being removed, but the service may still be running." \

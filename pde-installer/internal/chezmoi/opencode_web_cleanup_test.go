@@ -123,7 +123,7 @@ func TestCleanupScriptSkipsWithoutSystemd(t *testing.T) {
 // A host can have the systemctl binary but no running systemd user manager; the
 // script must still remove the units' login symlinks, leave unrelated entries
 // alone, and warn that the running service may need a manual stop.
-func TestCleanupScriptSkipsWithoutUserBus(t *testing.T) {
+func TestCleanupScriptSkipsWithoutUserManager(t *testing.T) {
 	home := t.TempDir()
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("1", ""))
 	writeUserUnitFile(t, home, "opencode-web.service")
