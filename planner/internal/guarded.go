@@ -25,6 +25,10 @@ const (
 	codePlanEdit           = "PLAN_EDIT"
 	codeCollateralChange   = "PLAN_COLLATERAL_CHANGE"
 	codeOutputReportFailed = "OUTPUT_REPORT_FAILED"
+	// codeBaseCommitRequired marks a plan that records no base commit and a check
+	// call that supplied no --base-commit. It is distinct from planpatch's
+	// CodeBaseCommitInvalid so the recovery hint can name the Current State line.
+	codeBaseCommitRequired = "BASE_COMMIT_REQUIRED"
 )
 
 // plannerCode returns the registered string for a shared PlannerErrorCode.
@@ -47,23 +51,23 @@ func codedError(code string, err error) error {
 }
 
 // guardedInspectOptions selects one fenced change and optionally exports the
-// proposed source that precedes or follows it. Repo and Base are required so the
-// returned edit_expect binds the recorded baseline.
+// proposed source that precedes or follows it. Repo and BaseCommit are required
+// so the returned edit_expect binds the recorded base commit.
 type guardedInspectOptions struct {
-	PlanPath string
-	Target   string
-	Repo     string
-	Base     string
-	CodeOut  string
-	Before   bool
+	PlanPath   string
+	Target     string
+	Repo       string
+	BaseCommit string
+	CodeOut    string
+	Before     bool
 }
 
 func (o guardedInspectOptions) validate() error {
 	switch {
 	case o.Target == "":
 		return usageError("--target is required")
-	case o.Repo == "" || o.Base == "":
-		return usageError("--repo and --base are required")
+	case o.Repo == "" || o.BaseCommit == "":
+		return usageError("--repo and --base-commit are required")
 	case o.Before && o.CodeOut == "":
 		return usageError("--before requires --code-out")
 	}
@@ -78,7 +82,7 @@ type guardedInspectResult struct {
 	StepTitle   string `json:"step_title"`
 	StepSummary string `json:"step_summary"`
 	Explanation string `json:"explanation"`
-	Base        string `json:"base"`
+	BaseCommit  string `json:"base_commit"`
 	EditExpect  string `json:"edit_expect"`
 	Validation  string `json:"validation"`
 	Diff        string `json:"diff,omitempty"`
@@ -112,15 +116,15 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 		StepTitle:   parsed.Plan.Implementation[step].Title,
 		StepSummary: parsed.Plan.Implementation[step].Summary,
 		Explanation: selected.Explanation,
-		Base:        opts.Base,
-		EditExpect:  planpatch.Expect(raw, selector, opts.Base),
+		BaseCommit:  opts.BaseCommit,
+		EditExpect:  planpatch.Expect(raw, selector, opts.BaseCommit),
 		Validation:  "inspection_only",
 	}
 	if opts.CodeOut == "" {
 		result.Diff = selected.Diff
 		return result, nil
 	}
-	s, err := sessionBefore(opts.Repo, opts.Base, parsed.Plan, step, change)
+	s, err := sessionBefore(opts.Repo, opts.BaseCommit, parsed.Plan, step, change)
 	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
@@ -160,15 +164,15 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 // guardedPatchOptions replaces one fenced change from ordinary source or a raw
 // diff, guarded by the edit_expect token and mandatory repository replay.
 type guardedPatchOptions struct {
-	PlanPath  string
-	Target    string
-	Expect    string
-	AfterFile string
-	DiffFile  string
-	Repo      string
-	Base      string
-	DryRun    bool
-	Diff      bool
+	PlanPath   string
+	Target     string
+	Expect     string
+	AfterFile  string
+	DiffFile   string
+	Repo       string
+	BaseCommit string
+	DryRun     bool
+	Diff       bool
 }
 
 func (o guardedPatchOptions) validate() error {
@@ -177,8 +181,8 @@ func (o guardedPatchOptions) validate() error {
 		return usageError("--target is required")
 	case o.Expect == "":
 		return usageError("--expect is required")
-	case o.Repo == "" || o.Base == "":
-		return usageError("--repo and --base are required")
+	case o.Repo == "" || o.BaseCommit == "":
+		return usageError("--repo and --base-commit are required")
 	case (o.AfterFile == "") == (o.DiffFile == ""):
 		return usageError("exactly one of --after-file and --diff-file is required")
 	}
@@ -195,7 +199,7 @@ type guardedPatchResult struct {
 	PatchSyntaxValid  bool   `json:"patch_syntax_valid"`
 	PrefixReplayed    bool   `json:"prefix_replayed"`
 	DownstreamChecked bool   `json:"downstream_checked"`
-	Base              string `json:"base"`
+	BaseCommit        string `json:"base_commit"`
 	BehaviorChecked   bool   `json:"behavior_checked"`
 	Preview           []byte `json:"-"`
 }
@@ -217,16 +221,17 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	if err != nil {
 		return result, codedError(plannerCode(PlannerUsageError), err)
 	}
-	// The token binds the plan bytes, the normalized selector, and the base. Now
-	// that inspect and patch always have a baseline, any mismatch is PLAN_STALE.
-	if opts.Expect != planpatch.Expect(raw, selector, opts.Base) {
+	// The token binds the plan bytes, the normalized selector, and the base
+	// commit. Now that inspect and patch always have a base commit, any mismatch
+	// is PLAN_STALE.
+	if opts.Expect != planpatch.Expect(raw, selector, opts.BaseCommit) {
 		return result, &planpatch.Error{
 			Code:  planpatch.CodePlanStale,
-			Cause: errors.New("plan, target, or baseline changed since inspection"),
+			Cause: errors.New("plan, target, or base commit changed since inspection"),
 		}
 	}
 	selected := parsed.Plan.Implementation[step].FileChanges[change]
-	s, err := sessionBefore(opts.Repo, opts.Base, parsed.Plan, step, change)
+	s, err := sessionBefore(opts.Repo, opts.BaseCommit, parsed.Plan, step, change)
 	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
@@ -259,9 +264,9 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			return result, codedError(codePatchInput, err)
 		}
 	}
-	// Prefix replay: apply the edited change on top of the baseline plus every
+	// Prefix replay: apply the edited change on top of the base commit plus every
 	// earlier change. Later changes are deliberately not replayed; only
-	// planner check --repo --base validates the whole plan for readiness.
+	// planner check --repo --base-commit validates the whole plan for readiness.
 	if err := s.Apply(planpatch.Change{
 		Target:   selector,
 		Filename: selected.Filename,
@@ -308,7 +313,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	result.PatchSyntaxValid = true
 	result.PrefixReplayed = true
 	result.DownstreamChecked = false
-	result.Base = opts.Base
+	result.BaseCommit = opts.BaseCommit
 	result.BehaviorChecked = false
 	return result, nil
 }
@@ -326,16 +331,9 @@ func expectedPlan(plan Plan, step, change int, replacement []byte) Plan {
 }
 
 type guardedCheckOptions struct {
-	PlanPath string
-	Repo     string
-	Base     string
-}
-
-func (o guardedCheckOptions) validate() error {
-	if o.Repo == "" || o.Base == "" {
-		return usageError("--repo and --base are required")
-	}
-	return nil
+	PlanPath   string
+	Repo       string
+	BaseCommit string
 }
 
 type guardedCheckResult struct {
@@ -343,39 +341,72 @@ type guardedCheckResult struct {
 	StructureValid       bool   `json:"structure_valid"`
 	ApplicabilityChecked bool   `json:"applicability_checked"`
 	ChangesReplayed      int    `json:"changes_replayed"`
-	Base                 string `json:"base"`
+	BaseCommit           string `json:"base_commit"`
 	SourceState          string `json:"source_state"`
 	BehaviorChecked      bool   `json:"behavior_checked"`
 }
 
 func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	var result guardedCheckResult
-	if err := opts.validate(); err != nil {
-		return result, err
-	}
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
 		return result, codedError(plannerCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+		// Reuse the markdown decoder's wrapped-doc subject and recovery hint so
+		// check reports the same guidance as the other read commands.
+		return result, plannerMarkdownDecodeError(raw, err)
 	}
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
 		return result, codedError(plannerCode(PlannerValidateInputError), err)
 	}
+	baseCommit, err := checkBaseCommit(opts.BaseCommit, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
+	repo := opts.Repo
+	if repo == "" {
+		if repo, err = os.Getwd(); err != nil {
+			return result, codedError(plannerCode(PlannerReadInputError), err)
+		}
+	}
 	changes := orderedChanges(parsed.Plan)
-	if err := planpatch.Replay(opts.Repo, opts.Base, changes); err != nil {
+	if err := planpatch.Replay(repo, baseCommit, changes); err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
 	result.StructureValid = true
 	result.ApplicabilityChecked = true
 	result.ChangesReplayed = len(changes)
-	result.Base = opts.Base
+	result.BaseCommit = baseCommit
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
 	return result, nil
+}
+
+// baseCommitRE matches the required first line of Current State. A full
+// lowercase object ID keeps the recorded base commit immutable and unambiguous.
+var baseCommitRE = regexp.MustCompile(`^Base commit: ([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// checkBaseCommit returns the commit that check replays. An explicit
+// --base-commit wins; otherwise the plan must record one on the first line of
+// Current State. check never falls back to HEAD, so a stale plan cannot
+// silently measure against the current checkout.
+func checkBaseCommit(flagBaseCommit string, plan Plan) (string, error) {
+	if flagBaseCommit != "" {
+		return flagBaseCommit, nil
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(plan.DefinitionOfDone.CurrentState), "\n")
+	if m := baseCommitRE.FindStringSubmatch(strings.TrimSpace(first)); m != nil {
+		return m[1], nil
+	}
+	return "", &planpatch.Error{
+		Code: codeBaseCommitRequired,
+		Cause: errors.New(
+			`first line of Current State must be "Base commit: <full commit ID>" ` +
+				`or --base-commit must be given`),
+	}
 }
 
 var patchFileChangeSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)
@@ -441,12 +472,12 @@ func orderedChanges(plan Plan) []planpatch.Change {
 	return out
 }
 
-// sessionBefore replays the baseline and every change before (step, change),
-// returning an open session positioned just before the selected change. The
-// caller owns the session and must Close it. Comparison is by parsed indices, so
-// any spelling of the selector, including leading zeros, selects the same change.
-func sessionBefore(repo, base string, plan Plan, step, change int) (*planpatch.Session, error) {
-	s, err := planpatch.Open(repo, base)
+// sessionBefore starts from the base commit and applies every change
+// before (step, change), returning an open session just before the selected
+// change. The caller owns the session and must Close it. Comparison is by parsed
+// indices, so a selector with leading zeros selects the same change.
+func sessionBefore(repo, baseCommit string, plan Plan, step, change int) (*planpatch.Session, error) {
+	s, err := planpatch.Open(repo, baseCommit)
 	if err != nil {
 		return nil, err
 	}

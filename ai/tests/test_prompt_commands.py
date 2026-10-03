@@ -249,7 +249,7 @@ def seed_plan(
         The base commit SHA used for planner operations.
 
     Raises:
-        AssertionError: If the planner scaffold lacks its expected placeholder.
+        AssertionError: If the planner scaffold lacks an expected placeholder.
     """
     run_checked(["planner", "new", str(plan)], env=env)
     scaffold = "`path/to/file`"
@@ -257,8 +257,17 @@ def seed_plan(
     assert scaffold in contents, (
         "planner new scaffold changed; update seed_plan's placeholder"
     )
-    plan.write_text(contents.replace(scaffold, "`main.go`"))
     base = run_checked(["git", "rev-parse", "HEAD"], cwd=repo, env=env).strip()
+    current_state = (
+        "<current behavior with file:line refs -- required, non-empty, "
+        "max 250 chars>"
+    )
+    assert current_state in contents, (
+        "planner new scaffold changed; update seed_plan's current-state "
+        "placeholder"
+    )
+    contents = contents.replace(scaffold, "`main.go`")
+    plan.write_text(contents.replace(current_state, f"Base commit: {base}"))
     scratch = Path(tempfile.mkdtemp(dir=tmp_root, prefix="seed.")) / "source"
     output = run_checked(
         [
@@ -269,7 +278,7 @@ def seed_plan(
             "implementation[1].file_changes[1]",
             "--repo",
             str(repo),
-            "--base",
+            "--base-commit",
             base,
             "--before",
             "--code-out",
@@ -290,7 +299,7 @@ def seed_plan(
             token,
             "--repo",
             str(repo),
-            "--base",
+            "--base-commit",
             base,
             "--after-file",
             str(scratch),
@@ -326,9 +335,9 @@ def test_prompt_commands_run_in_zsh(
     for original in extract_commands(prompt):
         if not TARGET_COMMAND.match(original):
             continue
-        if (
-            "--repo <repo>" not in original
-            or "--base <commit>" not in original
+        if "--repo <repo>" not in original or (
+            subcommand(original) != "check"
+            and "--base-commit <commit>" not in original
         ):
             continue
         ran.add(subcommand(original))
