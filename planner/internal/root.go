@@ -19,8 +19,7 @@ Usage:
   planner
   planner help
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
-  planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
-  planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
+  planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
@@ -37,7 +36,8 @@ Markdown-first authoring:
   4. Add or remove a file change by hand: copy a PLACEHOLDER fence, fill it with
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
-  5. Finish with planner check plan.md --repo DIR --base COMMIT as the final gate.
+  5. Finish with planner check plan.md as the final gate. It reports every
+     structure violation and applies every diff at the baseline.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
@@ -61,10 +61,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	case "new":
 		return runNew(args[1:], stdout, stderr)
 	case "check":
-		if hasArg(args[1:], "--repo") || hasArg(args[1:], "--base") {
-			return runGuardedCheck(args[1:], stdout, stderr)
-		}
-		return runCheck("check", args[1:], stdout, stderr)
+		return runGuardedCheck(args[1:], stdout, stderr)
 	case "inspect":
 		if hasArg(args[1:], "--target") {
 			return runGuardedInspect(args[1:], stdout, stderr)
@@ -131,63 +128,6 @@ func plannerMarkdownDecodeError(raw []byte, parseErr error) *PlannerCLIError {
 		cliErr.RecoveryHint = "use the supported vault issue frontmatter block or remove the wrapper before retrying"
 	}
 	return cliErr
-}
-
-// runCheck validates markdown plans and reports every violation.
-func runCheck(cmd string, args []string, stdout io.Writer, stderr io.Writer) int {
-	const usage = "usage: planner check [<plan.md>] [--stdin] [--json-errors]"
-	for _, a := range args {
-		if a == "--format" {
-			reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
-			return 2
-		}
-	}
-	positional, pf, err := splitPreviewArgs(args, false, true)
-	if err != nil {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
-	if (len(positional) == 0 && !pf.stdin) || len(positional) > 1 {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, usage))
-		return 2
-	}
-
-	path := ""
-	if len(positional) == 1 {
-		path = positional[0]
-	}
-	if path != "" && strings.HasSuffix(strings.ToLower(path), ".json") {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerUsageError, nil, "planner check no longer accepts JSON plan input: "+usage))
-		return 2
-	}
-
-	var raw []byte
-	if pf.stdin {
-		raw, err = io.ReadAll(os.Stdin)
-	} else {
-		raw, err = os.ReadFile(path)
-	}
-	if err != nil {
-		reportError(stderr, cmd, newPlannerCLIError(PlannerReadInputError, err, patchSourceLabel(path, pf.stdin)))
-		return 1
-	}
-	parsed, parseErr := ParseMarkdown(string(raw))
-	if parseErr != nil {
-		reportError(stderr, cmd, plannerMarkdownDecodeError(raw, parseErr))
-		return 1
-	}
-	plan := parsed.Plan
-
-	if errs := ValidatePlanAll(plan); len(errs) > 0 {
-		messages := make([]string, len(errs))
-		for i, e := range errs {
-			messages[i] = e.Message
-		}
-		reportError(stderr, cmd, newPlannerCLIError(PlannerValidateInputError, errors.New(strings.Join(messages, "\n")), "plan"))
-		return 1
-	}
-	_, _ = io.WriteString(stdout, "OK\n")
-	return 0
 }
 
 func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -300,16 +240,6 @@ func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, p
 		}
 	}
 	return kept, pf, nil
-}
-
-func patchSourceLabel(path string, useStdin bool) string {
-	if useStdin {
-		return "stdin"
-	}
-	if path == "" {
-		return "JSON input"
-	}
-	return path
 }
 
 type InspectPlan struct {

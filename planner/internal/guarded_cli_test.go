@@ -62,6 +62,32 @@ func fooDiff(t *testing.T, before, after, mode string) string {
 	return strings.TrimSuffix(string(raw), "\n")
 }
 
+// writeRenderedPlan renders plan to a fresh temp Markdown file.
+func writeRenderedPlan(t *testing.T, plan Plan) string {
+	t.Helper()
+	rendered, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(name, []byte(rendered), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return name
+}
+
+// checkPlanFixture renders a plan whose single foo.txt diff applies and whose
+// Current State records base as its first line, matching create-plan output.
+func checkPlanFixture(t *testing.T) (repo, base, name string) {
+	t.Helper()
+	repo, base = revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100644")
+	plan.DefinitionOfDone.CurrentState = "Baseline commit: " + base
+	return repo, base, writeRenderedPlan(t, plan)
+}
+
 // writeRevisionPlan renders the plan and inserts a human review note. A targeted
 // edit must keep that note; rendering the whole document again would drop text
 // the parser does not model.
@@ -498,8 +524,9 @@ func TestGuardedErrorJSONShape(t *testing.T) {
 }
 
 // Each options type validates itself, so the operation functions must reject bad
-// combinations with USAGE before reading anything. Testing through inspect,
-// patch, and check keeps that rule independent of the CLI flag grammar.
+// combinations with USAGE before reading anything. Testing through inspect and
+// patch keeps that rule independent of the CLI flag grammar; check defaults its
+// repo and base, so it has no required pair to reject.
 func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	const target = "implementation[1].file_changes[1]"
 	base := strings.Repeat("a", 40)
@@ -553,10 +580,6 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 			})
 			return err
 		}, "USAGE"},
-		{"check missing repo base", func() error {
-			_, err := guardedCheck(guardedCheckOptions{})
-			return err
-		}, "USAGE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -575,11 +598,11 @@ func TestGuardedOptionsRejectBadCombinations(t *testing.T) {
 	}
 }
 
-// The guarded commands always need the repository and the baseline commit, so a
+// inspect and patch always need the repository and the baseline commit, so a
 // missing --repo or --base exits 2 with USAGE. Without a baseline the edit token
 // could not identify the source the change was prepared against.
 func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
-	repo, _, name := revisionFixture(t, false)
+	_, _, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	cases := []struct {
 		name string
@@ -588,7 +611,6 @@ func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
 		{"inspect", []string{"inspect", name, "--target", target}},
 		{"patch", []string{"patch", name, "--target", target, "--expect", "sha256:x",
 			"--after-file", os.DevNull}},
-		{"check", []string{"check", name, "--repo", repo}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -599,6 +621,80 @@ func TestGuardedCommandsRequireRepoAndBase(t *testing.T) {
 			requireGuardedError(t, diagnostic, "USAGE")
 		})
 	}
+}
+
+// --base must override the recorded line, for example when re-baselining a plan
+// whose recorded commit is no longer present.
+func TestCheckBaseFlagOverridesPlan(t *testing.T) {
+	repo, base, name := checkPlanFixture(t)
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong := strings.Repeat("a", 40)
+	updated := strings.Replace(string(raw), "Baseline commit: "+base,
+		"Baseline commit: "+wrong, 1)
+	if err := os.WriteFile(name, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, out, diagnostic := revisionExecute("check", name, "--repo", repo, "--base", base)
+	if code != 0 {
+		t.Fatalf("exit=%d want 0: %s", code, diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	if result.Base != base {
+		t.Fatalf("base=%q want %q", result.Base, base)
+	}
+}
+
+// check must work from inside the repository without repeating --repo, so the
+// default repo is the current working directory's Git repository.
+func TestCheckDefaultsRepoToCwd(t *testing.T) {
+	repo, base, name := checkPlanFixture(t)
+	chdir(t, repo)
+
+	code, out, diagnostic := revisionExecute("check", name)
+	if code != 0 {
+		t.Fatalf("exit=%d want 0: %s", code, diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	if result.Base != base {
+		t.Fatalf("base=%q want %q", result.Base, base)
+	}
+}
+
+// A plan without a recorded baseline and no --base must fail with a hint to add
+// the line, never silently fall back to HEAD.
+func TestCheckRequiresBaseline(t *testing.T) {
+	repo, _, name := revisionFixture(t, false)
+
+	code, _, diagnostic := revisionExecute("check", name, "--repo", repo)
+	if code != 1 {
+		t.Fatalf("exit=%d want 1: %s", code, diagnostic)
+	}
+	payload := requireGuardedError(t, diagnostic, codeBaselineRequired)
+	if !strings.Contains(payload.RecoveryHint, "Baseline commit") {
+		t.Fatalf("recovery hint %q missing Baseline commit", payload.RecoveryHint)
+	}
+}
+
+// A PLACEHOLDER diff must fail a bare check. The original bug was that plain
+// check printed OK here, so an unapplicable plan reached review.
+func TestCheckRejectsBrokenDiff(t *testing.T) {
+	repo, base := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Baseline commit: " + base
+	name := writeRenderedPlan(t, plan)
+	chdir(t, repo)
+
+	code, _, diagnostic := revisionExecute("check", name)
+	if code == 0 {
+		t.Fatal("PLACEHOLDER diff passed check")
+	}
+	requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
 }
 
 // Selectors are parsed as numbers, so implementation[01] and implementation[1]

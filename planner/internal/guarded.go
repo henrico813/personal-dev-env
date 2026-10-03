@@ -25,6 +25,10 @@ const (
 	codePlanEdit           = "PLAN_EDIT"
 	codeCollateralChange   = "PLAN_COLLATERAL_CHANGE"
 	codeOutputReportFailed = "OUTPUT_REPORT_FAILED"
+	// codeBaselineRequired marks a plan that records no baseline and a check
+	// call that supplied no --base. It is distinct from planpatch's
+	// CodeBaseRequired so the recovery hint can name the Current State line.
+	codeBaselineRequired = "BASELINE_REQUIRED"
 )
 
 // plannerCode returns the registered string for a shared PlannerErrorCode.
@@ -331,13 +335,6 @@ type guardedCheckOptions struct {
 	Base     string
 }
 
-func (o guardedCheckOptions) validate() error {
-	if o.Repo == "" || o.Base == "" {
-		return usageError("--repo and --base are required")
-	}
-	return nil
-}
-
 type guardedCheckResult struct {
 	PlanSHA256           string `json:"plan_sha256"`
 	StructureValid       bool   `json:"structure_valid"`
@@ -350,32 +347,64 @@ type guardedCheckResult struct {
 
 func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	var result guardedCheckResult
-	if err := opts.validate(); err != nil {
-		return result, err
-	}
 	raw, err := readGuardedInput(opts.PlanPath)
 	if err != nil {
 		return result, codedError(plannerCode(PlannerReadInputError), err)
 	}
 	parsed, err := ParseMarkdown(string(raw))
 	if err != nil {
-		return result, codedError(plannerCode(PlannerDecodeInputError), err)
+		// Reuse the markdown decoder's wrapped-doc subject and recovery hint so
+		// check reports the same guidance as the other read commands.
+		return result, plannerMarkdownDecodeError(raw, err)
 	}
 	if err := validateGuardedPlan(parsed.Plan); err != nil {
 		return result, codedError(plannerCode(PlannerValidateInputError), err)
 	}
+	base, err := checkBase(opts.Base, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
+	repo := opts.Repo
+	if repo == "" {
+		if repo, err = os.Getwd(); err != nil {
+			return result, codedError(plannerCode(PlannerReadInputError), err)
+		}
+	}
 	changes := orderedChanges(parsed.Plan)
-	if err := planpatch.Replay(opts.Repo, opts.Base, changes); err != nil {
+	if err := planpatch.Replay(repo, base, changes); err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
 	result.StructureValid = true
 	result.ApplicabilityChecked = true
 	result.ChangesReplayed = len(changes)
-	result.Base = opts.Base
+	result.Base = base
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
 	return result, nil
+}
+
+// baselineCommitRE matches the required first line of Current State. A full
+// lowercase object ID keeps the recorded baseline immutable and unambiguous.
+var baselineCommitRE = regexp.MustCompile(`^Baseline commit: ([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// checkBase returns the commit that check replays. An explicit --base wins;
+// otherwise the plan must record one on the first line of Current State. check
+// never falls back to HEAD, so a stale plan cannot silently measure against the
+// current checkout.
+func checkBase(flagBase string, plan Plan) (string, error) {
+	if flagBase != "" {
+		return flagBase, nil
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(plan.DefinitionOfDone.CurrentState), "\n")
+	if m := baselineCommitRE.FindStringSubmatch(strings.TrimSpace(first)); m != nil {
+		return m[1], nil
+	}
+	return "", &planpatch.Error{
+		Code: codeBaselineRequired,
+		Cause: errors.New(
+			`first line of Current State must be "Baseline commit: <full commit ID>" or --base must be given`),
+	}
 }
 
 var patchFileChangeSelectorRE = regexp.MustCompile(`^implementation\[(-?\d+)\]\.file_changes\[(-?\d+)\]$`)

@@ -16,14 +16,18 @@ Guarded source-code revisions:
       [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT
       (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
-  planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
+  planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]
 
   SELECTOR is implementation[N].file_changes[M], with 1-based indices. Leading
   zeros are accepted and the normalized selector is echoed in results.
-  --repo and --base are required for all three commands. --base is the full
-  commit ID recorded in the plan's Current State when the plan was created, not
-  the current HEAD of a worktree. Dirty and untracked source files are excluded;
-  Planner does not stage, stash, reset, or commit them.
+  inspect and patch require --repo and --base. check validates structure and
+  applies every diff at the baseline; it does not run tests or check behavior.
+  --base is the full commit ID recorded in the plan's Current State when the
+  plan was created, not the current HEAD of a worktree. Without --base, check
+  reads the first line of Current State, "Baseline commit: <full commit ID>".
+  Without --repo, check uses the current working directory's Git repository.
+  Dirty and untracked source files are excluded; Planner does not stage, stash,
+  reset, or commit them.
 
   --target SELECTOR               1-based implementation step and file change.
   --expect TOKEN                  edit_expect from targeted inspect.
@@ -40,7 +44,7 @@ Guarded source-code revisions:
   it with --before, to a new file.
   patch replays the baseline plus every change through the edited one, never
   later changes, and reports prefix_replayed: true with downstream_checked:
-  false. Run planner check --repo --base for whole-plan readiness.
+  false. Run planner check for whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
   edit_expect binds the plan bytes, the normalized selector, and the base, so
   any edit to the plan invalidates it.
@@ -92,9 +96,6 @@ func parseGuardedArgs(args []string, values, switches string) (string, map[strin
 	if len(positional) != 1 {
 		return "", nil, fmt.Errorf("exactly one plan path is required")
 	}
-	if (opts["--repo"] == "") != (opts["--base"] == "") {
-		return "", nil, fmt.Errorf("--repo and --base must be supplied together")
-	}
 	return positional[0], opts, nil
 }
 
@@ -105,11 +106,20 @@ func parseGuardedArgs(args []string, values, switches string) (string, map[strin
 // omits the duplicate prefix because planpatch.Error reports only its cause.
 func guardedFailure(stderr io.Writer, code string, err error) int {
 	message := err.Error()
+	hint := "Fix the identified input or source assumption; do not retry unchanged."
+	// Markdown decode failures carry a subject and, for a malformed wrapper, a
+	// recovery hint. Honor both so check matches the other read commands.
+	var cliErr *PlannerCLIError
+	if errors.As(err, &cliErr) {
+		code = plannerErrorCodeNames[cliErr.Code]
+		if cliErr.RecoveryHint != "" {
+			hint = cliErr.RecoveryHint
+		}
+	}
 	var patchErr *planpatch.Error
 	if errors.As(err, &patchErr) {
 		code = patchErr.Code
 	}
-	hint := "Fix the identified input or source assumption; do not retry unchanged."
 	switch code {
 	case planpatch.CodePlanStale:
 		hint = "Reread the plan and reconcile changes. Never refresh only the " +
@@ -117,6 +127,9 @@ func guardedFailure(stderr io.Writer, code string, err error) int {
 	case planpatch.CodePlanBusy:
 		hint = "Wait for the active writer. Remove a leftover lock only after " +
 			"confirming no writer is active."
+	case codeBaselineRequired:
+		hint = `Record "Baseline commit: <full commit ID>" as the first line of ` +
+			"Current State or pass --base."
 	}
 	if jsonErrorOutput {
 		_ = json.NewEncoder(stderr).Encode(struct {
@@ -192,9 +205,16 @@ func runGuardedPatch(args []string, stdout, stderr io.Writer) int {
 }
 
 func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
+	const usage = "usage: planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]"
 	name, opts, err := parseGuardedArgs(args, "--repo --base", "")
 	if err != nil {
 		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+	}
+	// check still reads Markdown only. Reject a JSON plan path with the usage
+	// error the old plain check gave, rather than a confusing decode failure.
+	if strings.HasSuffix(strings.ToLower(name), ".json") {
+		return guardedFailure(stderr, plannerCode(PlannerUsageError),
+			fmt.Errorf("planner check no longer accepts JSON plan input: %s", usage))
 	}
 	result, err := guardedCheck(guardedCheckOptions{
 		PlanPath: name,
