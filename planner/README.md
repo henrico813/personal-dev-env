@@ -90,11 +90,40 @@ The baseline identifies a starting point for replay. It does not:
 
 It makes replay repeatable. It does not make it authorized or correct.
 
+## Quick orientation
+
+```bash
+planner new plan.md
+planner check plan.md
+planner check plan.md --repo "$REPO" --base "$BASE"
+```
+
+`planner new` writes a scaffold and fails without changing an existing
+destination. `planner check plan.md` validates the structure. The guarded form
+adds `--repo` and `--base` and replays every diff against the recorded baseline.
+For a vault issue, add `--issue --project <name>` to `planner new`.
+
+## Documentation
+
+- [Create and check your first plan](docs/tutorials/create-and-check-a-plan.md)
+- [Revise a guarded diff](docs/how-to/revise-a-guarded-diff.md)
+- [Diagnose guarded failures](docs/how-to/diagnose-guarded-failures.md)
+- [Commands, validation modes, frontmatter, and result fields](docs/reference/commands.md)
+- [Baseline replay](docs/explanation/baseline-replay.md)
+
+The full index is [docs/README.md](docs/README.md).
+
 ## Issue frontmatter
 
-`planner new` writes a plain scaffold by default. When the plan belongs in the
-PDE vault, pass `--issue --project <name>` to prepend the vault issue
-frontmatter. `--project` is required with `--issue` and rejected without it,
-`date_created` is today's local date, and `--diff`/`--dry-run` preview the same
-bytes that would be written. The block matches what `planner check` accepts, so
-a wrapped plan keeps parsing without further edits.
+`planner new` writes a plain scaffold by default. Pass `--issue --project
+<name>` to prepend the vault issue frontmatter that `planner check` accepts. See
+the [command reference](docs/reference/commands.md) for the required fields and
+the preview flags.
+
+## Baseline commit
+
+A plan's baseline is the full Git commit ID of the source repository at the
+moment the plan was created, and every fenced diff is measured against it. Pass
+it as `--base` to the guarded commands. See [Baseline
+replay](docs/explanation/baseline-replay.md) for how it is recorded and why the
+original commit is required.
