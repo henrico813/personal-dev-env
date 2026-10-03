@@ -130,26 +130,27 @@ Use `planner help` when needed.
 
 - For ordinary prose, status, and checklist updates, write or edit Markdown
   directly with range-targeted changes.
-- For guarded commands, pass the commit on the `Baseline commit:` line of
-  Current State as `--base`. It names the original code version the plan was
-  written for. Never use a worktree's current HEAD, because Vibe commits after
-  each step. If the line is missing, ask the user for the original code version
-  and pass it as `--base` to guarded commands and to `planner check`.
-- Before every revision to an existing fenced code diff, run
-  `planner inspect <plan.md> --target '<selector>' --repo <repo> --base <commit>
-  --code-out <new-scratch-file>`, edit the ordinary scratch source, then run
-  `planner patch <plan.md> --target '<selector>' --expect <edit_expect>
-  --after-file <scratch-file> --repo <repo> --base <commit>`. Never edit that
-  diff directly or use an unguarded command. Patch checks from the original code
-  version through the edited change only, and later changes are checked by
+- For guarded commands, pass the commit on the `Base commit:` line of Current
+  State as `--base-commit`. The base commit is the original code version the
+  plan's changes are written against. Never use a worktree's current HEAD,
+  because Vibe commits after each step. If the line is missing, ask the user for
+  the base commit and pass it as `--base-commit` to guarded commands and to
   `planner check`.
+- Before every revision to an existing fenced code diff, run
+  `planner inspect <plan.md> --target '<selector>' --repo <repo>
+  --base-commit <commit> --code-out <new-scratch-file>`, edit the ordinary
+  scratch source, then run `planner patch <plan.md> --target '<selector>'
+  --expect <edit_expect> --after-file <scratch-file> --repo <repo>
+  --base-commit <commit>`. Never edit that diff directly or use an unguarded
+  command. Patch checks from the base commit through the edited change only,
+  and later changes are checked by `planner check`.
 - For coupled edits, after changing an earlier step, run `planner check
   <plan.md> --repo <repo> --json-errors` and fix each later change it reports,
   in order.
 - Run `planner check <plan.md> --repo <repo> --json-errors` after every code
-  change. It starts with the original code version named by `Baseline commit:`
-  and tries every planned change in order. It is the only whole-plan readiness
-  check and does not run tests. Do not report the plan ready until it passes.
+  change. It starts with the base commit named by the `Base commit:` line and
+  tries every planned change in order. It is the only whole-plan readiness check
+  and does not run tests. Do not report the plan ready until it passes.
 - Stop if parsing fails or collateral content changed.
 - Do not mark manual verification complete unless the user confirms it.
 - If the plan is inside the managed worktree, include its verified progress

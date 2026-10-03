@@ -10,8 +10,8 @@ import (
 )
 
 // Wrapped vault docs must still decode through check, but check now also needs
-// a baseline and applicable diffs. A valid wrapper reaches the baseline rule;
-// a broken wrapper still fails at decode before any Git work.
+// a base commit and applicable diffs. A valid wrapper reaches the base commit
+// rule; a broken wrapper still fails at decode before any Git work.
 func TestWrappedCheck(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -20,11 +20,11 @@ func TestWrappedCheck(t *testing.T) {
 		wantHint string
 	}{
 		{name: "empty_topics", fixture: "wrapped_issue_empty_topics.md",
-			wantCode: codeBaselineRequired, wantHint: "Baseline commit"},
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
 		{name: "extra_tag", fixture: "wrapped_issue_extra_tag.md",
-			wantCode: codeBaselineRequired, wantHint: "Baseline commit"},
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
 		{name: "topic_list", fixture: "wrapped_issue_topics.md",
-			wantCode: codeBaselineRequired, wantHint: "Baseline commit"},
+			wantCode: codeBaseCommitRequired, wantHint: "Base commit"},
 		{name: "bad_tag", fixture: "wrapped_issue_bad_tag.md",
 			wantCode: "DECODE_INPUT", wantHint: "supported vault issue frontmatter block"},
 		{name: "missing_ticket_tag", fixture: "wrapped_issue_missing_ticket_tag.md",
@@ -345,9 +345,9 @@ func TestNewScaffoldInspectPasses(t *testing.T) {
 	}
 }
 
-// A fresh scaffold has a placeholder diff and no recorded baseline, so check
+// A fresh scaffold has a placeholder diff and no recorded base commit, so check
 // must reject it. The old plain check printed OK here, which hid unrevised plans.
-func TestNewScaffoldCheckRequiresBaseline(t *testing.T) {
+func TestNewScaffoldCheckRequiresBaseCommit(t *testing.T) {
 	path := writeNewScaffold(t, t.TempDir())
 
 	var stdout bytes.Buffer
@@ -355,7 +355,7 @@ func TestNewScaffoldCheckRequiresBaseline(t *testing.T) {
 	if exit := Execute([]string{"check", "--json-errors", path}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("Execute(check) exit = %d, stderr = %q", exit, stderr.String())
 	}
-	assertPlannerJSONError(t, &stderr, codeBaselineRequired, "Baseline commit")
+	assertPlannerJSONError(t, &stderr, codeBaseCommitRequired, "Base commit")
 }
 
 func TestNewDryRunDoesNotWriteChanges(t *testing.T) {
@@ -493,10 +493,10 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
-// check replays the plan's diffs at the recorded baseline and reports what it
-// applied, so a plan whose diffs do not apply cannot pass review.
+// check replays the plan's diffs at the recorded base commit and reports what
+// it applied, so a plan whose diffs do not apply cannot pass review.
 func TestCheckAppliesPlanDiffs(t *testing.T) {
-	repo, base, name := checkPlanFixture(t)
+	repo, baseCommit, name := checkPlanFixture(t)
 
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"check", name, "--repo", repo, "--json-errors"}, &stdout, &stderr); exit != 0 {
@@ -506,8 +506,8 @@ func TestCheckAppliesPlanDiffs(t *testing.T) {
 	if !result.StructureValid || !result.ApplicabilityChecked || result.ChangesReplayed != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if result.Base != base {
-		t.Fatalf("base=%q want %q", result.Base, base)
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
 	}
 	if result.BehaviorChecked {
 		t.Fatal("check must not claim to check behavior")
@@ -517,7 +517,7 @@ func TestCheckAppliesPlanDiffs(t *testing.T) {
 // Supported vault issue frontmatter must be stripped before the plan is
 // checked, so a wrapped plan with an applicable diff still passes.
 func TestCheckAcceptsIssueFrontmatter(t *testing.T) {
-	repo, base, name := checkPlanFixture(t)
+	repo, baseCommit, name := checkPlanFixture(t)
 	frontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: PDEV-201\ndate_created: 2026-10-02\ntopics: []\n---\n\n"
 	raw, err := os.ReadFile(name)
 	if err != nil {
@@ -532,8 +532,8 @@ func TestCheckAcceptsIssueFrontmatter(t *testing.T) {
 		t.Fatalf("exit=%d stderr=%q", exit, stderr.String())
 	}
 	result := decodeGuardedResult[guardedCheckResult](t, stdout.String())
-	if result.Base != base {
-		t.Fatalf("base=%q want %q", result.Base, base)
+	if result.BaseCommit != baseCommit {
+		t.Fatalf("base commit=%q want %q", result.BaseCommit, baseCommit)
 	}
 }
 

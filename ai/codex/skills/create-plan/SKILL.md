@@ -147,32 +147,34 @@ mandatory approval stage.
    wrapped-issue frontmatter and unrelated accepted sections remain byte-for-byte
    unchanged.
 5. For a new plan, run `git -C <repo> rev-parse HEAD` right after `planner new`
-   and make the first line of Current State `Baseline commit: <full commit ID>`.
-   Write it before other plan content and keep it in every revision. Dirty and
-   untracked source is not included; do not stage, stash, reset, or commit the
-   user's changes.
-6. For an existing plan, pass the commit on the `Baseline commit:` line of
-   Current State as `--base` to every guarded command. Never use a worktree's
+   and make the first line of Current State `Base commit: <full commit ID>`.
+   The base commit is the original code version the plan's changes are written
+   against. Write it before other plan content and keep it in every revision.
+   Dirty and untracked source is not included; do not stage, stash, reset, or
+   commit the user's changes.
+6. For an existing plan, pass the commit on the `Base commit:` line of Current
+   State as `--base-commit` to every guarded command. Never use a worktree's
    current HEAD, because Vibe commits after each implementation step. If the
-   line is missing, stop and ask the user for the baseline.
+   line is missing, stop and ask the user for the base commit.
 7. For a new plan, `planner new` scaffolds each code change as a PLACEHOLDER
    diff. Work through the file changes in plan order: run `planner inspect
-   <plan.md> --target '<selector>' --repo <repo> --base <commit> --before
-   --code-out <new-scratch-file>`, edit the scratch file, then run `planner
-   patch <plan.md> --target '<selector>' --expect <edit_expect> --after-file
-   <scratch-file> --repo <repo> --base <commit>`. Copy the PLACEHOLDER fence
-   when adding a change by hand; never leave an empty fence. Finish with
-   `planner check <plan.md> --repo <repo> --json-errors`.
+   <plan.md> --target '<selector>' --repo <repo> --base-commit <commit>
+   --before --code-out <new-scratch-file>`, edit the scratch file, then run
+   `planner patch <plan.md> --target '<selector>' --expect <edit_expect>
+   --after-file <scratch-file> --repo <repo> --base-commit <commit>`. Copy the
+   PLACEHOLDER fence when adding a change by hand; never leave an empty fence.
+   Finish with `planner check <plan.md> --repo <repo> --json-errors`.
 8. For code revisions to an existing plan, run `planner inspect <plan.md>
-   --target '<selector>' --repo <repo> --base <commit> --code-out
+   --target '<selector>' --repo <repo> --base-commit <commit> --code-out
    <new-scratch-file>`. Keep its small JSON result and `edit_expect` token. The
    scratch file holds proposed source after earlier steps and the selected
    change.
 9. Edit ordinary scratch source with native tools, then run `planner patch
    <plan.md> --target '<selector>' --expect <edit_expect> --after-file
-   <scratch-file> --repo <repo> --base <commit>`. Planner generates hunk counts
-   and starts with the original code version, trying each change through the
-   edited change only. Later changes are not checked. Do not hand-maintain hunks.
+   <scratch-file> --repo <repo> --base-commit <commit>`. Planner generates hunk
+   counts and starts with the base commit, trying each change through the
+   edited change only. Later changes are not checked. Do not hand-maintain
+   hunks.
 10. `inspect --before` exports pre-change source for a new or broken change.
     Reconstruct accepted intent before replacing a broken diff. Use `/dev/null`
     as `--after-file` only to delete a file.
@@ -184,13 +186,13 @@ mandatory approval stage.
     reports, in order.
 13. On stale state, reread and reconcile; never refresh only the token and
     retry the old replacement. Inspect and patch must use the same `--repo` and
-    `--base`.
+    `--base-commit`.
 14. Validate every final or revised proposal with `planner check
     <output.md> --repo <repo> --json-errors`; this is the only whole-plan
-    readiness check. It starts with the original code version named by the
-    `Baseline commit:` line and tries every planned change in order. It does not
-    run tests. Do not present or report the plan ready until it passes.
-    Confirm Current State still starts with the `Baseline commit:` line.
+    readiness check. It starts with the base commit named by the `Base commit:`
+    line and tries every planned change in order. It does not run tests. Do not
+    present or report the plan ready until it passes.
+    Confirm Current State still starts with the `Base commit:` line.
 
 #### Revisions After Human Feedback
 
@@ -207,9 +209,9 @@ Treat review as a correction loop, not a restart:
 ### Step 5: Validate and Report
 
 1. Run `planner check <output.md> --repo <repo> --json-errors` on the final
-   plan. It starts with the original code version named by the `Baseline commit:`
-   line and tries every planned change in order. It does not run tests. Do not
-   report the plan ready until it passes.
+   plan. It starts with the base commit named by the `Base commit:` line and
+   tries every planned change in order. It does not run tests. Do not report
+   the plan ready until it passes.
 2. Compare every proposed diff with current source. Confirm that it applies to
    the intended file, includes every required line without placeholders,
    follows repository patterns, and excludes unrelated work.
