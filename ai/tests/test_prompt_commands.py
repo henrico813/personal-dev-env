@@ -92,7 +92,7 @@ def prompt_id(path: Path) -> str:
     """Build the test ID for a prompt path.
 
     Args:
-        path: Prompt path relative to the repository root.
+        path: Absolute prompt path inside the repository.
 
     Returns:
         A short OpenCode or Codex test ID.
@@ -231,7 +231,7 @@ def new_fixture(directory: Path, env: dict[str, str]) -> None:
 def seed_plan(
     repo: Path, plan: Path, tmp_root: Path, env: dict[str, str]
 ) -> str:
-    """Seed a plan with a committed file change.
+    """Create a plan whose first change edits main.go.
 
     Args:
         repo: Fixture repository containing the source file.
