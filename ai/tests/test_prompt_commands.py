@@ -63,18 +63,23 @@ def planner_environment(tmp_path_factory: pytest.TempPathFactory) -> dict[str, s
     """Build the checkout's planner and put it first on PATH."""
     build_root = tmp_path_factory.mktemp("planner")
     planner = build_root / "planner"
-    subprocess.run(
+    result = subprocess.run(
         ["go", "build", "-C", str(ROOT / "planner"), "-o", str(planner), "./main"],
-        check=True,
         capture_output=True,
         text=True,
     )
+    assert result.returncode == 0, f"go build failed:\n{result.stderr}"
     environment = os.environ.copy()
     environment["PATH"] = f"{build_root}{os.pathsep}{environment['PATH']}"
     return environment
 
 
 PROMPTS = [pytest.param(path, id=prompt_id(path)) for path in prompt_files()]
+PLAN_PROMPTS = [
+    pytest.param(path, id=prompt_id(path))
+    for path in prompt_files()
+    if prompt_kind(path)
+]
 
 
 @pytest.mark.parametrize("prompt", PROMPTS)
@@ -89,7 +94,7 @@ def test_prompt_uses_only_existing_subcommands(prompt: Path) -> None:
         )
 
 
-@pytest.mark.parametrize("prompt", PROMPTS)
+@pytest.mark.parametrize("prompt", PLAN_PROMPTS)
 def test_planning_prompt_keeps_required_commands(prompt: Path) -> None:
     # Guards a prompt edit dropping planner check so agents stop validating plans.
     required = {
@@ -97,8 +102,6 @@ def test_planning_prompt_keeps_required_commands(prompt: Path) -> None:
         "implement": {"inspect", "patch", "check"},
     }
     kind = prompt_kind(prompt)
-    if kind is None:
-        return
     present = {
         words[1]
         for command in extract_commands(prompt)
@@ -167,13 +170,11 @@ def seed_plan(
     return base
 
 
-@pytest.mark.parametrize("prompt", PROMPTS)
+@pytest.mark.parametrize("prompt", PLAN_PROMPTS)
 def test_prompt_commands_run_in_zsh(
     prompt: Path, tmp_path: Path, planner_environment: dict[str, str]
 ) -> None:
     # Guards unquoted implementation[1].file_changes[1] failing with zsh's "no matches found".
-    if prompt_kind(prompt) is None:
-        return
     fixture = tmp_path / "fixture"
     (fixture / "plans").mkdir(parents=True)
     new_fixture(fixture, planner_environment)
