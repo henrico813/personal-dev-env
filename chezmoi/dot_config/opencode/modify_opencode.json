@@ -19,6 +19,8 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
         error("OpenCode config must be an object")
     elif has("plugin") and (.plugin | type) != "array" then
         error("plugin must be an array")
+    elif has("providers") and (.providers | type) != "object" then
+        error("providers must be an object")
     elif has("permission") and (.permission | type) == "string" then
         if .permission == "allow" then .
         else error("permission string cannot preserve a narrow exception")
@@ -38,4 +40,13 @@ printf '%s\n' "$input" | jq --arg path "$PDE_SURVEIL_STATE_PATTERN" --arg plugin
     end
     | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
     | del(.plugin)
+    | .providers = ((.providers // {}) + {
+        goog: {
+            name: "Goog",
+            env: ["GOOG_API_KEY"],
+            package: "@opencode/ai/providers/openai-compatible",
+            settings: {baseURL: "${GOOG_BASE_URL}"},
+            models: {"qwen3.8": {}}
+        }
+    })
 '

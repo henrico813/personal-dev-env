@@ -105,6 +105,85 @@ func TestModifierPreservesSettings(t *testing.T) {
 	}
 }
 
+func TestModifierConfiguresGoogProvider(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{
+		"theme": "dark",
+		"providers": {
+			"other": {
+				"name": "Other"
+			}
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Theme     string `json:"theme"`
+		Providers map[string]struct {
+			Env      []string          `json:"env"`
+			Package  string            `json:"package"`
+			Settings map[string]string `json:"settings"`
+			Models   map[string]any    `json:"models"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Theme != "dark" {
+		t.Errorf("theme = %q, want dark", config.Theme)
+	}
+	if _, ok := config.Providers["other"]; !ok {
+		t.Fatalf("providers = %#v, want other preserved", config.Providers)
+	}
+	goog, ok := config.Providers["goog"]
+	if !ok {
+		t.Fatalf("providers = %#v, want goog", config.Providers)
+	}
+	if !reflect.DeepEqual(goog.Env, []string{"GOOG_API_KEY"}) {
+		t.Errorf("goog.env = %#v, want [GOOG_API_KEY]", goog.Env)
+	}
+	if goog.Package != "@opencode/ai/providers/openai-compatible" {
+		t.Errorf("goog.package = %q", goog.Package)
+	}
+	if goog.Settings["baseURL"] != "${GOOG_BASE_URL}" {
+		t.Errorf("goog.settings.baseURL = %q", goog.Settings["baseURL"])
+	}
+	if _, ok := goog.Models["qwen3.8"]; !ok {
+		t.Errorf("goog.models = %#v, want qwen3.8", goog.Models)
+	}
+}
+
+func TestModifierGoogProviderIsIdempotent(t *testing.T) {
+	t.Parallel()
+	first, err := runModifier(t, `{"providers":{"other":{"name":"Other"}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runModifier(t, string(first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var firstConfig, secondConfig any
+	if err := json.Unmarshal(first, &firstConfig); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(second, &secondConfig); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(firstConfig, secondConfig) {
+		t.Fatalf("second run changed config:\nfirst  = %s\nsecond = %s", first, second)
+	}
+}
+
+func TestModifierRejectsProvidersString(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{"providers":"example"}`)
+	if err == nil || !strings.Contains(string(output), "providers must be an object") {
+		t.Fatalf("output = %q, error = %v", output, err)
+	}
+}
+
 func TestMemoryModifierPreservesSettings(t *testing.T) {
 	t.Parallel()
 	output, err := runMemoryModifier(t, `{"custom":true,"chatMessage":{"injectOn":"always"}}`, true)
