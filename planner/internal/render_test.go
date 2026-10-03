@@ -3,6 +3,7 @@ package internal
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRenderCanonicalScaffoldPassesValidation(t *testing.T) {
@@ -12,6 +13,28 @@ func TestRenderCanonicalScaffoldPassesValidation(t *testing.T) {
 	}
 	if _, err := ParseMarkdown(rendered); err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
+	}
+}
+
+// The issue scaffold must start with the exact vault block the parser accepts
+// and keep the default scaffold body after it. Drift here would make every
+// vault plan fail its first check.
+func TestRenderIssueScaffoldMatchesVaultFrontmatter(t *testing.T) {
+	date := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
+	got, err := renderIssueScaffold("DevEnv", date)
+	if err != nil {
+		t.Fatalf("renderIssueScaffold: %v", err)
+	}
+	wantFrontmatter := "---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: DevEnv\ndate_created: 2026-10-02\ntopics: []\n---\n\n"
+	if !strings.HasPrefix(got, wantFrontmatter) {
+		t.Fatalf("frontmatter prefix mismatch:\n%s", got)
+	}
+	body, err := renderCanonicalScaffold()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != wantFrontmatter+body {
+		t.Fatal("issue scaffold changed the default body")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"text/template"
+	"time"
 )
 
 //go:embed plan_template.md.tmpl
@@ -23,6 +24,25 @@ func renderCanonicalScaffold() (string, error) {
 		return "", fmt.Errorf("verify: %w", err)
 	}
 	return rendered, nil
+}
+
+// renderIssueScaffold prepends the vault issue frontmatter Planner accepts to
+// the default scaffold. date supplies date_created so callers can pass the
+// current day and tests can pin it. The combined document is validated through
+// splitMarkdownEnvelope, so planner new fails instead of writing a document
+// that check would later reject as a wrapped issue doc.
+func renderIssueScaffold(project string, date time.Time) (string, error) {
+	body, err := renderCanonicalScaffold()
+	if err != nil {
+		return "", err
+	}
+	document := fmt.Sprintf(
+		"---\ntags:\n  - \"#Ticket\"\ntype: issue\nstatus: open\ntemplate_version: 1\nproject: %s\ndate_created: %s\ntopics: []\n---\n\n%s",
+		project, date.Format("2006-01-02"), body)
+	if _, err := splitMarkdownEnvelope(document); err != nil {
+		return "", fmt.Errorf("issue frontmatter: %w", err)
+	}
+	return document, nil
 }
 
 // RenderPlan renders a validated Plan to canonical markdown format.

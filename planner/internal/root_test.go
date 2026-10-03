@@ -261,9 +261,9 @@ func TestNewJSONErrorsReportsUsage(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "non_md", args: []string{"--json-errors", "new", badOut}, want: "planner new requires an output path ending in .md: usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
-		{name: "missing_output", args: []string{"new", "--json-errors"}, want: "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
-		{name: "extra_output", args: []string{"new", badOut, "extra", "--json-errors"}, want: "usage: planner new <output.md> [--diff] [--dry-run] [--json-errors]"},
+		{name: "non_md", args: []string{"--json-errors", "new", badOut}, want: "planner new requires an output path ending in .md: usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
+		{name: "missing_output", args: []string{"new", "--json-errors"}, want: "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
+		{name: "extra_output", args: []string{"new", badOut, "extra", "--json-errors"}, want: "usage: planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]"},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -332,6 +332,130 @@ func TestNewScaffoldPassesCheckAndInspect(t *testing.T) {
 	}
 	if !strings.HasPrefix(inspected.Implementation[0].FileChanges[0].UpdateDiffExpect, "sha256:") {
 		t.Fatalf("token=%q", inspected.Implementation[0].FileChanges[0].UpdateDiffExpect)
+	}
+}
+
+// The vault branch of Planner accepts exactly one frontmatter shape. A plan
+// created with --issue must match it byte for byte, or the first check after
+// creation would reject the file the tool just wrote.
+func TestNewIssueFrontmatterPassesCheck(t *testing.T) {
+	path := writeIssueScaffold(t, t.TempDir(), "DevEnv")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := splitMarkdownEnvelope(string(raw))
+	if err != nil {
+		t.Fatalf("splitMarkdownEnvelope: %v", err)
+	}
+	if !strings.HasPrefix(envelope.Frontmatter, "---\ntags:\n  - \"#Ticket\"\n") {
+		t.Fatalf("frontmatter prefix wrong:\n%s", envelope.Frontmatter)
+	}
+	if !strings.Contains(envelope.Frontmatter, "project: DevEnv\n") {
+		t.Fatalf("frontmatter missing project:\n%s", envelope.Frontmatter)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"check", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("check exit=%d stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "OK") {
+		t.Fatalf("check stdout=%q want OK", stdout.String())
+	}
+}
+
+// Frontmatter sits outside every diff fence, so a guarded patch must leave it
+// untouched. If a patch rewrote the whole document, the wrapper would be lost
+// and the plan would stop parsing.
+func TestNewIssueFrontmatterSurvivesGuardedPatch(t *testing.T) {
+	repo, base := revisionRepo(t, 0644)
+	path := writeIssueScaffold(t, t.TempDir(), "DevEnv")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := splitMarkdownEnvelope(string(before))
+	if err != nil {
+		t.Fatalf("splitMarkdownEnvelope: %v", err)
+	}
+	// Point the placeholder change at the fixture file so guarded inspect can
+	// export source before it.
+	edited := strings.Replace(string(before), "`path/to/file`", "`foo.txt`", 1)
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	target := "implementation[1].file_changes[1]"
+	scratch := filepath.Join(t.TempDir(), "proposed.txt")
+	view := revisionInspect(t, path, repo, base, target, "--code-out", scratch, "--before")
+	if err := os.WriteFile(scratch, []byte("B\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	revisionPatch(t, path, target, view.EditExpect, repo, base, "--after-file", scratch)
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterEnvelope, err := splitMarkdownEnvelope(string(after))
+	if err != nil {
+		t.Fatalf("patched wrapped plan rejected: %v", err)
+	}
+	if afterEnvelope.Frontmatter != envelope.Frontmatter {
+		t.Fatalf("frontmatter changed:\nbefore:\n%s\nafter:\n%s",
+			envelope.Frontmatter, afterEnvelope.Frontmatter)
+	}
+	code, _, diagnostic := revisionExecute("check", path, "--repo", repo, "--base", base)
+	if code != 0 {
+		t.Fatalf("patched wrapped plan failed check: %s", diagnostic)
+	}
+}
+
+// --issue without --project cannot produce accepted frontmatter, so it must
+// fail as a usage error before writing anything.
+func TestNewIssueRequiresProject(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.md")
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"new", path, "--issue"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--issue requires --project") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("plan should not be written, stat err=%v", err)
+	}
+}
+
+// A project without --issue is a contradictory request. Failing instead of
+// ignoring the flag keeps a caller from believing the plan was wrapped.
+func TestNewProjectRequiresIssue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.md")
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"new", path, "--project", "DevEnv"}, &stdout, &stderr); exit != 2 {
+		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--project requires --issue") {
+		t.Fatalf("stderr=%q", stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("plan should not be written, stat err=%v", err)
+	}
+}
+
+// --diff previews the bytes that a write would publish. The frontmatter must
+// appear in that preview, or a reviewer would approve a different document.
+func TestNewIssueDiffPreviewIncludesFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plan.md")
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"new", path, "--issue", "--project", "DevEnv", "--diff", "--dry-run"}, &stdout, &stderr); exit != 1 {
+		t.Fatalf("exit=%d want 1; stderr=%q", exit, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "+ type: issue") {
+		t.Fatalf("preview missing frontmatter: %q", stdout.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("dry-run wrote the plan, stat err=%v", err)
 	}
 }
 
@@ -647,6 +771,19 @@ func writeNewScaffold(t *testing.T, dir string) string {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected scaffold at %s: %v", path, err)
+	}
+	return path
+}
+
+func writeIssueScaffold(t *testing.T, dir, project string) string {
+	t.Helper()
+	path := dir + "/plan.md"
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"new", path, "--issue", "--project", project}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("Execute(new --issue %s) exit=%d stderr=%q", project, exit, stderr.String())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected issue scaffold at %s: %v", path, err)
 	}
 	return path
 }
