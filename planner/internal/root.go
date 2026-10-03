@@ -19,10 +19,13 @@ Usage:
   planner
   planner help
   planner new <output.md> [--diff] [--dry-run] [--json-errors]
-  planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]
+  planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
   planner inspect <plan.md>
-  planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
+  planner inspect <plan.md> --target SELECTOR --repo DIR
+      --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
+      --base-commit COMMIT (--after-file FILE | --diff-file FILE)
+      [--dry-run] [--diff] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -37,8 +40,8 @@ Markdown-first authoring:
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
   5. Finish with planner check plan.md as the final gate. It reports every
-     structure violation and tries every planned change against the original
-     code version recorded in the plan.
+     structure violation and tries every planned change against the base commit
+     named by the "Base commit:" line.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
@@ -308,13 +311,13 @@ func buildUpdateDiffExpect(selector, filename, explanation, diffRaw string) stri
 // is set. stdoutPathOnWrite is printed on successful writes when --diff is not
 // set, preserving the legacy "create prints the output path on success" stdout
 // contract.
-func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
-	baseline, err := readBaseline(basePath)
+func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, outputPath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
+	existing, err := readExistingOutput(outputPath)
 	if err != nil {
-		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, basePath))
+		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, outputPath))
 		return 1
 	}
-	d := diffLines(baseline, rendered)
+	d := diffLines(existing, rendered)
 	if pf.diff && d != "" {
 		_, _ = io.WriteString(stdout, d)
 	}
@@ -334,12 +337,10 @@ func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, basePath, c
 	return 0
 }
 
-// readBaseline returns the existing file content for diff comparison. A
-// missing file is equivalent to an empty baseline (new-file diff). Any other
-// read error surfaces so permission-denied or EISDIR do not silently become
-// empty baselines.
-func readBaseline(path string) (string, error) {
-	data, err := os.ReadFile(path)
+// readExistingOutput returns the current contents of the file at outputPath,
+// or "" if none exists, so the --diff preview can show what the write changes.
+func readExistingOutput(outputPath string) (string, error) {
+	data, err := os.ReadFile(outputPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}

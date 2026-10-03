@@ -12,20 +12,23 @@ import (
 
 const guardedHelp = `
 Guarded source-code revisions:
-  planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT
-      [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT
-      (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
-  planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]
+  planner inspect <plan.md> --target SELECTOR --repo DIR
+      --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
+      --base-commit COMMIT (--after-file FILE | --diff-file FILE)
+      [--dry-run] [--diff] [--json-errors]
+  planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 
   SELECTOR is implementation[N].file_changes[M], with 1-based indices. Leading
   zeros are accepted and the normalized selector is echoed in results.
-  inspect and patch require --repo and --base. check validates structure, then
-  starts with the original code version recorded in the plan and tries every
-  planned change in order. It does not run tests or check behavior. --base is
-  the full commit ID recorded in the plan's Current State when the plan was
-  created, not the current HEAD of a worktree. Without --base, check reads the
-  first line of Current State, "Baseline commit: <full commit ID>".
+  inspect and patch require --repo and --base-commit. check validates
+  structure, then starts with the base commit named by the "Base commit:" line
+  and tries every planned change in order. The base commit is the original code
+  version the plan's changes are written against. It does not run tests or
+  check behavior. --base-commit is the full commit ID from the plan's Current
+  State when the plan was created, not the current HEAD of a worktree. Without
+  --base-commit, check reads the first line of Current State,
+  "Base commit: <full commit ID>".
   Without --repo, check uses the current working directory's Git repository.
   Dirty and untracked source files are excluded; Planner does not stage, stash,
   reset, or commit them.
@@ -40,15 +43,15 @@ Guarded source-code revisions:
   --dry-run                       Validate without writing the plan.
   --diff                          Print a Git-generated review preview.
 
-  Without --code-out, inspect returns JSON with the selected diff and edit_expect.
-  With --code-out, inspect writes the file after the selected change, or before
-  it with --before, to a new file.
-  patch starts with the original code version and tries every change through the
-  edited one, never later changes, and reports prefix_replayed: true with
+  Without --code-out, inspect returns JSON with the selected diff and
+  edit_expect. With --code-out, inspect writes the file after the selected
+  change, or before it with --before, to a new file.
+  patch starts with the base commit and tries every change through the edited
+  one, never later changes, and reports prefix_replayed: true with
   downstream_checked: false. Run planner check for whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
-  edit_expect binds the plan bytes, the normalized selector, and the base, so
-  any edit to the plan invalidates it.
+  edit_expect binds the plan bytes, the normalized selector, and the base
+  commit, so any edit to the plan invalidates it.
 `
 
 // hasArg reports whether an exact argument appears. Guarded routing uses the
@@ -128,9 +131,9 @@ func guardedFailure(stderr io.Writer, code string, err error) int {
 	case planpatch.CodePlanBusy:
 		hint = "Wait for the active writer. Remove a leftover lock only after " +
 			"confirming no writer is active."
-	case codeBaselineRequired:
-		hint = `Record "Baseline commit: <full commit ID>" as the first line of ` +
-			"Current State or pass --base."
+	case codeBaseCommitRequired:
+		hint = `Record "Base commit: <full commit ID>" as the first line of ` +
+			"Current State or pass --base-commit."
 	}
 	if jsonErrorOutput {
 		_ = json.NewEncoder(stderr).Encode(struct {
@@ -149,17 +152,17 @@ func guardedFailure(stderr io.Writer, code string, err error) int {
 
 func runGuardedInspect(args []string, stdout, stderr io.Writer) int {
 	name, opts, err := parseGuardedArgs(args,
-		"--target --repo --base --code-out", "--before")
+		"--target --repo --base-commit --code-out", "--before")
 	if err != nil {
 		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
 	}
 	result, err := guardedInspect(guardedInspectOptions{
-		PlanPath: name,
-		Target:   opts["--target"],
-		Repo:     opts["--repo"],
-		Base:     opts["--base"],
-		CodeOut:  opts["--code-out"],
-		Before:   opts["--before"] != "",
+		PlanPath:   name,
+		Target:     opts["--target"],
+		Repo:       opts["--repo"],
+		BaseCommit: opts["--base-commit"],
+		CodeOut:    opts["--code-out"],
+		Before:     opts["--before"] != "",
 	})
 	if err != nil {
 		return guardedFailure(stderr, codeSourceCheck, err)
@@ -172,21 +175,21 @@ func runGuardedInspect(args []string, stdout, stderr io.Writer) int {
 
 func runGuardedPatch(args []string, stdout, stderr io.Writer) int {
 	name, opts, err := parseGuardedArgs(args,
-		"--target --expect --after-file --diff-file --repo --base",
+		"--target --expect --after-file --diff-file --repo --base-commit",
 		"--dry-run --diff")
 	if err != nil {
 		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
 	}
 	result, err := guardedPatch(guardedPatchOptions{
-		PlanPath:  name,
-		Target:    opts["--target"],
-		Expect:    opts["--expect"],
-		AfterFile: opts["--after-file"],
-		DiffFile:  opts["--diff-file"],
-		Repo:      opts["--repo"],
-		Base:      opts["--base"],
-		DryRun:    opts["--dry-run"] != "",
-		Diff:      opts["--diff"] != "",
+		PlanPath:   name,
+		Target:     opts["--target"],
+		Expect:     opts["--expect"],
+		AfterFile:  opts["--after-file"],
+		DiffFile:   opts["--diff-file"],
+		Repo:       opts["--repo"],
+		BaseCommit: opts["--base-commit"],
+		DryRun:     opts["--dry-run"] != "",
+		Diff:       opts["--diff"] != "",
 	})
 	if err != nil {
 		return guardedFailure(stderr, codePatchInput, err)
@@ -206,8 +209,8 @@ func runGuardedPatch(args []string, stdout, stderr io.Writer) int {
 }
 
 func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
-	const usage = "usage: planner check <plan.md> [--repo DIR] [--base COMMIT] [--json-errors]"
-	name, opts, err := parseGuardedArgs(args, "--repo --base", "")
+	const usage = "usage: planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]"
+	name, opts, err := parseGuardedArgs(args, "--repo --base-commit", "")
 	if err != nil {
 		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
 	}
@@ -218,9 +221,9 @@ func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
 			fmt.Errorf("planner check no longer accepts JSON plan input: %s", usage))
 	}
 	result, err := guardedCheck(guardedCheckOptions{
-		PlanPath: name,
-		Repo:     opts["--repo"],
-		Base:     opts["--base"],
+		PlanPath:   name,
+		Repo:       opts["--repo"],
+		BaseCommit: opts["--base-commit"],
 	})
 	if err != nil {
 		return guardedFailure(stderr, codeSourceCheck, err)

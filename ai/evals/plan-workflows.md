@@ -382,8 +382,10 @@ export EVAL_KEY="$(printf '%.12s' "$EVAL_FIXTURE_COMMIT")-workflow-eval"
 export CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex-spark}"
 export CODEX_SANDBOX="${CODEX_SANDBOX:-workspace-write}"
 export OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/gpt-5.6-luna}"
-planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
-planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" --base "$EVAL_FIXTURE_COMMIT" --json-errors
+planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" \
+  --base-commit "$EVAL_FIXTURE_COMMIT" --json-errors
+planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" \
+  --base-commit "$EVAL_FIXTURE_COMMIT" --json-errors
 ````
 
 The EXIT trap removes the evaluation-owned root on successful exit. Failed
@@ -502,9 +504,9 @@ Expected behavior:
 
 - Reads the README directly without Surveil or delegated research.
 - Reserves the destination with `planner new`.
-- Starts Current State with `Baseline commit: $EVAL_FIXTURE_COMMIT`. This names
-  the original code version the plan describes. Check it with
-  `grep -qx "Baseline commit: $EVAL_FIXTURE_COMMIT"
+- Starts Current State with `Base commit: $EVAL_FIXTURE_COMMIT`. This names
+  the base commit the plan describes. Check it with
+  `grep -qx "Base commit: $EVAL_FIXTURE_COMMIT"
   "$EVAL_REPO/plans/bounded.md"`.
 - Proposes only the README change and relevant verification.
 - Produces complete, applicable diffs without placeholders.
@@ -560,9 +562,9 @@ Expected behavior:
 ### Guarded Correction
 
 Run bounded creation first. Then commit the planned README change, as an
-implementation run would, so HEAD no longer names the original code version.
-A correction that uses HEAD as `--base` fails because its README change no
-longer fits the starting version of the file.
+implementation run would, so HEAD no longer names the base commit.
+A correction that uses HEAD as `--base-commit` fails because its README change
+no longer fits the base commit.
 Use a fresh session in the same fixture:
 
 ```bash
@@ -589,21 +591,22 @@ After each run, list the bases the agent passed and compare the plan:
 
 ```bash
 for trace_dir in "$EVAL_OUTPUT"/guarded-correction/*/; do
-  grep -o -- '--base [0-9a-f]\{7,40\}' "$trace_dir/stdout.jsonl" | sort -u
+  grep -o -- '--base-commit [0-9a-f]\{7,40\}' "$trace_dir/stdout.jsonl" \
+    | sort -u
   diff "$trace_dir/plan-before.md" "$EVAL_REPO/plans/bounded.md" || true
 done
 ```
 
 Expected behavior:
 
-- Passes `--base $EVAL_FIXTURE_COMMIT` from the `Baseline commit:` line to
-  every guarded command, never the new HEAD. The commit identifies the original
-  code version the plan describes. Record a base passed through a shell variable
-  as unclear.
-- Runs targeted `planner inspect --target ... --repo ... --base ... --code-out
-  ...` immediately before the correction.
+- Passes `--base-commit $EVAL_FIXTURE_COMMIT` from the `Base commit:` line to
+  every guarded command, never the new HEAD. The commit identifies the base
+  commit the plan describes. Record a base passed through a shell variable as
+  unclear.
+- Runs targeted `planner inspect --target ... --repo ... --base-commit ...
+  --code-out ...` immediately before the correction.
 - Edits the ordinary scratch source and runs `planner patch --target ...
-  --expect ... --after-file ... --repo ... --base ...`.
+  --expect ... --after-file ... --repo ... --base-commit ...`.
 - Does not directly edit the existing fenced diff.
 - Preserves unrelated sections and passes repository-aware `planner check
   plans/bounded.md --repo "$EVAL_REPO" --json-errors` again.

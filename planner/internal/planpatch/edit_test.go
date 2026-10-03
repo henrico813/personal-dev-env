@@ -60,16 +60,16 @@ func TestReplaceDiffAcceptsEmptyBody(t *testing.T) {
 }
 
 // The edit_expect token is a hash of the plan text, the selected change, and
-// the source baseline (the full commit ID the change is measured against).
+// the source base commit (the full commit ID the change is measured against).
 // Changing any of them invalidates the token, so an edit prepared against an
 // old plan fails instead of overwriting a human edit.
-func TestExpectBindsPlanTargetAndBaseline(t *testing.T) {
+func TestExpectBindsPlanTargetAndBaseCommit(t *testing.T) {
 	original := Expect([]byte("first\nselected"), "target", strings.Repeat("a", 40))
 	variants := map[string]string{
-		"changed plan":   Expect([]byte("changed\nselected"), "target", strings.Repeat("a", 40)),
-		"changed target": Expect([]byte("first\nselected"), "other", strings.Repeat("a", 40)),
-		"changed base":   Expect([]byte("first\nselected"), "target", strings.Repeat("b", 40)),
-		"no base":        Expect([]byte("first\nselected"), "target", ""),
+		"changed plan":        Expect([]byte("changed\nselected"), "target", strings.Repeat("a", 40)),
+		"changed target":      Expect([]byte("first\nselected"), "other", strings.Repeat("a", 40)),
+		"changed base commit": Expect([]byte("first\nselected"), "target", strings.Repeat("b", 40)),
+		"no base commit":      Expect([]byte("first\nselected"), "target", ""),
 	}
 	for name, token := range variants {
 		if original == token {
