@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+{{- if eq (env "PDE_PROFILE") "full" }}
+# Retire the OpenCode web service on hosts that still run it. This runs before
+# chezmoi removes the unit files, so systemctl can still resolve them.
+if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
+    exit 0
+fi
+
+units="opencode-web.service opencode-web-health.timer opencode-web-health.service"
+user_unit_dir="$HOME/.config/systemd/user"
+env_file="$HOME/.config/opencode/server.env"
+
+unit_present=false
+for unit in $units; do
+    if [ -e "$user_unit_dir/$unit" ]; then
+        unit_present=true
+    fi
+done
+
+bus_ok=false
+disable_failed=false
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    bus_ok=true
+    for unit in $units; do
+        if ! systemctl --user disable --now "$unit" >/dev/null 2>&1; then
+            disable_failed=true
+        fi
+    done
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    for unit in $units; do
+        systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
+    done
+fi
+
+# Remove enablement symlinks directly so they are gone even without a user bus.
+# Only exact unit names inside .wants/.requires are removed; other entries are
+# left alone and symlinks are never followed.
+for unit in $units; do
+    for wants_dir in "$user_unit_dir"/*.wants "$user_unit_dir"/*.requires; do
+        [ -d "$wants_dir" ] || continue
+        link="$wants_dir/$unit"
+        if [ -L "$link" ]; then
+            rm -f "$link" 2>/dev/null || true
+        fi
+    done
+done
+
+if [ "$unit_present" = true ] && { [ "$bus_ok" = false ] || [ "$disable_failed" = true ]; }; then
+    printf '%s\n' \
+        "WARNING: OpenCode web service cleanup could not confirm the service stopped." \
+        "The unit files are being removed, but the service may still be running." \
+        "Stop it with: systemctl --user stop opencode-web.service opencode-web-health.timer" \
+        "or log out and back in (or reboot) to be sure." >&2
+fi
+
+if [ -e "$env_file" ]; then
+    printf '%s\n' "Note: remove $env_file after retiring the OpenCode web service." >&2
+fi
+{{- end }}

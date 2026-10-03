@@ -23,3 +23,10 @@ selection-aware templates, so use it rather than applying chezmoi directly.
 Shared palette and application-theme data belongs in
 `../chezmoi/.chezmoidata.json`; keep the supported names aligned with
 `internal/colorprofile`. For examples, run `pde-installer install --help`.
+
+Removing a managed file only stops chezmoi from writing it; it does not delete
+the live copy. Add the home-relative target path to `../chezmoi/.chezmoiremove`,
+and when the file has a live side effect such as an enabled systemd unit, add a
+`run_once_before_` script that reverses the effect before the file is removed.
+Do not also list the target in `.chezmoiignore`; ignored targets are skipped by
+the removal list.
