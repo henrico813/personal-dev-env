@@ -22,7 +22,7 @@ The provider keeps three pieces of configuration:
 
 1. Get an OpenCode-specific LiteLLM key. Vibe uses a separate key in
    `~/.config/vibe/goog.env`; see the last section before reusing anything.
-2. Create the file without putting the key in your shell history:
+2. Create the file at mode `0600` without putting the key in your shell history:
 
    ```bash
    IFS= read -rs OPENCODE_KEY

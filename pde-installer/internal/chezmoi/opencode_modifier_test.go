@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -303,6 +304,15 @@ func assertGoogModelsPreserved(t *testing.T, output, wantID string) {
 	}
 }
 
+// assertWarnsOnce fails when a discovery failure prints anything other than the
+// single generic notice callers rely on, so the warn() dedup cannot regress.
+func assertWarnsOnce(t *testing.T, stderr, want string) {
+	t.Helper()
+	if got := strings.Count(stderr, want); got != 1 {
+		t.Errorf("stderr = %q, want %q exactly once", stderr, want)
+	}
+}
+
 // TestModifierConfiguresGoogProvider pins the v2 provider shape and the model
 // map so a regression cannot silently restore the openai/ prefix.
 func TestModifierConfiguresGoogProvider(t *testing.T) {
@@ -377,9 +387,7 @@ func TestModifierRefusesInjectedKey(t *testing.T) {
 			if _, statErr := os.Stat(filepath.Join(home, "fake-curl-argv")); !os.IsNotExist(statErr) {
 				t.Fatalf("fake curl was invoked for an invalid key: %v", statErr)
 			}
-			if !strings.Contains(stderr, "not a valid key") {
-				t.Errorf("stderr = %q, want invalid-key warning", stderr)
-			}
+			assertWarnsOnce(t, stderr, "not a valid key")
 			assertGoogModelsPreserved(t, stdout, "qwen3.8")
 		})
 	}
@@ -395,9 +403,7 @@ func TestModifierKeepsModelsOnHttpError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 	}
-	if !strings.Contains(stderr, "discovery unavailable") {
-		t.Errorf("stderr = %q, want discovery warning", stderr)
-	}
+	assertWarnsOnce(t, stderr, "discovery unavailable")
 	assertGoogModelsPreserved(t, stdout, "qwen3.8")
 }
 
@@ -411,7 +417,7 @@ func TestModifierKeepsModelsOnInvalidDiscovery(t *testing.T) {
 		}
 		body201 += fmt.Sprintf(`{"id":"m%03d"}`, i)
 	}
-	body201 += `"]}`
+	body201 += `]}`
 	tests := []struct {
 		name     string
 		response string
@@ -432,9 +438,7 @@ func TestModifierKeepsModelsOnInvalidDiscovery(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 			}
-			if !strings.Contains(stderr, "discovery unavailable") {
-				t.Errorf("stderr = %q, want discovery warning", stderr)
-			}
+			assertWarnsOnce(t, stderr, "discovery unavailable")
 			assertGoogModelsPreserved(t, stdout, "qwen3.8")
 		})
 	}
@@ -449,9 +453,7 @@ func TestModifierKeepsLegacyOnFirstRunFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 	}
-	if !strings.Contains(stderr, "key file is missing") {
-		t.Errorf("stderr = %q, want missing-key warning", stderr)
-	}
+	assertWarnsOnce(t, stderr, "key file is missing")
 	var config struct {
 		Provider  map[string]any `json:"provider"`
 		Providers map[string]any `json:"providers"`
@@ -488,30 +490,26 @@ func TestModifierTreatsEmptyDataAsFailure(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 			}
-			if !strings.Contains(stderr, "discovery unavailable") {
-				t.Errorf("stderr = %q, want discovery warning", stderr)
-			}
+			assertWarnsOnce(t, stderr, "discovery unavailable")
 			var config struct {
 				Provider  map[string]any `json:"provider"`
-				Providers struct {
-					Goog struct {
-						Models map[string]any `json:"models"`
-					} `json:"goog"`
-				} `json:"providers"`
+				Providers map[string]any `json:"providers"`
 			}
 			if err := json.Unmarshal([]byte(stdout), &config); err != nil {
 				t.Fatal(err)
 			}
 			if test.name == "first run" {
-				if len(config.Providers.Goog.Models) != 0 {
-					t.Errorf("models = %#v, want none", config.Providers.Goog.Models)
+				if _, ok := config.Providers["goog"]; ok {
+					t.Errorf("providers.goog = %#v, want absent on first-run failure", config.Providers)
 				}
 				if _, ok := config.Provider["ollama"]; !ok {
 					t.Errorf("provider.ollama = %#v, want preserved", config.Provider)
 				}
 			} else {
-				if _, ok := config.Providers.Goog.Models["qwen3.8"]; !ok {
-					t.Errorf("models = %#v, want preserved qwen3.8", config.Providers.Goog.Models)
+				goog := config.Providers["goog"].(map[string]any)
+				models := goog["models"].(map[string]any)
+				if _, ok := models["qwen3.8"]; !ok {
+					t.Errorf("models = %#v, want preserved qwen3.8", models)
 				}
 			}
 		})
@@ -550,7 +548,10 @@ func TestModifierRefusesUnsafeKeyFile(t *testing.T) {
 		{
 			name: "fifo",
 			prepare: func(t *testing.T, path string) {
-				if err := os.Mkfifo(path, 0o600); err != nil {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := syscall.Mkfifo(path, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -602,9 +603,7 @@ func TestModifierRefusesUnsafeKeyFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 			}
-			if !strings.Contains(stderr, test.want) {
-				t.Errorf("stderr = %q, want %q", stderr, test.want)
-			}
+			assertWarnsOnce(t, stderr, test.want)
 			assertGoogModelsPreserved(t, stdout, "qwen3.8")
 		})
 	}
@@ -637,8 +636,15 @@ func TestModifierKeepsModelsOnInvalidBaseURL(t *testing.T) {
 			if err != nil {
 				t.Fatalf("run modifier: %v: %s", err, stdout+stderr)
 			}
-			if !strings.Contains(stderr, "base URL is invalid") {
-				t.Errorf("stderr = %q, want invalid-base-URL warning", stderr)
+			assertWarnsOnce(t, stderr, "base URL is invalid")
+			var config struct {
+				Provider map[string]any `json:"provider"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &config); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := config.Provider["ollama"]; !ok {
+				t.Errorf("provider.ollama = %#v, want left in place", config.Provider)
 			}
 			if _, statErr := os.Stat(filepath.Join(home, "fake-curl-argv")); !os.IsNotExist(statErr) {
 				t.Fatalf("fake curl was invoked for an invalid base URL: %v", statErr)
