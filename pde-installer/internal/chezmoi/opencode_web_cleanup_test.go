@@ -78,8 +78,8 @@ func TestCleanupScriptDisablesWebUnits(t *testing.T) {
 }
 
 // A missing unit makes systemctl fail that one disable call; the loop must keep
-// going so the remaining enabled units are still stopped, and the failed unit's
-// enablement symlink must be removed directly with a warning.
+// going so the remaining enabled units are still stopped, and the symlink that
+// enabled the failed unit must still be removed, with a warning.
 func TestCleanupScriptContinuesAfterDisableFailure(t *testing.T) {
 	home := t.TempDir()
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("0", "opencode-web-health.timer"))
@@ -102,7 +102,7 @@ func TestCleanupScriptContinuesAfterDisableFailure(t *testing.T) {
 	}
 }
 
-// Containers, CI, and terminal hosts have no systemd, so the script must exit 0
+// Containers and CI hosts may have no systemd, so the script must exit 0
 // without invoking anything rather than failing the whole apply. A host with no
 // unit files must not warn about a service it never had.
 func TestCleanupScriptSkipsWithoutSystemd(t *testing.T) {
@@ -120,9 +120,9 @@ func TestCleanupScriptSkipsWithoutSystemd(t *testing.T) {
 	}
 }
 
-// A host can have the systemctl binary but no user bus; the script must still
-// strip enablement symlinks, leave unrelated entries alone, and warn that the
-// running service may need a manual stop.
+// A host can have the systemctl binary but no running systemd user manager; the
+// script must still remove the units' login symlinks, leave unrelated entries
+// alone, and warn that the running service may need a manual stop.
 func TestCleanupScriptSkipsWithoutUserBus(t *testing.T) {
 	home := t.TempDir()
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "systemctl"), fakeSystemctlScript("1", ""))
@@ -136,18 +136,18 @@ func TestCleanupScriptSkipsWithoutUserBus(t *testing.T) {
 
 	output, err := runCleanupScript(t, home, "full", []string{"PATH=" + filepath.Join(home, ".local", "bin") + ":" + os.Getenv("PATH")})
 	if err != nil {
-		t.Fatalf("cleanup script failed without a user bus: %v\n%s", err, output)
+		t.Fatalf("cleanup script failed without a running systemd user manager: %v\n%s", err, output)
 	}
 	calls := readSystemctlCalls(t, home)
 	if strings.Contains(calls, "disable") || strings.Contains(calls, "daemon-reload") {
-		t.Fatalf("cleanup ran without a user bus:\n%s", calls)
+		t.Fatalf("cleanup ran without a running systemd user manager:\n%s", calls)
 	}
 	assertPathRemoved(t, webLink)
 	assertPathRemoved(t, timerLink)
 	assertSymlinkRemains(t, otherLink)
 	assertRegularFileRemains(t, regularFile)
 	if !strings.Contains(string(output), "WARNING") {
-		t.Fatalf("cleanup script omitted the warning without a user bus:\n%s", output)
+		t.Fatalf("cleanup script omitted the warning without a running systemd user manager:\n%s", output)
 	}
 }
 

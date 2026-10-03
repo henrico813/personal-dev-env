@@ -26,7 +26,8 @@ Shared palette and application-theme data belongs in
 
 Removing a managed file only stops chezmoi from writing it; it does not delete
 the live copy. Add the home-relative target path to `../chezmoi/.chezmoiremove`,
-and when the file has a live side effect such as an enabled systemd unit, add a
-`run_once_before_` script that reverses the effect before the file is removed.
-Do not also list the target in `.chezmoiignore`; ignored targets are skipped by
-the removal list.
+the list of files chezmoi deletes from your home directory. When the file has a
+live side effect such as an enabled systemd unit, add a `run_once_before_<name>`
+script; chezmoi runs these once, before it applies changes, so the script can
+reverse the effect before the file is removed. Do not also list the target in
+`.chezmoiignore`; ignored targets are skipped by the `.chezmoiremove` list.

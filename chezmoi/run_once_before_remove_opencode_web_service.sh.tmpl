@@ -21,6 +21,7 @@ done
 
 bus_ok=false
 disable_failed=false
+# systemctl --user only works when a systemd user manager is running.
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
     bus_ok=true
     for unit in $units; do
@@ -34,9 +35,10 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     done
 fi
 
-# Remove enablement symlinks directly so they are gone even without a user bus.
-# Only exact unit names inside .wants/.requires are removed; other entries are
-# left alone and symlinks are never followed.
+# Remove the symlinks that make these units start at login, so cleanup works
+# even when no systemd user manager is running. Only entries named exactly after
+# these units inside `.wants` or `.requires` directories are removed; other
+# entries are left alone and symlinks are never followed.
 for unit in $units; do
     for wants_dir in "$user_unit_dir"/*.wants "$user_unit_dir"/*.requires; do
         [ -d "$wants_dir" ] || continue
@@ -51,7 +53,7 @@ if [ "$unit_present" = true ] && { [ "$bus_ok" = false ] || [ "$disable_failed" 
     printf '%s\n' \
         "WARNING: OpenCode web service cleanup could not confirm the service stopped." \
         "The unit files are being removed, but the service may still be running." \
-        "Stop it with: systemctl --user stop opencode-web.service opencode-web-health.timer" \
+        "Stop it with: systemctl --user stop opencode-web.service opencode-web-health.timer opencode-web-health.service" \
         "or log out and back in (or reboot) to be sure." >&2
 fi
 

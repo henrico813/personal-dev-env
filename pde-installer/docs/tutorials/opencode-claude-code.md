@@ -1,7 +1,8 @@
 # OpenCode Claude Code Adapter
 
-This tutorial prepares the full profile's managed OpenCode Claude adapter and
-authenticates Claude Code.
+This tutorial installs the full profile, which sets up the OpenCode Claude Code
+adapter that lets OpenCode use Claude Code models, then shows how to
+authenticate Claude Code.
 
 ## 1. Apply the Full Profile
 
@@ -24,8 +25,9 @@ claude auth status --json
 opencode auth login claude-code
 ```
 
-Restart OpenCode after authenticating Claude Code or changing its credentials so
-that the adapter can observe the updated authentication state.
+Restart OpenCode (quit and start it again) after authenticating Claude Code or
+changing its credentials so the adapter can see the updated authentication
+state.
 
 List the Claude Code models available through the managed adapter with:
 
