@@ -17,4 +17,4 @@ Index of Planner documentation.
 
 ## Explanation
 
-- [Baseline replay](explanation/baseline-replay.md)
+- [Base commit replay](explanation/base-commit-replay.md)

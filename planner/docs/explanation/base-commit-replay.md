@@ -1,23 +1,23 @@
-# Baseline replay
+# Base commit replay
 
-A plan's baseline commit is the full Git commit ID of the source repository at
-the moment the plan was created. Every fenced diff in the plan describes a
-change measured against that commit.
+A plan's base commit is the full Git commit ID of the source repository at the
+moment the plan was created. Every fenced diff in the plan describes a change
+measured against that commit.
 
 ## Why guarded commands need the original commit
 
-Each diff describes how to change a file as it existed at the baseline.
+Each diff describes how to change a file as it existed at the base commit.
 `planner patch` and guarded `planner check` rebuild that starting point in a
 disposable Git repository, then apply diffs on top of it. Guarded `planner
-inspect` opens and replays the baseline only when `--code-out` is requested;
+inspect` opens and replays the base commit only when `--code-out` is requested;
 without it, inspect computes the `edit_expect` token and returns the selected
-diff without opening the baseline.
+diff without opening the base commit.
 
-`--base` must be a full commit ID. `HEAD` is rejected, and so are branch names
-and tags. The reason is not authentication; it is that the same bytes have to be
-found later, even after the branch has moved.
+`--base-commit` must be a full commit ID. `HEAD` is rejected, and so are branch
+names and tags. The reason is not authentication; it is that the same bytes have
+to be found later, even after the branch has moved.
 
-If you pass the current `HEAD` instead of the recorded baseline:
+If you pass the current `HEAD` instead of the recorded base commit:
 
 - diffs for earlier steps no longer apply, because those changes are already in
   `HEAD`;
@@ -27,7 +27,7 @@ If you pass the current `HEAD` instead of the recorded baseline:
 
 ## A/B/C example: why replay starts at A
 
-Plan creation reads the source at commit A and records A as the baseline. Each
+Plan creation reads the source at commit A and records A as the base commit. Each
 implementation step is then committed, moving `HEAD` forward:
 
 ```text
@@ -47,27 +47,27 @@ If a guarded command starts at C instead, step 1's diff expects the file as it
 was at A, but the file at C already contains step 1's changes. The apply fails,
 or succeeds against content that only happens to match. Pass A, not C.
 
-## What Planner does with the baseline
+## What Planner does with the base commit
 
-`--base` is used in three places:
+`--base-commit` is used in three places:
 
 - `planner inspect` without `--code-out` computes the `edit_expect` token and
-  returns the selected diff; it does not open the baseline. With `--code-out`,
-  it opens a disposable repository at the baseline, replays every change before
+  returns the selected diff; it does not open the base commit. With `--code-out`,
+  it opens a disposable repository at the base commit, replays every change before
   the selected one, and exports the source just before or just after that
   change. The returned `edit_expect` token is tied to the plan bytes, the
-  normalized selector, and the baseline.
-- `planner patch` re-checks that token, replays the baseline plus every change
+  normalized selector, and the base commit.
+- `planner patch` re-checks that token, replays the base commit plus every change
   through the edited one, and only then writes the plan. Later changes are not
   replayed here.
-- `planner check` replays the whole plan from the baseline to confirm every diff
+- `planner check` replays the whole plan from the base commit to confirm every diff
   applies in order.
 
 The disposable repository shares read-only Git objects with your repository and
 is removed afterwards. Planner never stages, stashes, resets, or commits your
-worktree, and uncommitted or untracked files are not part of the baseline.
+worktree, and uncommitted or untracked files are not part of the base commit.
 
-## What the baseline does not protect against
+## What the base commit does not protect against
 
 The SHA identifies a starting point for replay. It does not:
 
@@ -80,22 +80,18 @@ The SHA identifies a starting point for replay. It does not:
 
 It makes replay repeatable. It does not make it authorized or correct.
 
-## Where the baseline is recorded
+## Where the base commit is recorded
 
-The create-plan and implement-plan prompts record and read the full baseline
-commit in `### Current State` of the plan. Planner does not parse that text; the
-caller reads the recorded value and passes it as `--base` to the guarded
-commands. Planner never defaults to `HEAD`. Choosing the commit recorded when
-the plan was created is a prompt and workflow convention, not a value Planner
-enforces; Planner uses only the full commit ID supplied by the caller as
-`--base`.
+The create-plan and implement-plan prompts record the full base commit in the
+first line of `### Current State`. `planner check` reads that line when
+`--base-commit` is not supplied. `planner inspect` and `planner patch` require
+the caller to pass the full commit ID with `--base-commit`. Planner never uses
+`HEAD` as a default.
 
 ## Who this matters to
 
 When you run Planner through the create-plan and implement-plan prompts, the
-prompt records the baseline once and reuses it, so the value is mostly handled
-for you. Maintainers of those prompts and anyone testing the plan workflow need
-to watch it directly. A test that creates a plan, commits an implementation
-step, and then revises the plan fails if the workflow used `HEAD`, because the
-diff no longer applies. When checking such a run, confirm that every guarded
-command passed the original commit, not the new `HEAD`.
+prompt records the base commit once and reuses it. A test that creates a plan,
+commits an implementation step, and then revises the plan fails if the workflow
+uses `HEAD`, because the diff no longer applies. Check that guarded commands use
+the recorded base commit, not the new `HEAD`.

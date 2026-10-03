@@ -26,7 +26,7 @@ The output path must end in `.md`.
 
 ```text
 planner inspect <plan.md>
-planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]]
+planner inspect <plan.md> --target SELECTOR --repo DIR --base-commit COMMIT [--code-out NEWFILE [--before]]
 ```
 
 Without `--target`, inspect prints a JSON view of the parsed plan. With
@@ -43,8 +43,9 @@ or before it with `--before`. `--before` requires `--code-out`.
 
 - `selector`: normalized target.
 - `filename`, `step_title`, `step_summary`, `explanation`: the selected change.
-- `base`: the baseline passed in.
-- `edit_expect`: token binding the plan bytes, normalized selector, and base.
+- `base_commit`: the base commit passed in.
+- `edit_expect`: token binding the plan bytes, normalized selector, and base
+  commit.
 - `validation`: `inspection_only`.
 - `diff`: the selected diff, present without `--code-out`.
 - `code_exists`, `code_state`, `mode`, `code_out`: present when source was
@@ -53,7 +54,7 @@ or before it with `--before`. `--before` requires `--code-out`.
 ## planner patch
 
 ```text
-planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT
+planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base-commit COMMIT
   (--after-file FILE | --diff-file FILE) [--dry-run] [--diff]
 ```
 
@@ -69,8 +70,8 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - `--diff` prints the Git-generated review preview to stdout instead of the
   normal JSON result.
 
-Patch replays the baseline plus every change through the edited one and never
-later changes.
+Patch replays the base commit plus every change through the edited one and
+never later changes.
 
 ### Patch result fields
 
@@ -80,23 +81,24 @@ later changes.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
 - `prefix_replayed`: always `true` on success.
 - `downstream_checked`: `false`; later changes are not replayed.
-- `base`: the baseline passed in.
+- `base_commit`: the base commit passed in.
 - `behavior_checked`: `false`.
 
 ## planner check
 
 ```text
-planner check [<plan.md>] [--stdin] [--json-errors]
-planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
+planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 ```
 
-Without `--repo` and `--base`, check validates the plan structure, reports every
-violation in one run, and prints `OK` on success. `--stdin` reads the plan from
-stdin. `--format` is not accepted.
+`planner check` validates the plan structure, then replays every change against
+the base commit. If `--base-commit` is omitted, the first line of `### Current
+State` must be `Base commit: <full commit ID>`. If `--repo` is omitted, Planner
+uses the current working directory's Git repository. `--stdin` reads the plan
+from stdin. `--format` is not accepted.
 
-The guarded form opens a disposable repository at the baseline and replays the
+The check opens a disposable repository at the base commit and replays the
 whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
-`applicability_checked: true`, `changes_replayed`, `base`,
+`applicability_checked: true`, `changes_replayed`, `base_commit`,
 `source_state: "committed_snapshot_only"`, and `behavior_checked: false`.
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
@@ -107,7 +109,7 @@ compiles or passes tests.
   sections, non-empty fields, length limits, unique filenames per step, at
   least one goal, at least one implementation step, and at least one file
   change per step. It does not read source.
-- Guarded replay validation applies every diff against the baseline in a
+- Guarded replay validation applies every diff against the base commit in a
   disposable Git repository. It confirms applicability, not behavior.
 
 ## Issue frontmatter
