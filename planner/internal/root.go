@@ -22,8 +22,8 @@ Usage:
   planner check [<plan.md>] [--stdin] [--json-errors]  Reports every violation in one run.
   planner check <plan.md> --repo DIR --base COMMIT [--json-errors]
   planner inspect <plan.md>
-  planner inspect <plan.md> --target SELECTOR --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
-  planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
+  planner inspect <plan.md> --target 'SELECTOR' --repo DIR --base COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner patch <plan.md> --target 'SELECTOR' --expect TOKEN --repo DIR --base COMMIT (--after-file FILE | --diff-file FILE) [--dry-run] [--diff] [--json-errors]
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).

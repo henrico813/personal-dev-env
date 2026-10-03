@@ -150,19 +150,19 @@ mandatory approval stage.
    step. If no baseline is recorded, stop and ask the user.
 7. For a new plan, `planner new` scaffolds each code change as a PLACEHOLDER
    diff. Work through the file changes in plan order: run `planner inspect
-   <plan.md> --target <selector> --repo <repo> --base <commit> --before
+   <plan.md> --target '<selector>' --repo <repo> --base <commit> --before
    --code-out <new-scratch-file>`, edit the scratch file, then run `planner
-   patch <plan.md> --target <selector> --expect <edit_expect> --after-file
+   patch <plan.md> --target '<selector>' --expect <edit_expect> --after-file
    <scratch-file> --repo <repo> --base <commit>`. Copy the PLACEHOLDER fence
    when adding a change by hand; never leave an empty fence. Finish with
    `planner check <plan.md> --repo <repo> --base <commit>`.
 8. For code revisions to an existing plan, run `planner inspect <plan.md>
-   --target <selector> --repo <repo> --base <commit> --code-out
+   --target '<selector>' --repo <repo> --base <commit> --code-out
    <new-scratch-file>`. Keep its small JSON result and `edit_expect` token. The
    scratch file holds proposed source after earlier steps and the selected
    change.
 9. Edit ordinary scratch source with native tools, then run `planner patch
-   <plan.md> --target <selector> --expect <edit_expect> --after-file
+   <plan.md> --target '<selector>' --expect <edit_expect> --after-file
    <scratch-file> --repo <repo> --base <commit>`. Planner generates hunk counts
    and replays the base through the edited change only; later changes are not
    checked. Do not hand-maintain hunks.
