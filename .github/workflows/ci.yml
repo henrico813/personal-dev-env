@@ -112,3 +112,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: check
         run: make check
+
+  ai-prompts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: planner/go.mod
+          cache-dependency-path: planner/go.sum
+      - name: install test dependencies
+        run: sudo apt-get update && sudo apt-get install --yes zsh
+      - name: check planning prompts
+        run: zsh ./ai/evals/test-prompt-commands.zsh
