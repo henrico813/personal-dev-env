@@ -16,14 +16,10 @@ planner inspect plan.md \
   --code-out /tmp/change-after
 ```
 
-`SELECTOR` is `implementation[N].file_changes[M]` with 1-based indices. Quote
-it, because zsh expands unquoted brackets. Leading zeros are accepted and the
-normalized selector is echoed back.
-
-Without `--code-out`, inspect returns JSON with the selected diff and an
-`edit_expect` token. With `--code-out`, it writes the source after the selected
-change, or before it with `--before`, to a new scratch file. Both forms return
-`edit_expect`.
+Quote the selector, because zsh expands unquoted brackets. Use `--before` to
+export the source before the selected change instead of after it. Both forms
+return an `edit_expect` token. See the [command
+reference](../reference/commands.md) for selector and `--code-out` details.
 
 ## Edit and patch
 
@@ -38,9 +34,10 @@ planner patch plan.md \
 ```
 
 `edit_expect` binds the plan bytes, the normalized selector, and the baseline,
-so any edit to the plan invalidates it. `--after-file` retains an existing
-file's mode and defaults a new file to `100644`. Use `/dev/null` to propose
-deleting the file, or `--diff-file -` to import a raw unified diff from stdin.
+so any edit to the plan invalidates it. Use `/dev/null` to propose deleting the
+file, or `--diff-file -` to import a raw unified diff from stdin. See the
+[command reference](../reference/commands.md) for `--after-file` mode handling
+and the other patch flags.
 
 ## Keep the baseline
 

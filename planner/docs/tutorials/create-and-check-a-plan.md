@@ -14,8 +14,8 @@ planner new plan.md
 
 `planner new` fails without changing an existing destination. When the plan
 belongs in the PDE vault, pass `--issue --project <name>` to prepend the vault
-issue frontmatter. `--project` is required with `--issue` and rejected without
-it, and `date_created` is today's local date.
+issue frontmatter. See the [command reference](../reference/commands.md) for
+the supported shape.
 
 The scaffold contains a title, overview, definition of done, at least one
 implementation step, and verification. See the [command
