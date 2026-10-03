@@ -16,7 +16,6 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 - [Update npm tools](how-to/update-npm-tools.md)
 - [Update local builds](how-to/update-local-builds.md)
 - [Update chezmoi content](how-to/update-chezmoi-content.md)
-- [Set up or rotate OpenCode credentials](how-to/rotate-opencode-credentials.md)
 - [Supervise OpenCode](how-to/supervise-opencode.md)
 
 ## Explanation
@@ -32,4 +31,3 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 - [Commands](reference/commands.md)
 - [Platforms and paths](reference/platforms-and-paths.md)
 - [Component metadata](reference/component-metadata.md)
-- [OpenCode helpers](reference/opencode-helpers.md)

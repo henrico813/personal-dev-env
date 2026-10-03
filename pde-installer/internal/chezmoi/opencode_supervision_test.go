@@ -143,9 +143,25 @@ func TestOpenCodeSetupHandlesCredentials(t *testing.T) {
 	}
 }
 
+func TestTerminalSetupSkipsOpenCodeService(t *testing.T) {
+	terminal := renderProfileTemplate(t, "run_after_configure_opencode_web.sh.tmpl", "terminal")
+	if strings.Contains(terminal, "systemctl --user") {
+		t.Fatalf("terminal setup starts services: %q", terminal)
+	}
+}
+
 func readChezMoiFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "chezmoi", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+func readPasswordFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
