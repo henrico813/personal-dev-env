@@ -315,7 +315,7 @@ url = "https://example.test/file"
 checksum.sha256 = "hash"`,
 		},
 		{
-			name: "remote missing local hashed",
+			name: "remote without checksum beside hashed local",
 			external: `["remote"]
 type = "file"
 url = 'https://example.test/file'
