@@ -17,13 +17,13 @@ planner inspect plan.md \
 ```
 
 Quote the selector, because zsh expands unquoted brackets. Use `--before` to
- write the source before the selected change instead of after it. Both forms
+write the source before the selected change instead of after it. Both forms
 return an `edit_expect` token. See the [command
 reference](../reference/commands.md) for selector and `--code-out` details.
 
 ## Edit and patch
 
-Edit the written file, then write the change back:
+Edit that file, then save the change back into the plan:
 
 ```bash
 planner patch plan.md \
