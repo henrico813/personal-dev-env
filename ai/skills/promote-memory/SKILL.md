@@ -35,17 +35,15 @@ Choose the narrowest one:
 2. Search `ai/skills/` for overlap before creating a package.
 3. Write the skill and install it through
    `chezmoi/.chezmoiexternal.toml.tmpl` entries for
-   `.agents/skills/<name>/SKILL.md` and `.codex/skills/<name>/SKILL.md`,
-   each with a SHA256 checksum.
-4. When `ai/AGENTS.md` changes, recompute and update every `AGENTS.md`
-   checksum in the external file.
-5. Document the skill in the `README.md` installed-layout table and
+   `.agents/skills/<name>/SKILL.md` and `.codex/skills/<name>/SKILL.md`.
+   These local file externals need no checksum.
+4. Document the skill in the `README.md` installed-layout table and
    `ai/README.md`.
-6. Run `(cd pde-installer && go test ./... && go vet ./...)` and
+5. Run `(cd pde-installer && go test ./... && go vet ./...)` and
    `git diff --check`.
-7. Before committing, verify the Git author email is exactly
+6. Before committing, verify the Git author email is exactly
    `henryco4388@gmail.com`. Stop and report a mismatch.
-8. Load and follow `git-messages`, commit, push to `github`, and open a PR.
+7. Load and follow `git-messages`, commit, push to `github`, and open a PR.
 
 ## Example
 
