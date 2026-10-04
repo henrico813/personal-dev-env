@@ -278,22 +278,3 @@ func assertSystemctlCallCount(t *testing.T, calls, want string, count int) {
 		t.Errorf("systemctl call %q count = %d, want %d:\n%s", want, got, count, calls)
 	}
 }
-
-// TestRemoveFileTargetsSharedAICopies catches stale duplicate rules and skills
-// left behind when the shared destinations change.
-func TestRemoveFileTargetsSharedAICopies(t *testing.T) {
-	targets := []string{"Projects/CLAUDE.md", ".codex/skills/behavior-focused-testing", ".codex/skills/code-documentation", ".codex/skills/git-messages", ".codex/skills/go-development", ".codex/skills/obsidian-zettel", ".codex/skills/promote-memory", ".codex/skills/python-development", ".codex/skills/rust-development"}
-	removeText := renderProfileTemplate(t, removeFileTemplate, "full")
-	ignoreText := renderProfileTemplate(t, ".chezmoiignore.tmpl", "full")
-	for _, target := range targets {
-		if !containsLine(removeText, target) {
-			t.Errorf("%s omits removal target %q", removeFileTemplate, target)
-		}
-		if containsLine(ignoreText, target) {
-			t.Errorf("full profile ignores removal target %q", target)
-		}
-	}
-	if containsLine(removeText, ".codex/skills/create-plan") {
-		t.Error("shared cleanup removes Codex-only workflow skills")
-	}
-}

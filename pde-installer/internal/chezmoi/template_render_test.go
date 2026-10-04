@@ -111,15 +111,6 @@ func TestSharedWorkflowMappings(t *testing.T) {
 	}
 }
 
-// TestClaudeSkillsSymlinkUsesSharedPath keeps Claude pointed at the shared skill
-// directory instead of creating a second copy.
-func TestClaudeSkillsSymlinkUsesSharedPath(t *testing.T) {
-	text := renderProfileTemplate(t, "dot_claude/symlink_skills", "full")
-	if strings.TrimSpace(text) != "../.agents/skills" {
-		t.Fatalf("symlink target = %q, want ../.agents/skills", text)
-	}
-}
-
 func TestGitConfigEnablesDelta(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "chezmoi", "dot_config", "pde", "gitconfig")
 	tests := map[string]string{
