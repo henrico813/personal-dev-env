@@ -20,7 +20,7 @@ The code names the failure category:
 - `USAGE`: bad flag combination or selector.
 - `READ_INPUT`, `DECODE_INPUT`, `VALIDATE_INPUT`: the plan, diff, or scratch
   input could not be read, parsed, or validated.
-- `WRITE_OUTPUT`: the plan or exported source could not be written to disk.
+- `WRITE_OUTPUT`: the plan or source file could not be written to disk.
 - `SOURCE_CHECK`: the base commit could not be opened or a diff did not apply.
 - `PATCH_INPUT`: the replacement source or diff was rejected before plumbing.
 - `PLAN_STALE`: the `edit_expect` token did not match. Reread the plan and
@@ -42,7 +42,7 @@ The patch engine also reports `BASE_COMMIT_INVALID`, `BASE_UNAVAILABLE`,
 Git runs. The message names the selector and file; fill that change with
 `planner inspect --before` and `planner patch`. `planner patch` runs the same
 check on earlier changes. If you patch the PLACEHOLDER change itself with an
-unedited file, the error is `after-file is identical to the exported --before file; edit it first`.
+unedited file, the error is `after-file is identical to the --before file from inspect; edit it first`.
 
 `planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
 commit:` line and the command has no `--base-commit` override.
@@ -50,7 +50,7 @@ commit:` line and the command has no `--base-commit` override.
 ## What to do next
 
 - `SOURCE_CHECK`: pass the full commit ID recorded when the plan was created as
-  `--base-commit`, not `HEAD`, a branch, or a tag. If a diff did not apply, export the
+  `--base-commit`, not `HEAD`, a branch, or a tag. If a diff did not apply, write the
   source at the base commit with `planner inspect --code-out` and rewrite the
   change through `planner patch` instead of editing the fenced diff by hand.
 - `BASE_COMMIT_REQUIRED`: add `Base commit: <full commit ID>` as the first line

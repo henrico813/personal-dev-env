@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -50,7 +51,7 @@ func codedError(code string, err error) error {
 	return &planpatch.Error{Code: code, Cause: err}
 }
 
-// guardedInspectOptions selects one fenced change and optionally exports the
+// guardedInspectOptions selects one fenced change and optionally writes the
 // proposed source that precedes or follows it. Repo and BaseCommit are required
 // so the returned edit_expect binds the recorded base commit.
 type guardedInspectOptions struct {
@@ -75,7 +76,7 @@ func (o guardedInspectOptions) validate() error {
 }
 
 // guardedInspectResult is the JSON view returned to a revision caller. The
-// code_* fields are present only when --code-out exported source.
+// code_* fields are present only when --code-out wrote source.
 type guardedInspectResult struct {
 	Selector    string `json:"selector"`
 	Filename    string `json:"filename"`
@@ -162,7 +163,8 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 }
 
 // guardedPatchOptions replaces one fenced change from ordinary source or a raw
-// diff, guarded by the edit_expect token and mandatory repository replay.
+// diff, guarded by the edit_expect token and a required check that the diff
+// applies to the base commit.
 type guardedPatchOptions struct {
 	PlanPath   string
 	Target     string
@@ -259,7 +261,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			}
 			if strings.TrimSpace(selected.Diff) == "PLACEHOLDER" && matchesBefore {
 				return result, codedError(codePatchInput, errors.New(
-					"after-file is identical to the exported --before file; edit it first"))
+					"after-file is identical to the --before file from inspect; edit it first"))
 			}
 			after = &planpatch.File{Data: data, Mode: mode}
 		}
@@ -273,8 +275,8 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			return result, codedError(codePatchInput, err)
 		}
 	}
-	// Prefix replay: apply the edited change on top of the base commit plus every
-	// earlier change. Later changes are deliberately not replayed; only
+	// Apply the edited change on top of the base commit and every earlier change.
+	// Later changes are deliberately not applied; only
 	// planner check --repo --base-commit validates the whole plan for readiness.
 	if err := s.Apply(planpatch.Change{
 		Target:   selector,
@@ -385,9 +387,11 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 		}
 	}
 	changes := orderedChanges(parsed.Plan)
-	if err := planpatch.Replay(repo, baseCommit, changes); err != nil {
+	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
+	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
+	defer session.Close()
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
 	result.StructureValid = true
 	result.ApplicabilityChecked = true
@@ -398,11 +402,95 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	return result, nil
 }
 
+type guardedExportOptions struct {
+	PlanPath   string
+	Repo       string
+	BaseCommit string
+	Out        string
+	Through    string
+}
+
+type guardedExportResult struct {
+	Out        string `json:"out"`
+	BaseCommit string `json:"base_commit"`
+	Steps      int    `json:"steps"`
+	Changes    int    `json:"changes_applied"`
+}
+
+func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
+	var result guardedExportResult
+	if opts.Repo == "" || opts.Out == "" {
+		return result, usageError("--repo and --out are required")
+	}
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	raw, err := readGuardedInput(opts.PlanPath)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		return result, plannerMarkdownDecodeError(raw, err)
+	}
+	if err := validateGuardedPlan(parsed.Plan); err != nil {
+		return result, codedError(plannerCode(PlannerValidateInputError), err)
+	}
+	baseCommit, err := checkBaseCommit(opts.BaseCommit, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
+	steps := len(parsed.Plan.Implementation)
+	if opts.Through != "" {
+		steps, err = strconv.Atoi(opts.Through)
+		if err != nil || steps < 1 || steps > len(parsed.Plan.Implementation) {
+			return result, usageError(fmt.Sprintf(
+				"--through must be a step number from 1 to %d", len(parsed.Plan.Implementation)))
+		}
+	}
+	changes := orderedChanges(Plan{Implementation: parsed.Plan.Implementation[:steps]})
+	session, err := planpatch.ApplyToBase(opts.Repo, baseCommit, changes)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	defer session.Close()
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parent := filepath.Dir(opts.Out)
+	temp, err := os.MkdirTemp(parent, ".planner-export-*")
+	if err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	defer func() { _ = os.RemoveAll(temp) }()
+	if err := session.Export(temp); err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	if err := os.Rename(temp, opts.Out); err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	result = guardedExportResult{Out: opts.Out, BaseCommit: baseCommit,
+		Steps: steps, Changes: len(changes)}
+	return result, nil
+}
+
 // baseCommitRE matches the required first line of Current State. A full
 // lowercase object ID keeps the recorded base commit immutable and unambiguous.
 var baseCommitRE = regexp.MustCompile(`^Base commit: ([0-9a-f]{40}|[0-9a-f]{64})$`)
 
-// checkBaseCommit returns the commit that check replays. An explicit
+// checkBaseCommit returns the commit that check applies. An explicit
 // --base-commit wins; otherwise the plan must record one on the first line of
 // Current State. check never falls back to HEAD, so a stale plan cannot
 // silently measure against the current checkout.
@@ -457,7 +545,8 @@ func patchSelectorRangeError(selector, segment string, idx, have int) error {
 
 // selectedChange resolves selector to zero-based plan indices and its
 // normalized spelling. Indices are parsed numerically, so leading zeros address
-// the same change and normalize to one spelling for tokens, results, and replay.
+// the same change and normalize to one spelling for tokens, results, and
+// applying diffs.
 func selectedChange(parsed ParseResult, selector string) (step, change int, normalized string, err error) {
 	step, change, err = parsePatchFileChangeSelector(selector)
 	if err != nil {
