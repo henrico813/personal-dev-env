@@ -3,7 +3,6 @@ package chezmoi
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -577,25 +576,22 @@ func containsLine(text, want string) bool {
 	return false
 }
 
-func TestExternalChecksumsMatchSources(t *testing.T) {
+func TestRenderedExternalsPinRemoteChecksums(t *testing.T) {
 	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
-	if strings.Count(text, "type = ") != strings.Count(text, "checksum.sha256") {
-		t.Fatal("external types and checksums differ")
+	if err := checkRemoteChecksums(text); err != nil {
+		t.Fatal(err)
 	}
-	pattern := regexp.MustCompile(`(?m)^url = 'file://([^']+)'\nchecksum.sha256 = "([^"]+)"`)
-	matches := pattern.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
+	localCount := 0
+	for _, entry := range parseExternals(text) {
+		if strings.HasPrefix(entry.url, "file://") {
+			localCount++
+			if entry.hasChecksum {
+				t.Fatal("local external has a checksum")
+			}
+		}
+	}
+	if localCount == 0 {
 		t.Fatal("no local externals rendered")
-	}
-	for _, match := range matches {
-		data, err := os.ReadFile(match[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		hash := sha256.Sum256(data)
-		if got := hex.EncodeToString(hash[:]); got != match[2] {
-			t.Errorf("checksum for %s = %s, want %s", match[1], got, match[2])
-		}
 	}
 }
 

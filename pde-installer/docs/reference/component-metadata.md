@@ -15,7 +15,7 @@ each item. It is not an uninstall list.
 | npm tools | `package.json`, `package-lock.json`, `internal/npm/npm.go`, and manifest versions |
 | Repository builds | `internal/builds/builds.go`; manifest inventory |
 | `blink.cmp` native build | pinned URL and checksum in `internal/builds/builds.go` |
-| Home configuration | repository `chezmoi/` source and `.chezmoiexternal.toml.tmpl` checksums |
+| Home configuration | repository `chezmoi/` source and remote external checksums |
 | Color profiles | names in `internal/colorprofile`; palettes and application themes in `../chezmoi/.chezmoidata.json` |
 
 Pins repeated across files must agree. Profile selection limits the terminal

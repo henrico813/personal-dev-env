@@ -278,9 +278,56 @@ func (m Manager) Validate() error {
 	if err != nil {
 		return err
 	}
-	text := string(data)
-	if strings.Count(text, "type = ") != strings.Count(text, "checksum.sha256") {
-		return fmt.Errorf("every chezmoi external must have a SHA256 checksum")
+	if err := checkRemoteChecksums(string(data)); err != nil {
+		return err
+	}
+	return nil
+}
+
+type externalEntry struct {
+	header      string
+	url         string
+	hasChecksum bool
+}
+
+func parseExternals(text string) []externalEntry {
+	var entries []externalEntry
+	var current externalEntry
+	hasEntry := false
+	for _, rawLine := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "{{") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			if hasEntry {
+				entries = append(entries, current)
+			}
+			current, hasEntry = externalEntry{header: line}, true
+			continue
+		}
+		if !hasEntry {
+			continue
+		}
+		if strings.HasPrefix(line, "url =") {
+			value := strings.TrimSpace(strings.TrimPrefix(line, "url ="))
+			current.url = strings.Trim(value, "\"'")
+		}
+		if strings.HasPrefix(line, "checksum.sha256") {
+			current.hasChecksum = true
+		}
+	}
+	if hasEntry {
+		entries = append(entries, current)
+	}
+	return entries
+}
+
+func checkRemoteChecksums(text string) error {
+	for _, entry := range parseExternals(text) {
+		if strings.HasPrefix(entry.url, "https://") && !entry.hasChecksum {
+			return fmt.Errorf("remote chezmoi external %s must have a SHA256 checksum", entry.header)
+		}
 	}
 	return nil
 }
