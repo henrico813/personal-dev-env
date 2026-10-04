@@ -48,6 +48,9 @@ When this command is invoked:
   decisions.
 - When delegating, name every applicable loaded skill and require the subagent
   to load available skills before working.
+- For plan-authoring delegation, use a numbered decision list. Label each
+  `user-decided`, `orchestrator-proposed` (not confirmed by the user), or
+  `inferred from code`; never present a proposal as decided.
 - Read every mentioned file fully before the final proposal. Read directly
   related callers, tests, config, and docs when they affect the change.
 - Scale research to the task. Do not run a fixed multi-agent or multi-track
@@ -225,6 +228,11 @@ Treat review as a correction loop, not a restart:
 2. Compare every proposed diff with current source. Confirm that it applies to
    the intended file, includes every required line without placeholders,
    follows repository patterns, and excludes unrelated work.
+   Before presenting a delegated draft, review it against source and
+   requirements: check requirement coverage, whether each test would fail on its
+   target bug, and edits outside the brief. `planner check` alone is not this
+   review. An early draft remains an optional fast-feedback path, not an approval
+   stage.
 3. Perform the complete quality review directly. For broad, risky, or
    cross-cutting work, delegate focused architecture, bug, and completeness
    reviews in parallel and reconcile evidence-backed findings.
