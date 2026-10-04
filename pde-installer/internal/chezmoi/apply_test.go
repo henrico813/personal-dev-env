@@ -281,6 +281,65 @@ func TestApplyRejectsInvalidProfile(t *testing.T) {
 	}
 }
 
+func TestApplyValidatesRemoteChecksums(t *testing.T) {
+	tests := []struct {
+		name     string
+		external string
+		wantErr  bool
+	}{
+		{
+			name: "local without checksum",
+			external: `["local"]
+type = "file"
+url = 'file:///tmp/local'`,
+		},
+		{
+			name: "double quoted remote without checksum",
+			external: `["remote"]
+type = "file"
+url = "https://example.test/file"`,
+			wantErr: true,
+		},
+		{
+			name: "single quoted remote without checksum",
+			external: `["remote"]
+type = "file"
+url = 'https://example.test/file'`,
+			wantErr: true,
+		},
+		{
+			name: "remote with checksum",
+			external: `["remote"]
+type = "file"
+url = "https://example.test/file"
+checksum.sha256 = "hash"`,
+		},
+		{
+			name: "remote without checksum beside hashed local",
+			external: `["remote"]
+type = "file"
+url = 'https://example.test/file'
+
+["local"]
+type = "file"
+url = 'file:///tmp/local'
+checksum.sha256 = "hash"`,
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newApplyFixture(t, "success")
+			writeApplyFile(t, filepath.Join(fixture.manager.Source(), ".chezmoiexternal.toml.tmpl"), test.external)
+
+			err := fixture.manager.Validate()
+			if (err != nil) != test.wantErr {
+				t.Fatalf("Validate() error = %v, want error: %t", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func newApplyFixture(t *testing.T, mode string) applyFixture {
 	return newApplyFixtureForProfile(t, mode, profile.Full)
 }
