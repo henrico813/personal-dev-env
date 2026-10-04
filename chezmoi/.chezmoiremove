@@ -12,4 +12,6 @@ Projects/CLAUDE.md
 .codex/skills/promote-memory
 .codex/skills/python-development
 .codex/skills/rust-development
+.config/opencode/commands/document_codebase.md
+.codex/skills/document-codebase
 {{ end }}
