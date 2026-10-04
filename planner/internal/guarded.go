@@ -195,6 +195,7 @@ type guardedPatchResult struct {
 	Path              string `json:"path"`
 	PlanSHA256        string `json:"plan_sha256"`
 	Written           bool   `json:"written"`
+	Changed           bool   `json:"changed"`
 	StructureValid    bool   `json:"structure_valid"`
 	PatchSyntaxValid  bool   `json:"patch_syntax_valid"`
 	PrefixReplayed    bool   `json:"prefix_replayed"`
@@ -252,6 +253,14 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			if before != nil {
 				mode = before.Mode
 			}
+			matchesBefore := before == nil && len(data) == 0
+			if before != nil {
+				matchesBefore = bytes.Equal(data, before.Data)
+			}
+			if strings.TrimSpace(selected.Diff) == "PLACEHOLDER" && matchesBefore {
+				return result, codedError(codePatchInput, errors.New(
+					"after-file is identical to the exported --before file; edit it first"))
+			}
 			after = &planpatch.File{Data: data, Mode: mode}
 		}
 		replacement, err = planpatch.Generate(selected.Filename, before, after)
@@ -289,10 +298,11 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			Cause: errors.New("replacement changed another parsed field"),
 		}
 	}
+	changed := !bytes.Equal(raw, updated)
 	if err := validateGuardedPlan(candidate.Plan); err != nil {
 		return result, codedError(codeValidateResult, err)
 	}
-	if opts.Diff && !bytes.Equal(raw, updated) {
+	if opts.Diff && changed {
 		preview, err := planpatch.Generate("plan.md",
 			&planpatch.File{Data: raw, Mode: "100644"},
 			&planpatch.File{Data: updated, Mode: "100644"})
@@ -300,15 +310,18 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			return result, codedError(codePatchInput, err)
 		}
 		result.Preview = preview
+	} else if opts.Diff {
+		result.Preview = []byte("No changes.\n")
 	}
-	if !opts.DryRun {
+	if !opts.DryRun && changed {
 		if err := planpatch.WriteIfUnchanged(opts.PlanPath, raw, updated); err != nil {
 			return result, codedError(plannerCode(PlannerWriteOutputError), err)
 		}
 	}
 	result.Path = opts.PlanPath
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(updated))
-	result.Written = !opts.DryRun
+	result.Written = !opts.DryRun && changed
+	result.Changed = changed
 	result.StructureValid = true
 	result.PatchSyntaxValid = true
 	result.PrefixReplayed = true

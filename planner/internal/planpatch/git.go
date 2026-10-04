@@ -261,6 +261,9 @@ func (s *Session) Read(name string) (*File, error) {
 // Apply replays one change. Failure may alter this disposable session, so the
 // caller must discard it on error. Nothing is written to the source repository.
 func (s *Session) Apply(change Change) error {
+	if err := rejectPlaceholder(change); err != nil {
+		return err
+	}
 	fail := func(err error) error {
 		return fmt.Errorf("%s (%s): %w", change.Target, change.Filename, err)
 	}
@@ -290,6 +293,16 @@ func (s *Session) Apply(change Change) error {
 	}
 	if _, err = s.Read(change.Filename); err != nil {
 		return fail(err)
+	}
+	return nil
+}
+
+// rejectPlaceholder names an unfinished plan change before Git parses it.
+func rejectPlaceholder(change Change) error {
+	if bytes.Equal(bytes.TrimSpace(change.Diff), []byte("PLACEHOLDER")) {
+		return failure(CodePatchInvalid,
+			"%s (%s) is still PLACEHOLDER; fill it with inspect --before and patch",
+			change.Target, change.Filename)
 	}
 	return nil
 }
