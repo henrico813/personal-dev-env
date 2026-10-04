@@ -33,6 +33,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim/**",
 				".config/opencode",
 				".config/herdr",
+				".claude",
 				".codex",
 				".agents",
 				".pi",
@@ -57,6 +58,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim/**",
 				".config/opencode",
 				".config/herdr",
+				".claude",
 			},
 		},
 	}
@@ -92,31 +94,29 @@ func TestExternalTemplateProfiles(t *testing.T) {
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
 }
 
+// TestSharedWorkflowMappings catches rules and skills diverging between tools,
+// including accidental duplicate shared copies under Codex.
 func TestSharedWorkflowMappings(t *testing.T) {
 	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
-	tests := []struct {
-		target string
-		source string
-	}{
-		{target: ".config/opencode/AGENTS.md", source: "ai/AGENTS.md"},
-		{target: ".codex/AGENTS.md", source: "ai/AGENTS.md"},
-		{target: ".pi/agent/AGENTS.md", source: "ai/AGENTS.md"},
-		{target: ".agents/skills/code-documentation/SKILL.md", source: "ai/skills/code-documentation/SKILL.md"},
-		{target: ".codex/skills/code-documentation/SKILL.md", source: "ai/skills/code-documentation/SKILL.md"},
+	for _, target := range []string{".config/opencode/AGENTS.md", ".codex/AGENTS.md", ".pi/agent/AGENTS.md", ".claude/CLAUDE.md"} {
+		mapping := fmt.Sprintf("[%q]\ntype = \"file\"\nurl = 'file://%s/ai/AGENTS.md'", target, repoRoot(t))
+		if strings.Count(text, mapping) != 1 {
+			t.Fatalf("mapping %s does not point once to ai/AGENTS.md", target)
+		}
 	}
+	for _, block := range strings.Split(text, "\n\n") {
+		if strings.HasPrefix(block, `[".codex/skills/`) && strings.Contains(block, "/ai/skills/") {
+			t.Fatalf("shared skill remains mapped into Codex: %s", block)
+		}
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.target, func(t *testing.T) {
-			mapping := fmt.Sprintf(
-				"[%q]\ntype = \"file\"\nurl = 'file://%s/%s'",
-				tt.target,
-				repoRoot(t),
-				tt.source,
-			)
-			if count := strings.Count(text, mapping); count != 1 {
-				t.Fatalf("mapping %s count = %d, want 1", tt.target, count)
-			}
-		})
+// TestClaudeSkillsSymlinkUsesSharedPath keeps Claude pointed at the shared skill
+// directory instead of creating a second copy.
+func TestClaudeSkillsSymlinkUsesSharedPath(t *testing.T) {
+	text := renderProfileTemplate(t, "dot_claude/symlink_skills", "full")
+	if strings.TrimSpace(text) != "../.agents/skills" {
+		t.Fatalf("symlink target = %q, want ../.agents/skills", text)
 	}
 }
 
