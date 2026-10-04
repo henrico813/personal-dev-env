@@ -40,6 +40,21 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 	}
 }
 
+// A terminal install must not touch AI paths, which may not even be directories there.
+func TestTerminalRemoveTargetsAvoidAICleanup(t *testing.T) {
+	text := renderProfileTemplate(t, removeFileTemplate, "terminal")
+	for _, line := range strings.Split(text, "\n") {
+		target := strings.TrimSpace(line)
+		if strings.HasPrefix(target, ".config/opencode") ||
+			strings.HasPrefix(target, ".codex/") ||
+			strings.HasPrefix(target, ".claude/") ||
+			strings.HasPrefix(target, ".agents/") ||
+			target == "Projects/CLAUDE.md" {
+			t.Errorf("terminal profile includes AI cleanup target %q", target)
+		}
+	}
+}
+
 // chezmoi skips a removal target that .chezmoiignore matches, so the units must
 // stay out of the ignore list or the live service would never be cleaned up.
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
