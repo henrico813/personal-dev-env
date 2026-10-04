@@ -221,7 +221,7 @@ func requireGuardedError(t *testing.T, diagnostic, wantCode string) guardedError
 	return payload
 }
 
-// Inspect with --code-out exports ordinary source from the base commit (the
+// Inspect with --code-out writes ordinary source from the base commit (the
 // full commit ID the plan is measured against). A model edits a file instead of
 // a JSON-escaped code string, and the user's checkout is left untouched.
 func TestInspectExportsProposedSource(t *testing.T) {
@@ -406,11 +406,11 @@ func TestPatchDiffPreviewShowsChange(t *testing.T) {
 	}
 }
 
-// Prefix replay applies the base commit plus every change through the edited
+// Applying a prefix uses the base commit plus every change through the edited
 // one, never later changes. An earlier change must patch even when a later
 // change is a PLACEHOLDER; check --repo --base-commit then reports the later
 // target, and editing that change in order makes check pass.
-func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
+func TestPrefixApplyIgnoresLaterBrokenChange(t *testing.T) {
 	repo, baseCommit, name := revisionBrokenSecondFixture(t)
 	first := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "first.txt")
@@ -421,7 +421,7 @@ func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
 	result := revisionPatch(t, name, first, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	if !result.PrefixReplayed || result.DownstreamChecked {
-		t.Fatalf("prefix replay flags wrong: %+v", result)
+		t.Fatalf("prefix apply flags wrong: %+v", result)
 	}
 	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code == 0 {
@@ -530,7 +530,7 @@ func TestPlaceholderRejectsUnchangedExport(t *testing.T) {
 		t.Fatal("unchanged before-state export was accepted")
 	}
 	if !strings.Contains(diagnostic,
-		"after-file is identical to the exported --before file; edit it first") {
+		"after-file is identical to the --before file from inspect; edit it first") {
 		t.Fatalf("error does not explain unchanged export: %s", diagnostic)
 	}
 	planAfter, err := os.ReadFile(name)
@@ -584,7 +584,7 @@ func TestNewPlaceholderBeforeIsRejected(t *testing.T) {
 	code, _, diagnostic := revisionExecute(patchArgs(name, target,
 		view.EditExpect, repo, baseCommit, "--after-file", scratch)...)
 	if code == 0 || !strings.Contains(diagnostic,
-		"after-file is identical to the exported --before file; edit it first") {
+		"after-file is identical to the --before file from inspect; edit it first") {
 		t.Fatalf("empty before-state export result: exit %d: %s", code, diagnostic)
 	}
 }
@@ -835,7 +835,7 @@ func TestPatchNamesEarlierPlaceholder(t *testing.T) {
 	code, _, diagnostic := revisionExecute(patchArgs(name, target,
 		view.EditExpect, repo, baseCommit, "--after-file", os.DevNull)...)
 	if code == 0 {
-		t.Fatal("patch replay accepted an earlier placeholder")
+		t.Fatal("patch apply accepted an earlier placeholder")
 	}
 	payload := requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
 	want := "implementation[1].file_changes[1] (foo.txt) is still PLACEHOLDER; " +
@@ -876,6 +876,167 @@ func TestLeadingZeroSelectorNormalizesAndPatches(t *testing.T) {
 	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code != 0 {
 		t.Fatalf("patched plan failed check: %s", diagnostic)
+	}
+}
+
+func exportTreeFixture(t *testing.T) (repo, baseCommit, name string) {
+	t.Helper()
+	repo, _ = revisionRepo(t, 0755)
+	tracked := filepath.Join(repo, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte("base tree\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repo, "foo-link")
+	if err := os.Symlink("foo.txt", link); err != nil {
+		t.Fatal(err)
+	}
+	revisionGit(t, repo, "add", "tracked.txt", "foo-link")
+	revisionGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "add tracked file")
+	baseCommit = revisionGit(t, repo, "rev-parse", "HEAD")
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100755")
+	plan.Implementation = append(plan.Implementation, Step{
+		Title: "Second edit", Summary: "Complete the proposed change.",
+		FileChanges: []FileChange{{Filename: "foo.txt", Explanation: "Finish the edit.",
+			Diff: fooDiff(t, "B\n", "C\n", "100755")}},
+	})
+	deleteDiff, err := planpatch.Generate("tracked.txt",
+		&planpatch.File{Data: []byte("base tree\n"), Mode: "100644"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Implementation = append(plan.Implementation, Step{
+		Title: "Remove tracked file", Summary: "Delete a base file.",
+		FileChanges: []FileChange{{Filename: "tracked.txt", Explanation: "Remove this file.",
+			Diff: strings.TrimSuffix(string(deleteDiff), "\n")}},
+	})
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name = writeRenderedPlan(t, plan)
+	return repo, baseCommit, name
+}
+
+func TestExportThroughStopsAfterStep(t *testing.T) {
+	repo, baseCommit, name := exportTreeFixture(t)
+	through := filepath.Join(t.TempDir(), "through")
+	code, _, diagnostic := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", through, "--through", "1")
+	if code != 0 {
+		t.Fatalf("through export: %s", diagnostic)
+	}
+	got, err := os.ReadFile(filepath.Join(through, "foo.txt"))
+	if err != nil || string(got) != "B\n" {
+		t.Fatalf("step 1 source = %q, err=%v", got, err)
+	}
+	if info, err := os.Stat(filepath.Join(through, "foo.txt")); err != nil || info.Mode().Perm()&0111 == 0 {
+		t.Fatalf("step 1 executable mode lost: info=%v err=%v", info, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(through, "tracked.txt")); err != nil || string(got) != "base tree\n" {
+		t.Fatalf("unmodified base file = %q, err=%v", got, err)
+	}
+	linkInfo, err := os.Lstat(filepath.Join(through, "foo-link"))
+	if err != nil || linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("exported symlink entry = %v, err=%v", linkInfo, err)
+	}
+	if target, err := os.Readlink(filepath.Join(through, "foo-link")); err != nil || target != "foo.txt" {
+		t.Fatalf("exported symlink target = %q, err=%v", target, err)
+	}
+
+}
+
+func TestExportWritesWholePlanTree(t *testing.T) {
+	repo, baseCommit, name := exportTreeFixture(t)
+	full := filepath.Join(t.TempDir(), "full")
+	code, _, diagnostic := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", full)
+	if code != 0 {
+		t.Fatalf("full export: %s", diagnostic)
+	}
+	got, err := os.ReadFile(filepath.Join(full, "foo.txt"))
+	if err != nil || string(got) != "C\n" {
+		t.Fatalf("full source = %q, err=%v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(full, "tracked.txt")); !os.IsNotExist(err) {
+		t.Fatalf("planned deletion remains in full export: %v", err)
+	}
+	if source, err := os.ReadFile(filepath.Join(repo, "foo.txt")); err != nil || string(source) != "A\n" {
+		t.Fatalf("export changed source repository: %q, err=%v", source, err)
+	}
+}
+
+func TestExportRefusesExistingOutput(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+
+	existing := filepath.Join(t.TempDir(), "existing")
+	if err := os.Mkdir(existing, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(existing, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, diagnostic := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", existing)
+	if code == 0 {
+		t.Fatal("existing output path was accepted")
+	}
+	if !strings.Contains(diagnostic, "--out "+existing+" already exists; choose a new directory") {
+		t.Fatalf("existing output error = %s", diagnostic)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "keep" {
+		t.Fatalf("existing output changed: %q, err=%v", got, err)
+	}
+}
+
+func TestFailedExportLeavesNoOutput(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+	missing := filepath.Join(t.TempDir(), "failed")
+	code, _, _ := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", missing)
+	if code == 0 {
+		t.Fatal("unapplicable plan was exported")
+	}
+	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
+		t.Fatalf("failed export left output directory: %v", err)
+	}
+}
+
+func TestExportRejectsInvalidThrough(t *testing.T) {
+	cases := []struct {
+		name string
+		arg  string
+	}{
+		{"zero", "0"},
+		{"too large", "9"},
+		{"not a number", "abc"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, baseCommit, name := revisionFixture(t, true)
+			out := filepath.Join(t.TempDir(), "output")
+			code, _, diagnostic := revisionExecute("export", name, "--repo", repo,
+				"--base-commit", baseCommit, "--out", out, "--through", tc.arg)
+			if code != 2 {
+				t.Fatalf("exit = %d, want 2: %s", code, diagnostic)
+			}
+			if !strings.Contains(diagnostic, "--through must be a step number from 1 to 2") {
+				t.Fatalf("through error = %s", diagnostic)
+			}
+			if _, err := os.Lstat(out); !os.IsNotExist(err) {
+				t.Fatalf("invalid through left output: %v", err)
+			}
+		})
 	}
 }
 

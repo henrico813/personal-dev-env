@@ -36,7 +36,7 @@ Guarded source-code revisions:
   --target SELECTOR               1-based implementation step and file change.
   --expect TOKEN                  edit_expect from targeted inspect.
   --code-out NEWFILE              Write proposed source to a NEW scratch file.
-  --before                        Export source before the selected change.
+  --before                        Write the source from before the selected change.
   --print FIELD                   Print one inspect result field without JSON.
   --after-file FILE               Generate a diff from ordinary source; use
                                   /dev/null to propose deleting the file.
@@ -237,6 +237,25 @@ func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
 		PlanPath:   name,
 		Repo:       opts["--repo"],
 		BaseCommit: opts["--base-commit"],
+	})
+	if err != nil {
+		return guardedFailure(stderr, codeSourceCheck, err)
+	}
+	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+		return guardedFailure(stderr, codeOutputReportFailed, err)
+	}
+	return 0
+}
+
+func runGuardedExport(args []string, stdout, stderr io.Writer) int {
+	name, opts, err := parseGuardedArgs(args,
+		"--repo --base-commit --out --through", "")
+	if err != nil {
+		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+	}
+	result, err := guardedExport(guardedExportOptions{
+		PlanPath: name, Repo: opts["--repo"], BaseCommit: opts["--base-commit"],
+		Out: opts["--out"], Through: opts["--through"],
 	})
 	if err != nil {
 		return guardedFailure(stderr, codeSourceCheck, err)

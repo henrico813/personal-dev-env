@@ -53,5 +53,12 @@ change in order, and confirms each diff applies. It reports
 `source_state: "committed_snapshot_only"` and `behavior_checked: false` because
 an applying patch is not proof that the result compiles or passes tests.
 
+To build or test the proposed tree, write it to a new directory, then run your
+build or tests there. Export does not run them:
+
+```bash
+planner export plan.md --repo "$REPO" --base-commit "$BASE_COMMIT" --out /tmp/proposed-tree
+```
+
 See [Base commit replay](../explanation/base-commit-replay.md) for why the
 original commit is required.
