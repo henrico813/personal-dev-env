@@ -1,10 +1,10 @@
 # Update Chezmoi Content
 
 1. Edit files under the repository's `../chezmoi/` source directory.
-2. For an external archive, update its URL and SHA-256 value in
-   `../chezmoi/.chezmoiexternal.toml.tmpl`. Every external must have a checksum.
-3. When changing files under `../ai/`, update the matching SHA-256 value in
+2. For an external archive, update its URL and pinned SHA-256 value in
    `../chezmoi/.chezmoiexternal.toml.tmpl`.
+3. When changing files under `../ai/`, do not update a checksum; local
+   `file://` externals intentionally omit hand-maintained hashes.
 4. Preview the complete saved-selection reconciliation:
 
    ```bash
