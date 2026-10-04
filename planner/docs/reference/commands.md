@@ -137,8 +137,8 @@ The output directory must not already exist. Export keeps executable modes
 and symlinks, omits files the plan deletes, and writes submodule entries as
 empty directories. The tree is the base commit plus the plan's changes, so
 files the plan adds are included. Uncommitted and untracked files in your
-checkout are not. Files are read straight from Git
-objects, so no code, tests, hooks, or filters run.
+checkout are not. Files are read straight from Git objects, so no code, tests,
+hooks, or filters run.
 
 ## Validation modes
 
