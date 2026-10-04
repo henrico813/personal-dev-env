@@ -2,3 +2,12 @@
 .config/systemd/user/opencode-web.service
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
+Projects/CLAUDE.md
+.codex/skills/behavior-focused-testing
+.codex/skills/code-documentation
+.codex/skills/git-messages
+.codex/skills/go-development
+.codex/skills/obsidian-zettel
+.codex/skills/promote-memory
+.codex/skills/python-development
+.codex/skills/rust-development
