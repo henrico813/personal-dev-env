@@ -54,7 +54,7 @@ or succeeds against content that only happens to match. Pass A, not C.
 - `planner inspect` without `--code-out` computes the `edit_expect` token and
   returns the selected diff; it does not open the base commit. With `--code-out`,
   it opens a disposable repository at the base commit, replays every change before
-  the selected one, and exports the source just before or just after that
+  the selected one, and writes the source just before or just after that
   change. The returned `edit_expect` token is tied to the plan bytes, the
   normalized selector, and the base commit.
 - `planner patch` re-checks that token, replays the base commit plus every change

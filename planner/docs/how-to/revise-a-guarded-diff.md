@@ -5,9 +5,9 @@ anything is written or reported ready. Revise a code diff through `planner
 inspect` and `planner patch` so the change is replayed and the plan structure
 stays valid.
 
-## Inspect the change and export the source
+## Inspect the change and write the source to a file
 
-Select the file change with a quoted selector and export the source after it:
+Select the file change with a quoted selector and write the source after it:
 
 ```bash
 planner inspect plan.md \
@@ -17,13 +17,13 @@ planner inspect plan.md \
 ```
 
 Quote the selector, because zsh expands unquoted brackets. Use `--before` to
-export the source before the selected change instead of after it. Both forms
+write the source before the selected change instead of after it. Both forms
 return an `edit_expect` token. See the [command
 reference](../reference/commands.md) for selector and `--code-out` details.
 
 ## Edit and patch
 
-Edit the exported file, then write the change back:
+Edit that file, then save the change back into the plan:
 
 ```bash
 planner patch plan.md \
@@ -54,7 +54,7 @@ and other patch flags.
 
 When the file passed to `--after-file` matches the change's current source,
 patch returns `changed: false` and does not write the plan. With `--diff`, the
-preview is `No changes.` For a PLACEHOLDER change, submitting the exported file
+preview is `No changes.` For a PLACEHOLDER change, submitting the `--code-out` file
 unedited is an error: edit it first.
 
 ## Keep the base commit
