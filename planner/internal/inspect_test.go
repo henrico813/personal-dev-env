@@ -2,6 +2,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -593,6 +594,66 @@ func TestParseMarkdownRejectsBadFilenameShapes(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err.Error(), tc.wantSubstr)
 			}
 		})
+	}
+}
+
+func TestParseMarkdownKeepsInlineCodeSummary(t *testing.T) {
+	md := buildPlanNoFrontmatter(t)
+	// Inline code at the start of a wrapped summary line must not be
+	// parsed as a filename.
+	md = strings.Replace(md, "s\n\n`a.go`", "...stay\n`provider-unavailable`.\n\n`a.go`", 1)
+
+	result, err := ParseMarkdown(md)
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	if got, want := result.Plan.Implementation[0].Summary, "...stay\n`provider-unavailable`."; got != want {
+		t.Fatalf("summary=%q want %q", got, want)
+	}
+	changes := result.Plan.Implementation[0].FileChanges
+	if len(changes) != 1 || changes[0].Filename != "a.go" {
+		t.Fatalf("file changes=%+v, want one change for a.go", changes)
+	}
+}
+
+func TestParseMarkdownRejectsInvalidStructuredFilename(t *testing.T) {
+	md := strings.Replace(buildPlanNoFrontmatter(t), "`a.go`", "`bad path`", 1)
+
+	_, err := ParseMarkdown(md)
+	if err == nil || !strings.Contains(err.Error(), "invalid file change filename") || !strings.Contains(err.Error(), "contains whitespace") {
+		t.Fatalf("expected clear invalid filename error, got %v", err)
+	}
+}
+
+func TestParseMarkdownRejectsMissingExplanation(t *testing.T) {
+	result, err := ParseMarkdown(buildPlanNoFrontmatter(t))
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	plan := result.Plan
+	plan.Implementation[0].FileChanges = append(plan.Implementation[0].FileChanges, FileChange{
+		Filename:    "b.go",
+		Explanation: "second change",
+		Diff:        "@@ -1 +1 @@\n-old\n+new",
+	})
+	md, err := RenderPlan(plan)
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	md = strings.Replace(md, "`b.go`\n> second change\n\n```diff", "`b.go`\n\n```diff", 1)
+	if !strings.Contains(md, "`b.go`\n\n```diff") {
+		t.Fatal("test input is missing the second header's explanation")
+	}
+	headerOffset := strings.Index(md, "`b.go`")
+	if headerOffset < 0 {
+		t.Fatal("test input is missing the second header")
+	}
+	wantLine := strings.Count(md[:headerOffset], "\n") + 1
+
+	_, err = ParseMarkdown(md)
+	wantError := fmt.Sprintf("malformed file change header at line %d:", wantLine)
+	if err == nil || !strings.Contains(err.Error(), wantError) {
+		t.Fatalf("error=%v, want line-specific error containing %q", err, wantError)
 	}
 }
 
