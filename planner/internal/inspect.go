@@ -107,7 +107,8 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
-	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart)
+	implBodyLine := strings.Count(input[:implBodyStart], "\n") + 1
+	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart, implBodyLine)
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
@@ -416,7 +417,7 @@ func parseDefinitionOfDone(body string) (DefinitionOfDone, error) {
 	}, nil
 }
 
-func parseImplementation(body string, base int) ([]Step, []Span, [][]Span, error) {
+func parseImplementation(body string, base int, baseLine int) ([]Step, []Span, [][]Span, error) {
 	rawHeadings := scanHeadings(body, "### ")
 	headings := []headingMatch{}
 	for _, h := range rawHeadings {
@@ -443,7 +444,8 @@ func parseImplementation(body string, base int) ([]Step, []Span, [][]Span, error
 		}
 		chunkStart := base + h.Start
 		chunk := body[h.Start:end]
-		step, fcSpans, err := parseStepChunk(chunk, h.Text, chunkStart)
+		chunkLine := baseLine + strings.Count(body[:h.Start], "\n")
+		step, fcSpans, err := parseStepChunk(chunk, h.Text, chunkStart, chunkLine)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -455,7 +457,7 @@ func parseImplementation(body string, base int) ([]Step, []Span, [][]Span, error
 	return steps, spans, diffSpans, nil
 }
 
-func parseStepChunk(chunk string, title string, chunkStart int) (Step, []Span, error) {
+func parseStepChunk(chunk string, title string, chunkStart int, chunkLine int) (Step, []Span, error) {
 	lines := strings.SplitAfter(chunk, "\n")
 	if len(lines) < 2 {
 		return Step{}, nil, fmt.Errorf("invalid implementation step block")
@@ -473,21 +475,23 @@ func parseStepChunk(chunk string, title string, chunkStart int) (Step, []Span, e
 	var fcSpans []Span
 	i := 1
 	for i < len(lines) {
-		line := strings.TrimSuffix(lines[i], "\n")
-		if strings.HasPrefix(strings.TrimSpace(line), "`") {
+		if isFileChangeHeader(lines, i) {
 			break
 		}
-		summaryLines = append(summaryLines, line)
+		summaryLines = append(summaryLines, strings.TrimSuffix(lines[i], "\n"))
 		i++
 	}
 
 	for i < len(lines) {
 		line := strings.TrimSpace(strings.TrimSuffix(lines[i], "\n"))
-		if !strings.HasPrefix(line, "`") {
+		if !isFileChangeHeader(lines, i) {
+			if strings.HasPrefix(line, "`") {
+				return Step{}, nil, fmt.Errorf("malformed file change header at line %d: expected `path`, `> explanation`, blank line, ```diff fence", chunkLine+i)
+			}
 			i++
 			continue
 		}
-		filename := strings.Trim(line, "`")
+		filename := strings.TrimSuffix(strings.TrimPrefix(line, "`"), "`")
 		if err := ValidateFilenameShape(filename); err != nil {
 			return Step{}, nil, err
 		}
@@ -537,6 +541,28 @@ func parseStepChunk(chunk string, title string, chunkStart int) (Step, []Span, e
 	}
 
 	return Step{Title: title, Summary: strings.TrimSpace(strings.Join(summaryLines, "\n")), FileChanges: changes}, fcSpans, nil
+}
+
+// A backtick line starts a file change only when the required
+// explanation and diff fence follow it.
+func isFileChangeHeader(lines []string, index int) bool {
+	if index < 0 || index+3 >= len(lines) {
+		return false
+	}
+	header := strings.TrimSpace(strings.TrimSuffix(lines[index], "\n"))
+	if !strings.HasPrefix(header, "`") || !strings.HasSuffix(header, "`") || strings.Count(header, "`") != 2 {
+		return false
+	}
+	explanation := strings.TrimSpace(strings.TrimSuffix(lines[index+1], "\n"))
+	if !strings.HasPrefix(explanation, "> ") || strings.TrimSpace(strings.TrimPrefix(explanation, "> ")) == "" {
+		return false
+	}
+	if strings.TrimSpace(strings.TrimSuffix(lines[index+2], "\n")) != "" {
+		return false
+	}
+	fenceLine := strings.TrimSpace(strings.TrimSuffix(lines[index+3], "\n"))
+	fence, ok := parseFence(fenceLine)
+	return ok && strings.TrimSpace(strings.TrimPrefix(fenceLine, fence)) == "diff"
 }
 
 func parseVerification(body string) (*Verification, error) {
