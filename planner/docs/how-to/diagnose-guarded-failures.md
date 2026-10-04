@@ -40,8 +40,10 @@ The patch engine also reports `BASE_COMMIT_INVALID`, `BASE_UNAVAILABLE`,
 
 A `PLACEHOLDER` diff is reported as `PATCH_INVALID` before Git parses it. Its
 message names the selector and file, then directs you to fill the change with
-`inspect --before` and `patch`. Whole-plan check and patch prefix replay use the
-same validation, so they report the same message for that change.
+`inspect --before` and `patch`. `planner check`, and `planner patch` for earlier
+changes, use this validation and name the selector and file. Patching the
+selected PLACEHOLDER change with an unedited file gives the error:
+`after-file is identical to the exported --before file; edit it first`.
 
 `planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
 commit:` line and the command has no `--base-commit` override.

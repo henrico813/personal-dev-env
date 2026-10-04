@@ -33,10 +33,9 @@ planner patch plan.md \
   --after-file /tmp/change-after
 ```
 
-`edit_expect` binds the current plan bytes, the normalized selector, and the
-base commit. It is not a token for the exported source alone. Any plan write
-invalidates it, including a write to another change; inspect again after each
-write and immediately before the next patch.
+The token is tied to the exact plan file contents, the selector, and the base
+commit. Any write to the plan makes it stale, so run inspect again before the
+next patch. This includes a write to another change.
 
 To capture the token without parsing JSON, use `--print edit_expect`:
 
@@ -48,15 +47,15 @@ TOKEN=$(planner inspect plan.md \
 ```
 
 This prints only the raw token followed by a newline. Without `--print`, inspect
-continues to return its normal JSON result. Use `/dev/null` to propose deleting
+returns JSON. Use `/dev/null` to propose deleting
 the file, or `--diff-file -` to import a raw unified diff from stdin. See the
 [command reference](../reference/commands.md) for `--after-file` mode handling
 and other patch flags.
 
-When the after-file equals the selected change's current source, patch returns
+When the file passed to `--after-file` matches the change's current source, patch returns
 `changed: false` and does not write the plan. With `--diff`, the preview says
-`No changes.`. For a PLACEHOLDER change, submitting the unchanged before-state
-is an error: edit the exported file first.
+`No changes.`. For a PLACEHOLDER change, submitting the exported file unedited
+is an error: edit it first.
 
 ## Keep the base commit
 

@@ -46,9 +46,9 @@ inspect output remains JSON; `edit_expect` is the only supported print field.
 - `selector`: normalized target.
 - `filename`, `step_title`, `step_summary`, `explanation`: the selected change.
 - `base_commit`: the base commit passed in.
-- `edit_expect`: token binding the plan bytes, normalized selector, and base
-  commit. It identifies the current plan state, not only the exported source
-  content. Re-run inspect after any plan write before using the token.
+- `edit_expect`: The token is tied to the exact plan file contents, the selector,
+  and the base commit. Any write to the plan makes it stale, so run inspect again
+  before the next patch.
 - `validation`: `inspection_only`.
 - `diff`: the selected diff, present without `--code-out`.
 - `code_exists`, `code_state`, `mode`, `code_out`: present when source was
@@ -76,7 +76,7 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
   succeeds with `changed: false` and `written: false` and leaves the plan alone.
   With `--diff`, stdout says `No changes.` rather than returning empty output.
 - For a PLACEHOLDER change, an after-file matching the before state fails with
-  `after-file matches the before state; edit the exported file first`.
+  `after-file is identical to the exported --before file; edit it first`.
 
 Patch replays the base commit plus every change through the edited one and
 never later changes.
@@ -86,8 +86,8 @@ never later changes.
 - `path`: the plan path.
 - `plan_sha256`: hash of the updated plan.
 - `written`: whether the plan was written.
-- `changed`: whether the plan content changed. This additive field is false for
-  an accepted no-op; `written` is also false in that case.
+- `changed`: whether patch modified the plan. It is false when the submitted
+  file matches the current source, and `written` is then false too.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
 - `prefix_replayed`: always `true` on success.
 - `downstream_checked`: `false`; later changes are not replayed.
@@ -113,10 +113,10 @@ whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
 
-If a diff fence still contains `PLACEHOLDER`, replay fails with `PATCH_INVALID`
-before Git is called. The message names the selector and file and directs you to
-fill the change with `inspect --before` and `patch`. Patch prefix replay uses the
-same check for earlier changes.
+If a diff fence still contains `PLACEHOLDER`, `planner check` fails with
+`PATCH_INVALID` before Git runs. The message names the selector and file and
+directs you to fill the change with `inspect --before` and `patch`. `planner
+patch` runs the same check on earlier changes.
 
 ## Validation modes
 
