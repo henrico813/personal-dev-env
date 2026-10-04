@@ -259,7 +259,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			}
 			if strings.TrimSpace(selected.Diff) == "PLACEHOLDER" && matchesBefore {
 				return result, codedError(codePatchInput, errors.New(
-					"after-file matches the before state; edit the exported file first"))
+					"after-file is identical to the exported --before file; edit it first"))
 			}
 			after = &planpatch.File{Data: data, Mode: mode}
 		}

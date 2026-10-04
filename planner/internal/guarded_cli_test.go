@@ -481,7 +481,7 @@ func TestUnchangedScratchReportsNoChange(t *testing.T) {
 	}
 }
 
-func TestNoOpReportsUnchangedAndPreview(t *testing.T) {
+func TestUnchangedExportReportsNoChange(t *testing.T) {
 	repo, baseCommit, name := revisionFixture(t, false)
 	target := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "after.txt")
@@ -514,7 +514,7 @@ func TestNoOpReportsUnchangedAndPreview(t *testing.T) {
 	}
 }
 
-func TestPlaceholderBeforeStateExplainsNoEdit(t *testing.T) {
+func TestPlaceholderRejectsUnchangedExport(t *testing.T) {
 	repo, baseCommit, name := revisionBrokenSecondFixture(t)
 	target := "implementation[2].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "before.txt")
@@ -530,7 +530,7 @@ func TestPlaceholderBeforeStateExplainsNoEdit(t *testing.T) {
 		t.Fatal("unchanged before-state export was accepted")
 	}
 	if !strings.Contains(diagnostic,
-		"after-file matches the before state; edit the exported file first") {
+		"after-file is identical to the exported --before file; edit it first") {
 		t.Fatalf("error does not explain unchanged export: %s", diagnostic)
 	}
 	planAfter, err := os.ReadFile(name)
@@ -584,7 +584,7 @@ func TestNewPlaceholderBeforeIsRejected(t *testing.T) {
 	code, _, diagnostic := revisionExecute(patchArgs(name, target,
 		view.EditExpect, repo, baseCommit, "--after-file", scratch)...)
 	if code == 0 || !strings.Contains(diagnostic,
-		"after-file matches the before state; edit the exported file first") {
+		"after-file is identical to the exported --before file; edit it first") {
 		t.Fatalf("empty before-state export result: exit %d: %s", code, diagnostic)
 	}
 }

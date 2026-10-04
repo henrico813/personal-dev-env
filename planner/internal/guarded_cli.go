@@ -47,14 +47,16 @@ Guarded source-code revisions:
   Without --code-out, inspect returns JSON with the selected diff and
   edit_expect. With --code-out, inspect writes the file after the selected
   change, or before it with --before, to a new file.
-  --print edit_expect prints only the raw edit token. The token binds the plan
-  bytes, normalized selector, and base commit; re-inspect after any plan write.
+  --print edit_expect prints only the raw edit token. The token is tied to the
+  exact plan file contents, the selector, and the base commit. Any write to the
+  plan makes it stale, so run inspect again before the next patch.
   patch starts with the base commit and tries every change through the edited
   one, never later changes, and reports prefix_replayed: true with
   downstream_checked: false. Run planner check for whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
-  edit_expect binds the plan bytes, the normalized selector, and the base
-  commit, so any edit to the plan invalidates it.
+  The token is tied to the exact plan file contents, the selector, and the base
+  commit. Any write to the plan makes it stale, so run inspect again before the
+  next patch.
 `
 
 // hasArg reports whether an exact argument appears. Guarded routing uses the
