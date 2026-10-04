@@ -3,9 +3,11 @@
 package planpatch
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -307,19 +309,161 @@ func rejectPlaceholder(change Change) error {
 	return nil
 }
 
-// Replay applies each change in order on top of the base commit in a disposable
-// repository. It stops at the first failure and never writes to the source
-// repository. The caller decides whether changes is a full plan or a prefix.
-func Replay(repo, baseCommit string, changes []Change) error {
+// ApplyToBase applies each planned diff, in order, to a temporary copy of the
+// base commit and returns that copy. The caller must close it.
+func ApplyToBase(repo, baseCommit string, changes []Change) (*Session, error) {
 	s, err := Open(repo, baseCommit)
+	if err != nil {
+		return nil, err
+	}
+	for _, change := range changes {
+		if err := s.Apply(change); err != nil {
+			s.Close()
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// Replay applies each planned diff through ApplyToBase, the same flow used by export.
+func Replay(repo, baseCommit string, changes []Change) error {
+	s, err := ApplyToBase(repo, baseCommit, changes)
 	if err != nil {
 		return err
 	}
-	defer s.Close()
-	for _, change := range changes {
-		if err := s.Apply(change); err != nil {
+	s.Close()
+	return nil
+}
+
+// Export reads files straight from Git objects, so no hooks or filters run.
+func (s *Session) Export(dir string) error {
+	entries, err := s.git(nil, "ls-files", "--stage", "-z")
+	if err != nil {
+		return err
+	}
+	type exportEntry struct {
+		mode string
+		oid  string
+		name string
+	}
+	var files []exportEntry
+	var input strings.Builder
+	for _, record := range bytes.Split(entries, []byte{0}) {
+		if len(record) == 0 {
+			continue
+		}
+		meta, name, ok := strings.Cut(string(record), "\t")
+		fields := strings.Fields(meta)
+		if !ok || len(fields) != 3 || fields[2] != "0" {
+			return failure(CodePatchUnsupported, "invalid tracked-file entry")
+		}
+		if err := ValidatePath(name); err != nil {
 			return err
 		}
+		if fields[0] == "160000" {
+			target := filepath.Join(dir, filepath.FromSlash(name))
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if fields[0] != "100644" && fields[0] != "100755" && fields[0] != "120000" {
+			return failure(CodePatchUnsupported, "unsupported mode %q", fields[0])
+		}
+		files = append(files, exportEntry{mode: fields[0], oid: fields[1], name: name})
+		input.WriteString(fields[1])
+		input.WriteByte('\n')
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "--literal-pathspecs", "-C", s.dir, "cat-file", "--batch")
+	cmd.Env = gitEnv()
+	cmd.Stdin = strings.NewReader(input.String())
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	var diagnostic limitedBuffer
+	cmd.Stderr = &diagnostic
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	reader := bufio.NewReader(stdout)
+	stop := func(err error) error {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return err
+	}
+	for _, file := range files {
+		if err := exportBlob(reader, dir, file); err != nil {
+			return stop(err)
+		}
+	}
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("git cat-file timed out: %w", ctx.Err())
+		}
+		return fmt.Errorf("git cat-file --batch: %w: %s", err, strings.TrimSpace(diagnostic.String()))
+	}
+	return nil
+}
+
+func exportBlob(reader *bufio.Reader, dir string, file struct {
+	mode string
+	oid  string
+	name string
+}) error {
+	header, err := reader.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(header)
+	if len(fields) != 3 || fields[0] != file.oid || fields[1] != "blob" {
+		return failure(CodePatchUnsupported, "invalid cat-file batch header")
+	}
+	size, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil || size < 0 {
+		return failure(CodePatchUnsupported, "invalid cat-file blob size")
+	}
+	target := filepath.Join(dir, filepath.FromSlash(file.name))
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return err
+	}
+	if file.mode == "120000" {
+		if size > MaxPayload {
+			return failure(CodePatchUnsupported, "oversized symlink target")
+		}
+		data := make([]byte, size)
+		if _, err := io.ReadFull(reader, data); err != nil {
+			return err
+		}
+		if err := os.Symlink(string(data), target); err != nil {
+			return err
+		}
+	} else {
+		mode := os.FileMode(0644)
+		if file.mode == "100755" {
+			mode = 0755
+		}
+		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.CopyN(output, reader, size)
+		closeErr := output.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if err := os.Chmod(target, mode); err != nil {
+			return err
+		}
+	}
+	separator, err := reader.ReadByte()
+	if err != nil || separator != '\n' {
+		return failure(CodePatchUnsupported, "invalid cat-file blob terminator")
 	}
 	return nil
 }

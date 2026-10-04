@@ -21,6 +21,7 @@ Usage:
   planner help
 	planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
+  planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR [--through STEP]
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
@@ -43,6 +44,9 @@ Markdown-first authoring:
   5. Finish with planner check plan.md as the final gate. It reports every
      structure violation and tries every planned change against the base commit
      named by the "Base commit:" line.
+  6. Run planner export to write the proposed tree before building or testing it.
+     Export runs no code, tests, or hooks. --through STEP includes step STEP and
+     every earlier step; steps are numbered from 1.
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
@@ -67,6 +71,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runNew(args[1:], stdout, stderr)
 	case "check":
 		return runGuardedCheck(args[1:], stdout, stderr)
+	case "export":
+		return runGuardedExport(args[1:], stdout, stderr)
 	case "inspect":
 		if hasArg(args[1:], "--target") {
 			return runGuardedInspect(args[1:], stdout, stderr)

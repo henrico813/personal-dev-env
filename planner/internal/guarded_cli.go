@@ -246,3 +246,22 @@ func runGuardedCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	return 0
 }
+
+func runGuardedExport(args []string, stdout, stderr io.Writer) int {
+	name, opts, err := parseGuardedArgs(args,
+		"--repo --base-commit --out --through", "")
+	if err != nil {
+		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+	}
+	result, err := guardedExport(guardedExportOptions{
+		PlanPath: name, Repo: opts["--repo"], BaseCommit: opts["--base-commit"],
+		Out: opts["--out"], Through: opts["--through"],
+	})
+	if err != nil {
+		return guardedFailure(stderr, codeSourceCheck, err)
+	}
+	if err := json.NewEncoder(stdout).Encode(result); err != nil {
+		return guardedFailure(stderr, codeOutputReportFailed, err)
+	}
+	return 0
+}

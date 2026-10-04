@@ -879,6 +879,119 @@ func TestLeadingZeroSelectorNormalizesAndPatches(t *testing.T) {
 	}
 }
 
+func TestExportWritesFullAndThroughStepTrees(t *testing.T) {
+	repo, _ := revisionRepo(t, 0755)
+	tracked := filepath.Join(repo, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte("base tree\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repo, "foo-link")
+	if err := os.Symlink("foo.txt", link); err != nil {
+		t.Fatal(err)
+	}
+	revisionGit(t, repo, "add", "tracked.txt", "foo-link")
+	revisionGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "add tracked file")
+	baseCommit := revisionGit(t, repo, "rev-parse", "HEAD")
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = fooDiff(t, "A\n", "B\n", "100755")
+	plan.Implementation = append(plan.Implementation, Step{
+		Title: "Second edit", Summary: "Complete the proposed change.",
+		FileChanges: []FileChange{{Filename: "foo.txt", Explanation: "Finish the edit.",
+			Diff: fooDiff(t, "B\n", "C\n", "100755")}},
+	})
+	deleteDiff, err := planpatch.Generate("tracked.txt",
+		&planpatch.File{Data: []byte("base tree\n"), Mode: "100644"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Implementation = append(plan.Implementation, Step{
+		Title: "Remove tracked file", Summary: "Delete a base file.",
+		FileChanges: []FileChange{{Filename: "tracked.txt", Explanation: "Remove this file.",
+			Diff: strings.TrimSuffix(string(deleteDiff), "\n")}},
+	})
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+
+	through := filepath.Join(t.TempDir(), "through")
+	code, _, diagnostic := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", through, "--through", "1")
+	if code != 0 {
+		t.Fatalf("through export: %s", diagnostic)
+	}
+	got, err := os.ReadFile(filepath.Join(through, "foo.txt"))
+	if err != nil || string(got) != "B\n" {
+		t.Fatalf("step 1 source = %q, err=%v", got, err)
+	}
+	if info, err := os.Stat(filepath.Join(through, "foo.txt")); err != nil || info.Mode().Perm()&0111 == 0 {
+		t.Fatalf("step 1 executable mode lost: info=%v err=%v", info, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(through, "tracked.txt")); err != nil || string(got) != "base tree\n" {
+		t.Fatalf("unmodified base file = %q, err=%v", got, err)
+	}
+	linkInfo, err := os.Lstat(filepath.Join(through, "foo-link"))
+	if err != nil || linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("exported symlink entry = %v, err=%v", linkInfo, err)
+	}
+	if target, err := os.Readlink(filepath.Join(through, "foo-link")); err != nil || target != "foo.txt" {
+		t.Fatalf("exported symlink target = %q, err=%v", target, err)
+	}
+
+	full := filepath.Join(t.TempDir(), "full")
+	code, _, diagnostic = revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", full)
+	if code != 0 {
+		t.Fatalf("full export: %s", diagnostic)
+	}
+	got, err = os.ReadFile(filepath.Join(full, "foo.txt"))
+	if err != nil || string(got) != "C\n" {
+		t.Fatalf("full source = %q, err=%v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(full, "tracked.txt")); !os.IsNotExist(err) {
+		t.Fatalf("planned deletion remains in full export: %v", err)
+	}
+	if source, err := os.ReadFile(filepath.Join(repo, "foo.txt")); err != nil || string(source) != "A\n" {
+		t.Fatalf("export changed source repository: %q, err=%v", source, err)
+	}
+}
+
+func TestExportRefusesExistingDestinationAndCleansFailure(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+
+	existing := filepath.Join(t.TempDir(), "existing")
+	if err := os.Mkdir(existing, 0755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(existing, "sentinel")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _ := revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", existing)
+	if code == 0 {
+		t.Fatal("existing output path was accepted")
+	}
+	if got, err := os.ReadFile(sentinel); err != nil || string(got) != "keep" {
+		t.Fatalf("existing output changed: %q, err=%v", got, err)
+	}
+
+	missing := filepath.Join(t.TempDir(), "failed")
+	code, _, _ = revisionExecute("export", name, "--repo", repo,
+		"--base-commit", baseCommit, "--out", missing)
+	if code == 0 {
+		t.Fatal("unapplicable plan was exported")
+	}
+	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
+		t.Fatalf("failed export left output directory: %v", err)
+	}
+}
+
 // /dev/null is the documented way to propose deleting a file. The generated
 // diff must be a deletion, and a later inspect must report code_exists false so
 // a caller can distinguish deletion from an empty file.

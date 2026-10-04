@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -395,6 +396,86 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	result.BaseCommit = baseCommit
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
+	return result, nil
+}
+
+type guardedExportOptions struct {
+	PlanPath   string
+	Repo       string
+	BaseCommit string
+	Out        string
+	Through    string
+}
+
+type guardedExportResult struct {
+	Out        string `json:"out"`
+	BaseCommit string `json:"base_commit"`
+	Steps      int    `json:"steps"`
+	Changes    int    `json:"changes_applied"`
+}
+
+func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
+	var result guardedExportResult
+	if opts.Repo == "" || opts.Out == "" {
+		return result, usageError("--repo and --out are required")
+	}
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	raw, err := readGuardedInput(opts.PlanPath)
+	if err != nil {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parsed, err := ParseMarkdown(string(raw))
+	if err != nil {
+		return result, plannerMarkdownDecodeError(raw, err)
+	}
+	if err := validateGuardedPlan(parsed.Plan); err != nil {
+		return result, codedError(plannerCode(PlannerValidateInputError), err)
+	}
+	baseCommit, err := checkBaseCommit(opts.BaseCommit, parsed.Plan)
+	if err != nil {
+		return result, err
+	}
+	steps := len(parsed.Plan.Implementation)
+	if opts.Through != "" {
+		steps, err = strconv.Atoi(opts.Through)
+		if err != nil || steps < 1 || steps > len(parsed.Plan.Implementation) {
+			return result, usageError("--through must be a 1-based implementation step number")
+		}
+	}
+	changes := orderedChanges(Plan{Implementation: parsed.Plan.Implementation[:steps]})
+	session, err := planpatch.ApplyToBase(opts.Repo, baseCommit, changes)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	defer session.Close()
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	parent := filepath.Dir(opts.Out)
+	temp, err := os.MkdirTemp(parent, ".planner-export-*")
+	if err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	defer func() { _ = os.RemoveAll(temp) }()
+	if err := session.Export(temp); err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	if _, err := os.Lstat(opts.Out); err == nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return result, codedError(plannerCode(PlannerReadInputError), err)
+	}
+	if err := os.Rename(temp, opts.Out); err != nil {
+		return result, codedError(plannerCode(PlannerWriteOutputError), err)
+	}
+	result = guardedExportResult{Out: opts.Out, BaseCommit: baseCommit,
+		Steps: steps, Changes: len(changes)}
 	return result, nil
 }
 
