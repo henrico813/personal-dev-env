@@ -81,11 +81,11 @@ func snapshot(t *testing.T, root string) map[string][32]byte {
 	return files
 }
 
-// Replay applies each change in order, so a B->C patch is checked against the
+// ApplyToBase applies each change in order, so a B->C patch is checked against the
 // A->B result rather than against the original file. It must also leave the
 // user's checkout, index, and untracked files alone. Without both rules, coupled
 // edits fail and validation can silently disturb the working tree.
-func TestReplayUsesPriorStepsOnly(t *testing.T) {
+func TestApplyUsesPriorStepsOnly(t *testing.T) {
 	repo, baseCommit := sourceRepo(t)
 	local := []byte("unrelated local edit\n")
 	if err := os.WriteFile(filepath.Join(repo, "foo.txt"), local, 0644); err != nil {
@@ -104,13 +104,17 @@ func TestReplayUsesPriorStepsOnly(t *testing.T) {
 	t.Setenv("GIT_DIR", filepath.Join(repo, ".git"))
 	t.Setenv("GIT_WORK_TREE", repo)
 	t.Setenv("GIT_EXTERNAL_DIFF", "this-command-must-not-run")
-	if err := Replay(repo, baseCommit, []Change{first, second}); err != nil {
+	session, err := ApplyToBase(repo, baseCommit, []Change{first, second})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Replay(repo, baseCommit, []Change{second}); err == nil {
-		t.Fatal("accepted out-of-order replay")
+	session.Close()
+	session, err = ApplyToBase(repo, baseCommit, []Change{second})
+	if err == nil {
+		session.Close()
+		t.Fatal("accepted out-of-order apply")
 	} else if failureCode(t, err) != CodePatchNotApplicable {
-		t.Fatalf("wrong-order replay: %v", err)
+		t.Fatalf("wrong-order apply: %v", err)
 	}
 	after := snapshot(t, repo)
 	if len(before) != len(after) {
@@ -173,7 +177,7 @@ func TestGenerateRoundTripsContentAndExistence(t *testing.T) {
 	}
 }
 
-// Replay refuses patches that name another file, declare two files, or escape
+// ApplyToBase refuses patches that name another file, declare two files, or escape
 // the tree, and it leaves the source repository untouched when it rejects one.
 // Each case checks the exact error code, because callers branch on the code
 // instead of matching Git's changing error text.
@@ -213,7 +217,10 @@ func TestRejectBadPatchUndeclaredPaths(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			before := snapshot(t, repo)
-			err := Replay(repo, baseCommit, []Change{tc.change})
+			session, err := ApplyToBase(repo, baseCommit, []Change{tc.change})
+			if session != nil {
+				session.Close()
+			}
 			if err == nil {
 				t.Fatal("accepted invalid patch")
 			}

@@ -163,7 +163,7 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 }
 
 // guardedPatchOptions replaces one fenced change from ordinary source or a raw
-// diff, guarded by the edit_expect token and mandatory repository replay.
+// diff, guarded by the edit_expect token and mandatory repository apply.
 type guardedPatchOptions struct {
 	PlanPath   string
 	Target     string
@@ -274,8 +274,8 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			return result, codedError(codePatchInput, err)
 		}
 	}
-	// Prefix replay: apply the edited change on top of the base commit plus every
-	// earlier change. Later changes are deliberately not replayed; only
+	// Prefix apply: apply the edited change on top of the base commit plus every
+	// earlier change. Later changes are deliberately not applied; only
 	// planner check --repo --base-commit validates the whole plan for readiness.
 	if err := s.Apply(planpatch.Change{
 		Target:   selector,
@@ -386,9 +386,11 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 		}
 	}
 	changes := orderedChanges(parsed.Plan)
-	if err := planpatch.Replay(repo, baseCommit, changes); err != nil {
+	session, err := planpatch.ApplyToBase(repo, baseCommit, changes)
+	if err != nil {
 		return result, codedError(codeSourceCheck, err)
 	}
+	defer session.Close()
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
 	result.StructureValid = true
 	result.ApplicabilityChecked = true
@@ -487,7 +489,7 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 // lowercase object ID keeps the recorded base commit immutable and unambiguous.
 var baseCommitRE = regexp.MustCompile(`^Base commit: ([0-9a-f]{40}|[0-9a-f]{64})$`)
 
-// checkBaseCommit returns the commit that check replays. An explicit
+// checkBaseCommit returns the commit that check applies. An explicit
 // --base-commit wins; otherwise the plan must record one on the first line of
 // Current State. check never falls back to HEAD, so a stale plan cannot
 // silently measure against the current checkout.
@@ -542,7 +544,7 @@ func patchSelectorRangeError(selector, segment string, idx, have int) error {
 
 // selectedChange resolves selector to zero-based plan indices and its
 // normalized spelling. Indices are parsed numerically, so leading zeros address
-// the same change and normalize to one spelling for tokens, results, and replay.
+// the same change and normalize to one spelling for tokens, results, and apply.
 func selectedChange(parsed ParseResult, selector string) (step, change int, normalized string, err error) {
 	step, change, err = parsePatchFileChangeSelector(selector)
 	if err != nil {

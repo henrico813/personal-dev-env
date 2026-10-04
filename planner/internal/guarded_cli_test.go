@@ -406,11 +406,11 @@ func TestPatchDiffPreviewShowsChange(t *testing.T) {
 	}
 }
 
-// Prefix replay applies the base commit plus every change through the edited
+// Prefix apply applies the base commit plus every change through the edited
 // one, never later changes. An earlier change must patch even when a later
 // change is a PLACEHOLDER; check --repo --base-commit then reports the later
 // target, and editing that change in order makes check pass.
-func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
+func TestPrefixApplyIgnoresLaterBrokenChange(t *testing.T) {
 	repo, baseCommit, name := revisionBrokenSecondFixture(t)
 	first := "implementation[1].file_changes[1]"
 	scratch := filepath.Join(t.TempDir(), "first.txt")
@@ -421,7 +421,7 @@ func TestPrefixReplayIgnoresLaterBrokenChange(t *testing.T) {
 	result := revisionPatch(t, name, first, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
 	if !result.PrefixReplayed || result.DownstreamChecked {
-		t.Fatalf("prefix replay flags wrong: %+v", result)
+		t.Fatalf("prefix apply flags wrong: %+v", result)
 	}
 	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
 	if code == 0 {
@@ -835,7 +835,7 @@ func TestPatchNamesEarlierPlaceholder(t *testing.T) {
 	code, _, diagnostic := revisionExecute(patchArgs(name, target,
 		view.EditExpect, repo, baseCommit, "--after-file", os.DevNull)...)
 	if code == 0 {
-		t.Fatal("patch replay accepted an earlier placeholder")
+		t.Fatal("patch apply accepted an earlier placeholder")
 	}
 	payload := requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
 	want := "implementation[1].file_changes[1] (foo.txt) is still PLACEHOLDER; " +

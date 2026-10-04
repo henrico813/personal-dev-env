@@ -260,7 +260,7 @@ func (s *Session) Read(name string) (*File, error) {
 	return &File{Data: data, Mode: fields[0]}, nil
 }
 
-// Apply replays one change. Failure may alter this disposable session, so the
+// Apply applies one change. Failure may alter this disposable session, so the
 // caller must discard it on error. Nothing is written to the source repository.
 func (s *Session) Apply(change Change) error {
 	if err := rejectPlaceholder(change); err != nil {
@@ -323,16 +323,6 @@ func ApplyToBase(repo, baseCommit string, changes []Change) (*Session, error) {
 		}
 	}
 	return s, nil
-}
-
-// Replay applies each planned diff through ApplyToBase, the same flow used by export.
-func Replay(repo, baseCommit string, changes []Change) error {
-	s, err := ApplyToBase(repo, baseCommit, changes)
-	if err != nil {
-		return err
-	}
-	s.Close()
-	return nil
 }
 
 // Export reads files straight from Git objects, so no hooks or filters run.

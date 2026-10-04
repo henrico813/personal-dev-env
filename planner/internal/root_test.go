@@ -418,7 +418,7 @@ func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	}
 }
 
-// check replays the plan's diffs at the recorded base commit and reports what
+// check applies the plan's diffs at the recorded base commit and reports what
 // it applied, so a plan whose diffs do not apply cannot pass review.
 func TestCheckAppliesPlanDiffs(t *testing.T) {
 	repo, baseCommit, name := checkPlanFixture(t)
