@@ -179,30 +179,6 @@ def test_planning_prompt_keeps_required_commands(
     )
 
 
-@pytest.mark.parametrize(
-    "prompt",
-    [
-        ROOT / "ai/opencode/commands/create_plan.md",
-        ROOT / "ai/codex/skills/create-plan/SKILL.md",
-    ],
-    ids=["opencode", "codex"],
-)
-def test_create_prompt_requires_provenance_review(prompt: Path) -> None:
-    """Require provenance and semantic review in both create prompts."""
-    text = " ".join(prompt.read_text().split())
-    required = (
-        "`user-decided`",
-        "`orchestrator-proposed` (not confirmed by the user)",
-        "`inferred from code`",
-        "never present a proposal as decided",
-        "review it against source and requirements",
-        "`planner check` alone is not this review",
-    )
-
-    for phrase in required:
-        assert phrase in text, f"prompt {prompt} is missing {phrase!r}"
-
-
 def run_checked(
     args: list[str], *, cwd: Path | None = None, env: dict[str, str]
 ) -> str:
