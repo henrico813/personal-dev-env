@@ -52,7 +52,7 @@ inspect output remains JSON; `edit_expect` is the only supported print field.
 - `validation`: `inspection_only`.
 - `diff`: the selected diff, present without `--code-out`.
 - `code_exists`, `code_state`, `mode`, `code_out`: present when source was
-  exported.
+  written.
 
 ## planner patch
 
@@ -75,8 +75,8 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - If `--after-file` matches the selected change's current source, patch
   succeeds with `changed: false` and `written: false` and leaves the plan alone.
   With `--diff`, stdout says `No changes.` rather than returning empty output.
-- For a PLACEHOLDER change, an unedited exported file fails with
-  `after-file is identical to the exported --before file; edit it first`.
+- For a PLACEHOLDER change, an unedited `--code-out` file fails with
+  `after-file is identical to the --before file from inspect; edit it first`.
 
 Patch replays the base commit plus every change through the edited one and
 never later changes.
@@ -121,7 +121,8 @@ runs the same check on earlier changes.
 ## planner export
 
 ```text
-planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR [--through STEP]
+planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
+  [--through STEP] [--json-errors]
 ```
 
 `planner export` applies the plan's diffs, in order, to a temporary copy of the
@@ -129,16 +130,20 @@ base commit, then writes every tracked file, including unchanged ones, to a new
 directory. Unlike `inspect --code-out`, which writes one source file, it writes
 a whole tree.
 
-Use `--through STEP` to include step STEP and every earlier step; steps are
-numbered from 1. Without it, every step is included.
+Use `--through STEP` to include step STEP and every earlier step. STEP is the
+number N in an implementation heading `### N.`. Without it, every step is
+included.
 
 If a diff does not apply or writing fails, no output directory is left behind.
 The output directory must not already exist. Export keeps executable modes
 and symlinks, omits files the plan deletes, and writes submodule entries as
 empty directories. The tree is the base commit plus the plan's changes, so
 files the plan adds are included. Uncommitted and untracked files in your
-checkout are not. Files are read straight from Git objects, so no code, tests,
-hooks, or filters run.
+ checkout are not. Files are read straight from Git objects, so no code, tests,
+ hooks, or filters run.
+
+Like check and patch, export applies diffs to the base commit and reports
+failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarded-failures.md).
 
 ## Validation modes
 

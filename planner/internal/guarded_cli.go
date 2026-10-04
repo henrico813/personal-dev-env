@@ -36,7 +36,7 @@ Guarded source-code revisions:
   --target SELECTOR               1-based implementation step and file change.
   --expect TOKEN                  edit_expect from targeted inspect.
   --code-out NEWFILE              Write proposed source to a NEW scratch file.
-  --before                        Export source before the selected change.
+  --before                        Write the source from before the selected change.
   --print FIELD                   Print one inspect result field without JSON.
   --after-file FILE               Generate a diff from ordinary source; use
                                   /dev/null to propose deleting the file.

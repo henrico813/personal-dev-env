@@ -51,7 +51,7 @@ func codedError(code string, err error) error {
 	return &planpatch.Error{Code: code, Cause: err}
 }
 
-// guardedInspectOptions selects one fenced change and optionally exports the
+// guardedInspectOptions selects one fenced change and optionally writes the
 // proposed source that precedes or follows it. Repo and BaseCommit are required
 // so the returned edit_expect binds the recorded base commit.
 type guardedInspectOptions struct {
@@ -76,7 +76,7 @@ func (o guardedInspectOptions) validate() error {
 }
 
 // guardedInspectResult is the JSON view returned to a revision caller. The
-// code_* fields are present only when --code-out exported source.
+// code_* fields are present only when --code-out wrote source.
 type guardedInspectResult struct {
 	Selector    string `json:"selector"`
 	Filename    string `json:"filename"`
@@ -260,7 +260,7 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			}
 			if strings.TrimSpace(selected.Diff) == "PLACEHOLDER" && matchesBefore {
 				return result, codedError(codePatchInput, errors.New(
-					"after-file is identical to the exported --before file; edit it first"))
+					"after-file is identical to the --before file from inspect; edit it first"))
 			}
 			after = &planpatch.File{Data: data, Mode: mode}
 		}
@@ -420,7 +420,8 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 		return result, usageError("--repo and --out are required")
 	}
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, codedError(plannerCode(PlannerReadInputError), err)
 	}
@@ -443,7 +444,8 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	if opts.Through != "" {
 		steps, err = strconv.Atoi(opts.Through)
 		if err != nil || steps < 1 || steps > len(parsed.Plan.Implementation) {
-			return result, usageError("--through must be a 1-based implementation step number")
+			return result, usageError(fmt.Sprintf(
+				"--through must be a step number from 1 to %d", len(parsed.Plan.Implementation)))
 		}
 	}
 	changes := orderedChanges(Plan{Implementation: parsed.Plan.Implementation[:steps]})
@@ -453,7 +455,8 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 	}
 	defer session.Close()
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, codedError(plannerCode(PlannerReadInputError), err)
 	}
@@ -467,7 +470,8 @@ func guardedExport(opts guardedExportOptions) (guardedExportResult, error) {
 		return result, codedError(plannerCode(PlannerWriteOutputError), err)
 	}
 	if _, err := os.Lstat(opts.Out); err == nil {
-		return result, codedError(plannerCode(PlannerWriteOutputError), os.ErrExist)
+		return result, codedError(plannerCode(PlannerWriteOutputError),
+			fmt.Errorf("--out %s already exists; choose a new directory", opts.Out))
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, codedError(plannerCode(PlannerReadInputError), err)
 	}

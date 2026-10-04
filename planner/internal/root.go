@@ -21,7 +21,8 @@ Usage:
   planner help
 	planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-errors]
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
-  planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR [--through STEP]
+  planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
+      [--through STEP] [--json-errors]
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
@@ -35,18 +36,18 @@ Global flags:
 Markdown-first authoring:
   1. Run planner new plan.md. It fails without changing an existing destination.
   2. Edit prose and structure directly in the Markdown file.
-  3. Change code diffs only through guarded patch: inspect with --code-out to
-     export the source and read edit_expect, edit that source, then patch with
-     --after-file.
+   3. Change code diffs only through guarded patch: inspect with --code-out to
+      write the source to a file and read edit_expect, edit that source, then
+      patch with --after-file.
   4. Add or remove a file change by hand: copy a PLACEHOLDER fence, fill it with
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
   5. Finish with planner check plan.md as the final gate. It reports every
      structure violation and tries every planned change against the base commit
      named by the "Base commit:" line.
-  6. Run planner export to write the proposed tree before building or testing it.
-     Export runs no code, tests, or hooks. --through STEP includes step STEP and
-     every earlier step; steps are numbered from 1.
+   6. To build or test the proposed tree, run planner export. It writes
+      the files and runs no code, tests, or hooks. --through STEP stops after
+      implementation step STEP (the N in "### N.").
 `
 
 const validationRulesHeader = "\nValidation rules:\n"
