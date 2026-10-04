@@ -163,7 +163,8 @@ func guardedInspect(opts guardedInspectOptions) (guardedInspectResult, error) {
 }
 
 // guardedPatchOptions replaces one fenced change from ordinary source or a raw
-// diff, guarded by the edit_expect token and mandatory repository apply.
+// diff, guarded by the edit_expect token and a required check that the diff
+// applies to the base commit.
 type guardedPatchOptions struct {
 	PlanPath   string
 	Target     string
@@ -274,8 +275,8 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 			return result, codedError(codePatchInput, err)
 		}
 	}
-	// Prefix apply: apply the edited change on top of the base commit plus every
-	// earlier change. Later changes are deliberately not applied; only
+	// Apply the edited change on top of the base commit and every earlier change.
+	// Later changes are deliberately not applied; only
 	// planner check --repo --base-commit validates the whole plan for readiness.
 	if err := s.Apply(planpatch.Change{
 		Target:   selector,
@@ -544,7 +545,8 @@ func patchSelectorRangeError(selector, segment string, idx, have int) error {
 
 // selectedChange resolves selector to zero-based plan indices and its
 // normalized spelling. Indices are parsed numerically, so leading zeros address
-// the same change and normalize to one spelling for tokens, results, and apply.
+// the same change and normalize to one spelling for tokens, results, and
+// applying diffs.
 func selectedChange(parsed ParseResult, selector string) (step, change int, normalized string, err error) {
 	step, change, err = parsePatchFileChangeSelector(selector)
 	if err != nil {

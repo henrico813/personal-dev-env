@@ -81,7 +81,7 @@ func snapshot(t *testing.T, root string) map[string][32]byte {
 	return files
 }
 
-// ApplyToBase applies each change in order, so a B->C patch is checked against the
+// Applying each change in order checks a B->C patch against the
 // A->B result rather than against the original file. It must also leave the
 // user's checkout, index, and untracked files alone. Without both rules, coupled
 // edits fail and validation can silently disturb the working tree.

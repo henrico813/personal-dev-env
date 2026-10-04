@@ -260,7 +260,8 @@ func (s *Session) Read(name string) (*File, error) {
 	return &File{Data: data, Mode: fields[0]}, nil
 }
 
-// Apply applies one change. Failure may alter this disposable session, so the
+// Apply adds one change's diff to this session's copy of the base commit. Failure
+// may alter this disposable session, so the
 // caller must discard it on error. Nothing is written to the source repository.
 func (s *Session) Apply(change Change) error {
 	if err := rejectPlaceholder(change); err != nil {

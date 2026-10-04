@@ -406,7 +406,7 @@ func TestPatchDiffPreviewShowsChange(t *testing.T) {
 	}
 }
 
-// Prefix apply applies the base commit plus every change through the edited
+// Applying a prefix uses the base commit plus every change through the edited
 // one, never later changes. An earlier change must patch even when a later
 // change is a PLACEHOLDER; check --repo --base-commit then reports the later
 // target, and editing that change in order makes check pass.
