@@ -118,6 +118,27 @@ If a diff fence still contains `PLACEHOLDER`, `planner check` fails with
 directs you to fill the change with `inspect --before` and `patch`. `planner patch`
 runs the same check on earlier changes.
 
+## planner export
+
+```text
+planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR [--through STEP]
+```
+
+`planner export` applies the plan's diffs, in order, to a temporary copy of the
+base commit, then writes every tracked file, including unchanged ones, to a new
+directory. Unlike `inspect --code-out`, which writes one source file, it writes
+a whole tree.
+
+Use `--through STEP` to include step STEP and every earlier step; steps are
+numbered from 1. Without it, every step is included.
+
+If a diff does not apply or writing fails, no output directory is left behind.
+The output directory must not already exist. Export keeps executable modes
+and symlinks, omits files the plan deletes, and writes submodule entries as
+empty directories. Only files tracked at the base commit are included;
+uncommitted and untracked files are not. Files are read straight from Git
+objects, so no code, tests, hooks, or filters run.
+
 ## Validation modes
 
 - Structure validation runs on parsed plan fields. It enforces required
