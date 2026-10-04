@@ -54,9 +54,7 @@ Guarded source-code revisions:
   one, never later changes, and reports prefix_replayed: true with
   downstream_checked: false. Run planner check for whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
-  The token is tied to the exact plan file contents, the selector, and the base
-  commit. Any write to the plan makes it stale, so run inspect again before the
-  next patch.
+  Pass the edit_expect from your latest inspect; any plan write makes it stale.
 `
 
 // hasArg reports whether an exact argument appears. Guarded routing uses the

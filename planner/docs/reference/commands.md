@@ -72,10 +72,10 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - `--dry-run` validates without writing the plan.
 - `--diff` prints the Git-generated review preview to stdout instead of the
   normal JSON result.
-- If `--after-file` matches the selected change's current source state, patch
+- If `--after-file` matches the selected change's current source, patch
   succeeds with `changed: false` and `written: false` and leaves the plan alone.
   With `--diff`, stdout says `No changes.` rather than returning empty output.
-- For a PLACEHOLDER change, an after-file matching the before state fails with
+- For a PLACEHOLDER change, an unedited exported file fails with
   `after-file is identical to the exported --before file; edit it first`.
 
 Patch replays the base commit plus every change through the edited one and
@@ -115,8 +115,8 @@ compiles or passes tests.
 
 If a diff fence still contains `PLACEHOLDER`, `planner check` fails with
 `PATCH_INVALID` before Git runs. The message names the selector and file and
-directs you to fill the change with `inspect --before` and `patch`. `planner
-patch` runs the same check on earlier changes.
+directs you to fill the change with `inspect --before` and `patch`. `planner patch`
+runs the same check on earlier changes.
 
 ## Validation modes
 

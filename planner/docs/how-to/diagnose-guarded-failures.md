@@ -38,12 +38,11 @@ The patch engine also reports `BASE_COMMIT_INVALID`, `BASE_UNAVAILABLE`,
 `PATCH_UNSUPPORTED`, `PATCH_NOT_APPLICABLE`, `PATCH_NO_CHANGE`, and
 `PLAN_UNSUPPORTED` when a guarded operation reaches it.
 
-A `PLACEHOLDER` diff is reported as `PATCH_INVALID` before Git parses it. Its
-message names the selector and file, then directs you to fill the change with
-`inspect --before` and `patch`. `planner check`, and `planner patch` for earlier
-changes, use this validation and name the selector and file. Patching the
-selected PLACEHOLDER change with an unedited file gives the error:
-`after-file is identical to the exported --before file; edit it first`.
+`planner check` reports an unfilled `PLACEHOLDER` diff as `PATCH_INVALID` before
+Git runs. The message names the selector and file; fill that change with
+`planner inspect --before` and `planner patch`. `planner patch` runs the same
+check on earlier changes. If you patch the PLACEHOLDER change itself with an
+unedited file, the error is `after-file is identical to the exported --before file; edit it first`.
 
 `planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
 commit:` line and the command has no `--base-commit` override.

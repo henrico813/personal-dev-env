@@ -52,10 +52,10 @@ the file, or `--diff-file -` to import a raw unified diff from stdin. See the
 [command reference](../reference/commands.md) for `--after-file` mode handling
 and other patch flags.
 
-When the file passed to `--after-file` matches the change's current source, patch returns
-`changed: false` and does not write the plan. With `--diff`, the preview says
-`No changes.`. For a PLACEHOLDER change, submitting the exported file unedited
-is an error: edit it first.
+When the file passed to `--after-file` matches the change's current source,
+patch returns `changed: false` and does not write the plan. With `--diff`, the
+preview is `No changes.` For a PLACEHOLDER change, submitting the exported file
+unedited is an error: edit it first.
 
 ## Keep the base commit
 
