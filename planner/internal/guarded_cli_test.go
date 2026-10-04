@@ -481,6 +481,114 @@ func TestUnchangedScratchReportsNoChange(t *testing.T) {
 	}
 }
 
+func TestNoOpReportsUnchangedAndPreview(t *testing.T) {
+	repo, baseCommit, name := revisionFixture(t, false)
+	target := "implementation[1].file_changes[1]"
+	scratch := filepath.Join(t.TempDir(), "after.txt")
+	view := revisionInspect(t, name, repo, baseCommit, target, "--code-out", scratch)
+	planBefore, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
+		"--after-file", scratch)
+	if result.Changed || result.Written {
+		t.Fatalf("no-op result = %+v, want unchanged and unwritten", result)
+	}
+	planAfter, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(planBefore, planAfter) {
+		t.Fatal("no-op changed the plan")
+	}
+
+	code, out, diagnostic := revisionExecute(patchArgs(name, target,
+		view.EditExpect, repo, baseCommit, "--after-file", scratch,
+		"--dry-run", "--diff")...)
+	if code != 0 {
+		t.Fatalf("no-op diff preview: exit %d: %s", code, diagnostic)
+	}
+	if out != "No changes.\n" {
+		t.Fatalf("no-op preview = %q, want explicit empty preview", out)
+	}
+}
+
+func TestPlaceholderBeforeStateExplainsNoEdit(t *testing.T) {
+	repo, baseCommit, name := revisionBrokenSecondFixture(t)
+	target := "implementation[2].file_changes[1]"
+	scratch := filepath.Join(t.TempDir(), "before.txt")
+	view := revisionInspect(t, name, repo, baseCommit, target,
+		"--before", "--code-out", scratch)
+	planBefore, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, diagnostic := revisionExecute(patchArgs(name, target,
+		view.EditExpect, repo, baseCommit, "--after-file", scratch)...)
+	if code == 0 {
+		t.Fatal("unchanged before-state export was accepted")
+	}
+	if !strings.Contains(diagnostic,
+		"after-file matches the before state; edit the exported file first") {
+		t.Fatalf("error does not explain unchanged export: %s", diagnostic)
+	}
+	planAfter, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(planBefore, planAfter) {
+		t.Fatal("rejected before-state patch changed the plan")
+	}
+}
+
+func TestInspectPrintsRawEditToken(t *testing.T) {
+	repo, baseCommit, name := revisionFixture(t, false)
+	target := "implementation[1].file_changes[1]"
+	view := revisionInspect(t, name, repo, baseCommit, target)
+	code, out, diagnostic := revisionExecute("inspect", name,
+		"--target", target, "--repo", repo, "--base-commit", baseCommit,
+		"--print", "edit_expect")
+	if code != 0 {
+		t.Fatalf("print edit token: exit %d: %s", code, diagnostic)
+	}
+	if out != view.EditExpect+"\n" {
+		t.Fatalf("printed token = %q, want raw token", out)
+	}
+	if view.Selector != target || view.Diff == "" || view.EditExpect == "" {
+		t.Fatalf("default inspect JSON fields changed: %+v", view)
+	}
+}
+
+func TestNewPlaceholderBeforeIsRejected(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "new.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+	target := "implementation[1].file_changes[1]"
+	scratch := filepath.Join(t.TempDir(), "before.txt")
+	view := revisionInspect(t, name, repo, baseCommit, target,
+		"--before", "--code-out", scratch)
+	if view.CodeExists == nil || *view.CodeExists {
+		t.Fatalf("code_exists = %v, want false for new file", view.CodeExists)
+	}
+	data, err := os.ReadFile(scratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("before export for missing file = %q, want empty", data)
+	}
+	code, _, diagnostic := revisionExecute(patchArgs(name, target,
+		view.EditExpect, repo, baseCommit, "--after-file", scratch)...)
+	if code == 0 || !strings.Contains(diagnostic,
+		"after-file matches the before state; edit the exported file first") {
+		t.Fatalf("empty before-state export result: exit %d: %s", code, diagnostic)
+	}
+}
+
 // Binary replacement bytes have no valid source diff, so Generate must report
 // PATCH_UNSUPPORTED (not PATCH_INVALID) and leave the plan untouched.
 func TestBinaryScratchIsUnsupported(t *testing.T) {
@@ -698,7 +806,43 @@ func TestCheckRejectsBrokenDiff(t *testing.T) {
 	if code == 0 {
 		t.Fatal("PLACEHOLDER diff passed check")
 	}
-	requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
+	payload := requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
+	want := "implementation[1].file_changes[1] (foo.txt) is still PLACEHOLDER; " +
+		"fill it with inspect --before and patch"
+	if payload.Message != want {
+		t.Fatalf("placeholder error = %q, want %q", payload.Message, want)
+	}
+}
+
+func TestPatchNamesEarlierPlaceholder(t *testing.T) {
+	repo, baseCommit := revisionRepo(t, 0644)
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = "foo.txt"
+	plan.Implementation[0].FileChanges[0].Diff = "PLACEHOLDER"
+	plan.Implementation = append(plan.Implementation, Step{
+		Title:   "Second edit",
+		Summary: "Follow the unfinished change.",
+		FileChanges: []FileChange{{
+			Filename:    "foo.txt",
+			Explanation: "Replace the source line.",
+			Diff:        fooDiff(t, "A\n", "B\n", "100644"),
+		}},
+	})
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + baseCommit
+	name := writeRenderedPlan(t, plan)
+	target := "implementation[2].file_changes[1]"
+	view := revisionInspect(t, name, repo, baseCommit, target)
+	code, _, diagnostic := revisionExecute(patchArgs(name, target,
+		view.EditExpect, repo, baseCommit, "--after-file", os.DevNull)...)
+	if code == 0 {
+		t.Fatal("patch replay accepted an earlier placeholder")
+	}
+	payload := requireGuardedError(t, diagnostic, planpatch.CodePatchInvalid)
+	want := "implementation[1].file_changes[1] (foo.txt) is still PLACEHOLDER; " +
+		"fill it with inspect --before and patch"
+	if payload.Message != want {
+		t.Fatalf("placeholder error = %q, want %q", payload.Message, want)
+	}
 }
 
 // Selectors are parsed as numbers, so implementation[01] and implementation[1]

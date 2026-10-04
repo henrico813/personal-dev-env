@@ -26,7 +26,7 @@ The output path must end in `.md`.
 
 ```text
 planner inspect <plan.md>
-planner inspect <plan.md> --target SELECTOR --repo DIR --base-commit COMMIT [--code-out NEWFILE [--before]]
+planner inspect <plan.md> --target SELECTOR --repo DIR --base-commit COMMIT [--code-out NEWFILE [--before]] [--print FIELD]
 ```
 
 Without `--target`, inspect prints a JSON view of the parsed plan. With
@@ -38,6 +38,8 @@ normalized selector is echoed in results.
 
 `--code-out` writes the source after the selected change to a new scratch file,
 or before it with `--before`. `--before` requires `--code-out`.
+`--print edit_expect` prints only the raw token instead of JSON. The default
+inspect output remains JSON; `edit_expect` is the only supported print field.
 
 ### Inspect result fields
 
@@ -45,7 +47,8 @@ or before it with `--before`. `--before` requires `--code-out`.
 - `filename`, `step_title`, `step_summary`, `explanation`: the selected change.
 - `base_commit`: the base commit passed in.
 - `edit_expect`: token binding the plan bytes, normalized selector, and base
-  commit.
+  commit. It identifies the current plan state, not only the exported source
+  content. Re-run inspect after any plan write before using the token.
 - `validation`: `inspection_only`.
 - `diff`: the selected diff, present without `--code-out`.
 - `code_exists`, `code_state`, `mode`, `code_out`: present when source was
@@ -69,6 +72,11 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - `--dry-run` validates without writing the plan.
 - `--diff` prints the Git-generated review preview to stdout instead of the
   normal JSON result.
+- If `--after-file` matches the selected change's current source state, patch
+  succeeds with `changed: false` and `written: false` and leaves the plan alone.
+  With `--diff`, stdout says `No changes.` rather than returning empty output.
+- For a PLACEHOLDER change, an after-file matching the before state fails with
+  `after-file matches the before state; edit the exported file first`.
 
 Patch replays the base commit plus every change through the edited one and
 never later changes.
@@ -78,6 +86,8 @@ never later changes.
 - `path`: the plan path.
 - `plan_sha256`: hash of the updated plan.
 - `written`: whether the plan was written.
+- `changed`: whether the plan content changed. This additive field is false for
+  an accepted no-op; `written` is also false in that case.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
 - `prefix_replayed`: always `true` on success.
 - `downstream_checked`: `false`; later changes are not replayed.
@@ -102,6 +112,11 @@ whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
 `source_state: "committed_snapshot_only"`, and `behavior_checked: false`.
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
+
+If a diff fence still contains `PLACEHOLDER`, replay fails with `PATCH_INVALID`
+before Git is called. The message names the selector and file and directs you to
+fill the change with `inspect --before` and `patch`. Patch prefix replay uses the
+same check for earlier changes.
 
 ## Validation modes
 

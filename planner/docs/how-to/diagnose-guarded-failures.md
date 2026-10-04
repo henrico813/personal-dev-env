@@ -38,6 +38,11 @@ The patch engine also reports `BASE_COMMIT_INVALID`, `BASE_UNAVAILABLE`,
 `PATCH_UNSUPPORTED`, `PATCH_NOT_APPLICABLE`, `PATCH_NO_CHANGE`, and
 `PLAN_UNSUPPORTED` when a guarded operation reaches it.
 
+A `PLACEHOLDER` diff is reported as `PATCH_INVALID` before Git parses it. Its
+message names the selector and file, then directs you to fill the change with
+`inspect --before` and `patch`. Whole-plan check and patch prefix replay use the
+same validation, so they report the same message for that change.
+
 `planner check` reports `BASE_COMMIT_REQUIRED` when the plan has no `Base
 commit:` line and the command has no `--base-commit` override.
 
@@ -56,6 +61,8 @@ commit:` line and the command has no `--base-commit` override.
   replacement changed the plan in an unsupported way. Reread the plan and make
   the change through `planner inspect` and `planner patch` so the prefix
   replays. Do not edit a guarded fence by hand.
+- `PATCH_INVALID` naming a `PLACEHOLDER`: fill the named change with
+  `planner inspect --before` and `planner patch`, then rerun `planner check`.
 
 ## Common causes
 

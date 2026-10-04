@@ -13,7 +13,7 @@ import (
 const guardedHelp = `
 Guarded source-code revisions:
   planner inspect <plan.md> --target SELECTOR --repo DIR
-      --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+      --base-commit COMMIT [--code-out NEWFILE [--before]] [--print FIELD] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
       --base-commit COMMIT (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
@@ -37,6 +37,7 @@ Guarded source-code revisions:
   --expect TOKEN                  edit_expect from targeted inspect.
   --code-out NEWFILE              Write proposed source to a NEW scratch file.
   --before                        Export source before the selected change.
+  --print FIELD                   Print one inspect result field without JSON.
   --after-file FILE               Generate a diff from ordinary source; use
                                   /dev/null to propose deleting the file.
   --diff-file FILE                Import a raw unified diff; use - for stdin.
@@ -46,6 +47,8 @@ Guarded source-code revisions:
   Without --code-out, inspect returns JSON with the selected diff and
   edit_expect. With --code-out, inspect writes the file after the selected
   change, or before it with --before, to a new file.
+  --print edit_expect prints only the raw edit token. The token binds the plan
+  bytes, normalized selector, and base commit; re-inspect after any plan write.
   patch starts with the base commit and tries every change through the edited
   one, never later changes, and reports prefix_replayed: true with
   downstream_checked: false. Run planner check for whole-plan readiness.
@@ -152,9 +155,13 @@ func guardedFailure(stderr io.Writer, code string, err error) int {
 
 func runGuardedInspect(args []string, stdout, stderr io.Writer) int {
 	name, opts, err := parseGuardedArgs(args,
-		"--target --repo --base-commit --code-out", "--before")
+		"--target --repo --base-commit --code-out --print", "--before")
 	if err != nil {
 		return guardedFailure(stderr, plannerCode(PlannerUsageError), err)
+	}
+	if field := opts["--print"]; field != "" && field != "edit_expect" {
+		return guardedFailure(stderr, plannerCode(PlannerUsageError),
+			fmt.Errorf("unsupported inspect print field %q (supported: edit_expect)", field))
 	}
 	result, err := guardedInspect(guardedInspectOptions{
 		PlanPath:   name,
@@ -166,6 +173,12 @@ func runGuardedInspect(args []string, stdout, stderr io.Writer) int {
 	})
 	if err != nil {
 		return guardedFailure(stderr, codeSourceCheck, err)
+	}
+	if opts["--print"] == "edit_expect" {
+		if _, err := fmt.Fprintln(stdout, result.EditExpect); err != nil {
+			return guardedFailure(stderr, codeOutputReportFailed, err)
+		}
+		return 0
 	}
 	if err := json.NewEncoder(stdout).Encode(result); err != nil {
 		return guardedFailure(stderr, codeOutputReportFailed, err)
