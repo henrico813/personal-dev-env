@@ -42,6 +42,30 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 
 // chezmoi skips a removal target that .chezmoiignore matches, so the units must
 // stay out of the ignore list or the live service would never be cleaned up.
+// Existing hosts keep the old command and skill files unless the installer deletes them, so this test protects cleanup of both paths.
+func TestRemoveFileTargetsDocumentCodebase(t *testing.T) {
+	targets := []string{
+		".config/opencode/commands/document_codebase.md",
+		".codex/skills/document-codebase",
+	}
+	removeText := renderProfileTemplate(t, removeFileTemplate, "full")
+	for _, target := range targets {
+		if !containsLine(removeText, target) {
+			t.Errorf("%s omits removal target %q", removeFileTemplate, target)
+		}
+	}
+	for _, selected := range []string{"full", "terminal"} {
+		t.Run(selected, func(t *testing.T) {
+			ignoreText := renderProfileTemplate(t, ".chezmoiignore.tmpl", selected)
+			for _, target := range targets {
+				if containsLine(ignoreText, target) {
+					t.Errorf("%s ignores removal target %q", selected, target)
+				}
+			}
+		})
+	}
+}
+
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	for _, selected := range []string{"full", "terminal"} {
 		t.Run(selected, func(t *testing.T) {
