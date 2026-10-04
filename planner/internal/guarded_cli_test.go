@@ -270,7 +270,8 @@ func TestPatchWritesPlanFromScratch(t *testing.T) {
 	}
 	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
-	if !result.Written || !result.PrefixReplayed || result.DownstreamChecked {
+	if !result.Written || !result.PrefixApplied || !result.PrefixReplayed ||
+		result.PrefixApplied != result.PrefixReplayed || result.DownstreamChecked {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if result.PlanSHA256 == "" || result.BaseCommit != baseCommit {
@@ -420,7 +421,8 @@ func TestPrefixApplyIgnoresLaterBrokenChange(t *testing.T) {
 	}
 	result := revisionPatch(t, name, first, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
-	if !result.PrefixReplayed || result.DownstreamChecked {
+	if !result.PrefixApplied || !result.PrefixReplayed ||
+		result.PrefixApplied != result.PrefixReplayed || result.DownstreamChecked {
 		t.Fatalf("prefix apply flags wrong: %+v", result)
 	}
 	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
@@ -1105,7 +1107,8 @@ func TestDiffFileFromStdin(t *testing.T) {
 		t.Fatalf("stdin diff: exit %d: %s", code, diagnostic)
 	}
 	result := decodeGuardedResult[guardedPatchResult](t, out)
-	if !result.Written || !result.PrefixReplayed {
+	if !result.Written || !result.PrefixApplied || !result.PrefixReplayed ||
+		result.PrefixApplied != result.PrefixReplayed {
 		t.Fatalf("stdin diff result: %+v", result)
 	}
 	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
