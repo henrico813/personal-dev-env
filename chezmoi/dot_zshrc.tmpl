@@ -43,20 +43,6 @@ prd() (
 {{- if eq (env "PDE_PROFILE") "full" }}
 # open vim config from anywhere
 alias vimrc='vim ${HOME}/.config/nvim/init.lua'
-# Scope Goog credentials to one Vibe invocation.
-vibe() (
-    local env_file="$HOME/.config/vibe/goog.env"
-
-    if [[ -e "$env_file" || -L "$env_file" ]]; then
-        if [[ ! -f "$env_file" || -L "$env_file" ]]; then
-            print -u2 "Vibe environment is unavailable: $env_file"
-            return 1
-        fi
-        unset GOOG_BASE_URL GOOG_API_KEY GOOG_MODEL
-        source "$env_file" || return 1
-    fi
-    command vibe "$@"
-)
 {{- end }}
 # cat -> bat
 alias cat='bat'
