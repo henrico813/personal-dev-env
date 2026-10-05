@@ -19,13 +19,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-ALLOWED_SUBCOMMANDS = {"help", "new", "check", "inspect", "patch"}
 PLANNER_COMMAND = re.compile(r"`(planner\b[^`]*)`", re.DOTALL)
 TARGET_COMMAND = re.compile(r"^planner (inspect|patch|check)\b")
-REQUIRED_COMMANDS = {
-    "create": {"new", "inspect", "patch", "check"},
-    "implement": {"inspect", "patch", "check"},
-}
 
 
 def subcommand(command: str) -> str:
@@ -132,7 +127,6 @@ def planner_environment(
     return environment
 
 
-PROMPTS = [pytest.param(path, id=prompt_id(path)) for path in workflow_skill_files()]
 PLAN_PROMPTS = [
     pytest.param(path, kind, id=prompt_id(path))
     for path in workflow_skill_files()

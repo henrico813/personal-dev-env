@@ -14,6 +14,8 @@ execution.
 
 Use this skill to implement an approved plan without redesigning it. Do not use it for authoring or reviewing the plan, or for tearing down its worktree; use create-plan for authoring, review-plan for review, and cleanup-plan for teardown instead.
 
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
+
 ## Plan Reference
 
 Take the task from the user's request or command arguments.

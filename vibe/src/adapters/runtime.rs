@@ -266,6 +266,19 @@ mod tests {
             "---\nname: workflow-skill\ndescription: Runs the planning workflow.\nmetadata:\n  pde-workflow: \"true\"\n---\nOrchestrate.\n",
         )
         .expect("write workflow skill");
+        for (name, marker) in [
+            ("unquoted-workflow-skill", "pde-workflow: true"),
+            ("single-quoted-workflow-skill", "pde-workflow: 'true'"),
+            ("crlf-workflow-skill", "pde-workflow: \"true\""),
+        ] {
+            let skill = user_skills.join(name);
+            fs::create_dir_all(&skill).expect("mkdir variant workflow skill");
+            fs::write(
+                skill.join("SKILL.md"),
+                format!("---\r\nname: {name}\r\nmetadata:\r\n  {marker}\r\n---\r\nWorkflow.\r\n"),
+            )
+            .expect("write variant workflow skill");
+        }
         let user_skill = user_skills.join("normal-skill");
         fs::create_dir_all(&user_skill).expect("mkdir user skill");
         fs::write(
@@ -281,6 +294,9 @@ mod tests {
             "---\nname: body-marker-skill\ndescription: Mentions the marker in its body.\n---\npde-workflow: \"true\" appears in the body only.\n",
         )
         .expect("write body marker skill");
+        let unclassified = user_skills.join("unclassified-nested");
+        fs::create_dir_all(unclassified.join("nested-skill"))
+            .expect("mkdir unclassified nested folder");
         let repository_skills = repo_root.join(".agents/skills");
         let repository_workflow_skill = repository_skills.join("repository-workflow-skill");
         fs::create_dir_all(&repository_workflow_skill).expect("mkdir repository workflow skill");

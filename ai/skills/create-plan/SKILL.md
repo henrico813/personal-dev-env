@@ -14,6 +14,8 @@ easy for a human to review, and ready for execution once approved.
 
 Use this skill to create a repository-grounded implementation proposal with exact code diffs. Do not use it for reviewing an existing plan or executing one; use review-plan for review and implement-plan for execution instead.
 
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
+
 ## Task Context
 
 Take the task from the user's request or command arguments.

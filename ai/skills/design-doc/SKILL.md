@@ -15,6 +15,8 @@ A design doc is a deliberate pause before implementation. It forces you to ident
 
 Use this skill to write a technical design document that reasons through the problem, alternatives, and chosen direction before implementation. Do not use it for a code-bearing implementation proposal or for plan execution; use create-plan for proposals and implement-plan for execution instead.
 
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
+
 **Core principle:** A design doc answers "what should we build and why?" with enough rigor that reviewers can find flaws before they become code.
 
 ## Writing for Humans

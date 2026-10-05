@@ -13,6 +13,8 @@ You are tasked with conducting comprehensive research across the codebase to ans
 
 Use this skill to document and explain the codebase as it exists today. Do not use it for proposing changes or planning work on the code; use create-plan for planning and implement-plan for execution instead.
 
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
+
 ## CRITICAL: YOUR ONLY JOB IS TO DOCUMENT AND EXPLAIN THE CODEBASE AS IT EXISTS TODAY
 - DO NOT suggest improvements or changes unless the user explicitly asks for them
 - DO NOT perform root cause analysis unless the user explicitly asks for them

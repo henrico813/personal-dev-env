@@ -30,4 +30,6 @@ Projects/CLAUDE.md
 .claude/commands/cleanup_plan.md
 .claude/commands/design_doc.md
 .claude/commands/research_codebase.md
+.claude/commands/document_codebase.md
+.claude/commands/README.md
 {{ end }}
