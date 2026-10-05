@@ -84,9 +84,9 @@ binaries plus repo-managed AI config.
 ## AI Source Tree
 
 - `ai/AGENTS.md` is the shared workflow default file.
-- `ai/skills/` holds shared Agent Skills-format guidance.
+- `ai/skills/` holds shared Agent Skills-format guidance, including the shared
+  workflow skills.
 - `ai/opencode/` holds OpenCode agents and commands.
-- `ai/codex/` holds Codex skills.
 - `ai/pi/agent/` holds Pi settings and package resources.
 - `surveil/` holds the Surveil task-doc CLI docs.
 - `pde/AGENTS.md` holds repo-local PDE notes.
@@ -98,19 +98,24 @@ binaries plus repo-managed AI config.
 |------|--------------|----------------|-----------------|
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
-| Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/`, `~/.codex/skills/behavior-focused-testing/` | Shared test-writing guidance |
-| Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/`, `~/.codex/skills/code-documentation/` | Proportional source and test explanations |
-| Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/`, `~/.codex/skills/go-development/` | Shared Go development guidance |
-| Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/`, `~/.codex/skills/python-development/` | Shared Python development guidance |
-| Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/`, `~/.codex/skills/rust-development/` | Shared Rust development guidance |
-| Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/`, `~/.codex/skills/git-messages/` | Shared commit and PR guidance |
-| Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/`, `~/.codex/skills/promote-memory/` | Reviewed memory-to-skill promotion |
-| Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/`, `~/.codex/skills/obsidian-zettel/` | Template-aligned vault note creation |
+| Create plan | `ai/skills/create-plan/` | `~/.agents/skills/create-plan/` | Shared workflow skill for implementation proposals with exact code diffs |
+| Review plan | `ai/skills/review-plan/` | `~/.agents/skills/review-plan/` | Shared workflow skill for plan review |
+| Implement plan | `ai/skills/implement-plan/` | `~/.agents/skills/implement-plan/` | Shared workflow skill for stepwise plan execution |
+| Cleanup plan | `ai/skills/cleanup-plan/` | `~/.agents/skills/cleanup-plan/` | Shared workflow skill for plan teardown |
+| Design doc | `ai/skills/design-doc/` | `~/.agents/skills/design-doc/` | Shared workflow skill for technical design documents |
+| Research codebase | `ai/skills/research-codebase/` | `~/.agents/skills/research-codebase/` | Shared workflow skill for as-is codebase research |
+| Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
+| Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
+| Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
+| Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
+| Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
+| Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
+| Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
+| Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, and bidirectional agent cycling (`Tab` next, `Shift+Tab` previous) |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
-| Codex | `ai/codex/skills/` | `~/.codex/skills/` | Prompt-triggered skills |
 | Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 | Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
@@ -135,7 +140,10 @@ removes its plugin entry and OpenCode does not load it.
 
 ## Using OpenCode Commands
 
-In OpenCode, type `/command_name` to invoke. These are the same commands installed from `ai/opencode/commands/`.
+In OpenCode, type `/command_name` to invoke. These are the same commands
+installed from `ai/opencode/commands/`. Each command is a thin wrapper that
+loads the matching shared workflow skill from `ai/skills/`, so the workflow
+instructions live once in the skill.
 
 | Command | Purpose |
 |---------|---------|
@@ -146,9 +154,11 @@ In OpenCode, type `/command_name` to invoke. These are the same commands install
 | `/cleanup_plan` | Clean completed plan, worktree, branch, PR evidence, and main state |
 | `/research_codebase` | Document how the codebase works (read-only) |
 
-## Using Codex Skills
+## Using the Shared Workflow Skills
 
-Codex skills are prompt-triggered, not slash commands. Use them by asking naturally or naming the skill explicitly.
+The shared workflow skills are prompt-triggered, not slash commands. Use them
+by asking naturally or naming the skill explicitly, in any harness that
+loads `~/.agents/skills/`.
 
 | Skill | What it does | Example prompt |
 |-------|-------------|----------------|
@@ -159,7 +169,9 @@ Codex skills are prompt-triggered, not slash commands. Use them by asking natura
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde-installer install works" |
 | `review-plan` | Review a plan for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
-Skills are installed to `~/.codex/skills/`, and the installer copies the shared `AGENTS.md` into `~/.codex/` so the workflow defaults stay aligned with the rest of the tree.
+The skills are installed to `~/.agents/skills/`, and the installer copies the
+shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
+stay aligned with the rest of the tree.
 
 ## Requirements
 
