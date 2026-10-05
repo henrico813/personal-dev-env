@@ -16,7 +16,11 @@ planner check plan.md --repo "$REPO" --base-commit "$BASE_COMMIT" --json-errors
 ```
 
 ```json
-{"code":"VALIDATE_INPUT","message":"title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)","recovery_hint":"Fix the identified input or source assumption; do not retry unchanged."}
+{
+  "code": "VALIDATE_INPUT",
+  "message": "title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)",
+  "recovery_hint": "Fix the identified input or source assumption; do not retry unchanged."
+}
 ```
 
 To view one change's diff, target its selector without `--code-out`. This
