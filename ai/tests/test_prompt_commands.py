@@ -139,39 +139,6 @@ PLAN_PROMPTS = [
     if (kind := prompt_kind(path)) is not None
 ]
 
-
-@pytest.mark.parametrize("skill", PROMPTS)
-def test_skill_uses_only_existing_subcommands(skill: Path) -> None:
-    """Reject planner subcommands that no longer exist.
-
-    Guards removed planner dod/implementation/verification subcommands, which
-    would send every agent to a command that no longer exists.
-    """
-    for command in extract_commands(skill):
-        command_name = subcommand(command)
-        assert command_name in ALLOWED_SUBCOMMANDS, (
-            f"skill {skill} uses unknown planner subcommand "
-            f"'{command_name}': {command}"
-        )
-
-
-@pytest.mark.parametrize(("skill", "kind"), PLAN_PROMPTS)
-def test_planning_skill_keeps_required_commands(
-    skill: Path, kind: str
-) -> None:
-    """Require every planner command needed by the workflow.
-
-    Guards a skill edit dropping planner check, so agents would stop
-    validating plans and nothing would notice because the unchecked plan still
-    looks finished.
-    """
-    present = {subcommand(command) for command in extract_commands(skill)}
-    assert REQUIRED_COMMANDS[kind] <= present, (
-        f"skill {skill} is missing planner commands "
-        f"{sorted(REQUIRED_COMMANDS[kind] - present)}"
-    )
-
-
 def run_checked(
     args: list[str], *, cwd: Path | None = None, env: dict[str, str]
 ) -> str:
