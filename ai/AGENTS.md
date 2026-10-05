@@ -6,7 +6,6 @@
 - Before writing a commit or pull request message, load and follow the
   `git-messages` skill.
 - Do not add AI attribution to commits or pull requests.
-- Commit with default git settings; do not add Co-Authored-By lines.
 - Keep code comments and docstrings concise; prefer examples and 1-2 sentences.
 
 ## Skill Routing
