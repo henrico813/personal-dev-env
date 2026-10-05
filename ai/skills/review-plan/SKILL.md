@@ -1,6 +1,8 @@
 ---
 name: review-plan
-description: Use when the user asks to review an implementation plan for correctness, simplicity, completeness, or implementation readiness.
+description: 'Review an implementation plan for correctness, simplicity, and completeness, for requests like "review this plan" or "check the plan before I implement it"; for authoring a plan use create-plan, and for execution use implement-plan.'
+metadata:
+  pde-workflow: "true"
 ---
 
 # Review Plan
@@ -9,10 +11,20 @@ Review an implementation plan before implementation begins. Scale review
 effort to the plan's complexity and focus on concrete correctness, unnecessary
 complexity, completeness, and reviewer intent.
 
-## Invocation
+## When to use this skill
 
-Read the plan reference and any additional review focus from the user's request.
-If no plan reference was provided, ask for it and stop.
+Use this skill to review an implementation plan for correctness, simplicity, and completeness. Do not use it for authoring a new plan or executing one; use create-plan for authoring and implement-plan for execution instead.
+
+## Initial Response
+
+When this command is invoked:
+
+1. If a plan path is provided, read it fully and begin.
+2. If no plan path is provided, ask for it and stop.
+
+## Arguments
+
+Take the task from the user's request or command arguments.
 
 ## Process
 
@@ -45,7 +57,7 @@ Always assess:
   remain accurate and proportional, important behavior is not left needlessly
   implicit, and obvious code does not receive mandatory prose.
 
-Apply any additional focus from the user's request as another review criterion.
+Treat text beyond the plan path as additional review criteria.
 
 ### Step 3: Choose Review Depth
 

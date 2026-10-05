@@ -1,11 +1,21 @@
 ---
 name: cleanup-plan
-description: Use when the user asks to clean up completed plan, worktree, branch, PR evidence, or main-checkout housekeeping.
+description: 'Clean up a completed plan workflow, verifying and removing the worktree, branch, pull-request evidence, and main-checkout housekeeping, for requests like "clean up the plan worktree" or "tear down the branch now that the plan is done"; for authoring use create-plan, and for execution use implement-plan.'
+metadata:
+  pde-workflow: "true"
 ---
 
 # Cleanup Plan
 
 You are tasked with cleaning up after a completed implementation workflow. Your job is to verify that the plan worktree is safe to tear down, confirm the main checkout is healthy, and close out any remaining housekeeping without losing work.
+
+## When to use this skill
+
+Use this skill to clean up after a completed implementation workflow: verify the plan worktree is safe to remove, confirm the main checkout is healthy, and finish housekeeping. Do not use it for authoring, reviewing, or executing the plan; use create-plan, review-plan, and implement-plan instead.
+
+User context:
+
+Take the task from the user's request or command arguments.
 
 ## Getting Started
 
@@ -55,9 +65,39 @@ Run these checks before removing a worktree:
 - If a target worktree exists, run the worktree-removal procedure and check locked state, detached HEAD, or submodule state that may represent unfinished work.
 - If a branch exists, check whether it has commits not present on the fetched base branch.
 - If a main checkout exists, inspect it for tracked changes, untracked files that collide with incoming paths, missing upstream, or divergence.
-- If a main checkout is clean and can fast-forward, run `git fetch <remote>` and `git pull --ff-only` from the identified main checkout after confirming its branch and upstream.
+- If a main checkout exists, use the main-sync procedure below after confirming its branch and upstream.
 - If main cannot be safely fast-forwarded, record main synchronization as blocked but continue with unrelated safe cleanup actions.
 - Check whether any docs, plans, or research notes still need status updates.
+
+Main-sync procedure:
+
+Run these commands from the main checkout:
+
+```bash
+git rev-parse --abbrev-ref --symbolic-full-name @{u}
+git status --porcelain=v1 --untracked-files=no
+git fetch <remote>
+git rev-list --left-right --count HEAD...@{u}
+```
+
+Run the commands in order. Stop at the first blocking result.
+If the upstream command fails, stop the main-sync procedure and report main synchronization as blocked.
+
+Interpret the results:
+
+| Result | Cleanup action |
+| --- | --- |
+| No upstream | Block main synchronization |
+| Status command prints output | Block main synchronization |
+| Fetch fails | Block main synchronization and report the reason |
+| Left count is nonzero, with or without right-side commits | Block main synchronization |
+| Both counts are zero | Main already matches upstream |
+| Only right count is nonzero | Run `git merge --ff-only @{u}` |
+| Merge succeeds | Main synchronization is complete |
+| Merge fails | Block main synchronization and report the reason |
+
+Unrelated untracked files do not block main synchronization when the status command is clean and the fast-forward update succeeds.
+- Do not delete, move, stash, or overwrite files to make main synchronization succeed unless the user explicitly approves that exact action.
 
 Only stop the whole cleanup for blockers that make the relevant destructive action unsafe. Main-sync-only blockers should be reported while unrelated safe cleanup continues.
 
@@ -100,7 +140,7 @@ Classify every remaining ignored file in this order:
    `pde/user-config.yml` is also sensitive.
 2. Allow a non-sensitive file only when it is beneath the root `.surveil/`
    directory, root `vibe/target/` directory, root `surveil/target/` directory,
-   or any `__pycache__/` directory.
+   or any `__pycache__/` directory, any `.pytest_cache/` directory, or `ai/.venv/`.
 3. Block every other ignored path.
 
 Interpret the result:
@@ -164,6 +204,7 @@ When an action is blocked, report the blocker clearly and stop only the unsafe a
 ## Important Guidelines
 
 1. Never remove a worktree with tracked changes, non-ignored untracked files, directory records, or ignored paths that fail the ignored-file policy unless the user explicitly approves that removal.
-2. Never assume plan or documentation status is already correct; check it.
-3. Prefer explicit verification over inference.
-4. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
+2. Do not let unrelated untracked files block a fast-forward update if `git merge --ff-only @{u}` succeeds.
+3. Never assume plan or documentation status is already correct; check it.
+4. Prefer explicit verification over inference.
+5. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
