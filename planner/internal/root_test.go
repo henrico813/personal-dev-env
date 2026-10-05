@@ -429,8 +429,7 @@ func TestCheckAppliesPlanDiffs(t *testing.T) {
 	}
 	result := decodeGuardedResult[guardedCheckResult](t, stdout.String())
 	if !result.StructureValid || !result.ApplicabilityChecked ||
-		result.ChangesApplied != 1 || result.ChangesReplayed != 1 ||
-		result.ChangesApplied != result.ChangesReplayed {
+		result.ChangesApplied != 1 || result.ChangesReplayed != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if result.BaseCommit != baseCommit {

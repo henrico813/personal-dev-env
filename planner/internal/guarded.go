@@ -194,13 +194,13 @@ func (o guardedPatchOptions) validate() error {
 // guardedPatchResult reports what was checked and whether the plan was written.
 // Preview is the Git-generated review delta for --diff and is not JSON encoded.
 type guardedPatchResult struct {
+	PrefixApplied     bool   `json:"prefix_applied"`
 	Path              string `json:"path"`
 	PlanSHA256        string `json:"plan_sha256"`
 	Written           bool   `json:"written"`
 	Changed           bool   `json:"changed"`
 	StructureValid    bool   `json:"structure_valid"`
 	PatchSyntaxValid  bool   `json:"patch_syntax_valid"`
-	PrefixApplied     bool   `json:"prefix_applied"`
 	// Deprecated: use PrefixApplied. Kept so existing scripts keep working.
 	PrefixReplayed    bool   `json:"prefix_replayed"`
 	DownstreamChecked bool   `json:"downstream_checked"`
@@ -355,10 +355,10 @@ type guardedCheckOptions struct {
 }
 
 type guardedCheckResult struct {
+	ChangesApplied       int    `json:"changes_applied"`
 	PlanSHA256           string `json:"plan_sha256"`
 	StructureValid       bool   `json:"structure_valid"`
 	ApplicabilityChecked bool   `json:"applicability_checked"`
-	ChangesApplied       int    `json:"changes_applied"`
 	// Deprecated: use ChangesApplied. Kept so existing scripts keep working.
 	ChangesReplayed      int    `json:"changes_replayed"`
 	BaseCommit           string `json:"base_commit"`
