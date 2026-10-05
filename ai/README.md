@@ -22,8 +22,8 @@ prompt. Run it locally with `cd ai && uv run pytest`.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
-mapped packages under `skills/` to `~/.agents/skills/<name>/` and
-`~/.codex/skills/<name>/`. It syncs `opencode/`, `codex/`, and
+mapped packages under `skills/` to `~/.agents/skills/<name>/`. Codex-only workflow skills remain under
+`~/.codex/skills/`; shared skills are not duplicated there. It syncs `opencode/`, `codex/`, and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Surveil is installed as a standalone binary;
