@@ -298,7 +298,9 @@ mod tests {
         .expect("write repository skill");
         fs::write(&combined_prompt, b"Prompt\n").expect("write prompt");
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
-        let mut script_perms = fs::metadata(&script).expect("script metadata").permissions();
+        let mut script_perms = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
         script_perms.set_mode(0o755);
         fs::set_permissions(&script, script_perms).expect("chmod script");
         write_executable(
@@ -365,11 +367,17 @@ mod tests {
         expected_skills.sort();
         assert_eq!(
             selected_skills,
-            expected_skills.iter().map(|s| s.as_bytes()).collect::<Vec<_>>()
+            expected_skills
+                .iter()
+                .map(|s| s.as_bytes())
+                .collect::<Vec<_>>()
         );
         for arg in &pi_args {
             let text = std::str::from_utf8(arg).expect("UTF-8 argument");
-            assert!(!text.contains("workflow"), "workflow skill selected: {text}");
+            assert!(
+                !text.contains("workflow"),
+                "workflow skill selected: {text}"
+            );
         }
     }
 
