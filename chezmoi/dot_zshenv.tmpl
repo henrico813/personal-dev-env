@@ -1,0 +1,13 @@
+{{- if eq (env "PDE_PROFILE") "full" }}
+# Load the Vibe Goog endpoint for interactive and agent Zsh shells.
+env_file="$HOME/.config/vibe/goog.env"
+
+if [[ -e "$env_file" || -L "$env_file" ]]; then
+    if [[ ! -f "$env_file" || -L "$env_file" ]]; then
+        print -u2 "Vibe environment is unavailable: $env_file"
+    else
+        unset GOOG_BASE_URL GOOG_API_KEY GOOG_MODEL
+        source "$env_file"
+    fi
+fi
+{{- end }}
