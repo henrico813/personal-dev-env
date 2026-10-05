@@ -5,6 +5,30 @@ anything is written or reported ready. Revise a code diff through `planner
 inspect` and `planner patch` so the change is applied and the plan structure
 stays valid.
 
+## Read all check errors and one selected diff
+
+Run `planner check` once to see every structure and length violation together.
+Fix all the listed issues before running it again. For example, one error can
+report several lengths:
+
+```bash
+planner check plan.md --repo "$REPO" --base-commit "$BASE_COMMIT" --json-errors
+```
+
+```json
+{"code":"VALIDATE_INPUT","message":"title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)","recovery_hint":"Fix the identified input or source assumption; do not retry unchanged."}
+```
+
+To view one change's diff, target its selector without `--code-out`. This
+returns that fence's content in JSON field `diff`, even if earlier steps touch
+the same file:
+
+```bash
+planner inspect plan.md \
+  --target 'implementation[2].file_changes[1]' \
+  --repo "$REPO" --base-commit "$BASE_COMMIT" | jq -r .diff
+```
+
 ## Inspect the change and write the source to a file
 
 Select the file change with a quoted selector and write the source after it:
