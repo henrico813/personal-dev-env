@@ -37,15 +37,18 @@ PI_ARGS=(
 )
 
 # Returns 0 when $1 is a PDE workflow-orchestration skill, i.e. its
-# SKILL.md frontmatter marks pde-workflow: "true". Vibe workers execute a
+# SKILL.md frontmatter marks pde-workflow: true. Vibe workers execute a
 # single task, so workflow skills are never offered to Pi.
 is_workflow_skill() {
   local skill_md="$1/SKILL.md"
   local line marker
   [[ -f "${skill_md}" ]] || return 1
-  [[ "$(head -n 1 "${skill_md}")" == "---" ]] || return 1
-  marker='^[[:space:]]*pde-workflow[[:space:]]*:[[:space:]]*\"?([Tt][Rr][Uu][Ee])\"?[[:space:]]*$'
+  IFS= read -r line < "${skill_md}" || [[ -n "${line}" ]] || return 1
+  line="${line%$'\r'}"
+  [[ "${line}" == "---" ]] || return 1
+  marker="^[[:space:]]*pde-workflow[[:space:]]*:[[:space:]]*(\"[Tt][Rr][Uu][Ee]\"|'[Tt][Rr][Uu][Ee]'|[Tt][Rr][Uu][Ee])[[:space:]]*$"
   while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
     [[ "${line}" == "---" ]] && break
     if [[ "${line}" =~ ${marker} ]]; then
       return 0
@@ -70,6 +73,7 @@ select_skill_root() {
   fi
   for entry in "${root}"/*/; do
     entry="${entry%/}"
+    [[ -f "${entry}/SKILL.md" ]] || continue
     if ! is_workflow_skill "${entry}"; then
       PI_ARGS+=(--skill "${entry}")
     fi
