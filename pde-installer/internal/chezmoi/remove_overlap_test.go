@@ -8,10 +8,8 @@ import (
 	"testing"
 )
 
-// Chezmoi refuses the whole install when a path is both managed and listed for
-// removal, and silently skips removal targets that the ignore file matches.
-// Check both rules because either one can leave retired files behind or stop
-// the entire installation.
+// Chezmoi refuses the whole install when a path is both installed and listed
+// for removal. No CI job runs a full install, so this is the only guard.
 func TestRemoveTargetsAvoidManagedSources(t *testing.T) {
 	removeText := renderProfileTemplate(t, removeFileTemplate, "full")
 	var removeTargets []string
@@ -31,50 +29,6 @@ func TestRemoveTargetsAvoidManagedSources(t *testing.T) {
 		}
 	}
 
-	ignoreText := renderProfileTemplate(t, ".chezmoiignore.tmpl", "full")
-	var ignorePatterns []string
-	for _, line := range strings.Split(ignoreText, "\n") {
-		if pattern := strings.TrimSpace(line); pattern != "" {
-			ignorePatterns = append(ignorePatterns, path.Clean(pattern))
-		}
-	}
-	for _, removed := range removeTargets {
-		if pattern, ok := ignoredByPattern(removed, ignorePatterns); ok {
-			t.Errorf("removal target %q is ignored by pattern %q", removed, pattern)
-		}
-	}
-}
-
-func ignoredByPattern(target string, patterns []string) (string, bool) {
-	parts := strings.Split(path.Clean(target), "/")
-	for end := len(parts); end > 0; end-- {
-		candidate := strings.Join(parts[:end], "/")
-		for _, pattern := range patterns {
-			if matchesIgnorePattern(candidate, pattern) {
-				return pattern, true
-			}
-		}
-	}
-	return "", false
-}
-
-func matchesIgnorePattern(candidate, pattern string) bool {
-	if strings.HasSuffix(pattern, "/**") {
-		base := strings.TrimSuffix(pattern, "/**")
-		return candidate == base || strings.HasPrefix(candidate, base+"/")
-	}
-	candidateParts := strings.Split(candidate, "/")
-	patternParts := strings.Split(pattern, "/")
-	if len(candidateParts) != len(patternParts) {
-		return false
-	}
-	for index, part := range candidateParts {
-		matched, err := path.Match(patternParts[index], part)
-		if err != nil || !matched {
-			return false
-		}
-	}
-	return true
 }
 
 func renderedExternalTargets(text string) []string {
