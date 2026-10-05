@@ -6,9 +6,11 @@
 - Before writing a commit or pull request message, load and follow the
   `git-messages` skill.
 - Do not add AI attribution to commits or pull requests.
+- Keep code comments and docstrings concise; prefer examples and 1-2 sentences.
 
 ## Skill Routing
 
+- When the user names a skill or asks for a workflow that matches one, load that skill first, unless a command already supplied that workflow's instructions.
 - After reading the user request and directly referenced context, compare the
   identified work with the available skill descriptions.
 - Load each skill applicable to the requested or discovered work before
@@ -48,6 +50,8 @@
 - Plans, issues, design docs, and research docs belong in the default PDE vault resolved through `pde vault path default` or `pde vault locate`.
 - Read `Projects/AGENTS.md` before writing to the vault.
 - Implementation plans are issues, not design docs.
+- Use the project issue naming convention for implementation plans.
+- Never commit vault documents to pull request branches.
 - Back up managed config before replacing it.
 - Resolve plan and vault references with this guidance:
 - 1. If the user-provided reference is an existing filesystem path, use it directly.
