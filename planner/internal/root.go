@@ -42,8 +42,9 @@ Markdown-first authoring:
   4. Add or remove a file change by hand: copy a PLACEHOLDER fence, fill it with
      inspect --before and patch, then delete the old block. A step keeps at
      least one file change.
-  5. Finish with planner check plan.md as the final gate. It reports every
-     structure violation and tries every planned change against the base commit
+  5. Finish with planner check plan.md as the final gate. It reports all
+     structure and length violations at once; fix them all before rerunning.
+     It tries every planned change against the base commit
      named by the "Base commit:" line.
   6. To build or test the proposed tree, run planner export. It writes the files
      and runs no code, tests, or hooks. --through STEP stops after implementation
