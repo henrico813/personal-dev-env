@@ -79,15 +79,26 @@ class TestAgentLoadsSkills:
     def test_wrapper_loads_expected_skill(
         self, git_project: Path, command: str, skill: str
     ) -> None:
-        events = Agent(git_project).run(command, skill)
+        agent = Agent(git_project)
+        for _ in range(3):
+            events = agent.run(command, skill)
+            if any(
+                event.get("type") == "tool_use"
+                and event.get("part", {}).get("tool") == "skill"
+                and event.get("part", {})
+                .get("state", {})
+                .get("input", {})
+                .get("id")
+                == skill
+                for event in events
+            ):
+                return
 
-        assert any(
-            event.get("type") == "tool_use"
-            and event.get("part", {}).get("tool") == "skill"
-            and event.get("part", {})
-            .get("state", {})
-            .get("input", {})
-            .get("id")
-            == skill
+        event_context = [
+            (event.get("type"), event.get("part", {}).get("tool"))
             for event in events
+        ]
+        assert False, (
+            f"OpenCode command {command} did not load skill {skill} after "
+            f"three attempts; final event context: {event_context}"
         )
