@@ -68,7 +68,11 @@ planner inspect plan.md \
 all listed problems before rerunning it. For example, one response can include:
 
 ```json
-{"code":"VALIDATE_INPUT","message":"title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)","recovery_hint":"Fix the identified input or source assumption; do not retry unchanged."}
+{
+  "code": "VALIDATE_INPUT",
+  "message": "title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)",
+  "recovery_hint": "Fix the identified input or source assumption; do not retry unchanged."
+}
 ```
 
 ## planner patch
