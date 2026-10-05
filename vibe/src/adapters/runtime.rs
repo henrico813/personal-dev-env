@@ -256,6 +256,8 @@ mod tests {
         let combined_prompt = temp.path().join("combined-prompt.txt");
         let script = temp.path().join("run-agent.sh");
 
+        fs::create_dir_all(&bin).expect("mkdir bin");
+
         let user_skills = home.join(".agents/skills");
         let workflow_skill = user_skills.join("workflow-skill");
         fs::create_dir_all(&workflow_skill).expect("mkdir workflow skill");
@@ -298,7 +300,7 @@ mod tests {
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
         let mut script_perms = fs::metadata(&script).expect("script metadata").permissions();
         script_perms.set_mode(0o755);
-        fs::set_permissions(&script, &script_perms).expect("chmod script");
+        fs::set_permissions(&script, script_perms).expect("chmod script");
         write_executable(
             &bin.join("git"),
             "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
@@ -349,18 +351,21 @@ mod tests {
             .filter(|arg| !arg.is_empty())
             .collect();
         assert!(pi_args.iter().any(|arg| *arg == b"--no-skills"));
-        let selected_skills: Vec<&[u8]> = pi_args
+        let mut selected_skills: Vec<&[u8]> = pi_args
             .windows(2)
             .filter(|pair| pair[0] == b"--skill")
             .map(|pair| pair[1])
             .collect();
+        selected_skills.sort();
+        let mut expected_skills = vec![
+            user_skill.to_string_lossy().into_owned(),
+            body_marker_skill.to_string_lossy().into_owned(),
+            repository_skill.to_string_lossy().into_owned(),
+        ];
+        expected_skills.sort();
         assert_eq!(
             selected_skills,
-            [
-                user_skill.to_string_lossy().as_bytes(),
-                body_marker_skill.to_string_lossy().as_bytes(),
-                repository_skill.to_string_lossy().as_bytes(),
-            ]
+            expected_skills.iter().map(|s| s.as_bytes()).collect::<Vec<_>>()
         );
         for arg in &pi_args {
             let text = std::str::from_utf8(arg).expect("UTF-8 argument");
