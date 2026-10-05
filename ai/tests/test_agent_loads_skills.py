@@ -26,8 +26,9 @@ class Agent:
 
     def run(self, command: str, skill: str) -> list[dict[str, object]]:
         message = (
-            "Do not perform the request. Load the requested skill and stop: "
-            f"{skill}"
+            f"/{command}\n"
+            f"Do not perform the task. Only load the {skill} skill and "
+            "reply with its first Markdown heading."
         )
         result = subprocess.run(
             [
@@ -36,13 +37,8 @@ class Agent:
                 "--standalone",
                 "--model",
                 "goog/qwen3.8",
-                "--dir",
-                str(self.project),
-                "--command",
-                command,
                 "--format",
                 "json",
-                "--",
                 message,
             ],
             cwd=self.project,
@@ -65,8 +61,7 @@ def git_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     commands.mkdir(parents=True)
     skills.mkdir(parents=True)
 
-    command_names = [command.value for command in COMMAND_SKILLS]
-    for command in command_names:
+    for command, _ in COMMAND_SKILLS:
         shutil.copy(ROOT / "ai/opencode/commands" / f"{command}.md", commands)
     for _, skill in COMMAND_SKILLS:
         source = ROOT / "ai/skills" / skill
@@ -77,6 +72,8 @@ def git_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 class TestAgentLoadsSkills:
+    """Verify commands load their requested skills."""
+
     @pytest.mark.parametrize("command,skill", COMMAND_SKILLS)
     def test_wrapper_loads_expected_skill(
         self, git_project: Path, command: str, skill: str
