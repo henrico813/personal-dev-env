@@ -40,6 +40,8 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 	}
 }
 
+// chezmoi skips a removal target that .chezmoiignore matches, so the units must
+// stay out of the ignore list or the live service would never be cleaned up.
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	for _, selected := range []string{"full", "terminal"} {
 		t.Run(selected, func(t *testing.T) {
