@@ -187,7 +187,6 @@ func TestZshTemplateProfiles(t *testing.T) {
 		"full": {
 			profile: "full",
 			want: []string{
-				"vibe() (",
 				"Usage: tm [hub|pocket|dash] [directory]",
 				"scope=\"tm-${slug}-${hash[1,8]}\"",
 				"herdr_bin=\"$(command -v herdr)\"",
@@ -201,6 +200,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"command gh pr diff \"$@\" --color=never | command delta --navigate",
 			},
 			omit: []string{
+				"vibe() (",
 				"aqua-terminal.yaml",
 				"aqua-terminal-checksums.json",
 				"local -a roles=(work test shell)",
@@ -255,7 +255,7 @@ func TestPRDForwardsDiffArguments(t *testing.T) {
 	}
 }
 
-func TestVibeScopesGoogEnvironment(t *testing.T) {
+func TestZshenvLoadsGoogEnvironment(t *testing.T) {
 	home := t.TempDir()
 	writeOpenCodeZshRuntime(t, home)
 	writeExecutable(t, filepath.Join(home, ".local", "bin", "vibe"), fakeVibeScript)
@@ -264,7 +264,7 @@ export GOOG_API_KEY=demo-key
 export GOOG_MODEL=qwen3.8
 `)
 
-	command := openCodeZshCommand(home, `vibe run --key demo --model goog/qwen3.8
+	command := agentZshCommand(home, `vibe run --key demo --model goog/qwen3.8
 print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-caller"`)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("vibe failed: %v\n%s", err, output)
@@ -273,7 +273,7 @@ print -r -- "${GOOG_BASE_URL-}:${GOOG_API_KEY-}:${GOOG_MODEL-}" >"$HOME/vibe-cal
 	for path, want := range map[string]string{
 		"vibe-environment": "https://goog.example.test\ndemo-key\nqwen3.8\n",
 		"vibe-arguments":   "run\n--key\ndemo\n--model\ngoog/qwen3.8\n",
-		"vibe-caller":      "::\n",
+		"vibe-caller":      "https://goog.example.test:demo-key:qwen3.8\n",
 	} {
 		data, err := os.ReadFile(filepath.Join(home, path))
 		if err != nil {
@@ -297,20 +297,39 @@ func TestPRDPropagatesGitHubFailure(t *testing.T) {
 	}
 }
 
+func agentZshCommand(home, script string) *exec.Cmd {
+	command := exec.Command("zsh", "-c", script)
+	configureZshCommand(command, home)
+	return command
+}
+
 func openCodeZshCommand(home, script string) *exec.Cmd {
 	command := exec.Command("zsh", "-i", "-c", script)
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, "HOME=") &&
-			!strings.HasPrefix(value, "ZDOTDIR=") {
-			command.Env = append(command.Env, value)
-		}
-	}
-	command.Env = append(command.Env, "HOME="+home, "ZDOTDIR="+home)
+	configureZshCommand(command, home)
 	return command
+}
+
+func configureZshCommand(command *exec.Cmd, home string) {
+	hostPath := os.Getenv("PATH")
+	for _, value := range os.Environ() {
+		if strings.HasPrefix(value, "HOME=") ||
+			strings.HasPrefix(value, "ZDOTDIR=") ||
+			strings.HasPrefix(value, "GOOG_") ||
+			strings.HasPrefix(value, "PATH=") {
+			continue
+		}
+		command.Env = append(command.Env, value)
+	}
+	command.Env = append(command.Env,
+		"HOME="+home,
+		"ZDOTDIR="+home,
+		"PATH="+filepath.Join(home, ".local", "bin")+":"+hostPath,
+	)
 }
 
 func writeOpenCodeZshRuntime(t *testing.T, home string) {
 	t.Helper()
+	writeApplyFile(t, filepath.Join(home, ".zshenv"), renderProfileTemplate(t, "dot_zshenv.tmpl", "full"))
 	writeApplyFile(t, filepath.Join(home, ".zshrc"), renderProfileTemplate(t, "dot_zshrc.tmpl", "full"))
 	for _, plugin := range []string{"colored-man-pages", "command-not-found", "git", "git-extras", "node"} {
 		writeApplyFile(t, zshPluginPath(home, "ohmyzsh/plugins/"+plugin, plugin+".plugin.zsh"), "")
