@@ -78,8 +78,8 @@ Patch replaces one fenced change. Exactly one of `--after-file` and
 - For a PLACEHOLDER change, an unedited `--code-out` file fails with
   `after-file is identical to the --before file from inspect; edit it first`.
 
-Patch replays the base commit plus every change through the edited one and
-never later changes.
+Patch starts from the base commit and applies every change through the edited
+one; it never applies later changes.
 
 ### Patch result fields
 
@@ -89,8 +89,9 @@ never later changes.
 - `changed`: whether patch modified the plan. It is false when the submitted
   file matches the current source, and `written` is then false too.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
-- `prefix_replayed`: always `true` on success.
-- `downstream_checked`: `false`; later changes are not replayed.
+- `prefix_applied`: always `true` on success; use this field.
+- `prefix_replayed`: deprecated alias with the same value, kept for compatibility.
+- `downstream_checked`: `false`; later changes are not applied.
 - `base_commit`: the base commit passed in.
 - `behavior_checked`: `false`.
 
@@ -100,16 +101,18 @@ never later changes.
 planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 ```
 
-`planner check` validates the plan structure, then replays every change against
+`planner check` validates the plan structure, then applies every change against
 the base commit. If `--base-commit` is omitted, the first line of `### Current
 State` must be `Base commit: <full commit ID>`. If `--repo` is omitted, Planner
 uses the current working directory's Git repository. `--stdin` reads the plan
 from stdin. `--format` is not accepted.
 
-The check opens a disposable repository at the base commit and replays the
+The check opens a disposable repository at the base commit and applies the
 whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
-`applicability_checked: true`, `changes_replayed`, `base_commit`,
+`applicability_checked: true`, `changes_applied`, `base_commit`,
 `source_state: "committed_snapshot_only"`, and `behavior_checked: false`.
+Use `changes_applied`. `changes_replayed` is a deprecated alias with the same
+value, kept for compatibility.
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
 
@@ -151,7 +154,7 @@ failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarde
   sections, non-empty fields, length limits, unique filenames per step, at
   least one goal, at least one implementation step, and at least one file
   change per step. It does not read source.
-- Guarded replay validation applies every diff against the base commit in a
+- Guarded apply validation applies every diff against the base commit in a
   disposable Git repository. It confirms applicability, not behavior.
 
 ## Issue frontmatter
