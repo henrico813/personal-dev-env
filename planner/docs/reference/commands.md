@@ -54,6 +54,27 @@ inspect output remains JSON; `edit_expect` is the only supported print field.
 - `code_exists`, `code_state`, `mode`, `code_out`: present when source was
   written.
 
+Without `--code-out`, targeted inspect returns the selected change's diff in
+the JSON `diff` field. The selector chooses a single step even when earlier
+steps change the same file:
+
+```bash
+planner inspect plan.md \
+  --target 'implementation[2].file_changes[1]' \
+  --repo "$REPO" --base-commit "$BASE_COMMIT" | jq -r .diff
+```
+
+`planner check` reports every structure and length violation in one run. Fix
+all listed problems before rerunning it. For example, one response can include:
+
+```json
+{
+  "code": "VALIDATE_INPUT",
+  "message": "title must be no more than 66 characters (got 86)\noverview must be no more than 250 characters (got 335)\ndefinition_of_done.narrative must be no more than 250 characters (got 324)",
+  "recovery_hint": "Fix the identified input or source assumption; do not retry unchanged."
+}
+```
+
 ## planner patch
 
 ```text
