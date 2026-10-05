@@ -163,10 +163,6 @@ compare_managed ai/skills/code-documentation/SKILL.md \
   .agents/skills/code-documentation/SKILL.md
 compare_managed ai/skills/code-documentation/SKILL.md \
   .codex/skills/code-documentation/SKILL.md
-compare_managed ai/opencode/commands/document_codebase.md \
-  .config/opencode/commands/document_codebase.md
-compare_managed ai/codex/skills/document-codebase/SKILL.md \
-  .codex/skills/document-codebase/SKILL.md
 compare_managed ai/opencode/agents/docs-reviewer.md \
   .config/opencode/agents/docs-reviewer.md
 compare_managed ai/opencode/agents/docs-writer.md \
@@ -490,34 +486,6 @@ project collision fixture, and met the partial-write expectation. If the event
 stream does not expose file reads, record skill loading as unsupported rather
 than passed. The Rust mount test, not Pi events, verifies that the Docker mount
 is read-only.
-
-## Workflow Entry Points
-
-Run each documentation entry point in a separate fresh clone for every OpenCode
-model:
-
-```bash
-EVAL_CASE=$(new_case workflow-review-'<model-tag>')
-run_opencode_trace workflow-review-'<model-tag>' '<model>' "$EVAL_CASE" \
-  'Review comments and docstrings in stateful.py. Do not edit files.' \
-  document_codebase
-EVAL_CASE=$(new_case workflow-readme-'<model-tag>')
-run_opencode_trace workflow-readme-'<model-tag>' '<model>' "$EVAL_CASE" \
-  'Update only the README heading to # Reviewed Documentation.' \
-  document_codebase
-```
-
-Run the Codex equivalent in separate fresh clones with `gpt-5.6-luna`:
-
-```bash
-EVAL_CASE=$(new_case workflow-review-codex)
-run_codex_trace workflow-review-openai-codex-gpt-5.6-luna gpt-5.6-luna read-only "$EVAL_CASE" \
-  'Use document-codebase to review comments and docstrings in stateful.py. Do not edit files.'
-EVAL_CASE=$(new_case workflow-readme-codex)
-run_codex_trace workflow-readme-openai-codex-gpt-5.6-luna gpt-5.6-luna workspace-write \
-  "$EVAL_CASE" \
-  'Use document-codebase to update only the README heading to # Reviewed Documentation.'
-```
 
 ```bash
 if (( MODEL_FAILURE != 0 )); then exit "$MODEL_FAILURE"; fi
