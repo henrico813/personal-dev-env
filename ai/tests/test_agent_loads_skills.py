@@ -35,6 +35,7 @@ class Agent:
                 "opencode",
                 "run",
                 "--standalone",
+                "--auto",
                 "--model",
                 "goog/qwen3.8",
                 "--format",
