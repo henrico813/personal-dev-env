@@ -45,7 +45,8 @@ Guarded source-code revisions:
   --diff                          Print a Git-generated review preview.
 
   Without --code-out, inspect returns JSON with the selected diff and
-  edit_expect. With --code-out, inspect writes the file after the selected
+  edit_expect. Use it to view one change's diff, even when other steps touch
+  the same file. With --code-out, inspect writes the file after the selected
   change, or before it with --before, to a new file.
   --print edit_expect prints only the raw edit token. The token is tied to the
   exact plan file contents, the selector, and the base commit. Any write to the
