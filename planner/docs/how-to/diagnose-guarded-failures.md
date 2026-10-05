@@ -61,7 +61,7 @@ commit:` line and the command has no `--base-commit` override.
 - `VALIDATE_RESULT`, `PLAN_EDIT`, `PLAN_COLLATERAL_CHANGE`, `PATCH_INPUT`: the
   replacement changed the plan in an unsupported way. Reread the plan and make
   the change through `planner inspect` and `planner patch` so the prefix
-  replays. Do not edit a guarded fence by hand.
+  applies. Do not edit a guarded fence by hand.
 - `PATCH_INVALID` naming a `PLACEHOLDER`: fill the named change with
   `planner inspect --before` and `planner patch`, then rerun `planner check`.
 
@@ -73,4 +73,4 @@ commit:` line and the command has no `--base-commit` override.
   content that is not present.
 - The plan was edited after inspect, so `edit_expect` no longer matches.
 - A step's diff no longer applies because an earlier change was edited without
-  replaying the prefix.
+  applying the prefix.

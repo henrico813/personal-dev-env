@@ -10,6 +10,6 @@ source commit before anything is written or reported ready.
 - **Tutorial**: [Create and check your first plan](docs/tutorials/create-and-check-a-plan.md)
 - **How-to**: [Revise a guarded diff](docs/how-to/revise-a-guarded-diff.md) and [Diagnose guarded failures](docs/how-to/diagnose-guarded-failures.md)
 - **Reference**: [Commands](docs/reference/commands.md)
-- **Explanation**: [Base commit replay](docs/explanation/base-commit-replay.md)
+- **Explanation**: [How planner applies diffs to the base commit](docs/explanation/applying-diffs-to-the-base-commit.md)
 
 The full index is [docs/README.md](docs/README.md).

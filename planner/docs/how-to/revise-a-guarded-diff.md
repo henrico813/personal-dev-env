@@ -2,7 +2,7 @@
 
 The guarded commands check a plan's diffs against a source commit before
 anything is written or reported ready. Revise a code diff through `planner
-inspect` and `planner patch` so the change is replayed and the plan structure
+inspect` and `planner patch` so the change is applied and the plan structure
 stays valid.
 
 ## Inspect the change and write the source to a file
@@ -59,14 +59,17 @@ unedited is an error: edit it first.
 
 ## Keep the base commit
 
-Pass the full commit ID recorded when the plan was created as `--base-commit`. See
-[Base commit replay](../explanation/base-commit-replay.md) for how the base commit is
-recorded and why the original commit is required.
+Pass the full commit ID recorded when the plan was created as `--base-commit`.
+See [How planner applies diffs to the base
+commit](../explanation/applying-diffs-to-the-base-commit.md) for how the base
+commit is recorded and why the original commit is required.
 
 ## Know what patch checked
 
-`planner patch` replays the base commit plus every change through the edited one
-and never later changes. On success it reports `prefix_replayed: true` and
+Planner patch starts from the base commit and applies every change through the
+edited one; it never applies later changes. On success it reports
+`prefix_applied: true`; the deprecated `prefix_replayed` alias has the same
+value for compatibility. It also reports
 `downstream_checked: false`. For whole-plan readiness, run:
 
 ```bash

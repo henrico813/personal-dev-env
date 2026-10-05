@@ -48,7 +48,7 @@ Run the whole-plan check:
 planner check plan.md --repo "$REPO" --base-commit "$BASE_COMMIT"
 ```
 
-The check opens a disposable repository at the base commit, replays every
+The check opens a disposable repository at the base commit, applies every
 change in order, and confirms each diff applies. It reports
 `source_state: "committed_snapshot_only"` and `behavior_checked: false` because
 an applying patch is not proof that the result compiles or passes tests.
@@ -60,5 +60,6 @@ build or tests there. Export does not run them:
 planner export plan.md --repo "$REPO" --base-commit "$BASE_COMMIT" --out /tmp/proposed-tree
 ```
 
-See [Base commit replay](../explanation/base-commit-replay.md) for why the
+See [How planner applies diffs to the base
+commit](../explanation/applying-diffs-to-the-base-commit.md) for why the
 original commit is required.

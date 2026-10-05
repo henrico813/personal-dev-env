@@ -51,8 +51,9 @@ Guarded source-code revisions:
   exact plan file contents, the selector, and the base commit. Any write to the
   plan makes it stale, so run inspect again before the next patch.
   patch starts with the base commit and tries every change through the edited
-  one, never later changes, and reports prefix_replayed: true with
-  downstream_checked: false. Run planner check for whole-plan readiness.
+  one, never later changes, and reports prefix_applied: true (prefix_replayed
+  is a deprecated copy) with downstream_checked: false. Run planner check for
+  whole-plan readiness.
   --after-file retains an existing file's mode and defaults a new file to 100644.
   Pass the edit_expect from your latest inspect; any plan write makes it stale.
 `
