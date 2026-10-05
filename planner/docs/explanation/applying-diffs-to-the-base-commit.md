@@ -1,15 +1,18 @@
-# Base commit replay
+# How planner applies diffs to the base commit
 
 A plan's base commit is the full Git commit ID of the source repository at the
 moment the plan was created. Every fenced diff in the plan describes a change
 measured against that commit.
+
+Planner applies each diff in the plan, in order, to a temporary copy of the base
+commit.
 
 ## Why guarded commands need the original commit
 
 Each diff describes how to change a file as it existed at the base commit.
 `planner patch` and guarded `planner check` rebuild that starting point in a
 disposable Git repository, then apply diffs on top of it. Guarded `planner
-inspect` opens and replays the base commit only when `--code-out` is requested;
+inspect` opens a copy of the base commit only when `--code-out` is requested;
 without it, inspect computes the `edit_expect` token and returns the selected
 diff without opening the base commit.
 
@@ -25,7 +28,7 @@ If you pass the current `HEAD` instead of the recorded base commit:
 - `check` can report readiness for a plan that does not match the tree it will
   actually be applied to.
 
-## A/B/C example: why replay starts at A
+## A/B/C example: why applying starts at A
 
 Plan creation reads the source at commit A and records A as the base commit. Each
 implementation step is then committed, moving `HEAD` forward:
@@ -36,7 +39,7 @@ B  step 1 committed
 C  step 2 committed        <- HEAD is now C
 ```
 
-The plan's diffs still describe changes from A to B and from B to C. Replay must
+The plan's diffs still describe changes from A to B and from B to C. Applying must
 therefore start at A and apply each diff in order:
 
 ```text
@@ -53,14 +56,14 @@ or succeeds against content that only happens to match. Pass A, not C.
 
 - `planner inspect` without `--code-out` computes the `edit_expect` token and
   returns the selected diff; it does not open the base commit. With `--code-out`,
-  it opens a disposable repository at the base commit, replays every change before
+  it opens a disposable repository at the base commit, applies every change before
   the selected one, and writes the source just before or just after that
   change. The returned `edit_expect` token is tied to the plan bytes, the
   normalized selector, and the base commit.
-- `planner patch` re-checks that token, replays the base commit plus every change
-  through the edited one, and only then writes the plan. Later changes are not
-  replayed here.
-- `planner check` replays the whole plan from the base commit to confirm every diff
+- `planner patch` re-checks that token, starts from the base commit and applies
+  every change through the edited one, and only then writes the plan. Later
+  changes are not applied here.
+- `planner check` applies the whole plan from the base commit to confirm every diff
   applies in order.
 
 The disposable repository shares read-only Git objects with your repository and
@@ -69,7 +72,7 @@ worktree, and uncommitted or untracked files are not part of the base commit.
 
 ## What the base commit does not protect against
 
-The SHA identifies a starting point for replay. It does not:
+The SHA identifies a starting point for applying diffs. It does not:
 
 - prove the commit is trusted, signed, or safe, and it is not an approval step;
 - lock the plan to a branch, remote, or author;
@@ -78,7 +81,7 @@ The SHA identifies a starting point for replay. It does not:
   `behavior_checked: false`);
 - stop someone from passing a different valid commit ID for the same plan.
 
-It makes replay repeatable. It does not make it authorized or correct.
+It makes diff application repeatable. It does not make it authorized or correct.
 
 ## Where the base commit is recorded
 

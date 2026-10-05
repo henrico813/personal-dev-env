@@ -17,4 +17,4 @@ Index of Planner documentation.
 
 ## Explanation
 
-- [Base commit replay](explanation/base-commit-replay.md)
+- [How planner applies diffs to the base commit](explanation/applying-diffs-to-the-base-commit.md)

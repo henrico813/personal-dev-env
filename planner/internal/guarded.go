@@ -194,12 +194,14 @@ func (o guardedPatchOptions) validate() error {
 // guardedPatchResult reports what was checked and whether the plan was written.
 // Preview is the Git-generated review delta for --diff and is not JSON encoded.
 type guardedPatchResult struct {
-	Path              string `json:"path"`
-	PlanSHA256        string `json:"plan_sha256"`
-	Written           bool   `json:"written"`
-	Changed           bool   `json:"changed"`
-	StructureValid    bool   `json:"structure_valid"`
-	PatchSyntaxValid  bool   `json:"patch_syntax_valid"`
+	PrefixApplied    bool   `json:"prefix_applied"`
+	Path             string `json:"path"`
+	PlanSHA256       string `json:"plan_sha256"`
+	Written          bool   `json:"written"`
+	Changed          bool   `json:"changed"`
+	StructureValid   bool   `json:"structure_valid"`
+	PatchSyntaxValid bool   `json:"patch_syntax_valid"`
+	// Deprecated: use PrefixApplied. Kept so existing scripts keep working.
 	PrefixReplayed    bool   `json:"prefix_replayed"`
 	DownstreamChecked bool   `json:"downstream_checked"`
 	BaseCommit        string `json:"base_commit"`
@@ -326,7 +328,8 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	result.Changed = changed
 	result.StructureValid = true
 	result.PatchSyntaxValid = true
-	result.PrefixReplayed = true
+	result.PrefixApplied = true
+	result.PrefixReplayed = result.PrefixApplied
 	result.DownstreamChecked = false
 	result.BaseCommit = opts.BaseCommit
 	result.BehaviorChecked = false
@@ -352,13 +355,15 @@ type guardedCheckOptions struct {
 }
 
 type guardedCheckResult struct {
+	ChangesApplied       int    `json:"changes_applied"`
 	PlanSHA256           string `json:"plan_sha256"`
 	StructureValid       bool   `json:"structure_valid"`
 	ApplicabilityChecked bool   `json:"applicability_checked"`
-	ChangesReplayed      int    `json:"changes_replayed"`
-	BaseCommit           string `json:"base_commit"`
-	SourceState          string `json:"source_state"`
-	BehaviorChecked      bool   `json:"behavior_checked"`
+	// Deprecated: use ChangesApplied. Kept so existing scripts keep working.
+	ChangesReplayed int    `json:"changes_replayed"`
+	BaseCommit      string `json:"base_commit"`
+	SourceState     string `json:"source_state"`
+	BehaviorChecked bool   `json:"behavior_checked"`
 }
 
 func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
@@ -395,7 +400,8 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	result.PlanSHA256 = fmt.Sprintf("%x", sha256.Sum256(raw))
 	result.StructureValid = true
 	result.ApplicabilityChecked = true
-	result.ChangesReplayed = len(changes)
+	result.ChangesApplied = len(changes)
+	result.ChangesReplayed = result.ChangesApplied
 	result.BaseCommit = baseCommit
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
