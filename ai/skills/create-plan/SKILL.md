@@ -1,12 +1,22 @@
 ---
 name: create-plan
-description: Use when the user asks for a code-bearing implementation plan grounded in the current repository and reviewable before implementation.
+description: 'Create a repository-grounded implementation proposal with exact code diffs, for requests like "create a plan for adding X" or "I need a plan to fix Y"; for plan review use review-plan, and for execution use implement-plan.'
+metadata:
+  pde-workflow: "true"
 ---
 
 # Create Plan
 
 Create implementation proposals that are grounded in the current codebase,
 easy for a human to review, and ready for execution once approved.
+
+## When to use this skill
+
+Use this skill to create a repository-grounded implementation proposal with exact code diffs. Do not use it for reviewing an existing plan or executing one; use review-plan for review and implement-plan for execution instead.
+
+## Task Context
+
+Take the task from the user's request or command arguments.
 
 Your default behavior is:
 
@@ -24,15 +34,19 @@ Ask clarifying questions only when missing information would materially change
 implementation, sequencing, or verification. Do not add planning ceremony when
 the implementation direction is already clear.
 
-## Invocation
+## Initial Response
 
-Read the task, plan destination, constraints, and references from the user's
-request. If no task was supplied, ask for the task, material constraints, and
-related references, then stop. Read referenced files fully before substantive
-research.
+When this skill is invoked:
+
+1. **If parameters were provided**:
+   - If a file path, ticket reference, or document path was provided, read it fully.
+   - Apply the skill gate, then begin broader research immediately.
+2. **If no parameters were provided**, ask for the task, material constraints,
+   and related references, then stop and wait for the user.
 
 ## Non-Negotiable Rules
 
+- Read supplied and directly referenced context before planning.
 - Load matching domain skills before making decisions they constrain. If
   research exposes another affected domain, load its skill and revisit affected
   decisions.
@@ -84,7 +98,8 @@ research.
 4. Load skills for the domains exposed by that context before broader source
    research or implementation decisions.
 5. Identify the likely code paths, callers, tests, config, and docs.
-6. Determine the output path and classify creation or revision.
+6. Determine the output path, classify creation or revision, and apply the
+   destination rule above.
 
 ### Step 2: Research the Codebase
 
@@ -102,7 +117,7 @@ Use the lightest research path that can support the proposal with evidence.
 - Use `surveil --help` and relevant subcommand help rather than memorized
   command shapes.
 - Create one focused Surveil task for the uncertainty to resolve. Add another
-  only when it answers a distinct question inefficient to combine.
+  task only when it answers a distinct question inefficient to combine.
 - Use a read-only research subagent only when evidence is incomplete,
   conflicting, or broad enough that an independent pass is valuable.
 - Verify surprising or conflicting findings with direct file reads.
@@ -124,8 +139,8 @@ goal by itself.
 Before expanding the full diff, inspect the proposed module shape and main code
 path.
 
-- Prefer the smallest change that satisfies requirements and preserves current
-  invariants.
+- Prefer the smallest change that satisfies the requirements and preserves
+  current invariants.
 - Reuse existing concrete types and flows when they provide the needed boundary.
 - For every new abstraction, identify the present requirement or meaningful
   testing boundary that needs it. Remove hypothetical future flexibility.
@@ -139,13 +154,12 @@ mandatory approval stage.
 ### Step 4: Write or Revise the Plan
 
 1. Run `planner help` when you need the CLI; do not guess command shapes.
-2. For a new plan, run `planner new <output.md>` to reserve the destination and
-   scaffold the supported format. Stop if it reports that the destination
-   exists.
+2. For a new plan, run `planner new "<output.md>"` to reserve the destination
+   and scaffold the supported format. Stop if it reports that the path exists.
 3. After reservation, edit prose and structure in the Markdown directly when
-   that is simplest. The Markdown file is the human-facing source of truth.
-   Never type or edit diff text inside a fence by hand; produce it only with
-   `inspect` and `patch`.
+   that is the simplest authoring path. The Markdown file is the human-facing
+   source of truth. Never type or edit diff text inside a fence by hand; produce
+   it only with `inspect` and `patch`.
 4. For an existing plan, keep direct edits range-targeted and verify that
    wrapped-issue frontmatter and unrelated accepted sections remain byte-for-byte
    unchanged.
@@ -161,19 +175,19 @@ mandatory approval stage.
    line is missing, stop and ask the user for the base commit.
 7. For a new plan, `planner new` scaffolds each code change as a PLACEHOLDER
    diff. Work through the file changes in plan order: run `planner inspect
-   <plan.md> --target '<selector>' --repo <repo> --base-commit <commit>
+   "<plan.md>" --target '<selector>' --repo <repo> --base-commit <commit>
    --before --code-out <new-scratch-file>`, edit the scratch file, then run
-   `planner patch <plan.md> --target '<selector>' --expect <edit_expect>
+   `planner patch "<plan.md>" --target '<selector>' --expect <edit_expect>
    --after-file <scratch-file> --repo <repo> --base-commit <commit>`. Copy the
    PLACEHOLDER fence when adding a change by hand; never leave an empty fence.
-   Finish with `planner check <plan.md> --repo <repo> --json-errors`.
-8. For code revisions to an existing plan, run `planner inspect <plan.md>
+   Finish with `planner check "<plan.md>" --repo <repo> --json-errors`.
+8. For code revisions to an existing plan, run `planner inspect "<plan.md>"
    --target '<selector>' --repo <repo> --base-commit <commit> --code-out
    <new-scratch-file>`. Keep its small JSON result and `edit_expect` token. The
    scratch file holds proposed source after earlier steps and the selected
    change.
 9. Edit ordinary scratch source with native tools, then run `planner patch
-   <plan.md> --target '<selector>' --expect <edit_expect> --after-file
+   "<plan.md>" --target '<selector>' --expect <edit_expect> --after-file
    <scratch-file> --repo <repo> --base-commit <commit>`. Planner generates hunk
    counts and starts with the base commit, trying each change through the
    edited change only. Later changes are not checked. Do not hand-maintain
@@ -185,13 +199,13 @@ mandatory approval stage.
     PLACEHOLDER fence, fill it with `inspect --before` and `patch`, then delete
     the old block by hand. A step must keep at least one file change.
 12. Coupled edits: after editing an earlier change, run `planner check
-    <plan.md> --repo <repo> --json-errors`, then fix each later change it
+    "<plan.md>" --repo <repo> --json-errors`, then fix each later change it
     reports, in order.
 13. On stale state, reread and reconcile; never refresh only the token and
     retry the old replacement. Inspect and patch must use the same `--repo` and
     `--base-commit`.
 14. Validate every final or revised proposal with `planner check
-    <output.md> --repo <repo> --json-errors`; this is the only whole-plan
+    "<output.md>" --repo <repo> --json-errors`; this is the only whole-plan
     readiness check. It starts with the base commit named by the `Base commit:`
     line and tries every planned change in order. It does not run tests. Do not
     present or report the plan ready until it passes.
@@ -211,7 +225,7 @@ Treat review as a correction loop, not a restart:
 
 ### Step 5: Validate and Report
 
-1. Run `planner check <output.md> --repo <repo> --json-errors` on the final
+1. Run `planner check "<output.md>" --repo <repo> --json-errors` on the final
    plan. It starts with the base commit named by the `Base commit:` line and
    tries every planned change in order. It does not run tests. Do not report
    the plan ready until it passes.
