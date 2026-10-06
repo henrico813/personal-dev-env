@@ -72,6 +72,7 @@ def git_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return project
 
 
+@pytest.mark.local_ai
 class TestAgentLoadsSkills:
     """Verify commands load their requested skills."""
 
