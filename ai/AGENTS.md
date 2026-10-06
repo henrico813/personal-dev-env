@@ -3,8 +3,9 @@
 - Never use emojis.
 - Never use the words canonical or contract.
 - Keep source documentation useful and proportional to the code it explains.
-- Before writing a commit or pull request message, load and follow the
-  `git-messages` skill.
+- Before writing a commit message, load and follow the `git-messages` skill.
+- Before opening, updating, or merging a pull request, load and follow the
+  `pull-request` skill.
 - Do not add AI attribution to commits or pull requests.
 - Keep code comments and docstrings concise; prefer examples and 1-2 sentences.
 

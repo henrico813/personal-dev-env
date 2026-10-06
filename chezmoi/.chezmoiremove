@@ -32,4 +32,5 @@ Projects/CLAUDE.md
 .claude/commands/research_codebase.md
 .claude/commands/document_codebase.md
 .claude/commands/README.md
+.agents/skills/git-messages/scripts/check-message
 {{ end }}
