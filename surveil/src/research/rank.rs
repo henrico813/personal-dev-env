@@ -90,14 +90,21 @@ fn order_query_candidates(
                 .map(|score| (source.clone(), score))
         })
         .collect();
+    let mut unranked: Vec<SourceFile> = candidates
+        .iter()
+        .filter(|source| !source.is_explicit() && !ranked_scores.contains_key(source.path()))
+        .cloned()
+        .collect();
 
     ranked.sort_by(|a, b| {
         b.1.partial_cmp(&a.1)
             .unwrap_or(Ordering::Equal)
             .then_with(|| a.0.display_path().cmp(b.0.display_path()))
     });
+    unranked.sort_by(|a, b| a.display_path().cmp(b.display_path()));
 
     ordered.extend(ranked.into_iter().map(|(source, _)| source));
+    ordered.extend(unranked);
     ordered
 }
 

@@ -1,11 +1,10 @@
 use super::rank::compare_best_chunk_score;
 use super::{
     CorpusLine, LiveFileCache, LoadedFile, MatchedFinding, RankedFileFindings, TraceState,
-    MAX_FINDINGS_PER_FILE,
 };
 use crate::schema::Finding;
 use crate::source::{self, SourceFile};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,19 +14,16 @@ pub(super) fn create_answer_from_sources(
     repo_root: &Path,
     search_areas: &[String],
     ordered_candidates: &[SourceFile],
-    all_candidates: &[SourceFile],
+    _all_candidates: &[SourceFile],
     tokens: &[String],
     ranked_scores: &HashMap<PathBuf, f32>,
-    ranking_usable: bool,
+    _ranking_usable: bool,
     live_cache: &mut LiveFileCache,
     trace: &mut TraceState,
 ) -> Result<(Vec<Finding>, Vec<String>, bool), Box<dyn Error>> {
     let mut ranked_files = Vec::new();
-    let mut loaded_for_query = HashSet::new();
-    let mut fallback_used = false;
 
     for source in ordered_candidates {
-        loaded_for_query.insert(source.path().to_path_buf());
         if let Some(file_findings) = collect_file_findings(
             repo_root,
             source,
@@ -37,25 +33,6 @@ pub(super) fn create_answer_from_sources(
             trace,
         ) {
             ranked_files.push(file_findings);
-        }
-    }
-
-    if ranked_files.is_empty() {
-        fallback_used = ranking_usable && loaded_for_query.len() < all_candidates.len();
-        for source in all_candidates {
-            if loaded_for_query.contains(source.path()) {
-                continue;
-            }
-            if let Some(file_findings) = collect_file_findings(
-                repo_root,
-                source,
-                tokens,
-                ranked_scores.get(source.path()).copied(),
-                live_cache,
-                trace,
-            ) {
-                ranked_files.push(file_findings);
-            }
         }
     }
 
@@ -71,7 +48,6 @@ pub(super) fn create_answer_from_sources(
         .into_iter()
         .flat_map(|mut file| {
             file.findings.sort_by_key(|finding| finding.line);
-            file.findings.truncate(MAX_FINDINGS_PER_FILE);
             file.findings
         })
         .collect();
@@ -85,7 +61,7 @@ pub(super) fn create_answer_from_sources(
         Vec::new()
     };
 
-    Ok((findings, negative_evidence, fallback_used))
+    Ok((findings, negative_evidence, false))
 }
 
 fn collect_file_findings(
@@ -426,12 +402,18 @@ mod tests {
                 search_areas: vec!["surveil/"],
                 terms: vec!["tree-sitter"],
                 query: "Where should Tree-sitter attach?",
-                expected_paths: vec!["surveil/src/lib.rs", "surveil/src/lib.rs", "surveil/src/lib.rs"],
-                expected_sources: vec!["lexical", "lexical", "lexical"],
+                expected_paths: vec![
+                    "surveil/src/lib.rs",
+                    "surveil/src/lib.rs",
+                    "surveil/src/lib.rs",
+                    "surveil/src/lib.rs",
+                ],
+                expected_sources: vec!["lexical", "lexical", "lexical", "lexical"],
                 expected_excerpts: vec![
                     "// tree-sitter attach one",
                     "// tree-sitter attach two",
                     "// tree-sitter attach three",
+                    "// tree-sitter attach four",
                 ],
                 expected_symbol_kind: None,
                 expected_symbol_name: None,

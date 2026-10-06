@@ -19,7 +19,6 @@ pub(super) struct TraceState {
     pub(super) unmatched_questions: Vec<String>,
 }
 
-pub(super) const MAX_FINDINGS_PER_FILE: usize = 3;
 pub(super) const RANKED_FILE_LIMIT: usize = 8;
 
 pub(super) struct RankedFileFindings {
@@ -463,6 +462,59 @@ mod tests {
 
             let _ = fs::remove_dir_all(repo);
         }
+    }
+
+    #[test]
+    fn indexed_and_unindexed_recall_matches() {
+        // Ranking must not decide which matching files are visible.
+        let collect_paths = |build_index: bool| {
+            let repo = temp_repo(if build_index {
+                "indexed-recall"
+            } else {
+                "plain-recall"
+            });
+            for index in 0..60 {
+                write_file(
+                    &repo.join(format!("matches/{index:02}.txt")),
+                    "widget_frobnicate\n",
+                );
+            }
+            for index in 0..40 {
+                write_file(
+                    &repo.join(format!("unrelated/{index:02}.txt")),
+                    "unrelated\n",
+                );
+            }
+            if build_index {
+                index::build_chunk_index(&repo).expect("build index");
+            }
+            let gather = GatherOutput {
+                schema_version: SCHEMA_VERSION.to_string(),
+                task_name: "recall".to_string(),
+                repo_root: repo.to_string_lossy().into_owned(),
+                summary: "recall".to_string(),
+                explicit_files: Vec::new(),
+                missing_explicit_files: Vec::new(),
+                skipped_explicit_files: Vec::new(),
+                search_areas: vec![".".to_string()],
+                query: vec!["Where is widget_frobnicate?".to_string()],
+                terms: vec!["widget_frobnicate".to_string()],
+                blockers: Vec::new(),
+            };
+            let (report, _) = output::create_test_outputs(gather).expect("research");
+            let paths = report.result[0]
+                .findings
+                .iter()
+                .map(|finding| finding.path.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            let _ = fs::remove_dir_all(repo);
+            paths
+        };
+
+        let without_index = collect_paths(false);
+        let with_index = collect_paths(true);
+        assert_eq!(without_index.len(), 60);
+        assert_eq!(with_index, without_index);
     }
 
     #[test]

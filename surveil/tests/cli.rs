@@ -324,3 +324,77 @@ fn test_e2e_taskfile_generation() {
     let _ = fs::remove_dir_all(state_home);
     let _ = fs::remove_dir_all(repo);
 }
+
+fn run_research_paths(repo: &Path, task_file: &Path) -> std::collections::BTreeSet<String> {
+    let gathered = run_gather(repo, task_file);
+    assert!(gathered.status.success());
+    let context_file = task_file.with_file_name("context.json");
+    fs::write(&context_file, gathered.stdout).expect("write context");
+    let trace_file = task_file.with_file_name("trace.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_surveil"))
+        .args(["research", "--context"])
+        .arg(&context_file)
+        .args(["--trace-out"])
+        .arg(&trace_file)
+        .output()
+        .expect("run research");
+    assert!(output.status.success());
+    let report: Value = serde_json::from_slice(&output.stdout).expect("parse report");
+    report["result"][0]["findings"]
+        .as_array()
+        .expect("findings")
+        .iter()
+        .map(|finding| finding["path"].as_str().expect("path").to_string())
+        .collect()
+}
+
+#[test]
+fn indexed_research_keeps_all_matches() {
+    // Indexing must not change which files a process-level caller receives.
+    let repo = temp_root("indexed-recall");
+    let tasks = temp_root("indexed-recall-tasks");
+    fs::create_dir_all(repo.join("matches")).expect("create matches");
+    fs::create_dir_all(repo.join("unrelated")).expect("create unrelated");
+    fs::create_dir_all(&tasks).expect("create tasks");
+    for index in 0..60 {
+        fs::write(
+            repo.join(format!("matches/{index:02}.txt")),
+            "widget_frobnicate\n",
+        )
+        .expect("write match");
+    }
+    for index in 0..40 {
+        fs::write(
+            repo.join(format!("unrelated/{index:02}.txt")),
+            "unrelated\n",
+        )
+        .expect("write unrelated");
+    }
+    let task_file = tasks.join("task.json");
+    fs::write(
+        &task_file,
+        serde_json::to_vec(&json!({
+            "summary": "recall",
+            "explicit_files": [],
+            "search_areas": ["."],
+            "query": ["Where is widget_frobnicate?"],
+            "terms": ["widget_frobnicate"]
+        }))
+        .expect("serialize task"),
+    )
+    .expect("write task");
+
+    let without_index = run_research_paths(&repo, &task_file);
+    let indexed = Command::new(env!("CARGO_BIN_EXE_surveil"))
+        .args(["index", "--repo"])
+        .arg(&repo)
+        .output()
+        .expect("run index");
+    assert!(indexed.status.success());
+    let with_index = run_research_paths(&repo, &task_file);
+    assert_eq!(without_index.len(), 60);
+    assert_eq!(with_index, without_index);
+
+    let _ = fs::remove_dir_all(repo);
+    let _ = fs::remove_dir_all(tasks);
+}
