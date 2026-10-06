@@ -11,9 +11,9 @@ Use repository instructions first. Use these defaults otherwise.
 
 ## Guardrails
 
-1. Push or open/update only when the user asks. Merge only on an explicit
-   request. Do not rewrite another person's commits. Never force push except
-   `--force-with-lease`. Do not add AI attribution.
+1. Push or open/update only when the user asks. Merge only after explicit user
+   approval of the shown squash message. Do not rewrite another person's commits.
+   Never force push except `--force-with-lease`. Do not add AI attribution.
 2. Load `git-messages` before writing a title or description. Review generated
    text for plain English and specific, real claims.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
@@ -62,12 +62,18 @@ Use repository instructions first. Use these defaults otherwise.
 
 ## Merge
 
-1. Fetch and confirm the PR head. Run `gh pr diff NUMBER --name-only`, inspect
-   the exact file list, and confirm required checks pass.
-2. Re-read the final description against the final diff, then lint FILE.
-   Create `BODY` with `tail -n +3 FILE > BODY`.
-3. For squash, pass the reviewed message explicitly:
-   `gh pr merge NUMBER --squash --subject "$(head -n 1 FILE) (#NUMBER)" --body-file BODY`.
-4. Confirm the resulting commit is on the default branch. If another merge
-   method, conflicts, changed scope, missing `gh`, or another unusual state
-   appears, stop and give the user exact commands instead.
+1. Fetch. Build FILE from the PR's current title and description, not a local
+   copy: `gh pr view NUMBER --json title,body --jq '.title + "\n\n" + .body' > FILE`.
+2. Run the repository tests; stop if any fail. Confirm required checks pass, and
+   list exact files with `gh pr diff NUMBER --name-only`.
+3. Run `python3 ~/.agents/skills/git-messages/scripts/msg squash FILE > SQUASH`,
+   then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
+   fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.
+4. Show the exact SQUASH message, file list, and check and test results. Ask for
+   approval. Merge only after the user explicitly approves this merge in the
+   current conversation; earlier or other-session approvals do not count. If not
+   approved, stop.
+5. Run `tail -n +3 SQUASH > BODY`, then
+   `gh pr merge NUMBER --squash --subject "$(head -n 1 SQUASH) (#NUMBER)"
+   --body-file BODY`.
+6. Confirm the commit on the default branch has that message.

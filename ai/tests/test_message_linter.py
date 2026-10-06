@@ -158,6 +158,38 @@ def test_hook_ignores_comments_and_scissors(tmp_path: Path) -> None:
     assert run_msg(tmp_path, "lint", "--hook").returncode == 0
 
 
+def test_squash_keeps_overview_only(tmp_path: Path) -> None:
+    """Print only the title and Overview for squash commits.
+
+    The commit body should preserve the reviewed reason and change without
+    copying sections meant to remain visible on GitHub.
+    """
+    path = tmp_path / "message"
+    path.write_text(
+        "fix: keep squash text\n\n"
+        "## Overview\n\n"
+        "Keep the reviewed reason and change.\n\n"
+        "## Changes\n\n- detail\n\n## Testing\n\n- check\n"
+    )
+    result = run_msg(tmp_path, "squash")
+    assert result.returncode == 0
+    assert result.stdout == "fix: keep squash text\n\nKeep the reviewed reason and change.\n"
+    path.write_text(result.stdout)
+    assert run_msg(tmp_path, "lint").returncode == 0
+
+
+def test_squash_requires_overview(tmp_path: Path) -> None:
+    """Reject squash messages without a non-empty Overview.
+
+    A missing summary would create a commit body that cannot explain the
+    change to readers of the default branch.
+    """
+    (tmp_path / "message").write_text("fix: missing summary\n\n## Changes\n\n- detail\n")
+    result = run_msg(tmp_path, "squash")
+    assert result.returncode == 1
+    assert "non-empty Overview" in result.stderr
+
+
 @pytest.mark.local_ai
 def test_local_model_writes_lintable_message(tmp_path: Path) -> None:
     """Check a model writing through the same skill a worker receives.

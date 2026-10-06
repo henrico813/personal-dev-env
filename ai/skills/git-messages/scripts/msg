@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 import textwrap
 from pathlib import Path
 
@@ -153,6 +154,24 @@ def format_message(path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def squash_message(lines: list[str]) -> str:
+    """Build a squash message from the title and Overview section."""
+    if not lines or not lines[0].strip():
+        raise ValueError("squash message requires a title")
+    try:
+        overview_start = lines.index("## Overview") + 1
+    except ValueError as error:
+        raise ValueError("squash message requires a non-empty Overview") from error
+    overview_end = next(
+        (index for index in range(overview_start, len(lines)) if lines[index].startswith("## ")),
+        len(lines),
+    )
+    overview = "\n".join(lines[overview_start:overview_end]).strip()
+    if not overview:
+        raise ValueError("squash message requires a non-empty Overview")
+    return f"{lines[0]}\n\n{overview}"
+
+
 def main() -> int:
     """Run the selected message operation."""
     parser = argparse.ArgumentParser()
@@ -162,9 +181,18 @@ def main() -> int:
         subparser.add_argument("--pr", action="store_true")
         subparser.add_argument("--hook", action="store_true")
         subparser.add_argument("message", type=Path)
+    squash_parser = subparsers.add_parser("squash")
+    squash_parser.add_argument("message", type=Path)
     args = parser.parse_args()
     if args.command == "fmt":
         format_message(args.message)
+        return 0
+    if args.command == "squash":
+        try:
+            print(squash_message(read_message(args.message)))
+        except ValueError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
         return 0
     errors = lint(read_message(args.message), args.pr, args.hook)
     for error in errors:
