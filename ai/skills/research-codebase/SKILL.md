@@ -1,11 +1,19 @@
 ---
 name: research-codebase
-description: Use when the user asks how the codebase works and wants read-only documentation or explanation of the current system.
+description: 'Research and document how the codebase works as it exists today without proposing changes, for requests like "research this codebase" or "document how X works"; for planning changes to the code use create-plan.'
+metadata:
+  pde-workflow: "true"
 ---
 
 # Research Codebase
 
 You are tasked with conducting comprehensive research across the codebase to answer user questions by spawning parallel sub-agents and synthesizing their findings.
+
+## When to use this skill
+
+Use this skill to document and explain the codebase as it exists today. Do not use it for proposing changes or planning work on the code; use create-plan for planning and implement-plan for execution instead.
+
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
 
 ## CRITICAL: YOUR ONLY JOB IS TO DOCUMENT AND EXPLAIN THE CODEBASE AS IT EXISTS TODAY
 - DO NOT suggest improvements or changes unless the user explicitly asks for them
@@ -18,11 +26,11 @@ You are tasked with conducting comprehensive research across the codebase to ans
 
 ## Initial Setup:
 
-When this skill is invoked with a research question or area of interest, treat
+When this command is invoked with a research question or area of interest, treat
 it as the query and begin the research workflow immediately. Do not send the
 readiness prompt or ask the user to repeat information already supplied.
 
-When this skill is invoked without a research question or area of interest,
+When this command is invoked without a research question or area of interest,
 respond with:
 ```
 I'm ready to research the codebase. Please provide your research question or area of interest, and I'll analyze it thoroughly by exploring relevant components and connections.
@@ -42,7 +50,7 @@ Then wait for the user's research query.
    - Break down the user's query into composable research areas
    - Take time to ultrathink about the underlying patterns, connections, and architectural implications the user might be seeking
    - Identify specific components, patterns, or concepts to investigate
-   - Create a research plan using TodoWrite to track all subtasks
+   - Create a research plan using the harness's todo tool, if available, to track all subtasks
    - Consider which directories, files, or architectural patterns are relevant
 
 3. **Spawn parallel sub-agent tasks for comprehensive research:**

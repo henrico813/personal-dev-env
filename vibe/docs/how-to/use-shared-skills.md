@@ -28,8 +28,11 @@ Vibe mounts each existing skill root read-only. The user root appears at
 `/vibe-home/.agents/skills`. The repository root remains at
 `<managed-worktree>/.agents/skills`, where its nested mount protects the files
 from writes through the worktree mount. Inside the container Pi disables normal
-skill discovery with `--no-skills`, then explicitly selects the user root first
-and the repository root second. Either directory may be missing.
+skill discovery with `--no-skills`, then explicitly selects each skill
+directory: the user root first, the repository root second. Skills marked
+`pde-workflow: "true"` in their frontmatter (the shared plan workflows) are
+skipped, so a Vibe worker never loads workflow-orchestration skills. Either
+directory may be missing.
 
 Find the run under
 `~/.local/state/vibe/<repo>-<16-hex-git-common-dir-hash>/<slug>/runs/`.

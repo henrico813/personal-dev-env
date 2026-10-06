@@ -128,4 +128,4 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes zsh
       - uses: astral-sh/setup-uv@v6
       - name: check planning prompts
-        run: uv sync --locked && uv run pytest
+        run: uv sync --locked && uv run pytest -m "not local_ai"

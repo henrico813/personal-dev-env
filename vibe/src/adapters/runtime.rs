@@ -138,9 +138,21 @@ mod tests {
 
         fs::create_dir_all(&bin).expect("mkdir bin");
         fs::create_dir_all(&home).expect("mkdir home");
-        fs::create_dir_all(home.join(".agents/skills")).expect("mkdir skills");
+        let user_skill = home.join(".agents/skills/normal-skill");
+        fs::create_dir_all(&user_skill).expect("mkdir user skill");
+        fs::write(
+            user_skill.join("SKILL.md"),
+            "---\nname: normal-skill\ndescription: A reviewed user skill.\n---\nDo the thing.\n",
+        )
+        .expect("write user skill");
         let repository_skills = repo_root.join(".agents/skills");
-        fs::create_dir_all(&repository_skills).expect("mkdir repository skills");
+        let repository_skill = repository_skills.join("repository-skill");
+        fs::create_dir_all(&repository_skill).expect("mkdir repository skill");
+        fs::write(
+            repository_skill.join("SKILL.md"),
+            "---\nname: repository-skill\ndescription: A repository skill.\n---\nDo the thing.\n",
+        )
+        .expect("write repository skill");
         fs::write(&combined_prompt, b"Line one\nLine two\n").expect("write prompt");
         fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
         let mut script_perms = fs::metadata(&script)
@@ -224,14 +236,165 @@ mod tests {
         assert_eq!(
             selected_skills,
             [
-                home.join(".agents/skills").to_string_lossy().as_bytes(),
-                repository_skills.to_string_lossy().as_bytes(),
+                user_skill.to_string_lossy().as_bytes(),
+                repository_skill.to_string_lossy().as_bytes(),
             ]
         );
         assert_eq!(
             fs::read(&capture).expect("read captured prompt"),
             b"Line one\nLine two\n"
         );
+    }
+
+    #[test]
+    fn shell_excludes_workflow_skills_from_pi_selection() {
+        let temp = tempdir().expect("tempdir");
+        let bin = temp.path().join("bin");
+        let home = temp.path().join("home");
+        let repo_root = temp.path().join("repo");
+        let args_capture = temp.path().join("captured-args.bin");
+        let combined_prompt = temp.path().join("combined-prompt.txt");
+        let script = temp.path().join("run-agent.sh");
+
+        fs::create_dir_all(&bin).expect("mkdir bin");
+
+        let user_skills = home.join(".agents/skills");
+        let workflow_skill = user_skills.join("workflow-skill");
+        fs::create_dir_all(&workflow_skill).expect("mkdir workflow skill");
+        fs::write(
+            workflow_skill.join("SKILL.md"),
+            "---\nname: workflow-skill\ndescription: Runs the planning workflow.\nmetadata:\n  pde-workflow: \"true\"\n---\nOrchestrate.\n",
+        )
+        .expect("write workflow skill");
+        for (name, marker) in [
+            ("unquoted-workflow-skill", "pde-workflow: true"),
+            ("single-quoted-workflow-skill", "pde-workflow: 'true'"),
+            ("crlf-workflow-skill", "pde-workflow: \"true\""),
+        ] {
+            let skill = user_skills.join(name);
+            fs::create_dir_all(&skill).expect("mkdir variant workflow skill");
+            fs::write(
+                skill.join("SKILL.md"),
+                format!("---\r\nname: {name}\r\nmetadata:\r\n  {marker}\r\n---\r\nWorkflow.\r\n"),
+            )
+            .expect("write variant workflow skill");
+        }
+        let user_skill = user_skills.join("normal-skill");
+        fs::create_dir_all(&user_skill).expect("mkdir user skill");
+        fs::write(
+            user_skill.join("SKILL.md"),
+            "---\nname: normal-skill\ndescription: A reviewed user skill.\n---\nDo the thing.\n",
+        )
+        .expect("write user skill");
+        // A body mention outside the frontmatter is not a workflow marker.
+        let body_marker_skill = user_skills.join("body-marker-skill");
+        fs::create_dir_all(&body_marker_skill).expect("mkdir body marker skill");
+        fs::write(
+            body_marker_skill.join("SKILL.md"),
+            "---\nname: body-marker-skill\ndescription: Mentions the marker in its body.\n---\npde-workflow: \"true\" appears in the body only.\n",
+        )
+        .expect("write body marker skill");
+        let unclassified = user_skills.join("unclassified-nested");
+        fs::create_dir_all(unclassified.join("nested-skill"))
+            .expect("mkdir unclassified nested folder");
+        let repository_skills = repo_root.join(".agents/skills");
+        let repository_workflow_skill = repository_skills.join("repository-workflow-skill");
+        fs::create_dir_all(&repository_workflow_skill).expect("mkdir repository workflow skill");
+        fs::write(
+            repository_workflow_skill.join("SKILL.md"),
+            "---\nname: repository-workflow-skill\ndescription: Runs a shared workflow.\nmetadata:\n  pde-workflow: \"true\"\n---\nOrchestrate.\n",
+        )
+        .expect("write repository workflow skill");
+        let repository_skill = repository_skills.join("repository-skill");
+        fs::create_dir_all(&repository_skill).expect("mkdir repository skill");
+        fs::write(
+            repository_skill.join("SKILL.md"),
+            "---\nname: repository-skill\ndescription: A repository skill.\n---\nDo the thing.\n",
+        )
+        .expect("write repository skill");
+        fs::write(&combined_prompt, b"Prompt\n").expect("write prompt");
+        fs::write(&script, include_bytes!("../../docker/run-agent.sh")).expect("write script");
+        let mut script_perms = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
+        script_perms.set_mode(0o755);
+        fs::set_permissions(&script, script_perms).expect("chmod script");
+        write_executable(
+            &bin.join("git"),
+            "#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n",
+        );
+        write_executable(
+            &bin.join("node"),
+            "#!/usr/bin/env bash\nset -euo pipefail\ncat >/dev/null\n",
+        );
+        write_executable(
+            &bin.join("pi"),
+            concat!(
+                "#!/usr/bin/env bash\n",
+                "set -euo pipefail\n",
+                "printf '%s\\0' \"$@\" > \"$PI_ARGS_CAPTURE_FILE\"\n",
+            ),
+        );
+
+        let status = run_executable(|| {
+            Command::new(&script)
+                .current_dir(&repo_root)
+                .env("HOME", &home)
+                .env(
+                    "PATH",
+                    format!(
+                        "{}:{}",
+                        bin.display(),
+                        std::env::var("PATH").unwrap_or_default()
+                    ),
+                )
+                .env("PI_ARGS_CAPTURE_FILE", &args_capture)
+                .env("VIBE_REPO_ROOT", &repo_root)
+                .env("VIBE_REPO_SKILLS_DIR", &repository_skills)
+                .env("VIBE_COMBINED_PROMPT_FILE", &combined_prompt)
+                .env("VIBE_MODEL", "fake-provider/fake-model")
+                .output()
+        });
+
+        assert!(
+            status.status.success(),
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&status.stdout),
+            String::from_utf8_lossy(&status.stderr),
+        );
+
+        let captured_args = fs::read(&args_capture).expect("read captured Pi arguments");
+        let pi_args: Vec<&[u8]> = captured_args
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .collect();
+        assert!(pi_args.iter().any(|arg| *arg == b"--no-skills"));
+        let mut selected_skills: Vec<&[u8]> = pi_args
+            .windows(2)
+            .filter(|pair| pair[0] == b"--skill")
+            .map(|pair| pair[1])
+            .collect();
+        selected_skills.sort();
+        let mut expected_skills = vec![
+            user_skill.to_string_lossy().into_owned(),
+            body_marker_skill.to_string_lossy().into_owned(),
+            repository_skill.to_string_lossy().into_owned(),
+        ];
+        expected_skills.sort();
+        assert_eq!(
+            selected_skills,
+            expected_skills
+                .iter()
+                .map(|s| s.as_bytes())
+                .collect::<Vec<_>>()
+        );
+        for arg in &pi_args {
+            let text = std::str::from_utf8(arg).expect("UTF-8 argument");
+            assert!(
+                !text.contains("workflow"),
+                "workflow skill selected: {text}"
+            );
+        }
     }
 
     #[test]
