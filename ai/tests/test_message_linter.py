@@ -102,6 +102,47 @@ history maintenance.
     assert run_msg(tmp_path, "lint").returncode == 1
 
 
+def test_hook_accepts_plain_title(tmp_path: Path) -> None:
+    """Allow plain commit subjects in hook mode.
+
+    Other repositories and test fixtures may use short subjects without a
+    conventional-commit prefix.
+    """
+    (tmp_path / "message").write_text("init\n")
+    assert run_msg(tmp_path, "lint", "--hook").returncode == 0
+
+
+def test_plain_title_requires_format_without_hook(tmp_path: Path) -> None:
+    """Keep title format rules outside hook mode.
+
+    Full message checks still guide authors toward consistent commit text.
+    """
+    (tmp_path / "message").write_text("init\n")
+    assert run_msg(tmp_path, "lint").returncode == 1
+
+
+def test_hook_rejects_long_title(tmp_path: Path) -> None:
+    """Reject hook titles longer than fifty characters.
+
+    Length limits keep commit subjects readable without requiring a prefix.
+    """
+    (tmp_path / "message").write_text("x" * 51 + "\n")
+    result = run_msg(tmp_path, "lint", "--hook")
+    assert result.returncode == 1
+    assert "line 1: 51 chars, max 50 (over by 1)" in result.stdout
+
+
+def test_hook_rejects_long_body_line(tmp_path: Path) -> None:
+    """Reject hook body lines longer than seventy-two characters.
+
+    Body limits prevent long lines from hiding important commit context.
+    """
+    (tmp_path / "message").write_text("init\n\n" + "x " * 36 + "x\n")
+    result = run_msg(tmp_path, "lint", "--hook")
+    assert result.returncode == 1
+    assert "line 3: 73 chars, max 72 (over by 1)" in result.stdout
+
+
 def test_hook_ignores_comments_and_scissors(tmp_path: Path) -> None:
     """Ignore editor comments and verbose commit diffs in hook mode.
 

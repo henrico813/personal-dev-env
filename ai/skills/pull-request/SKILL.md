@@ -16,6 +16,9 @@ Use repository instructions first. Use these defaults otherwise.
    `--force-with-lease`. Do not add AI attribution.
 2. Load `git-messages` before writing a title or description. Review generated
    text for plain English and specific, real claims.
+3. Before opening a PR, pushing a review round, or merging, run repository tests
+   covering the change. If any fail, stop and report them; never call a failure
+   expected or correct in PR text.
 
 ## Discover
 

@@ -40,6 +40,23 @@ def lint(lines: list[str], pull_request: bool, hook: bool = False) -> list[str]:
     title = lines[0]
     title_body = title_without_suffix(title)
     generated_subject = title.startswith(("fixup! ", "squash! ", "amend! ", "Merge ", 'Revert "'))
+    if hook:
+        if not generated_subject and len(title_body) > MAX_TITLE:
+            errors.append(
+                f"line 1: {len(title_body)} chars, max 50 (over by {len(title_body) - 50})"
+            )
+        fenced = False
+        for number, line in enumerate(lines[1:], 2):
+            if line.startswith("```"):
+                fenced = not fenced
+                continue
+            if line.startswith("#") or fenced or (" " not in line and line):
+                continue
+            if len(line) > MAX_BODY:
+                errors.append(
+                    f"line {number}: {len(line)} chars, max 72 (over by {len(line) - 72})"
+                )
+        return errors
     if not hook or not generated_subject:
         count = len(title_body)
         if count > MAX_TITLE:
