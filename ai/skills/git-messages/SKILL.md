@@ -1,57 +1,62 @@
 ---
 name: git-messages
-description: Use when writing commit messages or creating and updating pull requests.
+description: Writes and checks commit messages and pull request titles and descriptions. Use before git commit and before writing or editing pull request text.
 ---
 
 # Git Messages
 
-## Principles
+Follow the repository's documented style first. Otherwise use these defaults.
 
-- Use conventional commit style.
-- Keep each commit focused on one reason for change.
-- Keep commit and pull request titles at 50 characters or less.
-- Write titles as `<type>: <action taken>`.
-- Wrap body text at 72 characters.
-- Add a body when the change needs context.
-- Use clear high-school-level English.
-- Explain why the change matters and what changed.
-- Mention important risks or limits.
-- Prefer concise bodies over long design notes.
-- Do not add AI attribution.
+1. Use `<type>[(scope)][!]: <summary>` with `feat`, `fix`, `docs`, `test`,
+   `refactor`, `perf`, `build`, `ci`, `chore`, `style`, or `revert`.
+2. Keep titles to 50 characters, excluding a trailing ` (#N)`, and omit a
+   final period. Put a blank line after the title.
+3. For a commit body, explain why the change matters, what changed, and any
+   limit or risk. Skip the body only when the title says everything.
+4. Wrap body lines to 72 characters. For PRs, use `## Overview`, `## Changes`,
+   and `## Testing`, in that order. Add one Changes bullet per change and
+   append a bullet as the PR changes.
+5. In Testing, write a short prose block: why the check matters, how to run a
+   human-runnable check in a code fence, what to expect, and the real result.
+   Report only checks actually run.
+6. Review all text for plain direct English and AI slop: would a new reader
+   understand every term, does each sentence say something specific, are the
+   results real, and can it be shorter?
+7. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
+   `python3 ~/.agents/skills/git-messages/scripts/msg lint [--pr] FILE`.
+   `fmt` wraps text and `lint` reports exact counts. Recheck up to three times,
+   fixing only reported lines. Repositories may keep their own copy.
 
-## Shape
+Leave out branch-only commit hashes, meaningless test counts, private tracker
+references, unexplained project terms, and AI attribution.
 
-    <type>: <short action>
+Example commit:
 
-    <why this matters>
+    fix: preserve headings in squash messages
 
-    <what changed>
+    GitHub uses the PR title and body for the squash commit.
+    Pass both values explicitly so the reviewed summary remains intact.
 
-    <any risk or important limit>
+Example pull request:
 
-## Validate
+    fix: preserve headings in squash messages
 
-After drafting a commit message, write it to a temporary file and run the
-checker before presenting or committing it:
+    ## Overview
 
-    bash ~/.agents/skills/git-messages/scripts/check-message /tmp/commit-message
+    GitHub can replace a squash message with its default commit text.
 
-The checker rejects subjects longer than 50 characters and non-comment body
-lines longer than 72 characters.
+    ## Changes
 
-### Pull Requests
+    - Pass the reviewed title and body explicitly during squash merge.
 
-- Use the same title rules as commits.
-- Preserve required Overview and Testing sections.
-- Put the concise why, change, risk, and verification details in those
-  sections.
+    ## Testing
 
-## Example
+    This checks that the squash commit keeps the reviewed description. Merge a
+    test PR, then run:
+    ```bash
+    git log -1 --format=%B
+    ```
+    Expect the default-branch commit to contain `## Overview`. Result: the
+    heading was present in the observed squash commit.
 
-    fix: stabilize frontend compose service
-
-    Local Compose starts Vite from compose.dev.yml, not from the frontend
-    Dockerfile.
-
-    Use Node 22 and npm ci in the local Compose service so startup uses the
-    package lockfile. This makes local installs more repeatable.
+Bad titles: `fix: update stuff.`; `feat: improve things for everyone`.

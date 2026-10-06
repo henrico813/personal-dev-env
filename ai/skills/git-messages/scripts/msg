@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""Lint and format commit or pull-request messages."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import textwrap
+from pathlib import Path
+
+MAX_TITLE = 50
+MAX_BODY = 72
+TYPES = "feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert"
+TITLE_RE = re.compile(rf"^(?:{TYPES})(?:\([^)]+\))?!?: .+")
+SUFFIX_RE = re.compile(r" \(#\d+\)$")
+SECTIONS = ("## Overview", "## Changes", "## Testing")
+
+
+def read_message(path: Path) -> list[str]:
+    """Read a message while preserving its line structure."""
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def title_without_suffix(title: str) -> str:
+    """Remove a trailing GitHub issue suffix from a title."""
+    return SUFFIX_RE.sub("", title)
+
+
+def lint(lines: list[str], pull_request: bool, hook: bool = False) -> list[str]:
+    """Return all rule violations in a message."""
+    errors: list[str] = []
+    if hook:
+        for index, line in enumerate(lines):
+            if line.startswith("# ------------------------ >8"):
+                lines = lines[:index]
+                break
+        lines = [line for line in lines if not line.startswith("#")]
+    if not lines or not lines[0]:
+        return ["line 1: missing title"]
+    title = lines[0]
+    title_body = title_without_suffix(title)
+    generated_subject = title.startswith(("fixup! ", "squash! ", "amend! ", "Merge ", 'Revert "'))
+    if not hook or not generated_subject:
+        count = len(title_body)
+        if count > MAX_TITLE:
+            errors.append(f"line 1: {count} chars, max 50 (over by {count - 50})")
+        if not TITLE_RE.fullmatch(title_body):
+            errors.append("line 1: title must match <type>[(scope)][!]: <summary>")
+        if title_body.endswith("."):
+            errors.append("line 1: title must not end with a period")
+    if len(lines) > 1 and lines[1] != "":
+        errors.append("line 2: must be blank")
+    fenced = False
+    for number, line in enumerate(lines[2:], 3):
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced or (" " not in line and line):
+            continue
+        count = len(line)
+        if count > MAX_BODY:
+            errors.append(
+                f"line {number}: {count} chars, max 72 (over by {count - 72})"
+            )
+    if pull_request:
+        found = [line for line in lines if line in SECTIONS]
+        if found != list(SECTIONS):
+            errors.append("PR description must contain sections in order: " + ", ".join(SECTIONS))
+    return errors
+
+
+def wrap_lines(lines: list[str]) -> list[str]:
+    """Wrap prose and list items without changing headings or code."""
+    output: list[str] = []
+    fenced = False
+    paragraph: list[str] = []
+
+    def flush() -> None:
+        if not paragraph:
+            return
+        if len(paragraph) == 1 and re.fullmatch(r"\s*(?:[-*+] |\d+\. )", paragraph[0]):
+            output.append(paragraph[0])
+            paragraph.clear()
+            return
+        joined = " ".join(item.strip() for item in paragraph)
+        prefix = ""
+        match = re.match(r"^(\s*(?:[-*+] |\d+\. ))", joined)
+        if match:
+            prefix = match.group(1)
+            joined = joined[len(prefix):]
+        if not joined:
+            output.append(prefix)
+        else:
+            width = MAX_BODY - len(prefix)
+            wrapped = textwrap.wrap(
+                joined, width=width, break_long_words=False,
+                break_on_hyphens=False,
+            )
+            output.extend(
+                [prefix + wrapped[0]]
+                + [" " * len(prefix) + item for item in wrapped[1:]]
+            )
+        paragraph.clear()
+
+    for line in lines:
+        is_item = bool(re.match(r"^\s*(?:[-*+] |\d+\. )", line))
+        if line.startswith("```"):
+            flush()
+            fenced = not fenced
+            output.append(line)
+        elif fenced or line.startswith("#") or not line.strip():
+            flush()
+            output.append(line)
+        elif is_item:
+            flush()
+            paragraph.append(line)
+        elif paragraph and re.match(r"^\s*(?:[-*+] |\d+\. )", paragraph[0]) and not line.startswith(" "):
+            flush()
+            paragraph.append(line)
+        elif line.startswith("    ") and not (
+            paragraph and re.match(r"^\s*(?:[-*+] |\d+\. )", paragraph[0])
+        ):
+            flush()
+            output.append(line)
+        else:
+            paragraph.append(line)
+    flush()
+    return output
+
+
+def format_message(path: Path) -> None:
+    """Rewrite prose paragraphs and list items at the body limit."""
+    lines = read_message(path)
+    if len(lines) > 2:
+        lines[2:] = wrap_lines(lines[2:])
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    """Run the selected message operation."""
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    for name in ("lint", "fmt"):
+        subparser = subparsers.add_parser(name)
+        subparser.add_argument("--pr", action="store_true")
+        subparser.add_argument("--hook", action="store_true")
+        subparser.add_argument("message", type=Path)
+    args = parser.parse_args()
+    if args.command == "fmt":
+        format_message(args.message)
+        return 0
+    errors = lint(read_message(args.message), args.pr, args.hook)
+    for error in errors:
+        print(error)
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
