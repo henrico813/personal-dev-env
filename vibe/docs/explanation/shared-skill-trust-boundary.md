@@ -6,9 +6,17 @@ bind mounts are read-only: their files can instruct Pi, and Vibe does not review
 their contents. Repository skills come from the exact checked-out revision.
 
 Pi is started with `--no-skills`, which disables normal discovery, and one
-explicit `--skill` selection per existing root. User skills are selected first;
-repository skills are selected second. No other project-local skills are
-discovered implicitly.
+explicit `--skill` selection per skill directory inside each existing root.
+User skills are selected first; repository skills are selected second. No
+other project-local skills are discovered implicitly.
+
+Workflow-orchestration skills are held out of the worker. A skill whose
+`SKILL.md` frontmatter marks `pde-workflow: "true"` (the shared plan
+workflows install into the user root) is never passed to Pi: the worker
+executes one assigned task, so orchestration instructions must not enter its
+system prompt. The marker is read only from the frontmatter block, and the
+selection is per skill directory, so remaining skills in the same root are
+still selected.
 
 The user root is mounted at `/vibe-home/.agents/skills`. The repository root is
 mounted over its path inside the writable managed worktree. This more-specific

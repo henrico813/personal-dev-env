@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob
 
 mkdir -p "$HOME"
 mkdir -p "${NPM_CONFIG_PREFIX:-$HOME/.npm-global}"
@@ -35,13 +36,55 @@ PI_ARGS=(
   -e /opt/vibe/extensions/git-snapshot.mjs
 )
 
+# Returns 0 when $1 is a PDE workflow-orchestration skill, i.e. its
+# SKILL.md frontmatter marks pde-workflow: true. Vibe workers execute a
+# single task, so workflow skills are never offered to Pi.
+is_workflow_skill() {
+  local skill_md="$1/SKILL.md"
+  local line marker
+  [[ -f "${skill_md}" ]] || return 1
+  IFS= read -r line < "${skill_md}" || [[ -n "${line}" ]] || return 1
+  line="${line%$'\r'}"
+  [[ "${line}" == "---" ]] || return 1
+  marker="^[[:space:]]*pde-workflow[[:space:]]*:[[:space:]]*(\"[Tt][Rr][Uu][Ee]\"|'[Tt][Rr][Uu][Ee]'|[Tt][Rr][Uu][Ee])[[:space:]]*$"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    [[ "${line}" == "---" ]] && break
+    if [[ "${line}" =~ ${marker} ]]; then
+      return 0
+    fi
+  done < <(tail -n +2 "${skill_md}")
+  return 1
+}
+
+# Pi loads every skill under a --skill directory, so each skill directory is
+# selected individually and workflow-orchestration skills are left out.
+select_skill_root() {
+  local root="$1" entry
+  if [[ ! -d "${root}" ]]; then
+    return 0
+  fi
+  if [[ -f "${root}/SKILL.md" ]]; then
+    # The directory is one skill; select it unless it is a workflow skill.
+    if ! is_workflow_skill "${root}"; then
+      PI_ARGS+=(--skill "${root}")
+    fi
+    return 0
+  fi
+  for entry in "${root}"/*/; do
+    entry="${entry%/}"
+    [[ -f "${entry}/SKILL.md" ]] || continue
+    if ! is_workflow_skill "${entry}"; then
+      PI_ARGS+=(--skill "${entry}")
+    fi
+  done
+}
+
 shared_skills_dir="$HOME/.agents/skills"
-if [[ -d "${shared_skills_dir}" ]]; then
-  PI_ARGS+=(--skill "${shared_skills_dir}")
-fi
+select_skill_root "${shared_skills_dir}"
 repository_skills_dir="${VIBE_REPO_SKILLS_DIR:-}"
-if [[ -n "${repository_skills_dir}" && -d "${repository_skills_dir}" ]]; then
-  PI_ARGS+=(--skill "${repository_skills_dir}")
+if [[ -n "${repository_skills_dir}" ]]; then
+  select_skill_root "${repository_skills_dir}"
 fi
 
 if [[ "${VIBE_MODEL}" == goog/* ]]; then

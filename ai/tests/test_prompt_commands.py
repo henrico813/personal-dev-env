@@ -1,10 +1,11 @@
-"""Check planner commands embedded in the planning prompts.
+"""Check planner commands embedded in the shared workflow skills.
 
-Agents copy planner commands verbatim from the prompts. Go tests prove that
-the planner works, but not that prompt text still matches it; the manual eval
-spends model tokens, so it rarely runs. This suite catches an
+OpenCode commands are thin wrappers that load these skills, so the planner
+command text now lives in the shared skills. Go tests prove that the planner
+works, but not that skill text still matches it; the manual eval spends model
+tokens, so it rarely runs. This suite catches an
 unquoted ``implementation[1].file_changes[1]`` selector that zsh rejects with
-"no matches found", and prompts that retain ``planner dod``,
+"no matches found", and skills that retain ``planner dod``,
 ``planner implementation``, or ``planner verification`` subcommands.
 """
 
@@ -18,13 +19,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-ALLOWED_SUBCOMMANDS = {"help", "new", "check", "inspect", "patch"}
 PLANNER_COMMAND = re.compile(r"`(planner\b[^`]*)`", re.DOTALL)
 TARGET_COMMAND = re.compile(r"^planner (inspect|patch|check)\b")
-REQUIRED_COMMANDS = {
-    "create": {"new", "inspect", "patch", "check"},
-    "implement": {"inspect", "patch", "check"},
-}
 
 
 def subcommand(command: str) -> str:
@@ -44,7 +40,7 @@ def extract_commands(path: Path) -> list[str]:
     """Extract planner commands and collapse wrapped whitespace.
 
     Args:
-        path: Prompt file to read.
+        path: Skill file to read.
 
     Returns:
         Backtick-quoted planner commands with collapsed whitespace.
@@ -55,52 +51,44 @@ def extract_commands(path: Path) -> list[str]:
     ]
 
 
-def prompt_files() -> list[Path]:
-    """List the available OpenCode and Codex prompt files.
+def workflow_skill_files() -> list[Path]:
+    """List the shared workflow skills that carry planner command text.
+
+    The OpenCode commands are thin wrappers around these skills, so the
+    skills are the prompts the agents copy planner commands from.
 
     Returns:
-        Sorted prompt paths from the OpenCode and Codex prompt directories.
+        Sorted skill paths under ``ai/skills/``.
     """
-    return sorted((ROOT / "ai/opencode/commands").glob("*.md")) + sorted(
-        (ROOT / "ai/codex/skills").glob("*/SKILL.md")
-    )
+    return sorted((ROOT / "ai/skills").glob("*/SKILL.md"))
 
 
 def prompt_kind(path: Path) -> str | None:
-    """Identify the workflow kind for a plan prompt.
+    """Identify the workflow kind for a planning skill.
 
     Args:
-        path: Prompt file to classify.
+        path: Skill file to classify.
 
     Returns:
-        ``"create"`` or ``"implement"``, or ``None`` for other prompts.
+        ``"create"`` or ``"implement"``, or ``None`` for other skills.
     """
-    if path.name == "create_plan.md" or path.parts[-2:] == (
-        "create-plan",
-        "SKILL.md",
-    ):
+    if path.parts[-2:] == ("create-plan", "SKILL.md"):
         return "create"
-    if path.name == "implement_plan.md" or path.parts[-2:] == (
-        "implement-plan",
-        "SKILL.md",
-    ):
+    if path.parts[-2:] == ("implement-plan", "SKILL.md"):
         return "implement"
     return None
 
 
 def prompt_id(path: Path) -> str:
-    """Build the test ID for a prompt path.
+    """Build the test ID for a skill path.
 
     Args:
-        path: Absolute prompt path inside the repository.
+        path: Absolute skill path inside the repository.
 
     Returns:
-        A short OpenCode or Codex test ID.
+        A short shared-skill test ID.
     """
-    relative = path.relative_to(ROOT)
-    if relative.parts[1] == "opencode":
-        return f"opencode/{relative.name}"
-    return f"codex/{relative.parts[-2]}"
+    return path.parent.name
 
 
 @pytest.fixture(scope="session")
@@ -139,45 +127,11 @@ def planner_environment(
     return environment
 
 
-PROMPTS = [pytest.param(path, id=prompt_id(path)) for path in prompt_files()]
 PLAN_PROMPTS = [
     pytest.param(path, kind, id=prompt_id(path))
-    for path in prompt_files()
+    for path in workflow_skill_files()
     if (kind := prompt_kind(path)) is not None
 ]
-
-
-@pytest.mark.parametrize("prompt", PROMPTS)
-def test_prompt_uses_only_existing_subcommands(prompt: Path) -> None:
-    """Reject planner subcommands that no longer exist.
-
-    Guards removed planner dod/implementation/verification subcommands, which
-    would send every agent to a command that no longer exists.
-    """
-    for command in extract_commands(prompt):
-        command_name = subcommand(command)
-        assert command_name in ALLOWED_SUBCOMMANDS, (
-            f"prompt {prompt} uses unknown planner subcommand "
-            f"'{command_name}': {command}"
-        )
-
-
-@pytest.mark.parametrize(("prompt", "kind"), PLAN_PROMPTS)
-def test_planning_prompt_keeps_required_commands(
-    prompt: Path, kind: str
-) -> None:
-    """Require every planner command needed by the workflow.
-
-    Guards a prompt edit dropping planner check, so agents would stop
-    validating plans and nothing would notice because the unchecked plan still
-    looks finished.
-    """
-    present = {subcommand(command) for command in extract_commands(prompt)}
-    assert REQUIRED_COMMANDS[kind] <= present, (
-        f"prompt {prompt} is missing planner commands "
-        f"{sorted(REQUIRED_COMMANDS[kind] - present)}"
-    )
-
 
 def run_checked(
     args: list[str], *, cwd: Path | None = None, env: dict[str, str]
@@ -309,14 +263,14 @@ def seed_plan(
     return base
 
 
-@pytest.mark.parametrize(("prompt", "kind"), PLAN_PROMPTS)
-def test_prompt_commands_run_in_zsh(
-    prompt: Path,
+@pytest.mark.parametrize(("skill", "kind"), PLAN_PROMPTS)
+def test_skill_commands_run_in_zsh(
+    skill: Path,
     kind: str,
     tmp_path: Path,
     planner_environment: dict[str, str],
 ) -> None:
-    """Run prompt planner commands under zsh.
+    """Run skill planner commands under zsh.
 
     Only running commands in zsh exposes glob failures such as an unquoted
     ``implementation[1].file_changes[1]`` selector failing with "no matches
@@ -332,7 +286,7 @@ def test_prompt_commands_run_in_zsh(
     scratch = ""
     ran: set[str] = set()
 
-    for original in extract_commands(prompt):
+    for original in extract_commands(skill):
         if not TARGET_COMMAND.match(original):
             continue
         if "--repo <repo>" not in original or (
@@ -368,12 +322,12 @@ def test_prompt_commands_run_in_zsh(
             text=True,
         )
         assert result.returncode == 0, (
-            f"prompt {prompt} command failed: {command}\n{result.stderr}"
+            f"skill {skill} command failed: {command}\n{result.stderr}"
         )
         if command.startswith("planner inspect "):
             token = json.loads(result.stdout)["edit_expect"]
 
     assert {"inspect", "patch", "check"} <= ran, (
-        f"prompt {prompt} command text no longer matched the expected "
+        f"skill {skill} command text no longer matched the expected "
         f"placeholders; ran {sorted(ran)}"
     )

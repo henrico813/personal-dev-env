@@ -86,12 +86,12 @@ mkdir -p "$EVAL_HOME" "$EVAL_REPO" "$EVAL_OUTPUT"
 go build -C pde-installer -o "$INSTALLER" .
 PDE_REPO_ROOT="$PWD" "$INSTALLER" install full
 export PATH="$EVAL_HOME/.local/bin:$ORIGINAL_PATH"
-cmp ai/codex/skills/create-plan/SKILL.md \
-  "$HOME/.codex/skills/create-plan/SKILL.md"
-cmp ai/codex/skills/review-plan/SKILL.md \
-  "$HOME/.codex/skills/review-plan/SKILL.md"
-cmp ai/codex/skills/implement-plan/SKILL.md \
-  "$HOME/.codex/skills/implement-plan/SKILL.md"
+cmp ai/skills/create-plan/SKILL.md \
+  "$HOME/.agents/skills/create-plan/SKILL.md"
+cmp ai/skills/review-plan/SKILL.md \
+  "$HOME/.agents/skills/review-plan/SKILL.md"
+cmp ai/skills/implement-plan/SKILL.md \
+  "$HOME/.agents/skills/implement-plan/SKILL.md"
 cmp ai/opencode/commands/create_plan.md \
   "$HOME/.config/opencode/commands/create_plan.md"
 cmp ai/opencode/commands/review_plan.md \
