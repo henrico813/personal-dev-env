@@ -14,6 +14,8 @@
 - When the user names a skill or asks for a workflow that matches one, load that skill first, unless a command already supplied that workflow's instructions.
 - After reading the user request and directly referenced context, compare the
   identified work with the available skill descriptions.
+- Before searching a codebase for references or definitions, load and follow
+  the `code-search` skill.
 - Load each skill applicable to the requested or discovered work before
   repository research, planning, review, implementation, or substantive advice.
 - Recheck skill applicability after a handoff, compaction, material goal change,
