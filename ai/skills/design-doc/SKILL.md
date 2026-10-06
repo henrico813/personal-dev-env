@@ -1,6 +1,8 @@
 ---
 name: design-doc
-description: Use when the user asks to create a technical design document for a feature, system, or architectural change.
+description: 'Write a technical design document covering the problem, evaluated alternatives, and chosen direction, for requests like "write a design doc for X" or "I need a design document for this feature"; for a code-bearing implementation proposal use create-plan.'
+metadata:
+  pde-workflow: "true"
 ---
 
 # Design Doc
@@ -8,6 +10,12 @@ description: Use when the user asks to create a technical design document for a 
 ## Overview
 
 A design doc is a deliberate pause before implementation. It forces you to identify leverage points, surface hidden complexity, and align technical vectors before writing code. The cheapest bug to fix is the one you designed out of existence.
+
+## When to use this skill
+
+Use this skill to write a technical design document that reasons through the problem, alternatives, and chosen direction before implementation. Do not use it for a code-bearing implementation proposal or for plan execution; use create-plan for proposals and implement-plan for execution instead.
+
+Delegated prompts must not list or load workflow-orchestration skills: `create-plan`, `review-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and `research-codebase`.
 
 **Core principle:** A design doc answers "what should we build and why?" with enough rigor that reviewers can find flaws before they become code.
 

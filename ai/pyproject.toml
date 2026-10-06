@@ -9,6 +9,9 @@ dev = ["pytest>=8.3"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "local_ai: tests that require the local OpenCode model",
+]
 
 [tool.uv]
 package = false

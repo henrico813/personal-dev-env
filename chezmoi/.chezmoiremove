@@ -14,4 +14,22 @@ Projects/CLAUDE.md
 .codex/skills/rust-development
 .config/opencode/commands/document_codebase.md
 .codex/skills/document-codebase
+
+# Old Codex workflow skills (now in shared skills)
+.codex/skills/create-plan
+.codex/skills/review-plan
+.codex/skills/implement-plan
+.codex/skills/cleanup-plan
+.codex/skills/design-doc
+.codex/skills/research-codebase
+
+# Old Claude commands (now using shared skills)
+.claude/commands/create_plan.md
+.claude/commands/review_plan.md
+.claude/commands/implement_plan.md
+.claude/commands/cleanup_plan.md
+.claude/commands/design_doc.md
+.claude/commands/research_codebase.md
+.claude/commands/document_codebase.md
+.claude/commands/README.md
 {{ end }}
