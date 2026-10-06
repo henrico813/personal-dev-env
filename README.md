@@ -106,6 +106,7 @@ binaries plus repo-managed AI config.
 | Research codebase | `ai/skills/research-codebase/` | `~/.agents/skills/research-codebase/` | Shared workflow skill for as-is codebase research |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
+| Code search | `ai/skills/code-search/` | `~/.agents/skills/code-search/` | Efficient code reference search |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
