@@ -1,57 +1,65 @@
 ---
 name: git-messages
-description: Use when writing commit messages or creating and updating pull requests.
+description: Writes and checks commit messages and pull request titles and descriptions. Use before git commit and before writing or editing pull request text.
 ---
 
 # Git Messages
 
-## Principles
+Follow the repository's documented style first. Otherwise use these defaults.
 
-- Use conventional commit style.
-- Keep each commit focused on one reason for change.
-- Keep commit and pull request titles at 50 characters or less.
-- Write titles as `<type>: <action taken>`.
-- Wrap body text at 72 characters.
-- Add a body when the change needs context.
-- Use clear high-school-level English.
-- Explain why the change matters and what changed.
-- Mention important risks or limits.
-- Prefer concise bodies over long design notes.
-- Do not add AI attribution.
+1. Use `<type>[(scope)][!]: <summary>` with `feat`, `fix`, `docs`, `test`,
+   `refactor`, `perf`, `build`, `ci`, `chore`, `style`, or `revert`.
+2. Keep titles to 50 characters, excluding a trailing ` (#N)`, and omit a
+   final period. Put a blank line after the title.
+3. For a commit body, explain why the change matters, what changed, and any
+   limit or risk. Skip the body only when the title says everything.
+4. Wrap body lines to 72 characters. For PRs, use `## Overview`, `## Changes`,
+   and `## Testing`, in that order. The Overview becomes the squash commit
+   body, so it must stand alone (why and what) and pass `msg lint`. Add one
+   Changes bullet per change and append a bullet as the PR changes.
+5. In Testing, write a short prose block: why the check matters, how to run a
+   human-runnable check in a code fence, what to expect, and the real result.
+   Report only checks actually run.
+6. Review all text for plain direct English and AI slop: would a new reader
+   understand every term, does each sentence say something specific, are the
+   results real, and can it be shorter?
 
-## Shape
+7. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
+   `python3 ~/.agents/skills/git-messages/scripts/msg lint [--pr] FILE`.
+   `fmt` wraps text and `lint` reports exact counts. Recheck up to three times,
+   fixing only reported lines. Repositories may keep their own copy.
 
-    <type>: <short action>
+Leave out branch-only commit hashes, meaningless test counts, private tracker
+references, unexplained project terms, and AI attribution.
 
-    <why this matters>
+Example commit:
 
-    <what changed>
+    fix: preserve dry-run output
 
-    <any risk or important limit>
+    Dry-run should show planned file changes without writing them.
+    Print the same summary users will review before applying it.
 
-## Validate
+Example pull request:
 
-After drafting a commit message, write it to a temporary file and run the
-checker before presenting or committing it:
+    fix: preserve dry-run output
 
-    bash ~/.agents/skills/git-messages/scripts/check-message /tmp/commit-message
+    ## Overview
 
-The checker rejects subjects longer than 50 characters and non-comment body
-lines longer than 72 characters.
+    Dry-run now shows planned file changes without writing them.
+    Users can review the result before applying it.
 
-### Pull Requests
+    ## Changes
 
-- Use the same title rules as commits.
-- Preserve required Overview and Testing sections.
-- Put the concise why, change, risk, and verification details in those
-  sections.
+    - Show planned file changes when the dry-run flag is set.
+    - Keep dry-run from writing files.
 
-## Example
+    ## Testing
 
-    fix: stabilize frontend compose service
+    This checks that previewing a change remains safe. Run:
+    ```bash
+    ./tool --dry-run
+    ```
+    Expect planned file changes and no modified files. Result: I saw the
+    preview and the working tree stayed clean.
 
-    Local Compose starts Vite from compose.dev.yml, not from the frontend
-    Dockerfile.
-
-    Use Node 22 and npm ci in the local Compose service so startup uses the
-    package lockfile. This makes local installs more repeatable.
+Bad titles: `fix: update stuff.`; `feat: improve things for everyone`.

@@ -46,6 +46,8 @@ Cleanup is a safety workflow, not a convenience command. Your job is to leave th
 - Update plan and documentation status before removing the worktree that produced them.
 - Explain what you verified, what you cleaned up, and what still needs human attention.
 
+Before reviewing PR evidence or merge state, load `pull-request`.
+
 ## Cleanup Procedure
 
 ### 1. Identify cleanup artifacts

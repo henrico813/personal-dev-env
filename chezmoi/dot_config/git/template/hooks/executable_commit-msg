@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec bash "$HOME/.agents/skills/git-messages/scripts/check-message" "$1"
+exec python3 "$HOME/.agents/skills/git-messages/scripts/msg" lint --hook "$1"

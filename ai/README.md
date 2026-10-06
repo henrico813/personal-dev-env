@@ -9,7 +9,7 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `opencode/` holds OpenCode agents and commands.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
-Shared skills include `behavior-focused-testing` for automated tests,
+Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `behavior-focused-testing` for automated tests,
 `code-documentation` for proportional source explanations, `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `python-development` for Python code, and `rust-development` for Rust code.
