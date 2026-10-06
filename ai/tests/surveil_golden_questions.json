@@ -1,0 +1,167 @@
+{
+  "derivation": "Questions marked literal use git grep -l for the literal text. The remaining code question follows the constant and reporting call using its per-question command and manual inspection. Name-variant and call-chain code questions, including create-plan versus create_plan and a real caller chain, are deferred to the later one-call refs work, where they become its acceptance bar. A check-message filename can appear as an extra model-listed path because git grep records content matches only.",
+  "questions": [
+    {
+      "question": "Which files contain the text `check-message`?",
+      "terms": [
+        "check-message"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "ai/skills/git-messages/SKILL.md",
+        "ai/skills/git-messages/scripts/check-message.test.sh",
+        "chezmoi/.chezmoiexternal.toml.tmpl",
+        "chezmoi/dot_config/git/template/hooks/executable_commit-msg"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l check-message 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `pde-workflow`?",
+      "terms": [
+        "pde-workflow"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "ai/skills/cleanup-plan/SKILL.md",
+        "ai/skills/create-plan/SKILL.md",
+        "ai/skills/design-doc/SKILL.md",
+        "ai/skills/implement-plan/SKILL.md",
+        "ai/skills/research-codebase/SKILL.md",
+        "ai/skills/review-plan/SKILL.md",
+        "vibe/docker/run-agent.sh",
+        "vibe/docs/explanation/shared-skill-trust-boundary.md",
+        "vibe/docs/how-to/use-shared-skills.md",
+        "vibe/src/adapters/runtime.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l pde-workflow 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "kind": "code",
+      "question": "Which planner files report missing base commits?",
+      "terms": [
+        "BASE_COMMIT_REQUIRED"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "planner/internal/guarded.go",
+        "planner/internal/guarded_cli.go",
+        "planner/internal/guarded_cli_test.go",
+        "planner/internal/root_test.go"
+      ],
+      "derivation": "git grep -n codeBaseCommitRequired 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:32 and guarded_cli.go:139."
+    },
+    {
+      "question": "Which files contain the text `RANKED_FILE_LIMIT`?",
+      "terms": [
+        "RANKED_FILE_LIMIT"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "surveil/src/research.rs",
+        "surveil/src/research/rank.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l RANKED_FILE_LIMIT 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `local_ai`?",
+      "terms": [
+        "local_ai"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        ".github/workflows/ci.yml",
+        "ai/pyproject.toml",
+        "ai/tests/test_agent_loads_skills.py"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l local_ai 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `INDEX_FORMAT_VERSION`?",
+      "terms": [
+        "INDEX_FORMAT_VERSION"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "surveil/src/index.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l INDEX_FORMAT_VERSION 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `surveil.v7`?",
+      "terms": [
+        "surveil.v7"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "surveil/README.md",
+        "surveil/src/merge/tests/load_reports.rs",
+        "surveil/src/research.rs",
+        "surveil/src/schema.rs",
+        "surveil/tests/cli.rs",
+        "surveil/tests/fixtures/merge/architecture-report.json",
+        "surveil/tests/fixtures/merge/empty-task-name-report.json",
+        "surveil/tests/fixtures/merge/missing-task-name-report.json",
+        "surveil/tests/fixtures/merge/tests-report.json",
+        "surveil/tests/fixtures/merge/unknown-field-report.json"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l surveil.v7 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `explicit_files`?",
+      "terms": [
+        "explicit_files"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "surveil/README.md",
+        "surveil/src/cli.rs",
+        "surveil/src/gather.rs",
+        "surveil/src/research.rs",
+        "surveil/src/research/output.rs",
+        "surveil/src/research/rank.rs",
+        "surveil/src/research/setup.rs",
+        "surveil/src/schema.rs",
+        "surveil/src/source.rs",
+        "surveil/src/taskfile.rs",
+        "surveil/tests/cli.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l explicit_files 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `XDG_STATE_HOME`?",
+      "terms": [
+        "XDG_STATE_HOME"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "pde-installer/docs/reference/platforms-and-paths.md",
+        "pde-installer/internal/chezmoi/apply.go",
+        "surveil/README.md",
+        "surveil/src/taskfile.rs",
+        "surveil/tests/cli.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l XDG_STATE_HOME 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "question": "Which files contain the text `create_managed_task`?",
+      "terms": [
+        "create_managed_task"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "surveil/src/cli.rs",
+        "surveil/src/taskfile.rs"
+      ],
+      "kind": "literal",
+      "derivation": "git grep -l create_managed_task 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    }
+  ]
+}
