@@ -137,6 +137,12 @@ value, kept for compatibility.
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
 
+When matches exist, JSON also includes `references_outside_plan`, a sorted list
+of `{deleted_path, referencing_path, line, text}` records from literal path and
+basename searches in the base commit. Changed files are excluded and warnings do
+not change a successful exit. Results are bounded per deleted path;
+`references_outside_plan_omitted` reports hidden matches.
+
 If a diff fence still contains `PLACEHOLDER`, `planner check` fails with
 `PATCH_INVALID` before Git runs. The message names the selector and file and
 directs you to fill the change with `inspect --before` and `patch`. `planner patch`

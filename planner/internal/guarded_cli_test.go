@@ -1160,3 +1160,89 @@ func TestPatchKeepsBacktickContextInsideFence(t *testing.T) {
 		t.Fatalf("patched plan failed check: %s", diagnostic)
 	}
 }
+
+// referencePlan makes a deletion plan whose base commit can be searched.
+func referencePlan(t *testing.T, repo, base, filename, diff string) string {
+	t.Helper()
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges[0].Filename = filename
+	plan.Implementation[0].FileChanges[0].Diff = diff
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + base
+	return writeRenderedPlan(t, plan)
+}
+
+// TestDeletedFileWarnsAboutBaseReferences protects the motivating stale-caller case.
+func TestDeletedFileWarnsAboutBaseReferences(t *testing.T) {
+	repo, _ := revisionRepoContent(t, "obsolete.txt\n", 0644)
+	if err := os.WriteFile(filepath.Join(repo, "obsolete.txt"), []byte("gone\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "caller.txt"), []byte("obsolete.txt\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	revisionGit(t, repo, "add", "obsolete.txt", "caller.txt")
+	revisionGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "references")
+	base := revisionGit(t, repo, "rev-parse", "HEAD")
+	diff, err := planpatch.Generate("obsolete.txt", &planpatch.File{Data: []byte("gone\n"), Mode: "100644"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := referencePlan(t, repo, base, "obsolete.txt", strings.TrimSuffix(string(diff), "\n"))
+	code, out, diagnostic := revisionExecute("check", name, "--repo", repo)
+	if code != 0 {
+		t.Fatalf("check: %s", diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	foundCaller := false
+	for _, warning := range result.ReferencesOutsidePlan {
+		if warning.ReferencingPath == "caller.txt" && warning.Line == 1 {
+			foundCaller = true
+		}
+	}
+	if !foundCaller {
+		t.Fatalf("warnings = %+v", result.ReferencesOutsidePlan)
+	}
+}
+
+// TestChangedReferenceFileIsExcluded prevents warnings for intentional edits.
+func TestChangedReferenceFileIsExcluded(t *testing.T) {
+	repo, _ := revisionRepoContent(t, "obsolete.txt\n", 0644)
+	for name, data := range map[string]string{"obsolete.txt": "gone\n", "caller.txt": "obsolete.txt\n"} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	revisionGit(t, repo, "add", "obsolete.txt", "caller.txt")
+	revisionGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "references")
+	base := revisionGit(t, repo, "rev-parse", "HEAD")
+	deleteDiff, _ := planpatch.Generate("obsolete.txt", &planpatch.File{Data: []byte("gone\n"), Mode: "100644"}, nil)
+	callDiff, _ := planpatch.Generate("caller.txt", &planpatch.File{Data: []byte("obsolete.txt\n"), Mode: "100644"}, &planpatch.File{Data: []byte("new-name.txt\n"), Mode: "100644"})
+	plan := BuildPlanExample()
+	plan.Implementation[0].FileChanges = []FileChange{{Filename: "obsolete.txt", Explanation: "Delete it.", Diff: strings.TrimSuffix(string(deleteDiff), "\n")}}
+	plan.Implementation = append(plan.Implementation, Step{Title: "Update caller", Summary: "Update the changed reference.", FileChanges: []FileChange{{Filename: "caller.txt", Explanation: "Update caller.", Diff: strings.TrimSuffix(string(callDiff), "\n")}}})
+	plan.DefinitionOfDone.CurrentState = "Base commit: " + base
+	name := writeRenderedPlan(t, plan)
+	code, out, diagnostic := revisionExecute("check", name, "--repo", repo)
+	if code != 0 {
+		t.Fatalf("check: %s", diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	for _, warning := range result.ReferencesOutsidePlan {
+		if warning.ReferencingPath == "caller.txt" {
+			t.Fatalf("later changed caller was reported: %+v", result.ReferencesOutsidePlan)
+		}
+	}
+}
+
+// TestCheckOmitsReferenceFieldWithoutDeletions preserves compact JSON output.
+func TestCheckOmitsReferenceFieldWithoutDeletions(t *testing.T) {
+	repo, base, name := checkPlanFixture(t)
+	code, out, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", base)
+	if code != 0 {
+		t.Fatalf("check: %s", diagnostic)
+	}
+	result := decodeGuardedResult[guardedCheckResult](t, out)
+	if result.ReferencesOutsidePlan != nil || result.ReferencesOutsidePlanOmitted != nil {
+		t.Fatalf("reference fields = %+v", result)
+	}
+}
