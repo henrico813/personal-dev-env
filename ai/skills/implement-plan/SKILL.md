@@ -39,6 +39,9 @@ If no plan reference is provided, ask for one and stop.
 - Pushing, opening a pull request, or merging always requires explicit user
   instruction.
 
+Before writing commit or PR text, load `git-messages`; before using
+`gh pr`, load `pull-request`.
+
 Before using Vibe, inspect its installed command shape:
 
 ```bash
