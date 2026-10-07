@@ -68,7 +68,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}
 	stageRoot := filepath.Join(m.Home, ".local", "state", "pde", "build-stage")
 	if m.Runner.DryRun {
-		for _, name := range []string{"planner", "opencode-inline-shim", "surveil", "vibe"} {
+		for _, name := range []string{"planner", "opencode-inline-shim", "vibe"} {
 			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
 				return nil, err
 			}
@@ -119,18 +119,6 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			},
 		},
 		{
-			name:   "surveil",
-			source: filepath.Join(m.RepoRoot, "surveil"),
-			output: filepath.Join(stageRoot, "surveil-target", "release", "surveil"),
-			command: run.Command{
-				Name: cargo,
-				Args: []string{
-					"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "surveil-target"), "--bin", "surveil",
-				},
-				Dir: filepath.Join(m.RepoRoot, "surveil"), Env: environment,
-			},
-		},
-		{
 			name:   "vibe",
 			source: filepath.Join(m.RepoRoot, "vibe"),
 			output: filepath.Join(stageRoot, "vibe-target", "release", "vibe"),
@@ -144,8 +132,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		},
 	}
 	cargoTargets := map[string]string{
-		"surveil": filepath.Join(stageRoot, "surveil-target"),
-		"vibe":    filepath.Join(stageRoot, "vibe-target"),
+		"vibe": filepath.Join(stageRoot, "vibe-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -192,7 +179,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			tracked = true
 		}
 	}
-	for _, check := range []struct{ name, arg string }{{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"surveil", "--help"}, {"vibe", "--help"}} {
+	for _, check := range []struct{ name, arg string }{{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}} {
 		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
@@ -444,7 +431,7 @@ func (m Manager) BlinkStatus() (string, error) {
 
 func (m Manager) inputs() (map[string]string, error) {
 	inputs := map[string]string{}
-	for name, source := range map[string]string{"planner": filepath.Join(m.RepoRoot, "planner"), "opencode-inline-shim": filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), "surveil": filepath.Join(m.RepoRoot, "surveil"), "vibe": filepath.Join(m.RepoRoot, "vibe")} {
+	for name, source := range map[string]string{"planner": filepath.Join(m.RepoRoot, "planner"), "opencode-inline-shim": filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), "vibe": filepath.Join(m.RepoRoot, "vibe")} {
 		hash, err := hashTree(source)
 		if err != nil {
 			return nil, err

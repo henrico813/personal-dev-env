@@ -80,10 +80,10 @@ Before every implementation step:
 - In that checkout, verify proposed hunk context, affected files, directly
   affected callers, relevant tests, and configuration.
 - Reuse prior evidence as context, not proof of freshness. Do not search for old
-  Surveil runs when none were supplied.
+ 
 - Expand inspection only when a mismatch changes the implementation surface or
   invalidates an accepted assumption.
-- Use Surveil or a read-only research subagent only when a mismatch or uncovered
+- Usea read-only research subagent or a read-only research subagent only when a mismatch or uncovered
   dependency cannot be resolved efficiently through direct inspection.
 
 If new evidence requires a design change, stop the affected step, explain the

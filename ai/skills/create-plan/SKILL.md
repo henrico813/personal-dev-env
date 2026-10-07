@@ -61,7 +61,7 @@ When this skill is invoked:
   related callers, tests, config, and docs when they affect the change.
 - Scale research to the task. Do not run a fixed multi-agent or multi-track
   workflow merely because the task is repo-backed.
-- Use `surveil` when it reduces uncertainty or efficiently finds cross-cutting
+- Use `the retired research tool` when it reduces uncertainty or efficiently finds cross-cutting
   dependencies; direct repository reads are valid for bounded changes.
 - Before expanding a proposal, challenge new abstractions, wrappers,
   interfaces, configuration layers, and cleanup. Keep them only when a present
@@ -111,14 +111,14 @@ Use the lightest research path that can support the proposal with evidence.
 
 - Read the named files and directly related callers, tests, config, and docs.
 - Follow existing patterns before introducing a new one.
-- Do not start Surveil or research subagents unless direct inspection leaves
+- Do not starta read-only research subagent or research subagents unless direct inspection leaves
   material uncertainty.
 
 **Cross-cutting, unfamiliar, or uncertain change**
 
-- Use `surveil --help` and relevant subcommand help rather than memorized
+- Use `the retired research tool --help` and relevant subcommand help rather than memorized
   command shapes.
-- Create one focused Surveil task for the uncertainty to resolve. Add another
+- Create one focused the retired research tool task for the uncertainty to resolve. Add another
   task only when it answers a distinct question inefficient to combine.
 - Use a read-only research subagent only when evidence is incomplete,
   conflicting, or broad enough that an independent pass is valuable.
