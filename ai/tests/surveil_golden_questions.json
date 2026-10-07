@@ -1,5 +1,5 @@
 {
-  "derivation": "Questions marked literal use git grep -l for the literal text. The remaining code question follows the constant and reporting call using its per-question command and manual inspection. Name-variant and call-chain code questions, including create-plan versus create_plan and a real caller chain, are deferred to the later one-call refs work, where they become its acceptance bar. A check-message filename can appear as an extra model-listed path because git grep records content matches only.",
+  "derivation": "Literal questions use git grep -l at the pinned commit. Code questions record the search command plus the inspected definition or callers. The name-variant question covers both hyphenated skill paths and underscored command references.",
   "questions": [
     {
       "question": "Which files contain the text `check-message`?",
@@ -39,7 +39,7 @@
     },
     {
       "kind": "code",
-      "question": "Which planner files report missing base commits?",
+      "question": "Which planner files reference the missing-base-commit error or its constant, including tests?",
       "terms": [
         "BASE_COMMIT_REQUIRED"
       ],
@@ -50,7 +50,7 @@
         "planner/internal/guarded_cli_test.go",
         "planner/internal/root_test.go"
       ],
-      "derivation": "git grep -n codeBaseCommitRequired 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:32 and guarded_cli.go:139."
+      "derivation": "git grep -n codeBaseCommitRequired 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:32, guarded.go:503, and guarded_cli.go:139."
     },
     {
       "question": "Which files contain the text `RANKED_FILE_LIMIT`?",
@@ -162,6 +162,75 @@
       ],
       "kind": "literal",
       "derivation": "git grep -l create_managed_task 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+    },
+    {
+      "kind": "code",
+      "question": "Which files contain either `create-plan` or `create_plan`?",
+      "terms": [
+        "create-plan",
+        "create_plan"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "README.md",
+        "ai/README.md",
+        "ai/evals/plan-workflows.md",
+        "ai/evals/skill-routing.md",
+        "ai/opencode/agents/README.md",
+        "ai/opencode/commands/create_plan.md",
+        "ai/skills/cleanup-plan/SKILL.md",
+        "ai/skills/create-plan/SKILL.md",
+        "ai/skills/design-doc/SKILL.md",
+        "ai/skills/implement-plan/SKILL.md",
+        "ai/skills/research-codebase/SKILL.md",
+        "ai/skills/review-plan/SKILL.md",
+        "ai/tests/test_agent_loads_skills.py",
+        "ai/tests/test_prompt_commands.py",
+        "chezmoi/.chezmoiexternal.toml.tmpl",
+        "chezmoi/.chezmoiremove",
+        "planner/docs/explanation/applying-diffs-to-the-base-commit.md",
+        "planner/internal/guarded_cli_test.go"
+      ],
+      "derivation": "git grep -F -l -e create-plan -e create_plan 24b63d427ac76aeb049bdd8da60681752ffd9780 --; the deterministic test runs key_command and compares its paths with expected.",
+      "key_command": [
+        "grep",
+        "-F",
+        "-l",
+        "-e",
+        "create-plan",
+        "-e",
+        "create_plan",
+        "24b63d427ac76aeb049bdd8da60681752ffd9780",
+        "--"
+      ]
+    },
+    {
+      "kind": "code",
+      "question": "Which production files use `RunTarget::state_dir` to locate Vibe state?",
+      "terms": [
+        "state_dir"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "vibe/src/ledger.rs",
+        "vibe/src/observe.rs",
+        "vibe/src/worktree.rs"
+      ],
+      "derivation": "Pinned commit 24b63d427ac76aeb049bdd8da60681752ffd9780. Command output:\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/ledger.rs:146:    target.state_dir(home).join(RUNS_INDEX_FILE)\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/ledger.rs:510:    let runs_dir = target.state_dir(home).join(\"runs\");\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/observe.rs:29:    let dir = target.state_dir(home).join(\"runs\").join(run_id);\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/observe.rs:30:    let key_dir = target.state_dir(home);\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/target.rs:79:    pub(crate) fn state_dir(&self, home: &Path) -> PathBuf {\n24b63d427ac76aeb049bdd8da60681752ffd9780:vibe/src/worktree.rs:51:    let state_dir = target.state_dir(home);\nDefinition lines at target.rs:79-83: home.join(\".local/state/vibe\").join(&self.repo_id).join(&self.slug). Production call sites are ledger.rs:146,510; observe.rs:29-30; worktree.rs:51. Test-only calls are excluded."
+    },
+    {
+      "kind": "code",
+      "question": "Which files implement planner base-commit validation?",
+      "terms": [
+        "checkBaseCommit",
+        "codeBaseCommitRequired"
+      ],
+      "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
+      "expected": [
+        "planner/internal/guarded.go",
+        "planner/internal/guarded_cli.go"
+      ],
+      "derivation": "git grep -n checkBaseCommit 24b63d427ac76aeb049bdd8da60681752ffd9780 -- planner; inspect guarded.go:503-518 for validation and guarded_cli.go:226-246 for the check entry point."
     }
   ]
 }
