@@ -36,5 +36,3 @@ required event, record the check as unsupported rather than passed. These
 checks cover routing, not the quality of the completed task; use
 `plan-workflows.md` for completed-plan behavior.
 
-Record the retired research tool's exact managed run path. After trace inspection, delete that
-captured run and the allocated output directory; do not search with globs.

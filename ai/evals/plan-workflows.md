@@ -356,7 +356,7 @@ diff --git a/cmd/eval/main.go b/cmd/eval/main.go
 +++ b/cmd/eval/main.go
 @@ -3,5 +3,5 @@ package main
  import "fmt"
- 
+
  func main() {
 -	fmt.Println("text")
 +	fmt.Println("evaluated")
@@ -469,7 +469,7 @@ that scenario as unsupported or run it in a disposable container or VM.
 `--pure` keeps unrelated OpenCode plugins from changing the eval behavior.
 
 Record each harness version, model, request, fixture commit and status, trace
-path, generated plan, Planner result, the retired research tool use, delegated agents, and
+path, generated plan, Planner result, delegated agents, and
 unexpected behavior. Keep raw traces local.
 
 Paired commands show harness alternatives. Run each harness in its own fresh
@@ -488,7 +488,7 @@ run_codex missing-task \
 Expected behavior:
 
 - Asks for the task, constraints, and related references.
-- Does not run the retired research tool, Planner, or a research agent.
+- Does not run Planner or a research agent.
 
 ### Bounded Creation
 
@@ -502,7 +502,7 @@ run_codex bounded-create \
 
 Expected behavior:
 
-- Reads the README directly withouta read-only research subagent or delegated research.
+- Reads the README directly without delegated research.
 - Reserves the destination with `planner new`.
 - Starts Current State with `Base commit: $EVAL_FIXTURE_COMMIT`. This names
   the base commit the plan describes. Check it with
@@ -622,7 +622,7 @@ run_codex complex-research \
 
 Expected behavior:
 
-- Uses targeted direct inspection plusa read-only research subagent or focused delegated research to
+- Uses targeted direct inspection plus focused delegated research to
   resolve the stated cross-cutting uncertainty.
 - Verifies surprising findings directly and stops researching once ownership,
   integration, and verification decisions are supported.
@@ -775,5 +775,5 @@ For every generated or revised plan, verify:
 - Review-only scenarios leave repository status unchanged.
 
 If a harness does not expose a required event, record it as unsupported rather
-than passed. Delete only exact fixture, trace, the retired research tool, and Vibe paths recorded
+than passed. Delete only exact fixture, trace, and Vibe paths recorded
 during the evaluation.
