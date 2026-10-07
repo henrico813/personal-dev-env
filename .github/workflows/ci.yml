@@ -94,15 +94,6 @@ jobs:
       - name: terminal installation
         run: ./pde-installer/test/run-tests.sh terminal
 
-  surveil:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: build
-        run: cargo build --release --manifest-path surveil/Cargo.toml
-      - name: test
-        run: cargo test --manifest-path surveil/Cargo.toml
-
   vibe:
     runs-on: ubuntu-latest
     defaults:

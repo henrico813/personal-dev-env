@@ -120,7 +120,6 @@ if [ -n "$goog_base_url" ]; then
 fi
 
 printf '%s\n' "$input" | jq \
-    --arg path "$PDE_SURVEIL_STATE_PATTERN" \
     --arg plugin "@openchamber/opencode-claude@1.1.0" \
     --arg baseURL "$goog_base_url" \
     --arg keyFile "{file:~/.config/opencode/goog.key}" \
@@ -151,13 +150,13 @@ printf '%s\n' "$input" | jq \
     elif (.permission | has("external_directory")) and (.permission.external_directory | type) == "string" then
         if .permission.external_directory == "allow" then .
         elif .permission.external_directory == "ask" or .permission.external_directory == "deny" then
-            .permission.external_directory = {"*": .permission.external_directory, ($path): "allow"}
+            .
         else error("unsupported external_directory action")
         end
     elif (.permission | has("external_directory")) and (.permission.external_directory | type) != "object" then
         error("external_directory must be a string or object")
     else
-        .permission.external_directory |= ((. // {}) | del(.[$path]) + {($path): "allow"})
+        .
     end
     | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
     | del(.plugin)

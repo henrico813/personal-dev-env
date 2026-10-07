@@ -31,8 +31,7 @@ the existing amd64-only direct tmux 3.7b binary, terminal Aqua tools and
 configuration, shell/tmux configuration, state, and config. The full profile manages all paths
 in this table. The installer checks that managed destinations
 stay under `HOME`. Journal files also stay under `HOME`; `XDG_STATE_HOME` does
-not move them. An absolute `XDG_STATE_HOME` is passed only to chezmoi's Surveil
-state pattern.
+not move them.
 
 The exception to user-local writes is apt. `sudo apt-get update` and
 `sudo apt-get install` change system package state, and journals do not roll

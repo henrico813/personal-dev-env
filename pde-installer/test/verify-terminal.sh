@@ -55,7 +55,6 @@ render_opencode_cli() {
 	PDE_PROFILE=full \
 	PDE_COLOR_PROFILE="$profile" \
 	PDE_REPO_ROOT="$REPO_ROOT" \
-	PDE_SURVEIL_STATE_PATTERN="$cli_home/.local/state/surveil/**" \
 	chezmoi \
 		--config /dev/null \
 		--config-format toml \

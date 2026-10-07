@@ -1,7 +1,7 @@
 # Update Local Builds
 
 The local backend builds repository applications: `planner`,
-`opencode-inline-shim`, `surveil`, and `vibe`.
+`opencode-inline-shim` and `vibe`.
 
 1. Change the application source in its repository directory.
 2. If an application is added or removed, update the build specifications in

@@ -142,8 +142,7 @@ Classify every remaining ignored file in this order:
 1. Block sensitive paths before allowlisted output paths. A sensitive basename
    matches `*.key`, `*.pem`, `.env*`, `.sops`, or `secrets*`; the exact path
    `pde/user-config.yml` is also sensitive.
-2. Allow a non-sensitive file only when it is beneath the root `.surveil/`
-   directory, root `vibe/target/` directory, root `surveil/target/` directory,
+2. Allow a non-sensitive file only when it is beneath the root `vibe/target/` directory,
    or any `__pycache__/` directory, any `.pytest_cache/` directory, or `ai/.venv/`.
 3. Block every other ignored path.
 

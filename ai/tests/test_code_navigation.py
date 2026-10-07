@@ -16,8 +16,8 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-GOLDEN = ROOT / "ai/tests/surveil_golden_questions.json"
-ARMS = ("grep", "grep+skill", "surveil", "repomix", "probe", "aider-map")
+GOLDEN = ROOT / "ai/tests/code_navigation_questions.json"
+ARMS = ("grep", "grep+rule", "repomix", "probe", "aider-map")
 MODEL_TIMEOUT_SECONDS = 300
 RESULTS_ENV_VAR = "PDE_NAVIGATION_RESULTS"
 MODEL_ENV_VAR = "PDE_EVAL_MODEL"
@@ -49,78 +49,6 @@ def ensure_history() -> None:
             raise AssertionError(message)
         pytest.skip(message)
 
-
-def build_binary(tmp_path: Path) -> Path:
-    """Build and return the repository's Surveil binary."""
-    subprocess.run(
-        ["cargo", "build", "--quiet", "--manifest-path", str(ROOT / "surveil/Cargo.toml")],
-        check=True,
-    )
-    binary = tmp_path / "surveil"
-    shutil.copy2(ROOT / "surveil/target/debug/surveil", binary)
-    return binary
-
-
-def materialize(commit: str, destination: Path) -> None:
-    """Extract one pinned commit into a temporary project."""
-    archive = subprocess.run(
-        ["git", "archive", commit], cwd=source_root(), check=True, capture_output=True
-    )
-    subprocess.run(["tar", "-x", "-C", str(destination)], input=archive.stdout, check=True)
-
-
-def write_task(task_path: Path, question: dict[str, Any]) -> None:
-    """Write a Surveil task outside the searched project."""
-    task_path.write_text(json.dumps({
-        "summary": question["question"],
-        "explicit_files": [],
-        "search_areas": ["."],
-        "query": [question["question"]],
-        "terms": question["terms"],
-    }), encoding="utf-8")
-
-
-def run_search(binary: Path, repo: Path, task_dir: Path, question: dict[str, Any], indexed: bool) -> set[str]:
-    """Run Surveil with artifacts stored outside its search area."""
-    task_dir.mkdir()
-    task = task_dir / "task.json"
-    context = task_dir / "context.json"
-    trace = task_dir / "trace.json"
-    write_task(task, question)
-    if indexed:
-        subprocess.run([str(binary), "index", "--repo", str(repo)], check=True)
-    gathered = subprocess.run(
-        [str(binary), "gather", "--repo", str(repo), "--task-file", str(task)],
-        check=True, capture_output=True, text=True,
-    )
-    context.write_text(gathered.stdout, encoding="utf-8")
-    report = subprocess.run(
-        [str(binary), "research", "--context", str(context), "--trace-out", str(trace)],
-        check=True, capture_output=True, text=True,
-    )
-    value = json.loads(report.stdout)
-    return {finding["path"] for answer in value["result"] for finding in answer["findings"]}
-
-
-def test_golden_recall_is_index_independent(tmp_path: Path) -> None:
-    """Ensure ranking never hides complete scoped answers.
-
-    Each expected set comes from `git grep -l` at the pinned commit. Keeping
-    artifacts outside the project prevents the test from creating matches.
-    """
-    ensure_history()
-    binary = build_binary(tmp_path)
-    literal_questions = [question for question in load_questions() if question["kind"] == "literal"]
-    for number, question in enumerate(literal_questions):
-        plain = tmp_path / f"plain-{number}"
-        indexed = tmp_path / f"indexed-{number}"
-        plain.mkdir()
-        indexed.mkdir()
-        materialize(str(question["commit"]), plain)
-        materialize(str(question["commit"]), indexed)
-        expected = set(question["expected"])
-        assert run_search(binary, plain, tmp_path / f"plain-task-{number}", question, False) == expected
-        assert run_search(binary, indexed, tmp_path / f"indexed-task-{number}", question, True) == expected
 
 
 def walk_values(value: Any) -> list[dict[str, Any]]:
@@ -282,19 +210,10 @@ def arm_status(mode: str, repo: Path) -> dict[str, Any] | None:
 
 def arm_instruction(mode: str, binary: Path, repo: Path, task: Path, context: Path, trace: Path) -> str:
     """Build a tool-only instruction before the shared question is appended."""
-    if mode == "surveil":
-        return (
-            f"Use only {binary}. Write a task JSON to {task} with summary and query "
-            "filled from the question at the end of this prompt, explicit_files "
-            "empty, search_areas set to ['.'], and terms empty. Then run exactly: "
-            f"{binary} index --repo {repo}; {binary} gather --repo {repo} "
-            f"--task-file {task} > {context}; then {binary} research "
-            f"--context {context} --trace-out {trace}."
-        )
     if mode == "grep":
         return "Use only grep -r from the current project directory to find relevant files. Do not use git grep."
-    if mode == "grep+skill":
-        return "Follow the code-search skill. Start with rg -l --sort path ., then read relevant ranges and report paths."
+    if mode == "grep+rule":
+        return "Search with rg. For work tied to a commit, use git grep <pattern> <commit>. Before deleting or renaming a file, search its path and file name."
     if mode == "repomix":
         path = configured_tool("repomix") or Path("repomix")
         return f"Run rg -l --sort path .; then run {path} --compress --include <the comma-separated candidate files> --stdout .; read only needed ranges afterward."
@@ -308,16 +227,14 @@ def arm_instruction(mode: str, binary: Path, repo: Path, task: Path, context: Pa
 def assigned_tool_used(mode: str, tool_inputs: list[dict[str, str]] | None, tool_counts_value: dict[str, int] | None = None) -> bool | None:
     """Check whether saved inputs show the arm's assigned search tool."""
     if tool_inputs is None:
-        if mode in {"surveil", "repomix", "probe"} and tool_counts_value and "grep" in tool_counts_value:
+        if mode in {"repomix", "probe"} and tool_counts_value and "grep" in tool_counts_value:
             return False
         return None
     text = json.dumps(tool_inputs).lower()
     if mode == "grep":
         return "grep" in text
-    if mode == "grep+skill":
+    if mode == "grep+rule":
         return "grep" in text or "rg" in text
-    if mode == "surveil":
-        return "surveil" in text
     if mode == "repomix":
         return "repomix" in text
     if mode == "probe":
@@ -352,8 +269,6 @@ def run_agent(binary: Path, repo: Path, task_dir: Path, question: dict[str, Any]
     task = task_dir / "task.json"
     context = task_dir / "context.json"
     trace = task_dir / "trace.json"
-    if mode != "surveil":
-        task.unlink(missing_ok=True)
     status = arm_status(mode, repo)
     if status and status.get("skip"):
         return {"skip": status["skip"], "model": model_name(), "used_assigned_tool": None}
@@ -523,16 +438,16 @@ def print_rollups(rows: list[dict[str, Any]], title: str) -> None:
 
 def print_gate(rollups: list[dict[str, Any]]) -> None:
     """Apply the adoption gate to all-run arm roll-ups."""
-    baseline = next(row for row in rollups if row["kind"] == "all" and row["mode"] == "grep+skill")
+    baseline = next(row for row in rollups if row["kind"] == "all" and row["mode"] == "grep+rule")
     print("Gate verdicts (all runs)")
     for row in rollups:
-        if row["mode"] in {"grep", "grep+skill"} or row["kind"] != "all":
+        if row["mode"] in {"grep", "grep+rule"} or row["kind"] != "all":
             continue
         token_delta = (row["median_tokens"] - baseline["median_tokens"]) / baseline["median_tokens"]
-        code_base = next(item for item in rollups if item["kind"] == "code" and item["mode"] == "grep+skill")
+        code_base = next(item for item in rollups if item["kind"] == "code" and item["mode"] == "grep+rule")
         code_row = next(item for item in rollups if item["kind"] == "code" and item["mode"] == row["mode"])
         passes = (row["mean_recall"] >= baseline["mean_recall"] and token_delta <= -0.25) or (code_row["mean_recall"] > code_base["mean_recall"] and token_delta <= 0.25)
-        print(f"{row['mode']} | median tokens {row['median_tokens']} vs grep+skill {token_delta:+.1%} | code recall {code_row['mean_recall']:.3f} vs {code_base['mean_recall']:.3f} | overall recall {row['mean_recall']:.3f} vs {baseline['mean_recall']:.3f} | mean F1 {row['mean_f1']:.3f} vs {baseline['mean_f1']:.3f} | {'PASS' if passes else 'FAIL'}")
+        print(f"{row['mode']} | median tokens {row['median_tokens']} vs grep+rule {token_delta:+.1%} | code recall {code_row['mean_recall']:.3f} vs {code_base['mean_recall']:.3f} | overall recall {row['mean_recall']:.3f} vs {baseline['mean_recall']:.3f} | mean F1 {row['mean_f1']:.3f} vs {baseline['mean_f1']:.3f} | {'PASS' if passes else 'FAIL'}")
 
 
 def test_git_key_commands_match_code_questions() -> None:
@@ -560,9 +475,9 @@ def test_git_key_commands_match_code_questions() -> None:
 def test_replacement_arms_have_exact_commands() -> None:
     """Keep each replacement instruction tied to its documented tool."""
     question = {"question": "Where is state_dir?"}
-    values = {mode: arm_instruction(mode, Path("surveil"), Path("."), Path("task"), Path("context"), Path("trace")) for mode in ARMS}
+    values = {mode: arm_instruction(mode, Path("unused-tool"), Path("."), Path("task"), Path("context"), Path("trace")) for mode in ARMS}
     assert "grep -r" in values["grep"]
-    assert "rg -l" in values["grep+skill"]
+    assert "Search with rg" in values["grep+rule"] and "git grep" in values["grep+rule"]
     assert "--compress" in values["repomix"] and "--stdout" in values["repomix"]
     assert "probe search" in values["probe"] and "probe extract" in values["probe"]
     assert "--show-repo-map" in values["aider-map"] and "--map-tokens 1024" in values["aider-map"]
@@ -582,7 +497,7 @@ def test_arms_share_question_without_terms() -> None:
     for question in questions:
         prompts = []
         for mode in ARMS:
-            instruction = arm_instruction(mode, Path("surveil"), Path("."), Path("task"), Path("context"), Path("trace"))
+            instruction = arm_instruction(mode, Path("unused-tool"), Path("."), Path("task"), Path("context"), Path("trace"))
             prompt = f"{instruction} List every matching path for: {question['question']}"
             prompts.append(prompt)
             for term in question["terms"]:
@@ -620,15 +535,15 @@ def test_tool_use_reads_saved_inputs() -> None:
     assert assigned_tool_used("repomix", [{"tool": "shell", "input": "rg -l query ."}], {}) is False
     assert assigned_tool_used("aider-map", [{"tool": "shell", "input": "aider --show-repo-map"}], {}) is True
     assert assigned_tool_used("aider-map", None, {"grep": 1}) is None
-    assert assigned_tool_used("surveil", None, {"grep": 1}) is False
+    assert assigned_tool_used("grep+rule", [{"tool": "shell", "input": "rg"}], {}) is True
 
 
 def test_rescore_accepts_old_records() -> None:
     """Keep old records usable when tool inputs were not saved."""
-    record = {"question": "Which planner files report missing base commits?", "kind": "code", "mode": "surveil", "tool_calls": {"grep": 1}}
+    record = {"question": "Which planner files report missing base commits?", "kind": "code", "mode": "grep+rule", "tool_calls": {"grep": 1}}
     normalized = normalize_record(record)
     assert normalized["question"] == QUESTION_ALIASES[record["question"]]
-    assert normalized["used_assigned_tool"] is False
+    assert normalized["used_assigned_tool"] is None
 
 
 def test_results_append_per_run(tmp_path: Path) -> None:
@@ -650,7 +565,7 @@ def test_agent_search_comparison(tmp_path: Path) -> None:
     fixed prompt overhead from the reported median search cost.
     """
     ensure_history()
-    binary = build_binary(tmp_path)
+    binary = None
     baseline = token_total(run_opencode("Reply exactly: ok. Do not use tools.", tmp_path, binary))
     results_path = Path(os.environ.get(RESULTS_ENV_VAR, str(tmp_path / "navigation-agent-results.jsonl")))
     results_path.write_text("", encoding="utf-8")

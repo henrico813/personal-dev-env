@@ -90,7 +90,7 @@ func Items() []Item {
 			Owner:   NPM,
 		},
 		{Name: "planner", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
-		{Name: "surveil", Owner: Local}, {Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
+		{Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
 		{Name: "FiraCode", Version: "v3.2.1", Owner: Direct},
 		{Name: "JetBrainsMono", Version: "v3.2.1", Owner: Direct},
 		{Name: "neovim", Version: "0.12.3", Owner: Direct},

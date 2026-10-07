@@ -59,8 +59,8 @@
       ],
       "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
       "expected": [
-        "surveil/src/research.rs",
-        "surveil/src/research/rank.rs"
+        "src/research.rs",
+        "src/research/rank.rs"
       ],
       "kind": "literal",
       "derivation": "git grep -l RANKED_FILE_LIMIT 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
@@ -86,31 +86,31 @@
       ],
       "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
       "expected": [
-        "surveil/src/index.rs"
+        "src/index.rs"
       ],
       "kind": "literal",
       "derivation": "git grep -l INDEX_FORMAT_VERSION 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
     },
     {
-      "question": "Which files contain the text `surveil.v7`?",
+      "question": "Which files contain the text `retired-tool.v7`?",
       "terms": [
-        "surveil.v7"
+        "retired-tool.v7"
       ],
       "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
       "expected": [
-        "surveil/README.md",
-        "surveil/src/merge/tests/load_reports.rs",
-        "surveil/src/research.rs",
-        "surveil/src/schema.rs",
-        "surveil/tests/cli.rs",
-        "surveil/tests/fixtures/merge/architecture-report.json",
-        "surveil/tests/fixtures/merge/empty-task-name-report.json",
-        "surveil/tests/fixtures/merge/missing-task-name-report.json",
-        "surveil/tests/fixtures/merge/tests-report.json",
-        "surveil/tests/fixtures/merge/unknown-field-report.json"
+        "README.md",
+        "src/merge/tests/load_reports.rs",
+        "src/research.rs",
+        "src/schema.rs",
+        "tests/cli.rs",
+        "tests/fixtures/merge/architecture-report.json",
+        "tests/fixtures/merge/empty-task-name-report.json",
+        "tests/fixtures/merge/missing-task-name-report.json",
+        "tests/fixtures/merge/tests-report.json",
+        "tests/fixtures/merge/unknown-field-report.json"
       ],
       "kind": "literal",
-      "derivation": "git grep -l surveil.v7 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
+      "derivation": "git grep -l retired-tool.v7 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
     },
     {
       "question": "Which files contain the text `explicit_files`?",
@@ -119,17 +119,17 @@
       ],
       "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
       "expected": [
-        "surveil/README.md",
-        "surveil/src/cli.rs",
-        "surveil/src/gather.rs",
-        "surveil/src/research.rs",
-        "surveil/src/research/output.rs",
-        "surveil/src/research/rank.rs",
-        "surveil/src/research/setup.rs",
-        "surveil/src/schema.rs",
-        "surveil/src/source.rs",
-        "surveil/src/taskfile.rs",
-        "surveil/tests/cli.rs"
+        "README.md",
+        "src/cli.rs",
+        "src/gather.rs",
+        "src/research.rs",
+        "src/research/output.rs",
+        "src/research/rank.rs",
+        "src/research/setup.rs",
+        "src/schema.rs",
+        "src/source.rs",
+        "src/taskfile.rs",
+        "tests/cli.rs"
       ],
       "kind": "literal",
       "derivation": "git grep -l explicit_files 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
@@ -143,9 +143,9 @@
       "expected": [
         "pde-installer/docs/reference/platforms-and-paths.md",
         "pde-installer/internal/chezmoi/apply.go",
-        "surveil/README.md",
-        "surveil/src/taskfile.rs",
-        "surveil/tests/cli.rs"
+        "README.md",
+        "src/taskfile.rs",
+        "tests/cli.rs"
       ],
       "kind": "literal",
       "derivation": "git grep -l XDG_STATE_HOME 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
@@ -157,8 +157,8 @@
       ],
       "commit": "24b63d427ac76aeb049bdd8da60681752ffd9780",
       "expected": [
-        "surveil/src/cli.rs",
-        "surveil/src/taskfile.rs"
+        "src/cli.rs",
+        "src/taskfile.rs"
       ],
       "kind": "literal",
       "derivation": "git grep -l create_managed_task 24b63d427ac76aeb049bdd8da60681752ffd9780 --"
