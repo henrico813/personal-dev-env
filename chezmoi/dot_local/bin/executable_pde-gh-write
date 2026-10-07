@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+token_file="$HOME/.config/pde/github-pr-write"
+if (($# < 2)) || [[ "$1" != pr ]]; then
+    printf 'usage: pde-gh-write pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n' >&2
+    exit 2
+fi
+case "$2" in
+    create|edit|comment|review|merge|ready|close|reopen) ;;
+    *)
+        printf 'pde-gh-write refuses gh pr %s; use a read-only gh command or an allowlisted write\n' "$2" >&2
+        exit 2
+        ;;
+esac
+for argument do
+    if [[ "$argument" == --web ]]; then
+        printf 'pde-gh-write refuses browser-based PR writes\n' >&2
+        exit 2
+    fi
+done
+if [[ ! -r "$token_file" ]]; then
+    printf 'missing PR token: %s\n' "$token_file" >&2
+    exit 1
+fi
+GH_TOKEN="$(cat "$token_file")" exec gh "$@"

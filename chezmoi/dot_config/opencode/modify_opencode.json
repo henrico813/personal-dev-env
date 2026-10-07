@@ -176,4 +176,23 @@ printf '%s\n' "$input" | jq \
                      else $googModels end)
           })
       else . end)
+    | .permission = (
+        (.permission // {})
+        | if type == "object" then .
+          elif type == "string" then {"*": .}
+          else error("permission must be a string or object")
+          end
+        | .bash = (
+            if has("bash") then
+              if (.bash | type) == "object" then
+                (.bash | del(."pde-gh-write *") + {"pde-gh-write *": "ask"})
+              elif (.bash | type) == "string" then
+                {"*": .bash, "pde-gh-write *": "ask"}
+              else error("permission.bash must be a string or object")
+              end
+            else
+              {"pde-gh-write *": "ask"}
+            end
+          )
+      )
 '

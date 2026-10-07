@@ -97,3 +97,9 @@ distinguish Local and Wallace agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
+
+## Agent GitHub credentials
+
+Keep the `gh` token fine-grained, user-owned, **All repositories**, and read-only: Contents read, Pull requests read, and Metadata read. Remove the current `repo`-scoped login before running agents.
+
+Create a separate user-owned **All repositories** token with Pull requests write, plus Issues write only for PR comments. Save it without shell history and with mode 600: `install -m 600 /dev/stdin ~/.config/pde/github-pr-write`, then paste the token and press Ctrl-D. Keep it outside `gh` and do not add `pde-gh-write` to a Claude Code allow list. The OpenCode harness asks before each `pde-gh-write` run.
