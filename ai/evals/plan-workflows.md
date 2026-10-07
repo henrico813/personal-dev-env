@@ -356,7 +356,7 @@ diff --git a/cmd/eval/main.go b/cmd/eval/main.go
 +++ b/cmd/eval/main.go
 @@ -3,5 +3,5 @@ package main
  import "fmt"
-
+ 
  func main() {
 -	fmt.Println("text")
 +	fmt.Println("evaluated")
