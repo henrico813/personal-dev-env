@@ -227,6 +227,9 @@ Treat review as a correction loop, not a restart:
 
 ### Step 5: Validate and Report
 
+Before reporting a plan ready, fix each `references_outside_plan` warning
+or explain it in the plan.
+
 1. Run `planner check "<output.md>" --repo <repo> --json-errors` on the final
    plan. It starts with the base commit named by the `Base commit:` line and
    tries every planned change in order. It does not run tests. Do not report

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -336,6 +338,100 @@ func guardedPatch(opts guardedPatchOptions) (guardedPatchResult, error) {
 	return result, nil
 }
 
+const maxReferenceWarningsPerPath = 20
+
+type referencePathChange struct {
+	deletedPath string
+}
+
+func findOutsidePlanReferences(repo, baseCommit string, changes []planpatch.Change) ([]referenceWarning, map[string]int, error) {
+	changed := make(map[string]bool, len(changes))
+	var deleted []referencePathChange
+	for _, change := range changes {
+		changed[change.Filename] = true
+		lines := strings.Split(string(change.Diff), "\n")
+		for i := 0; i < len(lines); i++ {
+			if strings.HasPrefix(lines[i], "--- a/") && i+1 < len(lines) && lines[i+1] == "+++ /dev/null" {
+				path := strings.TrimPrefix(lines[i], "--- a/")
+				deleted = append(deleted, referencePathChange{deletedPath: path})
+			}
+		}
+	}
+	sort.Slice(deleted, func(i, j int) bool { return deleted[i].deletedPath < deleted[j].deletedPath })
+	var warnings []referenceWarning
+	omitted := make(map[string]int)
+	counts := make(map[string]int)
+	seen := make(map[string]bool)
+	for _, item := range deleted {
+		needles := []string{item.deletedPath, filepath.Base(item.deletedPath)}
+		for _, needle := range needles {
+			rows, err := gitReferenceRows(repo, baseCommit, needle)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, row := range rows {
+				if row.path == item.deletedPath || changed[row.path] {
+					continue
+				}
+				key := fmt.Sprintf("%s\x00%s\x00%d\x00%s", item.deletedPath, row.path, row.line, row.text)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				if counts[item.deletedPath] >= maxReferenceWarningsPerPath {
+					omitted[item.deletedPath]++
+					continue
+				}
+				counts[item.deletedPath]++
+				warnings = append(warnings, referenceWarning{DeletedPath: item.deletedPath, ReferencingPath: row.path, Line: row.line, Text: row.text})
+			}
+		}
+	}
+	sort.Slice(warnings, func(i, j int) bool {
+		if warnings[i].DeletedPath != warnings[j].DeletedPath {
+			return warnings[i].DeletedPath < warnings[j].DeletedPath
+		}
+		if warnings[i].ReferencingPath != warnings[j].ReferencingPath {
+			return warnings[i].ReferencingPath < warnings[j].ReferencingPath
+		}
+		return warnings[i].Line < warnings[j].Line
+	})
+	if len(omitted) == 0 {
+		omitted = nil
+	}
+	return warnings, omitted, nil
+}
+
+type referenceRow struct {
+	path, text string
+	line       int
+}
+
+func gitReferenceRows(repo, baseCommit, needle string) ([]referenceRow, error) {
+	cmd := exec.Command("git", "--literal-pathspecs", "-C", repo, "grep", "-n", "-F", "-e", needle, baseCommit, "--")
+	output, err := cmd.Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git grep %q: %w", needle, err)
+	}
+	var rows []referenceRow
+	for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) != 4 || parts[0] != baseCommit {
+			continue
+		}
+		lineNumber, err := strconv.Atoi(parts[2])
+		if err != nil {
+			continue
+		}
+		rows = append(rows, referenceRow{path: parts[1], line: lineNumber, text: parts[3]})
+	}
+	return rows, nil
+}
+
 // expectedPlan is the pre-edit plan with only the selected diff replaced, used
 // to detect a fence collision that rewrote an unrelated parsed field.
 func expectedPlan(plan Plan, step, change int, replacement []byte) Plan {
@@ -354,16 +450,25 @@ type guardedCheckOptions struct {
 	BaseCommit string
 }
 
+type referenceWarning struct {
+	DeletedPath     string `json:"deleted_path"`
+	ReferencingPath string `json:"referencing_path"`
+	Line            int    `json:"line"`
+	Text            string `json:"text"`
+}
+
 type guardedCheckResult struct {
 	ChangesApplied       int    `json:"changes_applied"`
 	PlanSHA256           string `json:"plan_sha256"`
 	StructureValid       bool   `json:"structure_valid"`
 	ApplicabilityChecked bool   `json:"applicability_checked"`
 	// Deprecated: use ChangesApplied. Kept so existing scripts keep working.
-	ChangesReplayed int    `json:"changes_replayed"`
-	BaseCommit      string `json:"base_commit"`
-	SourceState     string `json:"source_state"`
-	BehaviorChecked bool   `json:"behavior_checked"`
+	ChangesReplayed              int                `json:"changes_replayed"`
+	BaseCommit                   string             `json:"base_commit"`
+	SourceState                  string             `json:"source_state"`
+	BehaviorChecked              bool               `json:"behavior_checked"`
+	ReferencesOutsidePlan        []referenceWarning `json:"references_outside_plan,omitempty"`
+	ReferencesOutsidePlanOmitted map[string]int     `json:"references_outside_plan_omitted,omitempty"`
 }
 
 func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
@@ -405,6 +510,12 @@ func guardedCheck(opts guardedCheckOptions) (guardedCheckResult, error) {
 	result.BaseCommit = baseCommit
 	result.SourceState = "committed_snapshot_only"
 	result.BehaviorChecked = false
+	warnings, omitted, err := findOutsidePlanReferences(repo, baseCommit, changes)
+	if err != nil {
+		return result, codedError(codeSourceCheck, err)
+	}
+	result.ReferencesOutsidePlan = warnings
+	result.ReferencesOutsidePlanOmitted = omitted
 	return result, nil
 }
 

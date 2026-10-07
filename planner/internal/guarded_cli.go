@@ -32,6 +32,9 @@ Guarded source-code revisions:
   Without --repo, check uses the current working directory's Git repository.
   Dirty and untracked source files are excluded; Planner does not stage, stash,
   reset, or commit them.
+  On success, references_outside_plan is an optional non-blocking list of
+  literal path or basename matches in unchanged files; results are sorted and
+  bounded, with references_outside_plan_omitted counting hidden matches.
 
   --target SELECTOR               1-based implementation step and file change.
   --expect TOKEN                  edit_expect from targeted inspect.
