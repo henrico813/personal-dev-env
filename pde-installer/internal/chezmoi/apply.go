@@ -209,10 +209,6 @@ func (m Manager) arguments() []string {
 }
 
 func (m Manager) environment() []string {
-	state := filepath.Join(m.Home, ".local", "state")
-	if configured := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(configured) {
-		state = configured
-	}
 	path := filepath.Join(m.AquaRoot, "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	configName, checksumsName := m.Profile.AquaFiles()
 	aquaConfig := filepath.Join(m.Source(), "dot_config", "aquaproj-aqua")
@@ -222,7 +218,6 @@ func (m Manager) environment() []string {
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
 		"PDE_PROFILE=" + string(m.Profile),
 		"PDE_COLOR_PROFILE=" + string(m.ColorProfile),
-		"PDE_SURVEIL_STATE_PATTERN=" + filepath.Join(state, "surveil", "**"),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,
 		"PATH=" + path,

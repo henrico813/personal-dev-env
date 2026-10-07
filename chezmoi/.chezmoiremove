@@ -33,4 +33,8 @@ Projects/CLAUDE.md
 .claude/commands/document_codebase.md
 .claude/commands/README.md
 .agents/skills/git-messages/scripts/check-message
+.agents/skills/code-search
 {{ end }}
+
+.local/bin/surveil
+.local/state/surveil

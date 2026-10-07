@@ -38,7 +38,7 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "surveil", "vibe"} {
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe"} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
 	logPath := filepath.Join(t.TempDir(), "build.log")
@@ -46,7 +46,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
 	manager := New(home, repoRoot, run.Runner{})
 
-	for _, name := range []string{"planner", "opencode-inline-shim", "surveil", "vibe"} {
+	for _, name := range []string{"planner", "opencode-inline-shim", "vibe"} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
@@ -60,7 +60,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
 	}
-	for _, name := range []string{"planner", "opencode-inline-shim", "surveil", "vibe"} {
+	for _, name := range []string{"planner", "opencode-inline-shim", "vibe"} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
 	assertBuildFile(t, manager.statePath(), "old state\n")
@@ -291,7 +291,7 @@ func writeBuildFile(t *testing.T, path, content string, mode os.FileMode) {
 func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
-		"planner": "go", "opencode-inline-shim": "go", "surveil": "cargo", "vibe": "cargo",
+		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}
@@ -313,7 +313,6 @@ func assertBuildArtifactsRemoved(t *testing.T, stageRoot string) {
 	for _, path := range []string{
 		filepath.Join(stageRoot, "planner"),
 		filepath.Join(stageRoot, "opencode-inline-shim"),
-		filepath.Join(stageRoot, "surveil-target"),
 		filepath.Join(stageRoot, "vibe-target"),
 		filepath.Join(stageRoot, "go-cache"),
 		filepath.Join(stageRoot, "go-mod-cache"),

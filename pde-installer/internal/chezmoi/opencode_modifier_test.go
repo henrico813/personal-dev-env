@@ -165,7 +165,6 @@ func runModifier(t *testing.T, input string) ([]byte, error) {
 	t.Helper()
 	root := filepath.Join("..", "..", "..")
 	command := exec.Command("sh", filepath.Join(root, "chezmoi", "dot_config", "opencode", "modify_opencode.json"))
-	command.Env = append(command.Environ(), "PDE_SURVEIL_STATE_PATTERN=/home/test/.local/state/surveil/**")
 	command.Stdin = bytes.NewBufferString(input)
 	return command.CombinedOutput()
 }
@@ -228,7 +227,6 @@ exit "${FAKE_CURL_EXIT:-0}"
 	command.Env = append(command.Environ(),
 		"HOME="+home,
 		"PATH="+bin+":"+os.Getenv("PATH"),
-		"PDE_SURVEIL_STATE_PATTERN=/home/test/.local/state/surveil/**",
 	)
 	command.Stdin = bytes.NewBufferString(input)
 	return command.CombinedOutput()
@@ -254,7 +252,6 @@ exit "${FAKE_CURL_EXIT:-0}"
 	command.Env = append(command.Environ(),
 		"HOME="+home,
 		"PATH="+bin+":"+os.Getenv("PATH"),
-		"PDE_SURVEIL_STATE_PATTERN=/home/test/.local/state/surveil/**",
 	)
 	command.Env = append(command.Env, extraEnv...)
 	var stdout, stderr bytes.Buffer

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from test_surveil_recall import (
+from test_code_navigation import (
     load_result_records,
     model_name,
     print_gate,

@@ -9,7 +9,7 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `opencode/` holds OpenCode agents and commands.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
-Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `code-search` for efficient code reference search, `behavior-focused-testing` for automated tests,
+Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `behavior-focused-testing` for automated tests,
 `code-documentation` for proportional source explanations, `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `python-development` for Python code, and `rust-development` for Rust code.
@@ -26,14 +26,12 @@ instructions, skill descriptions, or planning workflows. Run
 shared workflow skills. Run it locally with `cd ai && uv run pytest`.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
-`opencode-inline-shim`, `pi`, `surveil`, and `vibe`, then installs each
+`opencode-inline-shim`, `pi`, and `vibe`, then installs each
 mapped package under `skills/` to `~/.agents/skills/<name>/`, including the
 shared workflow skills. It syncs `opencode/` and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
-unmanaged by the installer. Surveil is installed as a standalone binary;
-the installer uses the repository's scoped chezmoi modifier to add its XDG-aware state directory to OpenCode's
-`permission.external_directory` rules. Vibe relies on provider env vars
+unmanaged by the installer. Vibe relies on provider env vars
 or `~/.pi/agent/auth.json` rather than managed config under `ai/`. The
 installer copies the shared `AGENTS.md` into each harness config, backs
 up managed paths it replaces, and backs up `opencode.json` only when the
