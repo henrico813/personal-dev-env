@@ -78,7 +78,7 @@ pde-installer install full
 ```
 
 The full install includes the AI tooling. It installs planner, Codex,
-OpenCode, the OpenCode inline shim, Pi, Moshi Hook, Herdr, Surveil, and Vibe
+OpenCode, the OpenCode inline shim, Pi, Moshi Hook, Herdr, and Vibe
 binaries plus repo-managed AI config.
 
 ## AI Source Tree
@@ -88,7 +88,6 @@ binaries plus repo-managed AI config.
   workflow skills.
 - `ai/opencode/` holds OpenCode agents and commands.
 - `ai/pi/agent/` holds Pi settings and package resources.
-- `surveil/` holds the Surveil task-doc CLI docs.
 - `pde/AGENTS.md` holds repo-local PDE notes.
 - `nvim-plugins/` holds custom Neovim plugins that also install outside PDE.
 
@@ -106,7 +105,6 @@ binaries plus repo-managed AI config.
 | Research codebase | `ai/skills/research-codebase/` | `~/.agents/skills/research-codebase/` | Shared workflow skill for as-is codebase research |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
-| Code search | `ai/skills/code-search/` | `~/.agents/skills/code-search/` | Efficient code reference search |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
@@ -118,14 +116,12 @@ binaries plus repo-managed AI config.
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
-| Surveil | `surveil/` | `~/.local/bin/surveil` | Task research and evidence merge CLI |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 | Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
 | Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
-The installer snapshots changed chezmoi targets before apply. A scoped modifier merges an XDG-aware `permission.external_directory` allowance for Surveil state into user-owned `opencode.json`; unrelated settings remain in place and failures roll back the snapshot.
 
 PDE owns the installed Claude Code package and the OpenCode Claude adapter
 configuration. Installation does not authenticate Claude Code; authenticate it
