@@ -10,9 +10,8 @@ processes for `opencode serve` and `opencode.exe ... serve`. It compares the
 server's first `gh` on `PATH` with `~/.local/bin/gh`. A mismatch is reported so
 the user can choose whether to stop the server.
 
-The first OpenCode client starts the server automatically. Later clients and
-OpenChamber share that server, so stopping it can affect all their active
-sessions. Stopping sends `SIGTERM`; it does not migrate or save sessions, but
-the next client starts a server with the updated PATH. Declining means those
-clients keep using the old server, and its agents can still bypass the guard
-until someone restarts it.
+OpenCode terminal sessions share the background server, so stopping it can
+affect all active sessions. Stopping sends `SIGTERM`; it does not migrate or
+save sessions, but the next terminal session starts a server with the updated
+PATH. Declining means those sessions keep using the old server, and its agents
+can still bypass the guard until someone restarts it.
