@@ -107,6 +107,7 @@ request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_t
 approval_file="$approval_dir/$request_id"
 real_gh=$(find_real_gh)
 run_approved() {
+    # Consume the approval before calling gh so one answer cannot be reused.
     rm -f "$approval_file"
     if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
 }
@@ -120,6 +121,7 @@ fi
 if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file"; fi
 request_file=$(mktemp "$request_dir/.request.XXXXXX")
 {
+    # The request file is also the pending marker used by popup recovery.
     printf 'id: %s\ntime: %s\ncommand: %s\ntitle:\n%s\nbody:\n' "$request_id" "$now" "$command_text" "$title_text"
     printf '%s' "$body_text"
     printf '\n'

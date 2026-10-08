@@ -72,6 +72,7 @@ for request in "${requests[@]}"; do
     fi
     id=${request##*/}
     less <"$request" >&3
+    # Raw mode makes the approval a deliberate single-key action.
     printf 'Press y to approve; any other key declines. ' >&3
     tty_state=$(stty -g <&3) || { printf '\npde-pr-approve could not configure the terminal\n' >&2; exit 1; }
     restore_tty() { stty "$tty_state" <&3; }
