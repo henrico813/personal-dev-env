@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Record an exact PR write, request approval, then run the real gh command.
-# Popup and terminal approval share local request and approval files.
-# The guard only receives PDE_GH_WRITE=1 after this script consumes approval.
 set -euo pipefail
 
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
@@ -128,7 +125,6 @@ for argument in "${original_args[@]}"; do printf -v quoted ' %q' "$argument"; co
 now=$(date +%s)
 mkdir -p "$request_dir" "$approval_dir"
 request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
-# Include body-file contents so approval is tied to the text that will be posted.
 approval_file="$approval_dir/$request_id"
 real_gh=$(find_real_gh)
 run_approved() {
@@ -235,7 +231,50 @@ request_file=$(mktemp "$request_dir/.request.XXXXXX")
     printf '\n'
 } >"$request_file"
 mv "$request_file" "$request_dir/$request_id"
-# Use the most recently active client so the popup appears where the user is working.
+start_moshi_approval() {
+    local marker question operation repo target argument index
+    marker="$request_dir/.moshi-$request_id"
+    mkdir "$marker" 2>/dev/null || return 0
+    operation=${original_args[1]}
+    repo=''
+    target=''
+    index=2
+    while ((index < ${#original_args[@]})); do
+        argument=${original_args[index]}
+        case "$argument" in
+            --repo|-R|--head)
+                ((index++))
+                [[ "$argument" == --head ]] && target=${original_args[index]} || repo=${original_args[index]}
+                ;;
+            --repo=*|--head=*)
+                if [[ "$argument" == --head=* ]]; then target=${argument#*=}; else repo=${argument#*=}; fi
+                ;;
+            [0-9]*)
+                [[ -n "$target" ]] || target=$argument
+                ;;
+        esac
+        ((index++))
+    done
+    [[ -n "$repo" ]] || repo='current repository'
+    [[ -n "$target" ]] || target='the requested PR'
+    question="Approve gh pr $operation in $repo ($target), titled $title_text?"
+    (
+        if ! command -v moshi-hook >/dev/null 2>&1; then
+            exit 4
+        fi
+        if moshi-hook ask --require-remote --source pde-gh-write --timeout 4h "$question"; then
+            [[ -e "$request_dir/$request_id" && ! -e "$approval_dir/$request_id" ]] || exit 0
+            approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
+            printf '%s\n' "$request_id" >"$approval_tmp"
+            mv "$approval_tmp" "$approval_dir/$request_id"
+            rm -f "$request_dir/$request_id"
+        elif [[ $? -eq 1 ]]; then
+            rm -f "$request_dir/$request_id"
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+    disown || true
+}
+start_moshi_approval
 client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
 if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
@@ -245,7 +284,6 @@ fi
 setsid -f pde-pr-approve --popup-pending "$client" "$request_id" </dev/null >/dev/null 2>&1
 printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 deadline=$((now + 90))
-# Agent commands time out after about two minutes, so do not wait beyond 90 seconds.
 while (( $(date +%s) <= deadline )); do
     if approval_ready; then
         run_approved
