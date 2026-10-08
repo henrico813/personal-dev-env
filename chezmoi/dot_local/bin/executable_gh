@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Block raw pull-request writes. Only pde-gh-write sets PDE_GH_WRITE=1 after approval.
+set -euo pipefail
+
+self=$(readlink -f "$0")
+real_gh=''
+old_ifs=$IFS
+IFS=: read -ra path_entries <<<"$PATH"
+IFS=$old_ifs
+for directory in "${path_entries[@]}"; do
+    [[ -n "$directory" ]] || directory=.
+    candidate="$directory/gh"
+    if [[ -x "$candidate" && "$(readlink -f "$candidate")" != "$self" ]]; then
+        real_gh=$candidate
+        break
+    fi
+done
+if [[ -z "$real_gh" ]]; then
+    printf 'gh guard cannot find the real gh executable\n' >&2
+    exit 1
+fi
+if [[ ${PDE_GH_WRITE:-} == 1 ]]; then
+    exec "$real_gh" "$@"
+fi
+
+blocked=false
+case "${1:-}" in
+    pr)
+        case "${2:-}" in
+            create|new|edit|comment|review|merge|ready|close|reopen) blocked=true ;;
+        esac
+        ;;
+    api)
+        api_path=''
+        method=''
+        has_write_field=false
+        api_index=2
+        while ((api_index <= $#)); do
+            argument=${!api_index}
+            case "$argument" in
+                -X|--method)
+                    next_index=$((api_index + 1))
+                    method=${!next_index:-}
+                    api_index=$((api_index + 2))
+                    continue
+                    ;;
+                -X=*|--method=*) method=${argument#*=} ;;
+                -f|-F|--field|--raw-field|--input)
+                    has_write_field=true
+                    api_index=$((api_index + 2))
+                    continue
+                    ;;
+                -f=*|-F=*|--field=*|--raw-field=*|--input=*) has_write_field=true ;;
+                --*) ;;
+                *) [[ -n "$api_path" ]] || api_path=$argument ;;
+            esac
+            api_index=$((api_index + 1))
+        done
+        if [[ "$api_path" == graphql ]]; then
+            for argument in "${@:3}"; do
+                [[ "$argument" == *mutation* ]] && blocked=true
+            done
+        elif [[ "$api_path" == *pulls* || "$api_path" == *issues/*comments* ]] && { method=${method^^}; [[ "$method" == POST || "$method" == PATCH || "$method" == PUT || "$method" == DELETE ]] || [[ "$has_write_field" == true ]]; }; then
+            blocked=true
+        fi
+        ;;
+esac
+if [[ "$blocked" == true ]]; then
+    printf 'Use pde-gh-write for pull-request writes; it asks the user for approval.\n' >&2
+    exit 2
+fi
+exec "$real_gh" "$@"

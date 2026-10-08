@@ -90,3 +90,5 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   changes, or external actions.
 - When the user asks to promote a learned preference into source-controlled
   guidance, use the `promote-memory` skill.
+
+- Agents change pull requests only through `pde-gh-write`; the popup supplies approval. Never run `pde-pr-approve` or set `PDE_GH_WRITE`.

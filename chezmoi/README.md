@@ -97,3 +97,7 @@ distinguish Local and Wallace agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
 See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.md).
+
+## Agent GitHub approvals
+
+Keep the normal `gh` login; no token setup is needed. `pde-gh-write` opens a popup, and `pde-pr-approve` approves with one `y` keypress after showing the request in `less`. The wrapper waits up to 90 seconds; requests expire after 4 hours. Reattached tmux clients restore pending popups without duplicates. Without tmux, approve in a terminal and rerun. See the [approval explanation](docs/explanation/pr-write-approval.md), [how-to guide](docs/how-to/pr-write-approval.md), and [reference](docs/reference/pr-write-approval.md).
