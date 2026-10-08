@@ -83,5 +83,8 @@ set -g @resurrect-processes 'ssh'
 {{- end }}
 set -g @resurrect-capture-pane-contents 'on'
 
+# Restore pending PR approval popups when a client attaches.
+set-hook -g client-attached 'run-shell -b "pde-pr-approve --popup-pending \"#{client_name}\""'
+
 # Initialize TMUX plugin manager (keep this line at the very bottom of tmux.conf)
 run '~/.tmux/plugins/tpm/tpm'

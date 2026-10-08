@@ -1,0 +1,268 @@
+#!/usr/bin/env bash
+# Record an exact PR write, request approval, then run the real gh command.
+# Popup and terminal approval share local request and approval files.
+# The guard only receives PDE_GH_WRITE=1 after this script consumes approval.
+set -euo pipefail
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
+request_dir="$state_root/pr-requests"
+approval_dir="$state_root/pr-approvals"
+readonly REQUEST_EXPIRY_SECONDS=14400
+
+find_real_gh() {
+    local guard_command guard_path candidate directory
+    guard_command=$(command -v gh 2>/dev/null || true)
+    guard_path=''
+    [[ -z "$guard_command" ]] || guard_path=$(readlink -f "$guard_command")
+    local old_ifs=$IFS
+    IFS=: read -ra path_entries <<<"$PATH"
+    IFS=$old_ifs
+    for directory in "${path_entries[@]}"; do
+        [[ -n "$directory" ]] || directory=.
+        candidate="$directory/gh"
+        if [[ -x "$candidate" && "$(readlink -f "$candidate")" != "$guard_path" ]]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    printf 'pde-gh-write cannot find the real gh executable\n' >&2
+    exit 1
+}
+
+if (($# < 2)) || [[ "$1" != pr ]]; then
+    printf 'usage: pde-gh-write pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n' >&2
+    exit 2
+fi
+case "$2" in
+    create|edit|comment|review|merge|ready|close|reopen) ;;
+    *)
+        printf 'pde-gh-write refuses gh pr %s; use a read-only gh command or an allowlisted write\n' "$2" >&2
+        exit 2
+        ;;
+esac
+for argument do
+    if [[ "$argument" == --web ]]; then
+        printf 'pde-gh-write refuses browser-based PR writes\n' >&2
+        exit 2
+    fi
+done
+
+read_body() {
+    IFS= read -r -d '' body_text || true
+}
+
+print_diff() {
+    # $1 current file, $2 requested file; print a unified diff or 'No changes'.
+    local out
+    out=$(diff -u --label current "$1" --label requested "$2" || true)
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out"
+    else
+        printf 'No changes\n'
+    fi
+}
+
+original_args=("$@")
+resolved_args=()
+title_text=''
+body_text=''
+has_body_file=false
+has_title=false
+has_body=false
+index=0
+while ((index < ${#original_args[@]})); do
+    argument=${original_args[index]}
+    case "$argument" in
+        --title|-t|--subject)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires text\n' "$argument" >&2; exit 2; }
+            title_text=${original_args[index]}
+            has_title=true
+            resolved_args+=("$argument" "${original_args[index]}")
+            ;;
+        --title=*|--subject=*)
+            title_text=${argument#*=}
+            has_title=true
+            resolved_args+=("$argument")
+            ;;
+        --body)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires text\n' "$argument" >&2; exit 2; }
+            body_text=${original_args[index]}
+            has_body=true
+            resolved_args+=("$argument" "${original_args[index]}")
+            ;;
+        --body=*)
+            body_text=${argument#--body=}
+            has_body=true
+            resolved_args+=("$argument")
+            ;;
+        --body-file|-F)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires a path\n' "$argument" >&2; exit 2; }
+            body_path=${original_args[index]}
+            [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
+            if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
+            has_body_file=true
+            has_body=true
+            # Stdin keeps the approved text even if the source file changes.
+            resolved_args+=(--body-file -)
+            ;;
+        --body-file=*|-F=*)
+            body_path=${argument#*=}
+            [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
+            if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
+            has_body_file=true
+            has_body=true
+            # Stdin keeps the approved text even if the source file changes.
+            resolved_args+=(--body-file -)
+            ;;
+        *)
+            resolved_args+=("$argument")
+            ;;
+    esac
+    index=$((index + 1))
+done
+command_text='gh'
+for argument in "${original_args[@]}"; do printf -v quoted ' %q' "$argument"; command_text+="$quoted"; done
+now=$(date +%s)
+mkdir -p "$request_dir" "$approval_dir"
+request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
+# Include body-file contents so approval is tied to the text that will be posted.
+approval_file="$approval_dir/$request_id"
+real_gh=$(find_real_gh)
+run_approved() {
+    # Consume the approval before calling gh so one answer cannot be reused.
+    rm -f "$approval_file"
+    if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
+}
+approval_ready() {
+    [[ -f "$approval_file" ]] && (( $(date +%s) - $(stat -c %Y "$approval_file") <= REQUEST_EXPIRY_SECONDS )) && [[ $(cat "$approval_file") == "$request_id" ]]
+}
+if approval_ready; then
+    run_approved
+    exit $?
+fi
+if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file"; fi
+# For pr edit, show the requested title/body next to the current PR values.
+edit_target=''
+edit_repo=''
+if [[ "$2" == edit ]]; then
+    # Track --repo/-R so the read-only lookup hits the right repository.
+    index=2
+    while ((index < ${#original_args[@]})); do
+        argument=${original_args[index]}
+        case "$argument" in
+            --repo)
+                index=$((index + 1))
+                edit_repo=${original_args[index]:-}
+                ;;
+            --repo=*)
+                edit_repo=${argument#--repo=}
+                ;;
+            -R)
+                index=$((index + 1))
+                edit_repo=${original_args[index]:-}
+                ;;
+            -R=*)
+                edit_repo=${argument#-R=}
+                ;;
+        esac
+        index=$((index + 1))
+    done
+    # The target is the first argument that is not a flag or a flag value.
+    index=2
+    while ((index < ${#original_args[@]})); do
+        argument=${original_args[index]}
+        case "$argument" in
+            -t|--title|--subject|-b|--body|-F|--body-file|--repo|-R)
+                index=$((index + 1))
+                ;;
+            -*);;
+            *)
+                edit_target=$argument
+                break
+                ;;
+        esac
+        index=$((index + 1))
+    done
+fi
+edit_section_file=''
+if [[ -n "$edit_target" ]]; then
+    edit_tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/pde-gh-write-edit.XXXXXX")
+    trap 'rm -rf "$edit_tmpdir"' EXIT
+    view_args=(pr view "$edit_target" --json title,body)
+    if [[ -n "$edit_repo" ]]; then view_args+=(--repo "$edit_repo"); fi
+    fetch_ok=false
+    # Read-only: the real gh is called directly, never through the guard.
+    if "$real_gh" "${view_args[@]}" >"$edit_tmpdir/current.json" 2>"$edit_tmpdir/error"; then
+        if jq -r '.title // ""' "$edit_tmpdir/current.json" >"$edit_tmpdir/title.current" \
+            && jq -r '.body // ""' "$edit_tmpdir/current.json" >"$edit_tmpdir/body.current"; then
+            fetch_ok=true
+        fi
+    fi
+    printf '%s\n' "$title_text" >"$edit_tmpdir/title.requested"
+    printf '%s\n' "$body_text" >"$edit_tmpdir/body.requested"
+    {
+        printf 'Changes from the current pull request\n'
+        if ! $fetch_ok; then
+            edit_error=$(cat "$edit_tmpdir/error")
+            [[ -n "$edit_error" ]] || edit_error='unknown error'
+            printf 'Fetch failed: %s\n' "$edit_error"
+        else
+            printf 'Title:\n'
+            if $has_title; then
+                print_diff "$edit_tmpdir/title.current" "$edit_tmpdir/title.requested"
+            else
+                printf 'No changes (title not in this command)\n'
+            fi
+            printf 'Body:\n'
+            if $has_body; then
+                print_diff "$edit_tmpdir/body.current" "$edit_tmpdir/body.requested"
+            else
+                printf 'No changes (body not in this command)\n'
+            fi
+        fi
+    } >"$edit_tmpdir/section"
+    edit_section_file="$edit_tmpdir/section"
+fi
+request_file=$(mktemp "$request_dir/.request.XXXXXX")
+{
+    # The request file is also the pending marker used by popup recovery.
+    if [[ -n "$edit_section_file" ]]; then cat "$edit_section_file"; printf '\n'; fi
+    printf 'id: %s\ntime: %s\ncommand: %s\ntitle:\n%s\nbody:\n' "$request_id" "$now" "$command_text" "$title_text"
+    printf '%s' "$body_text"
+    printf '\n'
+} >"$request_file"
+mv "$request_file" "$request_dir/$request_id"
+# Use the most recently active client so the popup appears where the user is working.
+client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
+if [[ -z "$client" ]]; then
+    printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
+    exit 3
+fi
+# Start the helper directly; it owns the one popup and must outlive the agent command.
+setsid -f pde-pr-approve --popup-pending "$client" "$request_id" </dev/null >/dev/null 2>&1
+printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
+deadline=$((now + 90))
+# Agent commands time out after about two minutes, so do not wait beyond 90 seconds.
+while (( $(date +%s) <= deadline )); do
+    if approval_ready; then
+        run_approved
+        exit $?
+    fi
+    if [[ ! -e "$request_dir/$request_id" ]]; then
+        printf 'Declined by the user.\n' >&2
+        exit 4
+    fi
+    sleep 1
+done
+if approval_ready; then
+    run_approved
+    exit $?
+fi
+if [[ ! -e "$request_dir/$request_id" ]]; then
+    printf 'Declined by the user.\n' >&2
+    exit 4
+fi
+exit 3

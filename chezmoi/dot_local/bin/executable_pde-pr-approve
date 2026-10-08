@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Show pending PR requests and record one-key approval.
+# Read /dev/tty so an agent's redirected stdin cannot provide the answer.
+set -euo pipefail
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
+request_dir="$state_root/pr-requests"
+approval_dir="$state_root/pr-approvals"
+popup_dir="$approval_dir/.popups"
+readonly REQUEST_EXPIRY_SECONDS=14400
+
+popup_pending() {
+    local client=$1 requested_id=${2:-} request id key lock now
+    [[ -n "$client" ]] || return 0
+    mkdir -p "$request_dir" "$popup_dir"
+    now=$(date +%s)
+    find "$popup_dir" -mindepth 1 -maxdepth 1 -type d -mmin +240 -exec rmdir {} + 2>/dev/null || true
+    if [[ -n "$requested_id" ]]; then
+        requests=("$request_dir/$requested_id")
+    else
+        mapfile -t requests < <(find "$request_dir" -maxdepth 1 -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+    fi
+    for request in "${requests[@]}"; do
+        [[ -f "$request" ]] || continue
+        if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
+            rm -f "$request"
+            continue
+        fi
+        id=${request##*/}
+        key=$(printf '%s' "$client" | sha256sum | cut -d' ' -f1)
+        lock="$popup_dir/$id.$key"
+        if mkdir "$lock" 2>/dev/null; then
+            tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $id"
+            rmdir "$lock" 2>/dev/null || true
+            return 0
+        fi
+        [[ -n "$requested_id" ]] && return 0
+    done
+}
+
+if [[ ${1:-} == --popup-pending ]]; then
+    (($# >= 2 && $# <= 3)) || { printf 'usage: pde-pr-approve --popup-pending CLIENT [request-id]\n' >&2; exit 2; }
+    popup_pending "$2" "${3:-}"
+    exit $?
+fi
+
+requested_id=${1:-}
+if (($# > 1)); then
+    printf 'usage: pde-pr-approve [request-id]\n' >&2
+    exit 2
+fi
+
+if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+    printf 'pde-pr-approve requires an interactive terminal\n' >&2
+    exit 1
+fi
+mkdir -p "$request_dir" "$approval_dir"
+now=$(date +%s)
+if [[ -n "$requested_id" ]]; then
+    request="$request_dir/$requested_id"
+    [[ -f "$request" ]] || { printf 'no pending request: %s\n' "$requested_id" >&2; exit 1; }
+    requests=("$request")
+else
+    mapfile -t requests < <(find "$request_dir" -maxdepth 1 -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+fi
+if ((${#requests[@]} == 0)); then
+    printf 'No pending pull-request approvals.\n' >&3
+    exit 0
+fi
+for request in "${requests[@]}"; do
+    if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
+        rm -f "$request"
+        continue
+    fi
+    id=${request##*/}
+    less <"$request" >&3
+    # Raw mode makes the approval a deliberate single-key action.
+    printf 'Press y to approve; any other key declines. ' >&3
+    tty_state=$(stty -g <&3) || { printf '\npde-pr-approve could not configure the terminal\n' >&2; exit 1; }
+    restore_tty() { stty "$tty_state" <&3; }
+    trap restore_tty EXIT
+    stty -icanon min 1 time 0 -echo <&3
+    IFS= read -r -n 1 answer <&3 || { printf '\npde-pr-approve could not read the terminal\n' >&2; exit 1; }
+    printf '\n' >&3
+    if [[ "$answer" == y ]]; then
+        if [[ ! -e "$request" ]]; then
+            printf 'Request already handled.\n' >&3
+            continue
+        fi
+        approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
+        printf '%s\n' "$id" >"$approval_tmp"
+        mv "$approval_tmp" "$approval_dir/$id"
+    fi
+    rm -f "$request"
+done
