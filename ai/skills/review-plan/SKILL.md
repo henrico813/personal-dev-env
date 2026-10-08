@@ -88,6 +88,9 @@ Every review must:
 - treat missing, placeholder-only, or non-behavioral verification that cannot
   prove the definition of done as a required correction, not an optional test
   improvement
+- check planned tests against `behavior-focused-testing`; treat low-value tests
+  as required corrections, just like missing tests, and do not request tests
+  that would be low value
 - cite concrete `file:line` evidence for repository-specific concerns
 - distinguish a demonstrated problem from a preference or optional improvement
 - avoid proposing unrelated cleanup
