@@ -80,6 +80,10 @@ for request in "${requests[@]}"; do
     IFS= read -r -n 1 answer <&3 || { printf '\npde-pr-approve could not read the terminal\n' >&2; exit 1; }
     printf '\n' >&3
     if [[ "$answer" == y ]]; then
+        if [[ ! -e "$request" ]]; then
+            printf 'Request already handled.\n' >&3
+            continue
+        fi
         approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
         printf '%s\n' "$id" >"$approval_tmp"
         mv "$approval_tmp" "$approval_dir/$id"
