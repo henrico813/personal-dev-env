@@ -259,11 +259,13 @@ start_moshi_approval() {
     question="Approve gh pr $operation in $repo ($target)"
     [[ -z "$title_text" ]] || question+=", titled $title_text"
     question+='?'
+    # Detach from the harness process group so the ask survives command exit.
     setsid -f bash -c '
         request_id=$1
         request_dir=$2
         approval_dir=$3
         question=$4
+        # This marker lets retries distinguish one live ask from a dead one.
         marker="$request_dir/.moshi-$request_id.pid"
         printf "%s\\n" "$$" >"$marker"
         trap '\''rm -f "$marker"'\'' EXIT
