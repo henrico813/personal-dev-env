@@ -58,7 +58,7 @@ Write the minimal amount of tests possible in order to verify the behavior that 
 A low-value test checks for a bug that is unlikely or would do little harm. Do not write or request one, especially when it needs complex setup. Common examples:
 
 - Checking that code does not do something it was never meant to do, such as retry, unless a requirement says it must not.
-- Checking an error the code only passes along unchanged.
+- Skip checking an error the code only passes along unchanged, even if an interface or type documents it; test it only when code changes, wraps, translates, retries, or recovers from the error, or a requirement explicitly calls for that error behavior.
 - Checking an input check in an internal function whose callers already pass valid values. Do not add such checks just to test them.
 - Repeating what end-to-end or hardware tests already cover.
 
