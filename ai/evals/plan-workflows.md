@@ -1,7 +1,7 @@
 # Plan Workflow Checks
 
-Run these manual checks in fresh Codex and OpenCode sessions after changing a
-planning workflow. Use one model and version per harness for comparisons.
+Run these manual checks in fresh OpenCode and Vibe sessions after changing a
+planning workflow. Use one configured model and version per run.
 Inspect event traces and generated artifacts instead of relying only on final
 responses.
 
@@ -37,8 +37,8 @@ for provider in "${PROVIDER_VARIABLES[@]}"; do
   ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
   if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
 done
-if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
-  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
+if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" ]]; then
+  printf '%s\n' 'Set OPENCODE_API_KEY before running the evaluation' >&2
   exit 1
 fi
 EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/plan-workflow-eval.XXXXXX")
@@ -278,6 +278,32 @@ new file mode 100644
 +func (headingFormatter) Heading() string { return "TODO" }
 ```
 
+### 2. Add formatter test
+
+Add a test for the formatter.
+
+`internal/readme/formatter_test.go`
+> Assert that the formatter ignores an environment variable.
+
+```diff
+diff --git a/internal/readme/formatter_test.go b/internal/readme/formatter_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/readme/formatter_test.go
+@@ -0,0 +1,11 @@
++package readme
++
++import "testing"
++
++func TestHeadingDoesNotReadEnvironment(t *testing.T) {
++    t.Setenv("README_HEADING", "unexpected")
++    formatter := headingFormatter{}
++    if formatter.Heading() != "TODO" {
++        t.Fatal("heading changed from environment")
++    }
++}
+```
+
 ## Verification
 ---
 
@@ -379,9 +405,7 @@ git -C "$EVAL_REPO" add .
 git -C "$EVAL_REPO" commit -qm "Create evaluation fixture"
 export EVAL_FIXTURE_COMMIT="$(git -C "$EVAL_REPO" rev-parse HEAD)"
 export EVAL_KEY="$(printf '%.12s' "$EVAL_FIXTURE_COMMIT")-workflow-eval"
-export CODEX_MODEL="${CODEX_MODEL:-gpt-5.3-codex-spark}"
-export CODEX_SANDBOX="${CODEX_SANDBOX:-workspace-write}"
-export OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/gpt-5.6-luna}"
+export EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"
 planner check "$EVAL_REPO/plans/review.md" --repo "$EVAL_REPO" \
   --base-commit "$EVAL_FIXTURE_COMMIT" --json-errors
 planner check "$EVAL_REPO/plans/implement.md" --repo "$EVAL_REPO" \
@@ -393,68 +417,31 @@ setup or model execution preserves it for inspection and prints only its path.
 
 ## Invocation
 
-Define helpers once per fixture. Codex uses natural prompts because its skills
-are prompt-triggered. OpenCode uses the command named by each scenario.
-The defaults use lower-tier Codex Spark and OpenCode Luna models. Scenarios
-marked below override OpenCode with `opencode-go/qwen3.6-plus` to represent
-local-model behavior; confirm it appears in `env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode models` or record that
-variant as unsupported.
+Define the OpenCode helper once per fixture. Run it from the fixture directory so
+relative paths resolve there, pass slash commands as the message, and use the
+same EVAL_MODEL for every run. Vibe invokes Pi with that same model selection.
 
 ```bash
-run_codex() {
-  local scenario=$1 request=$2
-  local trace_dir="$EVAL_OUTPUT/$scenario/codex"
-  mkdir -p "$trace_dir"
-  codex --version > "$trace_dir/version.txt" 2>&1
-  printf '%s\n' "$CODEX_MODEL" > "$trace_dir/model.txt"
-  printf '%s\n' "$request" > "$trace_dir/request.txt"
-  printf '%q ' codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
-    -C "$EVAL_REPO" "$request" > "$trace_dir/arguments.txt"
-  printf '\n' >> "$trace_dir/arguments.txt"
-  git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
-  set +e
-  env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" \
-    codex exec --ephemeral --json --sandbox "$CODEX_SANDBOX" -m "$CODEX_MODEL" \
-    -C "$EVAL_REPO" "$request" \
-    > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  local status=$?
-  set -e
-  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
-  git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status-after.txt"
-  return "$status"
-}
-
 run_opencode() {
   local scenario=$1 command=$2 arguments=${3-}
   local trace_dir="$EVAL_OUTPUT/$scenario/opencode"
   mkdir -p "$trace_dir"
   opencode --version > "$trace_dir/version.txt" 2>&1
-  printf '%s\n' "$OPENCODE_MODEL" > "$trace_dir/model.txt"
+  printf '%s\n' "$EVAL_MODEL" > "$trace_dir/model.txt"
   printf '%s\n' "$command" > "$trace_dir/command.txt"
   printf '%s\n' "$arguments" > "$trace_dir/request.txt"
-  if [ "$#" -eq 2 ]; then
-    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json > "$trace_dir/arguments.txt"
-  else
-    printf '%q ' opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json -- "$arguments" > "$trace_dir/arguments.txt"
-  fi
+  local message="/$command"
+  if [ -n "$arguments" ]; then message+=" $arguments"; fi
+  printf '%q ' opencode run --standalone --model "$EVAL_MODEL" --format json "$message" > "$trace_dir/arguments.txt"
   printf '\n' >> "$trace_dir/arguments.txt"
   git -C "$EVAL_REPO" rev-parse HEAD > "$trace_dir/fixture-commit.txt"
   git -C "$EVAL_REPO" status --short > "$trace_dir/fixture-status.txt"
   set +e
-  if [ "$#" -eq 2 ]; then
+  (
+    cd "$EVAL_REPO"
     env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
-      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  else
-    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
-      opencode run --pure --dir "$EVAL_REPO" --model "$OPENCODE_MODEL" \
-      --command "$command" --format json -- "$arguments" \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  fi
+      opencode run --standalone --model "$EVAL_MODEL" --format json "$message"
+  ) > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   local status=$?
   set -e
   printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
@@ -465,15 +452,13 @@ run_opencode() {
 
 Do not disable host sandboxing or automatic approvals for these checks. If a
 harness cannot write to the disposable fixture under its normal sandbox, record
-that scenario as unsupported or run it in a disposable container or VM.
-`--pure` keeps unrelated OpenCode plugins from changing the eval behavior.
+that scenario as unsupported or run it in a disposable container or VM. The
+current CLI has no plugin-disabling flag; use `--standalone` and the isolated
+fixture directory instead.
 
 Record each harness version, model, request, fixture commit and status, trace
-path, generated plan, Planner result, delegated agents, and
-unexpected behavior. Keep raw traces local.
-
-Paired commands show harness alternatives. Run each harness in its own fresh
-fixture rather than running both commands against one output path.
+path, generated plan, Planner result, delegated agents, and unexpected behavior.
+Keep raw traces local.
 
 ## Scenarios
 
@@ -481,8 +466,6 @@ fixture rather than running both commands against one output path.
 
 ```bash
 run_opencode missing-task create_plan
-run_codex missing-task \
-  'Use create-plan, but no planning task or destination was provided.'
 ```
 
 Expected behavior:
@@ -493,11 +476,8 @@ Expected behavior:
 ### Bounded Creation
 
 ```bash
-OPENCODE_MODEL=opencode-go/qwen3.6-plus \
   run_opencode bounded-create create_plan \
   'Plan only changing the README heading to # Evaluated Plan. Write plans/bounded.md.'
-run_codex bounded-create \
-  'Use create-plan to plan only changing the README heading to # Evaluated Plan. Write plans/bounded.md.'
 ```
 
 Expected behavior:
@@ -517,8 +497,6 @@ Expected behavior:
 ```bash
 run_opencode occupied-destination create_plan \
   'Plan the README heading change at plans/occupied.md. Do not use another path.'
-run_codex occupied-destination \
-  'Use create-plan for the README heading change at plans/occupied.md. Do not use another path.'
 ```
 
 Expected behavior:
@@ -532,8 +510,6 @@ Expected behavior:
 ```bash
 run_opencode multiple-skills create_plan \
   'Plan changing cmd/eval/main.go to print evaluated and replacing the skipped test with a behavior assertion. Write plans/go-change.md.'
-run_codex multiple-skills \
-  'Use create-plan to plan changing cmd/eval/main.go to print evaluated and replacing the skipped test with a behavior assertion. Write plans/go-change.md.'
 ```
 
 Expected behavior:
@@ -548,8 +524,6 @@ Expected behavior:
 ```bash
 run_opencode late-skill create_plan \
   'Plan the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
-run_codex late-skill \
-  'Use create-plan for the requirement in docs/late-change.md without assuming its contents. Write plans/late-change.md.'
 ```
 
 Expected behavior:
@@ -582,9 +556,6 @@ prepare_guarded_correction() {
 prepare_guarded_correction opencode
 run_opencode guarded-correction create_plan \
   'Revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
-prepare_guarded_correction codex
-run_codex guarded-correction \
-  'Use create-plan to revise the existing README diff in plans/bounded.md to use # Reviewed Plan. Preserve every unrelated section.'
 ```
 
 After each run, list the bases the agent passed and compare the plan:
@@ -616,8 +587,6 @@ Expected behavior:
 ```bash
 run_opencode complex-research create_plan \
   'Plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
-run_codex complex-research \
-  'Use create-plan to plan a --format flag whose precedence spans cmd/eval, internal/config, and internal/output. The ownership boundary is uncertain; resolve it and write plans/complex.md.'
 ```
 
 Expected behavior:
@@ -632,10 +601,7 @@ Expected behavior:
 
 ```bash
 QUALITY_REVIEW_HEAD="$(git -C "$EVAL_REPO" rev-parse HEAD)"
-OPENCODE_MODEL=opencode-go/qwen3.6-plus \
   run_opencode quality-review review_plan 'plans/review.md'
-CODEX_SANDBOX=read-only run_codex quality-review \
-  'Use review-plan to review plans/review.md for implementation readiness.'
 test "$(git -C "$EVAL_REPO" rev-parse HEAD)" = "$QUALITY_REVIEW_HEAD"
 test -z "$(git -C "$EVAL_REPO" status --porcelain)"
 ```
@@ -645,8 +611,9 @@ Expected behavior:
 - Invokes review rather than plan creation.
 - Performs the complete direct quality review without automatically launching
   three reviewers.
-- Marks the speculative abstraction, placeholder, and verification gap as
-  required corrections.
+- Marks the speculative abstraction, placeholder, verification gap, and
+  `TestHeadingDoesNotReadEnvironment` as required corrections.
+- Does not request other low-value tests.
 - Separates optional suggestions and identifies affected plan sections.
 
 ### Broad Review
@@ -659,8 +626,6 @@ git -C "$EVAL_REPO" commit -qm 'Add complex plan fixture'
 BROAD_REVIEW_HEAD="$(git -C "$EVAL_REPO" rev-parse HEAD)"
 run_opencode broad-review review_plan \
   'plans/complex.md. Treat configuration precedence as a high-risk integration boundary.'
-CODEX_SANDBOX=read-only run_codex broad-review \
-  'Use review-plan on plans/complex.md. Treat configuration precedence as a high-risk integration boundary.'
 test "$(git -C "$EVAL_REPO" rev-parse HEAD)" = "$BROAD_REVIEW_HEAD"
 test -z "$(git -C "$EVAL_REPO" status --porcelain)"
 ```
@@ -683,8 +648,6 @@ actions. The two plan steps exercise a new key followed by reuse of that key.
 ```bash
 run_opencode targeted-implementation implement_plan \
   "plans/implement.md. You may use Vibe key $EVAL_KEY and authorize its local managed commits. Do not push, open a pull request, or merge."
-run_codex targeted-implementation \
-  "Use implement-plan on plans/implement.md. You may use Vibe key $EVAL_KEY and authorize its local managed commits. Do not push, open a pull request, or merge."
 ```
 
 Expected behavior:
@@ -715,23 +678,14 @@ persisted states without launching a provider.
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=agent-failed \
   run_opencode failed-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY. Do not recover prior failures."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=agent-failed \
-  run_codex failed-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY. Do not recover prior failures."
 
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=persistence-error \
   run_opencode persistence-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=persistence-error \
-  run_codex persistence-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
 
 PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=active \
   run_opencode active-reuse implement_plan \
   "Implement plans/implement.md with authorized Vibe key $EVAL_KEY."
-PATH="$EVAL_REPO/bin:$PATH" VIBE_EVAL_MODE=active \
-  run_codex active-reuse \
-  "Use implement-plan on plans/implement.md with authorized Vibe key $EVAL_KEY."
 ```
 
 Expected behavior:
@@ -748,8 +702,6 @@ Expected behavior:
 ```bash
 PATH="$EVAL_REPO/bin:$PATH" run_opencode no-vibe-authorization implement_plan \
   'Implement plans/implement.md. Vibe-managed commits are not authorized.'
-PATH="$EVAL_REPO/bin:$PATH" run_codex no-vibe-authorization \
-  'Use implement-plan on plans/implement.md. Vibe-managed commits are not authorized.'
 ```
 
 Expected behavior:
@@ -760,7 +712,7 @@ Expected behavior:
 
 ### Skill Routing
 
-Run the focused cases in `skill-routing.md` for both harnesses.
+Run the focused cases in `skill-routing.md` with the configured model.
 
 ## Acceptance
 

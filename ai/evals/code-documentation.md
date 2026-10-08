@@ -4,51 +4,12 @@ Run these manual checks in fresh sessions after changing `code-documentation`,
 shared routing, implementation workflows, or Vibe skill exposure. Evaluate
 behavior and diffs, not exact prose.
 
-## Evaluation Model Matrix
+## Evaluation Model
 
-The values below are pinned evaluation selections, not Vibe runtime
-requirements.
-
-| Execution path | Runtime | Capability role | Model argument | Evaluation credential |
-| --- | --- | --- | --- | --- |
-| Direct OpenCode | OpenCode | lower capability | `opencode-go/qwen3.6-plus` | `OPENCODE_API_KEY` |
-| Direct OpenCode | OpenCode | stronger | `opencode-go/gpt-5.6-luna` | `OPENCODE_API_KEY` |
-| Vibe sandbox | Pi | lower capability | `opencode-go/qwen3.6-plus` | `OPENCODE_API_KEY` |
-| Vibe sandbox | Pi | stronger | `openai-codex/gpt-5.6-luna` | `OPENAI_API_KEY` |
-| Direct Codex | Codex | stronger | `gpt-5.6-luna` | `OPENAI_API_KEY` |
-
-OpenCode and Pi accept provider/model selectors, while direct Codex accepts the
-bare model argument. The shared Luna label does not establish identical
-backends, versions, or behavior.
-
-Do not replace a failed lower-capability row with a stronger model; doing so
-removes the intended coverage. For every run, record the execution path,
-runtime version, exact model argument, prompt, skill loads, diff, exit status,
-and unsupported events.
-
-Unavailable or rejected rows are unsupported, not passed. Every listed row is
-required for this matrix, so an unsupported row leaves the evaluation incomplete
-and must fail. Permanent provider removals require a deliberate matrix update,
-not silent substitution.
-
-Before running the matrix, verify the selectors rather than guessing aliases:
-
-```sh
-env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY \
-  -u DEEPSEEK_API_KEY -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL \
-  OPENCODE_API_KEY="${OPENCODE_API_KEY-}" opencode models
-env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY \
-  -u DEEPSEEK_API_KEY -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL \
-  OPENCODE_API_KEY="${OPENCODE_API_KEY-}" pi --list-models qwen3.6
-env -u ANTHROPIC_API_KEY -u GEMINI_API_KEY -u DEEPSEEK_API_KEY \
-  -u AZURE_OPENAI_API_KEY -u AZURE_OPENAI_BASE_URL -u OPENCODE_API_KEY \
-  OPENAI_API_KEY="${OPENAI_API_KEY-}" pi --list-models gpt-5.6-luna
-```
-
-Discovery output alone does not prove account execution access. Treat each
-row's first authenticated invocation as the final availability check, and
-preserve stderr and exit status when the provider rejects the selector or
-credential.
+Use one model for every direct and Vibe run: `EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"`.
+An unavailable model is unsupported, not a reason to substitute another model.
+Record the execution path, runtime version, exact model argument, prompt, skill
+loads, diff, exit status, and unsupported events.
 
 ## Install the Reviewed Sources
 
@@ -91,8 +52,8 @@ for provider in "${PROVIDER_VARIABLES[@]}"; do
   ORIGINAL_PROVIDER_VALUES[$provider]=${!provider-}
   if [[ -v $provider ]]; then ORIGINAL_PROVIDER_SET[$provider]=1; else ORIGINAL_PROVIDER_SET[$provider]=0; fi
 done
-if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" || -z "${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" ]]; then
-  printf '%s\n' 'Set both OPENCODE_API_KEY and OPENAI_API_KEY before running the evaluation' >&2
+if [[ -z "${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" ]]; then
+  printf '%s\n' 'Set OPENCODE_API_KEY before running the evaluation' >&2
   exit 1
 fi
 EVAL_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/code-documentation-eval.XXXXXX")
@@ -161,8 +122,6 @@ compare_managed ai/AGENTS.md .codex/AGENTS.md
 compare_managed ai/AGENTS.md .pi/agent/AGENTS.md
 compare_managed ai/skills/code-documentation/SKILL.md \
   .agents/skills/code-documentation/SKILL.md
-compare_managed ai/skills/code-documentation/SKILL.md \
-  .codex/skills/code-documentation/SKILL.md
 compare_managed ai/opencode/agents/docs-reviewer.md \
   .config/opencode/agents/docs-reviewer.md
 compare_managed ai/opencode/agents/docs-writer.md \
@@ -173,10 +132,6 @@ compare_managed ai/opencode/commands/review_plan.md \
   .config/opencode/commands/review_plan.md
 compare_managed ai/opencode/commands/implement_plan.md \
   .config/opencode/commands/implement_plan.md
-compare_managed ai/codex/skills/review-plan/SKILL.md \
-  .codex/skills/review-plan/SKILL.md
-compare_managed ai/codex/skills/implement-plan/SKILL.md \
-  .codex/skills/implement-plan/SKILL.md
 ```
 
 Quit and restart OpenCode after installation. Use fresh sessions so cached skill
@@ -326,49 +281,20 @@ run_opencode_trace() {
   printf '%s\n' "$prompt" > "$trace_dir/prompt.txt"
   opencode --version > "$trace_dir/version.txt"
   worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
+  local message="$prompt"
+  if [[ -n "$command" ]]; then message="/$command $prompt"; fi
   set +e
-  if [[ -n "$command" ]]; then
-    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode run --pure --dir "$case_dir" --model "$model" \
-      --command "$command" --format json -- "$prompt" \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  else
-    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" opencode run --pure --dir "$case_dir" --model "$model" \
-      --format json -- "$prompt" \
-      > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  fi
+  (
+    cd "$case_dir"
+    env OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" \
+      opencode run --standalone --model "$model" --format json "$message"
+  ) > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
   local status=$?
   set -e
   printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
   if (( status != 0 )); then MODEL_FAILURE=1; fi
   worktree_fingerprint "$case_dir" > "$trace_dir/after.sha256"
-  git -C "$case_dir" status --porcelain=v1 --untracked-files=all \
-    > "$trace_dir/status.txt"
-  git -C "$case_dir" diff --binary --cached > "$trace_dir/staged.diff"
-  git -C "$case_dir" diff --binary > "$trace_dir/unstaged.diff"
-  git -C "$case_dir" diff --cached --check
-  git -C "$case_dir" diff --check
-  :
-}
-
-run_codex_trace() {
-  local run_name=$1 model=$2 sandbox=$3 case_dir=$4 prompt=$5
-  local trace_dir="$EVAL_TRACES/$run_name"
-  mkdir -p "$trace_dir"
-  printf '%s\n' "$model" > "$trace_dir/model.txt"
-  printf '%s\n' "$prompt" > "$trace_dir/prompt.txt"
-  codex --version > "$trace_dir/version.txt"
-  worktree_fingerprint "$case_dir" > "$trace_dir/before.sha256"
-  set +e
-  env OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" codex exec --ephemeral --json --sandbox "$sandbox" -m "$model" \
-    -C "$case_dir" "$prompt" \
-    > "$trace_dir/stdout.jsonl" 2> "$trace_dir/stderr.txt"
-  local status=$?
-  set -e
-  printf '%s\n' "$status" > "$trace_dir/exit-status.txt"
-  if (( status != 0 )); then MODEL_FAILURE=1; fi
-  worktree_fingerprint "$case_dir" > "$trace_dir/after.sha256"
-  git -C "$case_dir" status --porcelain=v1 --untracked-files=all \
-    > "$trace_dir/status.txt"
+  git -C "$case_dir" status --porcelain=v1 --untracked-files=all > "$trace_dir/status.txt"
   git -C "$case_dir" diff --binary --cached > "$trace_dir/staged.diff"
   git -C "$case_dir" diff --binary > "$trace_dir/unstaged.diff"
   git -C "$case_dir" diff --cached --check
@@ -377,7 +303,7 @@ run_codex_trace() {
 }
 ```
 
-For every scenario and model, call `new_case` once and pass that clone to
+For every scenario, call `new_case` once and pass that clone to
 `run_opencode_trace`. Inspect skill events, exit status, status, and both diffs
 before accepting a row. Inspect any listed untracked file locally; do not copy
 potentially sensitive contents into prompts or reports. The fingerprint covers
@@ -409,7 +335,7 @@ session against the same case. Give every trace a model-specific name:
 
 ```bash
 PROMPT='Review and fix source documentation for save_settings in stale.py without changing behavior.'
-MODEL='opencode-go/qwen3.6-plus'
+MODEL="${EVAL_MODEL:-goog/qwen3.8}"
 MODEL_TAG=${MODEL//\//-}
 EVAL_CASE=$(new_case "stability-$MODEL_TAG")
 run_opencode_trace "stability-first-$MODEL_TAG" "$MODEL" "$EVAL_CASE" "$PROMPT"
@@ -438,7 +364,7 @@ Load every available applicable skill before editing and report a required skill
 that is unavailable. Improve source documentation for write_record in risky.py
 without changing behavior. Run the smallest relevant verification.
 EOF
-for MODEL in opencode-go/qwen3.6-plus openai-codex/gpt-5.6-luna; do
+for MODEL in "${EVAL_MODEL:-goog/qwen3.8}"; do
   MODEL_TAG=${MODEL//\//-}
   EVAL_CASE=$(new_case "vibe-$MODEL_TAG")
   TRACE_DIR="$EVAL_TRACES/vibe-$MODEL_TAG"
@@ -460,19 +386,11 @@ EOF
   printf '%s\n' "$MODEL" > "$TRACE_DIR/model.txt"
   cp "$EVAL_PROMPT" "$TRACE_DIR/prompt.txt"
   set +e
-  if [[ "$MODEL" == openai-codex/* ]]; then
-    env -C "$EVAL_CASE" OPENAI_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENAI_API_KEY]}" vibe run \
-      --key "$KEY" \
-      --base "$BASE_SHA" \
-      --prompt-file "$EVAL_PROMPT" \
-      --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
-  else
-    env -C "$EVAL_CASE" OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" vibe run \
-      --key "$KEY" \
-      --base "$BASE_SHA" \
-      --prompt-file "$EVAL_PROMPT" \
-      --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
-  fi
+  env -C "$EVAL_CASE" OPENCODE_API_KEY="${ORIGINAL_PROVIDER_VALUES[OPENCODE_API_KEY]}" vibe run \
+    --key "$KEY" \
+    --base "$BASE_SHA" \
+    --prompt-file "$EVAL_PROMPT" \
+    --model "$MODEL" > "$TRACE_DIR/result.json" 2> "$TRACE_DIR/stderr.txt"
   STATUS=$?
   set -e
   printf '%s\n' "$STATUS" > "$TRACE_DIR/exit-status.txt"
