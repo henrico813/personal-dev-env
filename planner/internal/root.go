@@ -25,16 +25,14 @@ Usage:
       [--through STEP] [--json-errors]
   planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
   planner inspect <plan.md>
-
-List JSON selects a view: projects without filters, project-plans with PROJECT,
-plan-details with PROJECT and PLAN, or plans for a cross-project --status query.
-Statuses use open, in-progress, done, and wont-do; unrecognized values are
-unknown. Detail records include frontmatter values and their source order.
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
       --base-commit COMMIT (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
+
+List JSON provides overview, project, and detail views. Status filters accept
+the standard statuses and known legacy aliases.
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).

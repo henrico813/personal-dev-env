@@ -1,12 +1,8 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -260,32 +256,29 @@ func TestParseMarkdownTicketTagForms(t *testing.T) {
 	}
 }
 
+// The vault uses `wont-do`, so planner check must accept it while legacy
+// spellings remain invalid for new issues.
 func TestParseMarkdownRejectsUnsupportedStatusValue(t *testing.T) {
-	input := strings.Replace(buildPlanWithFrontmatter(t), "status: open", "status: closed", 1)
-	if _, err := ParseMarkdown(input); err == nil {
-		t.Fatal("expected unsupported frontmatter to fail")
-	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
-		t.Fatalf("unexpected error: %v", err)
+	cases := []struct {
+		name    string
+		status  string
+		wantErr bool
+	}{
+		{name: "legacy alias", status: "closed", wantErr: true},
+		{name: "standard wont-do", status: "wont-do"},
 	}
-}
-
-func TestExecuteAcceptsWontDoIssue(t *testing.T) {
-	input := strings.Replace(buildPlanWithFrontmatter(t), "status: open", "status: wont-do", 1)
-	path := filepath.Join(t.TempDir(), "plan.md")
-	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"inspect", path}, &stdout, &stderr); exit != 0 {
-		t.Fatalf("Execute(inspect) exit=%d stderr=%q", exit, stderr.String())
-	}
-	var view InspectPlan
-	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
-		t.Fatalf("inspect JSON: %v", err)
-	}
-	if view.Title == "" {
-		t.Fatalf("empty inspect view: %+v", view)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := strings.Replace(buildPlanWithFrontmatter(t), "status: open", "status: "+tc.status, 1)
+			_, err := ParseMarkdown(input)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
+					t.Fatalf("ParseMarkdown error = %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("ParseMarkdown: %v", err)
+			}
+		})
 	}
 }
 

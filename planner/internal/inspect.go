@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -234,7 +235,7 @@ func validateSupportedFrontmatter(frontmatter string) error {
 	if value, ok := consumePrefix("status: "); !ok {
 		return errUnsupportedWrappedDoc
 	} else {
-		if !isStandardPlanStatus(PlanStatus(value)) {
+		if !slices.Contains(standardPlanStatuses, planStatus(value)) {
 			return errUnsupportedWrappedDoc
 		}
 	}

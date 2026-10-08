@@ -1,61 +1,75 @@
 package internal
 
-import "strings"
-
-// PlanStatus is a normalized status for a vault issue.
-type PlanStatus string
-
-const (
-	PlanStatusOpen       PlanStatus = "open"
-	PlanStatusInProgress PlanStatus = "in-progress"
-	PlanStatusDone       PlanStatus = "done"
-	PlanStatusWontDo     PlanStatus = "wont-do"
-	PlanStatusUnknown    PlanStatus = "unknown"
+import (
+	"slices"
+	"sort"
+	"strings"
 )
 
-func standardPlanStatuses() [4]PlanStatus {
-	return [...]PlanStatus{
-		PlanStatusOpen,
-		PlanStatusInProgress,
-		PlanStatusDone,
-		PlanStatusWontDo,
-	}
+type planStatus string
+
+const (
+	statusOpen       planStatus = "open"
+	statusInProgress planStatus = "in-progress"
+	statusDone       planStatus = "done"
+	statusWontDo     planStatus = "wont-do"
+	statusUnknown    planStatus = "unknown"
+)
+
+var standardPlanStatuses = []planStatus{
+	statusOpen,
+	statusInProgress,
+	statusDone,
+	statusWontDo,
 }
 
-// normalizePlanStatus maps known legacy values without changing their source value.
-func normalizePlanStatus(raw any) PlanStatus {
+// Older vault notes use these spellings for the corresponding statuses.
+var legacyPlanStatusAliases = map[string]planStatus{
+	"planning":   statusOpen,
+	"completed":  statusDone,
+	"closed":     statusDone,
+	"won't do":   statusWontDo,
+	"wontdo":     statusWontDo,
+	"obsolete":   statusWontDo,
+	"superseded": statusWontDo,
+	"failed":     statusWontDo,
+}
+
+// Unmapped values stay unknown rather than being inferred.
+func normalizePlanStatus(raw any) planStatus {
 	value, ok := raw.(string)
 	if !ok {
-		return PlanStatusUnknown
+		return statusUnknown
 	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "open", "planning":
-		return PlanStatusOpen
-	case "in-progress":
-		return PlanStatusInProgress
-	case "done", "completed", "closed":
-		return PlanStatusDone
-	case "wont-do", "won't do", "wontdo", "obsolete", "superseded", "failed":
-		return PlanStatusWontDo
-	default:
-		return PlanStatusUnknown
+	status, ok := parsePlanStatus(value)
+	if !ok {
+		return statusUnknown
 	}
+	return status
 }
 
-func isStandardPlanStatus(status PlanStatus) bool {
-	for _, standard := range standardPlanStatuses() {
-		if status == standard {
-			return true
-		}
+func parsePlanStatus(value string) (planStatus, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if slices.Contains(standardPlanStatuses, planStatus(normalized)) {
+		return planStatus(normalized), true
 	}
-	return false
+	if normalized == string(statusUnknown) {
+		return statusUnknown, true
+	}
+	status, ok := legacyPlanStatusAliases[normalized]
+	return status, ok
 }
 
-func planStatusOrder(includeUnknown bool) []PlanStatus {
-	standard := standardPlanStatuses()
-	statuses := append([]PlanStatus(nil), standard[:]...)
-	if includeUnknown {
-		statuses = append(statuses, PlanStatusUnknown)
+func acceptedPlanStatuses() string {
+	values := make([]string, 0, len(standardPlanStatuses)+len(legacyPlanStatusAliases)+1)
+	for _, status := range standardPlanStatuses {
+		values = append(values, string(status))
 	}
-	return statuses
+	values = append(values, string(statusUnknown))
+	aliases := make([]string, 0, len(legacyPlanStatusAliases))
+	for alias := range legacyPlanStatusAliases {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return strings.Join(append(values, aliases...), ", ")
 }
