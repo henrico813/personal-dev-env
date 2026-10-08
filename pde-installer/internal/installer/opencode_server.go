@@ -20,6 +20,8 @@ type openCodeServer struct {
 }
 
 func refreshOpenCodeServers(home string, runner run.Runner) error {
+	// Find servers with an old environment so agents cannot bypass the new guard.
+	// The user can stop them after seeing which shared sessions may be affected.
 	if runner.DryRun {
 		return runner.Plan("refresh OpenCode server environment", nil)
 	}
@@ -58,6 +60,8 @@ func refreshOpenCodeServers(home string, runner run.Runner) error {
 }
 
 func staleOpenCodeServers(home string) ([]openCodeServer, error) {
+	// Inspect user-owned servers because only those can be stopped by this install.
+	// A server with a different first gh on PATH still bypasses the managed guard.
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, fmt.Errorf("scan /proc: %w", err)
@@ -113,7 +117,12 @@ func processOwnedByCurrentUser(pid int) bool {
 
 func isOpenCodeServer(cmdline []byte) bool {
 	parts := strings.Split(string(cmdline), "\x00")
-	if len(parts) == 0 || filepath.Base(parts[0]) != "opencode" {
+	if len(parts) == 0 {
+		return false
+	}
+	// Windows-style names occur in process listings from cross-platform clients.
+	base := filepath.Base(parts[0])
+	if base != "opencode" && base != "opencode.exe" {
 		return false
 	}
 	for _, part := range parts[1:] {
