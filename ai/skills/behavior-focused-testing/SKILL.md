@@ -51,7 +51,20 @@ TestSavePreservesModelFields
 
 Name the expected behavior, not merely the input or method. Avoid vague names such as test_error and test_save. Use module or class context to avoid repetition while keeping failure reports understandable. Put additional scenario detail in the body.
 
-4. Prefer fewer, understandable tests
+4. Write only tests worth keeping
+
+Write the minimal amount of tests possible in order to verify the behavior that we are creating features for. Tests support the feature work; they are not the main work. Spend test effort where a bug is likely or would cause real harm.
+
+A low-value test checks for a bug that is unlikely or would do little harm. Do not write or request one, especially when it needs complex setup. Common examples:
+
+- Checking that code does not do something it was never meant to do, such as retry, unless a requirement says it must not.
+- Checking an error the code only passes along unchanged.
+- Checking an input check in an internal function whose callers already pass valid values. Do not add such checks just to test them.
+- Repeating what end-to-end or hardware tests already cover.
+
+Before writing a test, name the bug it would catch and why that bug is likely or costly. If you cannot, skip the test. If an existing test is low value, point it out; remove it only when the task includes that test.
+
+When reviewing tests or a test plan, flag each low-value test as a required correction. Do not ask for extra cases unless each one catches a likely or costly bug.
 
 Prefer one clear test with 80% coverage over six tests with 90% when the extra cases add little protection. This is a maintenance preference, not an 80% target. Add cases for distinct, important risks. Never drop critical checks or merge unrelated behaviors merely to reduce the count.
 
@@ -67,7 +80,7 @@ Use tables or parametrization when cases share setup and assertion logic. Give c
 
 Run relevant tests and inspect collection, names, and failures. For a regression, demonstrate failure before the fix and success afterward when practical. Never weaken assertions or change expectations merely to get a passing suite; establish the intended behavior first.
 
-Check that each test would detect its intended defect, names meet the seven-word limit, and important risks remain covered. Report the protected behavior, test scope and limitations, and commands/results. State when tests could not run. Claim coverage percentages only when measured.
+Check that each test passes the section 4 value check, names meet the seven-word limit, and important risks remain covered. Report the protected behavior, test scope and limitations, and commands/results. State when tests could not run. Claim coverage percentages only when measured.
 
 References
 
