@@ -23,7 +23,13 @@ Usage:
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
   planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
       [--through STEP] [--json-errors]
+  planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
   planner inspect <plan.md>
+
+List JSON selects a view: projects without filters, project-plans with PROJECT,
+plan-details with PROJECT and PLAN, or plans for a cross-project --status query.
+Statuses use open, in-progress, done, and wont-do; unrecognized values are
+unknown. Detail records include frontmatter values and their source order.
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
@@ -75,6 +81,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runGuardedCheck(args[1:], stdout, stderr)
 	case "export":
 		return runGuardedExport(args[1:], stdout, stderr)
+	case "list":
+		return runList(args[1:], stdout, stderr)
 	case "inspect":
 		if hasArg(args[1:], "--target") {
 			return runGuardedInspect(args[1:], stdout, stderr)
