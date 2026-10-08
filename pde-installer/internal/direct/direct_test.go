@@ -115,7 +115,7 @@ func TestToolsActivateAndRollBack(t *testing.T) {
 
 func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 	home := t.TempDir()
-	archive := toolArchive(t, "", "moshi-hook", "v0.3.26")
+	archive := toolArchive(t, "", "moshi-hook", "v0.4.20")
 	digest := sha256.Sum256(archive)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write(archive)
@@ -123,7 +123,7 @@ func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 	defer server.Close()
 
 	tool := Tool{
-		Name: "moshi-hook", Version: "v0.3.26", Archive: "moshi-hook.tar.gz",
+		Name: "moshi-hook", Version: "v0.4.20", Archive: "moshi-hook.tar.gz",
 		URL: server.URL, SHA256: hex.EncodeToString(digest[:]), Directory: "moshi-hook",
 		Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"},
 		VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true,
@@ -134,7 +134,7 @@ func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 	}
 	for _, name := range tool.Links {
 		output, err := manager.Runner.Query("read "+name, run.Command{Name: filepath.Join(home, ".local", "bin", name), Args: tool.VersionArgs})
-		if err != nil || strings.TrimSpace(string(output)) != "moshi-hook v0.3.26" {
+		if err != nil || strings.TrimSpace(string(output)) != "moshi-hook v0.4.20" {
 			t.Fatalf("%s output = %q, %v", name, output, err)
 		}
 	}
