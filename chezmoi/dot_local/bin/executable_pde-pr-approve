@@ -23,7 +23,7 @@ popup_pending() {
     for request in "${requests[@]}"; do
         [[ -f "$request" ]] || continue
         if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
-            rm -f "$request"
+            rm -f "$request" "$request_dir/.moshi-${request##*/}.pid"
             continue
         fi
         id=${request##*/}
@@ -69,7 +69,7 @@ if ((${#requests[@]} == 0)); then
 fi
 for request in "${requests[@]}"; do
     if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
-        rm -f "$request"
+        rm -f "$request" "$request_dir/.moshi-${request##*/}.pid"
         continue
     fi
     id=${request##*/}
@@ -91,5 +91,5 @@ for request in "${requests[@]}"; do
         printf '%s\n' "$id" >"$approval_tmp"
         mv "$approval_tmp" "$approval_dir/$id"
     fi
-    rm -f "$request"
+    rm -f "$request" "$request_dir/.moshi-${request##*/}.pid"
 done
