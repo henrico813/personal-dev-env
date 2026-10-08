@@ -237,8 +237,9 @@ or explain it in the plan.
    the intended file, includes every required line without placeholders,
    follows repository patterns, and excludes unrelated work.
    Before presenting a delegated draft, review it against source and
-   requirements: check requirement coverage, whether each test would fail on its
-   target bug, and edits outside the brief. `planner check` alone is not this
+   requirements: check requirement coverage, whether each test passes the
+   `behavior-focused-testing` value check, and edits outside the brief.
+   `planner check` alone is not this
    review. An early draft remains an optional fast-feedback path, not an approval
    stage.
 3. Perform the complete quality review directly. For broad, risky, or
