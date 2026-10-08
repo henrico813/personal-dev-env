@@ -48,17 +48,6 @@ read_body() {
     IFS= read -r -d '' body_text || true
 }
 
-print_diff() {
-    # $1 current file, $2 requested file; print a unified diff or 'No changes'.
-    local out
-    out=$(diff -u --label current "$1" --label requested "$2" || true)
-    if [[ -n "$out" ]]; then
-        printf '%s\n' "$out"
-    else
-        printf 'No changes\n'
-    fi
-}
-
 original_args=("$@")
 resolved_args=()
 title_text=''
@@ -126,10 +115,10 @@ now=$(date +%s)
 mkdir -p "$request_dir" "$approval_dir"
 request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
 approval_file="$approval_dir/$request_id"
+moshi_marker="$request_dir/.moshi-$request_id.pid"
 real_gh=$(find_real_gh)
 run_approved() {
-    # Consume the approval before calling gh so one answer cannot be reused.
-    rm -f "$approval_file"
+    rm -f "$approval_file" "$moshi_marker"
     if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
 }
 approval_ready() {
@@ -139,7 +128,7 @@ if approval_ready; then
     run_approved
     exit $?
 fi
-if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file"; fi
+if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file" "$moshi_marker"; fi
 # For pr edit, show the requested title/body next to the current PR values.
 edit_target=''
 edit_repo=''
@@ -232,9 +221,15 @@ request_file=$(mktemp "$request_dir/.request.XXXXXX")
 } >"$request_file"
 mv "$request_file" "$request_dir/$request_id"
 start_moshi_approval() {
-    local marker question operation repo target argument index
-    marker="$request_dir/.moshi-$request_id"
-    mkdir "$marker" 2>/dev/null || return 0
+    local legacy_marker="$request_dir/.moshi-$request_id" pid question operation repo target argument index
+    if [[ -r "$moshi_marker" ]]; then
+        pid=$(cat "$moshi_marker" 2>/dev/null || true)
+        if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$moshi_marker"
+    fi
+    rmdir "$legacy_marker" 2>/dev/null || true
     operation=${original_args[1]}
     repo=''
     target=''
@@ -258,21 +253,27 @@ start_moshi_approval() {
     [[ -n "$repo" ]] || repo='current repository'
     [[ -n "$target" ]] || target='the requested PR'
     question="Approve gh pr $operation in $repo ($target), titled $title_text?"
-    (
+    setsid -f bash -c '
+        request_id=$1
+        request_dir=$2
+        approval_dir=$3
+        question=$4
+        marker="$request_dir/.moshi-$request_id.pid"
+        printf "%s\\n" "$$" >"$marker"
+        trap '\''rm -f "$marker"'\'' EXIT
         if ! command -v moshi-hook >/dev/null 2>&1; then
             exit 4
         fi
         if moshi-hook ask --require-remote --source pde-gh-write --timeout 4h "$question"; then
             [[ -e "$request_dir/$request_id" && ! -e "$approval_dir/$request_id" ]] || exit 0
             approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
-            printf '%s\n' "$request_id" >"$approval_tmp"
+            printf "%s\\n" "$request_id" >"$approval_tmp"
             mv "$approval_tmp" "$approval_dir/$request_id"
             rm -f "$request_dir/$request_id"
         elif [[ $? -eq 1 ]]; then
             rm -f "$request_dir/$request_id"
         fi
-    ) </dev/null >/dev/null 2>&1 &
-    disown || true
+    ' pde-moshi-ask "$request_id" "$request_dir" "$approval_dir" "$question" </dev/null >/dev/null 2>&1
 }
 start_moshi_approval
 client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
