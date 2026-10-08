@@ -23,12 +23,16 @@ Usage:
   planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
   planner export <plan.md> --repo DIR --base-commit COMMIT --out NEWDIR
       [--through STEP] [--json-errors]
+  planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
       --base-commit COMMIT (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
+
+List JSON provides overview, project, and detail views. Status filters accept
+the standard statuses and known legacy aliases.
 
 Global flags:
   --json-errors                    Emit failures as structured JSON to stderr ({code, message, recovery_hint?}).
@@ -75,6 +79,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 		return runGuardedCheck(args[1:], stdout, stderr)
 	case "export":
 		return runGuardedExport(args[1:], stdout, stderr)
+	case "list":
+		return runList(args[1:], stdout, stderr)
 	case "inspect":
 		if hasArg(args[1:], "--target") {
 			return runGuardedInspect(args[1:], stdout, stderr)
