@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Record an exact PR write, request approval, then run the real gh command.
+# Popup and terminal approval share local request and approval files.
+# The guard only receives PDE_GH_WRITE=1 after this script consumes approval.
 set -euo pipefail
 
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
@@ -114,10 +117,12 @@ for argument in "${original_args[@]}"; do printf -v quoted ' %q' "$argument"; co
 now=$(date +%s)
 mkdir -p "$request_dir" "$approval_dir"
 request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
+# Include body-file contents so approval is tied to the text that will be posted.
 approval_file="$approval_dir/$request_id"
 moshi_marker="$request_dir/.moshi-$request_id.pid"
 real_gh=$(find_real_gh)
 run_approved() {
+    # Consume the approval before calling gh so one answer cannot be reused.
     rm -f "$approval_file" "$moshi_marker"
     if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
 }
@@ -284,6 +289,7 @@ start_moshi_approval() {
     ' pde-moshi-ask "$request_id" "$request_dir" "$approval_dir" "$question" </dev/null >/dev/null 2>&1
 }
 start_moshi_approval
+# Use the most recently active client so the popup appears where the user is working.
 client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
 if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
@@ -293,6 +299,7 @@ fi
 setsid -f pde-pr-approve --popup-pending "$client" "$request_id" </dev/null >/dev/null 2>&1
 printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 deadline=$((now + 90))
+# Agent commands time out after about two minutes, so do not wait beyond 90 seconds.
 while (( $(date +%s) <= deadline )); do
     if approval_ready; then
         run_approved
