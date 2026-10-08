@@ -51,6 +51,17 @@ read_body() {
     IFS= read -r -d '' body_text || true
 }
 
+print_diff() {
+    # $1 current file, $2 requested file; print a unified diff or 'No changes'.
+    local out
+    out=$(diff -u --label current "$1" --label requested "$2" || true)
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out"
+    else
+        printf 'No changes\n'
+    fi
+}
+
 original_args=("$@")
 resolved_args=()
 title_text=''
@@ -125,9 +136,84 @@ if approval_ready; then
     exit $?
 fi
 if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file"; fi
+# For pr edit, show the requested title/body next to the current PR values.
+edit_target=''
+edit_repo=''
+if [[ "$2" == edit ]]; then
+    # Track --repo/-R so the read-only lookup hits the right repository.
+    index=2
+    while ((index < ${#original_args[@]})); do
+        argument=${original_args[index]}
+        case "$argument" in
+            --repo)
+                index=$((index + 1))
+                edit_repo=${original_args[index]:-}
+                ;;
+            --repo=*)
+                edit_repo=${argument#--repo=}
+                ;;
+            -R)
+                index=$((index + 1))
+                edit_repo=${original_args[index]:-}
+                ;;
+            -R=*)
+                edit_repo=${argument#-R=}
+                ;;
+        esac
+        index=$((index + 1))
+    done
+    # The target is the first argument that is not a flag or a flag value.
+    index=2
+    while ((index < ${#original_args[@]})); do
+        argument=${original_args[index]}
+        case "$argument" in
+            -t|--title|--subject|-b|--body|-F|--body-file|--repo|-R)
+                index=$((index + 1))
+                ;;
+            -*);;
+            *)
+                edit_target=$argument
+                break
+                ;;
+        esac
+        index=$((index + 1))
+    done
+fi
+edit_section_file=''
+if [[ -n "$edit_target" ]]; then
+    edit_tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/pde-gh-write-edit.XXXXXX")
+    trap 'rm -rf "$edit_tmpdir"' EXIT
+    view_args=(pr view "$edit_target" --json title,body)
+    if [[ -n "$edit_repo" ]]; then view_args+=(--repo "$edit_repo"); fi
+    fetch_ok=false
+    # Read-only: the real gh is called directly, never through the guard.
+    if "$real_gh" "${view_args[@]}" >"$edit_tmpdir/current.json" 2>"$edit_tmpdir/error"; then
+        if jq -r '.title // ""' "$edit_tmpdir/current.json" >"$edit_tmpdir/title.current" \
+            && jq -r '.body // ""' "$edit_tmpdir/current.json" >"$edit_tmpdir/body.current"; then
+            fetch_ok=true
+        fi
+    fi
+    printf '%s\n' "$title_text" >"$edit_tmpdir/title.requested"
+    printf '%s\n' "$body_text" >"$edit_tmpdir/body.requested"
+    {
+        printf 'Changes from the current pull request\n'
+        if ! $fetch_ok; then
+            edit_error=$(cat "$edit_tmpdir/error")
+            [[ -n "$edit_error" ]] || edit_error='unknown error'
+            printf 'Fetch failed: %s\n' "$edit_error"
+        else
+            printf 'Title:\n'
+            print_diff "$edit_tmpdir/title.current" "$edit_tmpdir/title.requested"
+            printf 'Body:\n'
+            print_diff "$edit_tmpdir/body.current" "$edit_tmpdir/body.requested"
+        fi
+    } >"$edit_tmpdir/section"
+    edit_section_file="$edit_tmpdir/section"
+fi
 request_file=$(mktemp "$request_dir/.request.XXXXXX")
 {
     # The request file is also the pending marker used by popup recovery.
+    if [[ -n "$edit_section_file" ]]; then cat "$edit_section_file"; printf '\n'; fi
     printf 'id: %s\ntime: %s\ncommand: %s\ntitle:\n%s\nbody:\n' "$request_id" "$now" "$command_text" "$title_text"
     printf '%s' "$body_text"
     printf '\n'

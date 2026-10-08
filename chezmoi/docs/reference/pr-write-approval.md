@@ -11,6 +11,13 @@
 State is stored under `${XDG_STATE_HOME:-~/.local/state}/pde/`:
 
 - `pr-requests/REQUEST_ID` stores the exact command, title, and body.
+
+For `pr edit`, `pde-gh-write` first fetches the pull request's current title
+and body with a read-only `gh pr view` (adding `--repo VALUE` when the command
+supplied `--repo` or `-R`) and starts the request with that diff, showing the
+lookup error in that section when the fetch fails. The request ID still
+depends only on the original command and requested title and body, so the
+current values never change it.
 - `pr-approvals/REQUEST_ID` stores one pending approval.
 - `pr-approvals/.popups/` prevents duplicate popups for one client.
 

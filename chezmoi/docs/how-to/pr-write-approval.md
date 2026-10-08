@@ -6,7 +6,9 @@ agent sessions can appear too, so decline one you do not recognize.
 ## From the popup
 
 Run the requested command through `pde-gh-write`. Read the exact request in
-the popup. Press `y` to approve or any other key to decline. The wrapper waits
+the popup. `pr edit` requests start with a diff of the pull request's current
+title and body against the requested ones. Press `y` to approve or any other
+key to decline. The wrapper waits
 up to 90 seconds and then runs `gh` only after approval.
 
 ## From a terminal
