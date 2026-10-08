@@ -22,6 +22,100 @@ The output path must end in `.md`.
   writing; it exits 1 when the preview is non-empty, a diff-style status that
   says the preview has content to review, not that the command failed.
 
+## planner list
+
+```text
+planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
+```
+
+A plan is a Markdown file whose Obsidian frontmatter has `type: issue`. The
+projects folder defaults to `500 Zettelkasten/Projects` inside the vault from
+`pde vault path default`; `--dir` overrides it. Hidden directories such as
+`.obsidian` are skipped. Status values are matched case-insensitively after
+trimming. `planning` maps to `open`; `completed` and `closed` map to `done`;
+`won't do`, `wontdo`, `obsolete`, `superseded`, and `failed` map to `wont-do`.
+Other values map to `unknown`. JSON plan entries include normalized `status`
+and the original parsed value as `raw_status`; `frontmatter.status` is unchanged.
+
+Without `PROJECT`, the human overview shows each project folder, total plans,
+and fixed columns for `open`, `in-progress`, `done`, and `wont-do`, adding
+`unknown` only when needed. JSON selects the `projects` view:
+
+```json
+{
+  "view": "projects",
+  "projects": [{
+    "project_dir": "DevEnv",
+    "total": 3,
+    "status_counts": [
+      {"status": "open", "count": 0},
+      {"status": "in-progress", "count": 1},
+      {"status": "done", "count": 1},
+      {"status": "wont-do", "count": 1}
+    ]
+  }]
+}
+```
+
+With `PROJECT`, the human view lists that project's files. JSON selects the
+`project-plans` view, whose plan entries contain `project_dir`, `path`, `title`,
+normalized `status`, original `raw_status`, and full `frontmatter`:
+
+```json
+{
+  "view": "project-plans",
+  "project_dir": "DevEnv",
+  "plans": [{
+    "project_dir": "DevEnv",
+    "path": "/vault/Projects/DevEnv/PLAN-001 Example.md",
+    "title": "Example",
+    "status": "open",
+    "raw_status": "open",
+    "frontmatter": {"status": "open", "project": "DevEnv"}
+  }]
+}
+```
+
+A status-only query remains cross-project and returns the `plans` view:
+
+```sh
+planner list --status in-progress --json
+```
+
+Its `plans` array uses the same entries as the project list. `project_dir` is
+the containing folder; `frontmatter.project` is returned separately as stored
+and may have a different value or type. `--status` accepts standard values or
+their aliases, so `--status completed` selects `done` plans.
+
+With both `PROJECT` and `PLAN`, the human view shows each matching plan's
+frontmatter fields in source order, rendering `status` in normalized form.
+JSON selects `plan-details`; each entry includes normalized `status`, original
+`raw_status`, the complete `frontmatter` object, and `frontmatter_order`, an
+ordered array of `{key, value}` records for consumers that need source order.
+`PLAN` matches any part of the file name, ignoring case.
+
+```json
+{
+  "view": "plan-details",
+  "plans": [{
+    "project_dir": "DevEnv",
+    "path": "/vault/Projects/DevEnv/PLAN-001 Example.md",
+    "title": "Example",
+    "status": "open",
+    "raw_status": "open",
+    "frontmatter": {"status": "open", "project": "DevEnv"},
+    "frontmatter_order": [
+      {"key": "status", "value": "open"},
+      {"key": "project", "value": "DevEnv"}
+    ]
+  }]
+}
+```
+
+The JSON view models are the data source for both output formats. Frontmatter
+is read as flat `key: value` pairs and `- item` lists; nested YAML is not
+supported.
+
 ## planner inspect
 
 ```text
@@ -190,11 +284,11 @@ PDE vault plans are issue documents, and the vault tracks each one through YAML
 frontmatter. `planner new` writes a plain plan by default; pass `--issue
 --project NAME` to prepend that frontmatter. The supported shape starts with
 `---` and contains a `tags` list with `"#Ticket"`, `type: issue`, a `status` of
-`open`, `in-progress`, or `done`, `template_version: 1`, a non-empty `project`,
-a `date_created` in `YYYY-MM-DD` form, and a `topics` list. Any other wrapper is
-rejected. The frontmatter is stripped before the plan body is parsed. As with a
-plain scaffold, `--diff` alone still writes the plan; combine it with
-`--dry-run` to preview the frontmatter without writing.
+`open`, `in-progress`, `done`, or `wont-do`, `template_version: 1`, a non-empty
+`project`, a `date_created` in `YYYY-MM-DD` form, and a `topics` list. Any
+other wrapper is rejected. The frontmatter is stripped before the plan body is
+parsed. As with a plain scaffold, `--diff` alone still writes the plan; combine
+it with `--dry-run` to preview the frontmatter without writing.
 
 ## Global flags
 

@@ -1,8 +1,12 @@
 package internal
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -262,6 +266,26 @@ func TestParseMarkdownRejectsUnsupportedStatusValue(t *testing.T) {
 		t.Fatal("expected unsupported frontmatter to fail")
 	} else if !strings.Contains(err.Error(), "unsupported wrapped issue doc frontmatter") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteAcceptsWontDoIssue(t *testing.T) {
+	input := strings.Replace(buildPlanWithFrontmatter(t), "status: open", "status: wont-do", 1)
+	path := filepath.Join(t.TempDir(), "plan.md")
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if exit := Execute([]string{"inspect", path}, &stdout, &stderr); exit != 0 {
+		t.Fatalf("Execute(inspect) exit=%d stderr=%q", exit, stderr.String())
+	}
+	var view InspectPlan
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("inspect JSON: %v", err)
+	}
+	if view.Title == "" {
+		t.Fatalf("empty inspect view: %+v", view)
 	}
 }
 
