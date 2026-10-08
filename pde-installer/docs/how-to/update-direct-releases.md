@@ -25,6 +25,8 @@ Terminal installs skip these components.
 2. Update archive names and checksums in `internal/direct/direct.go`.
 3. Run the tests and preview above.
 
+After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>` and run `moshi-hook install`; do not run `moshi-hook update`, which would be replaced by the pinned installer version.
+
 The backend verifies SHA-256 values before activation. It uses direct releases
 for exact runtimes and layouts that other supported managers do not provide.
 There is no direct-release-only command; bare `install` reconciles the saved
