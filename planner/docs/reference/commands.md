@@ -34,8 +34,9 @@ projects folder defaults to `500 Zettelkasten/Projects` inside the vault from
 `.obsidian` are skipped. Status values are matched case-insensitively after
 trimming. `planning` maps to `open`; `completed` and `closed` map to `done`;
 `won't do`, `wontdo`, `obsolete`, `superseded`, and `failed` map to `wont-do`.
-Other values map to `unknown`. JSON plan entries include normalized `status`
-and the original parsed value as `raw_status`; `frontmatter.status` is unchanged.
+Unrecognized frontmatter values map to `unknown`, and `--status unknown`
+selects those plans. Invalid `--status` values return a usage error with the
+accepted values.
 
 Without `PROJECT`, the human overview shows each project folder, total plans,
 and fixed columns for `open`, `in-progress`, `done`, and `wont-do`, adding
@@ -59,7 +60,8 @@ and fixed columns for `open`, `in-progress`, `done`, and `wont-do`, adding
 
 With `PROJECT`, the human view lists that project's files. JSON selects the
 `project-plans` view, whose plan entries contain `project_dir`, `path`, `title`,
-normalized `status`, original `raw_status`, and full `frontmatter`:
+normalized `status`, full `frontmatter`, and `frontmatter_order`. The
+frontmatter object and ordered array retain the parsed source values.
 
 ```json
 {
@@ -70,8 +72,11 @@ normalized `status`, original `raw_status`, and full `frontmatter`:
     "path": "/vault/Projects/DevEnv/PLAN-001 Example.md",
     "title": "Example",
     "status": "open",
-    "raw_status": "open",
-    "frontmatter": {"status": "open", "project": "DevEnv"}
+    "frontmatter": {"status": "open", "project": "DevEnv"},
+    "frontmatter_order": [
+      {"key": "status", "value": "open"},
+      {"key": "project", "value": "DevEnv"}
+    ]
   }]
 }
 ```
@@ -89,10 +94,9 @@ their aliases, so `--status completed` selects `done` plans.
 
 With both `PROJECT` and `PLAN`, the human view shows each matching plan's
 frontmatter fields in source order, rendering `status` in normalized form.
-JSON selects `plan-details`; each entry includes normalized `status`, original
-`raw_status`, the complete `frontmatter` object, and `frontmatter_order`, an
-ordered array of `{key, value}` records for consumers that need source order.
-`PLAN` matches any part of the file name, ignoring case.
+JSON selects `plan-details` and returns the same plan fields as `project-plans`.
+`PLAN` matches any part of the file name, ignoring case. If no plan matches,
+the command returns a usage error (exit code 2) with or without `--json`.
 
 ```json
 {
@@ -102,7 +106,6 @@ ordered array of `{key, value}` records for consumers that need source order.
     "path": "/vault/Projects/DevEnv/PLAN-001 Example.md",
     "title": "Example",
     "status": "open",
-    "raw_status": "open",
     "frontmatter": {"status": "open", "project": "DevEnv"},
     "frontmatter_order": [
       {"key": "status", "value": "open"},

@@ -12,74 +12,51 @@ import (
 	"text/tabwriter"
 )
 
-// vaultProjectsSubdir is where project folders live inside the PDE vault,
-// per the vault's Projects/AGENTS.md.
+// This path comes from the PDE vault's Projects/AGENTS.md guidance.
 const vaultProjectsSubdir = "500 Zettelkasten/Projects"
 
-// PlanSummary is one plan found by planner list.
-type PlanSummary struct {
+type planSummary struct {
 	Project     string         `json:"project_dir"`
 	Path        string         `json:"path"`
 	Title       string         `json:"title"`
-	Status      PlanStatus     `json:"status"`
-	RawStatus   any            `json:"raw_status"`
+	Status      planStatus     `json:"status"`
 	Frontmatter map[string]any `json:"frontmatter"`
-	keys        []string
+	// JSON object keys do not preserve source order, so this array carries the
+	// order needed by plan-detail output.
+	FrontmatterOrder []frontmatterField `json:"frontmatter_order"`
 }
 
-// StatusCount counts plans with one normalized status.
-type StatusCount struct {
-	Status PlanStatus `json:"status"`
+type statusCount struct {
+	Status planStatus `json:"status"`
 	Count  int        `json:"count"`
 }
 
-// ProjectSummary reports counts for one containing project folder.
-type ProjectSummary struct {
+type projectSummary struct {
 	ProjectDir   string        `json:"project_dir"`
 	Total        int           `json:"total"`
-	StatusCounts []StatusCount `json:"status_counts"`
+	StatusCounts []statusCount `json:"status_counts"`
 }
 
-// ProjectsView is the JSON response for the projects overview.
-type ProjectsView struct {
+type projectsView struct {
 	View     string           `json:"view"`
-	Projects []ProjectSummary `json:"projects"`
+	Projects []projectSummary `json:"projects"`
 }
 
-// PlansView contains plans returned by a list query.
-type PlansView struct {
+type plansView struct {
 	View       string        `json:"view"`
 	ProjectDir string        `json:"project_dir,omitempty"`
-	Plans      []PlanSummary `json:"plans"`
+	Plans      []planSummary `json:"plans"`
 }
 
-// FrontmatterField pairs a frontmatter key with its parsed value.
-type FrontmatterField struct {
+type frontmatterField struct {
 	Key   string `json:"key"`
 	Value any    `json:"value"`
-}
-
-// PlanDetail includes parsed values and their source order.
-type PlanDetail struct {
-	ProjectDir       string             `json:"project_dir"`
-	Path             string             `json:"path"`
-	Title            string             `json:"title"`
-	Status           PlanStatus         `json:"status"`
-	RawStatus        any                `json:"raw_status"`
-	Frontmatter      map[string]any     `json:"frontmatter"`
-	FrontmatterOrder []FrontmatterField `json:"frontmatter_order"`
-}
-
-// PlanDetailsView is the JSON response for plan detail queries.
-type PlanDetailsView struct {
-	View  string       `json:"view"`
-	Plans []PlanDetail `json:"plans"`
 }
 
 func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 	const usage = "usage: planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]"
 	project, plan, status, root := "", "", "", ""
-	var statusFilter PlanStatus
+	var statusFilter planStatus
 	asJSON := false
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
@@ -93,7 +70,13 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			if arg == "--status" {
 				status = args[i]
-				statusFilter = normalizePlanStatus(status)
+				var ok bool
+				statusFilter, ok = parsePlanStatus(status)
+				if !ok {
+					reportError(stderr, "list", newPlannerCLIError(PlannerUsageError, nil,
+						fmt.Sprintf("invalid status %q; accepted values: %s", status, acceptedPlanStatuses())))
+					return 2
+				}
 			} else {
 				root = args[i]
 			}
@@ -135,15 +118,20 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	plans = kept
+	if plan != "" && len(plans) == 0 {
+		reportError(stderr, "list", newPlannerCLIError(PlannerUsageError, nil,
+			fmt.Sprintf("no plan in %s matches %q", project, plan)))
+		return 2
+	}
 
 	var view any
 	switch {
 	case plan != "":
-		view = newPlanDetailsView(plans)
+		view = plansView{View: "plan-details", Plans: plans}
 	case project != "":
-		view = PlansView{View: "project-plans", ProjectDir: project, Plans: plans}
+		view = plansView{View: "project-plans", ProjectDir: project, Plans: plans}
 	case status != "":
-		view = PlansView{View: "plans", Plans: plans}
+		view = plansView{View: "plans", Plans: plans}
 	default:
 		view = newProjectsView(plans)
 	}
@@ -157,26 +145,18 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	}
 	switch v := view.(type) {
-	case PlanDetailsView:
-		if plan != "" && len(v.Plans) == 0 {
-			reportError(stderr, "list", newPlannerCLIError(PlannerUsageError, nil,
-				fmt.Sprintf("no plan in %s matches %q", project, plan)))
-			return 2
-		}
-		renderPlanDetails(stdout, v)
-	case ProjectsView:
-		renderProjects(stdout, v)
-	case PlansView:
-		if project == "" {
-			renderPlans(stdout, root, v)
+	case plansView:
+		if v.View == "plan-details" {
+			renderPlanDetails(stdout, v)
 		} else {
-			renderProjectPlans(stdout, root, v)
+			renderPlans(stdout, root, v)
 		}
+	case projectsView:
+		renderProjects(stdout, v)
 	}
 	return 0
 }
 
-// defaultProjectsDir resolves the vault with `pde vault path default`.
 func defaultProjectsDir() (string, error) {
 	out, err := exec.Command("pde", "vault", "path", "default").Output()
 	if err != nil {
@@ -185,8 +165,7 @@ func defaultProjectsDir() (string, error) {
 	return filepath.Join(strings.TrimSpace(string(out)), vaultProjectsSubdir), nil
 }
 
-// matchProject returns the project folder name under root matching name,
-// ignoring case, so "devenv" finds "DevEnv".
+// Project names match without regard to case, so "devenv" finds "DevEnv".
 func matchProject(root, name string) (string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -205,15 +184,14 @@ func matchProject(root, name string) (string, error) {
 	return "", fmt.Errorf("no project %q in %s; projects: %s", name, root, strings.Join(names, ", "))
 }
 
-// newProjectsView summarizes plans by their containing project directory.
-func newProjectsView(plans []PlanSummary) ProjectsView {
-	byProject := map[string]*ProjectSummary{}
+func newProjectsView(plans []planSummary) projectsView {
+	byProject := map[string]*projectSummary{}
 	for _, plan := range plans {
 		project, ok := byProject[plan.Project]
 		if !ok {
-			project = &ProjectSummary{ProjectDir: plan.Project}
-			for _, status := range planStatusOrder(false) {
-				project.StatusCounts = append(project.StatusCounts, StatusCount{Status: status})
+			project = &projectSummary{ProjectDir: plan.Project}
+			for _, status := range standardPlanStatuses {
+				project.StatusCounts = append(project.StatusCounts, statusCount{Status: status})
 			}
 			byProject[plan.Project] = project
 		}
@@ -227,37 +205,20 @@ func newProjectsView(plans []PlanSummary) ProjectsView {
 			}
 		}
 		if !found {
-			project.StatusCounts = append(project.StatusCounts, StatusCount{Status: plan.Status, Count: 1})
+			project.StatusCounts = append(project.StatusCounts, statusCount{Status: plan.Status, Count: 1})
 		}
 	}
-	projects := make([]ProjectSummary, 0, len(byProject))
+	projects := make([]projectSummary, 0, len(byProject))
 	for _, project := range byProject {
 		projects = append(projects, *project)
 	}
 	sort.Slice(projects, func(i, j int) bool {
 		return strings.ToLower(projects[i].ProjectDir) < strings.ToLower(projects[j].ProjectDir)
 	})
-	return ProjectsView{View: "projects", Projects: projects}
+	return projectsView{View: "projects", Projects: projects}
 }
 
-func newPlanDetailsView(plans []PlanSummary) PlanDetailsView {
-	view := PlanDetailsView{View: "plan-details", Plans: make([]PlanDetail, 0, len(plans))}
-	for _, plan := range plans {
-		detail := PlanDetail{
-			ProjectDir: plan.Project, Path: plan.Path, Title: plan.Title,
-			Status: plan.Status, RawStatus: plan.RawStatus,
-			Frontmatter: plan.Frontmatter, FrontmatterOrder: make([]FrontmatterField, 0, len(plan.keys)),
-		}
-		for _, key := range plan.keys {
-			detail.FrontmatterOrder = append(detail.FrontmatterOrder, FrontmatterField{Key: key, Value: plan.Frontmatter[key]})
-		}
-		view.Plans = append(view.Plans, detail)
-	}
-	return view
-}
-
-// renderProjects prints the projects overview from its JSON view model.
-func renderProjects(w io.Writer, view ProjectsView) {
+func renderProjects(w io.Writer, view projectsView) {
 	if len(view.Projects) == 0 {
 		_, _ = fmt.Fprintln(w, "No plans found.")
 		return
@@ -265,21 +226,24 @@ func renderProjects(w io.Writer, view ProjectsView) {
 	includeUnknown := false
 	for _, project := range view.Projects {
 		for _, count := range project.StatusCounts {
-			if count.Status == PlanStatusUnknown && count.Count > 0 {
+			if count.Status == statusUnknown && count.Count > 0 {
 				includeUnknown = true
 			}
 		}
 	}
-	statuses := planStatusOrder(includeUnknown)
+	statuses := append([]planStatus(nil), standardPlanStatuses...)
+	if includeUnknown {
+		statuses = append(statuses, statusUnknown)
+	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprint(tw, "PROJECT\tPLANS")
 	for _, status := range statuses {
-		_, _ = fmt.Fprintf(tw, "\t%s", frontmatterDisplay(status))
+		_, _ = fmt.Fprintf(tw, "\t%s", string(status))
 	}
 	_, _ = fmt.Fprintln(tw)
 	for _, project := range view.Projects {
-		counts := make(map[PlanStatus]int, len(project.StatusCounts))
+		counts := make(map[planStatus]int, len(project.StatusCounts))
 		for _, count := range project.StatusCounts {
 			counts[count.Status] = count.Count
 		}
@@ -292,12 +256,7 @@ func renderProjects(w io.Writer, view ProjectsView) {
 	_ = tw.Flush()
 }
 
-// renderProjectPlans prints project plan rows from their JSON view model.
-func renderProjectPlans(w io.Writer, root string, view PlansView) {
-	renderPlans(w, root, view)
-}
-
-func renderPlans(w io.Writer, root string, view PlansView) {
+func renderPlans(w io.Writer, root string, view plansView) {
 	if len(view.Plans) == 0 {
 		_, _ = fmt.Fprintln(w, "No plans found.")
 		return
@@ -316,8 +275,7 @@ func renderPlans(w io.Writer, root string, view PlansView) {
 	_ = tw.Flush()
 }
 
-// renderPlanDetails prints ordered frontmatter fields from the detail view.
-func renderPlanDetails(w io.Writer, view PlanDetailsView) {
+func renderPlanDetails(w io.Writer, view plansView) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for i, plan := range view.Plans {
 		if i > 0 {
@@ -362,12 +320,8 @@ func orDash(s string) string {
 	return s
 }
 
-// listPlans returns markdown files inside root's project folders whose
-// frontmatter has type: issue, sorted by path. Files directly in root,
-// hidden directories such as .obsidian, and notes without frontmatter are
-// skipped.
-func listPlans(root string) ([]PlanSummary, error) {
-	plans := []PlanSummary{}
+func listPlans(root string) ([]planSummary, error) {
+	plans := []planSummary{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -397,11 +351,14 @@ func listPlans(root string) ([]PlanSummary, error) {
 		if !ok || fm["type"] != "issue" {
 			return nil
 		}
-		rawStatus := fm["status"]
-		plans = append(plans, PlanSummary{
+		frontmatterOrder := make([]frontmatterField, 0, len(keys))
+		for _, key := range keys {
+			frontmatterOrder = append(frontmatterOrder, frontmatterField{Key: key, Value: fm[key]})
+		}
+		plans = append(plans, planSummary{
 			Project: project, Path: path, Title: markdownTitle(body, path),
-			Status: normalizePlanStatus(rawStatus), RawStatus: rawStatus,
-			Frontmatter: fm, keys: keys,
+			Status: normalizePlanStatus(fm["status"]), Frontmatter: fm,
+			FrontmatterOrder: frontmatterOrder,
 		})
 		return nil
 	})
@@ -411,9 +368,7 @@ func listPlans(root string) ([]PlanSummary, error) {
 	return plans, nil
 }
 
-// parseFrontmatter reads the flat YAML subset Obsidian properties use:
-// "key: value" scalars and "key:" followed by "  - item" lists. Other YAML,
-// such as nested maps, is kept as the raw scalar text or skipped.
+// Frontmatter parsing accepts scalar pairs and lists, not nested YAML.
 // Example: "tags:\n  - \"#Ticket\"\nstatus: open" yields
 // {"tags": ["#Ticket"], "status": "open"}.
 func parseFrontmatter(input string) (fm map[string]any, keys []string, body string, ok bool) {
@@ -469,8 +424,6 @@ func unquoteYAML(value string) string {
 	return value
 }
 
-// markdownTitle returns the first "# " heading, or the file name without
-// its extension when the note has none.
 func markdownTitle(body, path string) string {
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(line, "# ") {
