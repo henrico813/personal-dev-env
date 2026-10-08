@@ -250,9 +250,15 @@ start_moshi_approval() {
         esac
         ((index++))
     done
+    if [[ -z "$repo" ]]; then
+        # Resolve the display name without sending the request body to GitHub.
+        repo=$($real_gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)
+    fi
     [[ -n "$repo" ]] || repo='current repository'
     [[ -n "$target" ]] || target='the requested PR'
-    question="Approve gh pr $operation in $repo ($target), titled $title_text?"
+    question="Approve gh pr $operation in $repo ($target)"
+    [[ -z "$title_text" ]] || question+=", titled $title_text"
+    question+='?'
     setsid -f bash -c '
         request_id=$1
         request_dir=$2
