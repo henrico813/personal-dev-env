@@ -4,7 +4,44 @@ set -euo pipefail
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
 request_dir="$state_root/pr-requests"
 approval_dir="$state_root/pr-approvals"
-max_age=1800
+popup_dir="$approval_dir/.popups"
+readonly REQUEST_EXPIRY_SECONDS=14400
+
+popup_pending() {
+    local client=$1 requested_id=${2:-} request id key lock now
+    [[ -n "$client" ]] || return 0
+    mkdir -p "$request_dir" "$popup_dir"
+    now=$(date +%s)
+    find "$popup_dir" -mindepth 1 -maxdepth 1 -type d -mmin +240 -exec rmdir {} + 2>/dev/null || true
+    if [[ -n "$requested_id" ]]; then
+        requests=("$request_dir/$requested_id")
+    else
+        mapfile -t requests < <(find "$request_dir" -maxdepth 1 -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+    fi
+    for request in "${requests[@]}"; do
+        [[ -f "$request" ]] || continue
+        if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
+            rm -f "$request"
+            continue
+        fi
+        id=${request##*/}
+        key=$(printf '%s' "$client" | sha256sum | cut -d' ' -f1)
+        lock="$popup_dir/$id.$key"
+        if mkdir "$lock" 2>/dev/null; then
+            tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $id"
+            rmdir "$lock" 2>/dev/null || true
+            return 0
+        fi
+        [[ -n "$requested_id" ]] && return 0
+    done
+}
+
+if [[ ${1:-} == --popup-pending ]]; then
+    (($# >= 2 && $# <= 3)) || { printf 'usage: pde-pr-approve --popup-pending CLIENT [request-id]\n' >&2; exit 2; }
+    popup_pending "$2" "${3:-}"
+    exit $?
+fi
+
 requested_id=${1:-}
 if (($# > 1)); then
     printf 'usage: pde-pr-approve [request-id]\n' >&2
@@ -29,7 +66,7 @@ if ((${#requests[@]} == 0)); then
     exit 0
 fi
 for request in "${requests[@]}"; do
-    if ((now - $(stat -c %Y "$request") > max_age)); then
+    if ((now - $(stat -c %Y "$request") > REQUEST_EXPIRY_SECONDS)); then
         rm -f "$request"
         continue
     fi

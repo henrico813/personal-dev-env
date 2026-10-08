@@ -4,7 +4,7 @@ set -euo pipefail
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
 request_dir="$state_root/pr-requests"
 approval_dir="$state_root/pr-approvals"
-max_age=1800
+readonly REQUEST_EXPIRY_SECONDS=14400
 
 find_real_gh() {
     local guard_command guard_path candidate directory
@@ -111,13 +111,13 @@ run_approved() {
     if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
 }
 approval_ready() {
-    [[ -f "$approval_file" ]] && (( $(date +%s) - $(stat -c %Y "$approval_file") <= max_age )) && [[ $(cat "$approval_file") == "$request_id" ]]
+    [[ -f "$approval_file" ]] && (( $(date +%s) - $(stat -c %Y "$approval_file") <= REQUEST_EXPIRY_SECONDS )) && [[ $(cat "$approval_file") == "$request_id" ]]
 }
 if approval_ready; then
     run_approved
     exit $?
 fi
-if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > max_age)); then rm -f "$approval_file"; fi
+if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > REQUEST_EXPIRY_SECONDS)); then rm -f "$approval_file"; fi
 request_file=$(mktemp "$request_dir/.request.XXXXXX")
 {
     printf 'id: %s\ntime: %s\ncommand: %s\ntitle:\n%s\nbody:\n' "$request_id" "$now" "$command_text" "$title_text"
@@ -130,7 +130,7 @@ if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
     exit 3
 fi
-tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $request_id" >/dev/null 2>&1 &
+tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve --popup-pending \"$client\" $request_id" >/dev/null 2>&1 &
 printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 deadline=$((now + 90))
 while (( $(date +%s) <= deadline )); do
@@ -152,5 +152,4 @@ if [[ ! -e "$request_dir/$request_id" ]]; then
     printf 'Declined by the user.\n' >&2
     exit 4
 fi
-printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 exit 3
