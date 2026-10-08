@@ -24,7 +24,7 @@ Find what the plan missed. For every file the plan modifies, check what else dep
 ### 3. Tests
 - Does the plan include test file updates?
 - Are there existing tests that will break?
-- What new test cases are needed?
+- Which tests does `behavior-focused-testing` call for?
 
 ### 4. Documentation
 - Does the plan update READMEs if APIs change?
@@ -113,7 +113,8 @@ grep -r "CONFIG_KEY" --include="*.py" --include="*.yaml"
 
 - **Be thorough** - check every file the plan touches
 - **Follow the dependency chain** - if A imports B, and plan changes B, check A
-- **Check test coverage** - modified code should have test updates
+- **Check tests** - modified behavior should have tests worth keeping (see
+  `behavior-focused-testing`)
 - **Look for patterns** - how are similar features structured?
 - **Keep documentation proportional** - check changed source and tests for stale
   explanations and for non-obvious side effects, failures, state, ordering, or
