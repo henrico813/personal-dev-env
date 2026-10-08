@@ -2,15 +2,30 @@
 
 ## Why this exists
 
-Pull requests are shared GitHub objects. A mistaken creation or update cannot
-be removed by the agent after the fact, so pull-request writes need a human
-checkpoint outside the agent process. This protects against careless mistakes,
-not a deliberately hostile agent that can find another copy of `gh`.
+GitHub pull requests cannot be deleted by anyone; they can only be closed.
+A mistaken pull request is therefore permanent history, so writes need a
+human checkpoint. This protects against careless mistakes, not a deliberately
+hostile agent that can find another copy of `gh`.
 
-The checkpoint is outside the harness and its `--auto` mode. The harness can
-prepare and display an exact request, but it cannot approve its own write.
-The normal `gh` login remains in use; the approval scripts do not need a
-second token.
+This is not a harness permission rule because harnesses apply different rules,
+and users rely on `--auto` to approve every harness ask. A separate local
+checkpoint keeps this decision independent of both behaviors.
+
+A real terminal is required because agent commands run without one. The agent
+can start the helper, but it cannot type the approval answer.
+
+The request ID hashes the exact command, title, and body, including body-file
+contents. An approval for one piece of text therefore cannot be reused for a
+different request.
+
+The wrapper waits 90 seconds because agent command timeouts are about two
+minutes; it leaves time for the popup without holding the command forever.
+Requests last four hours and popups reopen on tmux attach because phone
+connections can drop when the app is sent to the background.
+
+The guard and PATH order make raw `gh pr create` fail instead of skipping
+approval. Already-open shells and long-running processes keep the old PATH
+until they are restarted.
 
 ## How the pieces fit
 

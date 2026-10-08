@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Record an exact PR write, request approval, then run the real gh command.
+# Popup and terminal approval share local request and approval files.
+# The guard only receives PDE_GH_WRITE=1 after this script consumes approval.
 set -euo pipefail
 
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
@@ -84,6 +87,7 @@ while ((index < ${#original_args[@]})); do
             [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
             if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
             has_body_file=true
+            # Stdin keeps the approved text even if the source file changes.
             resolved_args+=(--body-file -)
             ;;
         --body-file=*|-F=*)
@@ -91,6 +95,7 @@ while ((index < ${#original_args[@]})); do
             [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
             if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
             has_body_file=true
+            # Stdin keeps the approved text even if the source file changes.
             resolved_args+=(--body-file -)
             ;;
         *)
@@ -104,6 +109,7 @@ for argument in "${original_args[@]}"; do printf -v quoted ' %q' "$argument"; co
 now=$(date +%s)
 mkdir -p "$request_dir" "$approval_dir"
 request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
+# Include body-file contents so approval is tied to the text that will be posted.
 approval_file="$approval_dir/$request_id"
 real_gh=$(find_real_gh)
 run_approved() {
@@ -127,6 +133,7 @@ request_file=$(mktemp "$request_dir/.request.XXXXXX")
     printf '\n'
 } >"$request_file"
 mv "$request_file" "$request_dir/$request_id"
+# Use the most recently active client so the popup appears where the user is working.
 client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
 if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
@@ -135,6 +142,7 @@ fi
 tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve --popup-pending \"$client\" $request_id" >/dev/null 2>&1 &
 printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 deadline=$((now + 90))
+# Agent commands time out after about two minutes, so do not wait beyond 90 seconds.
 while (( $(date +%s) <= deadline )); do
     if approval_ready; then
         run_approved

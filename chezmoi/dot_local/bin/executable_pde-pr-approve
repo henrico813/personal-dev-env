@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Show pending PR requests and record one-key approval.
+# Read /dev/tty so an agent's redirected stdin cannot provide the answer.
 set -euo pipefail
 
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
