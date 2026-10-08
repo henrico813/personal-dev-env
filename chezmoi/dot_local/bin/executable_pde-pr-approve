@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
+request_dir="$state_root/pr-requests"
+approval_dir="$state_root/pr-approvals"
+max_age=1800
+requested_id=${1:-}
+if (($# > 1)); then
+    printf 'usage: pde-pr-approve [request-id]\n' >&2
+    exit 2
+fi
+
+if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+    printf 'pde-pr-approve requires an interactive terminal\n' >&2
+    exit 1
+fi
+mkdir -p "$request_dir" "$approval_dir"
+now=$(date +%s)
+if [[ -n "$requested_id" ]]; then
+    request="$request_dir/$requested_id"
+    [[ -f "$request" ]] || { printf 'no pending request: %s\n' "$requested_id" >&2; exit 1; }
+    requests=("$request")
+else
+    mapfile -t requests < <(find "$request_dir" -maxdepth 1 -type f -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+fi
+if ((${#requests[@]} == 0)); then
+    printf 'No pending pull-request approvals.\n' >&3
+    exit 0
+fi
+for request in "${requests[@]}"; do
+    if ((now - $(stat -c %Y "$request") > max_age)); then
+        rm -f "$request"
+        continue
+    fi
+    id=${request##*/}
+    less <"$request" >&3
+    printf 'Approve request %s? [y/N] ' "$id" >&3
+    IFS= read -r answer <&3 || { printf '\npde-pr-approve could not read the terminal\n' >&2; exit 1; }
+    if [[ "$answer" == y || "$answer" == Y || "$answer" == yes ]]; then
+        approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
+        printf '%s\n' "$id" >"$approval_tmp"
+        mv "$approval_tmp" "$approval_dir/$id"
+    fi
+    rm -f "$request"
+done

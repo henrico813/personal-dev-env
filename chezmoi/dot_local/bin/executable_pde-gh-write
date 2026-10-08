@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/pde"
+request_dir="$state_root/pr-requests"
+approval_dir="$state_root/pr-approvals"
+max_age=1800
+
+find_real_gh() {
+    local guard_command guard_path candidate directory
+    guard_command=$(command -v gh 2>/dev/null || true)
+    guard_path=''
+    [[ -z "$guard_command" ]] || guard_path=$(readlink -f "$guard_command")
+    local old_ifs=$IFS
+    IFS=: read -ra path_entries <<<"$PATH"
+    IFS=$old_ifs
+    for directory in "${path_entries[@]}"; do
+        [[ -n "$directory" ]] || directory=.
+        candidate="$directory/gh"
+        if [[ -x "$candidate" && "$(readlink -f "$candidate")" != "$guard_path" ]]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    printf 'pde-gh-write cannot find the real gh executable\n' >&2
+    exit 1
+}
+
+if (($# < 2)) || [[ "$1" != pr ]]; then
+    printf 'usage: pde-gh-write pr {create|edit|comment|review|merge|ready|close|reopen} [gh arguments...]\n' >&2
+    exit 2
+fi
+case "$2" in
+    create|edit|comment|review|merge|ready|close|reopen) ;;
+    *)
+        printf 'pde-gh-write refuses gh pr %s; use a read-only gh command or an allowlisted write\n' "$2" >&2
+        exit 2
+        ;;
+esac
+for argument do
+    if [[ "$argument" == --web ]]; then
+        printf 'pde-gh-write refuses browser-based PR writes\n' >&2
+        exit 2
+    fi
+done
+
+read_body() {
+    IFS= read -r -d '' body_text || true
+}
+
+original_args=("$@")
+resolved_args=()
+title_text=''
+body_text=''
+has_body_file=false
+index=0
+while ((index < ${#original_args[@]})); do
+    argument=${original_args[index]}
+    case "$argument" in
+        --title|-t|--subject)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires text\n' "$argument" >&2; exit 2; }
+            title_text=${original_args[index]}
+            resolved_args+=("$argument" "${original_args[index]}")
+            ;;
+        --title=*|--subject=*)
+            title_text=${argument#*=}
+            resolved_args+=("$argument")
+            ;;
+        --body)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires text\n' "$argument" >&2; exit 2; }
+            body_text=${original_args[index]}
+            resolved_args+=("$argument" "${original_args[index]}")
+            ;;
+        --body=*)
+            body_text=${argument#--body=}
+            resolved_args+=("$argument")
+            ;;
+        --body-file|-F)
+            index=$((index + 1))
+            ((index < ${#original_args[@]})) || { printf '%s requires a path\n' "$argument" >&2; exit 2; }
+            body_path=${original_args[index]}
+            [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
+            if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
+            has_body_file=true
+            resolved_args+=(--body-file -)
+            ;;
+        --body-file=*|-F=*)
+            body_path=${argument#*=}
+            [[ "$body_path" == - || -r "$body_path" ]] || { printf 'cannot read PR body file: %s\n' "$body_path" >&2; exit 1; }
+            if [[ "$body_path" == - ]]; then read_body; else read_body <"$body_path"; fi
+            has_body_file=true
+            resolved_args+=(--body-file -)
+            ;;
+        *)
+            resolved_args+=("$argument")
+            ;;
+    esac
+    index=$((index + 1))
+done
+command_text='gh'
+for argument in "${original_args[@]}"; do printf -v quoted ' %q' "$argument"; command_text+="$quoted"; done
+now=$(date +%s)
+mkdir -p "$request_dir" "$approval_dir"
+request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
+approval_file="$approval_dir/$request_id"
+real_gh=$(find_real_gh)
+if [[ -f "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") <= max_age)) && [[ $(cat "$approval_file") == "$request_id" ]]; then
+    rm -f "$approval_file"
+    if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
+    exit $?
+fi
+if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > max_age)); then rm -f "$approval_file"; fi
+request_file=$(mktemp "$request_dir/.request.XXXXXX")
+{
+    printf 'id: %s\ntime: %s\ncommand: %s\ntitle:\n%s\nbody:\n' "$request_id" "$now" "$command_text" "$title_text"
+    printf '%s' "$body_text"
+    printf '\n'
+} >"$request_file"
+mv "$request_file" "$request_dir/$request_id"
+client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
+if [[ -n "$client" ]]; then
+    tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $request_id" >/dev/null 2>&1 &
+    printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
+else
+    printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
+fi
+exit 3
