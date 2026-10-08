@@ -13,6 +13,7 @@ completed agent testing.
 | Fix this Python type-checker error. | Establishes runtime behavior first, narrows or corrects the type, and does not cast blindly. |
 | Review this Python module for maintainability. | Checks behavior, names, errors, resources, tests, and supported versions; separates defects from preferences. |
 | Add tests for this Python function. | Loads shared test guidance, uses pytest when the repository runs it, keeps inputs visible, and parameterizes only comparable cases. |
+| Add tests for this adapter. | Tests mapping and unknown replies only; does not test the pass-through timeout or an internal helper whose callers always pass a valid value, and adds no new input check. |
 | Make this external operation testable. | Uses real deterministic parts and substitutes the external dependency only where needed. |
 | Organize this growing Python CLI. | Groups by responsibility, keeps process adaptation small, and avoids one module per class. |
 
@@ -43,10 +44,9 @@ completed agent testing.
 For each positive case, inspect whether required references were read before the
 decision, whether shared testing and documentation skills loaded when applicable,
 and whether unrelated changes appeared. Run each case with and without the skill
-on every applicable target: OpenCode with `opencode-go/qwen3.6-plus` and
-`opencode-go/gpt-5.6-luna`, Codex with `gpt-5.6-luna`, and Pi with
-`openai-codex/gpt-5.6-luna`. Record the harness, exact model and version,
-activation, reference loads, output quality, unsupported providers, and
+using the configured
+`EVAL_MODEL="${EVAL_MODEL:-goog/qwen3.8}"`, recording the harness, exact model and
+version, activation, reference loads, output quality, unsupported providers, and
 differences from the baseline.
 
 ## Validate the example package
