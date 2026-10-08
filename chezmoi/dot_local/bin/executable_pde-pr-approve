@@ -35,9 +35,14 @@ for request in "${requests[@]}"; do
     fi
     id=${request##*/}
     less <"$request" >&3
-    printf 'Approve request %s? [y/N] ' "$id" >&3
-    IFS= read -r answer <&3 || { printf '\npde-pr-approve could not read the terminal\n' >&2; exit 1; }
-    if [[ "$answer" == y || "$answer" == Y || "$answer" == yes ]]; then
+    printf 'Press y to approve; any other key declines. ' >&3
+    tty_state=$(stty -g <&3) || { printf '\npde-pr-approve could not configure the terminal\n' >&2; exit 1; }
+    restore_tty() { stty "$tty_state" <&3; }
+    trap restore_tty EXIT
+    stty -icanon min 1 time 0 -echo <&3
+    IFS= read -r -n 1 answer <&3 || { printf '\npde-pr-approve could not read the terminal\n' >&2; exit 1; }
+    printf '\n' >&3
+    if [[ "$answer" == y ]]; then
         approval_tmp=$(mktemp "$approval_dir/.approval.XXXXXX")
         printf '%s\n' "$id" >"$approval_tmp"
         mv "$approval_tmp" "$approval_dir/$id"

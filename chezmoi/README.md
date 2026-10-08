@@ -100,4 +100,4 @@ See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.
 
 ## Agent GitHub approvals
 
-Keep the machine's normal `gh` login; no token setup is needed. `pde-gh-write` records the exact request and opens a tmux popup for `pde-pr-approve` when possible. The request expires after 30 minutes and each approval is single-use. Without tmux, run `pde-pr-approve` in a terminal, then rerun the identical command. The `gh` guard blocks careless raw pull-request writes.
+Keep the normal `gh` login; no token setup is needed. `pde-gh-write` opens a popup, and `pde-pr-approve` approves with one `y` keypress after showing the request in `less`. The wrapper waits up to 90 seconds; requests expire after 30 minutes. Without tmux, approve in a terminal and rerun. The installer reports stale OpenCode servers.

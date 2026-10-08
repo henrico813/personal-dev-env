@@ -44,12 +44,11 @@ Use repository instructions first. Use these defaults otherwise.
 4. Push the phase with `git push --force-with-lease -u <remote> HEAD`.
    Create the description without the title:
    `tail -n +3 FILE > BODY`
-   Show the exact title and body in the conversation, get approval first, then run
-   `pde-gh-write pr create --title "$(head -n 1 FILE)" --body-file BODY`. If it
-   exits 3, tell the user the approval popup is on their screen; without tmux,
-   tell them to run `pde-pr-approve` in a terminal. Wait for the user to say it
-   is done, then rerun the identical command. Never run `pde-pr-approve`
-   yourself or set `PDE_GH_WRITE`.
+   Run `pde-gh-write pr create --title "$(head -n 1 FILE)" --body-file BODY`.
+   If it exits 3, tell the user to approve the popup or run `pde-pr-approve` in
+   a terminal, wait for confirmation, then rerun the identical command. If it
+   exits 4, report that the user declined. Never run `pde-pr-approve` yourself
+   or set `PDE_GH_WRITE`.
 
 ## Update
 
@@ -62,12 +61,10 @@ Use repository instructions first. Use these defaults otherwise.
 3. Never rewrite a reviewed phase. Append a Changes bullet per change and
    append or update Testing blocks with checks actually run. Run fmt and lint
    --pr on FILE, then `tail -n +3 FILE > BODY` and
-   Show the exact title and body in the conversation, get approval first, then run
-   `pde-gh-write pr edit NUMBER --body-file BODY`. If it exits 3, tell the user the
-   approval popup is on their screen; without tmux, tell them to run
-   `pde-pr-approve` in a terminal. Wait for the user to say it is done, then
-   rerun the identical command. Never run `pde-pr-approve` yourself or set
-   `PDE_GH_WRITE`.
+   Run `pde-gh-write pr edit NUMBER --body-file BODY`. If it exits 3, tell the
+   user to approve the popup or run `pde-pr-approve` in a terminal, wait for
+   confirmation, then rerun the identical command. If it exits 4, report that
+   the user declined. Never run `pde-pr-approve` yourself or set `PDE_GH_WRITE`.
 4. Push the round with `git push --force-with-lease -u <remote> HEAD`.
 
 ## Merge
@@ -80,14 +77,11 @@ Use repository instructions first. Use these defaults otherwise.
    then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
    fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.
 4. Show the exact SQUASH message, file list, and check and test results. Ask for
-   approval. Merge only after the user explicitly approves this merge in the
-   current conversation; earlier or other-session approvals do not count. If not
-   approved, stop.
-5. Run `tail -n +3 SQUASH > BODY`, then show the exact squash subject and body,
-   get approval first, and run
+   approval. The popup approval below is the user's approval for the merge.
+5. Run `tail -n +3 SQUASH > BODY`, then run
    `pde-gh-write pr merge NUMBER --squash --subject "$(head -n 1 SQUASH) (#NUMBER)"
-   --body-file BODY`. If it exits 3, tell the user the approval popup is on their screen; without tmux,
-   tell them to run `pde-pr-approve` in a terminal. Wait for the user to say it
-   is done, then rerun the identical command. Never run `pde-pr-approve`
-   yourself or set `PDE_GH_WRITE`.
+   --body-file BODY`. If it exits 3, tell the user to approve the popup or run
+   `pde-pr-approve` in a terminal, wait for confirmation, then rerun the
+   identical command. If it exits 4, report that the user declined. Never run
+   `pde-pr-approve` yourself or set `PDE_GH_WRITE`.
 6. Confirm the commit on the default branch has that message.

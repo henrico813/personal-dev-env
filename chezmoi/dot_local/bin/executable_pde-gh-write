@@ -106,9 +106,15 @@ mkdir -p "$request_dir" "$approval_dir"
 request_id=$({ printf 'command\n%s\ntitle\n%s\nbody\n' "$command_text" "$title_text"; printf '%s' "$body_text"; } | sha256sum | cut -d' ' -f1)
 approval_file="$approval_dir/$request_id"
 real_gh=$(find_real_gh)
-if [[ -f "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") <= max_age)) && [[ $(cat "$approval_file") == "$request_id" ]]; then
+run_approved() {
     rm -f "$approval_file"
     if "$has_body_file"; then printf '%s' "$body_text" | PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; else PDE_GH_WRITE=1 "$real_gh" "${resolved_args[@]}"; fi
+}
+approval_ready() {
+    [[ -f "$approval_file" ]] && (( $(date +%s) - $(stat -c %Y "$approval_file") <= max_age )) && [[ $(cat "$approval_file") == "$request_id" ]]
+}
+if approval_ready; then
+    run_approved
     exit $?
 fi
 if [[ -e "$approval_file" ]] && ((now - $(stat -c %Y "$approval_file") > max_age)); then rm -f "$approval_file"; fi
@@ -120,10 +126,31 @@ request_file=$(mktemp "$request_dir/.request.XXXXXX")
 } >"$request_file"
 mv "$request_file" "$request_dir/$request_id"
 client=$(tmux list-clients -F '#{client_activity} #{client_name}' 2>/dev/null | sort -rn | sed -n '1s/^[^ ]* //p' || true)
-if [[ -n "$client" ]]; then
-    tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $request_id" >/dev/null 2>&1 &
-    printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
-else
+if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
+    exit 3
 fi
+tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve $request_id" >/dev/null 2>&1 &
+printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
+deadline=$((now + 90))
+while (( $(date +%s) <= deadline )); do
+    if approval_ready; then
+        run_approved
+        exit $?
+    fi
+    if [[ ! -e "$request_dir/$request_id" ]]; then
+        printf 'Declined by the user.\n' >&2
+        exit 4
+    fi
+    sleep 1
+done
+if approval_ready; then
+    run_approved
+    exit $?
+fi
+if [[ ! -e "$request_dir/$request_id" ]]; then
+    printf 'Declined by the user.\n' >&2
+    exit 4
+fi
+printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 exit 3
