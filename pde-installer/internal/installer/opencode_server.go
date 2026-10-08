@@ -35,6 +35,7 @@ func refreshOpenCodeServers(home string, runner run.Runner) error {
 		fmt.Fprintf(runner.Err(), "OpenCode server PID %d has the old PATH; restart it with: kill -TERM %d\n", server.pid, server.pid)
 	}
 	fmt.Fprintln(runner.Out(), "OpenCode clients start the server again on demand after it stops.")
+	// A server keeps the environment it inherited; new shells cannot update it.
 	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return nil

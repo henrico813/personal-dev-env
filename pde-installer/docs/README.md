@@ -24,9 +24,11 @@ Maintenance guides use paths and commands relative to `pde-installer/`.
 - [Managers and ownership](explanation/managers-and-ownership.md)
 - [Journals and recovery](explanation/journals-and-recovery.md)
 - [Tool selection](explanation/tool-selection.md)
+- [OpenCode server refresh](explanation/opencode-server-refresh.md)
 
 ## Reference
 
 - [Commands](reference/commands.md)
 - [Platforms and paths](reference/platforms-and-paths.md)
 - [Component metadata](reference/component-metadata.md)
+- [OpenCode server messages](reference/opencode-server-messages.md)
