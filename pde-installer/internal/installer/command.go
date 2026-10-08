@@ -228,5 +228,8 @@ func reconcile(config config, runner run.Runner) error {
 	if err := fsutil.CommitJournals(journals...); err != nil {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
+	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
+		return fmt.Errorf("refresh OpenCode servers: %w", err)
+	}
 	return nil
 }
