@@ -139,7 +139,8 @@ if [[ -z "$client" ]]; then
     printf 'Approval needed: run pde-pr-approve in a terminal, then rerun. Request %s\n' "$request_id" >&2
     exit 3
 fi
-tmux display-popup -E -w 95% -h 90% -c "$client" "pde-pr-approve --popup-pending \"$client\" $request_id" >/dev/null 2>&1 &
+# Start the helper directly; it owns the one popup and must outlive the agent command.
+setsid -f pde-pr-approve --popup-pending "$client" "$request_id" </dev/null >/dev/null 2>&1
 printf 'Approval requested on your screen; rerun this exact command after approving. Request %s\n' "$request_id" >&2
 deadline=$((now + 90))
 # Agent commands time out after about two minutes, so do not wait beyond 90 seconds.
