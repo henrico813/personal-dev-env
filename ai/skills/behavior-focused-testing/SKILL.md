@@ -82,12 +82,17 @@ Run relevant tests and inspect collection, names, and failures. For a regression
 
 After writing tests, have a new subagent review them:
 
-- Give it only the new tests, the code they test, the task, and the low-value rules in section 4.
-- It lists each test to delete, with a one-line reason. It does not suggest new tests unless required behavior is untested.
+- Give it only the new tests, the code they test, the task, and the
+  low-value rules in section 4.
+- It lists each test to delete, with a one-line reason. It does not
+  suggest new tests unless required behavior is untested.
 - Delete those tests, keep required behavior, and rerun the tests.
 - If you cannot start a subagent, review the tests yourself and say so.
 
-Check that names meet the seven-word limit and important risks remain covered. Report the protected behavior, test scope and limitations, commands and results, and what the review removed. State when tests could not run. Claim coverage percentages only when measured.
+Check that names meet the seven-word limit and important risks remain
+covered. Report the protected behavior, test scope and limitations,
+commands and results, and what the review removed. State when tests
+could not run. Claim coverage percentages only when measured.
 
 References
 
