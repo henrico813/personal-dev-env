@@ -80,7 +80,14 @@ Use tables or parametrization when cases share setup and assertion logic. Give c
 
 Run relevant tests and inspect collection, names, and failures. For a regression, demonstrate failure before the fix and success afterward when practical. Never weaken assertions or change expectations merely to get a passing suite; establish the intended behavior first.
 
-After writing tests, start a new subagent with fresh context to review them. Give it only the new or changed test files, the code they test, the task request, and section 4’s low-value rules; it may read this skill file. Ask it to return each test to delete with a one-line reason, and not suggest new tests unless a required behavior is untested. If no subagent tool is available, review the tests yourself and say so. Delete the reviewer’s listed low-value tests while keeping required behavior, rerun the suite, and report what was removed. Then check that names meet the seven-word limit and important risks remain covered. Report the protected behavior, test scope and limitations, commands/results, tests that could not run, and measured coverage percentages.
+After writing tests, have a new subagent review them:
+
+- Give it only the new tests, the code they test, the task, and the low-value rules in section 4.
+- It lists each test to delete, with a one-line reason. It does not suggest new tests unless required behavior is untested.
+- Delete those tests, keep required behavior, and rerun the tests.
+- If you cannot start a subagent, review the tests yourself and say so.
+
+Check that names meet the seven-word limit and important risks remain covered. Report the protected behavior, test scope and limitations, commands and results, and what the review removed. State when tests could not run. Claim coverage percentages only when measured.
 
 References
 
