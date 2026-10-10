@@ -11,10 +11,11 @@ The popup opens only when `HERDR_ENV=1`, which Herdr sets in its panes.
 `pde-gh-write` asks `herdr status server` for the server's socket and sends
 one `plugin.pane.open` request on it. The Herdr command line cannot ask for a
 popup, so the socket is the only way to choose that placement. The request
-names the `pde.approval` plugin and its `approval` pane from
-`plugin/herdr-plugin.toml`, and passes the request ID in `PDE_REQUEST_ID`.
-Herdr then starts `pde-pr-approve --herdr-popup` in a 40x16 popup, which
-leaves 37x14 for the screen inside the border.
+names the `pde.approval` plugin and its `approval` pane from the plugin
+manifest that chezmoi deploys, and passes the request ID in
+`PDE_REQUEST_ID`. Herdr then starts `~/.local/bin/pde-pr-approve
+--herdr-popup` in a 40x16 popup, which leaves 37x14 for the screen inside
+the border.
 
 This runs in a goroutine and every error is ignored. A slow or missing Herdr
 must not delay the request, and the writer may exit before it finishes.

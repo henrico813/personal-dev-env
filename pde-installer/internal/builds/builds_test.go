@@ -34,11 +34,33 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 	}
 }
 
+// Without pdev2 in the build inputs, a source change would never rebuild
+// pde-gh-write.
+func TestBuildInputsIncludeApprovalSource(t *testing.T) {
+	repoRoot := t.TempDir()
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
+		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
+	}
+	manager := New(t.TempDir(), repoRoot, run.Runner{})
+	before, err := manager.inputs()
+	if err != nil {
+		t.Fatalf("inputs() error = %v", err)
+	}
+	writeBuildFile(t, filepath.Join(repoRoot, "pdev2", "changed.go"), "package main\n", 0o644)
+	after, err := manager.inputs()
+	if err != nil {
+		t.Fatalf("inputs() after change error = %v", err)
+	}
+	if before["pde-gh-write"] == after["pde-gh-write"] {
+		t.Fatal("pdev2 input hash did not change")
+	}
+}
+
 // Reconciliation must activate builds and preserve prior binaries.
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe"} {
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
 	logPath := filepath.Join(t.TempDir(), "build.log")
@@ -46,7 +68,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
 	manager := New(home, repoRoot, run.Runner{})
 
-	for _, name := range []string{"planner", "opencode-inline-shim", "vibe"} {
+	for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve"} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
@@ -56,11 +78,18 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 	assertBuildOutputs(t, home)
+	alias, err := os.Readlink(filepath.Join(home, ".local", "bin", "pde-pr-approve"))
+	if err != nil {
+		t.Fatalf("pde-pr-approve is not a symlink: %v", err)
+	}
+	if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
+		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", alias)
+	}
 	assertBuildArtifactsRemoved(t, filepath.Join(home, ".local", "state", "pde", "build-stage"))
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
 	}
-	for _, name := range []string{"planner", "opencode-inline-shim", "vibe"} {
+	for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve"} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
 	assertBuildFile(t, manager.statePath(), "old state\n")
@@ -89,6 +118,46 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	if !bytes.Equal(after, before) {
 		t.Fatalf("unchanged Reconcile() rebuilt tools: before %q, after %q", before, after)
+	}
+}
+
+// The build state does not record pde-pr-approve, so a deleted link must be
+// restored on the next install even though no source changed.
+func TestReconcileRestoresApprovalAlias(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := t.TempDir()
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
+		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
+	}
+	// Fake go and cargo scripts write placeholder binaries instead of building.
+	logPath := filepath.Join(t.TempDir(), "build.log")
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
+	manager := New(home, repoRoot, run.Runner{})
+
+	// Install once and commit, so the build state matches the sources.
+	journal, err := manager.Reconcile()
+	if err != nil {
+		t.Fatalf("initial Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("initial Commit() error = %v", err)
+	}
+	// Delete only the link; the sources and build state stay unchanged.
+	if err := os.Remove(filepath.Join(home, ".local", "bin", "pde-pr-approve")); err != nil {
+		t.Fatalf("remove approval alias: %v", err)
+	}
+
+	_, err = manager.Reconcile()
+	if err != nil {
+		t.Fatalf("restore Reconcile() error = %v", err)
+	}
+	alias, err := os.Readlink(filepath.Join(home, ".local", "bin", "pde-pr-approve"))
+	if err != nil {
+		t.Fatalf("restored alias is not a symlink: %v", err)
+	}
+	if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
+		t.Fatalf("restored alias -> %q, want pde-gh-write", alias)
 	}
 }
 
@@ -291,7 +360,7 @@ func writeBuildFile(t *testing.T, path, content string, mode os.FileMode) {
 func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
-		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo",
+		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

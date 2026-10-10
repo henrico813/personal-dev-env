@@ -60,8 +60,9 @@ Rerun status lines are `already ran ID, exit N`, `declined ID`, and
 | `q` or Esc | Close without answering; the request stays pending |
 
 Input typed before the screen draws is discarded. The pane is 40x16 in
-`plugin/herdr-plugin.toml`, leaving 37x14 inside the border. Below 11 rows
-the buttons are one row tall; below 7 rows only the header is drawn.
+`chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/herdr-plugin.toml.tmpl`,
+leaving 37x14 inside the border. Below 11 rows the buttons are one row tall;
+below 7 rows only the header is drawn.
 
 `pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or the
 request is not pending, 0 when closed without an answer, and otherwise as

@@ -10,8 +10,12 @@ app that the `moshi-hook` command sends yes-or-no questions to.
 These pages are for people changing the program. Paths and commands are
 relative to `pdev2/` unless they start at the repository root.
 
-The installer does not build this program yet. The shell scripts in
-`chezmoi/dot_local/bin/` are still the installed commands.
+In the full profile, the installer builds this program as
+`~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it. See
+[update local builds](../../pde-installer/docs/how-to/update-local-builds.md)
+to rebuild it after a change. The full profile also deploys the Herdr plugin
+manifest from `chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/` and
+links it into Herdr after each chezmoi apply.
 
 ## How-to Guides
 
