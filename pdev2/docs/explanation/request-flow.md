@@ -14,13 +14,15 @@ the same arguments instead.
 
 1. An agent runs `pde-gh-write pr comment 12 --body "Looks good"`.
 2. The program saves a record of the request and prints its ID, a long
-   string that names this exact request:
-   `pde-gh-write: waiting for approval; run pde-pr-approve ID in a terminal`
-3. You run `pde-pr-approve ID`. It shows the command and the text to be
-   posted in `less` (the approval screen); press `q`, then type `yes` or
-   `no`.
-4. After `yes`, the waiting program runs `gh` once and passes on its output
-   and exit code. After `no`, nothing is posted.
+   string that names this exact request. The line starts with
+   `pde-gh-write: waiting for approval` and ends with
+   `run pde-pr-approve ID in a terminal`.
+3. If the agent runs inside Herdr, a terminal program that holds many
+   terminals, an approval popup opens there. A question also goes to your
+   phone. Answer in either place, or run `pde-pr-approve ID` in a terminal
+   to open the approval screen. The first answer counts.
+4. After you approve, the waiting program runs `gh` once and passes on its
+   output and exit code. After you decline, nothing is posted.
 5. With no answer within 90 seconds, the program stops waiting and exits 3.
    The request stays saved, so you can still approve it.
 6. The agent reruns the same command. Instead of posting again, the program
@@ -51,6 +53,11 @@ interrupted and never run again, because `gh` may already have posted.
 Four hours after a record last changed, the same command becomes a new
 request that needs a fresh answer. An old approval should not let a command
 post hours later, when the pull request may have moved on.
+
+Restarting the phone question does not count as a change. Otherwise, if
+one keeps failing, for example because the phone tool `moshi-hook` is
+missing, each rerun would restart it and push expiry back, and the request
+would never expire.
 
 ## Why Body Files Are Read Once
 

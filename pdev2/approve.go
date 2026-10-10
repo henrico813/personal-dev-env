@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strings"
 )
 
 func approve(args []string) int {
@@ -26,10 +24,7 @@ func approve(args []string) int {
 		return exitFailed
 	}
 	defer tty.Close()
-	pager := exec.Command("less")
-	pager.Stdin = strings.NewReader(rec.ApprovalText)
-	pager.Stdout, pager.Stderr = tty, tty
-	if err := pager.Run(); err != nil {
+	if err := showPager(tty, rec.ApprovalText); err != nil {
 		fmt.Fprintf(stderr, "pde-pr-approve: less failed: %v\n", err)
 		return exitFailed
 	}
@@ -68,4 +63,27 @@ func saveAnswer(id, choice string) int {
 		return exitFailed
 	}
 	return 0
+}
+
+func approvePopup(id string) int {
+	if id == "" {
+		return 1
+	}
+	rec, err := load(id)
+	if err != nil || rec.State != statePending || expired(rec) {
+		return 1
+	}
+	choice := popupAnswer(rec)
+	if choice == "" {
+		return 0
+	}
+	return saveAnswer(id, choice)
+}
+
+func popupAnswer(rec record) string {
+	choice, err := askPopup(os.Stdin, os.Stdout, rec)
+	if err != nil {
+		return ""
+	}
+	return choice
 }
