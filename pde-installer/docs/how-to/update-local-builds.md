@@ -1,7 +1,7 @@
 # Update Local Builds
 
-The full-profile local backend builds `planner`, `opencode-inline-shim`,
-`vibe`, and `pde-gh-write` (from `pdev2/`, also linked as
+The local backend builds repository applications: `planner`,
+`opencode-inline-shim`, `vibe`, and `pde-gh-write` (also linked as
 `pde-pr-approve`).
 
 1. Change the application source in its repository directory.
@@ -17,7 +17,7 @@ The full-profile local backend builds `planner`, `opencode-inline-shim`,
    ```
 
 The installer hashes regular source files, excluding `.git` and `target`
-directories. It rebuilds the local applications when inputs or managed Go and
+directories. It rebuilds all four applications when inputs or managed Go and
 Rust toolchain versions change. It builds `blink.cmp` later, after chezmoi has
 installed the plugin tree.
 

@@ -100,10 +100,4 @@ See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.
 
 ## Agent GitHub approvals
 
-On a full install, agents post to pull requests through `pde-gh-write`,
-which waits for you to approve each post in the Herdr popup, on your phone
-through Moshi, or with `pde-pr-approve ID` in a terminal. Keep the normal `gh`
-login; no token setup is needed. Terminal installs get none of this. See the
-[approval explanation](docs/explanation/pr-write-approval.md),
-[how-to guide](docs/how-to/pr-write-approval.md), and
-[reference](docs/reference/pr-write-approval.md).
+Keep the normal `gh` login; no token setup is needed. `pde-gh-write` opens a popup, and `pde-pr-approve` approves with one `y` keypress after showing the request in `less`. The wrapper waits up to 90 seconds; requests expire after 4 hours. Reattached tmux clients restore pending popups without duplicates. Without tmux, approve in a terminal and rerun. See the [approval explanation](docs/explanation/pr-write-approval.md), [how-to guide](docs/how-to/pr-write-approval.md), and [reference](docs/reference/pr-write-approval.md). When paired, it also asks the phone through Moshi; the popup remains available if Moshi is unavailable.

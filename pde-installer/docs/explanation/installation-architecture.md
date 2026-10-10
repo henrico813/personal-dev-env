@@ -6,10 +6,9 @@ saved selection or infers full from legacy installer state; it errors when
 neither exists. Terminal skips full-only components. Switching between
 selections changes future reconciliation, but switching from full to terminal
 does not uninstall full-only artifacts. The exception is PR write approval:
-chezmoi deletes `pde-gh-write`, `pde-pr-approve`, and the `gh` guard, a
-wrapper that refuses raw PR writes, on terminal machines. Without
-`pde-gh-write`, the guard would block PR writes with no way to approve them.
-Every install reconciles tools and managed home configuration.
+chezmoi removes `pde-gh-write`, `pde-pr-approve`, and the `gh` guard on
+terminal machines. Every install reconciles tools and
+managed home configuration.
 
 Color selection is an independent per-machine value in the same config file.
 Install resolves both selections after journal recovery and passes them to
@@ -29,12 +28,10 @@ The full order is:
 5. Install direct-release tools, including Node.js, Go, and Rust.
 6. Install npm tools with the managed npm.
 7. Install direct-release fonts and run `fc-cache`.
-8. In the full profile, build repository applications, including the PR
-   approval commands, with the managed toolchains.
+8. Build repository applications with the managed toolchains.
 9. Migrate legacy PDE and Neovim configuration.
 10. Install the inline plugin runtime.
-11. Apply the chezmoi source. In the full profile, chezmoi then runs its
-    after-apply script that links the Herdr approval plugin.
+11. Apply the chezmoi source.
 12. Build and verify the `blink.cmp` native library.
 13. Commit journals and remove backups.
 

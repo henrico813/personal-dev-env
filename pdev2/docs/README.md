@@ -12,11 +12,7 @@ for lookup. Paths and commands are relative to `pdev2/` unless they start
 at the repository root.
 
 In the full profile, the installer builds this program as
-`~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it. See
-[update local builds](../../pde-installer/docs/how-to/update-local-builds.md)
-to rebuild it after a change. The full profile also deploys the Herdr plugin
-manifest from `chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/` and
-links it into Herdr after each chezmoi apply.
+`~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it.
 
 ## Explanation
 
@@ -29,9 +25,10 @@ links it into Herdr after each chezmoi apply.
 
 ## User Guides
 
-How to approve requests and set up the phone, and what the installer puts
-on each machine, is covered in the chezmoi docs:
+How to approve requests, and why approval exists, is covered in the chezmoi
+docs:
 
 - [Approve a pull-request write](../../chezmoi/docs/how-to/pr-write-approval.md)
 - [Pull-request approval reference](../../chezmoi/docs/reference/pr-write-approval.md)
 - [Pull-request write approval](../../chezmoi/docs/explanation/pr-write-approval.md)
+- [Use phone approval for a pull-request write](../../chezmoi/docs/how-to/moshi-phone-approval.md)
