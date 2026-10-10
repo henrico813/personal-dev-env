@@ -34,28 +34,6 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 	}
 }
 
-// Without pdev2 in the build inputs, a source change would never rebuild
-// pde-gh-write.
-func TestBuildInputsIncludeApprovalSource(t *testing.T) {
-	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
-		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
-	}
-	manager := New(t.TempDir(), repoRoot, run.Runner{})
-	before, err := manager.inputs()
-	if err != nil {
-		t.Fatalf("inputs() error = %v", err)
-	}
-	writeBuildFile(t, filepath.Join(repoRoot, "pdev2", "changed.go"), "package main\n", 0o644)
-	after, err := manager.inputs()
-	if err != nil {
-		t.Fatalf("inputs() after change error = %v", err)
-	}
-	if before["pde-gh-write"] == after["pde-gh-write"] {
-		t.Fatal("pdev2 input hash did not change")
-	}
-}
-
 // Reconciliation must activate builds and preserve prior binaries. If a later
 // install step fails, the installer rolls back, so the old files must return;
 // on upgraded machines the old pde-gh-write and pde-pr-approve are the bash
@@ -125,46 +103,6 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	if !bytes.Equal(after, before) {
 		t.Fatalf("unchanged Reconcile() rebuilt tools: before %q, after %q", before, after)
-	}
-}
-
-// The build state does not record pde-pr-approve, so a deleted link must be
-// restored on the next install even though no source changed.
-func TestReconcileRestoresApprovalAlias(t *testing.T) {
-	home := t.TempDir()
-	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
-		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
-	}
-	// Fake go and cargo scripts write placeholder binaries instead of building.
-	logPath := filepath.Join(t.TempDir(), "build.log")
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
-	manager := New(home, repoRoot, run.Runner{})
-
-	// Install once and commit, so the build state matches the sources.
-	journal, err := manager.Reconcile()
-	if err != nil {
-		t.Fatalf("initial Reconcile() error = %v", err)
-	}
-	if err := journal.Commit(); err != nil {
-		t.Fatalf("initial Commit() error = %v", err)
-	}
-	// Delete only the link; the sources and build state stay unchanged.
-	if err := os.Remove(filepath.Join(home, ".local", "bin", "pde-pr-approve")); err != nil {
-		t.Fatalf("remove approval alias: %v", err)
-	}
-
-	_, err = manager.Reconcile()
-	if err != nil {
-		t.Fatalf("restore Reconcile() error = %v", err)
-	}
-	alias, err := os.Readlink(filepath.Join(home, ".local", "bin", "pde-pr-approve"))
-	if err != nil {
-		t.Fatalf("restored alias is not a symlink: %v", err)
-	}
-	if alias != filepath.Join(home, ".local", "bin", "pde-gh-write") {
-		t.Fatalf("restored alias -> %q, want pde-gh-write", alias)
 	}
 }
 

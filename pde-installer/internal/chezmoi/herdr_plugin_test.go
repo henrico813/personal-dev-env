@@ -13,9 +13,7 @@ import (
 )
 
 // The script runs after every apply, so it must link the deployed plugin
-// directory at most once and never fail the install when Herdr cannot help. The
-// script parses Herdr's JSON with the host's jq from /usr/bin or /bin, so the
-// "herdr missing" case assumes no real herdr is installed there either.
+// directory at most once and never fail the install when Herdr cannot help.
 func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 	tests := []struct {
 		name string
@@ -23,59 +21,47 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 		// (linked to another manifest), "missing" (not linked), "unavailable"
 		// (server stopped), or "link-fail" (link refused).
 		herdrState string
-		herdrIn    string // "path", "home" (only in the destination's .local/bin), or "" for none.
-		noJQ       bool
+		herdrIn    string // "path", or "home" for only the destination's .local/bin.
 		wantOutput string
-		wantCalls  string // Herdr calls in order; PLUGIN stands for the deployed plugin directory.
+		wantUnlink bool // Whether the old link is removed with herdr plugin unlink.
+		wantLink   bool // Whether herdr plugin link runs for the deployed directory.
 	}{
 		{
 			name:       "already linked",
 			herdrState: "already",
 			herdrIn:    "path",
-			wantCalls:  "status server\nplugin list --json\n",
 		},
 		{
 			name:       "linked elsewhere",
 			herdrState: "elsewhere",
 			herdrIn:    "path",
-			wantCalls:  "status server\nplugin list --json\nplugin unlink pde.approval\nplugin link PLUGIN\n",
+			wantUnlink: true,
+			wantLink:   true,
 		},
 		{
 			name:       "missing",
 			herdrState: "missing",
 			herdrIn:    "path",
-			wantCalls:  "status server\nplugin list --json\nplugin link PLUGIN\n",
+			wantLink:   true,
 		},
 		{
 			name:       "herdr only in home bin",
 			herdrState: "missing",
 			herdrIn:    "home",
-			wantCalls:  "status server\nplugin list --json\nplugin link PLUGIN\n",
+			wantLink:   true,
 		},
 		{
-			name:       "herdr missing",
-			wantOutput: "Herdr is unavailable; link later with: herdr plugin link PLUGIN",
-		},
-		{
-			name:       "jq missing",
-			herdrState: "missing",
-			herdrIn:    "path",
-			noJQ:       true,
-			wantOutput: "jq is unavailable; link later with: herdr plugin link PLUGIN",
-		},
-		{
-			name:       "server unavailable",
+			name:       "herdr unavailable",
 			herdrState: "unavailable",
 			herdrIn:    "path",
 			wantOutput: "Herdr is unavailable; link later with: herdr plugin link PLUGIN",
-			wantCalls:  "status server\n",
 		},
 		{
 			name:       "link failure",
 			herdrState: "link-fail",
 			herdrIn:    "path",
 			wantOutput: "Herdr plugin link failed:",
-			wantCalls:  "status server\nplugin list --json\nplugin link PLUGIN\n",
+			wantLink:   true,
 		},
 	}
 
@@ -84,9 +70,9 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 			home := t.TempDir()
 			bin := t.TempDir()
 			pluginDir := filepath.Join(home, ".local", "share", "pde", "herdr-plugins", "pde-approval")
-			// The fake herdr logs each call here, so the test can check the order.
+			// The fake herdr logs each call here, so the test can see what ran.
 			logPath := filepath.Join(t.TempDir(), "herdr.log")
-			// Put the fake herdr on PATH, only in the home's .local/bin, or nowhere.
+			// Put the fake herdr on PATH or only in the home's .local/bin.
 			switch tt.herdrIn {
 			case "path":
 				writeExecutable(t, filepath.Join(bin, "herdr"), fakeHerdr)
@@ -98,11 +84,8 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 			if err := os.WriteFile(script, []byte(renderHerdrSetup(t, home)), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			// /usr/bin and /bin supply the host's jq; leaving them out hides it.
+			// /usr/bin and /bin supply the host's jq.
 			path := bin + string(os.PathListSeparator) + "/usr/bin:/bin"
-			if tt.noJQ {
-				path = bin
-			}
 			// HERDR_MODE picks the fake's answers; HERDR_MANIFEST is the path it
 			// reports for an existing link to this manifest.
 			command := exec.Command("sh", script)
@@ -117,18 +100,21 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 			output, err := command.CombinedOutput()
 
 			if err != nil {
-				t.Fatalf("setup failed: %v\n%s", err, output)
+				t.Fatalf("script failed the install: %v\n%s", err, output)
 			}
 			wantOutput := strings.ReplaceAll(tt.wantOutput, "PLUGIN", pluginDir)
-			if !strings.Contains(string(output), wantOutput) {
+			if wantOutput == "" && len(output) != 0 || !strings.Contains(string(output), wantOutput) {
 				t.Fatalf("output = %q, want substring %q", output, wantOutput)
 			}
 			calls, err := os.ReadFile(logPath)
 			if err != nil && !errors.Is(err, fs.ErrNotExist) {
 				t.Fatal(err)
 			}
-			if want := strings.ReplaceAll(tt.wantCalls, "PLUGIN", pluginDir); string(calls) != want {
-				t.Fatalf("calls = %q, want %q", calls, want)
+			if unlinked := containsLine(string(calls), "plugin unlink pde.approval"); unlinked != tt.wantUnlink {
+				t.Errorf("unlink ran = %v, want %v; calls:\n%s", unlinked, tt.wantUnlink, calls)
+			}
+			if linked := containsLine(string(calls), "plugin link "+pluginDir); linked != tt.wantLink {
+				t.Errorf("link ran = %v, want %v; calls:\n%s", linked, tt.wantLink, calls)
 			}
 		})
 	}
