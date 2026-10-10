@@ -280,7 +280,7 @@ func TestChatCompletionUsesOpenCodeV2Session(t *testing.T) {
 		w.Header().Set("content-type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/info":
-			_, _ = w.Write([]byte(`{"version":"2.0.18"}`))
+			_, _ = w.Write([]byte(`{"version":"2.0.26"}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/api/session":
 			_ = json.NewDecoder(r.Body).Decode(&session)
 			_, _ = w.Write([]byte(`{"data":{"id":"ses_123"}}`))
