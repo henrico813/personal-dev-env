@@ -16,6 +16,9 @@ type herdrRequest struct {
 	Params any    `json:"params"`
 }
 
+// notifyRequest opens the approval popup and a notification when the agent runs
+// inside Herdr. Errors are ignored; the request can still be answered on the
+// phone or in a terminal.
 func notifyRequest(rec record) {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return
@@ -28,8 +31,9 @@ func notifyRequest(rec record) {
 	if socket == "" {
 		return
 	}
-	// The CLI cannot request popup placement, so use its socket API for this method.
-	// plugin_id and entrypoint must match id and [[panes]] id in the plugin manifest.
+	// The herdr command has no option that opens a popup, so send the request
+	// to Herdr's socket directly. plugin_id and entrypoint must match id and the
+	// [[panes]] id in plugin/herdr-plugin.toml.
 	_ = sendHerdr(socket, herdrRequest{ID: rec.ID, Method: "plugin.pane.open", Params: map[string]any{
 		"plugin_id":  "pde.approval",
 		"entrypoint": "approval",

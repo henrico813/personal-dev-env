@@ -49,9 +49,9 @@ func loadOrCreate(req request, gh string) (string, error) {
 	// command needs a new approval and may run again.
 	if err == nil && !expired(rec) {
 		if rec.State == statePending {
-			// startMoshi does nothing while the earlier ask is alive, so this only
-			// restarts an ask that died. Otherwise a failed ask would leave a
-			// pending request with no question on the phone.
+			// Replace a phone question that ended without an answer, or the
+			// request would wait with nothing to answer on the phone. startMoshi
+			// does nothing while the earlier question is still running.
 			startMoshi(rec, moshiQuestion(req))
 		}
 		return rec.State, nil
@@ -69,7 +69,8 @@ func loadOrCreate(req request, gh string) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(stderr, "pde-gh-write: waiting for approval in the Herdr popup or on the phone, or run pde-pr-approve %s in a terminal\n", req.ID)
-	// A slow Herdr must not delay the wait loop; the process may exit before this finishes.
+	// Opening the popup runs in the background so a slow Herdr cannot delay the
+	// wait for an answer. It may not finish if this program exits first.
 	go notifyRequest(rec)
 	startMoshi(rec, moshiQuestion(req))
 	return statePending, nil

@@ -9,7 +9,7 @@ import (
 )
 
 // Expiry is measured from the record's last change, not its creation. Saving
-// a phone ask's PID is not a change; see saveKeepingAge.
+// the phone question's PID is not a change; see saveKeepingAge.
 const expiry = 4 * time.Hour
 
 // An answer from the terminal, the Herdr popup, or the phone moves a record
@@ -66,10 +66,10 @@ func save(rec record) error {
 	return writeRecord(rec)
 }
 
-// saveKeepingAge saves bookkeeping, such as a phone ask's PID, with the stored
-// record's age. Otherwise an agent rerunning a request whose ask keeps dying
-// would restart expiry each time, and the request would never expire. The
-// caller holds the request lock.
+// saveKeepingAge saves a change that is not an answer, such as the phone
+// question's PID, without restarting the four-hour expiry. Otherwise each
+// rerun that replaced a failed phone question would restart expiry, and the
+// request would never expire. The caller holds the request lock.
 func saveKeepingAge(rec record) error {
 	stored, err := load(rec.ID)
 	if err != nil {
