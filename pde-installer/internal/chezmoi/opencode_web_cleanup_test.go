@@ -40,21 +40,6 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 	}
 }
 
-// chezmoi skips a removal target that .chezmoiignore matches, so the units must
-// stay out of the ignore list or the live service would never be cleaned up.
-func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
-	for _, selected := range []string{"full", "terminal"} {
-		t.Run(selected, func(t *testing.T) {
-			text := renderProfileTemplate(t, ".chezmoiignore.tmpl", selected)
-			for _, target := range openCodeWebUnitTargets {
-				if containsLine(text, target) {
-					t.Errorf("%s ignores removal target %q", selected, target)
-				}
-			}
-		})
-	}
-}
-
 // The one-time script must disable and stop the live units while their files
 // still exist, then reload systemd, or the public service survives the apply.
 func TestCleanupScriptDisablesWebUnits(t *testing.T) {

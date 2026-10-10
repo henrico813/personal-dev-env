@@ -89,7 +89,7 @@ func Items() []Item {
 			Version: "2.1.283",
 			Owner:   NPM,
 		},
-		{Name: "planner", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
+		{Name: "planner", Owner: Local}, {Name: "pde-gh-write", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
 		{Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
 		{Name: "FiraCode", Version: "v3.2.1", Owner: Direct},
 		{Name: "JetBrainsMono", Version: "v3.2.1", Owner: Direct},

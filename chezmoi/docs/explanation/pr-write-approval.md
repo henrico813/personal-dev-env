@@ -7,34 +7,35 @@ A mistaken pull request is therefore permanent history, so writes need a
 human checkpoint. This protects against careless mistakes, not a deliberately
 hostile agent that can find another copy of `gh`.
 
-This is not a harness permission rule because harnesses apply different rules,
-and users rely on `--auto` to approve every harness ask. A separate local
+This is not a permission rule in the agent harness, the program that runs the
+agent, such as OpenCode or Claude Code, because harnesses apply different
+rules, and users often set the harness to approve every command the agent asks
+to run. A separate local
 checkpoint keeps this decision independent of both behaviors.
 
-A real terminal is required because agent commands run without one. The agent
-can start the helper, but it cannot type the approval answer.
+Approval is a human action because agent commands must not answer their own
+requests. A human can approve from Herdr, the terminal multiplexer the agents
+run in; from Moshi, a phone app that the `moshi-hook` command sends yes-or-no
+questions to; or with `pde-pr-approve` in a real terminal.
 
 The request ID hashes the exact command, title, and body, including body-file
 contents. An approval for one piece of text therefore cannot be reused for a
 different request.
 
 The wrapper waits 90 seconds because agent command timeouts are about two
-minutes; it leaves time for the popup without holding the command forever.
-Requests last four hours and popups reopen on tmux attach because phone
-connections can drop when the app is sent to the background.
+minutes; it leaves time for approval without holding the command forever.
+Requests last four hours.
 
-The guard and PATH order make raw `gh pr create` fail instead of skipping
-approval. Already-open shells and long-running processes keep the old PATH
-until they are restarted.
+The full-profile guard makes raw `gh pr create` fail instead of skipping
+approval. Long-running agent clients may need restarting after installation.
 
 ## How the pieces fit
 
 1. The pull-request skill tells the agent to call `pde-gh-write`.
-2. The wrapper allowlists pull-request operations, records the exact command,
-   title, and body, and opens a tmux popup when a client is available.
-3. `pde-pr-approve` shows the request and accepts exactly one `y` key.
-4. The wrapper consumes that one-time answer and invokes the real `gh`.
-5. The `gh` guard blocks common raw write paths when an agent skips the wrapper.
+2. The Go writer allowlists pull-request operations and records the exact
+   command, title, and body.
+3. Herdr, Moshi, or `pde-pr-approve` records the human answer.
+4. The writer consumes that one-time answer and invokes the real `gh`.
+5. The full-profile `gh` guard blocks common raw write paths that skip approval.
 
-Requests and answers are local files under `~/.local/state/pde/`. Tmux
-reattachment can recreate a missing popup, but it does not create an approval.
+Requests and answers are local records under `~/.local/state/pde/pr-write/`.

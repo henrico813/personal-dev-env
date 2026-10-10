@@ -3,38 +3,40 @@
 The agent prints the request ID when it asks for approval. Requests from other
 agent sessions can appear too, so decline one you do not recognize.
 
-## From the popup
+## From Herdr or Moshi
 
-Run the requested command through `pde-gh-write`. Read the exact request in
-the popup. `pr edit` requests start with a diff of the pull request's current
-title and body against the requested ones. Press `y` to approve or any other
-key to decline. The wrapper waits
-up to 90 seconds and then runs `gh` only after approval.
+Run the requested command through `pde-gh-write`. The Herdr popup shows a
+summary, including the changed lines of a `pr edit`; type `v` for the full
+request. The Moshi phone shows only the operation, repository, target, and
+title, so use the popup or terminal when the body matters. The writer waits
+up to 90 seconds and runs `gh` only after approval.
+
+In the Herdr popup, tap Approve or Decline. You can also type `yes` or `no`
+and press Enter. Type `v` to show the full request. Press `q` or Esc to close
+the popup without answering.
 
 ## From a terminal
 
-When no tmux popup is available, run this in a real terminal:
+Run this in a real terminal:
 
 ```bash
 pde-pr-approve REQUEST_ID
 ```
 
-Press `y` after reviewing the request. Any other key declines it. With no ID,
-`pde-pr-approve` lists all pending requests. After terminal approval, tell the
-agent to rerun the identical command; if it is still waiting, it reruns on its
-own. The agent sees exit 3 while waiting or timing out, exit 4 when you
-decline, and the underlying `gh` result after approval.
+After `less` closes, type `yes` or `no` and press Enter. Anything else asks
+again. Closing the prompt records nothing. An approval within 90 seconds lets
+the waiting command run `gh` itself. If the command already exited 3 because
+it gave up waiting, rerun the identical command after approving. Exit 3 means
+waiting; `already ran <id>, exit N`, `declined <id>` (exit 4), and
+`interrupted <id>` (exit 6) are final outcomes.
 
 ## Decline an unknown request
 
-Press any key other than `y` for a request you do not recognize. Requests from
-other agent sessions are visible because they share the same local state.
+Type `no` for a request you do not recognize. Requests from other agent
+sessions are visible because they share the same local state. In the Herdr
+popup, tap Decline.
 
-## After reconnecting
-
-Attach to tmux normally. The `client-attached` hook looks for pending requests
-and restores at most one popup per request and client. You can also run
-`pde-pr-approve` directly in a real terminal.
-
-Requests expire after four hours. A declined or expired request must be
-requested again; do not approve a different command by reusing an old answer.
+Requests expire after four hours. A declined or already-ran request keeps
+that outcome for four hours, so an identical rerun reports it instead of
+asking again. A declined or expired request must be requested again; do not
+approve a different command by reusing an old answer.
