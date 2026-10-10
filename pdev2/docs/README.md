@@ -9,14 +9,6 @@ are relative to `pdev2/` unless they start at the repository root.
 The installer does not build this program yet. The shell scripts in
 `chezmoi/dot_local/bin/` are still the installed commands.
 
-## Tutorials
-
-- [Follow one request](tutorials/follow-one-request.md)
-
-## How-to Guides
-
-- [Add a new gh flag](how-to/add-a-gh-flag.md)
-
 ## Explanation
 
 - [How a request runs gh once](explanation/request-flow.md)

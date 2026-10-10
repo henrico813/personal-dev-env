@@ -49,13 +49,14 @@ Rerun status lines are `already ran ID, exit N`, `declined ID`, and
 
 ## Files
 
-All files are under `${XDG_STATE_HOME:-~/.local/state}/pde/pr-write/`. The
-directory is created with mode 0700 and the files with 0600.
+Requests are saved in the state directory,
+`${XDG_STATE_HOME:-~/.local/state}/pde/pr-write/`. It is created with mode
+0700 and the files with 0600.
 
 | File | Purpose |
 |---|---|
 | `ID.json` | The request record |
-| `ID.json.lock` | `flock` lock for the request |
+| `ID.json.lock` | Lock file; only the program holding it may change the record or run `gh` |
 | `.record-*` | Temporary file while a record is saved |
 
 Record fields are `id`, `updated`, `args` (the arguments given to `gh`),
@@ -79,6 +80,21 @@ The ID is the SHA-256 of the JSON array `[command, title, body]`:
 - `title` is the value of `--title`, `-t`, or `--subject`.
 - `body` is the value of `--body` or `-b`, or the contents of the
   `--body-file` or `-F` file.
+
+## PR Number in pr edit
+
+For `pr edit`, the approval screen shows the PR's current title and body
+next to the requested ones. To fetch them, the program takes the first
+argument that is not an option or an option's value as the PR number or
+branch. In `gh pr edit --base main 12`, that is `12`.
+
+The `"edit"` entry of `targetFlags` in `parse.go` lists the options that
+may come before the number and whether each takes a value. Title, body,
+body file, and repository options are in `valueFlags`. When `gh` adds any
+option, add it to the list, marked with whether it takes a value; otherwise
+commands that put it before the number show `Cannot show current values: the
+PR number or branch is unclear.` instead of the old values. The write itself
+still works.
 
 ## Limits
 

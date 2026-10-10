@@ -91,20 +91,23 @@ func TestRequestIDChangesWithPostedText(t *testing.T) {
 	}
 }
 
-// The edit review fetches the target's current title and body. Taking a flag's
-// value, such as the main in --base main, as the target shows the approver
-// another PR's values.
-func TestEditTargetSkipsFlagValues(t *testing.T) {
+// The approval screen shows a PR's old title and body next to the new ones,
+// so the program must find the PR number even when options come first, as in
+// gh pr edit --base main 12. Taking main as the PR would show the wrong PR's
+// text or none. An option it does not know might take the number as its value,
+// so then it reports the number as unknown instead of guessing.
+func TestEditFindsPRNumberAfterOptions(t *testing.T) {
 	cases := []struct {
 		name    string
 		args    []string
 		target  string
 		unknown bool
 	}{
-		{name: "base", args: []string{"--base", "main", "12"}, target: "12"},
-		{name: "label equals", args: []string{"--add-label=bug", "12"}, target: "12"},
-		{name: "flag without value", args: []string{"--remove-milestone", "12"}, target: "12"},
-		{name: "unrecognized flag", args: []string{"--new-flag", "x", "12"}, unknown: true},
+		{name: "number first", args: []string{"12", "--base", "main"}, target: "12"},
+		{name: "option with value before number", args: []string{"--base", "main", "12"}, target: "12"},
+		{name: "option=value before number", args: []string{"--add-label=bug", "12"}, target: "12"},
+		{name: "option without value before number", args: []string{"--remove-milestone", "12"}, target: "12"},
+		{name: "unlisted option before number", args: []string{"--new-flag", "x", "12"}, unknown: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
