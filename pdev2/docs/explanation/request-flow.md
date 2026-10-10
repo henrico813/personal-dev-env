@@ -14,13 +14,17 @@ the same arguments instead.
 
 1. An agent runs `pde-gh-write pr comment 12 --body "Looks good"`.
 2. The program saves a record of the request and prints its ID, a long
-   string that names this exact request:
-   `pde-gh-write: waiting for approval; run pde-pr-approve ID in a terminal`
-3. You run `pde-pr-approve ID`. It shows the command and the text to be
-   posted in `less` (the approval screen); press `q`, then type `yes` or
-   `no`.
-4. After `yes`, the waiting program runs `gh` once and passes on its output
-   and exit code. After `no`, nothing is posted.
+   string that names this exact request. The line starts with
+   `pde-gh-write: waiting for approval` and ends with
+   `run pde-pr-approve ID in a terminal`.
+3. If the agent runs inside Herdr, a terminal program that holds many
+   terminals, an approval popup opens there. A yes-or-no question also goes
+   to your phone through the Moshi app. Answer in either place, or run
+   `pde-pr-approve ID` in a terminal to open the approval screen. The first
+   answer counts; see
+   [Approving in the Herdr popup or on the phone](popup-and-phone-approval.md).
+4. After you approve, the waiting program runs `gh` once and passes on its
+   output and exit code. After you decline, nothing is posted.
 5. With no answer within 90 seconds, the program stops waiting and exits 3.
    The request stays saved, so you can still approve it.
 6. The agent reruns the same command. Instead of posting again, the program
@@ -51,6 +55,11 @@ interrupted and never run again, because `gh` may already have posted.
 Four hours after a record last changed, the same command becomes a new
 request that needs a fresh answer. An old approval should not let a command
 post hours later, when the pull request may have moved on.
+
+Sending a new phone question on a rerun does not count as a change. If the
+question keeps failing, for example because `moshi-hook`, the command that
+sends it, is missing, each rerun sends a new one. If that counted, every
+rerun would push expiry back and the request would never expire.
 
 ## Why Body Files Are Read Once
 
