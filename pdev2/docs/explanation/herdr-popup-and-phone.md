@@ -22,11 +22,13 @@ must not delay the request, and the writer may exit before it finishes.
 
 ## The Popup Screen
 
-The popup shows a summary rather than the stored request text: the operation
-and PR, the title, the changed lines of a `pr edit`, and the start of the
-body. Agent text is shown with control characters made visible, so it cannot
-move the cursor or clear the screen. Lines are cut by character, not byte, so
-a multi-byte character is never split.
+The popup shows a summary rather than the stored request text: lines that
+say what is asked and where it came from, the changed lines of a `pr edit`,
+and the start of the body. [The approval queue and
+runner](approval-queue-and-runner.md) describes those lines, the queue, and
+the tap rules. Agent text is shown with control characters made visible, so
+it cannot move the cursor or clear the screen. Lines are cut by character,
+not byte, so a multi-byte character is never split.
 
 A tap is an xterm mouse report on standard input. Input typed before the
 popup draws, or while `less` shows the full text, is discarded so that keys
@@ -34,9 +36,10 @@ meant for something else cannot answer. A lone `y` is not an answer.
 
 ## The Phone Ask
 
-The phone ask is this same program started as
-`pde-gh-write --moshi-ask ID QUESTION`. It runs `moshi-hook ask` with a
-four-hour timeout, matching request expiry, and records the answer.
+The phone ask is this same program started as `pde-gh-write --moshi-ask ID`.
+It builds its question from the saved record, using the same lines as the
+popup, runs `moshi-hook ask` with a four-hour timeout, matching request
+expiry, and records the answer.
 
 The agent's tool runner kills the command's whole process group when the
 command ends, and that would end the ask when the writer exits, at most 90
@@ -48,8 +51,11 @@ never doubled and a dead one is replaced.
 When `moshi-hook` returns, the ask takes the request lock and records the
 answer only if the request is still pending. An answer that arrives after the
 terminal or popup answered, or after the request expired, changes nothing.
-The ask never runs `gh`; the waiting writer or a rerun does that. On every
-exit while the request is live, the ask clears its saved process ID. A stale
+The ask never runs `gh`; the waiting writer, the runner, or a rerun does
+that. An answer from the terminal or popup stops the ask, so a question that
+can no longer decide anything does not stay on the phone for hours; an ask
+that records its own answer simply exits. On every exit while the request is
+live, the ask clears its saved process ID. A stale
 ID could later belong to an unrelated process, look alive, and stop reruns
 from replacing the ask.
 
