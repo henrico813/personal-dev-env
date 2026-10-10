@@ -21,7 +21,7 @@ type packageSpec struct {
 
 func packages() []packageSpec {
 	specs := []packageSpec{
-		{Name: "@opencode/cli", Binary: "opencode", Integrity: "sha512-EkIxIa2goJ2v8U3Os2gpRckOIjN9gpUBXy6fyVOFbPZl71rkGpoF3NFsm4nlDiF2BgnIqcgJU5NgdV1k6/OZuw=="},
+		{Name: "@opencode/cli", Binary: "opencode", Integrity: "sha512-d1UjPf053y2KR1sQx9+7M8tMRkYD3qjAt9VTfBjZwHLWBzbvwI1+cP8+HTSWSi4Z1WQFnS3vaktKgnDPFkj5IQ=="},
 		{Name: "@openai/codex", Binary: "codex", Integrity: "sha512-st1R2MhP3ndngOqj2SVh1qk6ED1lpgtlDxipDUyxlKfbsna0imwU2FdTnCjohFQpVh4bR5D5m1hA05AuW2v8Xg=="},
 		{Name: "@earendil-works/pi-coding-agent", Binary: "pi", Integrity: "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ=="},
 		{Name: "obsidian-headless", Binary: "ob", Integrity: "sha512-S1d/hxLKvCUG2g5tRyXFkzPqMs3Ntw1tDyzoF2yfHGRuB4B+Mi3X2vgT8LbfQKrkEEi3LfJRdXtYzAVHcbpccw=="},

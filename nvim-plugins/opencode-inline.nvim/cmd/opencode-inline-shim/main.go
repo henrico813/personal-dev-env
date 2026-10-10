@@ -363,7 +363,7 @@ func decodeChatRequest(body io.ReadCloser) (chatRequest, error) {
 	return requestBody, nil
 }
 
-// requestInline uses OpenCode 2.0.18's one-shot session generate route. It
+// requestInline uses OpenCode 2.0.26's one-shot session generate route. It
 // accepts only a prompt and returns text, so JSON is requested in the prompt
 // and validated here instead of by a server-side schema.
 func requestInline(ctx context.Context, cfg config, requestBody chatRequest, selectedModel *inlineModel) (*structuredInline, error) {

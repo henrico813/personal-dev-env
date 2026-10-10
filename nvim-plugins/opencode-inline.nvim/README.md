@@ -18,8 +18,8 @@ CodeCompanion inline -> POST 127.0.0.1:<port>/v1/chat/completions
 - Neovim 0.10 or newer
 - [codecompanion.nvim](https://github.com/olimorris/codecompanion.nvim) and
   plenary.nvim
-- OpenCode 2.0.18 (`opencode` on `$PATH` for auto-start). Later 2.x releases
-  may drop the session generate route.
+- OpenCode 2.0.26 (`opencode` on `$PATH` for auto-start). Checked against
+  upstream 2.0.26; later 2.x releases may drop the session generate route.
 - Go 1.21 or newer to build the shim
 - Linux `ps`, `ss`, and `kill` for shim process management
 

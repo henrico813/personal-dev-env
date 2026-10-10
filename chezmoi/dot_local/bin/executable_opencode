@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+binary="$HOME/.local/share/pde/npm/node_modules/.bin/opencode"
+if [ ! -x "$binary" ]; then
+    printf '%s\n' "PDE OpenCode launcher: managed binary is unavailable: $binary" >&2
+    exit 127
+fi
+
+# Nested launches inherit the enclosing scope rather than creating another cap.
+if [ -n "${OPENCODE_MEMCAP_SCOPE:-}" ]; then
+    exec "$binary" "$@"
+fi
+
+memory_max="${PDE_OPENCODE_MEMORY_MAX:-50%}"
+memory_swap_max="${PDE_OPENCODE_MEMORY_SWAP_MAX:-512M}"
+case "$memory_max" in
+    off|none|0)
+        exec "$binary" "$@"
+        ;;
+esac
+
+if ! command -v systemctl >/dev/null 2>&1 || ! command -v systemd-run >/dev/null 2>&1 || ! systemctl --user show-environment >/dev/null 2>&1; then
+    printf '%s\n' 'PDE OpenCode launcher: no systemd user manager; running uncapped.' >&2
+    exec "$binary" "$@"
+fi
+
+exec systemd-run --user --scope --collect --slice=opencode.slice "--unit=opencode-$$" \
+    -p "MemoryMax=$memory_max" -p "MemorySwapMax=$memory_swap_max" \
+    env OPENCODE_MEMCAP_SCOPE=1 "$binary" "$@"
