@@ -63,3 +63,16 @@ sessions. Restart OpenCode after changing profiles.
 - [Command reference](docs/reference/commands.md)
 - [Recovery](docs/how-to/recover-an-installation.md)
 - [Installation architecture](docs/explanation/installation-architecture.md)
+
+## OpenCode Memory Cap
+
+On a full-profile host with a running systemd user manager, PDE replaces the
+npm `opencode` symlink with a launcher. Root OpenCode launches run in
+`opencode.slice` with `MemoryMax=50%` and `MemorySwapMax=512M`; nested OpenCode
+launches remain in that scope. Set `PDE_OPENCODE_MEMORY_MAX` or
+`PDE_OPENCODE_MEMORY_SWAP_MAX` to change either setting. Set
+`PDE_OPENCODE_MEMORY_MAX=off` to run uncapped. The launcher warns and runs
+uncapped when no systemd user manager is available.
+
+Restart all OpenCode TUIs and `opencode serve --service` after installation.
+Existing processes keep their previous cgroup. PDE does not set `MemoryHigh`.
