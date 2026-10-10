@@ -8,9 +8,12 @@ import (
 	"syscall"
 )
 
-// The phone ask is this binary re-run with --moshi-ask. Tests replace it.
+// The phone question is sent by this same program, started again with
+// --moshi-ask. Tests replace moshiProgram so they never message a phone.
 var moshiProgram = os.Executable
 
+// startMoshi sends the phone question unless the one saved in the record is
+// still running, so reruns of a waiting request never send a second question.
 func startMoshi(rec record, question string) {
 	if rec.MoshiPID != 0 && processAlive(rec.MoshiPID) {
 		return
@@ -20,15 +23,17 @@ func startMoshi(rec record, question string) {
 		return
 	}
 	cmd := exec.Command(path, "--moshi-ask", rec.ID, question)
-	// The agent's tool runner kills the command's whole process group when the
-	// command ends, so the ask runs in its own session. It is not waited for,
-	// because it must outlive this command.
+	// When the agent's command ends, the tool that ran it stops every program
+	// the command started (its process group). You may answer hours later, so
+	// the question is started apart from that group, where the stop does not
+	// reach it, and is not waited for.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return
 	}
 	rec.MoshiPID = cmd.Process.Pid
-	// The PID prevents retries from starting a second live phone question.
+	// Reruns check this PID before sending a question. If it cannot be saved,
+	// stop the question, or a rerun would send a second one.
 	if err := saveKeepingAge(rec); err != nil {
 		_ = cmd.Process.Kill()
 	}
@@ -36,6 +41,10 @@ func startMoshi(rec record, question string) {
 
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// moshiAsk runs as pde-gh-write --moshi-ask ID QUESTION. It waits up to four
+// hours for the phone answer and saves it only if the request is still
+// pending; a later answer changes nothing. It never runs gh: the waiting
+// pde-gh-write or a rerun does.
 func moshiAsk(args []string) int {
 	if len(args) != 2 {
 		return 1
@@ -59,8 +68,9 @@ func moshiAsk(args []string) int {
 	if err != nil || expired(rec) {
 		return 0
 	}
-	// Every exit while the request is live clears this process's PID: a reused
-	// PID would look alive and stop reruns from restarting the ask.
+	// Remove this program's PID whenever it ends while the request is live. The
+	// system reuses PIDs, so a stale one could name an unrelated program that
+	// looks like a running question and stops reruns from sending a new one.
 	owned := rec.MoshiPID == os.Getpid()
 	answered := answer != "" && rec.State == statePending
 	if !owned && !answered {

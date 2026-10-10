@@ -18,9 +18,11 @@ the same arguments instead.
    `pde-gh-write: waiting for approval` and ends with
    `run pde-pr-approve ID in a terminal`.
 3. If the agent runs inside Herdr, a terminal program that holds many
-   terminals, an approval popup opens there. A question also goes to your
-   phone. Answer in either place, or run `pde-pr-approve ID` in a terminal
-   to open the approval screen. The first answer counts.
+   terminals, an approval popup opens there. A yes-or-no question also goes
+   to your phone through the Moshi app. Answer in either place, or run
+   `pde-pr-approve ID` in a terminal to open the approval screen. The first
+   answer counts; see
+   [Approving in the Herdr popup or on the phone](popup-and-phone-approval.md).
 4. After you approve, the waiting program runs `gh` once and passes on its
    output and exit code. After you decline, nothing is posted.
 5. With no answer within 90 seconds, the program stops waiting and exits 3.
@@ -54,10 +56,10 @@ Four hours after a record last changed, the same command becomes a new
 request that needs a fresh answer. An old approval should not let a command
 post hours later, when the pull request may have moved on.
 
-Restarting the phone question does not count as a change. Otherwise, if
-one keeps failing, for example because the phone tool `moshi-hook` is
-missing, each rerun would restart it and push expiry back, and the request
-would never expire.
+Sending a new phone question on a rerun does not count as a change. If the
+question keeps failing, for example because `moshi-hook`, the command that
+sends it, is missing, each rerun sends a new one. If that counted, every
+rerun would push expiry back and the request would never expire.
 
 ## Why Body Files Are Read Once
 

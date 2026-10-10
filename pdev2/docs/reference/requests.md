@@ -6,8 +6,8 @@
 |---|---|
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
-| `pde-pr-approve --herdr-popup` | Run the Herdr popup for the request in `PDE_REQUEST_ID` |
-| `pde-gh-write --moshi-ask ID QUESTION` | Hidden: the detached phone ask |
+| `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup for the request in `PDE_REQUEST_ID` |
+| `pde-gh-write --moshi-ask ID QUESTION` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
@@ -59,7 +59,7 @@ Rerun status lines are `already ran ID, exit N`, `declined ID`, and
 | `v` | Show the full request in `less`; leftover keys are discarded after it closes |
 | `q` or Esc | Close without answering; the request stays pending |
 
-Input typed before the screen draws is discarded. The pane is 40x16 in
+Input typed before the screen draws is discarded. The popup is 40x16 in
 `plugin/herdr-plugin.toml`, leaving 37x14 inside the border. Below 11 rows
 the buttons are one row tall; below 7 rows only the header is drawn.
 
@@ -67,9 +67,9 @@ the buttons are one row tall; below 7 rows only the header is drawn.
 request is not pending, 0 when closed without an answer, and otherwise as
 `pde-pr-approve` does after recording an answer.
 
-## Phone Ask
+## Phone Question
 
-The ask runs:
+`pde-gh-write --moshi-ask` runs:
 
 ```bash
 moshi-hook ask --require-remote --source pde-gh-write --timeout 4h QUESTION
@@ -98,7 +98,8 @@ Requests are saved in the state directory,
 
 Record fields are `id`, `updated`, `args` (the arguments given to `gh`),
 `title`, `body`, `body_file`, `approval_text` (what the approver sees),
-`state`, `exit_code`, and `moshi_pid` (the live phone ask, omitted when none).
+`state`, `exit_code`, and `moshi_pid` (the process ID of the running phone
+question, omitted when none).
 
 ## Environment
 
@@ -107,7 +108,7 @@ Record fields are `id`, `updated`, `args` (the arguments given to `gh`),
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
 | `PATH` | The first `gh` is the guard, a wrapper that blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
-| `HERDR_ENV` | When `1`, a new request opens the Herdr popup and a notification |
+| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup and a notification |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show |
 
 ## Request ID

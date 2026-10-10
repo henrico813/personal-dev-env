@@ -26,6 +26,9 @@ func terminalSize(file *os.File) (int, int) {
 	return int(size.cols), int(size.rows)
 }
 
+// setRaw makes each key reach the program as soon as it is pressed, without
+// echo or waiting for Enter, so the popup sees every key and tap. It returns
+// the old settings for restore.
 func setRaw(file *os.File) (*syscall.Termios, error) {
 	var old syscall.Termios
 	if err := ioctl(file, syscall.TCGETS, &old); err != nil {

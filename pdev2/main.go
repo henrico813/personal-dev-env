@@ -2,7 +2,8 @@
 // a terminal, a Herdr popup, or on the phone through Moshi.
 //
 // An agent runs pde-gh-write with gh pr arguments. It stores a pending record
-// and waits up to 90 seconds while a human approves with pde-pr-approve ID.
+// and waits up to 90 seconds for a human to answer in the popup, on the phone,
+// or with pde-pr-approve ID.
 // Rerunning the same command reports the outcome instead of running gh again.
 package main
 
@@ -22,12 +23,14 @@ const (
 )
 
 func main() {
-	// Hidden mode for the background phone ask that startMoshi starts.
+	// pde-gh-write starts itself this way to send the phone question; see
+	// startMoshi.
 	if len(os.Args) > 1 && os.Args[1] == "--moshi-ask" {
 		os.Exit(moshiAsk(os.Args[2:]))
 	}
 	if filepath.Base(os.Args[0]) == "pde-pr-approve" {
-		// Herdr passes pane values as environment variables, including the request ID.
+		// Herdr runs this in the popup and passes the request ID in
+		// PDE_REQUEST_ID.
 		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
 			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
 		}

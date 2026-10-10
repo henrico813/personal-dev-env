@@ -11,8 +11,9 @@ import (
 	"unicode"
 )
 
-// Turns xterm mouse reporting on or off, using the report format with plain
-// decimal coordinates (mode 1006).
+// With reporting on, the terminal sends each tap or click to the program as
+// text on its input, such as "\x1b[<0;10;9M" for a left-button press at column
+// 10, row 9; the release ends in "m". These are xterm modes 1000 and 1006.
 const (
 	mouseReportingOn  = "\x1b[?1000h\x1b[?1006h"
 	mouseReportingOff = "\x1b[?1000l\x1b[?1006l"
@@ -38,6 +39,9 @@ func (l popupLayout) hit(x, y int) string {
 	return ""
 }
 
+// popupScreen returns the popup's lines for a cols x rows terminal and the rows
+// where a tap answers. docs/explanation/popup-and-phone-approval.md shows the
+// result at Herdr's 37x14.
 func popupScreen(rec record, typed, notice string, cols, rows int) ([]string, popupLayout) {
 	if cols < 1 {
 		cols = 1
@@ -81,6 +85,9 @@ func popupScreen(rec record, typed, notice string, cols, rows int) ([]string, po
 	return lines, popupLayout{approveTop, approveTop + buttonHeight - 1, declineTop, declineTop + buttonHeight - 1}
 }
 
+// The popup has room for a few lines, so it shows what will run, the title,
+// and the body. The full approval text starts with ID, time, and command lines
+// that would fill the popup; v shows it.
 func popupSummary(rec record) []string {
 	operation, target := "", ""
 	if len(rec.Args) > 1 {
@@ -103,6 +110,9 @@ func popupSummary(rec record) []string {
 	return summary
 }
 
+// editChanges returns the "-old" and "+new" lines of a pr edit. It stops at the
+// blank line before the body, so Markdown bullets ("- item") in the body are
+// not shown as removed lines.
 func editChanges(approvalText string) []string {
 	_, changes, found := strings.Cut(approvalText, editHeader)
 	if !found {
@@ -119,7 +129,9 @@ func editChanges(approvalText string) []string {
 	return lines
 }
 
-// Agent text must not control the approval screen.
+// The agent writes the title and body. Control characters in them are shown as
+// text, such as ^[ for ESC, so they cannot clear the screen or move the cursor
+// and draw a different request over the real one.
 func visibleScreenText(text string) string {
 	var out strings.Builder
 	for _, r := range text {
@@ -169,6 +181,11 @@ func drawPopup(in *os.File, out io.Writer, rec record, typed, notice string) pop
 	return layout
 }
 
+// askPopup draws the popup and returns "yes" or "no" for a tap on a button or
+// a typed yes or no and Enter, or "" when q or Esc closes it. Input typed
+// before the popup is drawn is thrown away. The program asks Herdr to put the
+// keyboard on the popup when it opens, so keys meant for another terminal
+// could otherwise answer.
 func askPopup(in *os.File, out io.Writer, rec record) (string, error) {
 	old, err := setRaw(in)
 	if err != nil {
@@ -221,7 +238,8 @@ func askPopup(in *os.File, out io.Writer, rec record) (string, error) {
 			continue
 		}
 		if b == 'v' {
-			// less would read taps as escape text; drawPopup turns reporting back on.
+			// With reporting on, each tap would reach less as stray characters.
+			// drawPopup turns reporting back on.
 			fmt.Fprint(out, mouseReportingOff)
 			restore(in, old)
 			showDetails(rec)
@@ -273,7 +291,7 @@ type mouseReport struct{ button, x, y int }
 
 func readMouse(r *bufio.Reader) (mouseReport, bool, error) {
 	var result mouseReport
-	// A terminal sends a mouse report in one write, so an Esc with nothing
+	// A terminal sends a whole tap report at once, so an Esc with nothing
 	// buffered behind it is the Esc key.
 	if r.Buffered() == 0 {
 		return result, false, nil

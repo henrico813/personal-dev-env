@@ -18,9 +18,12 @@ import (
 	"unsafe"
 )
 
+// A tap answers only on the rows of the APPROVE and DECLINE buttons, so the
+// rows the screen draws and the rows a tap is checked against must agree, and
+// every line must fit. In live testing Herdr 0.9.1 gave the popup 37x14 inside
+// its 40x16 border. A shorter popup gets one-row buttons, where a one-row
+// mistake would make a tap on a button miss.
 func TestPopupScreenFitsHerdrPane(t *testing.T) {
-	// Herdr 0.9.1 gave the live popup 37x14 inside its configured 40x16 border.
-	// A shorter pane draws one-row buttons, where a tap must hit exactly.
 	rec := record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
 	for _, size := range []struct{ cols, rows int }{{37, 14}, {40, 16}, {37, 10}} {
 		lines, layout := popupScreen(rec, "", "", size.cols, size.rows)
@@ -48,8 +51,10 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	}
 }
 
+// The popup has room for only a few lines of the request. In live testing the
+// 37x14 popup showed the ID, time, and command lines that start the full
+// approval text and hid the title and body the approver needs to decide.
 func TestPopupShowsRequestSummary(t *testing.T) {
-	// A live 37x14 popup hid the title and body behind generated request metadata.
 	rec := record{
 		Args:         []string{"pr", "comment", "12"},
 		Title:        "needed title",
@@ -67,8 +72,10 @@ func TestPopupShowsRequestSummary(t *testing.T) {
 	}
 }
 
+// Titles can contain characters such as é that take more than one byte.
+// Cutting a long title by bytes split such a character and drew invalid text,
+// so lines are cut by character.
 func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
-	// Cutting a title by bytes split a multi-byte character into invalid text.
 	rec := record{ID: "id", Args: []string{"pr", "create"}, Title: strings.Repeat("é", 60)}
 
 	lines, _ := popupScreen(rec, "", "", 37, 14)
@@ -83,8 +90,10 @@ func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
 	}
 }
 
+// For pr edit the popup shows changed lines as "-old" and "+new". In a live
+// edit popup, Markdown bullets ("- item") in the new body were shown too and
+// looked like removed lines.
 func TestEditChangesStopsBeforeBody(t *testing.T) {
-	// Markdown bullets in the requested body looked like diff removals in a live edit popup.
 	text := editHeader + "Title:\n-old\n+new\n\nbody:\n- bullet\n"
 
 	got := strings.Join(editChanges(text), "\n")
@@ -94,8 +103,10 @@ func TestEditChangesStopsBeforeBody(t *testing.T) {
 	}
 }
 
+// The agent writes the title and body. If the terminal obeyed control
+// characters in them, such as ESC [2J (clear the screen), an agent could wipe
+// the popup or draw a different request over it. They must appear as text.
 func TestPopupEscapesControlText(t *testing.T) {
-	// Agent-supplied control bytes must remain visible instead of changing the screen.
 	rec := record{ID: "id", Body: "title\x1b[2J\rbody\u009bend"}
 
 	lines, _ := popupScreen(rec, "", "", 40, 16)
@@ -106,20 +117,26 @@ func TestPopupEscapesControlText(t *testing.T) {
 	}
 }
 
+// The program asks Herdr to put the keyboard on the popup when it opens, so a
+// yes and Enter typed for another terminal just before could land in it and
+// approve. Input typed before the popup is drawn must be thrown away.
 func TestPopupDiscardsEarlyInput(t *testing.T) {
-	// Buffered approval text must not decide the popup before it appears.
+	// A pseudo-terminal is a fake terminal: the popup reads keys from and draws
+	// on terminal, and the test types into and reads the screen from master.
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
 	// Type yes before the popup starts; it must be discarded.
 	if _, err := master.WriteString("yes\n"); err != nil {
 		t.Fatal(err)
 	}
+	// Start the popup in the background; it blocks until it gets an answer.
 	result := make(chan string, 1)
 	go func() {
 		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"})
 		result <- choice
 	}()
-	// Wait for the draw, so the answer below arrives after the flush.
+	// Wait for the draw, so the answer below arrives after the early input is
+	// thrown away.
 	readUntil(t, master, "Typed:")
 
 	if _, err := master.WriteString("no\n"); err != nil {
@@ -131,10 +148,14 @@ func TestPopupDiscardsEarlyInput(t *testing.T) {
 	}
 }
 
+// q and Esc must close the popup and leave the request waiting. In live
+// testing both keys were ignored, so users could not close the popup without
+// approving or declining.
 func TestPopupDismissesWithoutAnswer(t *testing.T) {
-	// The live popup trapped users after q and Esc were ignored.
 	for _, dismiss := range []string{"q", "\x1b"} {
 		t.Run(dismiss, func(t *testing.T) {
+			// Run the popup on a pseudo-terminal at Herdr's size; see
+			// TestPopupDiscardsEarlyInput.
 			master, terminal := openPTY(t)
 			setPopupSize(t, terminal, 37, 14)
 			result := make(chan string, 1)
@@ -156,8 +177,12 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 	}
 }
 
+// Approving takes the whole word yes, because an earlier version approved on
+// one stray key. In live testing a user typed y and Enter several times and
+// saw nothing happen; the popup must refuse y and say what to type.
 func TestPopupRejectsLoneY(t *testing.T) {
-	// A live user repeatedly entered y without feedback, leaving the popup unclear.
+	// Run the popup on a pseudo-terminal at Herdr's size; see
+	// TestPopupDiscardsEarlyInput.
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
@@ -183,12 +208,15 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	}
 }
 
+// Tapping APPROVE is the main way to answer in the popup. Herdr passes each
+// tap to the popup as text on its keyboard input, so the test sends a tap the
+// same way through a pseudo-terminal and checks it approves.
 func TestPopupTapApproves(t *testing.T) {
-	// Herdr sends taps as xterm mouse reports (ESC [ < button;x;y M) on the
-	// popup's inherited standard input, a blocking file rather than one Go can
-	// poll.
+	// Run the popup on a pseudo-terminal at Herdr's size; see
+	// TestPopupDiscardsEarlyInput.
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
+	// Find the APPROVE rows the popup will draw at this size.
 	_, layout := popupScreen(record{ID: "id", ApprovalText: "command"}, "", "", 37, 14)
 	result := make(chan struct {
 		choice string
@@ -204,7 +232,8 @@ func TestPopupTapApproves(t *testing.T) {
 	// Wait for the draw before tapping, or the tap is discarded as early input.
 	readUntil(t, master, "Typed:")
 
-	// A press and release on the APPROVE row, as one tap.
+	// A left-button press and release on the APPROVE row, sent as one tap:
+	// ESC [<button;column;row, ending in M for press and m for release.
 	if _, err := fmt.Fprintf(master, "\x1b[<0;10;%dM\x1b[<0;10;%dm", layout.approveTop, layout.approveTop); err != nil {
 		t.Fatal(err)
 	}
@@ -214,11 +243,13 @@ func TestPopupTapApproves(t *testing.T) {
 	}
 }
 
+// A phone answer counts only while the request is pending, so a late yes
+// cannot touch a request that already ran. Whatever happens, the phone
+// question removes its PID when it ends: the system reuses PIDs, and a stale
+// one could look like a running question and stop reruns from sending a new
+// one. Removing the PID alone must keep the record's age, or a request whose
+// phone question keeps failing would never expire.
 func TestMoshiAnswersPendingRequest(t *testing.T) {
-	// Phone answers approve or decline only while the request is pending. Every
-	// ask clears its own PID: a reused PID would look alive and stop reruns from
-	// restarting the ask. Clearing it alone must keep the record's age, or a
-	// request whose ask keeps failing would never expire.
 	for _, tc := range []struct {
 		name, hook, state, want string
 		ageKept                 bool
@@ -238,7 +269,8 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-			// moshiAsk runs in this process, so the ask's PID is the test's.
+			// moshiAsk runs in this test process, so the PID saved for the
+			// question is the test's own; the record was last changed an hour ago.
 			saved := time.Now().Add(-time.Hour).Round(0)
 			rec := record{ID: tc.name, State: tc.state, Updated: saved, MoshiPID: os.Getpid()}
 			if err := writeRecord(rec); err != nil {
@@ -264,18 +296,21 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 	}
 }
 
+// Agents rerun a waiting command to learn what happened. While the first
+// phone question is still waiting, a rerun must not send another, or the phone
+// would show several questions for one request.
 func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
-	// Retries must reuse one detached ask while that process is alive.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	fake := filepath.Join(t.TempDir(), "ask")
 	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// The fake ask just sleeps, standing in for a phone question still waiting.
+	// The fake question program just sleeps, standing in for a phone question
+	// still waiting for an answer.
 	old := moshiProgram
 	moshiProgram = func() (string, error) { return fake, nil }
 	t.Cleanup(func() { moshiProgram = old })
-	// Start the first ask, then rerun the request while it is alive.
+	// Create the request, which starts the first question.
 	req := request{ID: "live", Args: []string{"pr", "comment", "12"}}
 	if _, err := loadOrCreate(req, ""); err != nil {
 		t.Fatal(err)
@@ -284,11 +319,13 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The ask has its own session, so kill its whole group at the end.
+	// The question runs in its own session, outside the test's process group,
+	// so stop its whole group at the end.
 	if first.MoshiPID != 0 {
 		t.Cleanup(func() { _ = syscall.Kill(-first.MoshiPID, syscall.SIGKILL) })
 	}
 
+	// Rerun the same request while the first question is still running.
 	state, err := loadOrCreate(req, "")
 
 	if err != nil || state != statePending {
@@ -303,12 +340,15 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	}
 }
 
+// In live testing a phone question ended before it reached the phone, leaving
+// the request waiting with nothing to answer there. A rerun must send a new
+// question when the saved one is no longer running. That must keep the
+// record's age; otherwise a request whose question keeps failing would stay
+// pending forever as the agent reruns it.
 func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
-	// During live testing, an ask exited before reaching the moshi-hook daemon,
-	// leaving the pending request with no question on the phone. Restarting the
-	// ask must keep the record's age; otherwise an agent rerunning a request
-	// whose ask keeps dying would keep it pending forever.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake question program just sleeps, standing in for a new question
+	// waiting for an answer.
 	dir := t.TempDir()
 	fake := filepath.Join(dir, "ask")
 	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
@@ -334,7 +374,8 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Kill the new ask's group at the end; it would otherwise sleep for 30 seconds.
+	// Stop the new question's process group at the end; it would otherwise
+	// sleep for 30 seconds.
 	if got.MoshiPID != 0 {
 		t.Cleanup(func() { _ = syscall.Kill(-got.MoshiPID, syscall.SIGKILL) })
 	}
@@ -372,12 +413,15 @@ func popupTerminal(t *testing.T, terminal *os.File) *os.File {
 		t.Fatal(err)
 	}
 	popup := os.NewFile(uintptr(fd), "popup-terminal")
-	// Each *os.File closes its descriptor; a shared number could later close a
-	// reused one, such as a request lock.
+	// The popup gets its own copy because each *os.File closes its descriptor;
+	// sharing one number could later close a reused one, such as a request lock.
 	t.Cleanup(func() { _ = popup.Close() })
 	return popup
 }
 
+// readUntil reads the popup's screen until want appears, failing after 2
+// seconds. Tests wait for the drawn screen before typing, because the popup
+// throws away anything typed before it draws.
 func readUntil(t *testing.T, master *os.File, want string) {
 	t.Helper()
 	found := make(chan error, 1)
@@ -416,9 +460,12 @@ func receive[T any](t *testing.T, values <-chan T) T {
 	return zero
 }
 
+// Inside Herdr, a new request must open the approval popup in front of the
+// user. The herdr command has no option that opens a popup, so the program
+// sends the request to Herdr's socket. It must ask for a focused popup and pass
+// the request ID that the popup needs to find the request.
 func TestHerdrPopupUsesSocketRequest(t *testing.T) {
-	// The CLI cannot request popup placement, so the socket request must carry it.
-	// A Unix socket in a temp dir stands in for the Herdr server.
+	// A Unix socket in a temporary directory stands in for Herdr's.
 	socket := filepath.Join(t.TempDir(), "herdr.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {

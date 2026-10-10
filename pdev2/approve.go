@@ -80,6 +80,8 @@ func approvePopup(id string) int {
 	return saveAnswer(id, choice)
 }
 
+// A terminal error closes the popup without an answer; the request keeps
+// waiting for one on the phone or in a terminal.
 func popupAnswer(rec record) string {
 	choice, err := askPopup(os.Stdin, os.Stdout, rec)
 	if err != nil {
