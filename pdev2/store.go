@@ -8,13 +8,14 @@ import (
 	"time"
 )
 
-// Expiry is measured from the record's last change, not its creation.
+// Expiry is measured from the record's last change, not its creation. Saving
+// a phone ask's PID is not a change; see saveKeepingAge.
 const expiry = 4 * time.Hour
 
-// pde-pr-approve moves a record from pending to approved or declined.
-// pde-gh-write moves an approved record to running before gh starts and to ran
-// after it exits. Finding running under the lock means that run died, and it
-// is never retried.
+// An answer from the terminal, the Herdr popup, or the phone moves a record
+// from pending to approved or declined. pde-gh-write moves an approved record
+// to running before gh starts and to ran after it exits. Finding running under
+// the lock means that run died, and it is never retried.
 const (
 	statePending  = "pending"
 	stateApproved = "approved"
@@ -33,6 +34,7 @@ type record struct {
 	ApprovalText string    `json:"approval_text"`
 	State        string    `json:"state"`
 	Exit         int       `json:"exit_code"`
+	MoshiPID     int       `json:"moshi_pid,omitempty"`
 }
 
 func stateDir() string {
@@ -58,9 +60,27 @@ func load(id string) (record, error) {
 	return rec, err
 }
 
-// Replacing the completed temporary file keeps readers from seeing a partial record.
+// save records a change and restarts the four-hour expiry.
 func save(rec record) error {
 	rec.Updated = time.Now()
+	return writeRecord(rec)
+}
+
+// saveKeepingAge saves bookkeeping, such as a phone ask's PID, with the stored
+// record's age. Otherwise an agent rerunning a request whose ask keeps dying
+// would restart expiry each time, and the request would never expire. The
+// caller holds the request lock.
+func saveKeepingAge(rec record) error {
+	stored, err := load(rec.ID)
+	if err != nil {
+		return err
+	}
+	rec.Updated = stored.Updated
+	return writeRecord(rec)
+}
+
+// Replacing the completed temporary file keeps readers from seeing a partial record.
+func writeRecord(rec record) error {
 	dir := stateDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

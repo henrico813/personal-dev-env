@@ -6,19 +6,13 @@ import (
 	"io"
 	"os"
 	"strings"
-	"syscall"
-)
-
-const (
-	ioctlFlush   = 0x540b // TCFLSH
-	flushPending = 0      // TCIFLUSH
 )
 
 // Input typed before the question is discarded. EOF or a closed terminal is
 // not an answer.
 func askYesNo(tty *os.File) (string, error) {
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, tty.Fd(), ioctlFlush, flushPending); errno != 0 {
-		return "", errno
+	if err := flushInput(tty); err != nil {
+		return "", err
 	}
 	fmt.Fprint(tty, "Approve this pull request? Type yes or no, then Enter: ")
 	scanner := bufio.NewScanner(tty)
