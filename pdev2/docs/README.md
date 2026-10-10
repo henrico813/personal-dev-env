@@ -20,11 +20,13 @@ links it into Herdr after each chezmoi apply.
 ## How-to Guides
 
 - [Test popup changes without live Herdr](how-to/test-popup-changes.md)
+- [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md)
 
 ## Explanation
 
 - [How a request runs gh once](explanation/request-flow.md)
 - [The Herdr popup and the phone ask](explanation/herdr-popup-and-phone.md)
+- [The approval queue and runner](explanation/approval-queue-and-runner.md)
 
 ## Reference
 

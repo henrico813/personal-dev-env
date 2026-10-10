@@ -15,7 +15,7 @@ type request struct {
 	Operation string
 	Title     string
 	Body      string
-	Repo      string
+	Repo      string // From --repo until loadOrCreate looks it up for display.
 	Target    string // PR number or branch, used to fetch current values for pr edit.
 	Command   string // Quoted command shown to the approver and hashed into the ID.
 	ID        string
@@ -23,6 +23,7 @@ type request struct {
 	HasTitle  bool
 	HasBody   bool
 	BodyFile  bool // Body is sent to gh on standard input.
+	Directory string
 	// An unrecognized flag came before the target and may have taken it as
 	// its value, so Target is empty and current values cannot be shown.
 	TargetUnknown bool
@@ -102,14 +103,17 @@ func readBodyFile(req *request, path string, stdin io.Reader) error {
 	return nil
 }
 
-// For pr edit, the approver sees the PR's old title and body next to the new
-// ones. Fetching the old ones needs the PR number, and options may come first:
-// in "gh pr edit --base main 12" the PR is 12, not main. targetFlags lists,
-// per operation, the options that may come before the number and whether each
-// takes a value that must be skipped. Title, body, and repo options are in
-// valueFlags. When gh adds any option to these commands, add it here, with
-// true if it takes a value; otherwise commands that put it before the number
-// lose the old title on the approval screen.
+// The popup and the phone name the PR a request is for, such as "merge #12"
+// with its current title, and for pr edit the approver sees the old title and
+// body next to the new ones. All of this needs the PR number, and options may
+// come first: in "gh pr edit --base main 12" the PR is 12, not main.
+// targetFlags lists, per operation, the options from gh pr OPERATION --help
+// that may come before the number and whether each takes a value that must be
+// skipped. The same short option can differ: -m takes a milestone for edit but
+// nothing for merge. Title, body, and repo options are in valueFlags; create
+// has no PR number. When gh adds any option to these commands, add it here,
+// with true if it takes a value; otherwise commands that put it before the
+// number lose the PR title in the popup and on the phone.
 var targetFlags = map[string]map[string]bool{
 	"edit": {
 		"--add-assignee": true, "--add-label": true, "--add-project": true, "--add-reviewer": true,
@@ -117,6 +121,19 @@ var targetFlags = map[string]map[string]bool{
 		"--attach": true, "--base": true, "-B": true, "--milestone": true, "-m": true,
 		"--remove-milestone": false,
 	},
+	"merge": {
+		"--admin": false, "--auto": false, "--delete-branch": false, "-d": false, "--disable-auto": false,
+		"--merge": false, "-m": false, "--rebase": false, "-r": false, "--squash": false, "-s": false,
+		"--author-email": true, "-A": true, "--match-head-commit": true,
+	},
+	"close":  {"--comment": true, "-c": true, "--delete-branch": false, "-d": false},
+	"reopen": {"--comment": true, "-c": true},
+	"review": {"--approve": false, "-a": false, "--comment": false, "-c": false, "--request-changes": false, "-r": false},
+	"comment": {
+		"--attach": true, "--create-if-none": false, "--delete-last": false, "--edit-last": false,
+		"--editor": false, "-e": false, "--yes": false,
+	},
+	"ready": {"--undo": false},
 }
 
 // Returns the first argument that is neither an option nor an option's value.
@@ -149,8 +166,10 @@ func commandText(args []string) string {
 	return "gh " + strings.Join(quoted, " ")
 }
 
+// Only local inputs that stay the same on a rerun; a network lookup that
+// failed once would otherwise turn the rerun into a new request.
 func requestID(req request) string {
-	fields, _ := json.Marshal([]string{req.Command, req.Title, req.Body})
+	fields, _ := json.Marshal([]string{req.Command, req.Title, req.Body, req.Repo, req.Directory})
 	hash := sha256.Sum256(fields)
 	return fmt.Sprintf("%x", hash)
 }

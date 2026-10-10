@@ -19,15 +19,22 @@ run in; from Moshi, a phone app that the `moshi-hook` command sends yes-or-no
 questions to; or with `pde-pr-approve` in a real terminal.
 
 The request ID hashes the exact command, title, and body, including body-file
-contents. An approval for one piece of text therefore cannot be reused for a
-different request.
+contents, plus the `--repo` value as given and the directory it was requested
+from. An approval for one piece of text therefore cannot be reused for a
+different request. The repository and PR title that `gh` looks up are shown
+to the approver but never change the ID, so a rerun finds the same request
+even when that lookup fails.
 
 The wrapper waits 90 seconds because agent command timeouts are about two
-minutes; it leaves time for approval without holding the command forever.
-Requests last four hours.
+minutes; it leaves time for approval without holding the command forever. A
+detached runner keeps waiting after that, so a late approval still performs
+the write, and the agent's rerun reads the saved result. Requests last four
+hours.
 
 The full-profile guard makes raw `gh pr create` fail instead of skipping
-approval. Long-running agent clients may need restarting after installation.
+approval. Long-running agent clients may need restarting after installation;
+OpenCode servers and clients also need a restart to load the plugin that
+passes the session ID to requests.
 
 ## How the pieces fit
 
@@ -35,7 +42,8 @@ approval. Long-running agent clients may need restarting after installation.
 2. The Go writer allowlists pull-request operations and records the exact
    command, title, and body.
 3. Herdr, Moshi, or `pde-pr-approve` records the human answer.
-4. The writer consumes that one-time answer and invokes the real `gh`.
+4. The writer, or the detached runner after the writer stops waiting, consumes
+   that one-time answer and invokes the real `gh` under the request lock.
 5. The full-profile `gh` guard blocks common raw write paths that skip approval.
 
 Requests and answers are local records under `~/.local/state/pde/pr-write/`.

@@ -8,11 +8,11 @@ falls back to asking in the terminal. The program that runs the agent's
 commands kills the command's process group when the command ends, so the ask
 runs in its own session.
 
-Moshi's servers receive exactly this question:
-`Approve gh pr OPERATION in REPO (TARGET), titled TITLE?` The `, titled TITLE`
-part is omitted when there is no title. REPO is the `--repo` value when given;
-otherwise it is `current repository`. The operation, repository, target, and
-optional title are sent; the request body and original command arguments do not
+Moshi's servers receive the same context lines the Herdr popup starts with: a
+first line such as `Approve merge #185?` (`Approve create PR?` without a
+target), then `owner/repo` (or `dir: NAME` when `gh` cannot tell), the Herdr
+workspace and session title when known, and the PR title. Lines without a
+value are left out. The request body and original command arguments do not
 leave the machine through Moshi.
 
 Pair the installed hook before relying on phone approval. The Herdr and
@@ -22,5 +22,7 @@ offline, or times out.
 The request record stores the detached ask's PID while it is running. If that
 process is gone, a rerun starts a new ask; a live PID prevents a second ask.
 The ask clears the PID when it exits: after recording an answer, or when it
-times out or gets no answer. A late answer after the
-request was handled another way changes nothing and never runs `gh`.
+times out or gets no answer. When the request is answered in Herdr or a
+terminal, runs, or expires, the ask's process group is stopped so no stale
+question stays on the phone. A late answer after the request was handled
+another way changes nothing and never runs `gh`.

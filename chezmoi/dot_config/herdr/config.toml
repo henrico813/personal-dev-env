@@ -3,6 +3,12 @@ onboarding = false
 [keys]
 prefix = "ctrl+b"
 
+[[keys.command]]
+key = "prefix+a"
+type = "plugin_action"
+command = "pde.approval.inbox"
+description = "open approval inbox"
+
 [theme]
 name = "vesper"
 auto_switch = false

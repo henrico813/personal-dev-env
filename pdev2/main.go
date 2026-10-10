@@ -22,6 +22,13 @@ const (
 )
 
 func main() {
+	// Hidden mode for the detached runner that runnerStart starts.
+	if len(os.Args) > 1 && os.Args[1] == "--pde-runner" {
+		if len(os.Args) != 3 {
+			os.Exit(1)
+		}
+		os.Exit(runnerMain(os.Args[2]))
+	}
 	// Hidden mode for the background phone ask that startMoshi starts.
 	if len(os.Args) > 1 && os.Args[1] == "--moshi-ask" {
 		os.Exit(moshiAsk(os.Args[2:]))
@@ -30,6 +37,9 @@ func main() {
 		// Herdr passes pane values as environment variables, including the request ID.
 		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
 			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
+		}
+		if len(os.Args) == 2 && os.Args[1] == "--herdr-inbox" {
+			os.Exit(openInbox())
 		}
 		os.Exit(approve(os.Args[1:]))
 	}

@@ -11,3 +11,9 @@ placement = "popup"
 width = 40
 height = 16
 command = ["{{ .chezmoi.destDir }}/.local/bin/pde-pr-approve", "--herdr-popup"]
+
+[[actions]]
+id = "inbox"
+title = "Open approval inbox"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-pr-approve", "--herdr-inbox"]

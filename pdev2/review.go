@@ -20,32 +20,34 @@ type currentPR struct {
 	Body  string `json:"body"`
 }
 
-func approvalText(gh string, req request) (string, error) {
+// Also returns the PR's current title when pr edit fetched it, so creation
+// needs no second lookup.
+func approvalText(gh string, req request) (string, string, error) {
 	if req.Operation != "edit" {
-		return requestText(req, ""), nil
+		return requestText(req, ""), "", nil
 	}
 	if req.TargetUnknown {
-		return requestText(req, editHeader+"Cannot show current values: the PR number or branch is unclear.\n"), nil
+		return requestText(req, editHeader+"Cannot show current values: the PR number or branch is unclear.\n"), "", nil
 	}
 	// With no target gh edits the current branch's PR, which is not looked up
 	// here, so no diff is shown.
 	if req.Target == "" {
-		return requestText(req, ""), nil
+		return requestText(req, ""), "", nil
 	}
 	current, err := fetchCurrent(gh, req)
 	if err != nil {
 		// A fetch failure is shown to the approver instead of blocking the write.
-		return requestText(req, editHeader+"Fetch failed: "+err.Error()+"\n"), nil
+		return requestText(req, editHeader+"Fetch failed: "+err.Error()+"\n"), "", nil
 	}
 	titleDiff, err := fieldDiff("title", req.HasTitle, current.Title, req.Title)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	bodyDiff, err := fieldDiff("body", req.HasBody, current.Body, req.Body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return requestText(req, editHeader+"Title:\n"+titleDiff+"Body:\n"+bodyDiff), nil
+	return requestText(req, editHeader+"Title:\n"+titleDiff+"Body:\n"+bodyDiff), current.Title, nil
 }
 
 // The caller holds the request lock, so a hung gh must not block other runs.
