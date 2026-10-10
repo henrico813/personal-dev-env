@@ -26,10 +26,12 @@ The full order is:
 5. Install direct-release tools, including Node.js, Go, and Rust.
 6. Install npm tools with the managed npm.
 7. Install direct-release fonts and run `fc-cache`.
-8. Build repository applications with the managed toolchains.
+8. In the full profile, build repository applications, including the PR
+   approval commands, with the managed toolchains.
 9. Migrate legacy PDE and Neovim configuration.
 10. Install the inline plugin runtime.
-11. Apply the chezmoi source.
+11. Apply the chezmoi source. In the full profile, chezmoi then runs its
+    after-apply script that links the Herdr approval plugin.
 12. Build and verify the `blink.cmp` native library.
 13. Commit journals and remove backups.
 
