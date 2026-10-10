@@ -1,8 +1,9 @@
-// Package main implements pde-gh-write and pde-pr-approve: PR writes that
-// run only after a human types yes in a terminal.
+// Package main handles PR writes that run only after a human approves them in
+// a terminal, a Herdr popup, or on the phone through Moshi.
 //
 // An agent runs pde-gh-write with gh pr arguments. It stores a pending record
-// and waits up to 90 seconds while a human approves with pde-pr-approve ID.
+// and waits up to 90 seconds for a human to answer in the popup, on the phone,
+// or with pde-pr-approve ID.
 // Rerunning the same command reports the outcome instead of running gh again.
 package main
 
@@ -22,7 +23,17 @@ const (
 )
 
 func main() {
+	// pde-gh-write starts itself this way to send the phone question; see
+	// startMoshi.
+	if len(os.Args) > 1 && os.Args[1] == "--moshi-ask" {
+		os.Exit(moshiAsk(os.Args[2:]))
+	}
 	if filepath.Base(os.Args[0]) == "pde-pr-approve" {
+		// Herdr runs this in the popup and passes the request ID in
+		// PDE_REQUEST_ID.
+		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
+			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
+		}
 		os.Exit(approve(os.Args[1:]))
 	}
 	os.Exit(requestWrite(os.Args[1:]))

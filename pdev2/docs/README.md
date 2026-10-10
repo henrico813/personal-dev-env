@@ -3,8 +3,13 @@
 `pdev2` is one Go program with two command names. Run as `pde-gh-write`, it
 records a pull-request write and runs `gh` once a human approves it. Run as
 `pde-pr-approve`, it shows a waiting request in a terminal and records the
-answer. These pages are for people changing the program. Paths and commands
-are relative to `pdev2/` unless they start at the repository root.
+answer. You can also answer in a popup in Herdr, the terminal program the
+agents run in, or on your phone through the Moshi app.
+
+The explanations describe what you see and why the program works this way.
+The reference lists exact commands, states, exit codes, files, and limits
+for lookup. Paths and commands are relative to `pdev2/` unless they start
+at the repository root.
 
 The installer does not build this program yet. The shell scripts in
 `chezmoi/dot_local/bin/` are still the installed commands.
@@ -12,6 +17,7 @@ The installer does not build this program yet. The shell scripts in
 ## Explanation
 
 - [How a request runs gh once](explanation/request-flow.md)
+- [Approving in the Herdr popup or on the phone](explanation/popup-and-phone-approval.md)
 
 ## Reference
 
