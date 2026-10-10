@@ -23,6 +23,13 @@ const (
 )
 
 func main() {
+	// Hidden mode for the detached runner that runnerStart starts.
+	if len(os.Args) > 1 && os.Args[1] == "--pde-runner" {
+		if len(os.Args) != 3 {
+			os.Exit(1)
+		}
+		os.Exit(runnerMain(os.Args[2]))
+	}
 	// pde-gh-write starts itself this way to send the phone question; see
 	// startMoshi.
 	if len(os.Args) > 1 && os.Args[1] == "--moshi-ask" {
@@ -33,6 +40,9 @@ func main() {
 		// PDE_REQUEST_ID.
 		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
 			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
+		}
+		if len(os.Args) == 2 && os.Args[1] == "--herdr-inbox" {
+			os.Exit(openInbox())
 		}
 		os.Exit(approve(os.Args[1:]))
 	}

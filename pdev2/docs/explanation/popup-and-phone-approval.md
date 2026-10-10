@@ -15,17 +15,18 @@ What happens before and after your answer is in
 
 ## What You See
 
-For `pde-gh-write pr comment 12 --body "Looks good"`, the popup looks like
-this. It is 37 columns by 14 rows, inside a border that Herdr draws:
+For `pde-gh-write pr comment 12 --body "Looks good"`, run by an agent in
+the Herdr workspace `app` while another request also waits, the popup looks
+like this. It is 37 columns by 14 rows, inside a border that Herdr draws:
 
 ```
-PDE approval c8349131                  <- start of the request ID
-gh pr comment 12                       <- what will run
-Looks good                             <- title and body, as much as fits
-
+comment #12                    1 of 2  <- what is asked; first of two waiting
+octo/app                               <- repository
+app / review login fix                 <- Herdr workspace / agent session
+Fix login timeout                      <- the PR's title
 Typed:                                 <- keys typed so far
                                        <- hint after a wrong answer
-v: full text; q/Esc: dismiss
+v: full; g: focus; q/Esc: dismiss
 
              [ APPROVE ]               <- tap rows 8 to 10 to approve
 
@@ -35,18 +36,22 @@ v: full text; q/Esc: dismiss
 
 ```
 
-For `pr edit`, the lines after `gh pr edit 12` show what changes, such as
-`-Old title` and `+New title`. Instead of tapping, you can type `yes` or
-`no` and press Enter.
+The first four lines say which request this is and where it came from;
+[The approval queue and runner](approval-queue-and-runner.md) explains them,
+the `1 of 2`, and why a tap needs a second tap to confirm. The body follows
+them when there is room; here there is none, and `v` shows it. For `pr edit`,
+the lines after the context show what changes, such as `-Old title` and
+`+New title`. Instead of tapping, you can type `yes` or `no` and press
+Enter.
 
-At the same time, the phone shows:
+At the same time, the phone shows the same lines as a question:
 
 ```
-Approve gh pr comment in current repository (12)?
+Approve comment #12?
+octo/app
+app / review login fix
+Fix login timeout
 ```
-
-When the agent names a repository and a title, the question includes them:
-`Approve gh pr edit in octo/app (12), titled Fix login timeout?`
 
 ## Three Places to Answer; the First Wins
 
@@ -56,9 +61,11 @@ It checks while holding the request's lock (see
 [Why gh runs only once](request-flow.md#why-gh-runs-only-once)), so two
 answers cannot both be saved.
 
-Answering in one place does not close the others: the popup stays open and
-the phone question stays on the phone. A later answer finds the request
-already answered or expired and changes nothing. A tap on an old popup
+An answer in the popup or a terminal ends the phone question, so it does
+not stay on your phone for hours. A popup still showing a request answered
+elsewhere stays open, and a phone question that could not be ended stays on
+the phone. A later answer from either finds the request already answered or
+expired and changes nothing. A tap on an old popup
 cannot undo an approval after `gh` may have posted, and an old phone
 question cannot approve a request you declined.
 
@@ -79,8 +86,9 @@ question cannot approve a request you declined.
   the full request in `less`, the same text `pde-pr-approve` shows. Keys
   typed while `less` is open, such as `yes` typed into its search, are
   thrown away when it closes.
-- **`q` or Esc closes the popup without answering.** The request keeps
-  waiting for an answer elsewhere.
+- **`q` or Esc dismisses the request without answering.** It keeps waiting
+  for an answer elsewhere, but the popup no longer opens for it on its own.
+  `Ctrl+b a` in Herdr opens it again.
 
 ## Why the Phone Question Keeps Running
 
@@ -92,8 +100,9 @@ does not wait for it. That program is `pde-gh-write --moshi-ask`. It runs
 `moshi-hook` for up to four hours, the same as the request's lifetime.
 
 When you answer on the phone, it saves your answer if the request is still
-waiting. It never runs `gh`. The agent's waiting command, or its next rerun
-of the same command, does that.
+waiting. It never runs `gh`. The request's runner, the agent's waiting
+command, or its next rerun of the same command does that; see
+[The approval queue and runner](approval-queue-and-runner.md).
 
 ### Why a Rerun Does Not Send a Second Question
 
@@ -132,7 +141,8 @@ plugin file, which chezmoi deploys from
 popup's size and to run `pde-pr-approve --herdr-popup` in it. The `herdr`
 command has no option that opens a popup, which is why the program uses the
 socket.
-`pde-gh-write` also asks Herdr to show a notification with a sound.
+`pde-gh-write` also marks the agent's pane with `Approval waiting` in
+Herdr's sidebar and asks Herdr to show a notification with a sound.
 
 This runs in the background and ignores errors. A slow or missing Herdr
 must not delay the request, and you can still answer on the phone or in a
