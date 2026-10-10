@@ -35,6 +35,22 @@ jobs:
       - name: test
         run: go test ./...
 
+  pdev2:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pdev2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pdev2/go.mod
+          # The cache is keyed on go.sum, which pdev2 lacks: it has no dependencies.
+          cache: false
+      - run: go test -race -count=3 ./...
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l .)"
+
   opencode-inline-nvim:
     runs-on: ubuntu-latest
     defaults:
