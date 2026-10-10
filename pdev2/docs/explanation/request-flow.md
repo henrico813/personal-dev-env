@@ -1,62 +1,88 @@
 # How a Request Runs gh Once
 
-A pull request cannot be deleted, so a duplicate comment or PR is permanent.
-Agents also rerun a command to learn its result. The program therefore keeps
-one record per request and makes sure `gh` runs at most once for it.
+Coding agents post to your pull requests: they open them, comment, change
+titles, and merge. A duplicate or unwanted post is visible to everyone and
+has to be cleaned up by hand. Agents also rerun a command to find out what
+happened to it. This program makes each post wait for your approval and
+happen only once, however often the agent reruns the command.
 
-## One Record per Request
+`gh` is GitHub's command-line tool. A wrapper named the guard stops agents
+from using it to write to a pull request, so they run `pde-gh-write` with
+the same arguments instead.
 
-`pde-gh-write` hashes the quoted command, the title, and the body into a
-request ID. The record lives in `pde/pr-write/ID.json` under the state
-directory. Running the same command with the same text finds the same record,
-so a rerun reports the earlier result instead of asking again. Changing any
-of the three makes a new request that needs its own answer.
+## One Request, Start to Finish
 
-## States
+1. An agent runs `pde-gh-write pr comment 12 --body "Looks good"`.
+2. The program saves a record of the request and prints its ID, a long
+   string that names this exact request:
+   `pde-gh-write: waiting for approval; run pde-pr-approve ID in a terminal`
+3. You run `pde-pr-approve ID`. It shows the command and the text to be
+   posted in `less` (the approval screen); press `q`, then type `yes` or
+   `no`.
+4. After `yes`, the waiting program runs `gh` once and passes on its output
+   and exit code. After `no`, nothing is posted.
+5. With no answer within 90 seconds, the program stops waiting and exits 3.
+   The request stays saved, so you can still approve it.
+6. The agent reruns the same command. Instead of posting again, the program
+   reports the result, such as `pde-gh-write: already ran ID, exit 0`. If
+   you approved after the wait ended, this rerun is the one that runs `gh`.
 
-A new record starts as `pending`. `pde-pr-approve` changes it to `approved`
-or `declined`. Before starting `gh`, `pde-gh-write` saves `running`; after
-`gh` exits it saves `ran` with the exit code. Every save writes a temporary
-file and renames it over the record, so readers never see half a record.
+## Why One Record per Request
 
-## The Lock
+The ID is built from the command, the title, and the body, so the same
+command with the same text finds the same record. That is how a rerun learns
+the earlier result. Changing any of the three makes a new request that needs
+its own answer, so an approval never covers text you did not see.
 
-Each request has a lock file next to its record, held with `flock`. Creating
-the record, recording an answer, and running `gh` all happen while holding
-it. Two identical first requests therefore cannot both create a record, and
-two runs of an approved request cannot both start `gh`: the second waits for
-the lock and then finds `ran`.
+## Why gh Runs Only Once
 
-The lock stays held while `gh` runs. Finding `running` while holding the lock
-therefore means the earlier run died before saving its result. That request
-is reported as interrupted and never run again, because `gh` may already have
-posted. The same happens if `gh` exits but the `ran` record cannot be saved.
+Only one program at a time can work on a request; the others wait their
+turn. This is called holding the request's lock. Saving a request,
+recording your answer, and running `gh` all happen while holding it, so if
+an agent runs an approved command twice at once, the second run waits and
+then finds that `gh` already ran.
 
-## Waiting and Expiry
+Before starting `gh`, the program marks the record as running. A record
+found still marked running means that run died partway. It is reported as
+interrupted and never run again, because `gh` may already have posted.
 
-The writer polls the record for 90 seconds because agent commands are killed
-after about two minutes. If no answer arrives, it exits 3 and the agent can
-rerun the command after approval.
+## Why Requests Expire After Four Hours
 
-A record expires four hours after its last change. An expired record of any
-state is replaced by a new pending one, so the same command needs a fresh
-answer and may run again.
+Four hours after a record last changed, the same command becomes a new
+request that needs a fresh answer. An old approval should not let a command
+post hours later, when the pull request may have moved on.
 
-## Body Files Are Read Once
+## Why Body Files Are Read Once
 
-`--body-file PATH` and `-F -` are read once when the request is made. The text
-is stored in the record and sent to `gh` on standard input, with the argument
-changed to `--body-file -`. Editing the file after approval therefore cannot
-change what gets posted. Because the text is part of the request ID, a
-rewritten file is a new request.
+Agents often pass long text with `--body-file PATH`. The program reads the
+file when the request is made and later gives `gh` that saved text, so
+editing the file after you approve cannot change what gets posted.
 
-## Showing pr edit Changes
+## How the Approval Screen Finds the PR for pr edit
 
-For `pr edit`, the approver sees the current title and body next to the
-requested ones as a diff. The current values come from `gh pr view`, which
-runs while the lock is held, so it is stopped after 3 seconds. A failed
-lookup is shown in the request instead of blocking it. When an unknown flag
-comes before the PR number, the program cannot tell which argument is the PR,
-so it says that instead of guessing.
+When an agent asks to rename PR 12, the approval screen shows the old and
+new title, shortened here:
 
-Exact values are listed in the [reference](../reference/requests.md).
+```
+Title:
+-Old title
++New title
+```
+
+To get "Old title", the program asks GitHub about PR 12, so it has to pick
+"12" out of the command. Commands take options such as `--title`, some of
+which take a value, and agents can write them in different orders:
+
+```
+gh pr edit 12 --title "New title"             <- number first
+gh pr edit --base main 12 --title "New title" <- number after other options
+```
+
+In the second command, the program knows that `main` belongs to `--base`
+and `12` is the PR only because it keeps a list of the options and whether
+each takes a value. When it meets an option missing from that list, it says
+it cannot show the old values instead of guessing. The list has to be
+updated when GitHub adds options to `gh`.
+
+Exact states, exit codes, files, and limits are in the
+[reference](../reference/requests.md).

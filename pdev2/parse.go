@@ -102,9 +102,14 @@ func readBodyFile(req *request, path string, stdin io.Reader) error {
 	return nil
 }
 
-// targetFlags lists, per operation, the flags that may come before the target
-// and whether each takes a value. Only pr edit uses the target so far. Edit's
-// title, body, and repo flags live in the shared valueFlags.
+// For pr edit, the approver sees the PR's old title and body next to the new
+// ones. Fetching the old ones needs the PR number, and options may come first:
+// in "gh pr edit --base main 12" the PR is 12, not main. targetFlags lists,
+// per operation, the options that may come before the number and whether each
+// takes a value that must be skipped. Title, body, and repo options are in
+// valueFlags. When gh adds any option to these commands, add it here, with
+// true if it takes a value; otherwise commands that put it before the number
+// lose the old title on the approval screen.
 var targetFlags = map[string]map[string]bool{
 	"edit": {
 		"--add-assignee": true, "--add-label": true, "--add-project": true, "--add-reviewer": true,
@@ -114,9 +119,9 @@ var targetFlags = map[string]map[string]bool{
 	},
 }
 
-// Returns the first positional argument. It reports unknown instead of
-// guessing when an unrecognized flag comes first, because that flag may take
-// the next argument as its value.
+// Returns the first argument that is neither an option nor an option's value.
+// An option missing from the lists may take the next argument as its value, so
+// meeting one first reports unknown instead of guessing.
 func findTarget(operation string, args []string) (target string, unknown bool) {
 	for index := 0; index < len(args); index++ {
 		name, _, inline := strings.Cut(args[index], "=")
