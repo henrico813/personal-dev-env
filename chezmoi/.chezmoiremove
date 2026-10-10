@@ -3,6 +3,8 @@
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
 {{ if eq (env "PDE_PROFILE") "terminal" }}
+# Old approval scripts that chezmoi once copied to every machine. Full
+# installs keep these names for the program the installer builds.
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
 {{ end }}

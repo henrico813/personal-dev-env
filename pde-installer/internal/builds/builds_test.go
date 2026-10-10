@@ -56,18 +56,23 @@ func TestBuildInputsIncludeApprovalSource(t *testing.T) {
 	}
 }
 
-// Reconciliation must activate builds and preserve prior binaries.
+// Reconciliation must activate builds and preserve prior binaries. If a later
+// install step fails, the installer rolls back, so the old files must return;
+// on upgraded machines the old pde-gh-write and pde-pr-approve are the bash
+// scripts chezmoi used to install. An unchanged rerun must not rebuild.
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
 	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
+	// Fake go and cargo scripts write placeholder binaries and log each build.
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
 	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
 	manager := New(home, repoRoot, run.Runner{})
 
+	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve"} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -86,6 +91,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", alias)
 	}
 	assertBuildArtifactsRemoved(t, filepath.Join(home, ".local", "state", "pde", "build-stage"))
+	// Roll back as a failed later install step would.
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
 	}
@@ -94,6 +100,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	assertBuildFile(t, manager.statePath(), "old state\n")
 
+	// Build and commit, then run again with nothing changed.
 	journal, err = manager.Reconcile()
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)

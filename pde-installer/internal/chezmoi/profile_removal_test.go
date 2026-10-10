@@ -23,8 +23,9 @@ func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	}
 }
 
-// chezmoi deletes a target whose template renders empty. Terminal machines
-// have no pde-gh-write, so a guard left there would block every PR write.
+// chezmoi deletes a target whose template renders empty. The guard used to be
+// copied to every machine, but terminal machines have no pde-gh-write, so a
+// guard left there would block every PR write.
 func TestGuardRendersEmptyForTerminal(t *testing.T) {
 	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "terminal"); strings.TrimSpace(text) != "" {
 		t.Errorf("terminal guard is not empty:\n%s", text)

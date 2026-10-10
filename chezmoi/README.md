@@ -100,4 +100,10 @@ See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.
 
 ## Agent GitHub approvals
 
-Keep the normal `gh` login; no token setup is needed. Full-profile installs build `pde-gh-write` and its `pde-pr-approve` alias. The writer waits up to 90 seconds; requests expire after 4 hours. Approve from the Herdr popup, the Moshi phone, or `pde-pr-approve REQUEST_ID` in a real terminal. An approval within 90 seconds lets the waiting command run `gh`; if the command already exited 3, rerun the identical command after approving. See the [approval explanation](docs/explanation/pr-write-approval.md), [how-to guide](docs/how-to/pr-write-approval.md), and [reference](docs/reference/pr-write-approval.md).
+On a full install, agents post to pull requests through `pde-gh-write`,
+which waits for you to approve each post in the Herdr popup, on your phone
+through Moshi, or with `pde-pr-approve ID` in a terminal. Keep the normal `gh`
+login; no token setup is needed. Terminal installs get none of this. See the
+[approval explanation](docs/explanation/pr-write-approval.md),
+[how-to guide](docs/how-to/pr-write-approval.md), and
+[reference](docs/reference/pr-write-approval.md).

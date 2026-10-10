@@ -78,7 +78,8 @@ Use repository instructions first. Use these defaults otherwise.
    then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
    fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.
 4. Show the exact SQUASH message, file list, and check and test results. Ask for
-   approval. The popup approval below is the user's approval for the merge.
+   approval. Approving the pde-gh-write request below is the user's
+   approval for the merge.
 5. Run `tail -n +3 SQUASH > BODY`, then run
    `pde-gh-write pr merge NUMBER --squash --subject "$(head -n 1 SQUASH) (#NUMBER)"
    --body-file BODY`. If it exits 3, tell the user it is waiting for approval,
