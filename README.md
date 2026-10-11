@@ -98,7 +98,7 @@ binaries plus repo-managed AI config.
 | planner | `planner/` | `~/.local/bin/planner` | Shared plan CLI |
 | Vibe | `vibe/` | `~/.local/bin/vibe` | Worktree-backed execution harness |
 | Create plan | `ai/skills/create-plan/` | `~/.agents/skills/create-plan/` | Shared workflow skill for implementation proposals with exact code diffs |
-| Review plan | `ai/skills/review-plan/` | `~/.agents/skills/review-plan/` | Shared workflow skill for plan review |
+| Review plan | `ai/skills/review-plan/` | `~/.agents/skills/review-plan/` | Shared workflow skill for reviewing plans and code changes |
 | Implement plan | `ai/skills/implement-plan/` | `~/.agents/skills/implement-plan/` | Shared workflow skill for stepwise plan execution |
 | Cleanup plan | `ai/skills/cleanup-plan/` | `~/.agents/skills/cleanup-plan/` | Shared workflow skill for plan teardown |
 | Design doc | `ai/skills/design-doc/` | `~/.agents/skills/design-doc/` | Shared workflow skill for technical design documents |
@@ -147,7 +147,7 @@ instructions live once in the skill.
 |---------|---------|
 | `/design_doc` | Create a technical design document for a feature or system |
 | `/create_plan` | Produce a repository-grounded implementation proposal |
-| `/review_plan` | Validate a plan for architecture, bugs, and completeness |
+| `/review_plan` | Review a plan, PR, commit, or diff for architecture, bugs, and completeness |
 | `/implement_plan` | Execute plan phases with verification |
 | `/cleanup_plan` | Clean completed plan, worktree, branch, PR evidence, and main state |
 | `/research_codebase` | Document how the codebase works (read-only) |
@@ -165,7 +165,7 @@ loads `~/.agents/skills/`.
 | `implement-plan` | Execute an approved plan with verification | "Use implement-plan on docs/PDEV-006.md" |
 | `cleanup-plan` | Clean completed plan, worktree, branch, PR evidence, and main state | "Use cleanup-plan for the merged auth refactor branch" |
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde-installer install works" |
-| `review-plan` | Review a plan for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
+| `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
