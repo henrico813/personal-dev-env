@@ -29,15 +29,17 @@ func startDetachedRunner(rec record) record {
 		return rec
 	}
 	cmd := exec.Command(path, "--pde-runner", rec.ID)
-	// The agent's command group is killed when the foreground wait ends. The
-	// runner is not waited for, because it must outlive this command.
+	// When the agent's command ends, the tool that ran it stops every program
+	// the command started. You may approve hours later, so the runner is
+	// started apart from that group, as the phone question is, and is not
+	// waited for.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return rec
 	}
 	rec.RunnerPID = cmd.Process.Pid
-	// Like the phone ask's PID, this is not a change of the request, so it
-	// must not restart expiry.
+	// Like the phone question's PID, this is not a change of the request, so
+	// it must not restart expiry.
 	if err := saveKeepingAge(rec); err != nil {
 		_ = cmd.Process.Kill()
 		rec.RunnerPID = 0

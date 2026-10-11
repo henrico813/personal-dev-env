@@ -41,8 +41,8 @@ func requestWrite(args []string) int {
 
 // The lock stops two identical first requests from both creating a record;
 // the later save could overwrite an approval or a finished run. A new request
-// also starts the Herdr notification, the phone ask, and the runner; a pending
-// one restarts an ask or runner that died.
+// also starts the Herdr notification, the phone question, and the runner; a
+// pending one restarts a phone question or runner that died.
 func loadOrCreate(req request, gh string) (string, error) {
 	lockFile, err := lockRequest(req.ID)
 	if err != nil {

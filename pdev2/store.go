@@ -15,9 +15,10 @@ import (
 const expiry = 4 * time.Hour
 
 // An answer from the terminal, the Herdr popup, or the phone moves a record
-// from pending to approved or declined. pde-gh-write moves an approved record
-// to running before gh starts and to ran after it exits. Finding running under
-// the lock means that run died, and it is never retried.
+// from pending to approved or declined. pde-gh-write, or the request's runner,
+// moves an approved record to running before gh starts and to ran after it
+// exits. Finding running under the lock means that run died, and it is never
+// retried.
 const (
 	statePending  = "pending"
 	stateApproved = "approved"

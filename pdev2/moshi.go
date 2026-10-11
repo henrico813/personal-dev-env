@@ -46,8 +46,9 @@ func startMoshi(rec record) record {
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
 // Ends a phone question that can no longer decide anything, so it does not
-// stay on the phone for hours. The ask runs in its own session, so its PID is
-// also its process group ID. moshiAsk must not call this for its own answer.
+// stay on the phone for hours. The question runs in its own session, so its
+// PID is also its process group ID. moshiAsk must not call this for its own
+// answer.
 func stopMoshi(pid int) {
 	if pid != 0 && processAlive(pid) {
 		_ = syscall.Kill(-pid, syscall.SIGTERM)

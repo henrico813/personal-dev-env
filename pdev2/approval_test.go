@@ -264,9 +264,12 @@ func shownBeforeAnswer[T any](t *testing.T, master *os.File, want string, answer
 	}
 }
 
+// The popup spends its time waiting for a tap. A resize must redraw it at
+// once, or the buttons stay drawn where taps no longer hit them.
 func TestPopupRedrawsWhenResized(t *testing.T) {
-	// The popup spends its time waiting for a tap. A resize must redraw it at
-	// once, or the buttons stay drawn where taps no longer hit them.
+	// Run the popup on a pseudo-terminal at Herdr's size; see
+	// TestPopupDiscardsEarlyInput. Start it in the background and wait for
+	// its first draw.
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
@@ -289,13 +292,15 @@ func TestPopupRedrawsWhenResized(t *testing.T) {
 	receive(t, result)
 }
 
+// In live testing one APPROVE tap approved and ran two queued requests: the
+// press answered the first, the popup showed the second, and the tap's
+// release landed on the same APPROVE row.
 func TestTapAnswersOnlyOneQueuedRequest(t *testing.T) {
-	// In live testing one APPROVE tap approved and ran two queued requests: the
-	// press answered the first, the popup showed the second, and the tap's
-	// release landed on the same APPROVE row.
 	// No settle pause here, so only the press and release rule is tested.
 	master, layout := queueTwoMerges(t, 0)
 	press := fmt.Sprintf("\x1b[<0;10;%dM", layout.approveTop)
+	// Run the queue in the background; approvePopup returns once no
+	// undismissed request is left.
 	done := make(chan int, 1)
 	go func() { done <- approvePopup("first") }()
 
@@ -324,13 +329,17 @@ func TestTapAnswersOnlyOneQueuedRequest(t *testing.T) {
 	}
 }
 
+// On a phone, an impatient second tap lands on the next request, which has
+// just appeared under the finger, and would approve it unread. Each queued
+// request therefore opens with a settle pause and no selected button.
+// TestPopupAppliesTapAndSettleRules checks that taps during the pause are
+// ignored; this test checks that the queue applies the pause and the reset
+// to every request, not only the first.
 func TestQueuedPopupsSettleAndStartUnselected(t *testing.T) {
-	// On a phone an impatient second tap lands on the next request, which has
-	// just appeared under the finger, and would approve it unread. Each queued
-	// request therefore opens with a settle pause and no selected button. The
-	// table test checks that taps during the pause are ignored.
 	master, layout := queueTwoMerges(t, 500*time.Millisecond)
 	press := fmt.Sprintf("\x1b[<0;10;%dM", layout.approveTop)
+	// Run the queue in the background; approvePopup returns once no
+	// undismissed request is left.
 	done := make(chan int, 1)
 	go func() { done <- approvePopup("first") }()
 
@@ -459,10 +468,10 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 	}
 }
 
+// A phone question outlived popup answers by up to four hours, leaving a
+// question on the phone that could no longer decide anything. A phone
+// question that records its own answer must not stop itself first.
 func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
-	// A phone ask outlived popup answers by up to four hours, leaving a
-	// question on the phone that could no longer decide anything. The ask that
-	// records its own answer must not stop itself first.
 	t.Run("popup answer", func(t *testing.T) {
 		t.Setenv("XDG_STATE_HOME", t.TempDir())
 		// The fake moshi-hook never answers, like a phone nobody looks at.
@@ -740,6 +749,8 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("HERDR_TEST_SOCKET", socket)
+	// notifyRequest opens the popup only for a request still waiting, so save
+	// one.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	rec := record{ID: "request-id", State: statePending}
 	if err := save(rec); err != nil {
@@ -776,9 +787,9 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	}
 }
 
+// Dismissing must stop a request from reopening in the popup queue while
+// the inbox can still find it.
 func TestDismissedRequestStaysHidden(t *testing.T) {
-	// Dismissing must stop a request from reopening in the popup queue while
-	// the inbox can still find it.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	rec := record{ID: "dismissed", State: statePending}
 	if err := save(rec); err != nil {
@@ -830,9 +841,9 @@ func TestQueueKeepsCreationOrder(t *testing.T) {
 	}
 }
 
+// One agent pane can ask twice; answering one request must not hide that
+// the other is still waiting.
 func TestMarkerStaysWhileSamePaneWaits(t *testing.T) {
-	// One agent pane can ask twice; answering one request must not hide that
-	// the other is still waiting.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake herdr logs each call, so the test can see marker changes.
 	dir := t.TempDir()

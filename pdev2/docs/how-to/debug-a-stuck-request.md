@@ -1,18 +1,20 @@
 # Debug a Stuck or Unanswered Request
 
-Use this when an agent reports a waiting request that never ran, or a popup
-or phone question never appeared.
+Use this when an agent says its request is still waiting, you approved and
+nothing was posted, or no popup or phone question appeared. The runner and
+the phone question are explained in
+[The approval queue and runner](../explanation/approval-queue-and-runner.md).
 
 ## 1. Find the Record
 
-The waiting line printed by `pde-gh-write` contains the request ID. Without
-it, list the newest records:
+The line `pde-gh-write` printed when it started waiting contains the
+request ID. Without it, list the newest records:
 
 ```bash
 ls -t "${XDG_STATE_HOME:-$HOME/.local/state}"/pde/pr-write/*.json | head
 ```
 
-Read the fields that matter:
+Show the fields that matter, with `ID` replaced:
 
 ```bash
 jq '{state, created, updated, dismissed, runner_pid, moshi_pid, gh, exit_code, pane_id}' \
@@ -23,42 +25,53 @@ jq '{state, created, updated, dismissed, runner_pid, moshi_pid, gh, exit_code, p
 
 | State | What it means | What to do |
 |---|---|---|
-| `pending`, `dismissed: true` | It no longer opens on its own | Press `prefix+a` in Herdr, or run `pde-pr-approve ID` |
-| `pending` | Nobody has answered | Check the runner and ask in step 3 |
+| `pending`, `dismissed: true` | You dismissed it, so it no longer opens on its own | Press Ctrl+b and then `a` in Herdr, or run `pde-pr-approve ID` |
+| `pending` | Nobody has answered | Check the runner and the phone question in step 3 |
 | `approved` | Answered, but `gh` has not run | Check the runner and the `gh` path in step 3 |
-| `declined` | Declined | Request again with a change, or after four hours |
-| `running` | A run died, and `gh` may already have posted | Check GitHub before requesting again |
-| `ran` | Done | Rerun to print the saved output |
+| `declined` | Declined | Ask again with a change, or after four hours |
+| `running` | A run stopped partway, and `gh` may already have posted | Check GitHub before asking again |
+| `ran` | Done | Rerun the command to print what `gh` printed |
 
 A record whose `updated` time is more than four hours old has expired. The
-next identical command replaces it with a new pending request.
+next identical command replaces it with a new waiting request.
 
-## 3. Check the Runner and the Phone Ask
+## 3. Check the Runner and the Phone Question
+
+Replace `RUNNER_PID` and `MOSHI_PID` with `runner_pid` and `moshi_pid`
+from step 1:
 
 ```bash
 ps -o pid,args -p RUNNER_PID
 ps -o pid,args -p MOSHI_PID
 ```
 
-The runner shows `--pde-runner ID` and the ask shows `--moshi-ask ID`. No
-output means the process is gone. If the record is approved but `gh` is
-missing or not executable, the runner left it approved for a rerun.
+The runner's command line ends in `--pde-runner ID`, and the phone
+question's in `--moshi-ask ID`. No output means that program is no longer
+running. If the record is `approved` and the file named by `gh` is missing,
+the runner could not run it and left it approved for the next rerun.
 
 ## 4. Rerun the Exact Command
 
-Run the identical command from the same directory; the directory is part of
-the request ID. For a pending request this starts a new runner and phone ask
-if the saved ones are gone, then waits up to 90 seconds again. For an
-approved request it runs `gh` with the `gh` found on `PATH`. For a finished
-request it prints the outcome.
+Run the identical command from the same folder; the folder is part of the
+request ID. For a waiting request, this starts a new runner and phone
+question if the saved ones are gone, then waits up to 90 seconds again. For
+an approved request, it runs `gh` with the `gh` it finds on `PATH`. For a
+finished request, it prints the result.
 
 ## 5. If No Popup Appeared
 
-The popup opens only when the writer runs inside Herdr, with `HERDR_ENV=1`,
-and the `pde.approval` plugin is linked. Check with:
+The popup opens only when the agent runs inside Herdr, where `HERDR_ENV` is
+`1`, and the `pde.approval` plugin is linked into Herdr. Check the plugin
+with:
 
 ```bash
 herdr plugin list --json | jq '.result.plugins[] | select(.plugin_id == "pde.approval")'
+```
+
+No output means the plugin is not linked. Link it while Herdr is running:
+
+```bash
+herdr plugin link ~/.local/share/pde/herdr-plugins/pde-approval
 ```
 
 Record fields are listed in the [reference](../reference/requests.md#files).

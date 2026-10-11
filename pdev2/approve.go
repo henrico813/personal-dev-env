@@ -66,9 +66,9 @@ func saveAnswer(id, choice string) int {
 }
 
 // recordAnswer saves choice on a pending record that the caller has locked and
-// loaded. It clears the phone ask's PID, starts the runner on approval, and
-// clears the pane marker. saveAnswer then stops the phone ask; moshiAsk must
-// not, because that ask is the caller.
+// loaded. It clears the phone question's PID, starts the runner on approval,
+// and clears the pane marker. saveAnswer then ends the phone question;
+// moshiAsk must not, because that question is the caller.
 func recordAnswer(rec record, choice string) (record, error) {
 	rec.MoshiPID = 0
 	rec.State = stateDeclined

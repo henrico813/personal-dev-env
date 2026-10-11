@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
+// An approval can arrive after the agent's 90-second wait. The runner then
+// runs gh once and saves its output, so the agent's rerun still prints the
+// new PR's URL. A runner restarted by the popup or phone inherits their
+// PATH, which may lack gh, so it runs the gh path saved with the request.
 func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
-	// An approval can arrive after the agent's 90-second wait. The runner then
-	// runs gh once and saves its output, so the agent's rerun still prints the
-	// new PR's URL. A runner restarted by the popup or phone inherits their
-	// PATH, which may lack gh, so it runs the gh path saved with the request.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake gh prints a PR URL and logs each call.
 	dir := t.TempDir()
@@ -21,6 +21,8 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	gh := writeScript(t, dir, "gh", "echo https://github.com/owner/repo/pull/7; echo call >> '"+calls+"'")
 	// An empty PATH, so only the saved gh path can work.
 	t.Setenv("PATH", t.TempDir())
+	// Check the record every 10 milliseconds instead of every second, so the
+	// test is quick.
 	oldPoll := runnerPoll
 	runnerPoll = 10 * time.Millisecond
 	t.Cleanup(func() { runnerPoll = oldPoll })
@@ -50,10 +52,10 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	}
 }
 
+// The saved gh can move after the request is made, such as on an upgrade.
+// Recording a failed run would lose the approved write; leaving it approved
+// lets a rerun from the same directory do it.
 func TestRunnerWithMissingGHKeepsApproval(t *testing.T) {
-	// The saved gh can move after the request is made, such as on an upgrade.
-	// Recording a failed run would lose the approved write; leaving it approved
-	// lets a rerun from the same directory do it.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	discardStderr(t)
 	rec := record{ID: "moved", Args: []string{"pr", "create"}, State: stateApproved, GH: filepath.Join(t.TempDir(), "gh")}
@@ -69,10 +71,10 @@ func TestRunnerWithMissingGHKeepsApproval(t *testing.T) {
 	}
 }
 
+// A rerun of a pending request restarts a runner that died. Saving the new
+// runner's PID must not restart the four-hour expiry, or an agent rerunning
+// a request whose runner keeps dying would keep it pending forever.
 func TestRunnerRestartKeepsRequestAge(t *testing.T) {
-	// A rerun of a pending request restarts a runner that died. Saving the new
-	// runner's PID must not restart the four-hour expiry, or an agent rerunning
-	// a request whose runner keeps dying would keep it pending forever.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake runner just sleeps, standing in for one waiting for an answer.
 	fake := writeScript(t, t.TempDir(), "runner", "sleep 30")
@@ -108,9 +110,11 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 	}
 }
 
+// A runner killed or lost on reboot would leave a late approval unrun until
+// the agent happened to rerun the command, so an approval must start a new
+// one. Before this change the phone question saved its answer with its own
+// code, so the phone path is checked as well as the terminal path.
 func TestApprovalRestartsDeadRunner(t *testing.T) {
-	// A runner that was killed or lost on reboot would leave a late approval
-	// never run, though the docs promise it will.
 	// The fake moshi-hook approves at once for the phone case.
 	dir := t.TempDir()
 	writeScript(t, dir, "moshi-hook", "exit 0")

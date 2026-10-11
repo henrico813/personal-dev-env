@@ -37,8 +37,10 @@
 | other | Passed through from `gh` |
 
 `gh`'s own exit codes pass through too, and `gh` also uses 1, 2, and 4. Lines
-on standard error that start with `pde-gh-write:` come from this program;
-anything else came from `gh`.
+on standard error that start with `pde-gh-write:` come from this program.
+What `gh` prints, on standard output and standard error alike, is saved and
+then printed on standard output after `gh` exits, so a rerun can print it
+again.
 
 Rerun status lines are `already ran ID, exit N`, followed by the saved `gh`
 output, `declined ID`, and `interrupted ID`.
@@ -100,8 +102,9 @@ context lines, built from the saved record.
 | other, or not started | No answer |
 
 `--moshi-ask` itself exits 1 for wrong arguments or when the record cannot be
-locked or saved, and 0 otherwise. An answer from the terminal or popup stops
-a running ask with `SIGTERM` to its process group.
+locked or saved, and 0 otherwise. An answer from the terminal or popup, or
+the runner after an answer or expiry, ends a running phone question with
+`SIGTERM` to its process group.
 
 ## Runner
 
@@ -117,8 +120,8 @@ expires.
 | other | Passed through from `gh` |
 
 When `gh` already ran, the runner reports the saved exit code. After an
-answer or expiry, the runner clears the sidebar marker and stops the phone
-ask before it exits.
+answer or expiry, the runner clears the sidebar marker and ends the phone
+question before it exits.
 
 ## Files
 

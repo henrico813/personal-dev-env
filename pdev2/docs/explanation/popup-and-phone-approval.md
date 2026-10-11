@@ -75,6 +75,9 @@ question cannot approve a request you declined.
   asks Herdr to put the keyboard on the popup when it opens, so a `yes` and
   Enter you were typing for an agent could otherwise land in the popup and
   approve.
+- **One tap does not answer.** The first tap on a button only selects it,
+  and taps and Enter do nothing for a moment after each request appears;
+  see [The approval queue and runner](approval-queue-and-runner.md).
 - **A single `y` is not an answer.** An earlier version approved on one
   stray key. Typing `y` and Enter shows `Type yes or no, then Enter`.
 - **Agent text cannot change the screen.** The agent writes the title and

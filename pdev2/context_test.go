@@ -8,9 +8,12 @@ import (
 	"time"
 )
 
+// With several sessions asking at once, the first lines are how a person
+// tells requests apart. Before this change the phone asked "Approve gh pr
+// merge in current repository (185)?" while the popup showed the command,
+// so the two named a request differently and neither said which agent
+// asked. Both now start with the same context lines.
 func TestPopupAndPhoneShowSameContext(t *testing.T) {
-	// With several sessions asking at once, the first lines are how a person
-	// tells requests apart, on the popup and on the phone alike.
 	rec := record{Args: []string{"pr", "merge", "185"}, Repo: "owner/repo",
 		Workspace: "pdev-release", SessionTitle: "OC | release", Title: "Ship it"}
 
@@ -31,10 +34,10 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	}
 }
 
+// With several sessions asking at once, the approver tells requests apart
+// by repository, Herdr workspace, session, and PR title, so a new request
+// must record them.
 func TestRequestRecordsHerdrAgentContext(t *testing.T) {
-	// With several sessions asking at once, the approver tells requests apart
-	// by repository, Herdr workspace, session, and PR title, so a new request
-	// must record them.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake herdr lists one agent for session ses_1 and its workspace, and
 	// touches done when the notification is shown.
@@ -84,10 +87,10 @@ func waitForFile(t *testing.T, path string) {
 	t.Fatalf("%s never appeared", path)
 }
 
+// The Herdr notification runs beside the wait for an answer. A stray save there
+// once could put an approved request back to pending, and a late marker
+// could leave "Approval waiting" on a pane after the answer.
 func TestAnswerSurvivesConcurrentNotification(t *testing.T) {
-	// Herdr notification runs beside the wait for an answer. A stray save there
-	// once could put an approved request back to pending, and a late marker
-	// could leave "Approval waiting" on a pane after the answer.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	// The fake herdr holds the "Approval waiting" marker call until the gate
@@ -155,9 +158,9 @@ func waitForNotification(t *testing.T, log, done string) []string {
 	return nil
 }
 
+// Users approved other sessions' merges without knowing what they were;
+// a merge request names only a number, so the looked-up title must show.
 func TestMergeShowsLookedUpPRTitle(t *testing.T) {
-	// Users approved other sessions' merges without knowing what they were;
-	// a merge request names only a number, so the looked-up title must show.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake gh answers the repository lookup and the PR title lookup.
 	gh := writeScript(t, t.TempDir(), "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
@@ -182,9 +185,9 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	}
 }
 
+// A bare directory name shown where owner/repo goes reads like a real
+// repository; a failed PR lookup must not invent a title either.
 func TestUnknownRepoShowsDirectoryLabel(t *testing.T) {
-	// A bare directory name shown where owner/repo goes reads like a real
-	// repository; a failed PR lookup must not invent a title either.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// Every gh lookup fails, as outside a repository or without network.
 	gh := writeScript(t, t.TempDir(), "gh", "exit 1")
