@@ -24,6 +24,7 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `Update README wording only; do not review or change Go code.` | Do not load `go-development` or `code-documentation` merely because the repository contains source code. This also applies through the documentation workflow. |
 | OpenCode | `Delegate a read-only review of ai/skills/rust-development/examples/tests/cli.rs::missing_count_shows_usage.` | Load the testing, code-documentation, and Rust skills, and name all three in the delegation prompt. |
 | OpenCode | `Review vibe/src/adapters/docker.rs::prepare_provider_auth and its nearby source documentation without editing files.` | Load `code-documentation` and `rust-development` before giving findings. |
+| OpenCode | `Review PR 253 without editing files.` | Load `review-plan` before giving review findings. |
 | OpenCode | `Create a Zettel that captures the Rust CLI test review findings.` | Load `obsidian-zettel` before creating a vault note. |
 
 Record the harness, model, version, required loads, unnecessary loads, late

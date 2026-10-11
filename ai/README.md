@@ -14,7 +14,8 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `python-development` for Python code, and `rust-development` for Rust code.
 Shared workflow skills include `create-plan` for implementation proposals,
-`review-plan` for plan review, `implement-plan` for plan execution,
+`review-plan` for reviewing plans, PRs, commits, and diffs,
+`implement-plan` for plan execution,
 `cleanup-plan` for plan teardown, `design-doc` for design documents, and
 `research-codebase` for as-is codebase research; they install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions
