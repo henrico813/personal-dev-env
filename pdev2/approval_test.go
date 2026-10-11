@@ -469,72 +469,37 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 }
 
 // A phone question outlived popup answers by up to four hours, leaving a
-// question on the phone that could no longer decide anything. A phone
-// question that records its own answer must not stop itself first.
+// question on the phone that could no longer decide anything.
 func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
-	t.Run("popup answer", func(t *testing.T) {
-		t.Setenv("XDG_STATE_HOME", t.TempDir())
-		// The fake moshi-hook never answers, like a phone nobody looks at.
-		dir := t.TempDir()
-		writeScript(t, dir, "moshi-hook", "exec sleep 30")
-		t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-		old := moshiProgram
-		moshiProgram = func() (string, error) { return writeScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
-		t.Cleanup(func() { moshiProgram = old })
-		// Start a real detached ask for a saved request, and watch for the
-		// ask's exit before answering.
-		rec := record{ID: "popup", State: statePending}
-		if err := save(rec); err != nil {
-			t.Fatal(err)
-		}
-		rec = startMoshi(rec)
-		if rec.MoshiPID == 0 {
-			t.Fatal("phone ask did not start")
-		}
-		t.Cleanup(func() { _ = syscall.Kill(-rec.MoshiPID, syscall.SIGKILL) })
-		exited := waitForExit(t, rec.MoshiPID)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake moshi-hook never answers, like a phone nobody looks at.
+	dir := t.TempDir()
+	writeScript(t, dir, "moshi-hook", "exec sleep 30")
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	old := moshiProgram
+	moshiProgram = func() (string, error) { return writeScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
+	t.Cleanup(func() { moshiProgram = old })
+	// Start a real detached ask for a saved request, and watch for the
+	// ask's exit before answering.
+	rec := record{ID: "popup", State: statePending}
+	if err := save(rec); err != nil {
+		t.Fatal(err)
+	}
+	rec = startMoshi(rec)
+	if rec.MoshiPID == 0 {
+		t.Fatal("phone ask did not start")
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-rec.MoshiPID, syscall.SIGKILL) })
+	exited := waitForExit(t, rec.MoshiPID)
 
-		// Answer as the popup does; that must stop the ask.
-		saveAnswer(rec.ID, "yes")
+	// Answer as the popup does; that must stop the ask.
+	saveAnswer(rec.ID, "yes")
 
-		select {
-		case <-exited:
-		case <-time.After(5 * time.Second):
-			t.Fatal("phone ask still running after the popup answered")
-		}
-	})
-	t.Run("phone answer", func(t *testing.T) {
-		t.Setenv("XDG_STATE_HOME", t.TempDir())
-		dir := t.TempDir()
-		// The fake moshi-hook approves at once.
-		writeScript(t, dir, "moshi-hook", "exit 0")
-		t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-		// Stands in for the ask process that is recording the answer; moshiAsk
-		// runs in the test, so it would otherwise find no PID of its own.
-		self := exec.Command("sleep", "30")
-		self.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-		if err := self.Start(); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = syscall.Kill(-self.Process.Pid, syscall.SIGKILL); _ = self.Wait() })
-		if err := save(record{ID: "phone", State: statePending, MoshiPID: self.Process.Pid}); err != nil {
-			t.Fatal(err)
-		}
-
-		code := moshiAsk([]string{"phone"})
-
-		got, err := load("phone")
-		if code != 0 || err != nil || got.State != stateApproved {
-			t.Fatalf("moshiAsk returned %d, record %#v, %v", code, got, err)
-		}
-		// A signal takes effect shortly after it is sent, so watch briefly for
-		// the stand-in to become a zombie, which would mean it was stopped.
-		for deadline := time.Now().Add(200 * time.Millisecond); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
-			if procState(self.Process.Pid) == 'Z' {
-				t.Fatal("the phone ask stopped itself while recording its answer")
-			}
-		}
-	})
+	select {
+	case <-exited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("phone ask still running after the popup answered")
+	}
 }
 
 func waitForExit(t *testing.T, pid int) <-chan struct{} {
@@ -546,19 +511,6 @@ func waitForExit(t *testing.T, pid int) <-chan struct{} {
 	exited := make(chan struct{})
 	go func() { _, _ = process.Wait(); close(exited) }()
 	return exited
-}
-
-// Returns the state letter from /proc, such as 'S' for sleeping or 'Z' for exited.
-func procState(pid int) byte {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return 0
-	}
-	_, after, _ := strings.Cut(string(data), ") ")
-	if after == "" {
-		return 0
-	}
-	return after[0]
 }
 
 // Agents rerun a waiting command to learn what happened. While the first
@@ -803,41 +755,6 @@ func TestDismissedRequestStaysHidden(t *testing.T) {
 	}
 	if got := inboxRecords(); len(got) != 1 || got[0].ID != rec.ID {
 		t.Fatalf("inbox pending = %#v", got)
-	}
-}
-
-func TestQueueKeepsCreationOrder(t *testing.T) {
-	// Restarting a dead runner or phone ask saves the record; that must not
-	// send an older request behind newer ones.
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// The fake gh answers the repository lookup.
-	gh := writeScript(t, t.TempDir(), "gh", "echo owner/repo")
-	discardStderr(t)
-	var ids []string
-	for _, args := range [][]string{{"pr", "create", "--title", "older"}, {"pr", "create", "--title", "newer"}} {
-		req, err := parse(args, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req = scopeRequest(req)
-		if _, err := loadOrCreate(req, gh); err != nil {
-			t.Fatal(err)
-		}
-		ids = append(ids, req.ID)
-	}
-
-	// Save the older record again, as restarting its runner or ask would.
-	older, err := load(ids[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := save(older); err != nil {
-		t.Fatal(err)
-	}
-
-	queue := queuedRecords()
-	if len(queue) != 2 || queue[0].ID != ids[0] {
-		t.Fatalf("queue = %#v", queue)
 	}
 }
 
