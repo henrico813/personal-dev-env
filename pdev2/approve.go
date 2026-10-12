@@ -131,7 +131,8 @@ func queuePosition(id string) string {
 }
 
 // A dismissed request stays pending but no longer opens on its own; the inbox
-// still lists it.
+// still lists it. Dismissing is not an answer, so it keeps the request's age;
+// otherwise dismissing and reopening it could keep it waiting past four hours.
 func dismissRequest(id string) {
 	lockFile, err := lockRequest(id)
 	if err != nil {
@@ -143,7 +144,7 @@ func dismissRequest(id string) {
 		return
 	}
 	rec.Dismissed = true
-	if save(rec) == nil {
+	if saveKeepingAge(rec) == nil {
 		clearRecordMarker(rec)
 	}
 }

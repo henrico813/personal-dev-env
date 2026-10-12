@@ -757,11 +757,15 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 }
 
 // Dismissing must stop a request from reopening in the popup queue while
-// the inbox can still find it.
+// the inbox can still find it. Dismissing first used the save that records an
+// answer, which restarted the four-hour expiry, so a request dismissed and
+// reopened from the inbox could keep waiting indefinitely.
 func TestDismissedRequestStaysHidden(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	rec := record{ID: "dismissed", State: statePending}
-	if err := save(rec); err != nil {
+	// The request was last changed an hour ago.
+	saved := time.Now().Add(-time.Hour).Round(0)
+	rec := record{ID: "dismissed", State: statePending, Updated: saved}
+	if err := writeRecord(rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -770,8 +774,12 @@ func TestDismissedRequestStaysHidden(t *testing.T) {
 	if got := queuedRecords(); len(got) != 0 {
 		t.Fatalf("visible pending = %d", len(got))
 	}
-	if got := inboxRecords(); len(got) != 1 || got[0].ID != rec.ID {
+	got := inboxRecords()
+	if len(got) != 1 || got[0].ID != rec.ID {
 		t.Fatalf("inbox pending = %#v", got)
+	}
+	if !got[0].Updated.Equal(saved) {
+		t.Errorf("dismissing moved the last change from %v to %v", saved, got[0].Updated)
 	}
 }
 
