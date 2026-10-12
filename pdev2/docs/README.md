@@ -1,43 +1,29 @@
 # pdev2 Documentation
 
-`pdev2` is one Go program with two command names. Run as `pde-gh-write`, it
-records a pull-request write and runs `gh` once a human approves it. Run as
-`pde-pr-approve`, it shows a waiting request in a terminal and records the
-answer. You can also answer in a popup in Herdr, the terminal program the
-agents run in, or on your phone through the Moshi app.
+pdev2 is the program that makes coding agents ask you before they change a
+pull request on GitHub. Agents run it as `pde-gh-write` instead of `gh` when
+they write to a pull request. You can run it as `pde-pr-approve` to answer a
+request in a terminal.
 
-The explanations describe what you see and why the program works this way.
-The reference lists exact commands, states, exit codes, files, and limits
-for lookup. Paths and commands are relative to `pdev2/` unless they start
-at the repository root.
+Pick the page for what you need to do:
 
-In the full profile, the installer builds this program as
-`~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it.
+- Set it up on a new computer:
+  [Set up approval](how-to/set-up-approval.md).
+- An agent is waiting for your answer:
+  [Approve or decline a request](how-to/approve-a-request.md).
+- A request seems stuck, or nothing happened after you approved:
+  [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md).
+- Look up an exact detail, such as an exit code, a popup key, or where
+  requests are saved:
+  [States, exit codes, and files](reference/requests.md).
+- Find the code to change:
+  [Where the code lives](reference/code-layout.md).
+- Understand why it works the way it does:
+  [How a request runs gh once](explanation/request-flow.md) and
+  [Why popup and phone answers are safe](explanation/popup-and-phone-approval.md).
 
-## How-to Guides
-
-- [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md)
-
-## Explanation
-
-- [How a request runs gh once](explanation/request-flow.md)
-- [Approving in the Herdr popup or on the phone](explanation/popup-and-phone-approval.md)
-- [Where a request came from](explanation/request-context.md)
-- [Approving after the agent stopped waiting](explanation/late-approvals.md)
-- [Why one tap does not answer](explanation/popup-taps.md)
-- [The approval queue](explanation/approval-queue.md)
-- [Where the code lives](explanation/code-layout.md)
-
-## Reference
-
-- [States, exit codes, and files](reference/requests.md)
-
-## User Guides
-
-How to approve requests, and why approval exists, is covered in the chezmoi
-docs:
-
-- [Approve a pull-request write](../../chezmoi/docs/how-to/pr-write-approval.md)
-- [Pull-request approval reference](../../chezmoi/docs/reference/pr-write-approval.md)
-- [Pull-request write approval](../../chezmoi/docs/explanation/pr-write-approval.md)
-- [Use phone approval for a pull-request write](../../chezmoi/docs/how-to/moshi-phone-approval.md)
+Pages in `how-to/` are steps to follow, pages in `reference/` are facts to
+look up, and pages in `explanation/` give the reasons. Paths that start with
+`internal/` or name `main.go` are inside `pdev2/`, paths that start with `~`
+are in your home directory, and every other path starts at the top of the
+repository.
