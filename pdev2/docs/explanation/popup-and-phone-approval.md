@@ -15,36 +15,52 @@ What happens before and after your answer is in
 
 ## What You See
 
-For `pde-gh-write pr comment 12 --body "Looks good"`, run by an agent in
-the Herdr workspace `app` while another request also waits, the popup looks
-like this. It is 37 columns by 14 rows, inside a border that Herdr draws:
+An agent in the Herdr workspace `app` asks to post a four-line comment on
+PR 12 while another request also waits. The popup looks like this. It is
+37 columns by 14 rows, inside a border that Herdr draws:
 
 ```
 comment #12                    1 of 2  <- what is asked; first of two waiting
 octo/app                               <- repository
-app / review login fix                 <- Herdr workspace / agent session
+app / review login fix                 <- Herdr workspace / agent's title
 Fix login timeout                      <- the PR's title
-Typed:                                 <- keys typed so far
-                                       <- hint after a wrong answer
+Looks good. One question:              <- the comment, as much as fits
+should the timeout be 30s?
+The old value was 10s.
+Typed:                                 <- keys typed so far, then notices
 v: full; g: focus; q/Esc: dismiss
 
-             [ APPROVE ]               <- tap rows 8 to 10 to approve
+             [ APPROVE ]               <- tap row 10 or 11 to approve
 
 
-
-             [ DECLINE ]               <- tap rows 12 to 14 to decline
-
+             [ DECLINE ]               <- tap row 13 or 14 to decline
 ```
 
 The first four lines say which request this is and where it came from;
-[The approval queue and runner](approval-queue-and-runner.md) explains them,
-the `1 of 2`, and why a tap needs a second tap to confirm. The body follows
-them when there is room; here there is none, and `v` shows it. For `pr edit`,
-the lines after the context show what changes, such as `-Old title` and
-`+New title`. Instead of tapping, you can type `yes` or `no` and press
-Enter.
+[The approval queue and runner](approval-queue-and-runner.md) explains them
+and the `1 of 2`. The text that will be posted fills the rows below them;
+`v` shows all of it. For a `pr edit` that renames the PR and changes its
+body, those rows show what changes instead:
 
-At the same time, the phone shows the same lines as a question:
+```
+-Fix login
++Fix login timeout
+-Old body
+```
+
+The first tap on a button only selects it. The screen then shows:
+
+```
+Typed:   tap APPROVE again to confirm
+v: full; g: focus; q/Esc: dismiss
+
+           [>> APPROVE <<]
+```
+
+A second tap on APPROVE approves. Instead of tapping, you can type `yes` or
+`no` and press Enter.
+
+At the same time, the phone shows the same first four lines as a question:
 
 ```
 Approve comment #12?

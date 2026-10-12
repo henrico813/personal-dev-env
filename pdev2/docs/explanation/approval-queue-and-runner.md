@@ -2,8 +2,8 @@
 
 You may run several agents at once, and they can ask for approval within
 seconds of each other. You often answer on the phone, sometimes long after
-the agent stopped waiting. Before this change, that went wrong in three
-ways:
+the agent stopped waiting. Earlier versions of the approval program went
+wrong in three ways:
 
 - Every request looked alike. The phone asked
   `Approve gh pr merge in current repository (185)?`, which does not say
@@ -13,39 +13,26 @@ ways:
 - An approval given after the agent's 90-second wait posted nothing until
   the agent happened to rerun the command.
 
-This page shows what you see now and explains why it works this way. It
-builds on [How a request runs gh once](request-flow.md), which explains
-requests, records, and the request lock, and on
+Two terms come up throughout. The runner is a second copy of
+`pde-gh-write` that keeps waiting in the background after the agent's
+command gives up, and runs `gh` once you approve. The inbox is a Herdr key,
+Ctrl+b and then `a`, that reopens requests you set aside.
+
+This page explains what you see and why it works this way. It builds on
+[How a request runs gh once](request-flow.md), which explains requests,
+records, and the request lock, and on
 [Approving in the Herdr popup or on the phone](popup-and-phone-approval.md),
-which explains the popup and the phone question.
+which explains the popup and the phone question and draws the popup's
+screen.
 
 ## What You See
 
-An agent in the Herdr workspace `app` runs
-`pde-gh-write pr comment 12 --body "Looks good"` while another request is
-already waiting. The popup, 37 columns by 14 rows, shows:
+The popup and the phone question start with the same four lines; see the
+[drawn popup](popup-and-phone-approval.md#what-you-see). For a comment on
+PR 12 they are:
 
 ```
-comment #12                    1 of 2  <- what is asked; place in the queue
-octo/app                               <- repository
-app / review login fix                 <- Herdr workspace / agent's title
-Fix login timeout                      <- PR title
-Typed:
-                                       <- notices appear here
-v: full; g: focus; q/Esc: dismiss
-
-             [ APPROVE ]
-
-
-
-             [ DECLINE ]
-
-```
-
-The phone shows the same four lines as its question:
-
-```
-Approve comment #12?
+comment #12
 octo/app
 app / review login fix
 Fix login timeout
@@ -64,9 +51,10 @@ The first four lines are the request's context:
 4. The PR's title: the new title when the request sets one, otherwise the
    PR's current title from GitHub.
 
-A line that cannot be found is left out rather than guessed. The request
-body comes after these lines when there is room; in a 14-row popup there
-usually is none, and `v` shows the whole request.
+A line that cannot be found is left out rather than guessed. In the popup,
+the text that will be posted comes next, as much as fits: the start of a
+comment's body, or the changed lines of a `pr edit`. `v` shows the whole
+request.
 
 ## Where the Context Comes From
 
@@ -92,9 +80,7 @@ same request.
 The queue is every request that is still waiting and not dismissed, oldest
 first. A single popup works through it: after you answer or dismiss one
 request, the popup shows the oldest one still waiting, until none are left.
-The order uses the time the request was made, not the time its record last
-changed, because dismissing a request saves its record again and the inbox
-(below) still lists it.
+The order is the time each request was made.
 
 Each new request still asks Herdr to open the popup for it, so you do not
 have to look for it. Whichever popup you answer in moves on through the
@@ -102,8 +88,8 @@ same queue.
 
 ## The Pause After a Request Appears: "one moment..."
 
-For 600 milliseconds after each request appears, the notice line shows
-`one moment...`, and taps and Enter do nothing. Typed letters still appear
+For 600 milliseconds after each request appears, the line after `Typed:`
+shows `one moment...`, and taps and Enter do nothing. Typed letters still appear
 after `Typed:`.
 
 When you answer a request, the next one is drawn at once, in the same
@@ -114,17 +100,9 @@ Herdr gives it the keyboard while you may be typing or tapping elsewhere.
 ## Tapping Twice to Confirm
 
 In live use, accidental taps on the phone decided two requests. So the
-first tap on a button only selects it:
-
-```
-Typed:
-tap APPROVE again to confirm
-v: full; g: focus; q/Esc: dismiss
-
-           [>> APPROVE <<]
-```
-
-A second tap on the selected button answers. A tap on the other button
+first tap on a button only selects it: the button is drawn as
+`[>> APPROVE <<]` and the line after `Typed:` says
+`tap APPROVE again to confirm`. A second tap on the selected button answers. A tap on the other button
 selects that one instead, and a tap anywhere else, or a typed key, clears
 the selection. Typing `yes` or `no` and pressing Enter still answers in one
 step, because a typed word is hard to enter by accident. Each request
@@ -139,12 +117,12 @@ APPROVE button and approved it as well.
 ## Dismissing, and the Inbox: Ctrl+b a
 
 `q` or Esc dismisses a request. It keeps waiting: you can still answer on
-the phone or in a terminal, and its runner (below) keeps waiting too. But
-the queue skips it, so it no longer opens on its own. Dismissing saves the
-record, so the request's four hours start again.
+the phone or in a terminal, and its runner keeps waiting too. But the
+queue skips it, so it no longer opens on its own. Dismissing does not
+restart the request's four hours.
 
-The inbox brings dismissed requests back. In Herdr, press Ctrl+b and then
-`a`. That runs `pde-pr-approve --herdr-inbox`, which opens the popup on the
+The inbox brings dismissed requests back. Pressing Ctrl+b and then `a` in
+Herdr runs `pde-pr-approve --herdr-inbox`, which opens the popup on the
 oldest waiting request, dismissed or not, and then continues through the
 queue. With nothing waiting, it shows a `No approvals waiting` notification
 instead, so the key never seems to do nothing. The key is set in
@@ -183,8 +161,8 @@ later. For example:
 4. 10:25:00. The agent reruns the command. It prints
    `pde-gh-write: already ran ID, exit 0` and the new PR's address.
 
-Step 3 is done by the runner: a second copy of the program, started as
-`pde-gh-write --pde-runner ID` when the request is made. Like the phone
+Step 3 is done by the runner, started as `pde-gh-write --pde-runner ID`
+when the request is made. Like the phone
 question, it is started apart from the agent's command, so it keeps running
 when the agent's tool stops that command. It reads the record once a
 second:

@@ -74,8 +74,10 @@ popup moves to the oldest request still waiting.
 
 The popup is 40x16 in
 `chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/herdr-plugin.toml.tmpl`,
-leaving 37x14 inside the border. Below 11 rows the buttons are one row tall;
-below 7 rows only the first line is drawn.
+leaving 37x14 inside the border. Buttons are three rows tall from 16 rows,
+two rows from 11 to 15, and one row below 11; below 7 rows only the first
+line is drawn. Typed keys and notices share the line after the request
+text; when both do not fit, only the notice is shown.
 
 `pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or that
 request is not pending, and 1 if saving an answer fails. It exits 0 when the
@@ -214,7 +216,7 @@ details; the write itself still works:
 | Limit | Value |
 |---|---|
 | Wait for an answer | 90 seconds |
-| Record expiry | 4 hours after the last change; saving `moshi_pid` or `runner_pid` alone is not a change |
+| Record expiry | 4 hours after the last change; saving `moshi_pid`, `runner_pid`, or `dismissed` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
 | Settle pause after each popup request appears | 600 milliseconds |
 | Runner check interval | 1 second |

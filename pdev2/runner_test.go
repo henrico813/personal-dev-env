@@ -112,8 +112,8 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 
 // A runner killed or lost on reboot would leave a late approval unrun until
 // the agent happened to rerun the command, so an approval must start a new
-// one. Before this change the phone question saved its answer with its own
-// code, so the phone path is checked as well as the terminal path.
+// one. The phone question used to save its answer with its own code, so the
+// phone path is checked as well as the terminal path.
 func TestApprovalRestartsDeadRunner(t *testing.T) {
 	// The fake moshi-hook approves at once for the phone case.
 	dir := t.TempDir()

@@ -7,9 +7,9 @@ sessions can appear too, so decline one you do not recognize.
 
 ## From Herdr or Moshi
 
-Run the requested command through `pde-gh-write`. The Herdr popup shows a
-summary, including the changed lines of a `pr edit`; type `v` for the full
-request. The Moshi phone shows only the operation and PR, the repository, the
+Run the requested command through `pde-gh-write`. The Herdr popup shows the
+context, then the start of the text to be posted: a comment's body or the
+changed lines of a `pr edit`. Type `v` for the full request. The Moshi phone shows only the operation and PR, the repository, the
 Herdr workspace and session, and the PR title, so use the popup or terminal
 when the body matters. The writer waits up to 90 seconds in the foreground,
 and a detached runner keeps waiting after that. It runs `gh` only after
