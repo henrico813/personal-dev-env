@@ -21,10 +21,20 @@
   test.
 - Do not load a language skill merely because the repository contains that
   language. If a skill is loaded late, revisit affected prior work.
+- When reviewing an implementation plan, pull request, commit, commit range,
+  branch, or diff, load and follow the `review-plan` skill.
+- When writing or revising an implementation plan, load and follow the
+  `create-plan` skill.
+- When implementing an approved plan, load and follow the `implement-plan`
+  skill.
+- When writing a design doc, load and follow the `design-doc` skill.
+- When cleaning up the worktree and branch of a completed plan, load and
+  follow the `cleanup-plan` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
-  unavailable.
+  unavailable. Workflow skills are routed by the rules above; never name one
+  on a Vibe worker's line.
 
 ## Code Search
 

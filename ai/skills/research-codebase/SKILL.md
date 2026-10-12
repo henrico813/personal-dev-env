@@ -13,9 +13,11 @@ You are tasked with conducting comprehensive research across the codebase to ans
 
 Use this skill to document and explain the codebase as it exists today. Do not use it for proposing changes or planning work on the code; use create-plan for planning and implement-plan for execution instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
+## When you are a delegated agent
+
+When another agent gave you this task, research directly instead of
+starting the parallel Task agents described below. Return the findings,
+and write a research document only when the task gives a path.
 
 ## CRITICAL: YOUR ONLY JOB IS TO DOCUMENT AND EXPLAIN THE CODEBASE AS IT EXISTS TODAY
 - DO NOT suggest improvements or changes unless the user explicitly asks for them

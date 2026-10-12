@@ -20,10 +20,6 @@ range, a branch, or a diff. Do not use it for authoring a new plan or
 executing one; use create-plan for authoring and implement-plan for
 execution instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
-
 ## Initial Response
 
 When this command is invoked:

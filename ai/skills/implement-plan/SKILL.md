@@ -14,9 +14,16 @@ execution.
 
 Use this skill to implement an approved plan without redesigning it. Do not use it for authoring or reviewing the plan, or for tearing down its worktree; use create-plan for authoring, review-plan for review, and cleanup-plan for teardown instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
+## When you are a delegated agent
+
+When another agent gave you this task, run only the steps it names, and
+use Vibe only when your prompt says the user allowed it. Verify each
+step, tick the automated checks that passed, report what changed, and
+stop.
+
+Do not push, open or update a pull request, or merge unless your prompt
+says the user asked for it. Do not clean up worktrees or start other
+subagents unless your task asks for it.
 
 ## Plan Reference
 
@@ -96,6 +103,8 @@ Run one incomplete implementation step at a time. Pass the exact current step
 as the execution prompt, add an `Applicable skills:` line with every loaded
 skill needed for the step, and require the worker to load available listed
 skills before editing and report required skills that are unavailable.
+Never name a workflow skill on that line: Vibe leaves them out of the
+worker's skill list, but the worker would still read a named one.
 
 Before delegating through Vibe, verify every required worker skill is readable
 at `~/.agents/skills/<name>/SKILL.md`. If one is unavailable, do not delegate;
