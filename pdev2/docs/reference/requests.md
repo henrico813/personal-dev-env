@@ -6,7 +6,8 @@
 |---|---|
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
-| `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup for the request in `PDE_REQUEST_ID` |
+| `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
+| `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not |
 | `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
 | `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
 
@@ -62,12 +63,15 @@ output, `declined ID`, and `interrupted ID`.
 | `yes` or `no`, then Enter | Approve or decline; any case; anything else asks again |
 | Backspace or Delete | Remove the last typed character |
 | `v` | Show the full request in `less`; leftover keys are discarded after it closes |
-| `q` or Esc | Close without answering; the request stays pending |
+| `g` | Close the popup and focus the requesting agent's pane |
+| `q` or Esc | Dismiss: the request stays pending but no longer opens on its own |
 
 Only the press of a left-button tap counts. Input typed before the screen
-draws is discarded, and taps and Enter are ignored for 600 ms after the
-popup opens, while the popup shows `one moment...`. The popup redraws
-when its size changes.
+draws is discarded, and taps and Enter are ignored for 600 ms after each
+request appears, while the popup shows `one moment...`. The popup
+redraws when its size changes. The first line shows the queue position, such
+as `1 of 2`; after an answer or dismissal the popup moves to the oldest
+request still waiting.
 
 The popup is 40x16 in `plugin/herdr-plugin.toml`, leaving 37x14 inside
 the border. Buttons are three rows tall from 16 rows, two rows from 11
@@ -75,9 +79,12 @@ to 15, and one row below 11; below 7 rows only the first line is drawn.
 Typed keys and notices share the line after the request text; when both
 do not fit, only the notice is shown.
 
-`pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or the
-request is not pending, 0 when closed without an answer, and otherwise as
-`pde-pr-approve` does after recording an answer.
+`pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or that
+request is not pending, and 1 if saving an answer fails. It exits 0 when the
+queue is empty, when closed without an answer, or after `g`.
+
+`pde-pr-approve --herdr-inbox` exits 0 after opening the popup or showing a
+`No approvals waiting` notification, and 1 when the popup cannot be opened.
 
 ## Phone Question
 
@@ -106,8 +113,8 @@ the runner when the request expires, ends a running phone question with
 The runner checks the record once a second until the request is answered or
 expires. The runner's exit code is not read by anything.
 
-When the request expires, the runner ends the phone question before it
-exits.
+When the request expires, the runner ends the phone question and clears
+the sidebar marker before it exits.
 
 ## Files
 
@@ -132,15 +139,18 @@ Record fields, with those omitted when empty marked as optional:
 | `approval_text` | What `less` shows the approver |
 | `directory` (optional) | Where the request was made; `gh` runs there |
 | `gh` (optional) | The real `gh` found at creation; the runner uses it |
+| `created` | Creation time; orders the queue |
 | `updated` | Last save; expiry counts from it |
 | `state` | See [states](#states) |
 | `exit_code` | `gh`'s exit code once it ran |
 | `output` (optional) | Up to 64 KiB of `gh`'s standard output and error |
 | `moshi_pid`, `runner_pid` (optional) | Process IDs of the running phone question and runner |
+| `dismissed` (optional) | Dismissed from the popup |
 | `repo` (optional) | `--repo` value, or the repository `gh` found |
 | `pr_title` (optional) | Current PR title, when the request sets none |
 | `session_id` (optional) | OpenCode session that asked |
 | `session_title`, `workspace` (optional) | Herdr agent title and workspace label |
+| `pane_id` (optional) | Herdr pane of the agent that asked |
 
 ## Environment
 
@@ -149,9 +159,9 @@ Record fields, with those omitted when empty marked as optional:
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
 | `PATH` | The first `gh` is the guard, a wrapper that blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
-| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup and a notification, and looks up the Herdr agent |
-| `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show |
-| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set; recorded as `session_id` |
+| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
+| `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
+| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set; recorded as `session_id` and used to find the agent's pane |
 
 ## Request ID
 
@@ -197,8 +207,8 @@ details; the write itself still works:
 | Limit | Value |
 |---|---|
 | Wait for an answer | 90 seconds |
-| Record expiry | 4 hours after the last change; saving `moshi_pid` or `runner_pid` alone is not a change |
+| Record expiry | 4 hours after the last change; saving `moshi_pid`, `runner_pid`, or `dismissed` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
 | Runner check interval | 1 second |
 | Saved `gh` output | 64 KiB |
-| Settle pause after the popup opens | 600 milliseconds |
+| Settle pause after each popup request appears | 600 milliseconds |

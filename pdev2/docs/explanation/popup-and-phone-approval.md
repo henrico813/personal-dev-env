@@ -16,11 +16,11 @@ What happens before and after your answer is in
 ## What You See
 
 An agent in the Herdr workspace `app` asks to post a three-line comment
-on PR 12. The popup looks like this. It is 37 columns by 14 rows, inside
-a border that Herdr draws:
+on PR 12 while another request also waits. The popup looks like this. It
+is 37 columns by 14 rows, inside a border that Herdr draws:
 
 ```
-comment #12                            <- what is asked
+comment #12                    1 of 2  <- what is asked; queue position
 octo/app                               <- repository
 app / review login fix                 <- Herdr workspace / agent's title
 Fix login timeout                      <- the PR's title
@@ -28,7 +28,7 @@ Looks good. One question:              <- the comment, as much as fits
 should the timeout be 30s?
 The old value was 10s.
 Typed:                                 <- keys typed so far, then notices
-v: full text; q/Esc: dismiss
+v: full; g: focus; q/Esc: dismiss
 
              [ APPROVE ]               <- tap row 10 or 11 to approve
 
@@ -37,10 +37,11 @@ v: full text; q/Esc: dismiss
 ```
 
 The first four lines say which request this is and where it came from;
-[Where a request came from](request-context.md) explains them. The text
-that will be posted fills the rows below them; `v` shows all of it. For
-a `pr edit` that renames the PR and changes its body, those rows show
-what changes instead:
+[Where a request came from](request-context.md) explains them, and
+[The approval queue](approval-queue.md) explains the `1 of 2`, `g`, and
+dismissing. The text that will be posted fills the rows below them; `v`
+shows all of it. For a `pr edit` that renames the PR and changes its
+body, those rows show what changes instead:
 
 ```
 -Fix login
@@ -52,7 +53,7 @@ The first tap on a button only selects it. The screen then shows:
 
 ```
 Typed:   tap APPROVE again to confirm
-v: full text; q/Esc: dismiss
+v: full; g: focus; q/Esc: dismiss
 
            [>> APPROVE <<]
 ```
@@ -92,7 +93,8 @@ question cannot approve a request you declined.
   Enter you were typing for an agent could otherwise land in the popup and
   approve.
 - **One tap does not answer.** The first tap on a button only selects it,
-  and taps and Enter do nothing for a moment after the popup opens; see
+  and taps and Enter do nothing for a moment after each request appears;
+  see
   [Why one tap does not answer](popup-taps.md).
 - **A single `y` is not an answer.** An earlier version approved on one
   stray key. Typing `y` and Enter shows `Type yes or no, then Enter`.
@@ -105,8 +107,9 @@ question cannot approve a request you declined.
   the full request in `less`, the same text `pde-pr-approve` shows. Keys
   typed while `less` is open, such as `yes` typed into its search, are
   thrown away when it closes.
-- **`q` or Esc closes the popup without answering.** The request keeps
-  waiting for an answer elsewhere.
+- **`q` or Esc dismisses the request without answering.** It keeps waiting
+  for an answer elsewhere, but the popup no longer opens for it on its own.
+  The inbox, `pde-pr-approve --herdr-inbox`, opens it again.
 
 ## Why the Phone Question Keeps Running
 
@@ -157,7 +160,8 @@ requests. It sends one request there: open the `approval` popup of the
 plugin file, `plugin/herdr-plugin.toml`, tells Herdr the popup's size and
 to run `pde-pr-approve --herdr-popup` in it. The `herdr` command has no
 option that opens a popup, which is why the program uses the socket.
-`pde-gh-write` also asks Herdr to show a notification with a sound.
+`pde-gh-write` also marks the agent's pane with `Approval waiting` in
+Herdr's sidebar and asks Herdr to show a notification with a sound.
 
 This runs in the background and ignores errors. A slow or missing Herdr
 must not delay the request, and you can still answer on the phone or in a

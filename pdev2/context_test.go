@@ -27,7 +27,7 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	writeScript(t, dir, "moshi-hook", `printf '%s' "$7" > '`+asked+`'; exit 1`)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 2"}, 37, 14)
 	moshiAsk([]string{rec.ID})
 
 	sent, err := os.ReadFile(asked)
@@ -37,6 +37,9 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	question := string(sent)
 
 	want := []string{"merge #185", "owner/repo", "pdev-release / OC | release", "Ship it"}
+	if !strings.Contains(lines[0], "1 of 2") {
+		t.Fatalf("header %q lacks queue position", lines[0])
+	}
 	for i, text := range want {
 		if !strings.Contains(lines[i], text) {
 			t.Fatalf("popup line %d = %q, want %q", i, lines[i], text)
@@ -54,15 +57,14 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 // title are what now tell the approver which of several agents asked.
 func TestRequestRecordsHerdrAgentContext(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// The fake herdr lists one agent for session ses_1 and its workspace. It
-	// reports no socket, so the background popup request stops after asking
-	// for one; it touches done then.
+	// The fake herdr lists one agent for session ses_1 and its workspace, and
+	// touches done when the notification is shown.
 	dir := t.TempDir()
 	done := filepath.Join(dir, "done")
 	writeScript(t, dir, "herdr", `case "$1 $2" in
 "agent list") echo '{"result":{"agents":[{"agent_session":{"value":"ses_1"},"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | release"}]}}' ;;
 "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"pdev-release"}]}}' ;;
-"status server") touch '`+done+`' ;;
+"notification show") touch '`+done+`' ;;
 esac`)
 	// The fake gh answers the repository and current-PR lookups.
 	gh := writeScript(t, dir, "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
@@ -80,14 +82,14 @@ esac`)
 	if _, err := loadOrCreate(req, gh); err != nil {
 		t.Fatal(err)
 	}
-	// The popup request runs in the background; it must not outlive the test's PATH.
+	// The notification runs in the background; it must not outlive the test's PATH.
 	waitForFile(t, done)
 
 	got, err := load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Workspace != "pdev-release" || got.SessionTitle != "OC | release" ||
+	if got.PaneID != "w1:p2" || got.Workspace != "pdev-release" || got.SessionTitle != "OC | release" ||
 		got.Repo != "owner/repo" || got.PRTitle != "Ship it" {
 		t.Fatalf("context = %#v", got)
 	}
@@ -101,6 +103,71 @@ func waitForFile(t *testing.T, path string) {
 		}
 	}
 	t.Fatalf("%s never appeared", path)
+}
+
+// The Herdr notification runs beside the wait for an answer, so the answer
+// can arrive while the "Approval waiting" marker is still being set. A
+// marker set after the answer would stay on the agent's pane, though nothing
+// waits there any more.
+func TestMarkerClearedWhenAnswerArrivesFirst(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	dir := t.TempDir()
+	// The fake herdr holds the "Approval waiting" marker call until the gate
+	// file exists, so the answer below lands while the notification is
+	// mid-way. It logs marker calls and touches done when it shows the
+	// notification.
+	gate, done, log := filepath.Join(dir, "gate"), filepath.Join(dir, "done"), filepath.Join(dir, "log")
+	writeScript(t, dir, "herdr", `case "$1 $2" in
+"agent list") echo '{"result":{"agents":[{"agent_session":{"value":"ses_1"},"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | release"}]}}' ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"pdev-release"}]}}' ;;
+"pane report-metadata")
+  case "$*" in *--clear-title*) ;; *) while [ ! -e '`+gate+`' ]; do sleep 0.01; done ;; esac
+  echo "$*" >> '`+log+`' ;;
+"notification show") touch '`+done+`' ;;
+esac`)
+	gh := writeScript(t, dir, "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("HERDR_ENV", "1")
+	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
+	discardStderr(t)
+	req, err := parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = scopeRequest(req)
+
+	// Create the request, which starts the notification in the background,
+	// and approve it while the notification waits on the gate.
+	if state, err := loadOrCreate(req, gh); err != nil || state != statePending {
+		t.Fatalf("state %q, err %v", state, err)
+	}
+	if code := saveAnswer(req.ID, choiceYes); code != 0 {
+		t.Fatalf("saveAnswer returned %d", code)
+	}
+	// Release the notification and wait for it to finish.
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	markers := waitForNotification(t, log, done)
+
+	if last := markers[len(markers)-1]; !strings.Contains(last, "--clear-title") {
+		t.Fatalf("last marker operation = %q", last)
+	}
+}
+
+// Returns the marker operations once the notification either cleared its own
+// late marker or went on to show the notification.
+func waitForNotification(t *testing.T, log, done string) []string {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		data, _ := os.ReadFile(log)
+		_, afterSet, set := strings.Cut(string(data), "--title Approval waiting")
+		if _, err := os.Stat(done); err == nil || (set && strings.Contains(afterSet, "--clear-title")) {
+			return strings.Split(strings.TrimSpace(string(data)), "\n")
+		}
+	}
+	t.Fatal("notification did not finish")
+	return nil
 }
 
 // Users approved other sessions' merges without knowing what they were;
@@ -124,7 +191,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 37, 14)
 	if rec.PRTitle != "Ship it" || !strings.Contains(strings.Join(lines[:4], "\n"), "Ship it") {
 		t.Fatalf("PR title %q, popup %q", rec.PRTitle, lines[:4])
 	}
