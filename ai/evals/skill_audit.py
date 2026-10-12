@@ -14,6 +14,9 @@ from contextlib import closing
 from pathlib import Path
 
 DB = Path.home() / ".local/share/opencode/opencode.db"
+# A read of a skill missing here failed, so it does not count. Vibe workers
+# read the same skills from /vibe-home/.agents/skills in their container.
+INSTALLED = Path.home() / ".agents/skills"
 # Installed skills only; repository copies such as ai/skills/x/SKILL.md
 # are review material, not loads.
 SKILL = re.compile(r"\.(?:agents|claude)/skills/([\w${},-]+)/SKILL\.md")
@@ -71,6 +74,7 @@ def audit(calls: list[tuple[str, dict]]) -> str:
 
     The first edit is an edit, write, or patch tool call, or a shell
     command such as ``planner new``, ``git commit``, or ``vibe run``.
+    Skills not installed on this machine are left out.
 
     Args:
         calls: Tool name and input pairs in call order.
@@ -84,7 +88,8 @@ def audit(calls: list[tuple[str, dict]]) -> str:
         command = HEREDOC.sub("", str(args.get("command", "")))
         command = QUOTED.sub("''", command)
         for skill in skills_read(name, args):
-            if skill not in before + after:
+            installed = (INSTALLED / skill / "SKILL.md").is_file()
+            if installed and skill not in before + after:
                 (after if edited else before).append(skill)
         pushed = pushed or bool(PUSH.search(command))
         edited = edited or name in ("edit", "write", "patch")
