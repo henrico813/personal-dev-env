@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -27,13 +29,14 @@ const (
 
 type record struct {
 	// The request as the agent made it.
-	ID           string   `json:"id"`
-	Args         []string `json:"args"`
-	Title        string   `json:"title"`
-	Body         string   `json:"body"`
-	BodyFile     bool     `json:"body_file"`
-	ApprovalText string   `json:"approval_text"`
-	Directory    string   `json:"directory,omitempty"`
+	ID           string    `json:"id"`
+	Args         []string  `json:"args"`
+	Title        string    `json:"title"`
+	Body         string    `json:"body"`
+	BodyFile     bool      `json:"body_file"`
+	ApprovalText string    `json:"approval_text"`
+	Directory    string    `json:"directory,omitempty"`
+	Created      time.Time `json:"created"`
 	// The real gh found when the request was created. The detached runner
 	// starts from a popup or phone environment whose PATH may lack it.
 	GH string `json:"gh,omitempty"`
@@ -45,6 +48,7 @@ type record struct {
 	Output    string    `json:"output,omitempty"`
 	MoshiPID  int       `json:"moshi_pid,omitempty"`
 	RunnerPID int       `json:"runner_pid,omitempty"`
+	Dismissed bool      `json:"dismissed,omitempty"`
 
 	// Context shown to the approver.
 	Repo         string `json:"repo,omitempty"`
@@ -52,6 +56,7 @@ type record struct {
 	SessionID    string `json:"session_id,omitempty"`
 	SessionTitle string `json:"session_title,omitempty"`
 	Workspace    string `json:"workspace,omitempty"` // Herdr label, or the ID when unlabeled.
+	PaneID       string `json:"pane_id,omitempty"`   // For g and the sidebar marker.
 }
 
 func stateDir() string {
@@ -139,4 +144,31 @@ func lockRequest(id string) (*os.File, error) {
 
 func expired(rec record) bool {
 	return time.Since(rec.Updated) > expiry
+}
+
+// queuedRecords returns the pending requests the popup visits, oldest first.
+func queuedRecords() []record { return pendingRecords(false) }
+
+// inboxRecords also includes dismissed requests, which the inbox still lists.
+func inboxRecords() []record { return pendingRecords(true) }
+
+// Oldest first; Updated moves forward when a record changes, so it cannot
+// order the queue.
+func pendingRecords(includeDismissed bool) []record {
+	entries, err := os.ReadDir(stateDir())
+	if err != nil {
+		return nil
+	}
+	var records []record
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		rec, err := load(strings.TrimSuffix(entry.Name(), ".json"))
+		if err == nil && rec.State == statePending && !expired(rec) && (includeDismissed || !rec.Dismissed) {
+			records = append(records, rec)
+		}
+	}
+	slices.SortFunc(records, func(a, b record) int { return a.Created.Compare(b.Created) })
+	return records
 }

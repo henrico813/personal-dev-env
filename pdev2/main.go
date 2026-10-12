@@ -41,6 +41,9 @@ func main() {
 		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
 			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
 		}
+		if len(os.Args) == 2 && os.Args[1] == "--herdr-inbox" {
+			os.Exit(openInbox())
+		}
 		os.Exit(approve(os.Args[1:]))
 	}
 	os.Exit(requestWrite(os.Args[1:]))

@@ -7,17 +7,18 @@ It builds on
 [Approving in the Herdr popup or on the phone](popup-and-phone-approval.md),
 which draws the popup.
 
-## The Pause After the Popup Opens: "one moment..."
+## The Pause After a Request Appears: "one moment..."
 
-For 600 milliseconds after the popup opens, `one moment...` appears
+For 600 milliseconds after each request appears, `one moment...` appears
 after `Typed:` on the same line, and taps and Enter do nothing. Typed
 letters still appear after `Typed:`, and the notice stays until the
 pause ends, so a fast `yes` and Enter that does nothing still shows why.
 
-Herdr opens the popup on its own when a request arrives and gives it the
-keyboard and taps, while you may be typing or tapping elsewhere. Without the
-pause, a tap or Enter meant for something else could answer a request you
-have not read.
+When you answer a request, the next one in the queue is drawn at once, in
+the same place. An impatient second tap would otherwise land on the new
+request and answer it before you could read it. The first popup needs the
+pause too: Herdr opens it on its own and gives it the keyboard and taps,
+while you may be typing or tapping elsewhere.
 
 ## Tapping Twice to Confirm
 
@@ -28,6 +29,9 @@ answers. A tap on the other button selects that one instead, and a tap
 anywhere else, or a typed key, clears the selection. Typing `yes` or `no`
 and pressing Enter still answers in one step, because a typed word is hard
 to enter by accident.
+
+Each request starts with nothing selected, so a selection never carries
+over to the next request.
 
 Only the press of a tap counts. A tap reaches the popup as two messages,
 press and release. If the release counted too, one tap would select a

@@ -65,6 +65,7 @@ func runnerMain(id string) int {
 			return 1
 		}
 		if expired(rec) {
+			clearRecordMarker(rec)
 			stopMoshi(rec.MoshiPID)
 			return 0
 		}
