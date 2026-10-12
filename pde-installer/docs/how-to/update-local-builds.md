@@ -1,7 +1,8 @@
 # Update Local Builds
 
 The local backend builds repository applications: `planner`,
-`opencode-inline-shim` and `vibe`.
+`opencode-inline-shim`, `vibe`, and `pde-gh-write` (also linked as
+`pde-pr-approve`).
 
 1. Change the application source in its repository directory.
 2. If an application is added or removed, update the build specifications in

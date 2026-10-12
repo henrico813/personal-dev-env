@@ -11,8 +11,12 @@ The reference lists exact commands, states, exit codes, files, and limits
 for lookup. Paths and commands are relative to `pdev2/` unless they start
 at the repository root.
 
-The installer does not build this program yet. The shell scripts in
-`chezmoi/dot_local/bin/` are still the installed commands.
+In the full profile, the installer builds this program as
+`~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it.
+
+## How-to Guides
+
+- [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md)
 
 ## Explanation
 

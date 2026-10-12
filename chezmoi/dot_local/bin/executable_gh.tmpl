@@ -1,3 +1,5 @@
+{{- /* Renders empty for terminal profiles, so chezmoi removes the guard there. */ -}}
+{{- if ne (env "PDE_PROFILE") "terminal" -}}
 #!/usr/bin/env bash
 # Block raw pull-request writes. Only pde-gh-write sets PDE_GH_WRITE=1 after approval.
 set -euo pipefail
@@ -70,3 +72,4 @@ if [[ "$blocked" == true ]]; then
     exit 2
 fi
 exec "$real_gh" "$@"
+{{ end -}}

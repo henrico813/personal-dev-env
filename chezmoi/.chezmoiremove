@@ -2,6 +2,10 @@
 .config/systemd/user/opencode-web.service
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
+{{ if eq (env "PDE_PROFILE") "terminal" }}
+.local/bin/pde-gh-write
+.local/bin/pde-pr-approve
+{{ end }}
 {{ if eq (env "PDE_PROFILE") "full" }}
 Projects/CLAUDE.md
 .codex/skills/behavior-focused-testing

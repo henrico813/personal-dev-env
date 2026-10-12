@@ -5,7 +5,9 @@ and `install full` save an explicit selection. Bare `install` reconciles the
 saved selection or infers full from legacy installer state; it errors when
 neither exists. Terminal skips full-only components. Switching between
 selections changes future reconciliation, but switching from full to terminal
-does not uninstall full-only artifacts. Every install reconciles tools and
+does not uninstall full-only artifacts. The exception is PR write approval:
+chezmoi removes `pde-gh-write`, `pde-pr-approve`, and the `gh` guard on
+terminal machines. Every install reconciles tools and
 managed home configuration.
 
 Color selection is an independent per-machine value in the same config file.
