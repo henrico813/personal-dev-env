@@ -54,15 +54,32 @@ func saveAnswer(id, choice string) int {
 		fmt.Fprintf(stderr, "pde-pr-approve: request %s was already handled or expired\n", id)
 		return 0
 	}
+	ask := rec.MoshiPID
+	if _, err := recordAnswer(rec, choice); err != nil {
+		fmt.Fprintf(stderr, "pde-pr-approve: %v\n", err)
+		return exitFailed
+	}
+	stopMoshi(ask)
+	return 0
+}
+
+// recordAnswer saves choice on a pending record that the caller has locked and
+// loaded. It clears the phone question's PID and starts the runner on
+// approval. saveAnswer then ends the phone question; moshiAsk must not,
+// because that question is the caller.
+func recordAnswer(rec record, choice string) (record, error) {
+	rec.MoshiPID = 0
 	rec.State = stateDeclined
 	if choice == "yes" {
 		rec.State = stateApproved
 	}
 	if err := save(rec); err != nil {
-		fmt.Fprintf(stderr, "pde-pr-approve: %v\n", err)
-		return exitFailed
+		return rec, err
 	}
-	return 0
+	if rec.State == stateApproved {
+		rec = ensureRunner(rec)
+	}
+	return rec, nil
 }
 
 func approvePopup(id string) int {

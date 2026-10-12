@@ -15,7 +15,7 @@ the same arguments instead.
 1. An agent runs `pde-gh-write pr comment 12 --body "Looks good"`.
 2. The program saves a record of the request and prints its ID, a long
    string that names this exact request. The line starts with
-   `pde-gh-write: waiting for approval` and ends with
+   `pde-gh-write: waiting for approval` and includes
    `run pde-pr-approve ID in a terminal`.
 3. If the agent runs inside Herdr, a terminal program that holds many
    terminals, an approval popup opens there. A yes-or-no question also goes
@@ -26,10 +26,11 @@ the same arguments instead.
 4. After you approve, the waiting program runs `gh` once and passes on its
    output and exit code. After you decline, nothing is posted.
 5. With no answer within 90 seconds, the program stops waiting and exits 3.
-   The request stays saved, so you can still approve it.
+   A runner, a copy of the program started in the background with the
+   request, keeps waiting and runs `gh` once you approve.
 6. The agent reruns the same command. Instead of posting again, the program
-   reports the result, such as `pde-gh-write: already ran ID, exit 0`. If
-   you approved after the wait ended, this rerun is the one that runs `gh`.
+   reports the result, such as `pde-gh-write: already ran ID, exit 0`,
+   followed by what `gh` printed, such as a new PR's address.
 
 ## Why One Record per Request
 
@@ -50,7 +51,8 @@ Only one program at a time can work on a request; the others wait their
 turn. This is called holding the request's lock. Saving a request,
 recording your answer, and running `gh` all happen while holding it, so if
 an agent runs an approved command twice at once, the second run waits and
-then finds that `gh` already ran.
+then finds that `gh` already ran. The runner follows the same rule, so `gh`
+runs once whether the runner or a rerun gets there first.
 
 Before starting `gh`, the program marks the record as running. A record
 found still marked running means that run died partway. It is reported as
@@ -62,10 +64,11 @@ Four hours after a record last changed, the same command becomes a new
 request that needs a fresh answer. An old approval should not let a command
 post hours later, when the pull request may have moved on.
 
-Sending a new phone question on a rerun does not count as a change. If the
-question keeps failing, for example because `moshi-hook`, the command that
-sends it, is missing, each rerun sends a new one. If that counted, every
-rerun would push expiry back and the request would never expire.
+Sending a new phone question or starting a new runner on a rerun does not
+count as a change. If either keeps failing, for example because
+`moshi-hook`, the command that sends the question, is missing, each rerun
+starts a new one. If that counted, every rerun would push expiry back and the
+request would never expire.
 
 ## Why Body Files Are Read Once
 
@@ -103,5 +106,6 @@ When it meets an option missing from the list, it does not guess: the
 popup shows `merge PR` instead of `merge #12`, and `pr edit` cannot show the
 old values. The lists have to be updated when GitHub adds options to `gh`.
 
-Exact states, exit codes, files, and limits are in the
+[Approving after the agent stopped waiting](late-approvals.md) explains the
+runner. Exact states, exit codes, files, and limits are in the
 [reference](../reference/requests.md).

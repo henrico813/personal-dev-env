@@ -9,13 +9,14 @@ import (
 )
 
 // Expiry is measured from the record's last change, not its creation. Saving
-// the phone question's PID is not a change; see saveKeepingAge.
+// the PID of a phone question or runner is not a change; see saveKeepingAge.
 const expiry = 4 * time.Hour
 
 // An answer from the terminal, the Herdr popup, or the phone moves a record
-// from pending to approved or declined. pde-gh-write moves an approved record
-// to running before gh starts and to ran after it exits. Finding running under
-// the lock means that run died, and it is never retried.
+// from pending to approved or declined. pde-gh-write, or the request's runner,
+// moves an approved record to running before gh starts and to ran after it
+// exits. Finding running under the lock means that run died, and it is never
+// retried.
 const (
 	statePending  = "pending"
 	stateApproved = "approved"
@@ -33,12 +34,17 @@ type record struct {
 	BodyFile     bool     `json:"body_file"`
 	ApprovalText string   `json:"approval_text"`
 	Directory    string   `json:"directory,omitempty"`
+	// The real gh found when the request was created. The detached runner
+	// starts from a popup or phone environment whose PATH may lack it.
+	GH string `json:"gh,omitempty"`
 
 	// Its state and result.
-	Updated  time.Time `json:"updated"`
-	State    string    `json:"state"`
-	Exit     int       `json:"exit_code"`
-	MoshiPID int       `json:"moshi_pid,omitempty"`
+	Updated   time.Time `json:"updated"`
+	State     string    `json:"state"`
+	Exit      int       `json:"exit_code"`
+	Output    string    `json:"output,omitempty"`
+	MoshiPID  int       `json:"moshi_pid,omitempty"`
+	RunnerPID int       `json:"runner_pid,omitempty"`
 
 	// Context shown to the approver.
 	Repo         string `json:"repo,omitempty"`
@@ -77,10 +83,11 @@ func save(rec record) error {
 	return writeRecord(rec)
 }
 
-// saveKeepingAge saves a change that is not an answer, such as the phone
-// question's PID, without restarting the four-hour expiry. Otherwise each
-// rerun that replaced a failed phone question would restart expiry, and the
-// request would never expire. The caller holds the request lock.
+// saveKeepingAge saves a change that is not an answer, such as the PID of a
+// phone question or runner, without restarting the four-hour expiry.
+// Otherwise each rerun that replaced a failed phone question or runner would
+// restart expiry, and the request would never expire. The caller holds the
+// request lock.
 func saveKeepingAge(rec record) error {
 	stored, err := load(rec.ID)
 	if err != nil {

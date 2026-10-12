@@ -8,6 +8,7 @@
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup for the request in `PDE_REQUEST_ID` |
 | `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
+| `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
@@ -19,8 +20,8 @@
 | `pending` | `pde-gh-write` | Waiting for an answer |
 | `approved` | An answer | Approved in a terminal, popup, or phone; `gh` has not started |
 | `declined` | An answer | Declined in a terminal, popup, or phone |
-| `running` | `pde-gh-write` | `gh` started; if found later, that run died |
-| `ran` | `pde-gh-write` | `gh` exited; `exit_code` holds its code |
+| `running` | Writer or runner | `gh` started; if found later, that run died |
+| `ran` | Writer or runner | `gh` exited; `exit_code` and `output` hold the result |
 
 ## pde-gh-write Exit Codes
 
@@ -29,17 +30,19 @@
 | `0` | `gh` succeeded, now or in an earlier run |
 | `1` | This program failed, such as no real `gh` or an unreadable record |
 | `2` | The command or its arguments were refused |
-| `3` | No answer within 90 seconds; rerun after approval |
+| `3` | No answer within 90 seconds; the runner runs `gh` once approved, so rerun only to read the result |
 | `4` | The request was declined |
 | `6` | An earlier run was interrupted; it is never retried |
 | other | Passed through from `gh` |
 
 `gh`'s own exit codes pass through too, and `gh` also uses 1, 2, and 4. Lines
-on standard error that start with `pde-gh-write:` come from this program;
-anything else came from `gh`.
+on standard error that start with `pde-gh-write:` come from this program.
+What `gh` prints, on standard output and standard error alike, is saved and
+then printed on standard output after `gh` exits, so a rerun can print it
+again.
 
-Rerun status lines are `already ran ID, exit N`, `declined ID`, and
-`interrupted ID`.
+Rerun status lines are `already ran ID, exit N`, followed by the saved `gh`
+output, `declined ID`, and `interrupted ID`.
 
 ## pde-pr-approve Exit Codes
 
@@ -85,7 +88,17 @@ context lines, built from the saved record.
 | other, or not started | No answer |
 
 `--moshi-ask` itself exits 1 for wrong arguments or when the record cannot be
-locked or saved, and 0 otherwise.
+locked or saved, and 0 otherwise. An answer from the terminal or popup, or
+the runner when the request expires, ends a running phone question with
+`SIGTERM` to its process group.
+
+## Runner
+
+The runner checks the record once a second until the request is answered or
+expires. The runner's exit code is not read by anything.
+
+When the request expires, the runner ends the phone question before it
+exits.
 
 ## Files
 
@@ -108,11 +121,13 @@ Record fields, with those omitted when empty marked as optional:
 | `title`, `body` | Requested title and body; `body` holds body-file contents |
 | `body_file` | `body` is sent to `gh` on standard input |
 | `approval_text` | What `less` shows the approver |
-| `directory` (optional) | Where the request was made |
+| `directory` (optional) | Where the request was made; `gh` runs there |
+| `gh` (optional) | The real `gh` found at creation; the runner uses it |
 | `updated` | Last save; expiry counts from it |
 | `state` | See [states](#states) |
 | `exit_code` | `gh`'s exit code once it ran |
-| `moshi_pid` (optional) | Process ID of the running phone question |
+| `output` (optional) | Up to 64 KiB of `gh`'s standard output and error |
+| `moshi_pid`, `runner_pid` (optional) | Process IDs of the running phone question and runner |
 | `repo` (optional) | `--repo` value, or the repository `gh` found |
 | `pr_title` (optional) | Current PR title, when the request sets none |
 | `session_id` (optional) | OpenCode session that asked |
@@ -173,5 +188,7 @@ details; the write itself still works:
 | Limit | Value |
 |---|---|
 | Wait for an answer | 90 seconds |
-| Record expiry | 4 hours after the last change; saving `moshi_pid` alone is not a change |
+| Record expiry | 4 hours after the last change; saving `moshi_pid` or `runner_pid` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
+| Runner check interval | 1 second |
+| Saved `gh` output | 64 KiB |

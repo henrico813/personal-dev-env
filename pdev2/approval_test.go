@@ -296,6 +296,39 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 	}
 }
 
+// A phone question outlived popup answers by up to four hours, leaving a
+// question on the phone that could no longer decide anything.
+func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake moshi-hook never answers, like a phone nobody looks at. It
+	// runs as a child of the ask, so only a signal to the ask's whole group
+	// reaches it. It touches ready once it can catch the signal, and stopped
+	// when it gets one.
+	dir := t.TempDir()
+	ready, stopped := filepath.Join(dir, "ready"), filepath.Join(dir, "stopped")
+	writeScript(t, dir, "moshi-hook", `trap 'touch "`+stopped+`"; exit 0' TERM; touch "`+ready+`"; sleep 30 & wait`)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	old := moshiProgram
+	moshiProgram = func() (string, error) { return writeScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
+	t.Cleanup(func() { moshiProgram = old })
+	// Start a real detached ask for a saved request.
+	rec := record{ID: "popup", State: statePending}
+	if err := save(rec); err != nil {
+		t.Fatal(err)
+	}
+	rec = startMoshi(rec)
+	if rec.MoshiPID == 0 {
+		t.Fatal("phone ask did not start")
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-rec.MoshiPID, syscall.SIGKILL) })
+	waitForFile(t, ready)
+
+	// Answer as the popup does; that must stop the ask.
+	saveAnswer(rec.ID, "yes")
+
+	waitForFile(t, stopped)
+}
+
 // Agents rerun a waiting command to learn what happened. While the first
 // phone question is still waiting, a rerun must not send another, or the phone
 // would show several questions for one request.
