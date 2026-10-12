@@ -1,23 +1,73 @@
-# Approving in the Herdr Popup or on the Phone
+# Why Popup and Phone Answers Are Safe
 
-When an agent asks to post to a pull request, you do not have to switch to
-a terminal and type `pde-pr-approve ID`. Two quicker ways to answer appear
-on their own:
+When an agent asks to post to a pull request, two quick ways to answer
+appear on their own: a small approval window, the popup, in Herdr, the
+terminal program the agents run in; and a yes-or-no question on your phone
+through the Moshi app. Both are easy to answer by accident: a phone tap
+can land on the wrong spot, and keys typed for an agent can land in the
+popup. This page explains what keeps an answer from counting unless you
+meant it. The keys, sizes, and limits themselves are in the
+[reference](../reference/requests.md#herdr-popup).
 
-- Herdr is a terminal program that holds many terminals, and the agents run
-  inside it. Herdr opens a small approval window, the popup, on top of
-  them.
-- Moshi is a phone app. `moshi-hook` is a command that sends a yes-or-no
-  question to it and waits for your answer.
+## The First Answer Wins
 
-What happens before and after your answer is in
-[How a request runs gh once](request-flow.md).
+You can answer in the popup, on the phone, or with `pde-pr-approve ID` in
+a terminal. Each one saves your answer only if the request is still
+waiting. It checks while holding the request's lock (see
+[Why gh runs only once](request-flow.md#why-gh-runs-only-once)), so two
+answers cannot both be saved. A popup still showing a request answered
+elsewhere stays open, and a phone question that could not be ended stays on
+the phone, but a later answer from either finds the request already
+answered or expired and changes nothing. So a tap on an old popup cannot
+undo an approval after `gh` may have posted, and an old phone question
+cannot approve a request you declined.
 
-## What You See
+## Why One Tap Does Not Answer
 
-An agent in the Herdr workspace `app` asks to post a three-line comment
-on PR 12 while another request also waits. The popup looks like this. It
-is 37 columns by 14 rows, inside a border that Herdr draws:
+You often answer the popup by tapping it on a phone, where a stray tap is
+easy. In live use, accidental taps decided two requests.
+
+- **The first tap only selects a button.** A second tap on the same button
+  answers. Typing `yes` or `no` and pressing Enter still answers in one
+  step, because a typed word is hard to enter by accident. Each request
+  starts with nothing selected, so a selection never carries over to the
+  next request.
+- **Only the press of a tap counts.** A tap reaches the popup as two
+  messages, press and release. If the release counted too, one tap would
+  select a button and confirm it at once.
+- **Taps and Enter do nothing for a moment after each request appears.**
+  When you answer a request, the next one in the queue is drawn at once,
+  in the same place, and an impatient second tap would answer it before
+  you could read it. The first popup needs the pause too: Herdr opens it
+  on its own and gives it the keyboard and taps while you may be typing or
+  tapping elsewhere. The `one moment...` notice says why a fast `yes` and
+  Enter did nothing.
+- **The popup redraws as soon as its size changes,** so the buttons are
+  drawn where taps are checked.
+
+## Why Typed Keys Are Not Trusted
+
+- **Keys typed before the popup appears are thrown away.** The program
+  asks Herdr to put the keyboard on the popup when it opens, so a `yes`
+  and Enter you were typing for an agent could otherwise land in the popup
+  and approve.
+- **A single `y` is not an answer.** An earlier version approved on one
+  stray key.
+- **Keys typed while `v` shows the full request are thrown away** when
+  `less` closes, so a `yes` typed into its search does not answer.
+- **Agent text cannot change the screen.** The agent writes the title and
+  body. Characters that tell a terminal to clear the screen or move the
+  cursor are shown as plain text instead, so the clear-screen code
+  `ESC [2J` appears as `^[[2J`. Otherwise an agent could draw a different
+  request over the real one.
+
+## Why the Popup Shows What It Shows
+
+You may run several agents at once, and they can ask within seconds of
+each other, so each request starts with lines that say what is asked and
+which agent asked. A line that cannot be found is left out rather than
+guessed, so a folder is never mistaken for a repository. At Herdr's popup
+size of 37 columns by 14 rows, the popup looks like this:
 
 ```
 comment #12                    1 of 2  <- what is asked; queue position
@@ -36,138 +86,41 @@ v: full; g: focus; q/Esc: dismiss
              [ DECLINE ]               <- tap row 13 or 14 to decline
 ```
 
-The first four lines say which request this is and where it came from;
-[Where a request came from](request-context.md) explains them, and
-[The approval queue](approval-queue.md) explains the `1 of 2`, `g`, and
-dismissing. The text that will be posted fills the rows below them; `v`
-shows all of it. For a `pr edit` that renames the PR and changes its
-body, those rows show what changes instead:
+The buttons are two rows tall here, which leaves six rows below the first
+line for the context lines and the start of the text that will be posted.
+With three-row buttons only three rows were left, which the context lines
+alone filled. The typed keys and the notices share one line to save
+another row; when both do not fit, the notice wins, because it says what
+the next tap or Enter will do. For a `pr edit` that renames the PR and
+changes its body, the text rows show the changed lines first, then the new
+body:
 
 ```
 -Fix login
 +Fix login timeout
 -Old body
++New body
+New body
 ```
 
-The first tap on a button only selects it. The screen then shows:
+## Why One Popup Works Through a Queue
 
-```
-Typed:   tap APPROVE again to confirm
-v: full; g: focus; q/Esc: dismiss
+When each request opened its own popup, several agents meant several
+popups, and a closed popup never came back. Now one popup works through
+every waiting request, and a request you dismiss keeps waiting; the inbox
+key brings it back. With nothing waiting, the inbox shows a notification,
+so the key never seems to do nothing.
 
-           [>> APPROVE <<]
-```
+The `Approval waiting` marker in Herdr's sidebar is set with a four-hour
+time limit, the request's lifetime, so that Herdr can drop a marker the
+program never clears. The program finds the agent's pane through its
+OpenCode session, and Herdr records only the main OpenCode session, so a
+request from a subagent gets no marker.
 
-A second tap on APPROVE approves. Instead of tapping, you can type `yes` or
-`no` and press Enter.
+## Why the Popup Is Opened Through Herdr's Socket
 
-At the same time, the phone shows the same four lines as a question:
-
-```
-Approve comment #12?
-octo/app
-app / review login fix
-Fix login timeout
-```
-
-## Three Places to Answer; the First Wins
-
-You can answer in the popup, on the phone, or with `pde-pr-approve ID` in a
-terminal. Each one saves your answer only if the request is still waiting.
-It checks while holding the request's lock (see
-[Why gh runs only once](request-flow.md#why-gh-runs-only-once)), so two
-answers cannot both be saved.
-
-An answer in the popup or a terminal ends the phone question, so it does
-not stay on your phone for hours. A popup still showing a request answered
-elsewhere stays open, and a phone question that could not be ended stays on
-the phone. A later answer from either finds the request already answered or
-expired and changes nothing. A tap on an old popup
-cannot undo an approval after `gh` may have posted, and an old phone
-question cannot approve a request you declined.
-
-## What Stops an Accidental Answer
-
-- **Keys typed before the popup appears are thrown away.** The program
-  asks Herdr to put the keyboard on the popup when it opens, so a `yes` and
-  Enter you were typing for an agent could otherwise land in the popup and
-  approve.
-- **One tap does not answer.** The first tap on a button only selects it,
-  and taps and Enter do nothing for a moment after each request appears;
-  see
-  [Why one tap does not answer](popup-taps.md).
-- **A single `y` is not an answer.** An earlier version approved on one
-  stray key. Typing `y` and Enter shows `Type yes or no, then Enter`.
-- **Agent text cannot change the screen.** The agent writes the title and
-  body. Characters that tell a terminal to clear the screen or move the
-  cursor are shown as plain text instead, so the clear-screen code
-  `ESC [2J` appears as `^[[2J`. Otherwise an agent could draw a different
-  request over the real one.
-- **`v` shows everything.** The popup has room only for a summary. `v` opens
-  the full request in `less`, the same text `pde-pr-approve` shows. Keys
-  typed while `less` is open, such as `yes` typed into its search, are
-  thrown away when it closes.
-- **`q` or Esc dismisses the request without answering.** It keeps waiting
-  for an answer elsewhere, but the popup no longer opens for it on its own.
-  The inbox, `pde-pr-approve --herdr-inbox`, opens it again.
-
-## Why the Phone Question Keeps Running
-
-The agent's command waits for an answer for only 90 seconds. When the
-command ends, the tool that ran it stops every program the command started.
-You may answer the phone hours later, so `pde-gh-write` starts the phone
-question as a separate program that the agent's tool does not stop, and
-does not wait for it. That program is `pde-gh-write --moshi-ask`. It runs
-`moshi-hook` for up to four hours, the same as the request's lifetime.
-
-When you answer on the phone, it saves your answer if the request is still
-waiting. It never runs `gh`. The request's runner, the agent's waiting
-command, or its next rerun of the same command does that; see
-[Approving after the agent stopped waiting](late-approvals.md).
-
-### Why a Rerun Does Not Send a Second Question
-
-Agents rerun a command to find out what happened to it. The request's
-record keeps the process ID of the phone question, the number the system
-gives a running program. A rerun of a waiting request checks whether that
-program is still running:
-
-- If it is, the rerun sends nothing, so the phone never shows two questions
-  for one request.
-- If it ended without an answer, for example because `moshi-hook` is
-  missing, the rerun sends a new question. Otherwise you could not answer on
-  the phone at all.
-
-When the phone question ends, it removes its process ID from the record.
-The system reuses process IDs, so an old one could later belong to an
-unrelated program. That program would look like a running question and stop
-reruns from sending a new one.
-
-### Why This Does Not Extend the Four Hours
-
-A request expires four hours after its record last changed. Saving or
-removing the process ID does not count as a change. If it did, a question
-that kept failing would be replaced on every rerun, each replacement would
-push expiry back, and the request would never expire.
-
-## How the Popup Is Opened
-
-Herdr sets `HERDR_ENV=1` in the terminals it runs; without it, no popup is
-opened. With it, `pde-gh-write` runs `herdr status server` to find Herdr's
-socket, a file that other programs on the same computer use to send Herdr
-requests. It sends one request there: open the `approval` popup of the
-`pde.approval` plugin, and give it the request ID in `PDE_REQUEST_ID`. The
-plugin file, which chezmoi deploys from
-`chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/`, tells Herdr the
-popup's size and to run `pde-pr-approve --herdr-popup` in it. The `herdr`
-command has no option that opens a popup, which is why the program uses the
-socket.
-`pde-gh-write` also marks the agent's pane with `Approval waiting` in
-Herdr's sidebar and asks Herdr to show a notification with a sound.
-
-This runs in the background and ignores errors. A slow or missing Herdr
-must not delay the request, and you can still answer on the phone or in a
-terminal.
-
-Popup keys, exit codes, and sizes are in the
-[reference](../reference/requests.md#herdr-popup).
+The `herdr` command has no option that opens a popup, so the program sends
+the request to Herdr's socket, a file that other programs on the same
+computer use to send Herdr requests. This runs in the background and
+ignores errors: a slow or missing Herdr must not delay the request, and you
+can still answer on the phone or in a terminal.

@@ -42,8 +42,15 @@ What `gh` prints, on standard output and standard error alike, is saved and
 then printed on standard output after `gh` exits, so a rerun can print it
 again.
 
-Rerun status lines are `already ran ID, exit N`, followed by the saved `gh`
-output, `declined ID`, and `interrupted ID`.
+Status lines on standard error:
+
+| Line starts with | When |
+|---|---|
+| `pde-gh-write: waiting for approval` | A new request was saved; the line holds its ID |
+| `pde-gh-write: still waiting for approval of ID` | No answer within 90 seconds; exit 3 |
+| `pde-gh-write: already ran ID, exit N` | A rerun of a request that ran; the saved `gh` output follows |
+| `pde-gh-write: declined ID` | A rerun of a declined request; exit 4 |
+| `pde-gh-write: interrupted ID` | A rerun of an interrupted request; exit 6 |
 
 ## pde-pr-approve Exit Codes
 
@@ -52,6 +59,33 @@ output, `declined ID`, and `interrupted ID`.
 | `0` | Answer recorded; another answer arrived or the request expired while `less` was open; or input closed with no answer |
 | `1` | No pending, unexpired request with that ID; no terminal; `less` failed; or the answer could not be read or saved |
 | `2` | Missing or extra arguments |
+
+## The Guard
+
+The guard is `~/.local/bin/gh`, installed by chezmoi from
+`chezmoi/dot_local/bin/executable_gh.tmpl` in the full profile only.
+With `PDE_GH_WRITE=1` it runs the real `gh` with any arguments.
+Otherwise it refuses:
+
+- `gh pr create`, `new`, `edit`, `comment`, `review`, `merge`, `ready`,
+  `close`, and `reopen`.
+- `gh api` with a path that contains `pulls`, or `issues/` followed by
+  `comments`, when the method is `POST`, `PATCH`, `PUT`, or `DELETE`, or
+  when `-f`, `-F`, `--field`, `--raw-field`, or `--input` is given.
+- `gh api graphql` when any argument contains `mutation`.
+
+`pde-gh-write` accepts each refused `gh pr` command except `new`; use
+`create` instead. It accepts no `gh api` command.
+
+The real `gh` is the first executable `gh` on `PATH` that is not the
+guard. `chezmoi/dot_zshrc.tmpl` puts `~/.local/bin` before aqua's folder
+so the guard is found first.
+
+| Code | Meaning |
+|---|---|
+| `1` | No real `gh` on `PATH`; prints `gh guard cannot find the real gh executable` |
+| `2` | Refused; prints `Use pde-gh-write for pull-request writes; it asks the user for approval.` |
+| other | Passed through from the real `gh` |
 
 ## Herdr Popup
 
@@ -87,6 +121,57 @@ queue is empty, when closed without an answer, or after `g`.
 `pde-pr-approve --herdr-inbox` exits 0 after opening the popup or showing a
 `No approvals waiting` notification, and 1 when the popup cannot be opened.
 
+### Context Lines
+
+The popup starts with these lines, and the phone question asks the first
+one as a question. A line whose value is unknown is left out.
+
+| Line | Holds | Source |
+|---|---|---|
+| 1 | What is asked and of which PR: `comment #12`, `merge #185`, or `create PR`; `merge PR` when the number is unclear | The command |
+| 2 | The repository, or `dir: ` and the folder name when `gh` finds none | `--repo`, otherwise `gh repo view` |
+| 3 | The Herdr workspace and agent title, such as `app / review login fix`; the OpenCode session ID when Herdr does not know the agent | `herdr agent list` and `herdr workspace list`, found by `OPENCODE_SESSION_ID` |
+| 4 | The new title when the request sets one, otherwise the PR's current title | The command, otherwise `gh pr view` |
+
+The lookups run once, when the request is made. Without
+`OPENCODE_SESSION_ID`, line 3 is left out and Herdr is not asked. For
+`pr edit`, the approval text also shows the PR's current title and body
+next to the requested ones.
+
+### Opening the Popup
+
+When `HERDR_ENV` is `1`, `pde-gh-write` does these steps for a new request
+in the background and ignores their errors:
+
+1. It sets the `Approval waiting` marker on the agent's pane.
+2. It runs `herdr status server` to find Herdr's socket and sends one
+   request there: open the `approval` pane of the `pde.approval` plugin as
+   a popup with the keyboard on it, with the request ID in
+   `PDE_REQUEST_ID`. The plugin file tells Herdr the popup's size and to
+   run `pde-pr-approve --herdr-popup` in it.
+3. It shows a Herdr notification, `Approval is waiting`, with a sound.
+
+If the request is answered before step 2, the marker is removed and no
+popup opens.
+
+## Queue, Inbox, and Marker
+
+- The queue is every waiting request that is not dismissed, oldest first
+  by creation time. One popup works through it; whichever popup you
+  answer in moves on through the same queue.
+- `q` or Esc dismisses a request: it keeps waiting and can still be
+  answered on the phone or in a terminal, but the queue skips it.
+- The inbox, `pde-pr-approve --herdr-inbox`, runs from `prefix+a`
+  (Ctrl+b, then a) in Herdr. It opens the popup on the oldest waiting
+  request, dismissed or not, then continues through the queue.
+- While a request waits, Herdr's sidebar shows `Approval waiting` on the
+  pane of the agent that asked. The pane is found by matching
+  `OPENCODE_SESSION_ID` in `herdr agent list`. Without it there is no
+  marker, and `g` only closes the popup.
+- The marker belongs to the pane, so it stays until no waiting,
+  undismissed request from that pane is left. It is set with a four-hour
+  time limit.
+
 ## Phone Question
 
 `pde-gh-write --moshi-ask` runs:
@@ -96,7 +181,10 @@ moshi-hook ask --require-remote --source pde-gh-write --timeout 4h QUESTION
 ```
 
 `QUESTION` is `Approve` and the first context line, followed by the other
-context lines, built from the saved record.
+context lines, built from the saved record. Only these lines go to Moshi;
+the body and the rest of the command stay on this computer.
+`--require-remote` means only the phone can answer: `moshi-hook` never
+asks in the terminal instead.
 
 | moshi-hook exit | Result |
 |---|---|
@@ -158,7 +246,7 @@ Record fields, with those omitted when empty marked as optional:
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | The first `gh` is the guard, a wrapper that blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
+| `PATH` | The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
@@ -181,23 +269,10 @@ part of the ID.
 
 ## PR Number
 
-The popup and the phone show the PR a request is for, such as `merge #12`,
-and its title. For `pr edit`, the approval screen also shows the PR's
-current title and body next to the requested ones. To find the PR, the
-program takes the first argument that is not an option or an option's value
-as the PR number or branch. In `gh pr edit --base main 12`, that is `12`.
-`pr create` has no PR number.
-
-Each operation's entry in `targetFlags` in `internal/approval/request.go`
-lists the options from `gh pr OPERATION --help` that may come before the
-number and whether each takes a value. Short options are listed per
-operation because they can differ: `-m` takes a milestone for `edit` but
-nothing for `merge`. Title, body, body file, and repository options are in
-`valueFlags`.
-
-When `gh` adds any option, add it to the list, marked with whether it takes
-a value. Otherwise commands that put it before the number lose the PR
-details; the write itself still works:
+The PR number or branch is the first argument that is not an option or an
+option's value. In `gh pr edit --base main 12`, that is `12`. `pr create`
+has no PR number. When an option the program does not know comes before
+the number, the write still works, but:
 
 - The popup and the phone show `merge PR` instead of `merge #12`, and no
   current PR title.
