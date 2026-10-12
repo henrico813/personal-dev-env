@@ -1,4 +1,4 @@
-package main
+package terminal
 
 import (
 	"bufio"
@@ -12,7 +12,7 @@ import (
 
 // Input typed before the question is discarded. EOF or a closed terminal is
 // not an answer.
-func askYesNo(tty *os.File) (string, error) {
+func AskYesNo(tty *os.File) (string, error) {
 	if err := flushInput(tty); err != nil {
 		return "", err
 	}

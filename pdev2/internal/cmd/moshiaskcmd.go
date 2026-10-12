@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"errors"
@@ -44,8 +44,6 @@ func startMoshi(rec approval.Record) approval.Record {
 	}
 	return rec
 }
-
-func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
 // Ends a phone question that can no longer decide anything, so it does not
 // stay on the phone for hours. The question runs in its own session, so its

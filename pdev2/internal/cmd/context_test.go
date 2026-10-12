@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"os"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/terminal"
 )
 
 // With several sessions asking at once, the first lines are how a person
@@ -29,7 +30,7 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	writeScript(t, dir, "moshi-hook", `printf '%s' "$7" > '`+asked+`'; exit 1`)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 2"}, 37, 14)
+	lines, _ := terminal.PopupScreen(terminal.View{Rec: rec, Queue: "1 of 2"}, 37, 14)
 	moshiAsk([]string{rec.ID})
 
 	sent, err := os.ReadFile(asked)
@@ -193,7 +194,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 37, 14)
+	lines, _ := terminal.PopupScreen(terminal.View{Rec: rec, Queue: "1 of 1"}, 37, 14)
 	if rec.PRTitle != "Ship it" || !strings.Contains(strings.Join(lines[:4], "\n"), "Ship it") {
 		t.Fatalf("PR title %q, popup %q", rec.PRTitle, lines[:4])
 	}

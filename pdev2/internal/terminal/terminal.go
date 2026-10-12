@@ -1,4 +1,4 @@
-package main
+package terminal
 
 import (
 	"os"
@@ -13,7 +13,7 @@ const (
 	flushPending = 0      // TCIFLUSH
 )
 
-func showPager(tty *os.File, text string) error {
+func ShowPager(tty *os.File, text string) error {
 	pager := exec.Command("less")
 	pager.Stdin = strings.NewReader(text)
 	pager.Stdout, pager.Stderr = tty, tty
