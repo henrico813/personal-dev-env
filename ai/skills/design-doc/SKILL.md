@@ -15,11 +15,15 @@ A design doc is a deliberate pause before implementation. It forces you to ident
 
 Use this skill to write a technical design document that reasons through the problem, alternatives, and chosen direction before implementation. Do not use it for a code-bearing implementation proposal or for plan execution; use create-plan for proposals and implement-plan for execution instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
-
 **Core principle:** A design doc answers "what should we build and why?" with enough rigor that reviewers can find flaws before they become code.
+
+## When you are a delegated agent
+
+When another agent gave you this task, research directly instead of
+starting the parallel agents in Step 3. In Step 1, state your
+understanding of the problem in your report and continue instead of
+waiting for the user to confirm it. Write the doc to the path you were
+given, report open questions, and do not start reviewers.
 
 ## Writing for Humans
 
