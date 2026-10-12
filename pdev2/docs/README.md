@@ -26,6 +26,7 @@ In the full profile, the installer builds this program as
 - [Approving after the agent stopped waiting](explanation/late-approvals.md)
 - [Why one tap does not answer](explanation/popup-taps.md)
 - [The approval queue](explanation/approval-queue.md)
+- [Where the code lives](explanation/code-layout.md)
 
 ## Reference
 

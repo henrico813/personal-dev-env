@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 )
 
 // An approval can arrive after the agent's 90-second wait. The runner then
@@ -43,7 +44,7 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 		t.Fatalf("saveAnswer returned %d", code)
 	}
 
-	if code := receive(t, result); code != 0 {
+	if code := approvaltest.Receive(t, result); code != 0 {
 		t.Fatalf("runner returned %d", code)
 	}
 	// The rerun gets an unusable gh path, so its output can only be the saved one.
