@@ -29,7 +29,7 @@ func setupFlow(t *testing.T, tail string) flowEnv {
 	}
 	env := flowEnv{calls: filepath.Join(dir, "calls"), gate: filepath.Join(dir, "gate"), output: &bytes.Buffer{}}
 	writeScript(t, guardDir, "gh", "exit 99")
-	env.gh = writeScript(t, realDir, "gh", "echo call >> '"+env.calls+"'\n"+tail)
+	env.gh = writeScript(t, realDir, "gh", "case \"$1 $2\" in \"repo view\") echo owner/repo; exit 0 ;; \"pr view\") echo title; exit 0 ;; esac\necho call >> '"+env.calls+"'\n"+tail)
 	t.Setenv("PATH", guardDir+":"+realDir)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("PDE_GH_GATE", env.gate)
@@ -48,6 +48,7 @@ func requestAndAnswer(t *testing.T, args []string, state string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	req = scopeRequest(req)
 	rec, err := load(req.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -189,6 +190,28 @@ func TestConcurrentRunsCallGHOnce(t *testing.T) {
 	}
 }
 
+// aqua installs gh as a symlink to aqua-proxy, which picks the tool by the
+// name it was started under. Running the symlink's target made every
+// approved write fail once aqua's directory was on PATH.
+func TestApprovedWriteRunsGHThroughSymlink(t *testing.T) {
+	env := setupFlow(t, `[ "${0##*/}" = gh ] || exit 127`)
+	proxy := filepath.Join(filepath.Dir(env.gh), "aqua-proxy")
+	if err := os.Rename(env.gh, proxy); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(proxy, env.gh); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"pr", "ready", "12"}
+	requestAndAnswer(t, args, stateApproved)
+
+	code := requestWrite(args)
+
+	if code != 0 {
+		t.Errorf("approved write returned %d, want 0:\n%s", code, env.output)
+	}
+}
+
 func waitUntilGHStarts(t *testing.T, calls string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -206,4 +229,57 @@ func releaseGH(t *testing.T, gate string) {
 	if err := os.WriteFile(gate, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// The same command in another checkout must not reuse an approval, or gh
+// would act on the first checkout's repository.
+func TestOtherDirectoryNeedsNewApproval(t *testing.T) {
+	env := setupFlow(t, "")
+	args := []string{"pr", "ready", "12"}
+	first, second := t.TempDir(), t.TempDir()
+	// Approve and run the command in the first directory.
+	chdir(t, first)
+	requestAndAnswer(t, args, stateApproved)
+	if code := requestWrite(args); code != 0 {
+		t.Fatalf("approved run returned %d", code)
+	}
+
+	// The same command from the second directory must wait for a new answer.
+	chdir(t, second)
+	code := requestWrite(args)
+
+	if code != exitWaiting || countCalls(t, env.calls) != 1 {
+		t.Fatalf("second directory returned %d after %d gh calls", code, countCalls(t, env.calls))
+	}
+}
+
+// The repository lookup needs the network; a rerun where it fails must still
+// find the request that already ran instead of asking to post again.
+func TestRerunSurvivesFailedRepoLookup(t *testing.T) {
+	env := setupFlow(t, "")
+	args := []string{"pr", "create", "--title", "T"}
+	id := requestAndAnswer(t, args, stateApproved)
+	if code := requestWrite(args); code != 0 {
+		t.Fatalf("approved run returned %d", code)
+	}
+	// Replace the fake gh with one whose repository lookup fails.
+	writeScript(t, filepath.Dir(env.gh), "gh", "case \"$1 $2\" in \"repo view\") exit 1 ;; esac\necho call >> '"+env.calls+"'")
+
+	code := requestWrite(args)
+
+	if code != 0 || countCalls(t, env.calls) != 1 || !strings.Contains(env.output.String(), "already ran "+id) {
+		t.Fatalf("rerun returned %d after %d gh calls: %q", code, countCalls(t, env.calls), env.output)
+	}
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
 }

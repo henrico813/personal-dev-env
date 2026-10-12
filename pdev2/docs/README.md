@@ -22,6 +22,10 @@ In the full profile, the installer builds this program as
 
 - [How a request runs gh once](explanation/request-flow.md)
 - [Approving in the Herdr popup or on the phone](explanation/popup-and-phone-approval.md)
+- [Where a request came from](explanation/request-context.md)
+- [Approving after the agent stopped waiting](explanation/late-approvals.md)
+- [Why one tap does not answer](explanation/popup-taps.md)
+- [The approval queue](explanation/approval-queue.md)
 
 ## Reference
 
