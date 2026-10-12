@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"bufio"
@@ -195,4 +195,14 @@ func sendHerdr(socket string, request herdrRequest) error {
 	}
 	_, err = bufio.NewReader(conn).ReadBytes('\n')
 	return err
+}
+
+func focusRequest(rec approval.Record) {
+	pane := findAgent(rec.SessionID).Pane
+	if pane == "" {
+		pane = rec.PaneID
+	}
+	if pane != "" {
+		_ = exec.Command("herdr", "agent", "focus", pane).Run()
+	}
 }

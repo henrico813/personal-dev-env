@@ -9,42 +9,10 @@ package main
 
 import (
 	"os"
-	"path/filepath"
-)
 
-// gh's own exit codes pass through and can also be 1, 2, or 4. Only this
-// program's stderr lines start with "pde-gh-write:", which tells the two apart.
-const (
-	exitFailed      = 1
-	exitRejected    = 2
-	exitWaiting     = 3
-	exitDeclined    = 4
-	exitInterrupted = 6
+	"pdev2/internal/cmd"
 )
 
 func main() {
-	// Hidden mode for the detached runner that runnerStart starts.
-	if len(os.Args) > 1 && os.Args[1] == "--pde-runner" {
-		if len(os.Args) != 3 {
-			os.Exit(1)
-		}
-		os.Exit(runnerMain(os.Args[2]))
-	}
-	// pde-gh-write starts itself this way to send the phone question; see
-	// startMoshi.
-	if len(os.Args) > 1 && os.Args[1] == "--moshi-ask" {
-		os.Exit(moshiAsk(os.Args[2:]))
-	}
-	if filepath.Base(os.Args[0]) == "pde-pr-approve" {
-		// Herdr runs this in the popup and passes the request ID in
-		// PDE_REQUEST_ID.
-		if len(os.Args) == 2 && os.Args[1] == "--herdr-popup" {
-			os.Exit(approvePopup(os.Getenv("PDE_REQUEST_ID")))
-		}
-		if len(os.Args) == 2 && os.Args[1] == "--herdr-inbox" {
-			os.Exit(openInbox())
-		}
-		os.Exit(approve(os.Args[1:]))
-	}
-	os.Exit(requestWrite(os.Args[1:]))
+	os.Exit(cmd.Main(os.Args))
 }
