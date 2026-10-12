@@ -14,6 +14,10 @@ at the repository root.
 In the full profile, the installer builds this program as
 `~/.local/bin/pde-gh-write` and links `pde-pr-approve` to it.
 
+## How-to Guides
+
+- [Debug a stuck or unanswered request](how-to/debug-a-stuck-request.md)
+
 ## Explanation
 
 - [How a request runs gh once](explanation/request-flow.md)
