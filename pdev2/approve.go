@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 func approve(args []string) int {
@@ -70,7 +71,7 @@ func saveAnswer(id, choice string) int {
 func recordAnswer(rec record, choice string) (record, error) {
 	rec.MoshiPID = 0
 	rec.State = stateDeclined
-	if choice == "yes" {
+	if choice == choiceYes {
 		rec.State = stateApproved
 	}
 	if err := save(rec); err != nil {
@@ -90,8 +91,9 @@ func approvePopup(id string) int {
 	if err != nil || rec.State != statePending || expired(rec) {
 		return 1
 	}
-	choice := popupAnswer(rec)
-	if choice == "" {
+	choice := popupAnswer(rec, popupSettle)
+	if choice != choiceYes && choice != choiceNo {
+		// Closing the popup is not an answer.
 		return 0
 	}
 	return saveAnswer(id, choice)
@@ -99,8 +101,8 @@ func approvePopup(id string) int {
 
 // A terminal error closes the popup without an answer; the request keeps
 // waiting for one on the phone or in a terminal.
-func popupAnswer(rec record) string {
-	choice, err := askPopup(os.Stdin, os.Stdout, rec)
+func popupAnswer(rec record, settle time.Duration) string {
+	choice, err := askPopup(os.Stdin, os.Stdout, rec, settle)
 	if err != nil {
 		return ""
 	}

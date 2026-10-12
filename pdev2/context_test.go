@@ -27,7 +27,7 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	writeScript(t, dir, "moshi-hook", `printf '%s' "$7" > '`+asked+`'; exit 1`)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 
-	lines, _ := popupScreen(rec, "", "", 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
 	moshiAsk([]string{rec.ID})
 
 	sent, err := os.ReadFile(asked)
@@ -124,7 +124,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines, _ := popupScreen(rec, "", "", 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
 	if rec.PRTitle != "Ship it" || !strings.Contains(strings.Join(lines[:4], "\n"), "Ship it") {
 		t.Fatalf("PR title %q, popup %q", rec.PRTitle, lines[:4])
 	}

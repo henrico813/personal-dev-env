@@ -63,7 +63,7 @@ func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
 	}
-	answer := ""
+	answer := choiceNone
 	// The question comes from the saved record, so it shows what the popup shows.
 	if rec, err := load(args[0]); err == nil && rec.State == statePending {
 		commandErr := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec)).Run()
@@ -71,9 +71,9 @@ func moshiAsk(args []string) int {
 		// timeout or a killed helper, is no answer.
 		var exitErr *exec.ExitError
 		if commandErr == nil {
-			answer = "yes"
+			answer = choiceYes
 		} else if errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1 {
-			answer = "no"
+			answer = choiceNo
 		}
 	}
 	lock, err := lockRequest(args[0])
@@ -85,7 +85,7 @@ func moshiAsk(args []string) int {
 	if err != nil || expired(rec) {
 		return 0
 	}
-	if answer != "" && rec.State == statePending {
+	if answer != choiceNone && rec.State == statePending {
 		if _, err := recordAnswer(rec, answer); err != nil {
 			return 1
 		}
