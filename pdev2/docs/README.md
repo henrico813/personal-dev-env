@@ -18,6 +18,7 @@ The installer does not build this program yet. The shell scripts in
 
 - [How a request runs gh once](explanation/request-flow.md)
 - [Approving in the Herdr popup or on the phone](explanation/popup-and-phone-approval.md)
+- [Where a request came from](explanation/request-context.md)
 
 ## Reference
 
