@@ -662,6 +662,7 @@ Expected behavior:
   checkout before each step.
 - Passes every applicable worker-visible skill in the execution prompt and
   refuses Vibe delegation when a required worker skill is unavailable.
+- The Vibe worker's prompt names `code-documentation` and no workflow skill.
 - Applies the existing completion gate to source and test documentation without
   adding a separate review pass.
 - Leaves the managed worktree clean between runs and does not perform a remote

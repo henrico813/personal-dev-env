@@ -13,13 +13,14 @@ You are tasked with cleaning up after a completed implementation workflow. Your 
 
 Use this skill to clean up after a completed implementation workflow: verify the plan worktree is safe to remove, confirm the main checkout is healthy, and finish housekeeping. Do not use it for authoring, reviewing, or executing the plan; use create-plan, review-plan, and implement-plan instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
-
 User context:
 
 Take the task from the user's request or command arguments.
+
+## When you are a delegated agent
+
+When another agent gave you this task, remove only what the task
+names. Where this skill says to ask the user, stop and report instead.
 
 ## Getting Started
 

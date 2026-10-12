@@ -14,9 +14,22 @@ easy for a human to review, and ready for execution once approved.
 
 Use this skill to create a repository-grounded implementation proposal with exact code diffs. Do not use it for reviewing an existing plan or executing one; use review-plan for review and implement-plan for execution instead.
 
-Delegated prompts must not list or load workflow-orchestration skills:
-`create-plan`, `implement-plan`, `cleanup-plan`, `design-doc`, and
-`research-codebase`.
+## When you are a delegated agent
+
+When another agent gave you this task, write or revise the plan
+yourself and run `planner check` until it passes; Step 4 has the
+procedure. Then report the plan path, the check result, and open
+questions, and stop.
+
+Follow decisions marked `user-decided`, and report any evidence that
+contradicts one. Change an `orchestrator-proposed` or `inferred from
+code` decision only on evidence, and say so in your report.
+
+Do not start reviewers or other subagents, run Vibe, or implement the
+plan. Do not commit, push, or open a pull request unless your prompt
+says the user asked for it. Review your draft yourself instead of the
+parallel reviews in Step 5; the agent that delegated to you arranges
+the fresh review.
 
 ## Task Context
 
