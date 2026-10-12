@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"pdev2/internal/approval"
 )
 
 // Input typed before the question is discarded. EOF or a closed terminal is
@@ -18,7 +20,7 @@ func askYesNo(tty *os.File) (string, error) {
 	scanner := bufio.NewScanner(tty)
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
-		if choice == choiceYes || choice == choiceNo {
+		if choice == approval.ChoiceYes || choice == approval.ChoiceNo {
 			return choice, nil
 		}
 		fmt.Fprint(tty, "Please type yes or no, then Enter: ")
