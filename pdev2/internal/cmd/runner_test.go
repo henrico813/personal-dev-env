@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -21,9 +20,8 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake gh prints a PR URL and the directory it runs in, and logs
 	// each call.
-	dir, workdir := t.TempDir(), t.TempDir()
-	calls := filepath.Join(dir, "calls")
-	gh := writeScript(t, dir, "gh", "echo https://github.com/owner/repo/pull/7; echo call >> '"+calls+"'; pwd")
+	workdir := t.TempDir()
+	gh, calls := approvaltest.FakeGH(t, "echo https://github.com/owner/repo/pull/7; echo call >> \"$log\"; pwd")
 	// An empty PATH, so only the saved gh path can work.
 	t.Setenv("PATH", t.TempDir())
 	// Check the record every 10 milliseconds instead of every second, so the
@@ -83,7 +81,7 @@ func TestRunnerWithMissingGHKeepsApproval(t *testing.T) {
 func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake runner just sleeps, standing in for one waiting for an answer.
-	fake := writeScript(t, t.TempDir(), "runner", "sleep 30")
+	fake := approvaltest.WriteScript(t, t.TempDir(), "runner", "sleep 30")
 	oldStart, oldProgram := runnerStart, runnerProgram
 	runnerStart, runnerProgram = startDetachedRunner, func() (string, error) { return fake, nil }
 	t.Cleanup(func() { runnerStart, runnerProgram = oldStart, oldProgram })
@@ -127,8 +125,8 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 	// The fake runner and phone question just sleep, standing in for ones
 	// waiting for an answer. The real startDetachedRunner starts the runner.
 	dir := t.TempDir()
-	runner := writeScript(t, dir, "runner", "sleep 30")
-	ask := writeScript(t, dir, "ask", "sleep 30")
+	runner := approvaltest.WriteScript(t, dir, "runner", "sleep 30")
+	ask := approvaltest.WriteScript(t, dir, "ask", "sleep 30")
 	oldStart, oldRunner, oldMoshi := runnerStart, runnerProgram, moshiProgram
 	runnerStart = startDetachedRunner
 	runnerProgram = func() (string, error) { return runner, nil }
@@ -164,9 +162,7 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 // phone path is checked as well as the terminal path.
 func TestApprovalRestartsDeadRunner(t *testing.T) {
 	// The fake moshi-hook approves at once for the phone case.
-	dir := t.TempDir()
-	writeScript(t, dir, "moshi-hook", "exit 0")
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	approvaltest.FakeMoshiHook(t, "exit 0")
 	for _, tc := range []struct {
 		name   string
 		answer func(id string)

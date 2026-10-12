@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 )
 
 // A phone answer counts only while the request is pending, so a late yes
@@ -32,12 +33,7 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			// A fake moshi-hook on PATH answers with the case's exit; kill -9
 			// stands for an ask that died without an answer.
-			dir := t.TempDir()
-			fake := filepath.Join(dir, "moshi-hook")
-			if err := os.WriteFile(fake, []byte("#!/bin/sh\n"+tc.hook+"\n"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+			approvaltest.FakeMoshiHook(t, tc.hook)
 			// moshiAsk runs in this test process, so the PID saved for the
 			// question is the test's own; the record was last changed an hour ago.
 			saved := time.Now().Add(-time.Hour).Round(0)
@@ -75,10 +71,9 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	// when it gets one.
 	dir := t.TempDir()
 	ready, stopped := filepath.Join(dir, "ready"), filepath.Join(dir, "stopped")
-	writeScript(t, dir, "moshi-hook", `trap 'touch "`+stopped+`"; exit 0' TERM; touch "`+ready+`"; sleep 30 & wait`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	approvaltest.FakeMoshiHook(t, `trap 'touch "`+stopped+`"; exit 0' TERM; touch "`+ready+`"; sleep 30 & wait`)
 	old := moshiProgram
-	moshiProgram = func() (string, error) { return writeScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
+	moshiProgram = func() (string, error) { return approvaltest.WriteScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
 	t.Cleanup(func() { moshiProgram = old })
 	// Start a real detached ask for a saved request.
 	rec := approval.Record{ID: "popup", State: approval.StatePending}
@@ -103,10 +98,7 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 // would show several questions for one request.
 func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	fake := filepath.Join(t.TempDir(), "ask")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
 	// The fake question program just sleeps, standing in for a phone question
 	// still waiting for an answer.
 	old := moshiProgram
@@ -152,11 +144,7 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake question program just sleeps, standing in for a new question
 	// waiting for an answer.
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "ask")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
 	old := moshiProgram
 	moshiProgram = func() (string, error) { return fake, nil }
 	t.Cleanup(func() { moshiProgram = old })
@@ -207,11 +195,8 @@ func deadPID(t *testing.T) int {
 func TestPhoneAnswerClearsMarker(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake moshi-hook approves at once; the fake herdr logs each call.
-	dir := t.TempDir()
-	log := filepath.Join(dir, "log")
-	writeScript(t, dir, "moshi-hook", "exit 0")
-	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	approvaltest.FakeMoshiHook(t, "exit 0")
+	log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"`)
 	if err := approval.Save(approval.Record{ID: "phone", State: approval.StatePending, PaneID: "w1:p2"}); err != nil {
 		t.Fatal(err)
 	}
