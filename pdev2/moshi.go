@@ -2,9 +2,9 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -14,7 +14,7 @@ var moshiProgram = os.Executable
 
 // startMoshi sends the phone question unless the one saved in the record is
 // still running, so reruns of a waiting request never send a second question.
-func startMoshi(rec record, question string) {
+func startMoshi(rec record) {
 	if rec.MoshiPID != 0 && processAlive(rec.MoshiPID) {
 		return
 	}
@@ -22,7 +22,7 @@ func startMoshi(rec record, question string) {
 	if err != nil {
 		return
 	}
-	cmd := exec.Command(path, "--moshi-ask", rec.ID, question)
+	cmd := exec.Command(path, "--moshi-ask", rec.ID)
 	// When the agent's command ends, the tool that ran it stops every program
 	// the command started (its process group). You may answer hours later, so
 	// the question is started apart from that group, where the stop does not
@@ -41,23 +41,26 @@ func startMoshi(rec record, question string) {
 
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
-// moshiAsk runs as pde-gh-write --moshi-ask ID QUESTION. It waits up to four
-// hours for the phone answer and saves it only if the request is still
-// pending; a later answer changes nothing. It never runs gh: the waiting
-// pde-gh-write or a rerun does.
+// moshiAsk runs as pde-gh-write --moshi-ask ID. It waits up to four hours for
+// the phone answer and saves it only if the request is still pending; a later
+// answer changes nothing. It never runs gh: the waiting pde-gh-write or a
+// rerun does.
 func moshiAsk(args []string) int {
-	if len(args) != 2 {
+	if len(args) != 1 {
 		return 1
 	}
-	commandErr := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", args[1]).Run()
-	// moshi-hook ask exits 0 for yes and 1 for no; any other result, such as a
-	// timeout or a killed helper, is no answer.
 	answer := ""
-	var exitErr *exec.ExitError
-	if commandErr == nil {
-		answer = "yes"
-	} else if errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1 {
-		answer = "no"
+	// The question comes from the saved record, so it shows what the popup shows.
+	if rec, err := load(args[0]); err == nil && rec.State == statePending {
+		commandErr := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec)).Run()
+		// moshi-hook ask exits 0 for yes and 1 for no; any other result, such as a
+		// timeout or a killed helper, is no answer.
+		var exitErr *exec.ExitError
+		if commandErr == nil {
+			answer = "yes"
+		} else if errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1 {
+			answer = "no"
+		}
 	}
 	lock, err := lockRequest(args[0])
 	if err != nil {
@@ -93,17 +96,9 @@ func moshiAsk(args []string) int {
 	return 0
 }
 
-func moshiQuestion(req request) string {
-	repo, target := req.Repo, req.Target
-	if repo == "" {
-		repo = "current repository"
-	}
-	if target == "" {
-		target = "the requested PR"
-	}
-	question := fmt.Sprintf("Approve gh pr %s in %s (%s)", req.Operation, repo, target)
-	if req.Title != "" {
-		question += ", titled " + req.Title
-	}
-	return question + "?"
+// Uses the popup's context lines, so the phone and the popup name a request the same way.
+func moshiQuestion(rec record) string {
+	lines := requestContext(rec)
+	lines[0] = "Approve " + lines[0] + "?"
+	return strings.Join(lines, "\n")
 }

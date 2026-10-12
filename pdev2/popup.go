@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unicode"
@@ -49,8 +50,10 @@ func popupScreen(rec record, typed, notice string, cols, rows int) ([]string, po
 	if rows < 1 {
 		rows = 1
 	}
+	summary := popupSummary(rec)
+	header := clip(visibleScreenText(summary[0]), cols)
 	if rows < 7 {
-		lines := []string{clip("PDE approval "+rec.ID[:min(8, len(rec.ID))], cols)}
+		lines := []string{header}
 		for len(lines) < rows {
 			lines = append(lines, "")
 		}
@@ -62,8 +65,8 @@ func popupScreen(rec record, typed, notice string, cols, rows int) ([]string, po
 	}
 	// Fixed rows: header, Typed, notice, key hint, and the gap between buttons.
 	requestRows := rows - (5 + buttonHeight*2)
-	lines := []string{clip("PDE approval "+rec.ID[:min(8, len(rec.ID))], cols)}
-	for _, text := range popupSummary(rec) {
+	lines := []string{header}
+	for _, text := range summary[1:] {
 		if requestRows <= 0 {
 			break
 		}
@@ -85,29 +88,50 @@ func popupScreen(rec record, typed, notice string, cols, rows int) ([]string, po
 	return lines, popupLayout{approveTop, approveTop + buttonHeight - 1, declineTop, declineTop + buttonHeight - 1}
 }
 
-// The popup has room for a few lines, so it shows what will run, the title,
-// and the body. The full approval text starts with ID, time, and command lines
-// that would fill the popup; v shows it.
+// The popup has room for a few lines, so it shows where the request came from,
+// the changes of a pr edit, and the body. The full approval text starts with
+// ID, time, and command lines that would fill the popup; v shows it.
 func popupSummary(rec record) []string {
-	operation, target := "", ""
-	if len(rec.Args) > 1 {
-		operation = rec.Args[1]
-		target, _ = findTarget(operation, rec.Args[2:])
-	}
-	summary := []string{"gh pr " + operation}
-	if target != "" {
-		summary[0] += " " + target
-	}
-	if rec.Title != "" {
-		summary = append(summary, "Title: "+rec.Title)
-	}
-	if operation == "edit" {
+	summary := requestContext(rec)
+	if len(rec.Args) > 1 && rec.Args[1] == "edit" {
 		summary = append(summary, editChanges(rec.ApprovalText)...)
 	}
 	if rec.Body != "" {
 		summary = append(summary, strings.Split(rec.Body, "\n")...)
 	}
 	return summary
+}
+
+// Lines that say what is asked and where, in the order a reader needs them:
+// operation and PR, repository, Herdr workspace and session, PR title. The
+// popup and the phone question both start with these, so they cannot drift.
+func requestContext(rec record) []string {
+	what := "PR approval"
+	if len(rec.Args) > 1 {
+		what = rec.Args[1] + " PR"
+		if target, _ := findTarget(rec.Args[1], rec.Args[2:]); target != "" {
+			what = rec.Args[1] + " #" + target
+		}
+	}
+	lines := []string{what}
+	if rec.Repo != "" {
+		lines = append(lines, rec.Repo)
+	} else if rec.Directory != "" {
+		lines = append(lines, "dir: "+filepath.Base(rec.Directory))
+	}
+	session := strings.Trim(rec.Workspace+" / "+rec.SessionTitle, " /")
+	if session == "" {
+		session = rec.SessionID
+	}
+	if session != "" {
+		lines = append(lines, session)
+	}
+	if rec.Title != "" {
+		lines = append(lines, rec.Title)
+	} else if rec.PRTitle != "" {
+		lines = append(lines, rec.PRTitle)
+	}
+	return lines
 }
 
 // editChanges returns the "-old" and "+new" lines of a pr edit. It stops at the

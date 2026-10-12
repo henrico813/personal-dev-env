@@ -2,18 +2,26 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type herdrRequest struct {
 	ID     string `json:"id"`
 	Method string `json:"method"`
 	Params any    `json:"params"`
+}
+
+type agentInfo struct {
+	Pane      string
+	Workspace string
+	Title     string
 }
 
 // notifyRequest opens the approval popup and a notification when the agent runs
@@ -42,6 +50,82 @@ func notifyRequest(rec record) {
 		"env":        map[string]string{"PDE_REQUEST_ID": rec.ID},
 	}})
 	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "Approval is waiting", "--sound", "request").Run()
+}
+
+// Empty outside Herdr or when no Herdr agent runs the session.
+func agentContext(session string) (workspace, title string) {
+	if os.Getenv("HERDR_ENV") != "1" {
+		return "", ""
+	}
+	agent := findAgent(session)
+	if agent.Pane == "" {
+		return "", ""
+	}
+	return workspaceLabel(agent.Workspace), agent.Title
+}
+
+func findAgent(session string) agentInfo {
+	if session == "" {
+		return agentInfo{}
+	}
+	output, err := herdrOutput("agent", "list")
+	if err != nil {
+		return agentInfo{}
+	}
+	var envelope struct {
+		Result struct {
+			Agents []struct {
+				AgentSession struct {
+					Value string `json:"value"`
+				} `json:"agent_session"`
+				PaneID        string `json:"pane_id"`
+				WorkspaceID   string `json:"workspace_id"`
+				TerminalTitle string `json:"terminal_title"`
+			} `json:"agents"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(output, &envelope) != nil {
+		return agentInfo{}
+	}
+	for _, item := range envelope.Result.Agents {
+		if item.AgentSession.Value == session {
+			return agentInfo{Pane: item.PaneID, Workspace: item.WorkspaceID, Title: item.TerminalTitle}
+		}
+	}
+	return agentInfo{}
+}
+
+// Workspace IDs such as "wX" mean nothing on screen, so the label is preferred.
+func workspaceLabel(id string) string {
+	output, err := herdrOutput("workspace", "list")
+	if err != nil {
+		return id
+	}
+	var envelope struct {
+		Result struct {
+			Workspaces []struct {
+				ID    string `json:"workspace_id"`
+				Label string `json:"label"`
+			} `json:"workspaces"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(output, &envelope) != nil {
+		return id
+	}
+	for _, item := range envelope.Result.Workspaces {
+		if item.ID == id && item.Label != "" {
+			return item.Label
+		}
+	}
+	return id
+}
+
+// The writer holds the request lock during lookups, so a stuck Herdr server
+// must not stall it.
+func herdrOutput(args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "herdr", args...).Output()
 }
 
 func herdrSocket(output string) string {

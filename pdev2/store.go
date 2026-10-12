@@ -25,16 +25,27 @@ const (
 )
 
 type record struct {
-	ID           string    `json:"id"`
-	Updated      time.Time `json:"updated"`
-	Args         []string  `json:"args"`
-	Title        string    `json:"title"`
-	Body         string    `json:"body"`
-	BodyFile     bool      `json:"body_file"`
-	ApprovalText string    `json:"approval_text"`
-	State        string    `json:"state"`
-	Exit         int       `json:"exit_code"`
-	MoshiPID     int       `json:"moshi_pid,omitempty"`
+	// The request as the agent made it.
+	ID           string   `json:"id"`
+	Args         []string `json:"args"`
+	Title        string   `json:"title"`
+	Body         string   `json:"body"`
+	BodyFile     bool     `json:"body_file"`
+	ApprovalText string   `json:"approval_text"`
+	Directory    string   `json:"directory,omitempty"`
+
+	// Its state and result.
+	Updated  time.Time `json:"updated"`
+	State    string    `json:"state"`
+	Exit     int       `json:"exit_code"`
+	MoshiPID int       `json:"moshi_pid,omitempty"`
+
+	// Context shown to the approver.
+	Repo         string `json:"repo,omitempty"`
+	PRTitle      string `json:"pr_title,omitempty"` // Looked up when the request sets no title.
+	SessionID    string `json:"session_id,omitempty"`
+	SessionTitle string `json:"session_title,omitempty"`
+	Workspace    string `json:"workspace,omitempty"` // Herdr label, or the ID when unlabeled.
 }
 
 func stateDir() string {
