@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 // Agent commands are killed after about two minutes, so the wait must end first.
@@ -19,7 +21,7 @@ var answerTimeout = 90 * time.Second
 var stderr io.Writer = os.Stderr
 
 func requestWrite(args []string) int {
-	req, err := parse(args, os.Stdin)
+	req, err := approval.Parse(args, os.Stdin)
 	if err != nil {
 		fmt.Fprintf(stderr, "pde-gh-write: %v\n", err)
 		return exitRejected
@@ -33,7 +35,7 @@ func requestWrite(args []string) int {
 	if err != nil {
 		return printError(err)
 	}
-	if state == statePending {
+	if state == approval.StatePending {
 		return waitForAnswer(req.ID, gh)
 	}
 	return reportOrRun(req.ID, gh)
@@ -43,17 +45,17 @@ func requestWrite(args []string) int {
 // the later save could overwrite an approval or a finished run. A new request
 // also starts the Herdr notification, the phone question, and the runner; a
 // pending one restarts a phone question or runner that died.
-func loadOrCreate(req request, gh string) (string, error) {
-	lockFile, err := lockRequest(req.ID)
+func loadOrCreate(req approval.Request, gh string) (string, error) {
+	lockFile, err := approval.Lock(req.ID)
 	if err != nil {
 		return "", err
 	}
 	defer lockFile.Close()
-	rec, err := load(req.ID)
+	rec, err := approval.Load(req.ID)
 	// An expired record of any state is replaced, so after four hours the same
 	// command needs a new approval and may run again.
-	if err == nil && !expired(rec) {
-		if rec.State == statePending {
+	if err == nil && !approval.Expired(rec) {
+		if rec.State == approval.StatePending {
 			// Replace a phone question that ended without an answer, or the
 			// request would wait with nothing to answer on the phone. startMoshi
 			// does nothing while the earlier question is still running.
@@ -74,14 +76,14 @@ func loadOrCreate(req request, gh string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rec = record{ID: req.ID, Args: req.Args, Title: req.Title, Body: req.Body,
-		BodyFile: req.BodyFile, ApprovalText: text, State: statePending,
+	rec = approval.Record{ID: req.ID, Args: req.Args, Title: req.Title, Body: req.Body,
+		BodyFile: req.BodyFile, ApprovalText: text, State: approval.StatePending,
 		Created: time.Now(), Directory: req.Directory, Repo: req.Repo, GH: gh,
 		PRTitle: currentTitle(gh, req, fetchedTitle), SessionID: os.Getenv("OPENCODE_SESSION_ID")}
 	// Filled in before the first save, because a later save outside this lock
 	// could overwrite an answer.
 	rec.PaneID, rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
-	if err := save(rec); err != nil {
+	if err := approval.Save(rec); err != nil {
 		return "", err
 	}
 	fmt.Fprintf(stderr, "pde-gh-write: waiting for approval in the Herdr popup or on the phone, or run pde-pr-approve %s in a terminal; it runs once approved, so rerun this exact command to read the result\n", req.ID)
@@ -91,21 +93,21 @@ func loadOrCreate(req request, gh string) (string, error) {
 	// runnerStart saves rec, so it needs the ask PID that startMoshi saved.
 	rec = startMoshi(rec)
 	runnerStart(rec)
-	return statePending, nil
+	return approval.StatePending, nil
 }
 
 // The same command in another directory is a different request, so an
 // approval never carries over between checkouts.
-func scopeRequest(req request) request {
+func scopeRequest(req approval.Request) approval.Request {
 	req.Directory, _ = os.Getwd()
-	req.ID = requestID(req)
+	req.ID = approval.RequestID(req)
 	return req
 }
 
 // Lets the approver see which PR a comment, merge, or review is for. Empty
 // when the request names its own title or the lookup fails. pr edit reuses
 // the title its review already fetched.
-func currentTitle(gh string, req request, fetched string) string {
+func currentTitle(gh string, req approval.Request, fetched string) string {
 	if req.HasTitle || req.Target == "" {
 		return ""
 	}
@@ -136,7 +138,7 @@ func ghLookup(gh, directory string, args ...string) string {
 func waitForAnswer(id, gh string) int {
 	deadline := time.Now().Add(answerTimeout)
 	for time.Now().Before(deadline) {
-		if rec, err := load(id); err == nil && rec.State != statePending {
+		if rec, err := approval.Load(id); err == nil && rec.State != approval.StatePending {
 			return reportOrRun(id, gh)
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -153,26 +155,26 @@ func reportOrRun(id, gh string) int {
 // request: the foreground writer passes the gh it found on PATH, and the
 // runner passes rec.GH because its PATH may lack gh.
 func reportOrRunOutput(id, gh string, output io.Writer) int {
-	lockFile, err := lockRequest(id)
+	lockFile, err := approval.Lock(id)
 	if err != nil {
 		return printError(err)
 	}
 	defer lockFile.Close()
-	rec, err := load(id)
+	rec, err := approval.Load(id)
 	if err != nil {
 		return printError(err)
 	}
 	switch rec.State {
-	case stateApproved:
+	case approval.StateApproved:
 		return runGH(rec, gh, output)
-	case stateRan:
+	case approval.StateRan:
 		fmt.Fprintf(stderr, "pde-gh-write: already ran %s, exit %d\n", id, rec.Exit)
 		fmt.Fprint(output, rec.Output)
 		return rec.Exit
-	case stateDeclined:
+	case approval.StateDeclined:
 		fmt.Fprintf(stderr, "pde-gh-write: declined %s\n", id)
 		return exitDeclined
-	case stateRunning:
+	case approval.StateRunning:
 		fmt.Fprintf(stderr, "pde-gh-write: interrupted %s\n", id)
 		return exitInterrupted
 	}
@@ -226,14 +228,14 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func runGH(rec record, gh string, output io.Writer) int {
+func runGH(rec approval.Record, gh string, output io.Writer) int {
 	if gh == "" || !isExecutable(gh) {
 		// The request stays approved, so rerunning the command runs it.
 		fmt.Fprintf(stderr, "pde-gh-write: cannot find gh to run approved %s; rerun this exact command\n", rec.ID)
 		return 1
 	}
-	rec.State = stateRunning
-	if err := save(rec); err != nil {
+	rec.State = approval.StateRunning
+	if err := approval.Save(rec); err != nil {
 		return printError(err)
 	}
 	capture := &limitedBuffer{}
@@ -257,8 +259,8 @@ func runGH(rec record, gh string, output io.Writer) int {
 			rec.Output += fmt.Sprintf("pde-gh-write: %v\n", err)
 		}
 	}
-	rec.State = stateRan
-	if err := save(rec); err != nil {
+	rec.State = approval.StateRan
+	if err := approval.Save(rec); err != nil {
 		// The record stays running, so reruns report interrupted and never rerun.
 		fmt.Fprintf(stderr, "pde-gh-write: gh exited %d but the result was not saved: %v\n", rec.Exit, err)
 	}

@@ -1,4 +1,4 @@
-package main
+package approval
 
 import (
 	"crypto/sha256"
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-type request struct {
+type Request struct {
 	Operation string
 	Title     string
 	Body      string
@@ -40,18 +40,18 @@ var writeOperations = []string{"create", "edit", "comment", "review", "merge", "
 
 // Body files are read once and sent to gh on standard input, so gh posts the
 // approved text.
-func parse(args []string, stdin io.Reader) (request, error) {
+func Parse(args []string, stdin io.Reader) (Request, error) {
 	if len(args) < 2 || args[0] != "pr" {
-		return request{}, fmt.Errorf("usage: pde-gh-write pr {%s} [gh arguments...]", strings.Join(writeOperations, "|"))
+		return Request{}, fmt.Errorf("usage: pde-gh-write pr {%s} [gh arguments...]", strings.Join(writeOperations, "|"))
 	}
-	req := request{Operation: args[1], Args: append([]string(nil), args...)}
+	req := Request{Operation: args[1], Args: append([]string(nil), args...)}
 	if !slices.Contains(writeOperations, req.Operation) {
-		return request{}, fmt.Errorf("refuses gh pr %s; use a read-only gh command or an allowlisted write", req.Operation)
+		return Request{}, fmt.Errorf("refuses gh pr %s; use a read-only gh command or an allowlisted write", req.Operation)
 	}
 	for index := 2; index < len(args); index++ {
 		name, value, inline := strings.Cut(args[index], "=")
 		if name == "--web" || name == "-w" {
-			return request{}, fmt.Errorf("refuses browser-based PR writes")
+			return Request{}, fmt.Errorf("refuses browser-based PR writes")
 		}
 		kind, ok := valueFlags[name]
 		if !ok {
@@ -60,7 +60,7 @@ func parse(args []string, stdin io.Reader) (request, error) {
 		if !inline {
 			index++
 			if index == len(args) {
-				return request{}, fmt.Errorf("%s requires a value", name)
+				return Request{}, fmt.Errorf("%s requires a value", name)
 			}
 			value = args[index]
 		}
@@ -73,7 +73,7 @@ func parse(args []string, stdin io.Reader) (request, error) {
 			req.Repo = value
 		case "file":
 			if err := readBodyFile(&req, value, stdin); err != nil {
-				return request{}, err
+				return Request{}, err
 			}
 			if inline {
 				req.Args[index] = "--body-file=-"
@@ -84,11 +84,11 @@ func parse(args []string, stdin io.Reader) (request, error) {
 	}
 	req.Target, req.TargetUnknown = findTarget(req.Operation, args[2:])
 	req.Command = commandText(args)
-	req.ID = requestID(req)
+	req.ID = RequestID(req)
 	return req, nil
 }
 
-func readBodyFile(req *request, path string, stdin io.Reader) error {
+func readBodyFile(req *Request, path string, stdin io.Reader) error {
 	var body []byte
 	var err error
 	if path == "-" {
@@ -168,7 +168,7 @@ func commandText(args []string) string {
 
 // Only local inputs that stay the same on a rerun; a network lookup that
 // failed once would otherwise turn the rerun into a new request.
-func requestID(req request) string {
+func RequestID(req Request) string {
 	fields, _ := json.Marshal([]string{req.Command, req.Title, req.Body, req.Directory})
 	hash := sha256.Sum256(fields)
 	return fmt.Sprintf("%x", hash)

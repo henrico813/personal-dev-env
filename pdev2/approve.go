@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 func approve(args []string) int {
@@ -14,8 +16,8 @@ func approve(args []string) int {
 		fmt.Fprintln(stderr, "usage: pde-pr-approve REQUEST_ID")
 		return exitRejected
 	}
-	rec, err := load(args[0])
-	if err != nil || rec.State != statePending || expired(rec) {
+	rec, err := approval.Load(args[0])
+	if err != nil || rec.State != approval.StatePending || approval.Expired(rec) {
 		fmt.Fprintf(stderr, "pde-pr-approve: no pending request %s\n", args[0])
 		return exitFailed
 	}
@@ -43,7 +45,7 @@ func approve(args []string) int {
 }
 
 func saveAnswer(id, choice string) int {
-	lockFile, err := lockRequest(id)
+	lockFile, err := approval.Lock(id)
 	if err != nil {
 		fmt.Fprintf(stderr, "pde-pr-approve: %v\n", err)
 		return exitFailed
@@ -51,8 +53,8 @@ func saveAnswer(id, choice string) int {
 	defer lockFile.Close()
 	// Checked again under the lock, because another approver may have answered
 	// or the request may have expired while the pager was open.
-	rec, err := load(id)
-	if err != nil || rec.State != statePending || expired(rec) {
+	rec, err := approval.Load(id)
+	if err != nil || rec.State != approval.StatePending || approval.Expired(rec) {
 		fmt.Fprintf(stderr, "pde-pr-approve: request %s was already handled or expired\n", id)
 		return 0
 	}
@@ -69,16 +71,16 @@ func saveAnswer(id, choice string) int {
 // loaded. It clears the phone question's PID, starts the runner on approval,
 // and clears the pane marker. saveAnswer then ends the phone question;
 // moshiAsk must not, because that question is the caller.
-func recordAnswer(rec record, choice string) (record, error) {
+func recordAnswer(rec approval.Record, choice string) (approval.Record, error) {
 	rec.MoshiPID = 0
-	rec.State = stateDeclined
-	if choice == choiceYes {
-		rec.State = stateApproved
+	rec.State = approval.StateDeclined
+	if choice == approval.ChoiceYes {
+		rec.State = approval.StateApproved
 	}
-	if err := save(rec); err != nil {
+	if err := approval.Save(rec); err != nil {
 		return rec, err
 	}
-	if rec.State == stateApproved {
+	if rec.State == approval.StateApproved {
 		rec = ensureRunner(rec)
 	}
 	clearRecordMarker(rec)
@@ -91,26 +93,26 @@ func approvePopup(id string) int {
 	if id == "" {
 		return 1
 	}
-	rec, err := load(id)
-	if err != nil || rec.State != statePending || expired(rec) {
+	rec, err := approval.Load(id)
+	if err != nil || rec.State != approval.StatePending || approval.Expired(rec) {
 		return 1
 	}
 	for {
 		switch choice := popupAnswer(rec, queuePosition(rec.ID), popupSettle); choice {
-		case choiceYes, choiceNo:
+		case approval.ChoiceYes, approval.ChoiceNo:
 			if code := saveAnswer(rec.ID, choice); code != 0 {
 				return code
 			}
-		case choiceDismiss:
+		case approval.ChoiceDismiss:
 			dismissRequest(rec.ID)
-		case choiceFocus:
+		case approval.ChoiceFocus:
 			focusRequest(rec)
 			return 0
 		default:
 			// Closing the popup is not an answer.
 			return 0
 		}
-		next := queuedRecords()
+		next := approval.Queued()
 		if len(next) == 0 {
 			return 0
 		}
@@ -121,7 +123,7 @@ func approvePopup(id string) int {
 // Counts only requests the popup will visit; a dismissed request opened from
 // the inbox counts as first.
 func queuePosition(id string) string {
-	queue := queuedRecords()
+	queue := approval.Queued()
 	for i, rec := range queue {
 		if rec.ID == id {
 			return fmt.Sprintf("%d of %d", i+1, len(queue))
@@ -134,22 +136,22 @@ func queuePosition(id string) string {
 // still lists it. Dismissing is not an answer, so it keeps the request's age;
 // otherwise dismissing and reopening it could keep it waiting past four hours.
 func dismissRequest(id string) {
-	lockFile, err := lockRequest(id)
+	lockFile, err := approval.Lock(id)
 	if err != nil {
 		return
 	}
 	defer lockFile.Close()
-	rec, err := load(id)
-	if err != nil || rec.State != statePending {
+	rec, err := approval.Load(id)
+	if err != nil || rec.State != approval.StatePending {
 		return
 	}
 	rec.Dismissed = true
-	if saveKeepingAge(rec) == nil {
+	if approval.SaveKeepingAge(rec) == nil {
 		clearRecordMarker(rec)
 	}
 }
 
-func focusRequest(rec record) {
+func focusRequest(rec approval.Record) {
 	pane := findAgent(rec.SessionID).Pane
 	if pane == "" {
 		pane = rec.PaneID
@@ -164,7 +166,7 @@ var popupIn, popupOut = os.Stdin, os.Stdout
 
 // A terminal error closes the popup without an answer; the request keeps
 // waiting for one on the phone or in a terminal.
-func popupAnswer(rec record, queue string, settle time.Duration) string {
+func popupAnswer(rec approval.Record, queue string, settle time.Duration) string {
 	choice, err := askPopup(popupIn, popupOut, rec, queue, settle)
 	if err != nil {
 		return ""
@@ -174,7 +176,7 @@ func popupAnswer(rec record, queue string, settle time.Duration) string {
 
 // Opens the popup on the oldest pending request, including dismissed ones.
 func openInbox() int {
-	pending := inboxRecords()
+	pending := approval.Inbox()
 	if len(pending) == 0 {
 		// The key otherwise seems to do nothing.
 		_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "No approvals waiting").Run()

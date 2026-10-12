@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 type flowEnv struct {
@@ -44,17 +46,17 @@ func requestAndAnswer(t *testing.T, args []string, state string) string {
 	if code := requestWrite(args); code != exitWaiting {
 		t.Fatalf("unanswered request returned %d, want %d", code, exitWaiting)
 	}
-	req, err := parse(args, nil)
+	req, err := approval.Parse(args, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req = scopeRequest(req)
-	rec, err := load(req.ID)
+	rec, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rec.State = state
-	if err := save(rec); err != nil {
+	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
 	return req.ID
@@ -90,7 +92,7 @@ func TestRerunReportsResultWithoutRunningAgain(t *testing.T) {
 			env := setupFlow(t, fmt.Sprintf("exit %d", tc.exitCode))
 			args := []string{"pr", "create", "--title", "T"}
 			// Create the pending record, then approve it as pde-pr-approve would.
-			id := requestAndAnswer(t, args, stateApproved)
+			id := requestAndAnswer(t, args, approval.StateApproved)
 
 			// The first run starts gh; the second must only report the saved exit.
 			first, second := requestWrite(args), requestWrite(args)
@@ -117,8 +119,8 @@ func TestDecidedRequestsNeverRunGH(t *testing.T) {
 		code  int
 		line  string
 	}{
-		{state: stateDeclined, code: exitDeclined, line: "pde-gh-write: declined "},
-		{state: stateRunning, code: exitInterrupted, line: "pde-gh-write: interrupted "},
+		{state: approval.StateDeclined, code: exitDeclined, line: "pde-gh-write: declined "},
+		{state: approval.StateRunning, code: exitInterrupted, line: "pde-gh-write: interrupted "},
 	}
 	for _, tc := range cases {
 		t.Run(tc.state, func(t *testing.T) {
@@ -163,7 +165,7 @@ func TestConcurrentRunsCallGHOnce(t *testing.T) {
 	// the first run finishes.
 	env := setupFlow(t, `while [ ! -f "$PDE_GH_GATE" ]; do /bin/sleep 0.01; done`)
 	args := []string{"pr", "merge", "12", "--squash"}
-	requestAndAnswer(t, args, stateApproved)
+	requestAndAnswer(t, args, approval.StateApproved)
 	// bytes.Buffer is not safe for the concurrent writes these runs make.
 	stderr = io.Discard
 	start := make(chan struct{})
@@ -203,7 +205,7 @@ func TestApprovedWriteRunsGHThroughSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []string{"pr", "ready", "12"}
-	requestAndAnswer(t, args, stateApproved)
+	requestAndAnswer(t, args, approval.StateApproved)
 
 	code := requestWrite(args)
 
@@ -239,7 +241,7 @@ func TestOtherDirectoryNeedsNewApproval(t *testing.T) {
 	first, second := t.TempDir(), t.TempDir()
 	// Approve and run the command in the first directory.
 	chdir(t, first)
-	requestAndAnswer(t, args, stateApproved)
+	requestAndAnswer(t, args, approval.StateApproved)
 	if code := requestWrite(args); code != 0 {
 		t.Fatalf("approved run returned %d", code)
 	}
@@ -258,7 +260,7 @@ func TestOtherDirectoryNeedsNewApproval(t *testing.T) {
 func TestRerunSurvivesFailedRepoLookup(t *testing.T) {
 	env := setupFlow(t, "")
 	args := []string{"pr", "create", "--title", "T"}
-	id := requestAndAnswer(t, args, stateApproved)
+	id := requestAndAnswer(t, args, approval.StateApproved)
 	if code := requestWrite(args); code != 0 {
 		t.Fatalf("approved run returned %d", code)
 	}

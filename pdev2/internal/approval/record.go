@@ -1,4 +1,4 @@
-package main
+package approval
 
 import (
 	"encoding/json"
@@ -11,8 +11,8 @@ import (
 )
 
 // Expiry is measured from the record's last change, not its creation. Saving
-// the PID of a phone question or runner is not a change; see saveKeepingAge.
-const expiry = 4 * time.Hour
+// the PID of a phone question or runner is not a change; see SaveKeepingAge.
+const Expiry = 4 * time.Hour
 
 // An answer from the terminal, the Herdr popup, or the phone moves a record
 // from pending to approved or declined. pde-gh-write, or the request's runner,
@@ -20,14 +20,26 @@ const expiry = 4 * time.Hour
 // exits. Finding running under the lock means that run died, and it is never
 // retried.
 const (
-	statePending  = "pending"
-	stateApproved = "approved"
-	stateDeclined = "declined"
-	stateRunning  = "running"
-	stateRan      = "ran"
+	StatePending  = "pending"
+	StateApproved = "approved"
+	StateDeclined = "declined"
+	StateRunning  = "running"
+	StateRan      = "ran"
 )
 
-type record struct {
+// Answers from the popup, the terminal prompt, and the phone. ChoiceNone means
+// no answer yet; ChoiceDismiss and ChoiceFocus close the popup without one.
+const (
+	ChoiceNone    = ""
+	ChoiceYes     = "yes"
+	ChoiceNo      = "no"
+	ChoiceDismiss = "dismiss"
+	ChoiceFocus   = "focus"
+)
+
+// Record is a request saved as JSON in $XDG_STATE_HOME/pde/pr-write/ID.json.
+// Renaming a field or its JSON tag loses requests saved by an older build.
+type Record struct {
 	// The request as the agent made it.
 	ID           string    `json:"id"`
 	Args         []string  `json:"args"`
@@ -72,8 +84,8 @@ func recordPath(id string) string {
 	return filepath.Join(stateDir(), id+".json")
 }
 
-func load(id string) (record, error) {
-	var rec record
+func Load(id string) (Record, error) {
+	var rec Record
 	data, err := os.ReadFile(recordPath(id))
 	if err != nil {
 		return rec, err
@@ -82,28 +94,29 @@ func load(id string) (record, error) {
 	return rec, err
 }
 
-// save records a change and restarts the four-hour expiry.
-func save(rec record) error {
+// Save records a change and restarts the four-hour expiry.
+func Save(rec Record) error {
 	rec.Updated = time.Now()
-	return writeRecord(rec)
+	return Write(rec)
 }
 
-// saveKeepingAge saves a change that is not an answer, such as the PID of a
+// SaveKeepingAge saves a change that is not an answer, such as the PID of a
 // phone question or runner, without restarting the four-hour expiry.
 // Otherwise each rerun that replaced a failed phone question or runner would
 // restart expiry, and the request would never expire. The caller holds the
 // request lock.
-func saveKeepingAge(rec record) error {
-	stored, err := load(rec.ID)
+func SaveKeepingAge(rec Record) error {
+	stored, err := Load(rec.ID)
 	if err != nil {
 		return err
 	}
 	rec.Updated = stored.Updated
-	return writeRecord(rec)
+	return Write(rec)
 }
 
+// Write saves rec with its Updated time as given; Save is for a change.
 // Replacing the completed temporary file keeps readers from seeing a partial record.
-func writeRecord(rec record) error {
+func Write(rec Record) error {
 	dir := stateDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -127,7 +140,8 @@ func writeRecord(rec record) error {
 	return os.Rename(file.Name(), recordPath(rec.ID))
 }
 
-func lockRequest(id string) (*os.File, error) {
+// Lock waits for the request's lock and holds it until the file is closed.
+func Lock(id string) (*os.File, error) {
 	if err := os.MkdirAll(stateDir(), 0o700); err != nil {
 		return nil, err
 	}
@@ -142,33 +156,33 @@ func lockRequest(id string) (*os.File, error) {
 	return file, nil
 }
 
-func expired(rec record) bool {
-	return time.Since(rec.Updated) > expiry
+func Expired(rec Record) bool {
+	return time.Since(rec.Updated) > Expiry
 }
 
-// queuedRecords returns the pending requests the popup visits, oldest first.
-func queuedRecords() []record { return pendingRecords(false) }
+// Queued returns the pending requests the popup visits, oldest first.
+func Queued() []Record { return pendingRecords(false) }
 
-// inboxRecords also includes dismissed requests, which the inbox still lists.
-func inboxRecords() []record { return pendingRecords(true) }
+// Inbox also includes dismissed requests, which the inbox still lists.
+func Inbox() []Record { return pendingRecords(true) }
 
 // Oldest first; Updated moves forward when a record changes, so it cannot
 // order the queue.
-func pendingRecords(includeDismissed bool) []record {
+func pendingRecords(includeDismissed bool) []Record {
 	entries, err := os.ReadDir(stateDir())
 	if err != nil {
 		return nil
 	}
-	var records []record
+	var records []Record
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		rec, err := load(strings.TrimSuffix(entry.Name(), ".json"))
-		if err == nil && rec.State == statePending && !expired(rec) && (includeDismissed || !rec.Dismissed) {
+		rec, err := Load(strings.TrimSuffix(entry.Name(), ".json"))
+		if err == nil && rec.State == StatePending && !Expired(rec) && (includeDismissed || !rec.Dismissed) {
 			records = append(records, rec)
 		}
 	}
-	slices.SortFunc(records, func(a, b record) int { return a.Created.Compare(b.Created) })
+	slices.SortFunc(records, func(a, b Record) int { return a.Created.Compare(b.Created) })
 	return records
 }

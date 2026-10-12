@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 	"unsafe"
+
+	"pdev2/internal/approval"
 )
 
 // A tap answers only on the rows of the APPROVE and DECLINE buttons, so the
@@ -24,7 +26,7 @@ import (
 // its 40x16 border, where buttons are two rows tall. A shorter popup gets
 // one-row buttons, where a one-row mistake would make a tap on a button miss.
 func TestPopupScreenFitsHerdrPane(t *testing.T) {
-	rec := record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
+	rec := approval.Record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
 	for _, size := range []struct{ cols, rows int }{{37, 14}, {40, 16}, {37, 10}} {
 		lines, layout := popupScreen(popupView{rec: rec, queue: "1 of 1"}, size.cols, size.rows)
 
@@ -59,7 +61,7 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 // two-row buttons, the six rows below the first line hold the three context
 // lines and three lines of the body.
 func TestPopupShowsPostedTextBesideContext(t *testing.T) {
-	context := record{Repo: "octo/app", Workspace: "app", SessionTitle: "review login fix", PRTitle: "Fix login timeout",
+	context := approval.Record{Repo: "octo/app", Workspace: "app", SessionTitle: "review login fix", PRTitle: "Fix login timeout",
 		ApprovalText: "id: long\ntime: long\ncommand: long\nbody: long"}
 	comment := context
 	comment.Args = []string{"pr", "comment", "12"}
@@ -67,10 +69,10 @@ func TestPopupShowsPostedTextBesideContext(t *testing.T) {
 	edit := context
 	edit.Args = []string{"pr", "edit", "12", "--title", "New title"}
 	edit.Title = "New title"
-	edit.ApprovalText = editHeader + "Title:\n-Old title\n+New title\n"
+	edit.ApprovalText = approval.EditHeader + "Title:\n-Old title\n+New title\n"
 	cases := []struct {
 		name string
-		rec  record
+		rec  approval.Record
 		want []string
 	}{
 		{name: "comment", rec: comment, want: []string{"comment #12", "octo/app", "app / review login fix", "Fix login timeout",
@@ -95,7 +97,7 @@ func TestPopupShowsPostedTextBesideContext(t *testing.T) {
 // Cutting a long title by bytes split such a character and drew invalid text,
 // so lines are cut by character.
 func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
-	rec := record{ID: "id", Args: []string{"pr", "create"}, Title: strings.Repeat("é", 60)}
+	rec := approval.Record{ID: "id", Args: []string{"pr", "create"}, Title: strings.Repeat("é", 60)}
 
 	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 37, 14)
 
@@ -109,24 +111,11 @@ func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
 	}
 }
 
-// For pr edit the popup shows changed lines as "-old" and "+new". In a live
-// edit popup, Markdown bullets ("- item") in the new body were shown too and
-// looked like removed lines.
-func TestEditChangesStopsBeforeBody(t *testing.T) {
-	text := editHeader + "Title:\n-old\n+new\n\nbody:\n- bullet\n"
-
-	got := strings.Join(editChanges(text), "\n")
-
-	if got != "-old\n+new" {
-		t.Fatalf("changes %q", got)
-	}
-}
-
 // The agent writes the title and body. If the terminal obeyed control
 // characters in them, such as ESC [2J (clear the screen), an agent could wipe
 // the popup or draw a different request over it. They must appear as text.
 func TestPopupEscapesControlText(t *testing.T) {
-	rec := record{ID: "id", Body: "title\x1b[2J\rbody\u009bend"}
+	rec := approval.Record{ID: "id", Body: "title\x1b[2J\rbody\u009bend"}
 
 	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 40, 16)
 
@@ -151,7 +140,7 @@ func TestPopupDiscardsEarlyInput(t *testing.T) {
 	// Start the popup in the background; it blocks until it gets an answer.
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, approval.Record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw, so the answer below arrives after the early input is
@@ -179,7 +168,7 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 			setPopupSize(t, terminal, 37, 14)
 			result := make(chan string, 1)
 			go func() {
-				choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
+				choice, _ := askPopup(popupTerminal(t, terminal), terminal, approval.Record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 				result <- choice
 			}()
 			// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -189,7 +178,7 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if got := receive(t, result); got != choiceDismiss {
+			if got := receive(t, result); got != approval.ChoiceDismiss {
 				t.Fatalf("answer %q", got)
 			}
 		})
@@ -206,7 +195,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, approval.Record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -222,7 +211,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	if _, err := master.WriteString("q"); err != nil {
 		t.Fatal(err)
 	}
-	if got := receive(t, result); got != choiceDismiss {
+	if got := receive(t, result); got != approval.ChoiceDismiss {
 		t.Fatalf("answer %q", got)
 	}
 }
@@ -234,7 +223,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 // "one moment..." stays shown, even while keys are typed, so a fast "yes"
 // and Enter that does nothing still says why.
 func TestPopupAppliesTapAndSettleRules(t *testing.T) {
-	_, layout := popupScreen(popupView{rec: record{ID: "id"}}, 37, 14)
+	_, layout := popupScreen(popupView{rec: approval.Record{ID: "id"}}, 37, 14)
 	press := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.approveTop, press: true}}
 	release := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.approveTop}}
 	declinePress := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.declineTop, press: true}}
@@ -247,12 +236,12 @@ func TestPopupAppliesTapAndSettleRules(t *testing.T) {
 		inputs   []popupInput
 		want     string // The choice after the last input; earlier inputs must give none.
 	}{
-		{name: "second tap answers", inputs: []popupInput{press, press}, want: choiceYes},
-		{name: "switch to decline", inputs: []popupInput{press, declinePress, declinePress}, want: choiceNo},
-		{name: "release does not confirm", inputs: []popupInput{press, release}, want: choiceNone},
-		{name: "settling ignores taps", settling: true, inputs: []popupInput{press, press}, want: choiceNone},
-		{name: "Enter answers typed yes", inputs: typedYes, want: choiceYes},
-		{name: "settling ignores Enter", settling: true, inputs: correctedYes, want: choiceNone},
+		{name: "second tap answers", inputs: []popupInput{press, press}, want: approval.ChoiceYes},
+		{name: "switch to decline", inputs: []popupInput{press, declinePress, declinePress}, want: approval.ChoiceNo},
+		{name: "release does not confirm", inputs: []popupInput{press, release}, want: approval.ChoiceNone},
+		{name: "settling ignores taps", settling: true, inputs: []popupInput{press, press}, want: approval.ChoiceNone},
+		{name: "Enter answers typed yes", inputs: typedYes, want: approval.ChoiceYes},
+		{name: "settling ignores Enter", settling: true, inputs: correctedYes, want: approval.ChoiceNone},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -262,9 +251,9 @@ func TestPopupAppliesTapAndSettleRules(t *testing.T) {
 				v.notice = settleNotice
 			}
 
-			got := choiceNone
+			got := approval.ChoiceNone
 			for i, input := range tc.inputs {
-				if got != choiceNone {
+				if got != approval.ChoiceNone {
 					t.Fatalf("answered %q before input %d", got, i)
 				}
 				got, _ = v.handle(input, layout, tc.settling)
@@ -307,10 +296,10 @@ func TestPopupTapApproves(t *testing.T) {
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
 	// Find the APPROVE rows the popup will draw at this size.
-	_, layout := popupScreen(popupView{rec: record{ID: "id", ApprovalText: "command"}}, 37, 14)
+	_, layout := popupScreen(popupView{rec: approval.Record{ID: "id", ApprovalText: "command"}}, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, approval.Record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw before tapping, or the tap is discarded as early input.
@@ -323,7 +312,7 @@ func TestPopupTapApproves(t *testing.T) {
 	shownBeforeAnswer(t, master, "tap APPROVE again to confirm", result)
 	writeTerminal(t, master, tap)
 
-	if got := receive(t, result); got != choiceYes {
+	if got := receive(t, result); got != approval.ChoiceYes {
 		t.Fatalf("answer %q", got)
 	}
 }
@@ -338,7 +327,7 @@ func TestPopupRedrawsWhenResized(t *testing.T) {
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", Args: []string{"pr", "create"}}, "1 of 1", 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, approval.Record{ID: "id", Args: []string{"pr", "create"}}, "1 of 1", 0)
 		result <- choice
 	}()
 	readUntil(t, master, "Typed:")
@@ -381,7 +370,7 @@ func TestQueuedPopupsSettleAndStartUnselected(t *testing.T) {
 	// clears it, so the taps below land after the pause.
 	readUntil(t, master, settleNotice)
 	shownBeforeAnswer(t, master, "Typed:", done)
-	if second, err := load("second"); err != nil || second.State != statePending {
+	if second, err := approval.Load("second"); err != nil || second.State != approval.StatePending {
 		t.Fatalf("second request = %#v, %v; want pending", second, err)
 	}
 	// The first request's confirmed selection must not carry over, so one tap
@@ -395,7 +384,7 @@ func TestQueuedPopupsSettleAndStartUnselected(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("a tap after the settle time was ignored")
 	}
-	if second, err := load("second"); err != nil || second.State != stateApproved {
+	if second, err := approval.Load("second"); err != nil || second.State != approval.StateApproved {
 		t.Fatalf("second request = %#v, %v; want approved", second, err)
 	}
 }
@@ -408,8 +397,8 @@ func queueTwoMerges(t *testing.T) (*os.File, popupLayout) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	now := time.Now()
 	for i, id := range []string{"first", "second"} {
-		rec := record{ID: id, Args: []string{"pr", "merge", fmt.Sprint(i + 1)}, State: statePending, Created: now.Add(time.Duration(i) * time.Second)}
-		if err := save(rec); err != nil {
+		rec := approval.Record{ID: id, Args: []string{"pr", "merge", fmt.Sprint(i + 1)}, State: approval.StatePending, Created: now.Add(time.Duration(i) * time.Second)}
+		if err := approval.Save(rec); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -418,7 +407,7 @@ func queueTwoMerges(t *testing.T) (*os.File, popupLayout) {
 	oldIn, oldOut := popupIn, popupOut
 	popupIn, popupOut = popupTerminal(t, terminal), terminal
 	t.Cleanup(func() { popupIn, popupOut = oldIn, oldOut })
-	_, layout := popupScreen(popupView{rec: record{Args: []string{"pr", "merge", "1"}}, queue: "1 of 2"}, 37, 14)
+	_, layout := popupScreen(popupView{rec: approval.Record{Args: []string{"pr", "merge", "1"}}, queue: "1 of 2"}, 37, 14)
 	return master, layout
 }
 
@@ -453,10 +442,10 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 		name, hook, state, want string
 		ageKept                 bool
 	}{
-		{"approve", "exit 0", statePending, stateApproved, false},
-		{"decline", "exit 1", statePending, stateDeclined, false},
-		{"handled", "exit 0", stateRan, stateRan, true},
-		{"failed ask", "kill -9 $$", statePending, statePending, true},
+		{"approve", "exit 0", approval.StatePending, approval.StateApproved, false},
+		{"decline", "exit 1", approval.StatePending, approval.StateDeclined, false},
+		{"handled", "exit 0", approval.StateRan, approval.StateRan, true},
+		{"failed ask", "kill -9 $$", approval.StatePending, approval.StatePending, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -471,8 +460,8 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 			// moshiAsk runs in this test process, so the PID saved for the
 			// question is the test's own; the record was last changed an hour ago.
 			saved := time.Now().Add(-time.Hour).Round(0)
-			rec := record{ID: tc.name, State: tc.state, Updated: saved, MoshiPID: os.Getpid()}
-			if err := writeRecord(rec); err != nil {
+			rec := approval.Record{ID: tc.name, State: tc.state, Updated: saved, MoshiPID: os.Getpid()}
+			if err := approval.Write(rec); err != nil {
 				t.Fatal(err)
 			}
 
@@ -481,7 +470,7 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("moshiAsk returned %d", code)
 			}
-			got, err := load(rec.ID)
+			got, err := approval.Load(rec.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -511,8 +500,8 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	moshiProgram = func() (string, error) { return writeScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
 	t.Cleanup(func() { moshiProgram = old })
 	// Start a real detached ask for a saved request.
-	rec := record{ID: "popup", State: statePending}
-	if err := save(rec); err != nil {
+	rec := approval.Record{ID: "popup", State: approval.StatePending}
+	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
 	rec = startMoshi(rec)
@@ -523,7 +512,7 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	waitForFile(t, ready)
 
 	// Answer as the popup does; that must stop the ask.
-	saveAnswer(rec.ID, choiceYes)
+	saveAnswer(rec.ID, approval.ChoiceYes)
 
 	waitForFile(t, stopped)
 }
@@ -544,11 +533,11 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	t.Cleanup(func() { moshiProgram = old })
 	discardStderr(t)
 	// Create the request, which starts the first question.
-	req := request{ID: "live", Args: []string{"pr", "comment", "12"}}
+	req := approval.Request{ID: "live", Args: []string{"pr", "comment", "12"}}
 	if _, err := loadOrCreate(req, ""); err != nil {
 		t.Fatal(err)
 	}
-	first, err := load(req.ID)
+	first, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,10 +550,10 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	// Rerun the same request while the first question is still running.
 	state, err := loadOrCreate(req, "")
 
-	if err != nil || state != statePending {
+	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)
 	}
-	second, err := load(req.ID)
+	second, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,17 +582,17 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	// The saved PID belongs to a process that has already exited, and the
 	// request was made three hours ago.
 	saved := time.Now().Add(-3 * time.Hour).Round(0)
-	rec := record{ID: "dead", MoshiPID: deadPID(t), State: statePending, Updated: saved}
-	if err := writeRecord(rec); err != nil {
+	rec := approval.Record{ID: "dead", MoshiPID: deadPID(t), State: approval.StatePending, Updated: saved}
+	if err := approval.Write(rec); err != nil {
 		t.Fatal(err)
 	}
 
-	state, err := loadOrCreate(request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
+	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
 
-	if err != nil || state != statePending {
+	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)
 	}
-	got, err := load(rec.ID)
+	got, err := approval.Load(rec.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -719,8 +708,8 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	// notifyRequest opens the popup only for a request still waiting, so save
 	// one.
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	rec := record{ID: "request-id", State: statePending}
-	if err := save(rec); err != nil {
+	rec := approval.Record{ID: "request-id", State: approval.StatePending}
+	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
 	// Accept one request and reply, as Herdr does, so sendHerdr returns.
@@ -762,17 +751,17 @@ func TestDismissedRequestStaysHidden(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The request was last changed an hour ago.
 	saved := time.Now().Add(-time.Hour).Round(0)
-	rec := record{ID: "dismissed", State: statePending, Updated: saved}
-	if err := writeRecord(rec); err != nil {
+	rec := approval.Record{ID: "dismissed", State: approval.StatePending, Updated: saved}
+	if err := approval.Write(rec); err != nil {
 		t.Fatal(err)
 	}
 
 	dismissRequest(rec.ID)
 
-	if got := queuedRecords(); len(got) != 0 {
+	if got := approval.Queued(); len(got) != 0 {
 		t.Fatalf("visible pending = %d", len(got))
 	}
-	got := inboxRecords()
+	got := approval.Inbox()
 	if len(got) != 1 || got[0].ID != rec.ID {
 		t.Fatalf("inbox pending = %#v", got)
 	}
@@ -791,14 +780,14 @@ func TestMarkerStaysWhileSamePaneWaits(t *testing.T) {
 	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	for _, id := range []string{"first", "second"} {
-		if err := save(record{ID: id, State: statePending, PaneID: "w1:p2"}); err != nil {
+		if err := approval.Save(approval.Record{ID: id, State: approval.StatePending, PaneID: "w1:p2"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	saveAnswer("first", choiceNo)
+	saveAnswer("first", approval.ChoiceNo)
 	afterFirst, _ := os.ReadFile(log)
-	saveAnswer("second", choiceNo)
+	saveAnswer("second", approval.ChoiceNo)
 	afterSecond, _ := os.ReadFile(log)
 
 	if len(afterFirst) != 0 {
@@ -820,7 +809,7 @@ func TestPhoneAnswerClearsMarker(t *testing.T) {
 	writeScript(t, dir, "moshi-hook", "exit 0")
 	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-	if err := save(record{ID: "phone", State: statePending, PaneID: "w1:p2"}); err != nil {
+	if err := approval.Save(approval.Record{ID: "phone", State: approval.StatePending, PaneID: "w1:p2"}); err != nil {
 		t.Fatal(err)
 	}
 

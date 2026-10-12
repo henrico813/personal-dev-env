@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"pdev2/internal/approval"
 )
 
 // Running go test inside Herdr must not open popups in your Herdr or send
@@ -15,7 +17,7 @@ import (
 // that needs one of these sets up a fake itself, as
 // TestHerdrPopupUsesSocketRequest does.
 func TestMain(m *testing.M) {
-	runnerStart = func(rec record) record { return rec }
+	runnerStart = func(rec approval.Record) approval.Record { return rec }
 	moshiProgram = func() (string, error) { return "", errors.New("tests set moshiProgram") }
 	os.Unsetenv("HERDR_ENV")
 	os.Unsetenv("OPENCODE_SESSION_ID")

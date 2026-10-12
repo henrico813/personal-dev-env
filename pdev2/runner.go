@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 // The runner is a detached copy of this binary, run as --pde-runner ID and
@@ -23,7 +25,7 @@ var runnerPoll = time.Second
 // Callers hold the request lock, because the runner PID is saved into rec.
 // The returned record carries the saved PID, so later saves under the same
 // lock keep it.
-func startDetachedRunner(rec record) record {
+func startDetachedRunner(rec approval.Record) approval.Record {
 	path, err := runnerProgram()
 	if err != nil {
 		return rec
@@ -40,7 +42,7 @@ func startDetachedRunner(rec record) record {
 	rec.RunnerPID = cmd.Process.Pid
 	// Like the phone question's PID, this is not a change of the request, so
 	// it must not restart expiry.
-	if err := saveKeepingAge(rec); err != nil {
+	if err := approval.SaveKeepingAge(rec); err != nil {
 		_ = cmd.Process.Kill()
 		rec.RunnerPID = 0
 	}
@@ -49,7 +51,7 @@ func startDetachedRunner(rec record) record {
 
 // Restarts a runner that was killed or lost on reboot, so a late approval
 // still runs. Callers hold the request lock.
-func ensureRunner(rec record) record {
+func ensureRunner(rec approval.Record) approval.Record {
 	if rec.RunnerPID == 0 || !processAlive(rec.RunnerPID) {
 		return runnerStart(rec)
 	}
@@ -60,16 +62,16 @@ func ensureRunner(rec record) record {
 // foreground writer, so gh runs at most once whichever process gets there first.
 func runnerMain(id string) int {
 	for {
-		rec, err := load(id)
+		rec, err := approval.Load(id)
 		if err != nil {
 			return 1
 		}
-		if expired(rec) {
+		if approval.Expired(rec) {
 			clearRecordMarker(rec)
 			stopMoshi(rec.MoshiPID)
 			return 0
 		}
-		if rec.State != statePending {
+		if rec.State != approval.StatePending {
 			return reportOrRunOutput(id, rec.GH, io.Discard)
 		}
 		time.Sleep(runnerPoll)

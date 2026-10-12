@@ -188,11 +188,12 @@ program takes the first argument that is not an option or an option's value
 as the PR number or branch. In `gh pr edit --base main 12`, that is `12`.
 `pr create` has no PR number.
 
-Each operation's entry in `targetFlags` in `parse.go` lists the options from
-`gh pr OPERATION --help` that may come before the number and whether each
-takes a value. Short options are listed per operation because they can
-differ: `-m` takes a milestone for `edit` but nothing for `merge`. Title,
-body, body file, and repository options are in `valueFlags`.
+Each operation's entry in `targetFlags` in `internal/approval/request.go`
+lists the options from `gh pr OPERATION --help` that may come before the
+number and whether each takes a value. Short options are listed per
+operation because they can differ: `-m` takes a milestone for `edit` but
+nothing for `merge`. Title, body, body file, and repository options are in
+`valueFlags`.
 
 When `gh` adds any option, add it to the list, marked with whether it takes
 a value. Otherwise commands that put it before the number lose the PR
