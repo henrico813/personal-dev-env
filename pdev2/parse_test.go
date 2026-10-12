@@ -91,27 +91,32 @@ func TestRequestIDChangesWithPostedText(t *testing.T) {
 	}
 }
 
-// The approval screen shows a PR's old title and body next to the new ones,
-// so the program must find the PR number even when options come first, as in
-// gh pr edit --base main 12. Taking main as the PR would show the wrong PR's
-// text or none. An option it does not know might take the number as its value,
-// so then it reports the number as unknown instead of guessing.
-func TestEditFindsPRNumberAfterOptions(t *testing.T) {
+// The popup and the phone show which PR a request is for, and the approval
+// screen shows a PR's old title and body next to the new ones. Both need the
+// PR number even when options come first, as in gh pr edit --base main 12.
+// Taking main as the PR would show the wrong PR's text or none. The same short
+// option can differ by command: -m takes a milestone for edit but nothing for
+// merge. An option the program does not know might take the number as its
+// value, so then it reports the number as unknown instead of guessing.
+func TestFindsPRNumberAfterOptions(t *testing.T) {
 	cases := []struct {
-		name    string
-		args    []string
-		target  string
-		unknown bool
+		name      string
+		operation string
+		args      []string
+		target    string
+		unknown   bool
 	}{
-		{name: "number first", args: []string{"12", "--base", "main"}, target: "12"},
-		{name: "option with value before number", args: []string{"--base", "main", "12"}, target: "12"},
-		{name: "option=value before number", args: []string{"--add-label=bug", "12"}, target: "12"},
-		{name: "option without value before number", args: []string{"--remove-milestone", "12"}, target: "12"},
-		{name: "unlisted option before number", args: []string{"--new-flag", "x", "12"}, unknown: true},
+		{name: "edit number first", operation: "edit", args: []string{"12", "--base", "main"}, target: "12"},
+		{name: "edit option with value before number", operation: "edit", args: []string{"--base", "main", "12"}, target: "12"},
+		{name: "edit option=value before number", operation: "edit", args: []string{"--add-label=bug", "12"}, target: "12"},
+		{name: "edit option without value before number", operation: "edit", args: []string{"--remove-milestone", "12"}, target: "12"},
+		{name: "merge option without value before number", operation: "merge", args: []string{"--squash", "12"}, target: "12"},
+		{name: "merge -m takes no value", operation: "merge", args: []string{"-m", "12"}, target: "12"},
+		{name: "unlisted option before number", operation: "edit", args: []string{"--new-flag", "x", "12"}, unknown: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req, err := parse(append([]string{"pr", "edit"}, tc.args...), nil)
+			req, err := parse(append([]string{"pr", tc.operation}, tc.args...), nil)
 
 			if err != nil {
 				t.Fatal(err)

@@ -33,7 +33,7 @@ func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := request{Operation: "edit", Target: "12", Title: tc.title, HasTitle: true}
 
-			text, err := approvalText(gh, req)
+			text, _, err := approvalText(gh, req)
 
 			if err != nil {
 				t.Fatal(err)
@@ -52,7 +52,7 @@ func TestEditReviewShowsFetchFailure(t *testing.T) {
 	gh := writeScript(t, t.TempDir(), "gh", "echo boom >&2; exit 1")
 	req := request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
 
-	text, err := approvalText(gh, req)
+	text, _, err := approvalText(gh, req)
 
 	if err != nil || !strings.Contains(text, "Fetch failed: boom\n") {
 		t.Fatalf("review = %q, %v; want the fetch error in the text", text, err)
@@ -68,7 +68,7 @@ func TestEditReviewStopsHungFetch(t *testing.T) {
 	t.Cleanup(func() { fetchTimeout = oldTimeout })
 	req := request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
 
-	text, err := approvalText(gh, req)
+	text, _, err := approvalText(gh, req)
 
 	if err != nil || !strings.Contains(text, "Fetch failed: gh pr view timed out") {
 		t.Fatalf("review = %q, %v; want the timeout in the text", text, err)

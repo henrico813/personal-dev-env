@@ -33,10 +33,16 @@ the same arguments instead.
 
 ## Why One Record per Request
 
-The ID is built from the command, the title, and the body, so the same
-command with the same text finds the same record. That is how a rerun learns
-the earlier result. Changing any of the three makes a new request that needs
-its own answer, so an approval never covers text you did not see.
+The ID is built from the command, the title, the body, and the directory
+the command runs in. The same command with the same text from the same
+directory finds the same record. That is how a rerun learns the earlier
+result. Changing any of these makes a new request that needs its own
+answer, so an approval never covers text you did not see or carries over
+to another copy of the repository.
+
+Details the program looks up on GitHub, such as the repository name and the
+PR title shown to you, are not part of the ID. If a lookup fails on a rerun,
+the rerun still finds the same request.
 
 ## Why gh Runs Only Once
 
@@ -67,10 +73,11 @@ Agents often pass long text with `--body-file PATH`. The program reads the
 file when the request is made and later gives `gh` that saved text, so
 editing the file after you approve cannot change what gets posted.
 
-## How the Approval Screen Finds the PR for pr edit
+## How the Program Finds the PR Number
 
-When an agent asks to rename PR 12, the approval screen shows the old and
-new title, shortened here:
+The popup and the phone name the PR a request is for, such as `merge #12`,
+and its title. For `pr edit`, the approval screen also shows the
+old and new title, shortened here:
 
 ```
 Title:
@@ -78,7 +85,7 @@ Title:
 +New title
 ```
 
-To get "Old title", the program asks GitHub about PR 12, so it has to pick
+To get the title, the program asks GitHub about PR 12, so it has to pick
 "12" out of the command. Commands take options such as `--title`, some of
 which take a value, and agents can write them in different orders:
 
@@ -89,9 +96,12 @@ gh pr edit --base main 12 --title "New title" <- number after other options
 
 In the second command, the program knows that `main` belongs to `--base`
 and `12` is the PR only because it keeps a list of the options and whether
-each takes a value. When it meets an option missing from that list, it says
-it cannot show the old values instead of guessing. The list has to be
-updated when GitHub adds options to `gh`.
+each takes a value. Each kind of command has its own list, because the
+same short option can differ: `-m` takes a milestone for `pr edit` but
+nothing for `pr merge`.
+When it meets an option missing from the list, it does not guess: the
+popup shows `merge PR` instead of `merge #12`, and `pr edit` cannot show the
+old values. The lists have to be updated when GitHub adds options to `gh`.
 
 Exact states, exit codes, files, and limits are in the
 [reference](../reference/requests.md).
