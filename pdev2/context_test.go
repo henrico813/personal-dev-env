@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 // With several sessions asking at once, the first lines are how a person
@@ -15,9 +17,9 @@ import (
 // start with the same context lines, at the top of the popup.
 func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	rec := record{ID: "ctx", State: statePending, Args: []string{"pr", "merge", "185"}, Repo: "owner/repo",
+	rec := approval.Record{ID: "ctx", State: approval.StatePending, Args: []string{"pr", "merge", "185"}, Repo: "owner/repo",
 		Workspace: "pdev-release", SessionTitle: "OC | release", Title: "Ship it"}
-	if err := writeRecord(rec); err != nil {
+	if err := approval.Write(rec); err != nil {
 		t.Fatal(err)
 	}
 	// The fake moshi-hook saves the question it was asked, which comes after
@@ -73,7 +75,7 @@ esac`)
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
 	discardStderr(t)
-	req, err := parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
+	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +87,7 @@ esac`)
 	// The notification runs in the background; it must not outlive the test's PATH.
 	waitForFile(t, done)
 
-	got, err := load(req.ID)
+	got, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +132,7 @@ esac`)
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
 	discardStderr(t)
-	req, err := parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
+	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,10 +140,10 @@ esac`)
 
 	// Create the request, which starts the notification in the background,
 	// and approve it while the notification waits on the gate.
-	if state, err := loadOrCreate(req, gh); err != nil || state != statePending {
+	if state, err := loadOrCreate(req, gh); err != nil || state != approval.StatePending {
 		t.Fatalf("state %q, err %v", state, err)
 	}
-	if code := saveAnswer(req.ID, choiceYes); code != 0 {
+	if code := saveAnswer(req.ID, approval.ChoiceYes); code != 0 {
 		t.Fatalf("saveAnswer returned %d", code)
 	}
 	// Release the notification and wait for it to finish.
@@ -177,7 +179,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	// The fake gh answers the repository lookup and the PR title lookup.
 	gh := writeScript(t, t.TempDir(), "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
 	discardStderr(t)
-	req, err := parse([]string{"pr", "merge", "185", "--squash"}, nil)
+	req, err := approval.Parse([]string{"pr", "merge", "185", "--squash"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +189,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := load(req.ID)
+	rec, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +211,7 @@ func TestUnknownRepoShowsDirectoryLabel(t *testing.T) {
 	}
 	chdir(t, project)
 	discardStderr(t)
-	req, err := parse([]string{"pr", "merge", "185"}, nil)
+	req, err := approval.Parse([]string{"pr", "merge", "185"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,11 +221,11 @@ func TestUnknownRepoShowsDirectoryLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := load(req.ID)
+	rec, err := approval.Load(req.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(requestContext(rec), "\n"); got != "merge #185\ndir: project" {
+	if got := strings.Join(approval.ContextLines(rec), "\n"); got != "merge #185\ndir: project" {
 		t.Fatalf("context = %q", got)
 	}
 }

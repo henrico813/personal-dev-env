@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 type herdrRequest struct {
@@ -28,13 +30,13 @@ type agentInfo struct {
 // notifyRequest marks the agent's pane in the sidebar and opens the approval
 // popup and a notification when the agent runs inside Herdr. Errors are
 // ignored; the request can still be answered on the phone or in a terminal.
-func notifyRequest(rec record) {
+func notifyRequest(rec approval.Record) {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return
 	}
 	_ = reportMarker(rec.PaneID, true)
 	// An answer can arrive, and clear the marker, before it was set.
-	if current, err := load(rec.ID); err != nil || current.State != statePending {
+	if current, err := approval.Load(rec.ID); err != nil || current.State != approval.StatePending {
 		clearRecordMarker(rec)
 		return
 	}
@@ -66,11 +68,11 @@ func openApproval(id string) error {
 
 // Requests share one marker per pane, so it stays while another request from
 // that pane still waits.
-func clearRecordMarker(rec record) {
+func clearRecordMarker(rec approval.Record) {
 	if rec.PaneID == "" {
 		return
 	}
-	for _, other := range queuedRecords() {
+	for _, other := range approval.Queued() {
 		if other.ID != rec.ID && other.PaneID == rec.PaneID {
 			return
 		}
@@ -85,7 +87,7 @@ func reportMarker(pane string, pending bool) error {
 	}
 	args := []string{"pane", "report-metadata", "--source", "pde.approval", pane}
 	if pending {
-		args = append(args, "--title", "Approval waiting", "--ttl-ms", fmt.Sprint(expiry.Milliseconds()))
+		args = append(args, "--title", "Approval waiting", "--ttl-ms", fmt.Sprint(approval.Expiry.Milliseconds()))
 	} else {
 		args = append(args, "--clear-title")
 	}

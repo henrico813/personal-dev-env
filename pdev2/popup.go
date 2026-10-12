@@ -6,12 +6,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 	"unicode"
+
+	"pdev2/internal/approval"
 )
 
 // With reporting on, the terminal sends each tap or click to the program as
@@ -28,35 +29,25 @@ const (
 	keyDelete    = 0x7f
 )
 
-// Answers from the popup, the terminal prompt, and the phone. choiceNone means
-// no answer yet; choiceDismiss and choiceFocus close the popup without one.
-const (
-	choiceNone    = ""
-	choiceYes     = "yes"
-	choiceNo      = "no"
-	choiceDismiss = "dismiss"
-	choiceFocus   = "focus"
-)
-
 // Rows are 1-based, as in mouse reports. Buttons span the full width, so hit
 // ignores x.
 type popupLayout struct{ approveTop, approveBottom, declineTop, declineBottom int }
 
 func (l popupLayout) hit(x, y int) string {
 	if y >= l.approveTop && y <= l.approveBottom {
-		return choiceYes
+		return approval.ChoiceYes
 	}
 	if y >= l.declineTop && y <= l.declineBottom {
-		return choiceNo
+		return approval.ChoiceNo
 	}
-	return choiceNone
+	return approval.ChoiceNone
 }
 
 // What the popup shows for one request. queue reads like "1 of 2" and shares
-// the first line with what is being asked. selected is choiceYes or choiceNo
-// while a button waits for its confirming tap.
+// the first line with what is being asked. selected is approval.ChoiceYes or
+// approval.ChoiceNo while a button waits for its confirming tap.
 type popupView struct {
-	rec                            record
+	rec                            approval.Record
 	queue, typed, notice, selected string
 }
 
@@ -70,7 +61,7 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 	if rows < 1 {
 		rows = 1
 	}
-	summary := popupSummary(v.rec)
+	summary := approval.Summary(v.rec)
 	header := headerLine(visibleScreenText(summary[0]), v.queue, cols)
 	if rows < 7 {
 		lines := []string{header}
@@ -107,10 +98,10 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 	lines = append(lines, typedLine(v.typed, v.notice, cols))
 	lines = append(lines, clip("v: full; g: focus; q/Esc: dismiss", cols))
 	approveTop := len(lines) + 1
-	lines = append(lines, buttonRows(buttonLabel("APPROVE", v.selected == choiceYes), cols, buttonHeight)...)
+	lines = append(lines, buttonRows(buttonLabel("APPROVE", v.selected == approval.ChoiceYes), cols, buttonHeight)...)
 	lines = append(lines, "")
 	declineTop := len(lines) + 1
-	lines = append(lines, buttonRows(buttonLabel("DECLINE", v.selected == choiceNo), cols, buttonHeight)...)
+	lines = append(lines, buttonRows(buttonLabel("DECLINE", v.selected == approval.ChoiceNo), cols, buttonHeight)...)
 	return lines, popupLayout{approveTop, approveTop + buttonHeight - 1, declineTop, declineTop + buttonHeight - 1}
 }
 
@@ -134,71 +125,6 @@ func headerLine(what, queue string, cols int) string {
 		return clip(what, cols)
 	}
 	return fmt.Sprintf("%-*s %s", room, clip(what, room), queue)
-}
-
-// The popup has room for a few lines, so it shows where the request came from,
-// the changes of a pr edit, and the body. The full approval text starts with
-// ID, time, and command lines that would fill the popup; v shows it.
-func popupSummary(rec record) []string {
-	summary := requestContext(rec)
-	if len(rec.Args) > 1 && rec.Args[1] == "edit" {
-		summary = append(summary, editChanges(rec.ApprovalText)...)
-	}
-	if rec.Body != "" {
-		summary = append(summary, strings.Split(rec.Body, "\n")...)
-	}
-	return summary
-}
-
-// Lines that say what is asked and where, in the order a reader needs them:
-// operation and PR, repository, Herdr workspace and session, PR title. The
-// popup and the phone question both start with these, so they cannot drift.
-func requestContext(rec record) []string {
-	what := "PR approval"
-	if len(rec.Args) > 1 {
-		what = rec.Args[1] + " PR"
-		if target, _ := findTarget(rec.Args[1], rec.Args[2:]); target != "" {
-			what = rec.Args[1] + " #" + target
-		}
-	}
-	lines := []string{what}
-	if rec.Repo != "" {
-		lines = append(lines, rec.Repo)
-	} else if rec.Directory != "" {
-		lines = append(lines, "dir: "+filepath.Base(rec.Directory))
-	}
-	session := strings.Trim(rec.Workspace+" / "+rec.SessionTitle, " /")
-	if session == "" {
-		session = rec.SessionID
-	}
-	if session != "" {
-		lines = append(lines, session)
-	}
-	if rec.Title != "" {
-		lines = append(lines, rec.Title)
-	} else if rec.PRTitle != "" {
-		lines = append(lines, rec.PRTitle)
-	}
-	return lines
-}
-
-// editChanges returns the "-old" and "+new" lines of a pr edit. It stops at the
-// blank line before the body, so Markdown bullets ("- item") in the body are
-// not shown as removed lines.
-func editChanges(approvalText string) []string {
-	_, changes, found := strings.Cut(approvalText, editHeader)
-	if !found {
-		return nil
-	}
-	changes, _, _ = strings.Cut(changes, "\n\n")
-	var lines []string
-	for _, line := range strings.Split(changes, "\n") {
-		if (strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++")) ||
-			(strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---")) {
-			lines = append(lines, line)
-		}
-	}
-	return lines
 }
 
 // The agent writes the title and body. Control characters in them are shown as
@@ -273,7 +199,7 @@ const settleNotice = "one moment..."
 // another terminal could otherwise answer. settle ignores taps and Enter for
 // that long after the popup opens; the queue passes popupSettle for every
 // request.
-func askPopup(in *os.File, out io.Writer, rec record, queue string, settle time.Duration) (string, error) {
+func askPopup(in *os.File, out io.Writer, rec approval.Record, queue string, settle time.Duration) (string, error) {
 	old, err := setRaw(in)
 	if err != nil {
 		return "", err
@@ -356,7 +282,7 @@ func askPopup(in *os.File, out io.Writer, rec record, queue string, settle time.
 			continue
 		}
 		choice, redraw := v.handle(input, layout, time.Now().Before(settleUntil))
-		if choice != choiceNone {
+		if choice != approval.ChoiceNone {
 			return choice, nil
 		}
 		if redraw {
@@ -366,53 +292,53 @@ func askPopup(in *os.File, out io.Writer, rec record, queue string, settle time.
 }
 
 // handle applies one key or tap to the view. It returns the popup's choice, or
-// choiceNone with redraw set when the view changed. settling ignores taps and
-// Enter.
+// approval.ChoiceNone with redraw set when the view changed. settling ignores
+// taps and Enter.
 func (v *popupView) handle(in popupInput, layout popupLayout, settling bool) (choice string, redraw bool) {
 	switch b := in.b; {
 	case b == keyEscape:
 		if !in.isMouse {
-			return choiceDismiss, false
+			return approval.ChoiceDismiss, false
 		}
 		// A tap also sends a release. Counting it would confirm the button the
 		// same tap just selected.
 		if !in.mouse.press || in.mouse.button != 0 || settling {
-			return choiceNone, false
+			return approval.ChoiceNone, false
 		}
 		// A tap only selects a button and a second tap on it answers, because
 		// accidental phone taps decided requests.
 		hit := layout.hit(in.mouse.x, in.mouse.y)
-		if hit != choiceNone && hit == v.selected {
+		if hit != approval.ChoiceNone && hit == v.selected {
 			return hit, false
 		}
 		v.selected, v.notice = hit, ""
-		if hit == choiceYes {
+		if hit == approval.ChoiceYes {
 			v.notice = "tap APPROVE again to confirm"
-		} else if hit == choiceNo {
+		} else if hit == approval.ChoiceNo {
 			v.notice = "tap DECLINE again to confirm"
 		}
-		return choiceNone, true
+		return approval.ChoiceNone, true
 	case b == '\r' || b == '\n':
 		if settling {
-			return choiceNone, false
+			return approval.ChoiceNone, false
 		}
 		typed := strings.ToLower(v.typed)
-		if typed == choiceYes || typed == choiceNo {
+		if typed == approval.ChoiceYes || typed == approval.ChoiceNo {
 			return typed, false
 		}
 		v.typed, v.selected = "", ""
 		v.notice = "Type yes or no, then Enter"
-		return choiceNone, true
+		return approval.ChoiceNone, true
 	case b == 'q':
-		return choiceDismiss, false
+		return approval.ChoiceDismiss, false
 	case b == 'g':
-		return choiceFocus, false
+		return approval.ChoiceFocus, false
 	case b == keyBackspace || b == keyDelete:
 		if len(v.typed) > 0 {
 			v.typed = v.typed[:len(v.typed)-1]
 		}
 		v.notice, v.selected = keyNotice(settling), ""
-		return choiceNone, true
+		return approval.ChoiceNone, true
 	case b >= ' ' && b <= '~': // Printable ASCII.
 		v.typed += string(b)
 		// yes and no need only the last few keys; the cap keeps the Typed line short.
@@ -420,9 +346,9 @@ func (v *popupView) handle(in popupInput, layout popupLayout, settling bool) (ch
 			v.typed = v.typed[len(v.typed)-8:]
 		}
 		v.notice, v.selected = keyNotice(settling), ""
-		return choiceNone, true
+		return approval.ChoiceNone, true
 	}
-	return choiceNone, false
+	return approval.ChoiceNone, false
 }
 
 // A typed key clears other notices, but the pause notice stays until the
@@ -499,7 +425,7 @@ func readMouse(r *bufio.Reader) (mouseReport, bool, error) {
 	}
 }
 
-func showDetails(rec record) {
+func showDetails(rec approval.Record) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return

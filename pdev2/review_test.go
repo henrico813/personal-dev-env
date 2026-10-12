@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 func writeScript(t *testing.T, dir, name, body string) string {
@@ -31,7 +33,7 @@ func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := request{Operation: "edit", Target: "12", Title: tc.title, HasTitle: true}
+			req := approval.Request{Operation: "edit", Target: "12", Title: tc.title, HasTitle: true}
 
 			text, _, err := approvalText(gh, req)
 
@@ -50,7 +52,7 @@ func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
 // A fetch failure must be shown to the approver instead of blocking the write.
 func TestEditReviewShowsFetchFailure(t *testing.T) {
 	gh := writeScript(t, t.TempDir(), "gh", "echo boom >&2; exit 1")
-	req := request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
+	req := approval.Request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
 
 	text, _, err := approvalText(gh, req)
 
@@ -66,7 +68,7 @@ func TestEditReviewStopsHungFetch(t *testing.T) {
 	oldTimeout := fetchTimeout
 	fetchTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { fetchTimeout = oldTimeout })
-	req := request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
+	req := approval.Request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
 
 	text, _, err := approvalText(gh, req)
 
