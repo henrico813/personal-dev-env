@@ -21,6 +21,7 @@ The installer does not build this program yet. The shell scripts in
 - [Where a request came from](explanation/request-context.md)
 - [Approving after the agent stopped waiting](explanation/late-approvals.md)
 - [Why one tap does not answer](explanation/popup-taps.md)
+- [The approval queue](explanation/approval-queue.md)
 
 ## Reference
 

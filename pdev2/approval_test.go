@@ -26,7 +26,7 @@ import (
 func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	rec := record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
 	for _, size := range []struct{ cols, rows int }{{37, 14}, {40, 16}, {37, 10}} {
-		lines, layout := popupScreen(popupView{rec: rec}, size.cols, size.rows)
+		lines, layout := popupScreen(popupView{rec: rec, queue: "1 of 1"}, size.cols, size.rows)
 
 		if len(lines) != size.rows {
 			t.Fatalf("%dx%d rendered %d rows", size.cols, size.rows, len(lines))
@@ -36,7 +36,7 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 				t.Fatalf("%dx%d line exceeded columns: %q", size.cols, size.rows, line)
 			}
 		}
-		if strings.Count(strings.Join(lines, "\n"), "v: full text; q/Esc: dismiss") != 1 {
+		if strings.Count(strings.Join(lines, "\n"), "v: full; g: focus; q/Esc: dismiss") != 1 {
 			t.Fatal("dismiss hint was not shown once")
 		}
 		for label, want := range map[string]string{"[ APPROVE ]": "yes", "[ DECLINE ]": "no"} {
@@ -79,7 +79,7 @@ func TestPopupShowsPostedTextBesideContext(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			lines, _ := popupScreen(popupView{rec: tc.rec}, 37, 14)
+			lines, _ := popupScreen(popupView{rec: tc.rec, queue: "1 of 1"}, 37, 14)
 
 			rendered := strings.Join(lines, "\n")
 			for _, want := range tc.want {
@@ -97,7 +97,7 @@ func TestPopupShowsPostedTextBesideContext(t *testing.T) {
 func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
 	rec := record{ID: "id", Args: []string{"pr", "create"}, Title: strings.Repeat("é", 60)}
 
-	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 37, 14)
 
 	for _, line := range lines {
 		if !utf8.ValidString(line) || utf8.RuneCountInString(line) > 37 {
@@ -128,7 +128,7 @@ func TestEditChangesStopsBeforeBody(t *testing.T) {
 func TestPopupEscapesControlText(t *testing.T) {
 	rec := record{ID: "id", Body: "title\x1b[2J\rbody\u009bend"}
 
-	lines, _ := popupScreen(popupView{rec: rec}, 40, 16)
+	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 40, 16)
 
 	rendered := strings.Join(lines, "\n")
 	if strings.ContainsAny(rendered, "\x1b\r\u009b") || !strings.Contains(rendered, "^[") || !strings.Contains(rendered, "^M") || !strings.Contains(rendered, "\\u009b") {
@@ -151,7 +151,7 @@ func TestPopupDiscardsEarlyInput(t *testing.T) {
 	// Start the popup in the background; it blocks until it gets an answer.
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw, so the answer below arrives after the early input is
@@ -179,7 +179,7 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 			setPopupSize(t, terminal, 37, 14)
 			result := make(chan string, 1)
 			go func() {
-				choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
+				choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 				result <- choice
 			}()
 			// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -206,7 +206,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -230,7 +230,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 // The tap rules decide whether a stray tap answers a request. Accidental phone
 // taps decided two requests in live use, so one tap only selects a button and
 // a second tap on the same button answers. A tap's release is not a second
-// tap. For 600 ms after the popup opens, taps and Enter are ignored and
+// tap. For 600 ms after each request appears, taps and Enter are ignored and
 // "one moment..." stays shown, even while keys are typed, so a fast "yes"
 // and Enter that does nothing still says why.
 func TestPopupAppliesTapAndSettleRules(t *testing.T) {
@@ -310,7 +310,7 @@ func TestPopupTapApproves(t *testing.T) {
 	_, layout := popupScreen(popupView{rec: record{ID: "id", ApprovalText: "command"}}, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
 		result <- choice
 	}()
 	// Wait for the draw before tapping, or the tap is discarded as early input.
@@ -338,7 +338,7 @@ func TestPopupRedrawsWhenResized(t *testing.T) {
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", Args: []string{"pr", "create"}}, 0)
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", Args: []string{"pr", "create"}}, "1 of 1", 0)
 		result <- choice
 	}()
 	readUntil(t, master, "Typed:")
@@ -354,6 +354,72 @@ func TestPopupRedrawsWhenResized(t *testing.T) {
 	shownBeforeAnswer(t, master, strings.Repeat(" ", 24)+"[ APPROVE ]", result)
 	writeTerminal(t, master, "q")
 	receive(t, result)
+}
+
+// On a phone, an impatient second tap lands on the next request, which has
+// just appeared under the finger, and would approve it unread. Each queued
+// request therefore opens with a settle pause and no selected button.
+// TestPopupAppliesTapAndSettleRules checks that taps during the pause are
+// ignored; this test checks that the queue applies the pause and the reset
+// to every request, not only the first.
+func TestQueuedPopupsSettleAndStartUnselected(t *testing.T) {
+	master, layout := queueTwoMerges(t)
+	press := fmt.Sprintf("\x1b[<0;10;%dM", layout.approveTop)
+	// Run the queue in the background; approvePopup returns once no
+	// undismissed request is left.
+	done := make(chan int, 1)
+	go func() { done <- approvePopup("first") }()
+
+	// The first popup settles too; wait for the redraw that clears its notice.
+	readUntil(t, master, "Typed:")
+	shownBeforeAnswer(t, master, "Typed:", done)
+	// Approve the first request with a selecting tap and a confirming tap.
+	writeTerminal(t, master, press)
+	shownBeforeAnswer(t, master, "tap APPROVE again to confirm", done)
+	writeTerminal(t, master, press)
+	// The second request opens with the pause notice. Wait for the redraw that
+	// clears it, so the taps below land after the pause.
+	readUntil(t, master, settleNotice)
+	shownBeforeAnswer(t, master, "Typed:", done)
+	if second, err := load("second"); err != nil || second.State != statePending {
+		t.Fatalf("second request = %#v, %v; want pending", second, err)
+	}
+	// The first request's confirmed selection must not carry over, so one tap
+	// only selects.
+	writeTerminal(t, master, press)
+	shownBeforeAnswer(t, master, "tap APPROVE again to confirm", done)
+	writeTerminal(t, master, press)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a tap after the settle time was ignored")
+	}
+	if second, err := load("second"); err != nil || second.State != stateApproved {
+		t.Fatalf("second request = %#v, %v; want approved", second, err)
+	}
+}
+
+// queueTwoMerges saves two pending merges, oldest first, and points the popup
+// at a new pseudo-terminal. It returns the terminal's master side and the
+// first request's button layout.
+func queueTwoMerges(t *testing.T) (*os.File, popupLayout) {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	now := time.Now()
+	for i, id := range []string{"first", "second"} {
+		rec := record{ID: id, Args: []string{"pr", "merge", fmt.Sprint(i + 1)}, State: statePending, Created: now.Add(time.Duration(i) * time.Second)}
+		if err := save(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	master, terminal := openPTY(t)
+	setPopupSize(t, terminal, 37, 14)
+	oldIn, oldOut := popupIn, popupOut
+	popupIn, popupOut = popupTerminal(t, terminal), terminal
+	t.Cleanup(func() { popupIn, popupOut = oldIn, oldOut })
+	_, layout := popupScreen(popupView{rec: record{Args: []string{"pr", "merge", "1"}}, queue: "1 of 2"}, 37, 14)
+	return master, layout
 }
 
 func writeTerminal(t *testing.T, master *os.File, text string) {
@@ -640,7 +706,7 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	}
 	defer listener.Close()
 	// The fake herdr CLI reports that socket for "herdr status server" and
-	// ignores the notification call.
+	// ignores the other calls.
 	dir := t.TempDir()
 	fake := filepath.Join(dir, "herdr")
 	script := "#!/bin/sh\nif [ \"$1\" = status ]; then echo socket: $HERDR_TEST_SOCKET; fi\n"
@@ -650,6 +716,13 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("HERDR_TEST_SOCKET", socket)
+	// notifyRequest opens the popup only for a request still waiting, so save
+	// one.
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	rec := record{ID: "request-id", State: statePending}
+	if err := save(rec); err != nil {
+		t.Fatal(err)
+	}
 	// Accept one request and reply, as Herdr does, so sendHerdr returns.
 	received := make(chan map[string]any, 1)
 	go func() {
@@ -665,7 +738,7 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 		}
 	}()
 
-	notifyRequest(record{ID: "request-id"})
+	notifyRequest(rec)
 
 	message := receive(t, received)
 	params, ok := message["params"].(map[string]any)
@@ -678,5 +751,83 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	env, ok := params["env"].(map[string]any)
 	if !ok || env["PDE_REQUEST_ID"] != "request-id" {
 		t.Fatalf("env = %#v", params["env"])
+	}
+}
+
+// Dismissing must stop a request from reopening in the popup queue while
+// the inbox can still find it. Dismissing first used the save that records an
+// answer, which restarted the four-hour expiry, so a request dismissed and
+// reopened from the inbox could keep waiting indefinitely.
+func TestDismissedRequestStaysHidden(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The request was last changed an hour ago.
+	saved := time.Now().Add(-time.Hour).Round(0)
+	rec := record{ID: "dismissed", State: statePending, Updated: saved}
+	if err := writeRecord(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	dismissRequest(rec.ID)
+
+	if got := queuedRecords(); len(got) != 0 {
+		t.Fatalf("visible pending = %d", len(got))
+	}
+	got := inboxRecords()
+	if len(got) != 1 || got[0].ID != rec.ID {
+		t.Fatalf("inbox pending = %#v", got)
+	}
+	if !got[0].Updated.Equal(saved) {
+		t.Errorf("dismissing moved the last change from %v to %v", saved, got[0].Updated)
+	}
+}
+
+// One agent pane can ask twice; answering one request must not hide that
+// the other is still waiting.
+func TestMarkerStaysWhileSamePaneWaits(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake herdr logs each call, so the test can see marker changes.
+	dir := t.TempDir()
+	log := filepath.Join(dir, "log")
+	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	for _, id := range []string{"first", "second"} {
+		if err := save(record{ID: id, State: statePending, PaneID: "w1:p2"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	saveAnswer("first", choiceNo)
+	afterFirst, _ := os.ReadFile(log)
+	saveAnswer("second", choiceNo)
+	afterSecond, _ := os.ReadFile(log)
+
+	if len(afterFirst) != 0 {
+		t.Fatalf("marker changed while a request still waits: %q", afterFirst)
+	}
+	if !strings.Contains(string(afterSecond), "pane report-metadata --source pde.approval w1:p2 --clear-title") {
+		t.Fatalf("marker not cleared after the last answer: %q", afterSecond)
+	}
+}
+
+// The phone answers from its own process, not through the popup or a
+// terminal. Its answer must clear "Approval waiting" too, or the marker stays
+// on the agent's pane after the request is decided.
+func TestPhoneAnswerClearsMarker(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake moshi-hook approves at once; the fake herdr logs each call.
+	dir := t.TempDir()
+	log := filepath.Join(dir, "log")
+	writeScript(t, dir, "moshi-hook", "exit 0")
+	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	if err := save(record{ID: "phone", State: statePending, PaneID: "w1:p2"}); err != nil {
+		t.Fatal(err)
+	}
+
+	moshiAsk([]string{"phone"})
+
+	calls, _ := os.ReadFile(log)
+	if !strings.Contains(string(calls), "pane report-metadata --source pde.approval w1:p2 --clear-title") {
+		t.Fatalf("herdr calls = %q", calls)
 	}
 }
