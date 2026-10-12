@@ -56,15 +56,24 @@ output, `declined ID`, and `interrupted ID`.
 
 | Input | Effect |
 |---|---|
-| Tap `APPROVE` or `DECLINE` | Approve or decline (left button) |
+| First tap on `APPROVE` or `DECLINE` | Select it; shows `tap APPROVE again to confirm` or `tap DECLINE again to confirm` |
+| Second tap on the selected button | Approve or decline |
+| Tap elsewhere, or type | Clear the selection |
 | `yes` or `no`, then Enter | Approve or decline; any case; anything else asks again |
 | Backspace or Delete | Remove the last typed character |
 | `v` | Show the full request in `less`; leftover keys are discarded after it closes |
 | `q` or Esc | Close without answering; the request stays pending |
 
-Input typed before the screen draws is discarded. The popup is 40x16 in
-`plugin/herdr-plugin.toml`, leaving 37x14 inside the border. Below 11 rows
-the buttons are one row tall; below 7 rows only the first line is drawn.
+Only the press of a left-button tap counts. Input typed before the screen
+draws is discarded, and taps and Enter are ignored for 600 ms after the
+popup opens, while the popup shows `one moment...`. The popup redraws
+when its size changes.
+
+The popup is 40x16 in `plugin/herdr-plugin.toml`, leaving 37x14 inside
+the border. Buttons are three rows tall from 16 rows, two rows from 11
+to 15, and one row below 11; below 7 rows only the first line is drawn.
+Typed keys and notices share the line after the request text; when both
+do not fit, only the notice is shown.
 
 `pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or the
 request is not pending, 0 when closed without an answer, and otherwise as
@@ -192,3 +201,4 @@ details; the write itself still works:
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
 | Runner check interval | 1 second |
 | Saved `gh` output | 64 KiB |
+| Settle pause after the popup opens | 600 milliseconds |

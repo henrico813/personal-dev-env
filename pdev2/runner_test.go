@@ -37,7 +37,7 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	result := make(chan int, 1)
 	go func() { result <- runnerMain(rec.ID) }()
 
-	if code := saveAnswer(rec.ID, "yes"); code != 0 {
+	if code := saveAnswer(rec.ID, choiceYes); code != 0 {
 		t.Fatalf("saveAnswer returned %d", code)
 	}
 
@@ -168,7 +168,7 @@ func TestApprovalRestartsDeadRunner(t *testing.T) {
 		name   string
 		answer func(id string)
 	}{
-		{name: "terminal", answer: func(id string) { saveAnswer(id, "yes") }},
+		{name: "terminal", answer: func(id string) { saveAnswer(id, choiceYes) }},
 		{name: "phone", answer: func(id string) { moshiAsk([]string{id}) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
