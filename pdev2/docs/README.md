@@ -20,6 +20,7 @@ The installer does not build this program yet. The shell scripts in
 - [Approving in the Herdr popup or on the phone](explanation/popup-and-phone-approval.md)
 - [Where a request came from](explanation/request-context.md)
 - [Approving after the agent stopped waiting](explanation/late-approvals.md)
+- [Why one tap does not answer](explanation/popup-taps.md)
 
 ## Reference
 

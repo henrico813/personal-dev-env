@@ -15,33 +15,50 @@ What happens before and after your answer is in
 
 ## What You See
 
-An agent in the Herdr workspace `app` asks to post a comment on PR 12. The
-popup looks like this. It is 37 columns by 14 rows, inside a border that
-Herdr draws:
+An agent in the Herdr workspace `app` asks to post a three-line comment
+on PR 12. The popup looks like this. It is 37 columns by 14 rows, inside
+a border that Herdr draws:
 
 ```
 comment #12                            <- what is asked
 octo/app                               <- repository
 app / review login fix                 <- Herdr workspace / agent's title
 Fix login timeout                      <- the PR's title
-Typed:                                 <- keys typed so far
-                                       <- hint after a wrong answer
+Looks good. One question:              <- the comment, as much as fits
+should the timeout be 30s?
+The old value was 10s.
+Typed:                                 <- keys typed so far, then notices
 v: full text; q/Esc: dismiss
 
-             [ APPROVE ]               <- tap rows 8 to 10 to approve
+             [ APPROVE ]               <- tap row 10 or 11 to approve
 
 
-
-             [ DECLINE ]               <- tap rows 12 to 14 to decline
-
+             [ DECLINE ]               <- tap row 13 or 14 to decline
 ```
 
 The first four lines say which request this is and where it came from;
-[Where a request came from](request-context.md) explains them. The text that
-will be posted, the comment's body or the changed lines of a `pr edit` such
-as `-Old title` and `+New title`, fills the rows left below them. Here the
-four lines fill those rows, so `v` shows the comment. Instead of tapping,
-you can type `yes` or `no` and press Enter.
+[Where a request came from](request-context.md) explains them. The text
+that will be posted fills the rows below them; `v` shows all of it. For
+a `pr edit` that renames the PR and changes its body, those rows show
+what changes instead:
+
+```
+-Fix login
++Fix login timeout
+-Old body
+```
+
+The first tap on a button only selects it. The screen then shows:
+
+```
+Typed:   tap APPROVE again to confirm
+v: full text; q/Esc: dismiss
+
+           [>> APPROVE <<]
+```
+
+A second tap on APPROVE approves. Instead of tapping, you can type `yes` or
+`no` and press Enter.
 
 At the same time, the phone shows the same four lines as a question:
 
@@ -74,6 +91,9 @@ question cannot approve a request you declined.
   asks Herdr to put the keyboard on the popup when it opens, so a `yes` and
   Enter you were typing for an agent could otherwise land in the popup and
   approve.
+- **One tap does not answer.** The first tap on a button only selects it,
+  and taps and Enter do nothing for a moment after the popup opens; see
+  [Why one tap does not answer](popup-taps.md).
 - **A single `y` is not an answer.** An earlier version approved on one
   stray key. Typing `y` and Enter shows `Type yes or no, then Enter`.
 - **Agent text cannot change the screen.** The agent writes the title and
