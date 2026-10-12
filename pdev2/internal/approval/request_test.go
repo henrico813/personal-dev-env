@@ -1,4 +1,4 @@
-package main
+package approval
 
 import (
 	"bytes"
@@ -36,7 +36,7 @@ func TestParseReadsEveryFlagForm(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req, err := parse(tc.args, stdin)
+			req, err := Parse(tc.args, stdin)
 
 			if err != nil {
 				t.Fatal(err)
@@ -63,7 +63,7 @@ func TestParseRejectsUnsafeRequests(t *testing.T) {
 		{"pr", "publish", "12"},
 		{"pr", "create", "--title"},
 	} {
-		if _, err := parse(args, nil); err == nil {
+		if _, err := Parse(args, nil); err == nil {
 			t.Errorf("parse(%q) succeeded, want an error", args)
 		}
 	}
@@ -79,7 +79,7 @@ func TestRequestIDChangesWithPostedText(t *testing.T) {
 		if err := os.WriteFile(bodyPath, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		req, err := parse(args, nil)
+		req, err := Parse(args, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,7 +116,7 @@ func TestFindsPRNumberAfterOptions(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req, err := parse(append([]string{"pr", tc.operation}, tc.args...), nil)
+			req, err := Parse(append([]string{"pr", tc.operation}, tc.args...), nil)
 
 			if err != nil {
 				t.Fatal(err)

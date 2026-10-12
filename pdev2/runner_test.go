@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"pdev2/internal/approval"
 )
 
 // An approval can arrive after the agent's 90-second wait. The runner then
@@ -28,8 +30,8 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	oldPoll := runnerPoll
 	runnerPoll = 10 * time.Millisecond
 	t.Cleanup(func() { runnerPoll = oldPoll })
-	rec := record{ID: "runner", Args: []string{"pr", "create"}, State: statePending, GH: gh, Directory: workdir}
-	if err := save(rec); err != nil {
+	rec := approval.Record{ID: "runner", Args: []string{"pr", "create"}, State: approval.StatePending, GH: gh, Directory: workdir}
+	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,7 +39,7 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	result := make(chan int, 1)
 	go func() { result <- runnerMain(rec.ID) }()
 
-	if code := saveAnswer(rec.ID, choiceYes); code != 0 {
+	if code := saveAnswer(rec.ID, approval.ChoiceYes); code != 0 {
 		t.Fatalf("saveAnswer returned %d", code)
 	}
 
@@ -61,15 +63,15 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 func TestRunnerWithMissingGHKeepsApproval(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	discardStderr(t)
-	rec := record{ID: "moved", Args: []string{"pr", "create"}, State: stateApproved, GH: filepath.Join(t.TempDir(), "gh")}
-	if err := save(rec); err != nil {
+	rec := approval.Record{ID: "moved", Args: []string{"pr", "create"}, State: approval.StateApproved, GH: filepath.Join(t.TempDir(), "gh")}
+	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
 
 	code := runnerMain(rec.ID)
 
-	got, err := load(rec.ID)
-	if code == 0 || err != nil || got.State != stateApproved {
+	got, err := approval.Load(rec.ID)
+	if code == 0 || err != nil || got.State != approval.StateApproved {
 		t.Fatalf("runner returned %d, state %q, %v; want a failure and still approved", code, got.State, err)
 	}
 }
@@ -87,17 +89,17 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 	// The saved runner PID belongs to a process that has already exited, and
 	// the request was made three hours ago.
 	saved := time.Now().Add(-3 * time.Hour).Round(0)
-	rec := record{ID: "dead", RunnerPID: deadPID(t), State: statePending, Updated: saved}
-	if err := writeRecord(rec); err != nil {
+	rec := approval.Record{ID: "dead", RunnerPID: deadPID(t), State: approval.StatePending, Updated: saved}
+	if err := approval.Write(rec); err != nil {
 		t.Fatal(err)
 	}
 
-	state, err := loadOrCreate(request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
+	state, err := loadOrCreate(approval.Request{ID: rec.ID, Args: []string{"pr", "comment", "12"}}, "")
 
-	if err != nil || state != statePending {
+	if err != nil || state != approval.StatePending {
 		t.Fatalf("rerun state %q, err %v", state, err)
 	}
-	got, err := load(rec.ID)
+	got, err := approval.Load(rec.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +135,12 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 	t.Cleanup(func() { runnerStart, runnerProgram, moshiProgram = oldStart, oldRunner, oldMoshi })
 	discardStderr(t)
 
-	_, err := loadOrCreate(request{ID: "new", Args: []string{"pr", "comment", "12"}}, "")
+	_, err := loadOrCreate(approval.Request{ID: "new", Args: []string{"pr", "comment", "12"}}, "")
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := load("new")
+	got, err := approval.Load("new")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +170,7 @@ func TestApprovalRestartsDeadRunner(t *testing.T) {
 		name   string
 		answer func(id string)
 	}{
-		{name: "terminal", answer: func(id string) { saveAnswer(id, choiceYes) }},
+		{name: "terminal", answer: func(id string) { saveAnswer(id, approval.ChoiceYes) }},
 		{name: "phone", answer: func(id string) { moshiAsk([]string{id}) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -176,10 +178,10 @@ func TestApprovalRestartsDeadRunner(t *testing.T) {
 			// Record runner starts instead of starting the test binary.
 			var started []string
 			oldStart := runnerStart
-			runnerStart = func(rec record) record { started = append(started, rec.ID); return rec }
+			runnerStart = func(rec approval.Record) approval.Record { started = append(started, rec.ID); return rec }
 			t.Cleanup(func() { runnerStart = oldStart })
 			// The saved runner PID belongs to a process that has already exited.
-			if err := save(record{ID: "late", State: statePending, RunnerPID: deadPID(t)}); err != nil {
+			if err := approval.Save(approval.Record{ID: "late", State: approval.StatePending, RunnerPID: deadPID(t)}); err != nil {
 				t.Fatal(err)
 			}
 

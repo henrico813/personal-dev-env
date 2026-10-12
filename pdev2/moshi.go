@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+
+	"pdev2/internal/approval"
 )
 
 // The phone question is sent by this same program, started again with
@@ -16,7 +18,7 @@ var moshiProgram = os.Executable
 // still running, so reruns of a waiting request never send a second question.
 // The returned record carries the saved PID, so later saves under the same
 // lock keep it.
-func startMoshi(rec record) record {
+func startMoshi(rec approval.Record) approval.Record {
 	if rec.MoshiPID != 0 && processAlive(rec.MoshiPID) {
 		return rec
 	}
@@ -36,7 +38,7 @@ func startMoshi(rec record) record {
 	rec.MoshiPID = cmd.Process.Pid
 	// Reruns check this PID before sending a question. If it cannot be saved,
 	// stop the question, or a rerun would send a second one.
-	if err := saveKeepingAge(rec); err != nil {
+	if err := approval.SaveKeepingAge(rec); err != nil {
 		_ = cmd.Process.Kill()
 		rec.MoshiPID = 0
 	}
@@ -63,29 +65,29 @@ func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
 	}
-	answer := choiceNone
+	answer := approval.ChoiceNone
 	// The question comes from the saved record, so it shows what the popup shows.
-	if rec, err := load(args[0]); err == nil && rec.State == statePending {
+	if rec, err := approval.Load(args[0]); err == nil && rec.State == approval.StatePending {
 		commandErr := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec)).Run()
 		// moshi-hook ask exits 0 for yes and 1 for no; any other result, such as a
 		// timeout or a killed helper, is no answer.
 		var exitErr *exec.ExitError
 		if commandErr == nil {
-			answer = choiceYes
+			answer = approval.ChoiceYes
 		} else if errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1 {
-			answer = choiceNo
+			answer = approval.ChoiceNo
 		}
 	}
-	lock, err := lockRequest(args[0])
+	lock, err := approval.Lock(args[0])
 	if err != nil {
 		return 1
 	}
 	defer lock.Close()
-	rec, err := load(args[0])
-	if err != nil || expired(rec) {
+	rec, err := approval.Load(args[0])
+	if err != nil || approval.Expired(rec) {
 		return 0
 	}
-	if answer != choiceNone && rec.State == statePending {
+	if answer != approval.ChoiceNone && rec.State == approval.StatePending {
 		if _, err := recordAnswer(rec, answer); err != nil {
 			return 1
 		}
@@ -99,15 +101,15 @@ func moshiAsk(args []string) int {
 		return 0
 	}
 	rec.MoshiPID = 0
-	if err := saveKeepingAge(rec); err != nil {
+	if err := approval.SaveKeepingAge(rec); err != nil {
 		return 1
 	}
 	return 0
 }
 
 // Uses the popup's context lines, so the phone and the popup name a request the same way.
-func moshiQuestion(rec record) string {
-	lines := requestContext(rec)
+func moshiQuestion(rec approval.Record) string {
+	lines := approval.ContextLines(rec)
 	lines[0] = "Approve " + lines[0] + "?"
 	return strings.Join(lines, "\n")
 }
