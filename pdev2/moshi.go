@@ -14,13 +14,15 @@ var moshiProgram = os.Executable
 
 // startMoshi sends the phone question unless the one saved in the record is
 // still running, so reruns of a waiting request never send a second question.
-func startMoshi(rec record) {
+// The returned record carries the saved PID, so later saves under the same
+// lock keep it.
+func startMoshi(rec record) record {
 	if rec.MoshiPID != 0 && processAlive(rec.MoshiPID) {
-		return
+		return rec
 	}
 	path, err := moshiProgram()
 	if err != nil {
-		return
+		return rec
 	}
 	cmd := exec.Command(path, "--moshi-ask", rec.ID)
 	// When the agent's command ends, the tool that ran it stops every program
@@ -29,22 +31,34 @@ func startMoshi(rec record) {
 	// reach it, and is not waited for.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return
+		return rec
 	}
 	rec.MoshiPID = cmd.Process.Pid
 	// Reruns check this PID before sending a question. If it cannot be saved,
 	// stop the question, or a rerun would send a second one.
 	if err := saveKeepingAge(rec); err != nil {
 		_ = cmd.Process.Kill()
+		rec.MoshiPID = 0
 	}
+	return rec
 }
 
 func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// Ends a phone question that can no longer decide anything, so it does not
+// stay on the phone for hours. The question runs in its own session, so its
+// PID is also its process group ID. moshiAsk must not call this for its own
+// answer.
+func stopMoshi(pid int) {
+	if pid != 0 && processAlive(pid) {
+		_ = syscall.Kill(-pid, syscall.SIGTERM)
+	}
+}
+
 // moshiAsk runs as pde-gh-write --moshi-ask ID. It waits up to four hours for
 // the phone answer and saves it only if the request is still pending; a later
-// answer changes nothing. It never runs gh: the waiting pde-gh-write or a
-// rerun does.
+// answer changes nothing. It never runs gh: the request's runner, the waiting
+// pde-gh-write, or a rerun does.
 func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
@@ -71,26 +85,21 @@ func moshiAsk(args []string) int {
 	if err != nil || expired(rec) {
 		return 0
 	}
-	// Remove this program's PID whenever it ends while the request is live. The
-	// system reuses PIDs, so a stale one could name an unrelated program that
-	// looks like a running question and stops reruns from sending a new one.
-	owned := rec.MoshiPID == os.Getpid()
-	answered := answer != "" && rec.State == statePending
-	if !owned && !answered {
-		return 0
-	}
-	rec.MoshiPID = 0
-	if !answered {
-		if err := saveKeepingAge(rec); err != nil {
+	if answer != "" && rec.State == statePending {
+		if _, err := recordAnswer(rec, answer); err != nil {
 			return 1
 		}
 		return 0
 	}
-	rec.State = stateDeclined
-	if answer == "yes" {
-		rec.State = stateApproved
+	// Remove this program's PID whenever it ends while the request is live. The
+	// system reuses PIDs, so a stale one could name an unrelated program that
+	// looks like a running question, stop reruns from sending a new one, and
+	// be signaled by stopMoshi.
+	if rec.MoshiPID != os.Getpid() {
+		return 0
 	}
-	if err := save(rec); err != nil {
+	rec.MoshiPID = 0
+	if err := saveKeepingAge(rec); err != nil {
 		return 1
 	}
 	return 0
