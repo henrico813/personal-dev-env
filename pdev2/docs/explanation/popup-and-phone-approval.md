@@ -60,9 +60,11 @@ It checks while holding the request's lock (see
 [Why gh runs only once](request-flow.md#why-gh-runs-only-once)), so two
 answers cannot both be saved.
 
-Answering in one place does not close the others: the popup stays open and
-the phone question stays on the phone. A later answer finds the request
-already answered or expired and changes nothing. A tap on an old popup
+An answer in the popup or a terminal ends the phone question, so it does
+not stay on your phone for hours. A popup still showing a request answered
+elsewhere stays open, and a phone question that could not be ended stays on
+the phone. A later answer from either finds the request already answered or
+expired and changes nothing. A tap on an old popup
 cannot undo an approval after `gh` may have posted, and an old phone
 question cannot approve a request you declined.
 
@@ -96,8 +98,9 @@ does not wait for it. That program is `pde-gh-write --moshi-ask`. It runs
 `moshi-hook` for up to four hours, the same as the request's lifetime.
 
 When you answer on the phone, it saves your answer if the request is still
-waiting. It never runs `gh`. The agent's waiting command, or its next rerun
-of the same command, does that.
+waiting. It never runs `gh`. The request's runner, the agent's waiting
+command, or its next rerun of the same command does that; see
+[Approving after the agent stopped waiting](late-approvals.md).
 
 ### Why a Rerun Does Not Send a Second Question
 
