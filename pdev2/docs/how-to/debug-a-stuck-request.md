@@ -21,6 +21,10 @@ jq '{state, created, updated, dismissed, runner_pid, moshi_pid, gh, exit_code, p
   "${XDG_STATE_HOME:-$HOME/.local/state}/pde/pr-write/ID.json"
 ```
 
+`null` means the field is not saved. For `runner_pid` or `moshi_pid`, no
+such process was saved, so there is nothing to check in step 3. For
+`dismissed`, the request was not dismissed.
+
 ## 2. Read the State
 
 | State | What it means | What to do |
@@ -37,17 +41,17 @@ next identical command replaces it with a new waiting request.
 
 ## 3. Check the Runner and the Phone Question
 
-Replace `RUNNER_PID` and `MOSHI_PID` with `runner_pid` and `moshi_pid`
-from step 1:
+Replace `RUNNER_PID` and `MOSHI_PID` with the numbers in `runner_pid` and
+`moshi_pid` from step 1:
 
 ```bash
-ps -o pid,args -p RUNNER_PID
-ps -o pid,args -p MOSHI_PID
+ps -o pid=,args= -p RUNNER_PID
+ps -o pid=,args= -p MOSHI_PID
 ```
 
-The runner's command line ends in `--pde-runner ID`, and the phone
-question's in `--moshi-ask ID`. No output means that program is no longer
-running. If the record is `approved` and the file named by `gh` is missing,
+A running runner prints a line ending in `--pde-runner ID`, and a running
+phone question one ending in `--moshi-ask ID`. No output means that program
+is gone. If the record is `approved` and the file named by `gh` is missing,
 the runner could not run it and left it approved for the next rerun.
 
 ## 4. Rerun the Exact Command
