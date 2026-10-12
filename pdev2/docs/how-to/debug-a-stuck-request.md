@@ -3,9 +3,9 @@
 Use this when an agent says its request is still waiting, you approved and
 nothing was posted, or no popup or phone question appeared. The runner and
 the phone question are explained in
-[Approving after the agent stopped waiting](../explanation/late-approvals.md),
-and dismissed requests in
-[The approval queue](../explanation/approval-queue.md).
+[How a request runs gh once](../explanation/request-flow.md#the-runner),
+and dismissed requests in the
+[reference](../reference/requests.md#queue-inbox-and-marker).
 
 ## 1. Find the Record
 

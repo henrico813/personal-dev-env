@@ -1,18 +1,8 @@
 # Where the Code Lives
 
-This page is for whoever reviews or changes pdev2. The code is split into
-four packages under `internal/`, so the file paths in a change say which
-part of the program it touches. `main.go` only calls `cmd.Main`, and the
-installer still builds the program from `pdev2/` with `go build .`.
-
-## Packages
-
-| Package | What it holds | Outside programs it runs |
-|---|---|---|
-| `internal/approval` | Reading `gh pr` arguments into a request, the request ID, the saved record and its lock, the queue order, and the text the approver reads | `diff`, for the changes of a `pr edit` |
-| `internal/terminal` | The Herdr popup's screen, keys, and taps; the yes-or-no prompt of `pde-pr-approve ID`; raw terminal mode and the pager | `less` |
-| `internal/cmd` | Each way the program starts, saving answers, and every call to `gh`, `herdr`, and `moshi-hook` | `gh`, `herdr`, `moshi-hook`, and copies of itself |
-| `internal/approvaltest` | Helpers for tests only: the pseudo-terminal the popup tests type into, and fake `gh`, `herdr`, and `moshi-hook` scripts | None; it is not built into the program |
+The code is in four packages under `internal/`; each package's `doc.go`
+says what it holds. `main.go` only calls `cmd.Main`, and the installer
+builds the program from `pdev2/` with `go build .`.
 
 `approval` imports no other pdev2 package, and `terminal` imports only
 `approval`. `cmd` imports both. The popup, the terminal prompt, and the
@@ -49,6 +39,7 @@ calls to those programs.
 | The Herdr popup request, notification, or sidebar marker | `internal/cmd/herdr.go` |
 | How `gh` is found and run | `internal/cmd/gh.go` |
 | The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
+| An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |
 
 ## Changes That Lose Waiting Requests
 
