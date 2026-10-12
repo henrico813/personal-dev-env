@@ -1,7 +1,7 @@
 """List the skills an agent read before and after its first edit.
 
 Examples:
-    python3 ai/evals/skill_audit.py ses_ecea4232bffeZhbnmQ0LmVBFZn
+    python3 ai/evals/skill_audit.py SESSION_ID
     python3 ai/evals/skill_audit.py --vibe RUN_DIR
 """
 
