@@ -12,7 +12,7 @@ installer still builds the program from `pdev2/` with `go build .`.
 | `internal/approval` | Reading `gh pr` arguments into a request, the request ID, the saved record and its lock, the queue order, and the text the approver reads | `diff`, for the changes of a `pr edit` |
 | `internal/terminal` | The Herdr popup's screen, keys, and taps; the yes-or-no prompt of `pde-pr-approve ID`; raw terminal mode and the pager | `less` |
 | `internal/cmd` | Each way the program starts, saving answers, and every call to `gh`, `herdr`, and `moshi-hook` | `gh`, `herdr`, `moshi-hook`, and copies of itself |
-| `internal/approvaltest` | Helpers for tests only, such as the pseudo-terminal the popup tests type into | None; it is not built into the program |
+| `internal/approvaltest` | Helpers for tests only: the pseudo-terminal the popup tests type into, and fake `gh`, `herdr`, and `moshi-hook` scripts | None; it is not built into the program |
 
 `approval` imports no other pdev2 package, and `terminal` imports only
 `approval`. `cmd` imports both. The popup, the terminal prompt, and the

@@ -27,13 +27,7 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	defer listener.Close()
 	// The fake herdr CLI reports that socket for "herdr status server" and
 	// ignores the other calls.
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "herdr")
-	script := "#!/bin/sh\nif [ \"$1\" = status ]; then echo socket: $HERDR_TEST_SOCKET; fi\n"
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	approvaltest.FakeHerdr(t, `if [ "$1" = status ]; then echo socket: $HERDR_TEST_SOCKET; fi`)
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("HERDR_TEST_SOCKET", socket)
 	// notifyRequest opens the popup only for a request still waiting, so save
@@ -79,10 +73,7 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 func TestMarkerStaysWhileSamePaneWaits(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake herdr logs each call, so the test can see marker changes.
-	dir := t.TempDir()
-	log := filepath.Join(dir, "log")
-	writeScript(t, dir, "herdr", `echo "$*" >> '`+log+`'`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"`)
 	for _, id := range []string{"first", "second"} {
 		if err := approval.Save(approval.Record{ID: id, State: approval.StatePending, PaneID: "w1:p2"}); err != nil {
 			t.Fatal(err)

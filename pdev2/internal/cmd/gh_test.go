@@ -1,28 +1,18 @@
 package cmd
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 )
-
-func writeScript(t *testing.T, dir, name, body string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
 
 // The Moshi phone-approval change deleted the bash diff helper while two calls
 // remained, so every `pr edit` failed and no test noticed.
 func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
-	gh := writeScript(t, t.TempDir(), "gh", `echo '{"title":"old","body":"same"}'`)
+	gh, _ := approvaltest.FakeGH(t, `echo '{"title":"old","body":"same"}'`)
 	cases := []struct {
 		name  string
 		title string
@@ -51,7 +41,7 @@ func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
 
 // A fetch failure must be shown to the approver instead of blocking the write.
 func TestEditReviewShowsFetchFailure(t *testing.T) {
-	gh := writeScript(t, t.TempDir(), "gh", "echo boom >&2; exit 1")
+	gh, _ := approvaltest.FakeGH(t, "echo boom >&2; exit 1")
 	req := approval.Request{Operation: "edit", Target: "12", Title: "new", HasTitle: true}
 
 	text, _, err := approvalText(gh, req)
@@ -64,7 +54,7 @@ func TestEditReviewShowsFetchFailure(t *testing.T) {
 // The fetch runs under the request lock; a hung gh would block every rerun.
 func TestEditReviewStopsHungFetch(t *testing.T) {
 	// The fake gh never answers; the shortened timeout keeps the test fast.
-	gh := writeScript(t, t.TempDir(), "gh", "exec sleep 10")
+	gh, _ := approvaltest.FakeGH(t, "exec sleep 10")
 	oldTimeout := fetchTimeout
 	fetchTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { fetchTimeout = oldTimeout })
