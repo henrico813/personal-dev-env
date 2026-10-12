@@ -19,13 +19,43 @@ another copy of `gh`.
 
 One request goes like this:
 
-1. The guard refuses an agent's pull-request write.
-2. The agent runs the same command through `pde-gh-write`.
-3. `pde-gh-write` saves the request and asks on the phone, and in the Herdr
-   popup when the agent runs inside Herdr.
-4. You answer there or with `pde-pr-approve ID`; the first answer counts.
-5. After an approval, `gh` runs once, in the waiting command or the runner.
-6. A rerun of the same command prints the saved result instead of posting.
+1. An agent runs a pull-request write, such as `gh pr comment 12`. Your
+   `.zshrc` puts `~/.local/bin` ahead of aqua's folder on `PATH`, so the
+   `gh` it finds is the guard, a short bash script.
+2. The guard refuses the write, exits 2, and tells the agent to use
+   `pde-gh-write`. Any other command passes through to the real `gh`.
+3. The agent runs the same command through `pde-gh-write`, the Go program
+   built from `pdev2/`. It saves the request in a file and starts the
+   runner, a copy of itself that waits in the background.
+4. If the agent runs inside Herdr, `pde-gh-write` asks Herdr, through
+   Herdr's socket, to open the approval plugin's popup. The popup runs
+   `pde-pr-approve --herdr-popup`; `pde-pr-approve` is another name for
+   `pde-gh-write`.
+5. It also starts `pde-gh-write --moshi-ask`, which runs `moshi-hook ask`
+   to put the question on your phone.
+6. You answer in the popup, on the phone, or with `pde-pr-approve ID` in
+   a terminal. The first answer counts.
+7. After an approval, the agent's waiting command or the runner, whichever
+   gets there first, runs the real `gh` directly, once. After 90 seconds
+   the agent's command stops waiting, and only the runner is left.
+8. A rerun of the same command prints the saved result instead of posting
+   again.
+
+## How It Gets Installed
+
+`pde-installer install full` puts the pieces in place in two ways. It
+builds the Go program from `pdev2/` as `~/.local/bin/pde-gh-write` and
+links `pde-pr-approve` to it; the program picks its mode from the name it
+was started under, so one build serves both. It also installs
+`moshi-hook`. chezmoi, which the installer also runs, places the files
+that tie the program into your tools: the guard as `~/.local/bin/gh`, the
+Herdr plugin, the `prefix+a` inbox key, and an OpenCode plugin that tells
+`pde-gh-write` which session asked. Herdr loads plugins only into a
+running server, so a separate script links the plugin after each install
+and, when Herdr is not running, prints how to link it later. The
+terminal profile installs none of this, and removes the guard,
+`pde-gh-write`, and `pde-pr-approve` if a full install left them.
+[Set up approval](../how-to/set-up-approval.md) lists the steps.
 
 The sections below explain why each step works the way it does.
 

@@ -10,14 +10,8 @@ so their requests reach you in Herdr and on your phone. Keep your normal
    pde-installer install full
    ```
 
-   This builds `pde-gh-write` and also installs:
-
-   - the guard, `~/.local/bin/gh`, which stops agents writing to a pull
-     request with plain `gh`
-   - the Herdr plugin that opens the approval popup, and the `prefix+a`
-     key (Ctrl+b, then a) that reopens requests you set aside
-   - the OpenCode plugin that tells a request which agent asked
-   - `moshi-hook`, which sends the question to your phone
+   [How it gets installed](../explanation/request-flow.md#how-it-gets-installed)
+   says what this puts in place.
 
 2. Restart every OpenCode server and client. OpenCode loads plugins only
    when it starts, and without the session plugin a request cannot say
