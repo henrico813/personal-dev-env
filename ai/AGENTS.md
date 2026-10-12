@@ -33,7 +33,7 @@
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
-  unavailable.
+  unavailable. Name domain skills; the rules above route workflow skills.
 
 ## Code Search
 
