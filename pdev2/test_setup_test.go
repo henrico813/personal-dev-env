@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -14,5 +15,14 @@ import (
 func TestMain(m *testing.M) {
 	moshiProgram = func() (string, error) { return "", errors.New("tests set moshiProgram") }
 	os.Unsetenv("HERDR_ENV")
+	os.Unsetenv("OPENCODE_SESSION_ID")
 	os.Exit(m.Run())
+}
+
+// discardStderr hides this program's messages for one test.
+func discardStderr(t *testing.T) {
+	t.Helper()
+	old := stderr
+	stderr = &strings.Builder{}
+	t.Cleanup(func() { stderr = old })
 }

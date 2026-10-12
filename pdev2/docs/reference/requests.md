@@ -7,7 +7,7 @@
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup for the request in `PDE_REQUEST_ID` |
-| `pde-gh-write --moshi-ask ID QUESTION` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
+| `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
@@ -61,7 +61,7 @@ Rerun status lines are `already ran ID, exit N`, `declined ID`, and
 
 Input typed before the screen draws is discarded. The popup is 40x16 in
 `plugin/herdr-plugin.toml`, leaving 37x14 inside the border. Below 11 rows
-the buttons are one row tall; below 7 rows only the header is drawn.
+the buttons are one row tall; below 7 rows only the first line is drawn.
 
 `pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or the
 request is not pending, 0 when closed without an answer, and otherwise as
@@ -74,6 +74,9 @@ request is not pending, 0 when closed without an answer, and otherwise as
 ```bash
 moshi-hook ask --require-remote --source pde-gh-write --timeout 4h QUESTION
 ```
+
+`QUESTION` is `Approve` and the first context line, followed by the other
+context lines, built from the saved record.
 
 | moshi-hook exit | Result |
 |---|---|
@@ -96,10 +99,24 @@ Requests are saved in the state directory,
 | `ID.json.lock` | Lock file; only the program holding it may change the record or run `gh` |
 | `.record-*` | Temporary file while a record is saved |
 
-Record fields are `id`, `updated`, `args` (the arguments given to `gh`),
-`title`, `body`, `body_file`, `approval_text` (what the approver sees),
-`state`, `exit_code`, and `moshi_pid` (the process ID of the running phone
-question, omitted when none).
+Record fields, with those omitted when empty marked as optional:
+
+| Field | Meaning |
+|---|---|
+| `id` | Request ID |
+| `args` | Arguments given to `gh`, with a body file changed to `--body-file -` |
+| `title`, `body` | Requested title and body; `body` holds body-file contents |
+| `body_file` | `body` is sent to `gh` on standard input |
+| `approval_text` | What `less` shows the approver |
+| `directory` (optional) | Where the request was made |
+| `updated` | Last save; expiry counts from it |
+| `state` | See [states](#states) |
+| `exit_code` | `gh`'s exit code once it ran |
+| `moshi_pid` (optional) | Process ID of the running phone question |
+| `repo` (optional) | `--repo` value, or the repository `gh` found |
+| `pr_title` (optional) | Current PR title, when the request sets none |
+| `session_id` (optional) | OpenCode session that asked |
+| `session_title`, `workspace` (optional) | Herdr agent title and workspace label |
 
 ## Environment
 
@@ -108,33 +125,48 @@ question, omitted when none).
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
 | `PATH` | The first `gh` is the guard, a wrapper that blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
-| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup and a notification |
+| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup and a notification, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show |
+| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set; recorded as `session_id` |
 
 ## Request ID
 
-The ID is the SHA-256 of the JSON array `[command, title, body]`:
+The ID is the SHA-256 of the JSON array
+`[command, title, body, directory]`:
 
 - `command` is `gh` followed by each original argument quoted, as shown to the
   approver.
 - `title` is the value of `--title`, `-t`, or `--subject`.
 - `body` is the value of `--body` or `-b`, or the contents of the
   `--body-file` or `-F` file.
+- `directory` is the working directory of `pde-gh-write`.
 
-## PR Number in pr edit
+Looked-up values, such as the repository name and the PR title, are never
+part of the ID.
 
-For `pr edit`, the approval screen shows the PR's current title and body
-next to the requested ones. To fetch them, the program takes the first
-argument that is not an option or an option's value as the PR number or
-branch. In `gh pr edit --base main 12`, that is `12`.
+## PR Number
 
-The `"edit"` entry of `targetFlags` in `parse.go` lists the options that
-may come before the number and whether each takes a value. Title, body,
-body file, and repository options are in `valueFlags`. When `gh` adds any
-option, add it to the list, marked with whether it takes a value; otherwise
-commands that put it before the number show `Cannot show current values: the
-PR number or branch is unclear.` instead of the old values. The write itself
-still works.
+The popup and the phone show the PR a request is for, such as `merge #12`,
+and its title. For `pr edit`, the approval screen also shows the PR's
+current title and body next to the requested ones. To find the PR, the
+program takes the first argument that is not an option or an option's value
+as the PR number or branch. In `gh pr edit --base main 12`, that is `12`.
+`pr create` has no PR number.
+
+Each operation's entry in `targetFlags` in `parse.go` lists the options from
+`gh pr OPERATION --help` that may come before the number and whether each
+takes a value. Short options are listed per operation because they can
+differ: `-m` takes a milestone for `edit` but nothing for `merge`. Title,
+body, body file, and repository options are in `valueFlags`.
+
+When `gh` adds any option, add it to the list, marked with whether it takes
+a value. Otherwise commands that put it before the number lose the PR
+details; the write itself still works:
+
+- The popup and the phone show `merge PR` instead of `merge #12`, and no
+  current PR title.
+- For `pr edit`, the approval screen shows `Cannot show current values: the
+  PR number or branch is unclear.` instead of the old values.
 
 ## Limits
 
@@ -142,4 +174,4 @@ still works.
 |---|---|
 | Wait for an answer | 90 seconds |
 | Record expiry | 4 hours after the last change; saving `moshi_pid` alone is not a change |
-| `gh pr view` lookup for `pr edit` | 3 seconds |
+| Each `gh` and Herdr lookup while creating a request | 3 seconds |

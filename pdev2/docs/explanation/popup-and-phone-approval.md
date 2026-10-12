@@ -15,14 +15,15 @@ What happens before and after your answer is in
 
 ## What You See
 
-For `pde-gh-write pr comment 12 --body "Looks good"`, the popup looks like
-this. It is 37 columns by 14 rows, inside a border that Herdr draws:
+An agent in the Herdr workspace `app` asks to post a comment on PR 12. The
+popup looks like this. It is 37 columns by 14 rows, inside a border that
+Herdr draws:
 
 ```
-PDE approval c8349131                  <- start of the request ID
-gh pr comment 12                       <- what will run
-Looks good                             <- title and body, as much as fits
-
+comment #12                            <- what is asked
+octo/app                               <- repository
+app / review login fix                 <- Herdr workspace / agent's title
+Fix login timeout                      <- the PR's title
 Typed:                                 <- keys typed so far
                                        <- hint after a wrong answer
 v: full text; q/Esc: dismiss
@@ -35,18 +36,21 @@ v: full text; q/Esc: dismiss
 
 ```
 
-For `pr edit`, the lines after `gh pr edit 12` show what changes, such as
-`-Old title` and `+New title`. Instead of tapping, you can type `yes` or
-`no` and press Enter.
+The first four lines say which request this is and where it came from;
+[Where a request came from](request-context.md) explains them. The text that
+will be posted, the comment's body or the changed lines of a `pr edit` such
+as `-Old title` and `+New title`, fills the rows left below them. Here the
+four lines fill those rows, so `v` shows the comment. Instead of tapping,
+you can type `yes` or `no` and press Enter.
 
-At the same time, the phone shows:
+At the same time, the phone shows the same four lines as a question:
 
 ```
-Approve gh pr comment in current repository (12)?
+Approve comment #12?
+octo/app
+app / review login fix
+Fix login timeout
 ```
-
-When the agent names a repository and a title, the question includes them:
-`Approve gh pr edit in octo/app (12), titled Fix login timeout?`
 
 ## Three Places to Answer; the First Wins
 

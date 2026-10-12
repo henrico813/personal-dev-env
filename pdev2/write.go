@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,7 @@ func requestWrite(args []string) int {
 	if gh == "" {
 		return printError(errors.New("cannot find the real gh executable"))
 	}
+	req = scopeRequest(req)
 	state, err := loadOrCreate(req, gh)
 	if err != nil {
 		return printError(err)
@@ -52,19 +54,29 @@ func loadOrCreate(req request, gh string) (string, error) {
 			// Replace a phone question that ended without an answer, or the
 			// request would wait with nothing to answer on the phone. startMoshi
 			// does nothing while the earlier question is still running.
-			startMoshi(rec, moshiQuestion(req))
+			startMoshi(rec)
 		}
 		return rec.State, nil
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	text, err := approvalText(gh, req)
+	if req.Repo == "" {
+		// Looked up only after the ID is made, so a failed lookup on a rerun
+		// still finds the same request.
+		req.Repo = ghLookup(gh, req.Directory, "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+	}
+	text, fetchedTitle, err := approvalText(gh, req)
 	if err != nil {
 		return "", err
 	}
 	rec = record{ID: req.ID, Args: req.Args, Title: req.Title, Body: req.Body,
-		BodyFile: req.BodyFile, ApprovalText: text, State: statePending}
+		BodyFile: req.BodyFile, ApprovalText: text, State: statePending,
+		Directory: req.Directory, Repo: req.Repo,
+		PRTitle: currentTitle(gh, req, fetchedTitle), SessionID: os.Getenv("OPENCODE_SESSION_ID")}
+	// Filled in before the first save, because a later save outside this lock
+	// could overwrite an answer.
+	rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
 	if err := save(rec); err != nil {
 		return "", err
 	}
@@ -72,8 +84,47 @@ func loadOrCreate(req request, gh string) (string, error) {
 	// Opening the popup runs in the background so a slow Herdr cannot delay the
 	// wait for an answer. It may not finish if this program exits first.
 	go notifyRequest(rec)
-	startMoshi(rec, moshiQuestion(req))
+	startMoshi(rec)
 	return statePending, nil
+}
+
+// The same command in another directory is a different request, so an
+// approval never carries over between checkouts.
+func scopeRequest(req request) request {
+	req.Directory, _ = os.Getwd()
+	req.ID = requestID(req)
+	return req
+}
+
+// Lets the approver see which PR a comment, merge, or review is for. Empty
+// when the request names its own title or the lookup fails. pr edit reuses
+// the title its review already fetched.
+func currentTitle(gh string, req request, fetched string) string {
+	if req.HasTitle || req.Target == "" {
+		return ""
+	}
+	if req.Operation == "edit" {
+		return fetched
+	}
+	args := []string{"pr", "view", req.Target, "--json", "title", "--jq", ".title"}
+	if req.Repo != "" {
+		args = append(args, "--repo", req.Repo)
+	}
+	return ghLookup(gh, req.Directory, args...)
+}
+
+// Read-only and short, because the request lock is held while it runs.
+// Failure gives an empty result.
+func ghLookup(gh, directory string, args ...string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, gh, args...)
+	cmd.Dir = directory
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func waitForAnswer(id, gh string) int {

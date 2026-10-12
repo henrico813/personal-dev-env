@@ -65,7 +65,7 @@ func TestPopupShowsRequestSummary(t *testing.T) {
 	lines, _ := popupScreen(rec, "", "", 37, 14)
 
 	rendered := strings.Join(lines, "\n")
-	for _, want := range []string{"gh pr comment 12", "Title: needed title", "first body line"} {
+	for _, want := range []string{"comment #12", "needed title", "first body line"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("summary missing %q: %q", want, rendered)
 		}
@@ -85,7 +85,7 @@ func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
 			t.Fatalf("line %q is invalid or wider than 37 characters", line)
 		}
 	}
-	if want := "Title: " + strings.Repeat("é", 30); !slices.Contains(lines, want) {
+	if want := strings.Repeat("é", 37); !slices.Contains(lines, want) {
 		t.Fatalf("lines %q do not contain the clipped title", lines)
 	}
 }
@@ -277,7 +277,7 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			code := moshiAsk([]string{rec.ID, "question"})
+			code := moshiAsk([]string{rec.ID})
 
 			if code != 0 {
 				t.Fatalf("moshiAsk returned %d", code)
@@ -310,6 +310,7 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	old := moshiProgram
 	moshiProgram = func() (string, error) { return fake, nil }
 	t.Cleanup(func() { moshiProgram = old })
+	discardStderr(t)
 	// Create the request, which starts the first question.
 	req := request{ID: "live", Args: []string{"pr", "comment", "12"}}
 	if _, err := loadOrCreate(req, ""); err != nil {
