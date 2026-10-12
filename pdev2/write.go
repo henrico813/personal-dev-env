@@ -123,7 +123,9 @@ func printError(err error) int {
 
 // The first gh on PATH is the guard, a wrapper that blocks PR writes unless
 // PDE_GH_WRITE=1 is set. The real gh is the next executable gh on PATH that
-// is neither the guard nor this program.
+// is neither the guard nor this program. It returns the PATH entry, not the
+// symlink target: aqua's gh links to aqua-proxy, which only runs gh when
+// started under that name.
 func findRealGH() string {
 	self, _ := os.Executable()
 	self, _ = filepath.EvalSymlinks(self)
@@ -133,8 +135,9 @@ func findRealGH() string {
 		if dir == "" {
 			dir = "."
 		}
-		path, err := filepath.EvalSymlinks(filepath.Join(dir, "gh"))
-		if err == nil && path != self && path != guard && isExecutable(path) {
+		path := filepath.Join(dir, "gh")
+		target, err := filepath.EvalSymlinks(path)
+		if err == nil && target != self && target != guard && isExecutable(target) {
 			return path
 		}
 	}

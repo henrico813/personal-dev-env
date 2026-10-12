@@ -189,6 +189,28 @@ func TestConcurrentRunsCallGHOnce(t *testing.T) {
 	}
 }
 
+// aqua installs gh as a symlink to aqua-proxy, which picks the tool by the
+// name it was started under. Running the symlink's target made every
+// approved write fail once aqua's directory was on PATH.
+func TestApprovedWriteRunsGHThroughSymlink(t *testing.T) {
+	env := setupFlow(t, `[ "${0##*/}" = gh ] || exit 127`)
+	proxy := filepath.Join(filepath.Dir(env.gh), "aqua-proxy")
+	if err := os.Rename(env.gh, proxy); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(proxy, env.gh); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"pr", "ready", "12"}
+	requestAndAnswer(t, args, stateApproved)
+
+	code := requestWrite(args)
+
+	if code != 0 {
+		t.Errorf("approved write returned %d, want 0:\n%s", code, env.output)
+	}
+}
+
 func waitUntilGHStarts(t *testing.T, calls string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
