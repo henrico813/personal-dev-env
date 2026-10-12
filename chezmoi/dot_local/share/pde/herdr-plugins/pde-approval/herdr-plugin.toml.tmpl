@@ -1,0 +1,19 @@
+id = "pde.approval"
+name = "PDE approval"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+platforms = ["linux"]
+
+[[panes]]
+id = "approval"
+title = "PR approval"
+placement = "popup"
+width = 40
+height = 16
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-pr-approve", "--herdr-popup"]
+
+[[actions]]
+id = "inbox"
+title = "Open approval inbox"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-pr-approve", "--herdr-inbox"]

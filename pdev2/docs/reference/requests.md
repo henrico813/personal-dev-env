@@ -73,8 +73,9 @@ redraws when its size changes. The first line shows the queue position, such
 as `1 of 2`; after an answer or dismissal the popup moves to the oldest
 request still waiting.
 
-The popup is 40x16 in `plugin/herdr-plugin.toml`, leaving 37x14 inside
-the border. Buttons are three rows tall from 16 rows, two rows from 11
+The popup is 40x16 in
+`chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/herdr-plugin.toml.tmpl`,
+leaving 37x14 inside the border. Buttons are three rows tall from 16 rows, two rows from 11
 to 15, and one row below 11; below 7 rows only the first line is drawn.
 Typed keys and notices share the line after the request text; when both
 do not fit, only the notice is shown.
@@ -161,7 +162,7 @@ Record fields, with those omitted when empty marked as optional:
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
-| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set; recorded as `session_id` and used to find the agent's pane |
+| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
 
 ## Request ID
 

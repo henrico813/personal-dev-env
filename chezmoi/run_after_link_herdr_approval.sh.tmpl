@@ -1,0 +1,59 @@
+#!/bin/sh
+set -u
+
+# Runs after every chezmoi apply and links the approval plugin into Herdr. It
+# always exits 0, so a missing or stopped Herdr never fails an install, and it
+# prints how to link later.
+
+plugin_dir="{{ .chezmoi.destDir }}/.local/share/pde/herdr-plugins/pde-approval"
+manifest_path="$plugin_dir/herdr-plugin.toml"
+# The installer installs Herdr here, and this directory may not be on PATH yet.
+PATH="{{ .chezmoi.destDir }}/.local/bin:$PATH"
+
+link_later() {
+	printf '%s is unavailable; link later with: herdr plugin link %s\n' "$1" "$plugin_dir"
+}
+
+if ! command -v herdr >/dev/null 2>&1; then
+	link_later Herdr
+	exit 0
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+	link_later jq
+	exit 0
+fi
+
+if ! herdr status server >/dev/null 2>&1; then
+	link_later Herdr
+	exit 0
+fi
+
+if ! plugins=$(herdr plugin list --json 2>&1); then
+	printf 'Herdr plugin list failed: %s\n' "$plugins"
+	exit 0
+fi
+
+if ! plugin_path=$(printf '%s\n' "$plugins" | jq -r '.result.plugins[]? | select(.plugin_id == "pde.approval") | .manifest_path' 2>&1); then
+	printf 'Cannot parse the Herdr plugin list: %s\n' "$plugin_path"
+	exit 0
+fi
+
+if [ "$plugin_path" = "$manifest_path" ]; then
+	exit 0
+fi
+
+# Herdr identifies a linked plugin by id alone (unlink takes only the id), so
+# remove a link to an older manifest, such as the one previously in
+# pdev2/plugin/, before linking this one.
+if [ -n "$plugin_path" ]; then
+	if ! error=$(herdr plugin unlink pde.approval 2>&1); then
+		printf 'Herdr plugin unlink failed: %s\n' "$error"
+		exit 0
+	fi
+fi
+
+if ! error=$(herdr plugin link "$plugin_dir" 2>&1); then
+	printf 'Herdr plugin link failed: %s\n' "$error"
+	exit 0
+fi
