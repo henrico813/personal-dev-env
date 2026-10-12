@@ -33,7 +33,8 @@
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
-  unavailable. Name domain skills; the rules above route workflow skills.
+  unavailable. Workflow skills are routed by the rules above; never name one
+  on a Vibe worker's line.
 
 ## Code Search
 
