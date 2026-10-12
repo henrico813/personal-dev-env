@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -24,44 +25,83 @@ type agentInfo struct {
 	Title     string
 }
 
-// notifyRequest opens the approval popup and a notification when the agent runs
-// inside Herdr. Errors are ignored; the request can still be answered on the
-// phone or in a terminal.
+// notifyRequest marks the agent's pane in the sidebar and opens the approval
+// popup and a notification when the agent runs inside Herdr. Errors are
+// ignored; the request can still be answered on the phone or in a terminal.
 func notifyRequest(rec record) {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return
 	}
+	_ = reportMarker(rec.PaneID, true)
+	// An answer can arrive, and clear the marker, before it was set.
+	if current, err := load(rec.ID); err != nil || current.State != statePending {
+		clearRecordMarker(rec)
+		return
+	}
+	_ = openApproval(rec.ID)
+	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "Approval is waiting", "--sound", "request").Run()
+}
+
+func openApproval(id string) error {
 	output, err := exec.Command("herdr", "status", "server").CombinedOutput()
 	if err != nil {
-		return
+		return err
 	}
 	socket := herdrSocket(string(output))
 	if socket == "" {
-		return
+		return errors.New("herdr socket unavailable")
 	}
 	// The herdr command has no option that opens a popup, so send the request
 	// to Herdr's socket directly. plugin_id and entrypoint must match id and the
 	// [[panes]] id in plugin/herdr-plugin.toml.
-	_ = sendHerdr(socket, herdrRequest{ID: rec.ID, Method: "plugin.pane.open", Params: map[string]any{
+	return sendHerdr(socket, herdrRequest{ID: id, Method: "plugin.pane.open", Params: map[string]any{
 		"plugin_id":  "pde.approval",
 		"entrypoint": "approval",
 		"placement":  "popup",
 		"focus":      true,
-		"env":        map[string]string{"PDE_REQUEST_ID": rec.ID},
+		"env":        map[string]string{"PDE_REQUEST_ID": id},
 	}})
-	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "Approval is waiting", "--sound", "request").Run()
+}
+
+// Requests share one marker per pane, so it stays while another request from
+// that pane still waits.
+func clearRecordMarker(rec record) {
+	if rec.PaneID == "" {
+		return
+	}
+	for _, other := range queuedRecords() {
+		if other.ID != rec.ID && other.PaneID == rec.PaneID {
+			return
+		}
+	}
+	_ = reportMarker(rec.PaneID, false)
+}
+
+// Shows or clears "Approval waiting" on the requesting agent's pane in the sidebar.
+func reportMarker(pane string, pending bool) error {
+	if pane == "" {
+		return nil
+	}
+	args := []string{"pane", "report-metadata", "--source", "pde.approval", pane}
+	if pending {
+		args = append(args, "--title", "Approval waiting", "--ttl-ms", fmt.Sprint(expiry.Milliseconds()))
+	} else {
+		args = append(args, "--clear-title")
+	}
+	_, err := herdrOutput(args...)
+	return err
 }
 
 // Empty outside Herdr or when no Herdr agent runs the session.
-func agentContext(session string) (workspace, title string) {
+func agentContext(session string) (pane, workspace, title string) {
 	if os.Getenv("HERDR_ENV") != "1" {
-		return "", ""
+		return "", "", ""
 	}
 	agent := findAgent(session)
 	if agent.Pane == "" {
-		return "", ""
+		return "", "", ""
 	}
-	return workspaceLabel(agent.Workspace), agent.Title
+	return agent.Pane, workspaceLabel(agent.Workspace), agent.Title
 }
 
 func findAgent(session string) agentInfo {

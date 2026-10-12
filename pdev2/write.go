@@ -76,11 +76,11 @@ func loadOrCreate(req request, gh string) (string, error) {
 	}
 	rec = record{ID: req.ID, Args: req.Args, Title: req.Title, Body: req.Body,
 		BodyFile: req.BodyFile, ApprovalText: text, State: statePending,
-		Directory: req.Directory, Repo: req.Repo, GH: gh,
+		Created: time.Now(), Directory: req.Directory, Repo: req.Repo, GH: gh,
 		PRTitle: currentTitle(gh, req, fetchedTitle), SessionID: os.Getenv("OPENCODE_SESSION_ID")}
 	// Filled in before the first save, because a later save outside this lock
 	// could overwrite an answer.
-	rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
+	rec.PaneID, rec.Workspace, rec.SessionTitle = agentContext(rec.SessionID)
 	if err := save(rec); err != nil {
 		return "", err
 	}

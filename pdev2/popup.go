@@ -29,12 +29,13 @@ const (
 )
 
 // Answers from the popup, the terminal prompt, and the phone. choiceNone means
-// no answer yet; choiceDismiss closes the popup without one.
+// no answer yet; choiceDismiss and choiceFocus close the popup without one.
 const (
 	choiceNone    = ""
 	choiceYes     = "yes"
 	choiceNo      = "no"
 	choiceDismiss = "dismiss"
+	choiceFocus   = "focus"
 )
 
 // Rows are 1-based, as in mouse reports. Buttons span the full width, so hit
@@ -51,11 +52,12 @@ func (l popupLayout) hit(x, y int) string {
 	return choiceNone
 }
 
-// What the popup shows for one request. selected is choiceYes or choiceNo
+// What the popup shows for one request. queue reads like "1 of 2" and shares
+// the first line with what is being asked. selected is choiceYes or choiceNo
 // while a button waits for its confirming tap.
 type popupView struct {
-	rec                     record
-	typed, notice, selected string
+	rec                            record
+	queue, typed, notice, selected string
 }
 
 // popupScreen returns the popup's lines for a cols x rows terminal and the rows
@@ -69,7 +71,7 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 		rows = 1
 	}
 	summary := popupSummary(v.rec)
-	header := clip(visibleScreenText(summary[0]), cols)
+	header := headerLine(visibleScreenText(summary[0]), v.queue, cols)
 	if rows < 7 {
 		lines := []string{header}
 		for len(lines) < rows {
@@ -103,7 +105,7 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 		requestRows--
 	}
 	lines = append(lines, typedLine(v.typed, v.notice, cols))
-	lines = append(lines, clip("v: full text; q/Esc: dismiss", cols))
+	lines = append(lines, clip("v: full; g: focus; q/Esc: dismiss", cols))
 	approveTop := len(lines) + 1
 	lines = append(lines, buttonRows(buttonLabel("APPROVE", v.selected == choiceYes), cols, buttonHeight)...)
 	lines = append(lines, "")
@@ -124,6 +126,14 @@ func typedLine(typed, notice string, cols int) string {
 		return both
 	}
 	return clip(notice, cols)
+}
+
+func headerLine(what, queue string, cols int) string {
+	room := cols - len(queue) - 1
+	if queue == "" || room < 1 {
+		return clip(what, cols)
+	}
+	return fmt.Sprintf("%-*s %s", room, clip(what, room), queue)
 }
 
 // The popup has room for a few lines, so it shows where the request came from,
@@ -249,30 +259,33 @@ func drawPopup(in *os.File, out io.Writer, v popupView) popupLayout {
 	return layout
 }
 
-// Herdr opens each popup with the keyboard and taps going to it while the
-// user may be typing or tapping elsewhere, so a tap meant for something else
-// could answer a request nobody has read.
+// An impatient second tap would otherwise answer the request that just
+// replaced the one it was meant for. Herdr also opens the first popup with
+// focus while the user may be typing or tapping elsewhere.
 const popupSettle = 600 * time.Millisecond
 
 const settleNotice = "one moment..."
 
 // askPopup draws the popup and returns "yes" or "no" for a confirmed tap on a
-// button or a typed yes or no and Enter, or "dismiss" when q or Esc closes it.
-// Input typed before the popup is drawn is thrown away. The program asks
-// Herdr to put the keyboard on the popup when it opens, so keys meant for
+// button or a typed yes or no and Enter, "dismiss" for q or Esc, or "focus"
+// for g. Input typed before the popup is drawn is thrown away. The program
+// asks Herdr to put the keyboard on the popup when it opens, so keys meant for
 // another terminal could otherwise answer. settle ignores taps and Enter for
-// that long after the popup opens.
-func askPopup(in *os.File, out io.Writer, rec record, settle time.Duration) (string, error) {
+// that long after the popup opens; the queue passes popupSettle for every
+// request.
+func askPopup(in *os.File, out io.Writer, rec record, queue string, settle time.Duration) (string, error) {
 	old, err := setRaw(in)
 	if err != nil {
 		return "", err
 	}
 	defer restore(in, old)
 	defer fmt.Fprint(out, mouseReportingOff)
+	// Runs for each queued request too, so input left from the previous answer
+	// is dropped.
 	if err := flushInput(in); err != nil {
 		return "", err
 	}
-	v := &popupView{rec: rec}
+	v := &popupView{rec: rec, queue: queue}
 	if settle > 0 {
 		v.notice = settleNotice
 	}
@@ -392,6 +405,8 @@ func (v *popupView) handle(in popupInput, layout popupLayout, settling bool) (ch
 		return choiceNone, true
 	case b == 'q':
 		return choiceDismiss, false
+	case b == 'g':
+		return choiceFocus, false
 	case b == keyBackspace || b == keyDelete:
 		if len(v.typed) > 0 {
 			v.typed = v.typed[:len(v.typed)-1]
