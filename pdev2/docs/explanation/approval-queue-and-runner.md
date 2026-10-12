@@ -27,7 +27,7 @@ screen.
 
 ## What You See
 
-The popup and the phone question start with the same four lines; see the
+The popup starts with four context lines; see the
 [drawn popup](popup-and-phone-approval.md#what-you-see). For a comment on
 PR 12 they are:
 
@@ -37,6 +37,9 @@ octo/app
 app / review login fix
 Fix login timeout
 ```
+
+The phone question uses the same lines, but asks the first one as a
+question: `Approve comment #12?`, followed by the other three.
 
 The first four lines are the request's context:
 
@@ -89,8 +92,8 @@ same queue.
 ## The Pause After a Request Appears: "one moment..."
 
 For 600 milliseconds after each request appears, the line after `Typed:`
-shows `one moment...`, and taps and Enter do nothing. Typed letters still appear
-after `Typed:`.
+shows `one moment...`, and taps and Enter do nothing. Typed letters still
+appear after `Typed:`.
 
 When you answer a request, the next one is drawn at once, in the same
 place. An impatient second tap would otherwise land on the new request and
@@ -102,7 +105,8 @@ Herdr gives it the keyboard while you may be typing or tapping elsewhere.
 In live use, accidental taps on the phone decided two requests. So the
 first tap on a button only selects it: the button is drawn as
 `[>> APPROVE <<]` and the line after `Typed:` says
-`tap APPROVE again to confirm`. A second tap on the selected button answers. A tap on the other button
+`tap APPROVE again to confirm`. A second tap on the selected button
+answers. A tap on the other button
 selects that one instead, and a tap anywhere else, or a typed key, clears
 the selection. Typing `yes` or `no` and pressing Enter still answers in one
 step, because a typed word is hard to enter by accident. Each request
