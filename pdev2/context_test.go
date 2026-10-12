@@ -9,10 +9,10 @@ import (
 )
 
 // With several sessions asking at once, the first lines are how a person
-// tells requests apart. Before this change the phone asked "Approve gh pr
-// merge in current repository (185)?" while the popup showed the command,
-// so the two named a request differently and neither said which agent
-// asked. Both now start with the same context lines.
+// tells requests apart. The phone used to ask "Approve gh pr merge in
+// current repository (185)?" while the popup showed the command, so the two
+// named a request differently and neither said which agent asked. Both now
+// start with the same context lines, at the top of the popup.
 func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	rec := record{Args: []string{"pr", "merge", "185"}, Repo: "owner/repo",
 		Workspace: "pdev-release", SessionTitle: "OC | release", Title: "Ship it"}

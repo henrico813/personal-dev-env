@@ -79,12 +79,19 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 		}
 		return lines, popupLayout{}
 	}
+	// Herdr's popup is 37x14. Two-row buttons there leave six rows for the
+	// context and the text that will be posted; three-row buttons left three,
+	// which the context alone filled. From 16 rows, three-row buttons still
+	// leave six.
 	buttonHeight := 3
 	if rows < 11 {
 		buttonHeight = 1
+	} else if rows < 16 {
+		buttonHeight = 2
 	}
-	// Fixed rows: header, Typed, notice, key hint, and the gap between buttons.
-	requestRows := rows - (5 + buttonHeight*2)
+	// Fixed rows: header, typed text and notice, key hint, and the gap between
+	// buttons.
+	requestRows := rows - (4 + buttonHeight*2)
 	lines := []string{header}
 	for _, text := range summary[1:] {
 		if requestRows <= 0 {
@@ -97,8 +104,7 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 		lines = append(lines, "")
 		requestRows--
 	}
-	lines = append(lines, clip("Typed: "+v.typed, cols))
-	lines = append(lines, clip(v.notice, cols))
+	lines = append(lines, typedLine(v.typed, v.notice, cols))
 	lines = append(lines, clip("v: full; g: focus; q/Esc: dismiss", cols))
 	approveTop := len(lines) + 1
 	lines = append(lines, buttonRows(buttonLabel("APPROVE", v.selected == choiceYes), cols, buttonHeight)...)
@@ -106,6 +112,20 @@ func popupScreen(v popupView, cols, rows int) ([]string, popupLayout) {
 	declineTop := len(lines) + 1
 	lines = append(lines, buttonRows(buttonLabel("DECLINE", v.selected == choiceNo), cols, buttonHeight)...)
 	return lines, popupLayout{approveTop, approveTop + buttonHeight - 1, declineTop, declineTop + buttonHeight - 1}
+}
+
+// typedLine shares one row between the typed keys and the notice, such as
+// "Typed: yes  one moment...". When both do not fit, the notice wins: it says
+// what the next tap or Enter will do, and typing a key clears it.
+func typedLine(typed, notice string, cols int) string {
+	line := "Typed: " + typed
+	if notice == "" {
+		return clip(line, cols)
+	}
+	if both := line + "  " + notice; len([]rune(both)) <= cols {
+		return both
+	}
+	return clip(notice, cols)
 }
 
 func headerLine(what, queue string, cols int) string {

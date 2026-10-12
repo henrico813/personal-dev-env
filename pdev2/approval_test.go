@@ -21,8 +21,8 @@ import (
 // A tap answers only on the rows of the APPROVE and DECLINE buttons, so the
 // rows the screen draws and the rows a tap is checked against must agree, and
 // every line must fit. In live testing Herdr 0.9.1 gave the popup 37x14 inside
-// its 40x16 border. A shorter popup gets one-row buttons, where a one-row
-// mistake would make a tap on a button miss.
+// its 40x16 border, where buttons are two rows tall. A shorter popup gets
+// one-row buttons, where a one-row mistake would make a tap on a button miss.
 func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	rec := record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
 	for _, size := range []struct{ cols, rows int }{{37, 14}, {40, 16}, {37, 10}} {
@@ -50,23 +50,40 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	}
 }
 
-// The popup has room for only a few lines of the request. In live testing the
-// 37x14 popup showed the ID, time, and command lines that start the full
-// approval text and hid the title and body the approver needs to decide.
-func TestPopupShowsRequestSummary(t *testing.T) {
-	rec := record{
-		Args:         []string{"pr", "comment", "12"},
-		Title:        "needed title",
-		Body:         "first body line\nsecond body line",
-		ApprovalText: "id: long\ntime: long\ncommand: long\nbody: long",
+// The approver decides on the text that will be posted. In live testing the
+// 37x14 popup first showed the ID, time, and command lines of the full
+// approval text instead of the title and body. Later the context lines
+// (repository, Herdr session, PR title) filled its three request rows, so a
+// comment's body and an edit's changed lines were not shown at all.
+func TestPopupShowsPostedTextBesideContext(t *testing.T) {
+	context := record{Repo: "octo/app", Workspace: "app", SessionTitle: "review login fix", PRTitle: "Fix login timeout",
+		ApprovalText: "id: long\ntime: long\ncommand: long\nbody: long"}
+	comment := context
+	comment.Args = []string{"pr", "comment", "12"}
+	comment.Body = "first body line\nsecond body line\nthird body line"
+	edit := context
+	edit.Args = []string{"pr", "edit", "12", "--title", "New title"}
+	edit.Title = "New title"
+	edit.ApprovalText = editHeader + "Title:\n-Old title\n+New title\n"
+	cases := []struct {
+		name string
+		rec  record
+		want []string
+	}{
+		{name: "comment", rec: comment, want: []string{"comment #12", "octo/app", "app / review login fix", "Fix login timeout", "first body line", "second body line"}},
+		{name: "edit", rec: edit, want: []string{"edit #12", "octo/app", "app / review login fix", "New title", "-Old title", "+New title"}},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, _ := popupScreen(popupView{rec: tc.rec, queue: "1 of 1"}, 37, 14)
 
-	lines, _ := popupScreen(popupView{rec: rec, queue: "1 of 1"}, 37, 14)
-	rendered := strings.Join(lines, "\n")
-	for _, want := range []string{"comment #12", "needed title", "first body line"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("summary missing %q: %q", want, rendered)
-		}
+			rendered := strings.Join(lines, "\n")
+			for _, want := range tc.want {
+				if !strings.Contains(rendered, want) {
+					t.Fatalf("popup missing %q:\n%s", want, rendered)
+				}
+			}
+		})
 	}
 }
 
