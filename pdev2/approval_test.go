@@ -21,12 +21,12 @@ import (
 // A tap answers only on the rows of the APPROVE and DECLINE buttons, so the
 // rows the screen draws and the rows a tap is checked against must agree, and
 // every line must fit. In live testing Herdr 0.9.1 gave the popup 37x14 inside
-// its 40x16 border. A shorter popup gets one-row buttons, where a one-row
-// mistake would make a tap on a button miss.
+// its 40x16 border, where buttons are two rows tall. A shorter popup gets
+// one-row buttons, where a one-row mistake would make a tap on a button miss.
 func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	rec := record{ID: "123456789", ApprovalText: strings.Repeat("request text that must be clipped ", 4)}
 	for _, size := range []struct{ cols, rows int }{{37, 14}, {40, 16}, {37, 10}} {
-		lines, layout := popupScreen(rec, "", "", size.cols, size.rows)
+		lines, layout := popupScreen(popupView{rec: rec}, size.cols, size.rows)
 
 		if len(lines) != size.rows {
 			t.Fatalf("%dx%d rendered %d rows", size.cols, size.rows, len(lines))
@@ -51,24 +51,43 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 	}
 }
 
-// The popup has room for only a few lines of the request. In live testing the
-// 37x14 popup showed the ID, time, and command lines that start the full
-// approval text and hid the title and body the approver needs to decide.
-func TestPopupShowsRequestSummary(t *testing.T) {
-	rec := record{
-		Args:         []string{"pr", "comment", "12"},
-		Title:        "needed title",
-		Body:         "first body line\nsecond body line",
-		ApprovalText: "id: long\ntime: long\ncommand: long\nbody: long",
+// The approver decides on the text that will be posted. In live testing the
+// 37x14 popup first showed the ID, time, and command lines of the full
+// approval text instead of the title and body. Later the context lines
+// (repository, Herdr session, PR title) filled its three request rows, so a
+// comment's body and an edit's changed lines were not shown at all. With
+// two-row buttons, the six rows below the first line hold the three context
+// lines and three lines of the body.
+func TestPopupShowsPostedTextBesideContext(t *testing.T) {
+	context := record{Repo: "octo/app", Workspace: "app", SessionTitle: "review login fix", PRTitle: "Fix login timeout",
+		ApprovalText: "id: long\ntime: long\ncommand: long\nbody: long"}
+	comment := context
+	comment.Args = []string{"pr", "comment", "12"}
+	comment.Body = "first body line\nsecond body line\nthird body line"
+	edit := context
+	edit.Args = []string{"pr", "edit", "12", "--title", "New title"}
+	edit.Title = "New title"
+	edit.ApprovalText = editHeader + "Title:\n-Old title\n+New title\n"
+	cases := []struct {
+		name string
+		rec  record
+		want []string
+	}{
+		{name: "comment", rec: comment, want: []string{"comment #12", "octo/app", "app / review login fix", "Fix login timeout",
+			"first body line", "second body line", "third body line"}},
+		{name: "edit", rec: edit, want: []string{"edit #12", "octo/app", "app / review login fix", "New title", "-Old title", "+New title"}},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, _ := popupScreen(popupView{rec: tc.rec}, 37, 14)
 
-	lines, _ := popupScreen(rec, "", "", 37, 14)
-
-	rendered := strings.Join(lines, "\n")
-	for _, want := range []string{"comment #12", "needed title", "first body line"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("summary missing %q: %q", want, rendered)
-		}
+			rendered := strings.Join(lines, "\n")
+			for _, want := range tc.want {
+				if !strings.Contains(rendered, want) {
+					t.Fatalf("popup missing %q:\n%s", want, rendered)
+				}
+			}
+		})
 	}
 }
 
@@ -78,7 +97,7 @@ func TestPopupShowsRequestSummary(t *testing.T) {
 func TestPopupClipsWithoutSplittingCharacters(t *testing.T) {
 	rec := record{ID: "id", Args: []string{"pr", "create"}, Title: strings.Repeat("é", 60)}
 
-	lines, _ := popupScreen(rec, "", "", 37, 14)
+	lines, _ := popupScreen(popupView{rec: rec}, 37, 14)
 
 	for _, line := range lines {
 		if !utf8.ValidString(line) || utf8.RuneCountInString(line) > 37 {
@@ -109,7 +128,7 @@ func TestEditChangesStopsBeforeBody(t *testing.T) {
 func TestPopupEscapesControlText(t *testing.T) {
 	rec := record{ID: "id", Body: "title\x1b[2J\rbody\u009bend"}
 
-	lines, _ := popupScreen(rec, "", "", 40, 16)
+	lines, _ := popupScreen(popupView{rec: rec}, 40, 16)
 
 	rendered := strings.Join(lines, "\n")
 	if strings.ContainsAny(rendered, "\x1b\r\u009b") || !strings.Contains(rendered, "^[") || !strings.Contains(rendered, "^M") || !strings.Contains(rendered, "\\u009b") {
@@ -132,7 +151,7 @@ func TestPopupDiscardsEarlyInput(t *testing.T) {
 	// Start the popup in the background; it blocks until it gets an answer.
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"})
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
 		result <- choice
 	}()
 	// Wait for the draw, so the answer below arrives after the early input is
@@ -160,7 +179,7 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 			setPopupSize(t, terminal, 37, 14)
 			result := make(chan string, 1)
 			go func() {
-				choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"})
+				choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
 				result <- choice
 			}()
 			// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -170,7 +189,7 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if got := receive(t, result); got != "" {
+			if got := receive(t, result); got != choiceDismiss {
 				t.Fatalf("answer %q", got)
 			}
 		})
@@ -187,7 +206,7 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	setPopupSize(t, terminal, 37, 14)
 	result := make(chan string, 1)
 	go func() {
-		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"})
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
 		result <- choice
 	}()
 	// Wait for the draw; a key sent earlier would be discarded as early input.
@@ -203,44 +222,158 @@ func TestPopupRejectsLoneY(t *testing.T) {
 	if _, err := master.WriteString("q"); err != nil {
 		t.Fatal(err)
 	}
-	if got := receive(t, result); got != "" {
+	if got := receive(t, result); got != choiceDismiss {
 		t.Fatalf("answer %q", got)
 	}
 }
 
+// The tap rules decide whether a stray tap answers a request. Accidental phone
+// taps decided two requests in live use, so one tap only selects a button and
+// a second tap on the same button answers. A tap's release is not a second
+// tap. For 600 ms after the popup opens, taps and Enter are ignored and
+// "one moment..." stays shown, even while keys are typed, so a fast "yes"
+// and Enter that does nothing still says why.
+func TestPopupAppliesTapAndSettleRules(t *testing.T) {
+	_, layout := popupScreen(popupView{rec: record{ID: "id"}}, 37, 14)
+	press := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.approveTop, press: true}}
+	release := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.approveTop}}
+	declinePress := popupInput{b: keyEscape, isMouse: true, mouse: mouseReport{x: 10, y: layout.declineTop, press: true}}
+	typedYes := []popupInput{{b: 'y'}, {b: 'e'}, {b: 's'}, {b: '\r'}}
+	// "yess", Backspace, then Enter, so both editing keys run during the pause.
+	correctedYes := []popupInput{{b: 'y'}, {b: 'e'}, {b: 's'}, {b: 's'}, {b: keyBackspace}, {b: '\r'}}
+	cases := []struct {
+		name     string
+		settling bool
+		inputs   []popupInput
+		want     string // The choice after the last input; earlier inputs must give none.
+	}{
+		{name: "second tap answers", inputs: []popupInput{press, press}, want: choiceYes},
+		{name: "switch to decline", inputs: []popupInput{press, declinePress, declinePress}, want: choiceNo},
+		{name: "release does not confirm", inputs: []popupInput{press, release}, want: choiceNone},
+		{name: "settling ignores taps", settling: true, inputs: []popupInput{press, press}, want: choiceNone},
+		{name: "Enter answers typed yes", inputs: typedYes, want: choiceYes},
+		{name: "settling ignores Enter", settling: true, inputs: correctedYes, want: choiceNone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// askPopup shows the pause notice when the popup opens.
+			v := &popupView{}
+			if tc.settling {
+				v.notice = settleNotice
+			}
+
+			got := choiceNone
+			for i, input := range tc.inputs {
+				if got != choiceNone {
+					t.Fatalf("answered %q before input %d", got, i)
+				}
+				got, _ = v.handle(input, layout, tc.settling)
+				if tc.settling && v.notice != settleNotice {
+					t.Fatalf("notice after input %d = %q, want %q", i, v.notice, settleNotice)
+				}
+			}
+
+			if got != tc.want {
+				t.Fatalf("choice = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Fails if the popup answers before want appears on screen.
+func shownBeforeAnswer[T any](t *testing.T, master *os.File, want string, answered chan T) {
+	t.Helper()
+	shown := make(chan bool, 1)
+	go func() { shown <- readsUntil(master, want) }()
+	select {
+	case got := <-answered:
+		t.Fatalf("answered %v before showing %q", got, want)
+	case ok := <-shown:
+		if !ok {
+			t.Fatal("popup output ended")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%q was never shown", want)
+	}
+}
+
 // Tapping APPROVE is the main way to answer in the popup. Herdr passes each
-// tap to the popup as text on its keyboard input, so the test sends a tap the
-// same way through a pseudo-terminal and checks it approves.
+// tap to the popup as text on its keyboard input, a press and then a
+// release. The first tap must only select the button, even though it also
+// sends a release, and the second tap must approve.
 func TestPopupTapApproves(t *testing.T) {
 	// Run the popup on a pseudo-terminal at Herdr's size; see
 	// TestPopupDiscardsEarlyInput.
 	master, terminal := openPTY(t)
 	setPopupSize(t, terminal, 37, 14)
 	// Find the APPROVE rows the popup will draw at this size.
-	_, layout := popupScreen(record{ID: "id", ApprovalText: "command"}, "", "", 37, 14)
-	result := make(chan struct {
-		choice string
-		err    error
-	}, 1)
+	_, layout := popupScreen(popupView{rec: record{ID: "id", ApprovalText: "command"}}, 37, 14)
+	result := make(chan string, 1)
 	go func() {
-		choice, err := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"})
-		result <- struct {
-			choice string
-			err    error
-		}{choice, err}
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", ApprovalText: "command"}, 0)
+		result <- choice
 	}()
 	// Wait for the draw before tapping, or the tap is discarded as early input.
 	readUntil(t, master, "Typed:")
-
-	// A left-button press and release on the APPROVE row, sent as one tap:
+	// A left-button press and release on the APPROVE row:
 	// ESC [<button;column;row, ending in M for press and m for release.
-	if _, err := fmt.Fprintf(master, "\x1b[<0;10;%dM\x1b[<0;10;%dm", layout.approveTop, layout.approveTop); err != nil {
+	tap := fmt.Sprintf("\x1b[<0;10;%dM\x1b[<0;10;%dm", layout.approveTop, layout.approveTop)
+
+	writeTerminal(t, master, tap)
+	shownBeforeAnswer(t, master, "tap APPROVE again to confirm", result)
+	writeTerminal(t, master, tap)
+
+	if got := receive(t, result); got != choiceYes {
+		t.Fatalf("answer %q", got)
+	}
+}
+
+// The popup spends its time waiting for a tap. A resize must redraw it at
+// once, or the buttons stay drawn where taps no longer hit them.
+func TestPopupRedrawsWhenResized(t *testing.T) {
+	// Run the popup on a pseudo-terminal at Herdr's size; see
+	// TestPopupDiscardsEarlyInput. Start it in the background and wait for
+	// its first draw.
+	master, terminal := openPTY(t)
+	setPopupSize(t, terminal, 37, 14)
+	result := make(chan string, 1)
+	go func() {
+		choice, _ := askPopup(popupTerminal(t, terminal), terminal, record{ID: "id", Args: []string{"pr", "create"}}, 0)
+		result <- choice
+	}()
+	readUntil(t, master, "Typed:")
+
+	// Grow the terminal and send the resize signal, as a terminal does. The
+	// popup runs in this process, so the signal goes to the test itself.
+	setPopupSize(t, terminal, 60, 20)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGWINCH); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := receive(t, result); got.err != nil || got.choice != "yes" {
-		t.Fatalf("answer %q, err %v", got.choice, got.err)
+	// At 60 columns the buttons are centered 24 columns in, not 13.
+	shownBeforeAnswer(t, master, strings.Repeat(" ", 24)+"[ APPROVE ]", result)
+	writeTerminal(t, master, "q")
+	receive(t, result)
+}
+
+func writeTerminal(t *testing.T, master *os.File, text string) {
+	t.Helper()
+	if _, err := master.WriteString(text); err != nil {
+		t.Fatal(err)
 	}
+}
+
+// readUntil without t, for use from a goroutine.
+func readsUntil(master *os.File, want string) bool {
+	buf := make([]byte, 1)
+	var got bytes.Buffer
+	for !bytes.Contains(got.Bytes(), []byte(want)) {
+		if _, err := master.Read(buf); err != nil {
+			return false
+		}
+		got.Write(buf)
+	}
+	return true
 }
 
 // A phone answer counts only while the request is pending, so a late yes
@@ -324,7 +457,7 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	waitForFile(t, ready)
 
 	// Answer as the popup does; that must stop the ask.
-	saveAnswer(rec.ID, "yes")
+	saveAnswer(rec.ID, choiceYes)
 
 	waitForFile(t, stopped)
 }

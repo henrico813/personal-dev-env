@@ -18,7 +18,7 @@ func askYesNo(tty *os.File) (string, error) {
 	scanner := bufio.NewScanner(tty)
 	for scanner.Scan() {
 		choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
-		if choice == "yes" || choice == "no" {
+		if choice == choiceYes || choice == choiceNo {
 			return choice, nil
 		}
 		fmt.Fprint(tty, "Please type yes or no, then Enter: ")
