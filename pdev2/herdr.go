@@ -53,7 +53,8 @@ func openApproval(id string) error {
 	}
 	// The herdr command has no option that opens a popup, so send the request
 	// to Herdr's socket directly. plugin_id and entrypoint must match id and the
-	// [[panes]] id in plugin/herdr-plugin.toml.
+	// [[panes]] id in the plugin manifest that chezmoi deploys from
+	// chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/.
 	return sendHerdr(socket, herdrRequest{ID: id, Method: "plugin.pane.open", Params: map[string]any{
 		"plugin_id":  "pde.approval",
 		"entrypoint": "approval",

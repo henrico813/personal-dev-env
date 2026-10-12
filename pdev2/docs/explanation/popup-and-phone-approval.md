@@ -157,9 +157,11 @@ opened. With it, `pde-gh-write` runs `herdr status server` to find Herdr's
 socket, a file that other programs on the same computer use to send Herdr
 requests. It sends one request there: open the `approval` popup of the
 `pde.approval` plugin, and give it the request ID in `PDE_REQUEST_ID`. The
-plugin file, `plugin/herdr-plugin.toml`, tells Herdr the popup's size and
-to run `pde-pr-approve --herdr-popup` in it. The `herdr` command has no
-option that opens a popup, which is why the program uses the socket.
+plugin file, which chezmoi deploys from
+`chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/`, tells Herdr the
+popup's size and to run `pde-pr-approve --herdr-popup` in it. The `herdr`
+command has no option that opens a popup, which is why the program uses the
+socket.
 `pde-gh-write` also marks the agent's pane with `Approval waiting` in
 Herdr's sidebar and asks Herdr to show a notification with a sound.
 
