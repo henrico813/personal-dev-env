@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 )
 
 type flowEnv struct {
@@ -23,16 +24,14 @@ type flowEnv struct {
 func setupFlow(t *testing.T, tail string) flowEnv {
 	t.Helper()
 	dir := t.TempDir()
-	guardDir, realDir := filepath.Join(dir, "guard"), filepath.Join(dir, "real")
-	for _, sub := range []string{guardDir, realDir} {
-		if err := os.Mkdir(sub, 0o700); err != nil {
-			t.Fatal(err)
-		}
+	guardDir := filepath.Join(dir, "guard")
+	if err := os.Mkdir(guardDir, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	env := flowEnv{calls: filepath.Join(dir, "calls"), gate: filepath.Join(dir, "gate"), output: &bytes.Buffer{}}
-	writeScript(t, guardDir, "gh", "exit 99")
-	env.gh = writeScript(t, realDir, "gh", "case \"$1 $2\" in \"repo view\") echo owner/repo; exit 0 ;; \"pr view\") echo title; exit 0 ;; esac\necho call >> '"+env.calls+"'\n"+tail)
-	t.Setenv("PATH", guardDir+":"+realDir)
+	env := flowEnv{gate: filepath.Join(dir, "gate"), output: &bytes.Buffer{}}
+	approvaltest.WriteScript(t, guardDir, "gh", "exit 99")
+	env.gh, env.calls = approvaltest.FakeGH(t, "case \"$1 $2\" in \"repo view\") echo owner/repo; exit 0 ;; \"pr view\") echo title; exit 0 ;; esac\necho call >> \"$log\"\n"+tail)
+	t.Setenv("PATH", guardDir+":"+filepath.Dir(env.gh))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("PDE_GH_GATE", env.gate)
 	oldWait, oldStderr := answerTimeout, stderr
@@ -265,7 +264,7 @@ func TestRerunSurvivesFailedRepoLookup(t *testing.T) {
 		t.Fatalf("approved run returned %d", code)
 	}
 	// Replace the fake gh with one whose repository lookup fails.
-	writeScript(t, filepath.Dir(env.gh), "gh", "case \"$1 $2\" in \"repo view\") exit 1 ;; esac\necho call >> '"+env.calls+"'")
+	approvaltest.WriteScript(t, filepath.Dir(env.gh), "gh", "case \"$1 $2\" in \"repo view\") exit 1 ;; esac\necho call >> '"+env.calls+"'")
 
 	code := requestWrite(args)
 

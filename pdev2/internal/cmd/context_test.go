@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 	"pdev2/internal/terminal"
 )
 
@@ -25,10 +26,7 @@ func TestPopupAndPhoneShowSameContext(t *testing.T) {
 	}
 	// The fake moshi-hook saves the question it was asked, which comes after
 	// "ask --require-remote --source pde-gh-write --timeout 4h", and declines.
-	dir := t.TempDir()
-	asked := filepath.Join(dir, "question")
-	writeScript(t, dir, "moshi-hook", `printf '%s' "$7" > '`+asked+`'; exit 1`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	asked := approvaltest.FakeMoshiHook(t, `printf '%s' "$7" > "$log"; exit 1`)
 
 	lines, _ := terminal.PopupScreen(terminal.View{Rec: rec, Queue: "1 of 2"}, 37, 14)
 	moshiAsk([]string{rec.ID})
@@ -62,16 +60,14 @@ func TestRequestRecordsHerdrAgentContext(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake herdr lists one agent for session ses_1 and its workspace, and
 	// touches done when the notification is shown.
-	dir := t.TempDir()
-	done := filepath.Join(dir, "done")
-	writeScript(t, dir, "herdr", `case "$1 $2" in
+	done := filepath.Join(t.TempDir(), "done")
+	approvaltest.FakeHerdr(t, `case "$1 $2" in
 "agent list") echo '{"result":{"agents":[{"agent_session":{"value":"ses_1"},"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | release"}]}}' ;;
 "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"pdev-release"}]}}' ;;
 "notification show") touch '`+done+`' ;;
 esac`)
 	// The fake gh answers the repository and current-PR lookups.
-	gh := writeScript(t, dir, "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
 	// The fake herdr comes first on PATH; HERDR_ENV turns the Herdr calls on.
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
@@ -119,17 +115,16 @@ func TestMarkerClearedWhenAnswerArrivesFirst(t *testing.T) {
 	// file exists, so the answer below lands while the notification is
 	// mid-way. It logs marker calls and touches done when it shows the
 	// notification.
-	gate, done, log := filepath.Join(dir, "gate"), filepath.Join(dir, "done"), filepath.Join(dir, "log")
-	writeScript(t, dir, "herdr", `case "$1 $2" in
+	gate, done := filepath.Join(dir, "gate"), filepath.Join(dir, "done")
+	log := approvaltest.FakeHerdr(t, `case "$1 $2" in
 "agent list") echo '{"result":{"agents":[{"agent_session":{"value":"ses_1"},"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | release"}]}}' ;;
 "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"pdev-release"}]}}' ;;
 "pane report-metadata")
   case "$*" in *--clear-title*) ;; *) while [ ! -e '`+gate+`' ]; do sleep 0.01; done ;; esac
-  echo "$*" >> '`+log+`' ;;
+  echo "$*" >> "$log" ;;
 "notification show") touch '`+done+`' ;;
 esac`)
-	gh := writeScript(t, dir, "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
 	discardStderr(t)
@@ -178,7 +173,7 @@ func waitForNotification(t *testing.T, log, done string) []string {
 func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake gh answers the repository lookup and the PR title lookup.
-	gh := writeScript(t, t.TempDir(), "gh", `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
+	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
 	discardStderr(t)
 	req, err := approval.Parse([]string{"pr", "merge", "185", "--squash"}, nil)
 	if err != nil {
@@ -205,7 +200,7 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 func TestUnknownRepoShowsDirectoryLabel(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// Every gh lookup fails, as outside a repository or without network.
-	gh := writeScript(t, t.TempDir(), "gh", "exit 1")
+	gh, _ := approvaltest.FakeGH(t, "exit 1")
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.Mkdir(project, 0o700); err != nil {
 		t.Fatal(err)
