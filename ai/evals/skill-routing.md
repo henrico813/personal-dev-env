@@ -38,20 +38,37 @@ checks cover routing, not the quality of the completed task; use
 ## Delegated Skill Loading
 
 The delegated rows check that an agent given only its task loads the right
-skills. Subagents cannot delegate, so send each prompt from a top-level
-session with the subagent tool, set its `model` field, and add no
-`Applicable skills:` line. Then audit the subagent's session, whose ID is
-the `task_id` the subagent tool returns:
+skills. Subagents use the real installation, not the temporary home in
+`plan-workflows.md`, so install from the pull request's worktree and
+reinstall from main afterwards:
+
+```bash
+installer=$(mktemp /tmp/pde-installer.XXXXXX)
+go build -C pde-installer -o "$installer" .
+PDE_REPO_ROOT="$PWD" "$installer" install full
+```
+
+Start the top-level session in that worktree, so the plan row's paths and
+`gh` resolve there. Run each row once per model you delegate to, such as
+`openai/gpt-5.6-luna` or `claude-code/claude-sonnet-5`. Run `goog/qwen3.8`
+rows in their own batch, since they share the local LiteLLM server, and
+record a model that cannot be reached as unsupported.
+
+Subagents cannot delegate, so send each prompt from a top-level session with
+the subagent tool, set its `model` field, and add no `Applicable skills:` line.
+Then audit the subagent's session, whose ID is the `task_id` the subagent tool
+returns:
 
 ```bash
 python3 ai/evals/skill_audit.py <session-id>
 ```
 
 It prints the skills read before and after the first edit and whether
-`git push` ran. A plan run passes when every expected skill is in `before=`
-and `push=no`. A review run passes when each expected skill is in `before=`
-or `after=` and `push=no`, since reviewers often save repository status to
-a scratch file first. If a skill is missed, rerun once with an
-`Applicable skills:` line naming the expected skills and record both runs.
-Claude Code models also load the owner's global instructions and memory, so
-their runs see more than the task.
+`git push` ran. A plan run passes when every expected skill is in `before=` and
+`push=no`. A review run passes when each expected skill is in `before=` or
+`after=` and `push=no`, since reviewers often save repository status to a
+scratch file first. The review row checks only workflow routing, so a review
+that skips the Go or testing skills still passes. If a skill is missed, rerun
+once with an `Applicable skills:` line naming the expected skills and record
+both runs. Claude Code models also load the owner's global instructions and
+memory, so their runs see more than the task.
