@@ -86,7 +86,8 @@ the full draft.
    `[ -n "$DISPLAY$WAYLAND_DISPLAY" ] && echo "display ok" || echo "no display"`.
    It passes on `display ok`. On `no display`, stop and report that
    Obsidian needs a display.
-2. Record the output of `pde vault path main` as `<vault>`.
+2. Record the output of `nobs vault path main` as `<vault>`. If it
+   fails, stop and report its message; do not use another vault.
    `obsidian_main vault info=path` must print exactly `<vault>`. Per the
    Obsidian CLI docs, the first command launches Obsidian if it is not
    running.

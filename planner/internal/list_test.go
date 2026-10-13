@@ -189,3 +189,46 @@ func TestListDetailPreservesOrderAndParity(t *testing.T) {
 		}
 	}
 }
+
+// fakeNobs puts a shell script named nobs alone on PATH, so these tests never
+// run a real nobs or read a real vault. CI has no nobs.
+func fakeNobs(t *testing.T, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "nobs"), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// People and agents run planner list without --dir, so it must find the
+// default vault through nobs. The fake answers only "nobs vault path", because
+// "nobs vault path default" asks for a vault named default, which fails.
+func TestListFindsProjectsThroughNobs(t *testing.T) {
+	vault := t.TempDir()
+	writeNote(t, filepath.Join(vault, vaultProjectsSubdir, "DevEnv", "TASK-001 Planning.md"), issue("open", "2026-01-02"))
+	fakeNobs(t, `[ "$*" = "vault path" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
+echo '`+vault+`'`)
+
+	var view projectsView
+	if err := json.Unmarshal([]byte(runListJSON(t)), &view); err != nil {
+		t.Fatalf("overview JSON: %v", err)
+	}
+
+	if len(view.Projects) != 1 || view.Projects[0].ProjectDir != "DevEnv" || view.Projects[0].Total != 1 {
+		t.Fatalf("projects view = %+v", view)
+	}
+}
+
+// On a computer with no default vault, the exit status alone ("exit status 2")
+// does not say what to do; nobs's message names the command that fixes it.
+func TestListErrorShowsNobsStderr(t *testing.T) {
+	fakeNobs(t, `echo "no default vault; pass a NAME or run nobs vault default NAME" >&2
+exit 2`)
+
+	exit, _, stderr := executeList()
+
+	if exit != 1 || !strings.Contains(stderr, "no default vault; pass a NAME or run nobs vault default NAME") {
+		t.Fatalf("exit=%d stderr=%q", exit, stderr)
+	}
+}
