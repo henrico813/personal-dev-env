@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
 
 	"pdev2/internal/approval"
+	"pdev2/internal/approvaltest"
 )
 
 // Running go test inside Herdr must not open popups in your Herdr or send
@@ -27,7 +29,5 @@ func TestMain(m *testing.M) {
 // discardStderr hides this program's messages for one test.
 func discardStderr(t *testing.T) {
 	t.Helper()
-	old := stderr
-	stderr = &strings.Builder{}
-	t.Cleanup(func() { stderr = old })
+	approvaltest.Replace[io.Writer](t, &stderr, &strings.Builder{})
 }

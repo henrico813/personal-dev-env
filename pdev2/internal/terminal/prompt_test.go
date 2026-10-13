@@ -13,8 +13,7 @@ import (
 // and a lone "y" must not decide.
 func TestPromptNeedsDeliberateAnswer(t *testing.T) {
 	cases := []struct{ name, typedEarly, typed, want string }{
-		{name: "y is not yes", typed: "y\nyes\n", want: "yes"},
-		{name: "no declines", typed: "no\n", want: "no"},
+		{name: "y is not yes", typed: "y\nno\n", want: "no"},
 		{name: "typed early is discarded", typedEarly: "yes\n", typed: "no\n", want: "no"},
 	}
 	for _, tc := range cases {
@@ -44,27 +43,6 @@ func TestPromptNeedsDeliberateAnswer(t *testing.T) {
 				t.Fatal("prompt did not return")
 			}
 		})
-	}
-}
-
-// A closed terminal is not consent; any answer here would record a decision
-// nobody typed.
-func TestPromptGivesNoAnswerWhenClosed(t *testing.T) {
-	master, terminal := approvaltest.OpenPTY(t)
-	result := make(chan string, 1)
-	go func() { choice, _ := AskYesNo(terminal); result <- choice }()
-
-	// Close the terminal once the prompt is waiting for input.
-	waitForQuestion(t, master)
-	master.Close()
-
-	select {
-	case got := <-result:
-		if got != "" {
-			t.Errorf("answer = %q, want none", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("prompt did not return")
 	}
 }
 

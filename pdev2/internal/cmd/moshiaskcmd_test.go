@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,9 +73,7 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	dir := t.TempDir()
 	ready, stopped := filepath.Join(dir, "ready"), filepath.Join(dir, "stopped")
 	approvaltest.FakeMoshiHook(t, `trap 'touch "`+stopped+`"; exit 0' TERM; touch "`+ready+`"; sleep 30 & wait`)
-	old := moshiProgram
-	moshiProgram = func() (string, error) { return approvaltest.WriteScript(t, dir, "ask", `moshi-hook ask "$@"`), nil }
-	t.Cleanup(func() { moshiProgram = old })
+	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return approvaltest.WriteScript(t, dir, "ask", `moshi-hook ask "$@"`), nil })
 	// Start a real detached ask for a saved request.
 	rec := approval.Record{ID: "popup", State: approval.StatePending}
 	if err := approval.Save(rec); err != nil {
@@ -108,9 +107,7 @@ func TestUnreachablePhoneWarnsWaitingAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var messages strings.Builder
-	old := stderr
-	stderr = &messages
-	t.Cleanup(func() { stderr = old })
+	approvaltest.Replace[io.Writer](t, &stderr, &messages)
 
 	moshiAsk([]string{rec.ID})
 	reportOrRun(rec.ID, "")
@@ -130,9 +127,7 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
 	// The fake question program just sleeps, standing in for a phone question
 	// still waiting for an answer.
-	old := moshiProgram
-	moshiProgram = func() (string, error) { return fake, nil }
-	t.Cleanup(func() { moshiProgram = old })
+	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return fake, nil })
 	discardStderr(t)
 	// Create the request, which starts the first question.
 	req := approval.Request{ID: "live", Args: []string{"pr", "comment", "12"}}
@@ -175,9 +170,7 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	// The fake question program just sleeps, standing in for a new question
 	// waiting for an answer.
 	fake := approvaltest.WriteScript(t, t.TempDir(), "ask", "sleep 30")
-	old := moshiProgram
-	moshiProgram = func() (string, error) { return fake, nil }
-	t.Cleanup(func() { moshiProgram = old })
+	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return fake, nil })
 	// The saved PID belongs to a process that has already exited, and the
 	// request was made three hours ago.
 	saved := time.Now().Add(-3 * time.Hour).Round(0)

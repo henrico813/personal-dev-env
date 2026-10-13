@@ -21,14 +21,12 @@ func TestRunnerSavesApprovedOutputForRerun(t *testing.T) {
 	// The fake gh prints a PR URL and the directory it runs in, and logs
 	// each call.
 	workdir := t.TempDir()
-	gh, calls := approvaltest.FakeGH(t, "echo https://github.com/owner/repo/pull/7; echo call >> \"$log\"; pwd")
+	gh, calls := approvaltest.FakeGH(t, "echo https://github.com/owner/repo/pull/7", approvaltest.GHLogsCall, "pwd")
 	// An empty PATH, so only the saved gh path can work.
 	t.Setenv("PATH", t.TempDir())
 	// Check the record every 10 milliseconds instead of every second, so the
 	// test is quick.
-	oldPoll := runnerPoll
-	runnerPoll = 10 * time.Millisecond
-	t.Cleanup(func() { runnerPoll = oldPoll })
+	approvaltest.Replace(t, &runnerPoll, 10*time.Millisecond)
 	rec := approval.Record{ID: "runner", Args: []string{"pr", "create"}, State: approval.StatePending, GH: gh, Directory: workdir}
 	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
@@ -82,9 +80,8 @@ func TestRunnerRestartKeepsRequestAge(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake runner just sleeps, standing in for one waiting for an answer.
 	fake := approvaltest.WriteScript(t, t.TempDir(), "runner", "sleep 30")
-	oldStart, oldProgram := runnerStart, runnerProgram
-	runnerStart, runnerProgram = startDetachedRunner, func() (string, error) { return fake, nil }
-	t.Cleanup(func() { runnerStart, runnerProgram = oldStart, oldProgram })
+	approvaltest.Replace(t, &runnerStart, startDetachedRunner)
+	approvaltest.Replace(t, &runnerProgram, func() (string, error) { return fake, nil })
 	// The saved runner PID belongs to a process that has already exited, and
 	// the request was made three hours ago.
 	saved := time.Now().Add(-3 * time.Hour).Round(0)
@@ -127,11 +124,9 @@ func TestRequestSavesRunnerAndPhonePIDs(t *testing.T) {
 	dir := t.TempDir()
 	runner := approvaltest.WriteScript(t, dir, "runner", "sleep 30")
 	ask := approvaltest.WriteScript(t, dir, "ask", "sleep 30")
-	oldStart, oldRunner, oldMoshi := runnerStart, runnerProgram, moshiProgram
-	runnerStart = startDetachedRunner
-	runnerProgram = func() (string, error) { return runner, nil }
-	moshiProgram = func() (string, error) { return ask, nil }
-	t.Cleanup(func() { runnerStart, runnerProgram, moshiProgram = oldStart, oldRunner, oldMoshi })
+	approvaltest.Replace(t, &runnerStart, startDetachedRunner)
+	approvaltest.Replace(t, &runnerProgram, func() (string, error) { return runner, nil })
+	approvaltest.Replace(t, &moshiProgram, func() (string, error) { return ask, nil })
 	discardStderr(t)
 
 	_, err := loadOrCreate(approval.Request{ID: "new", Args: []string{"pr", "comment", "12"}}, "")
@@ -174,9 +169,7 @@ func TestApprovalRestartsDeadRunner(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			// Record runner starts instead of starting the test binary.
 			var started []string
-			oldStart := runnerStart
-			runnerStart = func(rec approval.Record) approval.Record { started = append(started, rec.ID); return rec }
-			t.Cleanup(func() { runnerStart = oldStart })
+			approvaltest.Replace(t, &runnerStart, func(rec approval.Record) approval.Record { started = append(started, rec.ID); return rec })
 			// The saved runner PID belongs to a process that has already exited.
 			if err := approval.Save(approval.Record{ID: "late", State: approval.StatePending, RunnerPID: deadPID(t)}); err != nil {
 				t.Fatal(err)

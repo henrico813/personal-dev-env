@@ -20,45 +20,46 @@ type flowEnv struct {
 	output          *bytes.Buffer
 }
 
-// The first gh on PATH is treated as the guard, so the fake real gh goes second.
+// The fake gh answers the lookups made before asking, then logs each call
+// and runs tail.
 func setupFlow(t *testing.T, tail string) flowEnv {
 	t.Helper()
 	dir := t.TempDir()
-	guardDir := filepath.Join(dir, "guard")
-	if err := os.Mkdir(guardDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
 	env := flowEnv{gate: filepath.Join(dir, "gate"), output: &bytes.Buffer{}}
-	approvaltest.WriteScript(t, guardDir, "gh", "exit 99")
-	env.gh, env.calls = approvaltest.FakeGH(t, "case \"$1 $2\" in \"repo view\") echo owner/repo; exit 0 ;; \"pr view\") echo title; exit 0 ;; esac\necho call >> \"$log\"\n"+tail)
-	t.Setenv("PATH", guardDir+":"+filepath.Dir(env.gh))
+	env.gh, env.calls = approvaltest.FakeGH(t, approvaltest.GHAnswers("repo view", "owner/repo"),
+		approvaltest.GHAnswers("pr view", "title"), approvaltest.GHLogsCall, tail)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("PDE_GH_GATE", env.gate)
-	oldWait, oldStderr := answerTimeout, stderr
-	answerTimeout, stderr = 100*time.Millisecond, env.output
-	t.Cleanup(func() { answerTimeout, stderr = oldWait, oldStderr })
+	approvaltest.Replace(t, &answerTimeout, 100*time.Millisecond)
+	approvaltest.Replace[io.Writer](t, &stderr, env.output)
 	return env
 }
 
-func requestAndAnswer(t *testing.T, args []string, state string) string {
+// newRequest runs pde-gh-write with args, as an agent does, and returns the
+// request it leaves waiting. It fails unless that is the only one waiting.
+func newRequest(t *testing.T, args []string) approval.Record {
 	t.Helper()
+	// Nobody answers, so the wait is 0 for the rest of the test.
+	approvaltest.Replace(t, &answerTimeout, 0)
 	if code := requestWrite(args); code != exitWaiting {
 		t.Fatalf("unanswered request returned %d, want %d", code, exitWaiting)
 	}
-	req, err := approval.Parse(args, nil)
-	if err != nil {
-		t.Fatal(err)
+	waiting := approval.Queued()
+	if len(waiting) != 1 {
+		t.Fatalf("%d requests waiting, want 1", len(waiting))
 	}
-	req = scopeRequest(req)
-	rec, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	return waiting[0]
+}
+
+// requestAndAnswer makes a request, moves it to state, and returns its ID.
+func requestAndAnswer(t *testing.T, args []string, state string) string {
+	t.Helper()
+	rec := newRequest(t, args)
 	rec.State = state
 	if err := approval.Save(rec); err != nil {
 		t.Fatal(err)
 	}
-	return req.ID
+	return rec.ID
 }
 
 func countCalls(t *testing.T, calls string) int {
@@ -78,35 +79,24 @@ func countCalls(t *testing.T, calls string) int {
 // The bash version this replaces could not tell a write that already ran from
 // one that was declined.
 func TestRerunReportsResultWithoutRunningAgain(t *testing.T) {
-	cases := []struct {
-		name     string
-		exitCode int
-	}{
-		{name: "gh succeeds", exitCode: 0},
-		{name: "gh fails", exitCode: 1},
+	// The fake gh logs each call to env.calls, then exits 1.
+	env := setupFlow(t, "exit 1")
+	args := []string{"pr", "create", "--title", "T"}
+	// Create the pending record, then approve it as pde-pr-approve would.
+	id := requestAndAnswer(t, args, approval.StateApproved)
+
+	// The first run starts gh; the second must only report the saved exit.
+	first, second := requestWrite(args), requestWrite(args)
+
+	if first != 1 || second != 1 {
+		t.Errorf("runs returned %d and %d, want 1", first, second)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			// The fake gh logs each call to env.calls, then exits with the case's code.
-			env := setupFlow(t, fmt.Sprintf("exit %d", tc.exitCode))
-			args := []string{"pr", "create", "--title", "T"}
-			// Create the pending record, then approve it as pde-pr-approve would.
-			id := requestAndAnswer(t, args, approval.StateApproved)
-
-			// The first run starts gh; the second must only report the saved exit.
-			first, second := requestWrite(args), requestWrite(args)
-
-			if first != tc.exitCode || second != tc.exitCode {
-				t.Errorf("runs returned %d and %d, want %d", first, second, tc.exitCode)
-			}
-			if calls := countCalls(t, env.calls); calls != 1 {
-				t.Errorf("gh ran %d times, want 1", calls)
-			}
-			want := fmt.Sprintf("pde-gh-write: already ran %s, exit %d\n", id, tc.exitCode)
-			if !strings.Contains(env.output.String(), want) {
-				t.Errorf("output is missing %q:\n%s", want, env.output)
-			}
-		})
+	if calls := countCalls(t, env.calls); calls != 1 {
+		t.Errorf("gh ran %d times, want 1", calls)
+	}
+	want := fmt.Sprintf("pde-gh-write: already ran %s, exit 1\n", id)
+	if !strings.Contains(env.output.String(), want) {
+		t.Errorf("output is missing %q:\n%s", want, env.output)
 	}
 }
 
@@ -138,6 +128,66 @@ func TestDecidedRequestsNeverRunGH(t *testing.T) {
 				t.Errorf("gh ran %d times, want 0", calls)
 			}
 		})
+	}
+}
+
+// A decision is final. A yes saved after a decline, such as from
+// pde-pr-approve left open while the popup declined, must not approve the
+// request and let gh post.
+func TestLateYesKeepsDeclinedRequest(t *testing.T) {
+	env := setupFlow(t, "")
+	args := []string{"pr", "ready", "12"}
+	id := requestAndAnswer(t, args, approval.StateDeclined)
+
+	saveAnswer(id, approval.ChoiceYes)
+	code := requestWrite(args)
+
+	if code != exitDeclined || countCalls(t, env.calls) != 0 {
+		t.Fatalf("rerun returned %d after %d gh calls, want %d and none", code, countCalls(t, env.calls), exitDeclined)
+	}
+}
+
+// gh must post the text the approver read. The body file is read when the
+// request is made; if gh read the file when it ran, an agent could rewrite
+// it after approval and post text nobody approved.
+func TestPostsApprovedTextAfterFileChanges(t *testing.T) {
+	// The fake gh saves the body it reads from standard input.
+	env := setupFlow(t, approvaltest.GHSavesBody)
+	body := filepath.Join(t.TempDir(), "body.md")
+	if err := os.WriteFile(body, []byte("approved text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := requestAndAnswer(t, []string{"pr", "comment", "12", "--body-file", body}, approval.StateApproved)
+	if err := os.WriteFile(body, []byte("rewritten text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The runner runs an approval that came after the agent stopped waiting.
+	code := runnerMain(id)
+
+	posted, err := os.ReadFile(env.calls + ".body")
+	if code != 0 || err != nil || string(posted) != "approved text" {
+		t.Fatalf("runner returned %d and gh read %q (%v), want the approved text", code, posted, err)
+	}
+}
+
+// An approval lasts four hours from its last change. After that the same
+// command must ask again, so a stale yes cannot post hours or days later.
+func TestExpiredApprovalNeedsNewAnswer(t *testing.T) {
+	env := setupFlow(t, "")
+	args := []string{"pr", "ready", "12"}
+	// Approve the request five hours ago.
+	rec := newRequest(t, args)
+	rec.State = approval.StateApproved
+	rec.Updated = time.Now().Add(-5 * time.Hour)
+	if err := approval.Write(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	code := requestWrite(args)
+
+	if code != exitWaiting || countCalls(t, env.calls) != 0 {
+		t.Fatalf("rerun returned %d after %d gh calls, want %d and none", code, countCalls(t, env.calls), exitWaiting)
 	}
 }
 
@@ -264,7 +314,7 @@ func TestRerunSurvivesFailedRepoLookup(t *testing.T) {
 		t.Fatalf("approved run returned %d", code)
 	}
 	// Replace the fake gh with one whose repository lookup fails.
-	approvaltest.WriteScript(t, filepath.Dir(env.gh), "gh", "case \"$1 $2\" in \"repo view\") exit 1 ;; esac\necho call >> '"+env.calls+"'")
+	approvaltest.RewriteFakeGH(t, env.gh, approvaltest.GHFails("repo view"), approvaltest.GHLogsCall)
 
 	code := requestWrite(args)
 
