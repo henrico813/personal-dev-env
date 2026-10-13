@@ -10,7 +10,9 @@ import (
 
 // The approver must see the text gh will post. A body file is read once and
 // sent to gh on standard input, so later edits to the file cannot change what
-// was approved.
+// was approved. gh gives an option that takes a value the next argument,
+// even one like --body=fake, and Parse once read that as the body, so the
+// approver saw text gh never posted. pr close posts --comment as a comment.
 func TestParseReadsEveryFlagForm(t *testing.T) {
 	bodyPath := filepath.Join(t.TempDir(), "body.md")
 	if err := os.WriteFile(bodyPath, []byte("file body"), 0o600); err != nil {
@@ -33,6 +35,11 @@ func TestParseReadsEveryFlagForm(t *testing.T) {
 		{name: "body from stdin", args: []string{"pr", "comment", "12", "-F", "-"},
 			body: "stdin body", target: "12", ghArgs: []string{"pr", "comment", "12", "--body-file", "-"}},
 		{name: "repo", args: []string{"pr", "edit", "12", "--repo", "o/r"}, repo: "o/r", target: "12"},
+		{name: "option value that looks like body", args: []string{"pr", "edit", "12", "-b", "real", "--add-label", "--body=fake"},
+			body: "real", target: "12"},
+		{name: "create option value that looks like title", args: []string{"pr", "create", "-t", "real", "-l", "--title=fake"},
+			title: "real"},
+		{name: "close comment", args: []string{"pr", "close", "12", "--comment", "bye"}, body: "bye", target: "12"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -55,13 +62,24 @@ func TestParseReadsEveryFlagForm(t *testing.T) {
 	}
 }
 
-// Browser writes, unknown operations, and incomplete flags must never reach approval.
+// Browser writes, unknown operations, and incomplete flags must never reach
+// approval. Nor may arguments whose meaning to gh is unclear: gh reads
+// -bhello as the body hello, and Parse once missed it, so the approver saw a
+// blank body. An unknown option may take a following --body=x as its value.
 func TestParseRejectsUnsafeRequests(t *testing.T) {
 	for _, args := range [][]string{
 		{"pr", "create", "--web"},
 		{"pr", "create", "-w"},
 		{"pr", "publish", "12"},
 		{"pr", "create", "--title"},
+		{"pr", "comment", "12", "-bhello"},
+		{"pr", "create", "-F/tmp/body.md", "-tT"},
+		{"pr", "edit", "-Ro/r", "-tT", "12"},
+		{"pr", "merge", "12", "-sdtS"},
+		{"pr", "merge", "-dF", "/tmp/body.md", "12"},
+		{"pr", "comment", "12", "-b=x"},
+		{"pr", "edit", "12", "--new-flag", "--body=x"},
+		{"pr", "reopen", "--", "12", "--comment=C"},
 	} {
 		if _, err := Parse(args, nil); err == nil {
 			t.Errorf("parse(%q) succeeded, want an error", args)

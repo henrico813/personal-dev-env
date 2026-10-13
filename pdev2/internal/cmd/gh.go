@@ -117,19 +117,24 @@ func ghLookup(gh, directory string, args ...string) string {
 // PDE_GH_WRITE=1 is set. The real gh is the next executable gh on PATH that
 // is neither the guard nor this program. It returns the PATH entry, not the
 // symlink target: aqua's gh links to aqua-proxy, which only runs gh when
-// started under that name.
+// started under that name. Empty and relative entries are skipped: they
+// name the working directory, the agent's checkout, which may hold a gh.
 func findRealGH() string {
 	self, _ := os.Executable()
 	self, _ = filepath.EvalSymlinks(self)
-	guard, _ := exec.LookPath("gh")
-	guard, _ = filepath.EvalSymlinks(guard)
+	guard := ""
 	for _, dir := range strings.Split(os.Getenv("PATH"), ":") {
-		if dir == "" {
-			dir = "."
+		if !filepath.IsAbs(dir) {
+			continue
 		}
 		path := filepath.Join(dir, "gh")
 		target, err := filepath.EvalSymlinks(path)
-		if err == nil && target != self && target != guard && isExecutable(target) {
+		if err != nil || target == self || !isExecutable(target) {
+			continue
+		}
+		if guard == "" {
+			guard = target
+		} else if target != guard {
 			return path
 		}
 	}
