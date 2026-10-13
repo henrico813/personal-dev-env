@@ -121,6 +121,27 @@ request from a subagent gets no marker.
 
 The `herdr` command has no option that opens a popup, so the program sends
 the request to Herdr's socket, a file that other programs on the same
-computer use to send Herdr requests. This runs in the background and
-ignores errors: a slow or missing Herdr must not delay the request, and you
-can still answer on the phone or in a terminal.
+computer use to send Herdr requests. This runs in the background, and a
+failure does not stop the request: a slow or missing Herdr must not delay
+it, and you can answer on the phone or in a terminal instead.
+
+The program reads Herdr's answer, though. Herdr answers on the same
+connection whether it opened the popup or refused, so a reply alone does
+not mean a popup appeared. When it refused, the notification says why
+instead of `Approval is waiting`.
+
+## Why One Open Popup Can Hide the Others
+
+Herdr shows one popup at a time and refuses to open another while one is
+open. An approval popup opens in the workspace in front of you; once you
+switch away you no longer see it, yet it keeps every later request from
+opening its own. When an approval popup was left that way, every later
+request seemed to vanish, and the inbox key did nothing.
+
+Herdr cannot say where a popup is: a popup is not a pane and has no
+pane ID. So the popup saves its own workspace while it runs. When Herdr
+refuses a popup, the notification names that workspace, and the inbox
+key goes there, because you pressed it to see your approvals. A new
+request only notifies, so an agent never moves the screen while you
+work. The popup stays one 40x16 popup that works on the phone; a second
+window for waiting requests would not fit there.

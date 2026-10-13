@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,6 +20,18 @@ func approvePopup(id string) int {
 	rec, err := approval.Load(id)
 	if err != nil || rec.State != approval.StatePending || approval.Expired(rec) {
 		return 1
+	}
+	// Herdr refuses every other popup while this one is open and cannot say
+	// where it is, so save its workspace for requests that cannot open their
+	// own. Herdr gives a popup no HERDR_WORKSPACE_ID; the workspace it opened
+	// in is workspace_id in HERDR_PLUGIN_CONTEXT_JSON.
+	var context struct {
+		Workspace string `json:"workspace_id"`
+	}
+	if json.Unmarshal([]byte(os.Getenv("HERDR_PLUGIN_CONTEXT_JSON")), &context) == nil && context.Workspace != "" {
+		if approval.SavePopup(approval.Popup{PID: os.Getpid(), Workspace: context.Workspace}) == nil {
+			defer approval.RemovePopup()
+		}
 	}
 	for {
 		switch choice := popupAnswer(rec, queuePosition(rec.ID), terminal.PopupSettle); choice {
@@ -88,6 +101,9 @@ func popupAnswer(rec approval.Record, queue string, settle time.Duration) string
 }
 
 // Opens the popup on the oldest pending request, including dismissed ones.
+// When the popup does not open, a notification says why and the inbox exits
+// 1; if an approval popup is already open, it first moves to that popup's
+// workspace, because the user asked to see approvals.
 func openInbox() int {
 	pending := approval.Inbox()
 	if len(pending) == 0 {
@@ -95,8 +111,14 @@ func openInbox() int {
 		_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "No approvals waiting").Run()
 		return 0
 	}
-	if err := openApproval(pending[0].ID); err != nil {
-		return 1
+	err := openApproval(pending[0].ID)
+	if err == nil {
+		return 0
 	}
-	return 0
+	body, workspace := popupFailure(err)
+	if workspace != "" {
+		_ = exec.Command("herdr", "workspace", "focus", workspace).Run()
+	}
+	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", body).Run()
+	return 1
 }
