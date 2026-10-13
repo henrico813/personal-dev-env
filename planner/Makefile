@@ -6,6 +6,7 @@ GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 
 check:
 	@test -z "$$(gofmt -l .)" || { echo "unformatted files:"; gofmt -l .; exit 1; }
+	go mod tidy -diff
 	$(GOLANGCI_LINT) run ./...
 	go test ./...
 

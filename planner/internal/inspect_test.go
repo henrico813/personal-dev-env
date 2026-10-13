@@ -55,17 +55,8 @@ func TestParseMarkdownRoundTripFromRenderPlan(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
-	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
-	}
-
-	if len(stepSpans) != len(plan.Implementation) {
-		t.Fatalf("expected %d step spans, got %d", len(plan.Implementation), len(stepSpans))
-	}
-	firstStepRaw := md[stepSpans[0].Start:stepSpans[0].End]
-	if !strings.HasPrefix(strings.TrimSpace(firstStepRaw), "### 1. First") {
-		t.Fatalf("step span does not point at first step heading")
 	}
 }
 
@@ -79,7 +70,6 @@ func TestInspectViewEmitsUpdateDiffExpect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
-	sectionSpans := parsed.Sections
 	view := buildInspectPlan(parsed, md)
 	if view.Implementation[0].FileChanges[0].Selector != "implementation[1].file_changes[1]" {
 		t.Fatalf("selector=%q", view.Implementation[0].FileChanges[0].Selector)
@@ -90,14 +80,10 @@ func TestInspectViewEmitsUpdateDiffExpect(t *testing.T) {
 	if view.Implementation[0].FileChanges[0].UpdateDiffExpect == view.Implementation[1].FileChanges[0].UpdateDiffExpect {
 		t.Fatalf("tokens must be unique per file change: %#v", view.Implementation)
 	}
-
-	implRaw := md[sectionSpans.Implementation.Start:sectionSpans.Implementation.End]
-	if !strings.Contains(implRaw, "### 1. First") || !strings.Contains(implRaw, "### 2. Second") {
-		t.Fatalf("implementation span missing expected step headings")
-	}
 }
 
-// Wrapped frontmatter remains parser-owned: keep acceptance and rejection coverage here while JSON authoring surfaces are removed elsewhere.
+// Vault issues start with frontmatter; parsing must accept it and keep diff
+// spans pointing into the original file.
 func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 	plan := Plan{
 		Title:    "Plan",
@@ -136,15 +122,13 @@ func TestParseMarkdownAllowsLeadingFrontmatter(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
-	sectionSpans := result.Sections
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
 	}
-	if sectionSpans.Overview.Start <= len(frontmatter) {
-		t.Fatalf("overview span should be offset past frontmatter, got %d", sectionSpans.Overview.Start)
-	}
-	if !strings.Contains(withFrontmatter[sectionSpans.Overview.Start:sectionSpans.Overview.End], "Overview text.") {
-		t.Fatal("overview span should point into original source with frontmatter")
+	// Vault issues carry frontmatter, and patch rewrites the diff at this span.
+	span := result.DiffContents[0][0]
+	if got := withFrontmatter[span.Start:span.End]; !strings.Contains(got, "+new") {
+		t.Fatalf("diff span should point into original source with frontmatter, got %q", got)
 	}
 }
 
@@ -347,8 +331,8 @@ func TestParseMarkdownRejectsDuplicateScalarField(t *testing.T) {
 }
 
 // TestParseMarkdownAllowsEmptyImplementationSection verifies that a plan rendered
-// with no implementation steps can be parsed without error. This is the bootstrap
-// case for append: an agent creates a plan skeleton and appends steps incrementally.
+// with no implementation steps can be parsed without error, so plan validation,
+// not the parser, reports the missing step.
 func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 	plan := Plan{
 		Title:    "Plan",
@@ -377,12 +361,8 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 		t.Fatalf("ParseMarkdown: %v", err)
 	}
 	parsed := result.Plan
-	stepSpans := result.Steps
 	if !reflect.DeepEqual(parsed, plan) {
 		t.Fatalf("parsed plan mismatch:\nparsed=%#v\nwant=%#v", parsed, plan)
-	}
-	if len(stepSpans) != 0 {
-		t.Fatalf("expected 0 step spans, got %d", len(stepSpans))
 	}
 }
 
@@ -526,28 +506,6 @@ func TestParseMarkdownReturnsDiffContentSpans(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("span %d missing diff content: got=%q want=%q", i, got, want)
 		}
-	}
-}
-
-func TestParseMarkdownReturnsTitleSpan(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		build func(*testing.T) string
-	}{
-		{name: "no frontmatter", build: buildPlanNoFrontmatter},
-		{name: "with frontmatter", build: buildPlanWithFrontmatter},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			input := tc.build(t)
-			result, err := ParseMarkdown(input)
-			if err != nil {
-				t.Fatalf("ParseMarkdown: %v", err)
-			}
-			got := input[result.Sections.Title.Start:result.Sections.Title.End]
-			if got != result.Plan.Title {
-				t.Fatalf("title span = %q, want %q", got, result.Plan.Title)
-			}
-		})
 	}
 }
 
