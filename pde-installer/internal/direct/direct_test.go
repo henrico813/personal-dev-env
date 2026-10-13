@@ -42,7 +42,7 @@ func TestToolsMapSupportedArchitectures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("toolsForPlatform(%q) error = %v", architecture, err)
 		}
-		if len(tools) != 7 {
+		if len(tools) != 8 {
 			t.Fatalf("toolsForPlatform(%q) count = %d", architecture, len(tools))
 		}
 		for _, tool := range tools {

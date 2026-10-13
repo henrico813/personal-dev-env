@@ -100,6 +100,7 @@ func Items() []Item {
 		{Name: "keychain", Version: "2.9.8", Owner: Direct},
 		{Name: "moshi-hook", Version: "v0.4.20", Owner: Direct},
 		{Name: "herdr", Version: "v0.9.1", Owner: Direct},
+		{Name: "nobs", Version: "v0.3.2", Owner: Direct},
 		{Name: "repository-config", Owner: Chezmoi, Terminal: true}, {Name: "antidote", Owner: Chezmoi, Terminal: true},
 		{Name: "tpm", Owner: Chezmoi, Terminal: true}, {Name: "obsidian.nvim", Owner: Chezmoi},
 		{Name: "neovim-plugins", Owner: Chezmoi}, {Name: "ohmyzsh", Owner: Chezmoi, Terminal: true},
