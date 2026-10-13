@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies SSH clipboard selection and local clipboard defaults.
-# Needs Neovim 0.12+ (PDE-pinned); CI's apt Neovim lacks the OSC 52 provider.
+# Needs Neovim 0.12+ (PDE-pinned) for the OSC 52 provider.
 # Usage: pde-installer/test/nvim-clipboard.sh
 set -euo pipefail
 

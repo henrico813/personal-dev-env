@@ -38,12 +38,6 @@ require("lualine").setup({
       },
       {
         function()
-          local ok, status = pcall(function() return require("plugins.obsidian").sync_status() end)
-          return ok and status or ""
-        end,
-      },
-      {
-        function()
           local ok, cc = pcall(require, "codecompanion")
           if not ok then
             return ""

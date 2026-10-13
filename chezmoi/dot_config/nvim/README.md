@@ -92,7 +92,7 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 |---|---|
 | `<leader><leader>` | Find files (fzf) |
 | `<leader>/` | Fuzzy search current buffer |
-| `<leader>os` | Sync configured Obsidian vaults |
+| `<leader>os` | Sync each vault through nobs |
 | `<leader>pc` | Toggle CodeCompanion chat |
 | `<leader>pn` | Open a new chat buffer |
 | `<leader>ps` | Send the current chat, or add the current selection |
@@ -117,13 +117,18 @@ A few non-obvious bindings worth memorizing because you'll use them constantly:
 
 ### Sync Obsidian vaults
 
-`<leader>os` starts one `ob sync` process for each configured main and work
-vault. Lualine shows each vault as syncing, failed, or last synced. A sync is
-stopped after five minutes so `ob` connection retries cannot leave it running
-indefinitely.
+`<leader>os` runs `nobs --vault NAME sync-now` for each vault and shows
+a notification when each one finishes. A stopped broker is started
+first, and Docker's progress on stderr is not an error; only the exit
+code is. After two minutes Neovim stops waiting and reports the sync as
+timed out, even if the broker finishes it a few seconds later. If nobs
+is still starting a broker, the message waits until Docker is done.
 
-The first sync error appears as a Neovim notification. Full sync activity is
-recorded in `~/.config/obsidian-headless/sync/<vault-id>/sync.log`.
+The vault list comes from `$XDG_CONFIG_HOME/nobs/config.json`, or
+`~/.config/nobs/config.json` when `XDG_CONFIG_HOME` is not an absolute
+path, the same file `nobs` uses. Add a vault with
+`nobs vault set NAME PATH`. Until that file exists, Neovim warns once
+per session if `~/.config/pde/config.json` still lists vaults.
 
 ### Add a plugin
 
@@ -222,7 +227,12 @@ Chat completion now waits briefly after OpenCode `end_turn` before the forked AC
 
 Inline editing uses the repository plugin [`opencode-inline.nvim`](../../../nvim-plugins/opencode-inline.nvim/README.md); `pde-installer install` copies its Lua runtime into `pack/plugins/start` independently of the source checkout. The plugin owns the CodeCompanion inline adapter and the local OpenAI-compatible `opencode-inline-shim`; `pde-installer install` builds the shim onto `$PATH` with the pinned `opencode` and `vibe` tools.
 
-`~/.config/pde/config.json` is the source of truth for `OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, `OPENCODE_INLINE_MODEL`, `PDE_MAIN_VAULT`, `PDE_WORK_VAULT`, and `PDE_DEFAULT_VAULT`. A non-empty environment variable inherited by Neovim overrides the matching OpenCode value, and PDE passes the result to the plugin's `setup()` at startup. CodeCompanion and the Obsidian plugin read that JSON directly; they do not require a PDE-managed shell to populate vault or OpenCode settings.
+`~/.config/pde/config.json` is the source of truth for
+`OPENCODE_BASE_URL`, `OPENCODE_INLINE_SHIM_PORT`, and
+`OPENCODE_INLINE_MODEL`. A non-empty environment variable inherited by
+Neovim overrides the matching value, and PDE passes the result to the
+plugin's `setup()` at startup. CodeCompanion reads that JSON directly;
+it does not require a PDE-managed shell to populate OpenCode settings.
 
 For the default loopback setup, the shim auto-starts `opencode serve` on demand when inline requests arrive and the backend is missing. If `OPENCODE_BASE_URL` points at a remote host or a non-loopback address, the shim will not try to start it for you. OpenCode 2 servers require a password: the plugin uses `OPENCODE_SERVER_PASSWORD` when set, otherwise a generated password stored under Neovim's state directory. Stop an older OpenCode server on the backend port if the shim reports that its password was rejected.
 
