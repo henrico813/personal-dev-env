@@ -152,6 +152,13 @@ The system reuses process IDs, so an old one could later belong to an
 unrelated program. That program would look like a running question and stop
 reruns from sending a new one.
 
+A question that ends without an answer also saves why, such as
+`moshi-hook` not being paired. It runs apart from the agent's command, and
+nothing reads its output, so the record is the only place the reason can
+go. The agent's waiting command, or its rerun, prints the reason when no
+answer came, so the agent stops telling you to answer on a phone that
+never got the question. Starting a new question clears the reason.
+
 ## Why Requests Expire After Four Hours
 
 Four hours after a record last changed, the same command becomes a new

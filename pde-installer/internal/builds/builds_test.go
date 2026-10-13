@@ -106,6 +106,50 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 }
 
+// Herdr's approval popup and its Ctrl+b a key run pde-pr-approve, a link to
+// pde-gh-write. When only the link is gone, the next install must bring it
+// back even though no source changed, or approvals in Herdr stop opening.
+// With the check that does this deleted, every other installer test passes.
+func TestReconcileRestoresMissingApproveLink(t *testing.T) {
+	home := t.TempDir()
+	repoRoot := t.TempDir()
+	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
+		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
+	}
+	logPath := filepath.Join(t.TempDir(), "build.log")
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
+	manager := New(home, repoRoot, run.Runner{})
+	// A finished install, then only the link is deleted.
+	journal, err := manager.Reconcile()
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	link := filepath.Join(home, ".local", "bin", "pde-pr-approve")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err = manager.Reconcile()
+
+	if err != nil {
+		t.Fatalf("second Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("second Commit() error = %v", err)
+	}
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("pde-pr-approve is missing: %v", err)
+	}
+	if target != filepath.Join(home, ".local", "bin", "pde-gh-write") {
+		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", target)
+	}
+}
+
 func goFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu

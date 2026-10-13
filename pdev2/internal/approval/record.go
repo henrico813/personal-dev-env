@@ -61,6 +61,10 @@ type Record struct {
 	MoshiPID  int       `json:"moshi_pid,omitempty"`
 	RunnerPID int       `json:"runner_pid,omitempty"`
 	Dismissed bool      `json:"dismissed,omitempty"`
+	// Why the last phone question ended without an answer, such as
+	// "exit status 4: moshi-hook: can't ask on your phone: ...". Cleared when
+	// a new question starts.
+	MoshiError string `json:"moshi_error,omitempty"`
 
 	// Context shown to the approver.
 	Repo         string `json:"repo,omitempty"`
