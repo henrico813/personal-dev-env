@@ -66,17 +66,38 @@ Status lines on standard error:
 The guard is `~/.local/bin/gh`, installed by chezmoi from
 `chezmoi/dot_local/bin/executable_gh.tmpl` in the full profile only.
 With `PDE_GH_WRITE=1` it runs the real `gh` with any arguments.
-Otherwise it refuses:
+Otherwise it finds the command and subcommand the way `gh` does,
+skipping options, their values, and empty arguments, so
+`gh -R owner/repo pr merge 12` and `gh pr '' merge 12` are still
+`pr merge`. It refuses:
 
-- `gh pr create`, `new`, `edit`, `comment`, `review`, `merge`, `ready`,
-  `close`, and `reopen`.
-- `gh api` with a path that contains `pulls`, or `issues/` followed by
-  `comments`, when the method is `POST`, `PATCH`, `PUT`, or `DELETE`, or
-  when `-f`, `-F`, `--field`, `--raw-field`, or `--input` is given.
-- `gh api graphql` when any argument contains `mutation`.
+- `gh pr` with any subcommand except `checkout` (`co`), `checks`,
+  `diff`, `list` (`ls`), `status`, and `view`, so a `gh pr` write added
+  later is refused too.
+- `gh issue` with any subcommand except `create` (`new`), `develop`,
+  `list` (`ls`), `status`, and `view`. A PR number is also an issue
+  number, so `gh issue comment 12` comments on PR 12.
+- `gh api` with a method other than `GET` or `HEAD`, given as
+  `-X POST`, `-XPOST`, `-X=POST`, `--method POST`, or `--method=POST`.
+- `gh api` with `-f`, `-F`, `--field`, `--raw-field`, or `--input` and no
+  method, because `gh` then sends `POST`. With `-X GET` it sends the
+  fields as a query string, so that read is allowed. A `gh api graphql`
+  read sends its query as a field with no method, so it is refused too.
+- `gh alias set` and `gh alias import`, because an alias can expand to
+  `pr merge`, and `gh agent-task create`, which has Copilot open a PR.
+  Its other names, `agent`, `agents`, and `agent-tasks`, count too.
 
-`pde-gh-write` accepts each refused `gh pr` command except `new`; use
-`create` instead. It accepts no `gh api` command.
+These apply to every `gh api` path, not only pull-request paths. The
+values of options such as `-H`, `--jq`, and `--template` are skipped, so
+`--jq -XGET` does not set the method. Help for a refused command is
+refused too; `gh help pr merge` works.
+
+`pde-gh-write` accepts `gh pr create`, `edit`, `comment`, `review`,
+`merge`, `ready`, `close`, and `reopen`. For every other refused
+command the message says to ask the user.
+
+The guard catches mistakes; it is not a security boundary. See
+[what the guard does not stop](../explanation/request-flow.md#what-the-guard-does-not-stop).
 
 The real `gh` is the first executable `gh` on `PATH` that is not the
 guard. `chezmoi/dot_zshrc.tmpl` puts `~/.local/bin` before aqua's folder
@@ -90,9 +111,13 @@ so the guard is found first.
 
 | Refused command | Message |
 |---|---|
-| `gh pr` writes except `new` | `Use pde-gh-write for pull-request writes; it asks the user for approval.` |
+| `gh pr` writes that `pde-gh-write` accepts | `Use pde-gh-write for pull-request writes; it asks the user for approval.` |
 | `gh pr new` | `Use pde-gh-write pr create instead of gh pr new; it asks the user for approval.` |
-| `gh api` writes | `gh api cannot change pull requests or comments here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.` |
+| Other `gh pr` subcommands | `pde-gh-write cannot run gh pr SUBCOMMAND; ask the user to run it.` |
+| `gh issue` subcommands | `gh issue SUBCOMMAND can change pull requests, so it is blocked here; for a pull request use the matching pde-gh-write pr command, such as pr comment, or ask the user.` |
+| `gh alias set`, `import`, `gh agent-task create` | `pde-gh-write cannot run gh COMMAND SUBCOMMAND; ask the user to run it.` |
+| `gh api graphql` | `gh api graphql sends its query as a write; use a REST GET or ask the user.` |
+| Other `gh api` writes | `gh api can only read here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.` |
 
 ## Herdr Popup
 

@@ -2,6 +2,8 @@
 {{- if ne (env "PDE_PROFILE") "terminal" -}}
 #!/usr/bin/env bash
 # Block raw pull-request writes. Only pde-gh-write sets PDE_GH_WRITE=1 after approval.
+# This stops agent mistakes, not a determined process: running the real gh by
+# its full path skips it.
 set -euo pipefail
 
 self=$(readlink -f "$0")
@@ -25,52 +27,132 @@ if [[ ${PDE_GH_WRITE:-} == 1 ]]; then
     exec "$real_gh" "$@"
 fi
 
+# Find the command and subcommand the way gh's parser does: it treats the
+# argument after any other two-letter or --name option as that option's value,
+# and it skips empty arguments. So `gh -R owner/repo pr merge 1` and
+# `gh pr '' merge 1` are both pr merge.
+words=()
+index=1
+while ((index <= $#)); do
+    argument=${!index}
+    case "$argument" in
+        --) break ;;
+        -h|--help|--version|--*=*) ;;
+        --*|-?) index=$((index + 1)) ;;
+        ''|-*) ;;
+        *) words+=("$argument") ;;
+    esac
+    index=$((index + 1))
+done
+command=${words[0]:-}
+subcommand=${words[1]:-}
+
 blocked=false
 message='Use pde-gh-write for pull-request writes; it asks the user for approval.'
-case "${1:-}" in
+case "$command" in
     pr)
-        case "${2:-}" in
+        # Anything not known to be read-only is a write, so new gh commands stay blocked.
+        case "$subcommand" in
+            ''|checkout|co|checks|diff|list|ls|status|view) ;;
             create|edit|comment|review|merge|ready|close|reopen) blocked=true ;;
             # pde-gh-write refuses gh's alias, so name the command it accepts.
             new)
                 blocked=true
                 message='Use pde-gh-write pr create instead of gh pr new; it asks the user for approval.'
                 ;;
+            *)
+                blocked=true
+                message="pde-gh-write cannot run gh pr $subcommand; ask the user to run it."
+                ;;
+        esac
+        ;;
+    issue)
+        # A PR number is also an issue number, so these can change a PR.
+        case "$subcommand" in
+            ''|create|new|develop|list|ls|status|view) ;;
+            *)
+                blocked=true
+                message="gh issue $subcommand can change pull requests, so it is blocked here; for a pull request use the matching pde-gh-write pr command, such as pr comment, or ask the user."
+                ;;
+        esac
+        ;;
+    alias|agent|agents|agent-task|agent-tasks)
+        # A new alias can expand to pr merge, and an agent task opens a PR.
+        case "$command $subcommand" in
+            'alias set'|'alias import'|agent*' create')
+                blocked=true
+                message="pde-gh-write cannot run gh $command $subcommand; ask the user to run it."
+                ;;
         esac
         ;;
     api)
-        # pde-gh-write accepts no gh api command, but most of these writes have a pr form.
-        message='gh api cannot change pull requests or comments here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.'
-        api_path=''
+        # pde-gh-write accepts no gh api command, but most PR writes have a pr form.
+        message='gh api can only read here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.'
+        if [[ "$subcommand" == graphql ]]; then
+            message='gh api graphql sends its query as a write; use a REST GET or ask the user.'
+        fi
         method=''
-        has_write_field=false
-        api_index=2
-        while ((api_index <= $#)); do
-            argument=${!api_index}
+        has_parameters=false
+        index=1
+        while ((index <= $#)); do
+            argument=${!index}
+            value_index=$((index + 1))
             case "$argument" in
-                -X|--method)
-                    next_index=$((api_index + 1))
-                    method=${!next_index:-}
-                    api_index=$((api_index + 2))
-                    continue
+                --*)
+                    name=${argument%%=*}
+                    case "$name" in
+                        --cache|--field|--header|--hostname|--input|--jq|--method|--preview|--raw-field|--template)
+                            if [[ "$argument" == *=* ]]; then
+                                value=${argument#*=}
+                            else
+                                value=${!value_index:-}
+                                index=$value_index
+                            fi
+                            case "$name" in
+                                --method) method=$value ;;
+                                --field|--input|--raw-field) has_parameters=true ;;
+                            esac
+                            ;;
+                    esac
                     ;;
-                -X=*|--method=*) method=${argument#*=} ;;
-                -f|-F|--field|--raw-field|--input)
-                    has_write_field=true
-                    api_index=$((api_index + 2))
-                    continue
+                -?*)
+                    # Short options can be joined, as in -iXPOST or -X=POST. The
+                    # first one that takes a value uses the rest, or else the
+                    # next argument, as gh does. In -i=t the = gives -i its
+                    # value and ends the group.
+                    letters=${argument#-}
+                    while [[ -n "$letters" ]]; do
+                        letter=${letters:0:1}
+                        letters=${letters:1}
+                        case "$letter" in
+                            =) break ;;
+                            X|F|f|H|p|q|t)
+                                if [[ -n "$letters" ]]; then
+                                    value=${letters#=}
+                                else
+                                    value=${!value_index:-}
+                                    index=$value_index
+                                fi
+                                case "$letter" in
+                                    X) method=$value ;;
+                                    F|f) has_parameters=true ;;
+                                esac
+                                break
+                                ;;
+                        esac
+                    done
                     ;;
-                -f=*|-F=*|--field=*|--raw-field=*|--input=*) has_write_field=true ;;
-                --*) ;;
-                *) [[ -n "$api_path" ]] || api_path=$argument ;;
             esac
-            api_index=$((api_index + 1))
+            index=$((index + 1))
         done
-        if [[ "$api_path" == graphql ]]; then
-            for argument in "${@:3}"; do
-                [[ "$argument" == *mutation* ]] && blocked=true
-            done
-        elif [[ "$api_path" == *pulls* || "$api_path" == *issues/*comments* ]] && { method=${method^^}; [[ "$method" == POST || "$method" == PATCH || "$method" == PUT || "$method" == DELETE ]] || [[ "$has_write_field" == true ]]; }; then
+        method=${method^^}
+        case "$method" in
+            ''|GET|HEAD) ;;
+            *) blocked=true ;;
+        esac
+        # With parameters gh sends POST unless the method is set. That
+        # includes every graphql query, read or not.
+        if [[ "$has_parameters" == true && -z "$method" ]]; then
             blocked=true
         fi
         ;;

@@ -14,8 +14,8 @@ so they run `pde-gh-write` with the same arguments instead; see
 This check runs on your computer, not as a permission rule in the tool
 that runs the agent, such as OpenCode or Claude Code. Each tool has its
 own rules, and people often set them to allow every command. The check
-catches careless mistakes; an agent set on getting around it can find
-another copy of `gh`.
+catches careless mistakes, not a determined agent; see
+[what the guard does not stop](#what-the-guard-does-not-stop).
 
 One request goes like this:
 
@@ -23,7 +23,8 @@ One request goes like this:
    `.zshrc` puts `~/.local/bin` ahead of aqua's folder on `PATH`, so the
    `gh` it finds is the guard, a short bash script.
 2. The guard refuses the write, exits 2, and tells the agent to use
-   `pde-gh-write`. Any other command passes through to the real `gh`.
+   `pde-gh-write`, or to ask you when `pde-gh-write` cannot run that
+   command. Every other command passes through to the real `gh`.
 3. The agent runs the same command through `pde-gh-write`, the Go program
    built from `pdev2/`. It saves the request in a file and starts the
    runner, a copy of itself that waits in the background.
@@ -58,6 +59,33 @@ terminal profile installs none of this, and removes the guard,
 [Set up approval](../how-to/set-up-approval.md) lists the steps.
 
 The sections below explain why each step works the way it does.
+
+## What the Guard Does Not Stop
+
+The guard is a speed bump against agent mistakes, not a security
+boundary. It refuses the usual ways an agent writes to a pull request
+out of habit, such as `gh pr merge` or `gh api -X PUT`, but a process
+that means to get around it can:
+
+- Run the real `gh` by its full path in aqua's folder. The guard is
+  only the first `gh` on `PATH`.
+- Set `PDE_GH_WRITE=1`, which agents are told never to do.
+- Push commits to a PR's branch with `git push`, which changes the pull
+  request and is not checked at all. `gh repo sync --branch` can move a
+  PR's branch the same way.
+- Use another way to reach GitHub, such as `curl` with a token, or a
+  `gh` command the guard does not treat as a write, such as an
+  extension or an alias set up before the guard refused `gh alias set`.
+- Write an alias straight into `~/.config/gh/config.yml`, or into the
+  folder `GH_CONFIG_DIR` names, instead of running `gh alias set`.
+- Run `gh copilot`, which starts an agent with your GitHub login.
+
+The guard copies how `gh` reads options today; a later `gh` that reads
+them differently could let a write through.
+
+Approval covers only what goes through `pde-gh-write`.
+[Why popup and phone answers are safe](popup-and-phone-approval.md)
+says what approval itself protects against.
 
 ## Why One Record per Request
 
