@@ -66,19 +66,50 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
 
 ## Planning Docs
 
-- Plans, issues, design docs, and research docs belong in the default PDE vault resolved through `pde vault path default` or `pde vault locate`.
+- Plans, issues, design docs, and research docs belong in the default
+  vault. Find its folder with `nobs vault path` and documents in it with
+  `nobs find`.
 - Read `Projects/AGENTS.md` before writing to the vault.
 - Implementation plans are issues, not design docs.
 - Use the project issue naming convention for implementation plans.
 - Never commit vault documents to pull request branches.
 - Back up managed config before replacing it.
+- Use the installed `nobs` on `PATH`, which is `~/.local/bin/nobs` from
+  pde-installer. Never use a `go build` from a `nobs` checkout: it has
+  no release version, so it cannot start a broker unless `NOBS_VERSION`
+  is set.
+- There is no vault named `default`. The default vault is the one used
+  when you leave out NAME or `--vault`. `--vault NAME` goes before the
+  command: `nobs --vault NAME find "<reference>"`. `vault path` takes
+  NAME after it instead (`nobs vault path NAME`). Putting `--vault`
+  before `vault path` fails. Vault names come from `nobs vault list` and
+  can differ between computers.
 - Resolve plan and vault references with this guidance:
 - 1. If the user-provided reference is an existing filesystem path, use it directly.
-- 2. Track any explicit vault selector from the request: `default`, `main`, or `work`.
-- 3. For existing plans, docs, and notes, resolve with `pde vault locate --json --vault <selector> "<reference>"`.
-- 4. Use `pde vault path <selector>` only when determining a destination root for a new document or when the user explicitly asks for a vault root.
-- 5. Ask only on `ambiguous`, `not_found`, or a real setup `error`.
-- Do not use `pde vault default get` as a path lookup step. It returns the selector, not the resolved filesystem path.
+- 2. Track any vault name from the request. Without one, use the
+  default vault.
+- 3. For existing plans, docs, and notes, resolve with
+  `nobs find "<reference>"`, or `nobs --vault NAME find "<reference>"`
+  for a named vault.
+- 4. Use `nobs vault path`, or `nobs vault path NAME`, only when
+  determining a destination root for a new document or when the user
+  explicitly asks for a vault root.
+- 5. Ask only on `ambiguous`, `not_found`, or a real setup error: a
+  nonzero exit, with a message on stderr, from a command written as
+  this guidance shows. Report a setup error to the user with its
+  message. Do not fix it yourself with `nobs vault set`,
+  `vault default`, `vault rm`, or `tls`. An error from a command you
+  wrote wrongly, such as "find requires exactly one reference", is not
+  a setup error: fix your command and run it again.
+- Do not use `nobs vault default` as a path lookup step. It prints the
+  default vault's name, not its folder.
+- Edit vault notes with your own file tools. Never use a `nobs` command
+  that changes a note (`write`, `append`, `append-note`, `apply-patch`,
+  `move`, `delete`). `write` and `append` change the file in place, so
+  on a network drive a dropped connection can leave a note cut short,
+  which sync then copies everywhere.
+- Only `nobs read` accepts the full path that `nobs find` prints.
+  `nobs find` and the other `nobs` commands take vault-relative paths.
 
 ## Git Workflow
 

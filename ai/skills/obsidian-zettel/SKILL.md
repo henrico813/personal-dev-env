@@ -11,7 +11,7 @@ structure.
 
 ## Workflow
 
-1. Resolve the vault with `pde vault path default`.
+1. Resolve the vault with `nobs vault path`.
 2. Read `<vault>/AGENTS.md` and the applicable guidance under
    `<vault>/500 Zettelkasten/` before creating a note.
 3. Read `<vault>/000 Meta/001 Templates/001.05 Zettel-Note.md`.
@@ -39,7 +39,9 @@ structure.
    ```
 
 7. Create the note at `<vault>/500 Zettelkasten/<Title>.md`. Insert all useful
-   content before `## Appendix`.
+   content before `## Appendix`. Write it with your own file tools,
+   never a `nobs` command that changes a note (`write`, `append`,
+   `append-note`, `apply-patch`, `move`, `delete`).
 8. Use `##` headings with a `---` divider immediately after each heading.
    Keep the note atomic, concise, and example-driven.
 9. State the execution host for commands when it is not obvious. Include only
