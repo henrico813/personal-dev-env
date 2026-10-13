@@ -114,8 +114,9 @@ so the key never seems to do nothing.
 The `Approval waiting` marker in Herdr's sidebar is set with a four-hour
 time limit, the request's lifetime, so that Herdr can drop a marker the
 program never clears. The program finds the agent's pane through its
-OpenCode session, and Herdr records only the main OpenCode session, so a
-request from a subagent gets no marker.
+OpenCode session. Herdr does not list every session, never a subagent's,
+so the program then uses the pane Herdr started the agent in. A
+subagent's request marks its main agent's pane.
 
 ## Why the Popup Is Opened Through Herdr's Socket
 
@@ -128,7 +129,19 @@ it, and you can answer on the phone or in a terminal instead.
 The program reads Herdr's answer, though. Herdr answers on the same
 connection whether it opened the popup or refused, so a reply alone does
 not mean a popup appeared. When it refused, the notification says why
-instead of `Approval is waiting`.
+instead of naming the popup's workspace.
+
+## Why the Notification Names the Computer
+
+Herdr can attach to other computers. It then shows their notifications
+too, without saying which computer sent one, but draws a popup only
+while its computer is selected. A request from the other computer
+looked like a local one whose popup never appeared. So the title names
+the computer that asked, and the body names the workspace the popup
+opened in: Herdr opens a popup in its focused workspace, which need not
+be the agent's. The popup itself does not repeat the computer's name.
+You see it only with that computer selected, and the 40x16 popup has no
+row to spare.
 
 ## Why One Open Popup Can Hide the Others
 

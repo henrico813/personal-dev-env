@@ -143,11 +143,12 @@ one as a question. A line whose value is unknown is left out.
 |---|---|---|
 | 1 | What is asked and of which PR: `comment #12`, `merge #185`, or `create PR`; `merge PR` when the number is unclear | The command |
 | 2 | The repository, or `dir: ` and the folder name when `gh` finds none | `--repo`, otherwise `gh repo view` |
-| 3 | The Herdr workspace and agent title, such as `app / review login fix`; the OpenCode session ID when Herdr does not know the agent | `herdr agent list` and `herdr workspace list`, found by `OPENCODE_SESSION_ID` |
+| 3 | The Herdr workspace and agent title, such as `app / review login fix`; the OpenCode session ID when Herdr does not know the agent | `herdr agent list`, found by `OPENCODE_SESSION_ID`, otherwise `herdr pane get` on `HERDR_PANE_ID`; then `herdr workspace list` |
 | 4 | The new title when the request sets one, otherwise the PR's current title | The command, otherwise `gh pr view` |
 
 The lookups run once, when the request is made. Without
-`OPENCODE_SESSION_ID`, line 3 is left out and Herdr is not asked. For
+`OPENCODE_SESSION_ID` and `HERDR_PANE_ID`, line 3 is left out and Herdr
+is not asked. For
 `pr edit`, the approval text also shows the PR's current title and body
 next to the requested ones.
 
@@ -163,8 +164,12 @@ does not open changes the notification in step 3:
    a popup with the keyboard on it, with the request ID in
    `PDE_REQUEST_ID`. The plugin file tells Herdr the popup's size and to
    run `pde-pr-approve --herdr-popup` in it.
-3. It shows a Herdr notification with a sound: `Approval is waiting`
-   when the popup opened, otherwise why it did not.
+3. It shows a Herdr notification with a sound, titled
+   `PR approval on HOST`, where `HOST` is this computer's hostname. When
+   the popup opened, the body is `Answer the popup in NAME`, where `NAME`
+   is the label of the workspace Herdr has focused, which is where it
+   draws the popup; `Approval is waiting` when Herdr does not say.
+   Otherwise the body says why the popup did not open.
 
 If the request is answered before step 2, the marker is removed and no
 popup opens.
@@ -180,7 +185,7 @@ Settings, or Copy mode is open. The notification body then says:
 | `Close the open Herdr popup or menu, then press Ctrl+b a` | `ui_busy` without a running approval popup in `open-popup` |
 | `Cannot open the approval popup: REASON` | Any other failure, such as no Herdr socket |
 
-For a new request the body replaces `Approval is waiting`. The inbox
+For a new request the body replaces `Answer the popup in NAME`. The inbox
 shows it too, and for the first body it first runs
 `herdr workspace focus` on that workspace. A new request never moves
 the screen.
@@ -197,8 +202,10 @@ the screen.
   request, dismissed or not, then continues through the queue.
 - While a request waits, Herdr's sidebar shows `Approval waiting` on the
   pane of the agent that asked. The pane is found by matching
-  `OPENCODE_SESSION_ID` in `herdr agent list`. Without it there is no
-  marker, and `g` only closes the popup.
+  `OPENCODE_SESSION_ID` in `herdr agent list`, otherwise it is the pane
+  in `HERDR_PANE_ID`, so a subagent's request marks its main agent's
+  pane. Without either there is no marker, and `g` only closes the
+  popup.
 - The marker belongs to the pane, so it stays until no waiting,
   undismissed request from that pane is left. It is set with a four-hour
   time limit.
@@ -283,6 +290,7 @@ Record fields, with those omitted when empty marked as optional:
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
+| `HERDR_PANE_ID` | Herdr sets it to the pane a terminal runs in; when `herdr agent list` does not list `OPENCODE_SESSION_ID`, `herdr pane get` on it gives the request's pane, workspace, and agent title |
 | `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
 | `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
 

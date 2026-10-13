@@ -122,7 +122,7 @@ its workspace and a notification says
 `Approval waiting: answer the popup in NAME`.
 Answer there; the popup then moves on to the next waiting request. A
 new request shows the same notification instead of
-`Approval is waiting`.
+`Answer the popup in NAME`.
 
 If the notification says `Close the open Herdr popup or menu, then
 press Ctrl+b a`, close Settings, Copy mode, or another plugin's popup,
