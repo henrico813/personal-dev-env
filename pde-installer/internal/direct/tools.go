@@ -64,6 +64,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 			"node":       "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
 			"moshi-hook": "2500dad1e771562648db984229269490064aab092ca2987cde0b42d611d3efef",
 			"herdr":      "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
+			"nobs":       "077e9fefcba9b3e4becd41a83b6d10c43dcc66c9a4367d1ad4c45f08f3f43774",
 		}
 	case "arm64":
 		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "arm64", "aarch64", "arm64", "arm64", "aarch64"
@@ -74,6 +75,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 			"node":       "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
 			"moshi-hook": "a878e335b1b7eee411cb2cbbc51b33dc9a6303f8088c2267e8831c102f31ebdc",
 			"herdr":      "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
+			"nobs":       "15b7be8675576df6da478524b32c280737b02506048659aa0fea0a1dcd7baab1",
 		}
 	default:
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
@@ -88,12 +90,14 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	moshiTag := version("moshi-hook")
 	moshiVersion := strings.TrimPrefix(moshiTag, "v")
 	herdrVersion := version("herdr")
+	nobsVersion := version("nobs")
 	nvimArchive := "nvim-linux-" + nvimArch + ".tar.gz"
 	goArchive := "go" + goVersion + ".linux-" + goarch + ".tar.gz"
 	rustArchive := "rust-" + rustVersion + "-" + rustArch + "-unknown-linux-gnu.tar.xz"
 	nodeArchive := "node-v" + nodeVersion + "-linux-" + nodeArch + ".tar.xz"
 	moshiArchive := "moshi-hook_Linux_" + moshiArch + ".tar.gz"
 	herdrArchive := "herdr-linux-" + herdrArch
+	nobsAsset := "nobs_linux_" + goarch
 	return []Tool{
 		{Name: "neovim", Version: nvimVersion, Archive: nvimArchive, URL: "https://github.com/neovim/neovim/releases/download/v" + nvimVersion + "/" + nvimArchive, SHA256: checksums["neovim"], Directory: "neovim", Binary: "nvim", VersionPrefix: "NVIM v", Links: []string{"nvim"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "go", Version: goVersion, Archive: goArchive, URL: "https://go.dev/dl/" + goArchive, SHA256: checksums["go"], Directory: "go", Binary: "go", VersionPrefix: "go version go", Links: []string{"go", "gofmt"}, VersionArgs: []string{"version"}, Kind: archiveTool},
@@ -102,6 +106,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		{Name: "keychain", Version: version("keychain"), Archive: "keychain-2.9.8", URL: "https://github.com/danielrobbins/keychain/releases/download/2.9.8/keychain", SHA256: "f8b4e8a2a630907bb81737d455a2dec2cb8308e3210840665239ef9c49bbeadb", Directory: "keychain", Binary: "keychain", VersionPrefix: "keychain ", Links: []string{"keychain"}, VersionArgs: []string{"--version"}, Kind: fileTool},
 		{Name: "moshi-hook", Version: moshiVersion, Archive: moshiArchive, URL: "https://cdn.getmoshi.app/hook/" + moshiTag + "/" + moshiArchive, SHA256: checksums["moshi-hook"], Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
 		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
+		{Name: "nobs", Version: nobsVersion, Archive: nobsAsset, URL: "https://github.com/henrico813/nobs/releases/download/" + nobsVersion + "/" + nobsAsset, SHA256: checksums["nobs"], Directory: "nobs", Binary: "nobs", Links: []string{"nobs"}, Kind: fileTool},
 	}, nil
 }
 

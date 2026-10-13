@@ -78,8 +78,8 @@ pde-installer install full
 ```
 
 The full install includes the AI tooling. It installs planner, Codex,
-OpenCode, the OpenCode inline shim, Pi, Moshi Hook, Herdr, and Vibe
-binaries plus repo-managed AI config.
+OpenCode, the OpenCode inline shim, Pi, Moshi Hook, Herdr, nobs, and
+Vibe binaries plus repo-managed AI config.
 
 ## AI Source Tree
 
@@ -121,6 +121,7 @@ binaries plus repo-managed AI config.
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
 | Moshi Hook | `pde-installer/internal/direct/` | `~/.local/bin/moshi-hook`, `~/.local/bin/moshi` | Mobile coding-agent hook daemon |
 | Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
+| nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
 | PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
