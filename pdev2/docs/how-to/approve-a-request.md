@@ -24,6 +24,10 @@ To set a request aside without answering, press `q` or Esc. It keeps
 waiting but no longer opens on its own. To bring it back, press `prefix+a`
 (Ctrl+b, then a) in Herdr.
 
+A notification titled `PR approval on HOST` names the computer that
+asked and, when the popup opened, its workspace. If `HOST` is another
+computer, select that computer in Herdr, then go to that workspace.
+
 Herdr shows one popup at a time. If a notification says
 `Approval waiting: answer the popup in NAME`, an unanswered popup in that workspace
 holds the other requests; Ctrl+b, then a, takes you there. See

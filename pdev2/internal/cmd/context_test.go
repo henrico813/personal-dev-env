@@ -94,6 +94,51 @@ esac`)
 	}
 }
 
+// Herdr does not list every session: never a subagent's, and on one
+// computer no OpenCode session at all. Every request there had no pane, so
+// no sidebar marker and no workspace in the popup. The request must use
+// the pane Herdr started the agent in, under the ID and workspace Herdr
+// gives now: a pane moved to another workspace keeps its old ID.
+func TestRequestFallsBackToHerdrPane(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// The fake herdr lists an agent without a session, as on that computer,
+	// knows pane w1:p2 as w2:p1 after a move, and touches done when the
+	// notification is shown.
+	done := filepath.Join(t.TempDir(), "done")
+	approvaltest.FakeHerdr(t, `case "$1 $2" in
+"agent list") echo '{"result":{"agents":[{"agent_session":null,"pane_id":"w1:p2","workspace_id":"w1"}]}}' ;;
+"pane get") [ "$3" = w1:p2 ] && echo '{"result":{"pane":{"pane_id":"w2:p1","workspace_id":"w2","terminal_title":"OC | release"}}}' ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w2","label":"work-repo"}]}}' ;;
+"notification show") touch '`+done+`' ;;
+esac`)
+	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
+	t.Setenv("HERDR_ENV", "1")
+	t.Setenv("HERDR_PANE_ID", "w1:p2")
+	// Herdr set this before the pane moved to w2, so it is stale.
+	t.Setenv("HERDR_WORKSPACE_ID", "w1")
+	t.Setenv("OPENCODE_SESSION_ID", "ses_subagent")
+	discardStderr(t)
+	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = scopeRequest(req)
+
+	if _, err := loadOrCreate(req, gh); err != nil {
+		t.Fatal(err)
+	}
+	// The notification runs in the background; it must not outlive the test's PATH.
+	waitForFile(t, done)
+
+	got, err := approval.Load(req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PaneID != "w2:p1" || got.Workspace != "work-repo" || got.SessionTitle != "OC | release" {
+		t.Fatalf("context = %#v", got)
+	}
+}
+
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
