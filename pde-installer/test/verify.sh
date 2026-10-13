@@ -39,6 +39,7 @@ for item in \
 	keychain \
 	moshi-hook \
 	herdr \
+	nobs \
 	@opencode/cli \
 	opencode-inline-shim \
 	planner \
