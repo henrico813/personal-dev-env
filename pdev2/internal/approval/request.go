@@ -36,6 +36,10 @@ var valueFlags = map[string]string{
 	"--repo": "repo", "-R": "repo",
 }
 
+// gh pr close and reopen post --comment as a PR comment, so the approver must
+// see it as the body. For pr review, -c is a switch.
+var commentIsBody = map[string]bool{"close": true, "reopen": true}
+
 var writeOperations = []string{"create", "edit", "comment", "review", "merge", "ready", "close", "reopen"}
 
 // Body files are read once and sent to gh on standard input, so gh posts the
@@ -48,13 +52,47 @@ func Parse(args []string, stdin io.Reader) (Request, error) {
 	if !slices.Contains(writeOperations, req.Operation) {
 		return Request{}, fmt.Errorf("refuses gh pr %s; it accepts only pr %s; run other gh pr commands with gh", req.Operation, strings.Join(writeOperations, ", "))
 	}
+	// gh gives an option that takes a value the next argument, even one
+	// starting with -, so an unlisted option may have taken it as its value.
+	afterUnlisted := false
 	for index := 2; index < len(args); index++ {
-		name, value, inline := strings.Cut(args[index], "=")
+		arg := args[index]
+		switch {
+		case arg == "--":
+			return Request{}, fmt.Errorf("refuses arguments after --")
+		case !strings.HasPrefix(arg, "-") || arg == "-":
+			afterUnlisted = false
+			continue
+		case afterUnlisted:
+			option := args[index-1]
+			fix := "move " + option + " to the end"
+			// A short -x=v is refused below, so only a long option can take =.
+			if strings.HasPrefix(option, "--") {
+				fix += ", or give its value with ="
+			}
+			return Request{}, fmt.Errorf("cannot tell whether %s is the value of %s, an option this program does not know; %s", arg, option, fix)
+		case len(arg) > 2 && arg[1] != '-':
+			// gh reads -bTEXT as -b TEXT and -db=x as -d -b x; refusing
+			// them is simpler than reading them the same way.
+			return Request{}, fmt.Errorf("refuses joined short option %s; give each option on its own, with a space before its value, such as -b TEXT", arg)
+		}
+		name, value, inline := strings.Cut(arg, "=")
 		if name == "--web" || name == "-w" {
 			return Request{}, fmt.Errorf("refuses browser-based PR writes")
 		}
 		kind, ok := valueFlags[name]
-		if !ok {
+		if commentIsBody[req.Operation] && (name == "--comment" || name == "-c") {
+			kind, ok = "body", true
+		}
+		takesValue, listed := targetFlags[req.Operation][name]
+		if ok {
+			takesValue, listed = true, true
+		}
+		if !listed {
+			afterUnlisted = !inline
+			continue
+		}
+		if !takesValue {
 			continue
 		}
 		if !inline {
@@ -110,11 +148,23 @@ func readBodyFile(req *Request, path string, stdin io.Reader) error {
 // targetFlags lists, per operation, the options from gh pr OPERATION --help
 // that may come before the number and whether each takes a value that must be
 // skipped. The same short option can differ: -m takes a milestone for edit but
-// nothing for merge. Title, body, and repo options are in valueFlags; create
-// has no PR number. When gh adds any option to these commands, add it here,
-// with true if it takes a value; otherwise commands that put it before the
-// number lose the PR title in the popup and on the phone.
+// nothing for merge. Title, body, and repo options are in valueFlags. When gh
+// adds any option to these commands, add it here, with true if it takes a
+// value; otherwise commands that put it before the number lose the PR title
+// in the popup and on the phone. Parse skips these values too, so in
+// "--add-label --body=x" the label is --body=x, and it refuses an argument
+// starting with - after an option missing here. create has no PR number and
+// is listed for Parse only.
 var targetFlags = map[string]map[string]bool{
+	"create": {
+		"--assignee": true, "-a": true, "--attach": true, "--base": true, "-B": true,
+		"--head": true, "-H": true, "--label": true, "-l": true, "--milestone": true, "-m": true,
+		"--project": true, "-p": true, "--recover": true, "--reviewer": true, "-r": true,
+		"--template": true, "-T": true,
+		"--draft": false, "-d": false, "--dry-run": false, "--editor": false, "-e": false,
+		"--fill": false, "-f": false, "--fill-first": false, "--fill-verbose": false,
+		"--no-maintainer-edit": false,
+	},
 	"edit": {
 		"--add-assignee": true, "--add-label": true, "--add-project": true, "--add-reviewer": true,
 		"--remove-assignee": true, "--remove-label": true, "--remove-project": true, "--remove-reviewer": true,

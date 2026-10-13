@@ -9,6 +9,26 @@ popup. This page explains what keeps an answer from counting unless you
 meant it. The keys, sizes, and limits themselves are in the
 [reference](../reference/requests.md#herdr-popup).
 
+## What Approval Protects Against
+
+Approval stops an agent from changing a pull request by mistake: the
+wrong PR, a draft comment, or text you would not have sent. You see the
+full command, and the title and body it gives on the command line or in
+a body file. A body file is read before you answer, and an approved
+command runs once. Text `gh` finds by itself is not shown, such as
+commit messages from `--fill`, `--fill-first`, or `--fill-verbose`,
+input saved by `--recover`, a `--template` file, files uploaded with
+`--attach`, and what `$GH_EDITOR` or `$EDITOR` writes for
+`pr comment --editor` when there is no terminal.
+
+It does not stop a program that sets out to get around it while running
+as your user. That program can run the real `gh` itself, or edit a saved
+request in the state directory (see
+[Files](../reference/requests.md#files)) to approve it or change its text.
+The guard and `pde-gh-write` steer agents that follow the rules; they
+are not a lock. Keeping out such a program needs a separate barrier, such
+as running the agent as another user or without your GitHub login.
+
 ## The First Answer Wins
 
 You can answer in the popup, on the phone, or with `pde-pr-approve ID` in
