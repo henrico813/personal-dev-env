@@ -103,6 +103,7 @@ binaries plus repo-managed AI config.
 | Cleanup plan | `ai/skills/cleanup-plan/` | `~/.agents/skills/cleanup-plan/` | Shared workflow skill for plan teardown |
 | Design doc | `ai/skills/design-doc/` | `~/.agents/skills/design-doc/` | Shared workflow skill for technical design documents |
 | Research codebase | `ai/skills/research-codebase/` | `~/.agents/skills/research-codebase/` | Shared workflow skill for as-is codebase research |
+| Delegate | `ai/skills/delegate/` | `~/.agents/skills/delegate/` | Shared workflow skill for handing a task to an agent and reviewing it |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
@@ -166,6 +167,7 @@ loads `~/.agents/skills/`.
 | `implement-plan` | Execute an approved plan with verification | "Use implement-plan on docs/PDEV-006.md" |
 | `cleanup-plan` | Clean completed plan, worktree, branch, PR evidence, and main state | "Use cleanup-plan for the merged auth refactor branch" |
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde-installer install works" |
+| `delegate` | Have an agent do a task, review and iterate until it is ready | "Have an agent fix the flaky test, review it until it's ready for me" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
