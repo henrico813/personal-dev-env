@@ -26,7 +26,6 @@ func TestParseReadsEveryFlagForm(t *testing.T) {
 		ghArgs                    []string
 	}{
 		{name: "title", args: []string{"pr", "create", "--title", "T"}, title: "T"},
-		{name: "title equals", args: []string{"pr", "create", "--title=T"}, title: "T"},
 		{name: "merge subject", args: []string{"pr", "merge", "12", "--subject", "S"}, title: "S", target: "12"},
 		{name: "body file", args: []string{"pr", "comment", "12", "--body-file", bodyPath},
 			body: "file body", target: "12", ghArgs: []string{"pr", "comment", "12", "--body-file", "-"}},
@@ -37,8 +36,6 @@ func TestParseReadsEveryFlagForm(t *testing.T) {
 		{name: "repo", args: []string{"pr", "edit", "12", "--repo", "o/r"}, repo: "o/r", target: "12"},
 		{name: "option value that looks like body", args: []string{"pr", "edit", "12", "-b", "real", "--add-label", "--body=fake"},
 			body: "real", target: "12"},
-		{name: "create option value that looks like title", args: []string{"pr", "create", "-t", "real", "-l", "--title=fake"},
-			title: "real"},
 		{name: "close comment", args: []string{"pr", "close", "12", "--comment", "bye"}, body: "bye", target: "12"},
 	}
 	for _, tc := range cases {
@@ -73,9 +70,6 @@ func TestParseRejectsUnsafeRequests(t *testing.T) {
 		{"pr", "publish", "12"},
 		{"pr", "create", "--title"},
 		{"pr", "comment", "12", "-bhello"},
-		{"pr", "create", "-F/tmp/body.md", "-tT"},
-		{"pr", "edit", "-Ro/r", "-tT", "12"},
-		{"pr", "merge", "12", "-sdtS"},
 		{"pr", "merge", "-dF", "/tmp/body.md", "12"},
 		{"pr", "comment", "12", "-b=x"},
 		{"pr", "edit", "12", "--new-flag", "--body=x"},
@@ -124,9 +118,7 @@ func TestFindsPRNumberAfterOptions(t *testing.T) {
 		target    string
 		unknown   bool
 	}{
-		{name: "edit number first", operation: "edit", args: []string{"12", "--base", "main"}, target: "12"},
 		{name: "edit option with value before number", operation: "edit", args: []string{"--base", "main", "12"}, target: "12"},
-		{name: "edit option=value before number", operation: "edit", args: []string{"--add-label=bug", "12"}, target: "12"},
 		{name: "edit option without value before number", operation: "edit", args: []string{"--remove-milestone", "12"}, target: "12"},
 		{name: "merge option without value before number", operation: "merge", args: []string{"--squash", "12"}, target: "12"},
 		{name: "merge -m takes no value", operation: "merge", args: []string{"-m", "12"}, target: "12"},

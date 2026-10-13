@@ -72,9 +72,7 @@ esac`)
 // instead of saying "checking" forever, and must not list a machine the user
 // disabled.
 func TestHungMachineIsNamedNotReachable(t *testing.T) {
-	old := machineTimeout
-	machineTimeout = 200 * time.Millisecond
-	t.Cleanup(func() { machineTimeout = old })
+	approvaltest.Replace(t, &machineTimeout, 200*time.Millisecond)
 	// sleep stands in for a hung ssh: killing herdr leaves it holding the
 	// output open.
 	approvaltest.FakeHerdr(t, `case "$*" in
