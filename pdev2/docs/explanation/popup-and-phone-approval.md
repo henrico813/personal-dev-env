@@ -113,10 +113,14 @@ the inbox shows a notification, so the key never seems to do nothing.
 
 The `Approval waiting` marker in Herdr's sidebar is set with a four-hour
 time limit, the request's lifetime, so that Herdr can drop a marker the
-program never clears. The program finds the agent's pane through its
-OpenCode session. Herdr does not list every session, never a subagent's,
-so the program then uses the pane Herdr started the agent in. A
-subagent's request marks its main agent's pane.
+program never clears. The program finds the agent's pane only through
+its OpenCode session, and Herdr does not list every session, never a
+subagent's. `HERDR_PANE_ID` cannot fill the gap. OpenCode runs every
+agent's tools under one shared server, so each tool inherits the pane
+that server started in, usually another agent's. Using it once put
+another workspace's agent on a merge request. Without a pane, the
+request shows its session ID and sets no marker: an unknown agent is
+better than a wrong one.
 
 ## Why the Popup Is Opened Through Herdr's Socket
 
