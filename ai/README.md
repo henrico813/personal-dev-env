@@ -12,6 +12,7 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `behavior-focused-testing` for automated tests,
 `code-documentation` for proportional source explanations, `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
+`obsidian-daily-note` for approved sections in today's daily note,
 `python-development` for Python code, and `rust-development` for Rust code.
 Shared workflow skills include `create-plan` for implementation proposals,
 `review-plan` for reviewing plans, PRs, commits, and diffs,
