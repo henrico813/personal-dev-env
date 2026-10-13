@@ -70,9 +70,8 @@ func queueTwoMerges(t *testing.T) (*os.File, terminal.Layout) {
 	}
 	master, tty := approvaltest.OpenPTY(t)
 	approvaltest.SetPopupSize(t, tty, 37, 14)
-	oldIn, oldOut := popupIn, popupOut
-	popupIn, popupOut = approvaltest.PopupTerminal(t, tty), tty
-	t.Cleanup(func() { popupIn, popupOut = oldIn, oldOut })
+	approvaltest.Replace(t, &popupIn, approvaltest.PopupTerminal(t, tty))
+	approvaltest.Replace(t, &popupOut, tty)
 	_, layout := terminal.PopupScreen(terminal.View{Rec: approval.Record{Args: []string{"pr", "merge", "1"}}, Queue: "1 of 2"}, 37, 14)
 	return master, layout
 }
