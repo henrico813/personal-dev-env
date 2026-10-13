@@ -12,10 +12,11 @@ planner new <output.md> [--issue --project NAME] [--diff] [--dry-run] [--json-er
 Writes a new plan scaffold and fails without changing an existing destination.
 The output path must end in `.md`.
 
-- `--issue --project NAME` prepends the vault issue frontmatter. PDE vault
-  plans are issue documents, so this frontmatter records the project, status,
-  and topics for vault views. `--project` is required with `--issue` and
-  rejected without it, and `date_created` is today's local date.
+- `--issue --project NAME` prepends the vault issue frontmatter.
+  Plans in the default vault are issue documents, so this frontmatter
+  records the project, status, and topics for vault views. `--project`
+  is required with `--issue` and rejected without it, and
+  `date_created` is today's local date.
 - `--diff` prints a review preview of the bytes that would be written. It is
   additive and still writes the file.
 - `--dry-run` suppresses the write. Use `--diff --dry-run` to preview without
@@ -30,13 +31,14 @@ planner list [PROJECT [PLAN]] [--status STATUS] [--dir PROJECTS_DIR] [--json]
 
 A plan is a Markdown file whose Obsidian frontmatter has `type: issue`. The
 projects folder defaults to `500 Zettelkasten/Projects` inside the vault from
-`pde vault path default`; `--dir` overrides it. Hidden directories such as
+`nobs vault path`; `--dir` overrides it. Hidden directories such as
 `.obsidian` are skipped. Status values are matched case-insensitively after
 trimming. `planning` maps to `open`; `completed` and `closed` map to `done`;
 `won't do`, `wontdo`, `obsolete`, `superseded`, and `failed` map to `wont-do`.
 Unrecognized frontmatter values map to `unknown`, and `--status unknown`
 selects those plans. Invalid `--status` values return a usage error with the
-accepted values.
+accepted values. If `nobs vault path` fails, the error ends with
+the message `nobs` printed, such as how to set a default vault.
 
 Without `PROJECT`, the human overview shows each project folder, total plans,
 and fixed columns for `open`, `in-progress`, `done`, and `wont-do`, adding
@@ -283,8 +285,9 @@ failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarde
 
 ## Issue frontmatter
 
-PDE vault plans are issue documents, and the vault tracks each one through YAML
-frontmatter. `planner new` writes a plain plan by default; pass `--issue
+Plans in the default vault are issue documents, and the vault
+tracks each one through YAML frontmatter. `planner new` writes a
+plain plan by default; pass `--issue
 --project NAME` to prepend that frontmatter. The supported shape starts with
 `---` and contains a `tags` list with `"#Ticket"`, `type: issue`, a `status` of
 `open`, `in-progress`, `done`, or `wont-do`, `template_version: 1`, a non-empty

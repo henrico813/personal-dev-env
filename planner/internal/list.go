@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,7 +13,7 @@ import (
 	"text/tabwriter"
 )
 
-// This path comes from the PDE vault's Projects/AGENTS.md guidance.
+// This path comes from the default vault's Projects/AGENTS.md guidance.
 const vaultProjectsSubdir = "500 Zettelkasten/Projects"
 
 type planSummary struct {
@@ -157,10 +158,17 @@ func runList(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
+// When nobs fails, the error ends with its stderr, such as "no default vault;
+// pass a NAME or run nobs vault default NAME", because the exit status alone
+// does not say how to fix it.
 func defaultProjectsDir() (string, error) {
-	out, err := exec.Command("pde", "vault", "path", "default").Output()
+	out, err := exec.Command("nobs", "vault", "path").Output()
 	if err != nil {
-		return "", fmt.Errorf("pde vault path default: %w", err)
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && len(exit.Stderr) > 0 {
+			return "", fmt.Errorf("nobs vault path: %w: %s", err, strings.TrimSpace(string(exit.Stderr)))
+		}
+		return "", fmt.Errorf("nobs vault path: %w", err)
 	}
 	return filepath.Join(strings.TrimSpace(string(out)), vaultProjectsSubdir), nil
 }
