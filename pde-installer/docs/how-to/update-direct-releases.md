@@ -1,14 +1,15 @@
 # Update Direct Releases
 
 Direct releases contain full-only runtimes, Neovim, Keychain, Moshi Hook,
-Herdr, and fonts.
+Herdr, nobs, and fonts.
 Terminal installs skip these components.
 
 ## Tools and Runtimes
 
 1. Change the version in `internal/manifest/manifest.go`.
 2. Update architecture checksums in `internal/direct/tools.go`. Keychain uses
-   one architecture-independent checksum.
+   one architecture-independent checksum. For nobs, copy both values
+   from the release's `checksums.txt`.
 3. If the upstream archive name, URL, directory layout, or version output
    changed, update its `Tool` entry there too.
 4. Run:
@@ -26,6 +27,10 @@ Terminal installs skip these components.
 3. Run the tests and preview above.
 
 After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>` and run `moshi-hook install`; do not run `moshi-hook update`, which would be replaced by the pinned installer version.
+
+After a nobs upgrade, each vault's broker keeps running the old image
+until `nobs vault set` runs again for that vault, or until a stopped
+broker is next started.
 
 The backend verifies SHA-256 values before activation. It uses direct releases
 for exact runtimes and layouts that other supported managers do not provide.

@@ -6,7 +6,7 @@ Each inventory item has one owner:
 |---|---|
 | `ubuntu` | Missing host packages installed with apt |
 | `aqua` | Aqua and standalone binaries |
-| `direct` | tmux, exact runtimes, unsupported layouts, Keychain, and fonts |
+| `direct` | tmux, exact runtimes, unsupported layouts, single-file releases such as Keychain, Herdr and nobs, and fonts |
 | `npm` | npm-native command-line tools |
 | `local` | Applications built from this repository and `blink.cmp` |
 | `chezmoi` | Home configuration and checksummed external content |
