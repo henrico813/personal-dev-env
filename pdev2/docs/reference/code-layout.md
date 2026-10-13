@@ -75,3 +75,4 @@ Each approval promise, and the tests that fail when it breaks:
 | Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |
 | An approval given after the agent stops waiting still runs | `TestRunnerSavesApprovedOutputForRerun`, `TestApprovalRestartsDeadRunner` |
 | Only the real gh runs, never one in the checkout | `TestRealGHIgnoresEmptyPATHEntry` |
+| Ctrl+b a opens the popup or logs why it cannot | `TestInboxFindsHerdrBesideItself`, `TestMainPicksEntryMode` |
