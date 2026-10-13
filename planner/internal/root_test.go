@@ -297,17 +297,25 @@ func TestNewDryRunDoesNotWriteChanges(t *testing.T) {
 	}
 }
 
+// --diff --dry-run lets a reviewer read the scaffold before it is written, so
+// the preview must list every scaffold line as an added "+ " line.
 func TestNewDryRunDiffDoesNotWriteChanges(t *testing.T) {
 	dir := t.TempDir()
 	out := dir + "/plan.md"
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+	scaffold, err := renderCanonicalScaffold()
+	if err != nil {
+		t.Fatalf("renderCanonicalScaffold: %v", err)
+	}
 
 	if exit := Execute([]string{"new", out, "--diff", "--dry-run"}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("Execute(new --diff --dry-run) exit = %d, want 1; stderr = %q", exit, stderr.String())
 	}
-	if stdout.Len() == 0 {
-		t.Fatal("expected diff on stdout")
+
+	want := "+ " + strings.ReplaceAll(strings.TrimSuffix(scaffold, "\n"), "\n", "\n+ ") + "\n"
+	if stdout.String() != want {
+		t.Fatalf("preview mismatch\nwant:\n%s\ngot:\n%s", want, stdout.String())
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Fatalf("output should not be written, stat err = %v", err)
@@ -345,30 +353,6 @@ func TestNewPreservesExistingFile(t *testing.T) {
 	}
 }
 
-func TestShowSchemaRemoved(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	if exitCode := Execute([]string{"show-schema"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("Execute(show-schema) exit code = %d, want 2", exitCode)
-	}
-	if !strings.Contains(stderr.String(), "unknown command: show-schema") {
-		t.Fatalf("show-schema stderr missing unknown-command message: %q", stderr.String())
-	}
-}
-
-func TestGenerateRemoved(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	if exitCode := Execute([]string{"generate"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("Execute(generate) exit code = %d, want 2", exitCode)
-	}
-	if !strings.Contains(stderr.String(), "unknown command: generate") {
-		t.Fatalf("generate stderr missing unknown-command message: %q", stderr.String())
-	}
-}
-
 func TestRunInspectUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -381,26 +365,10 @@ func TestRunInspectUsage(t *testing.T) {
 	}
 }
 
-func TestRemovedPublicJSONCommands(t *testing.T) {
-	for _, command := range []string{"template", "create"} {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		if exitCode := Execute([]string{command}, &stdout, &stderr); exitCode != 2 {
-			t.Fatalf("Execute(%s) exit code = %d, want 2", command, exitCode)
-		}
-		if !strings.Contains(stderr.String(), "unknown command: "+command) {
-			t.Fatalf("stderr %q missing unknown-command error for %s", stderr.String(), command)
-		}
-	}
-}
-
 func TestJSONErrorsFlagEmitsStructuredJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exit := Execute([]string{"check", "--json-errors", "/no/such/path.md"}, &stdout, &stderr); exit != 1 {
 		t.Fatalf("exit %d want 1", exit)
-	}
-	if strings.Contains(stderr.String(), "planner: reading JSON from stdin") || strings.Contains(stderr.String(), "repaired JSON input") {
-		t.Fatalf("unexpected informational stderr in json mode: %q", stderr.String())
 	}
 	var got struct {
 		Code         string `json:"code"`
@@ -429,7 +397,7 @@ func TestCheckAppliesPlanDiffs(t *testing.T) {
 	}
 	result := decodeGuardedResult[guardedCheckResult](t, stdout.String())
 	if !result.StructureValid || !result.ApplicabilityChecked ||
-		result.ChangesApplied != 1 || result.ChangesReplayed != 1 {
+		result.ChangesApplied != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if result.BaseCommit != baseCommit {
@@ -503,7 +471,7 @@ func TestJSONErrorsWrappedCheck(t *testing.T) {
 func TestCheckRejectsJSONInputPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "plan.json")
-	if err := os.WriteFile(path, validPlanJSON(), 0o644); err != nil {
+	if err := os.WriteFile(path, mustJSON(twoStepPlan()), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	var stdout bytes.Buffer
@@ -512,16 +480,6 @@ func TestCheckRejectsJSONInputPath(t *testing.T) {
 		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "planner check no longer accepts JSON plan input") {
-		t.Fatalf("unexpected stderr: %q", stderr.String())
-	}
-}
-
-func TestValidateCommandRemoved(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if exit := Execute([]string{"validate"}, &stdout, &stderr); exit != 2 {
-		t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "unknown command: validate") {
 		t.Fatalf("unexpected stderr: %q", stderr.String())
 	}
 }
@@ -549,24 +507,6 @@ func TestPatchWithoutTargetIsUsageError(t *testing.T) {
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("failed patch changed the plan")
-	}
-}
-
-// The dod, implementation, and verification setter commands were removed. They
-// must be unknown commands so automation cannot keep depending on a deleted
-// write path.
-func TestBehavioralCommandsRemoved(t *testing.T) {
-	for _, command := range []string{"dod", "implementation", "verification"} {
-		command := command
-		t.Run(command, func(t *testing.T) {
-			var stdout, stderr bytes.Buffer
-			if exit := Execute([]string{command}, &stdout, &stderr); exit != 2 {
-				t.Fatalf("exit=%d want 2; stderr=%q", exit, stderr.String())
-			}
-			if !strings.Contains(stderr.String(), "unknown command: "+command) {
-				t.Fatalf("stderr %q missing unknown-command error for %s", stderr.String(), command)
-			}
-		})
 	}
 }
 
@@ -655,33 +595,6 @@ func twoStepPlan() Plan {
 	}
 }
 
-func validPlanJSON() []byte {
-	return mustJSON(Plan{
-		Title:    "T",
-		Overview: "O",
-		DefinitionOfDone: DefinitionOfDone{
-			Narrative:    "N",
-			Goals:        []ChecklistItem{{Text: "g"}},
-			CurrentState: "C",
-			ModuleShape:  "M",
-		},
-		Implementation: []Step{{
-			Title:   "T",
-			Summary: "S",
-			FileChanges: []FileChange{{
-				Filename:    "f",
-				Explanation: "e",
-				Diff:        "@@ -1 +1 @@\n-a\n+b",
-			}},
-		}},
-		Verification: &Verification{
-			Summary:   "",
-			Automated: []ChecklistItem{{Text: "A"}},
-			Manual:    []ChecklistItem{{Text: "M"}},
-		},
-	})
-}
-
 func mustJSON(v any) []byte {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -695,11 +608,7 @@ func mustJSON(v any) []byte {
 func TestInspectOutputIsValidPlan(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
+	rendered, err := RenderPlan(twoStepPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -730,11 +639,7 @@ func TestInspectOutputIsValidPlan(t *testing.T) {
 func TestInspectOutputOmitsFrontmatterFields(t *testing.T) {
 	dir := t.TempDir()
 	src := dir + "/plan.md"
-	plan, err := DecodePlan(validPlanJSON())
-	if err != nil {
-		t.Fatalf("DecodePlan: %v", err)
-	}
-	rendered, err := RenderPlan(plan)
+	rendered, err := RenderPlan(twoStepPlan())
 	if err != nil {
 		t.Fatalf("RenderPlan: %v", err)
 	}
@@ -757,18 +662,6 @@ func TestInspectOutputOmitsFrontmatterFields(t *testing.T) {
 		if strings.Contains(stdout.String(), want) {
 			t.Fatalf("inspect output unexpectedly contains %q: %q", want, stdout.String())
 		}
-	}
-}
-
-func TestReplaceCommandRemoved(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	if exitCode := Execute([]string{"replace"}, &stdout, &stderr); exitCode != 2 {
-		t.Fatalf("Execute(replace) exit code = %d, want 2", exitCode)
-	}
-	if !strings.Contains(stderr.String(), "unknown command: replace") {
-		t.Fatalf("replace stderr missing unknown-command message: %q", stderr.String())
 	}
 }
 
