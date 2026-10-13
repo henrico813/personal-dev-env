@@ -38,6 +38,8 @@ calls to those programs.
 | The question of `pde-pr-approve ID` | `internal/terminal/prompt.go` |
 | What happens after an answer | `internal/cmd/answer.go` |
 | The Herdr popup request, notification, or sidebar marker | `internal/cmd/herdr.go` |
+| How the inbox checks other Herdr machines | `internal/cmd/machines.go` |
+| The popup that shows other machines | `internal/terminal/others.go` |
 | How `gh` is found and run | `internal/cmd/gh.go` |
 | The wait, rerun results, and exit codes | `internal/cmd/writecmd.go` and `internal/cmd/cmd.go` |
 | An option that a new `gh` adds to a `gh pr` command | `targetFlags` in `internal/approval/request.go`, with whether it takes a value; title, body, body file, and repository options are in `valueFlags` |

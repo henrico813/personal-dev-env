@@ -7,7 +7,7 @@
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
-| `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not, or say why it cannot |
+| `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not; with none, on [other machines](#other-herdr-machines) when one is saved; or say why it cannot |
 | `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
 | `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
 
@@ -124,10 +124,13 @@ do not fit, only the notice is shown.
 
 `pde-pr-approve --herdr-popup` exits 1 when `PDE_REQUEST_ID` is empty or that
 request is not pending, and 1 if saving an answer fails. It exits 0 when the
-queue is empty, when closed without an answer, or after `g`.
+queue is empty, when closed without an answer, or after `g`. With
+`PDE_CHECK_MACHINES=1` and no `PDE_REQUEST_ID`, it shows the other machines
+instead and exits 0 when closed.
 
 `pde-pr-approve --herdr-inbox` exits 0 after opening the popup or showing a
-`No approvals waiting` notification. It exits 1 when the popup cannot be
+`No approvals waiting` notification, which it shows only when no enabled
+Herdr machine is saved. It exits 1 when the popup cannot be
 opened, after a notification that says why; see
 [When Herdr refuses the popup](#when-herdr-refuses-the-popup).
 
@@ -199,16 +202,47 @@ the screen.
   answered on the phone or in a terminal, but the queue skips it.
 - The inbox, `pde-pr-approve --herdr-inbox`, runs from `prefix+a`
   (Ctrl+b, then a) in Herdr. It opens the popup on the oldest waiting
-  request, dismissed or not, then continues through the queue.
+  request, dismissed or not, then continues through the queue. It
+  lists only the requests of the machine selected in Herdr.
 - While a request waits, Herdr's sidebar shows `Approval waiting` on the
   pane of the agent that asked. The pane is found by matching
   `OPENCODE_SESSION_ID` in `herdr agent list`, otherwise it is the pane
   in `HERDR_PANE_ID`, so a subagent's request marks its main agent's
   pane. Without either there is no marker, and `g` only closes the
   popup.
-- The marker belongs to the pane, so it stays until no waiting,
-  undismissed request from that pane is left. It is set with a four-hour
-  time limit.
+- The marker also sets the pane token `pde-approval`, which other
+  machines read. The token stays until no waiting request from that
+  pane is left, dismissed or not, because the inbox lists dismissed
+  requests too. Herdr keeps neither the title nor the token when it
+  restores a session after a restart, so a request still waiting then
+  shows as `none waiting` on other machines until a new request from
+  that pane marks it again.
+- The `Approval waiting` title belongs to the pane, so it stays until
+  no waiting, undismissed request from that pane is left. It is set with
+  a four-hour time limit.
+
+## Other Herdr Machines
+
+With nothing waiting here and an enabled machine in
+`herdr machine list --json`, the inbox opens the popup with
+`PDE_CHECK_MACHINES=1` and no request. The popup shows
+`Checking other machines...` and runs, for each enabled machine at
+once, `herdr --machine ID pane list` and `herdr --machine ID workspace
+list`. It then shows:
+
+| Line | When |
+|---|---|
+| `NAME: N waiting in`, then one workspace label per line | `N` panes carry the `pde-approval` token; one agent can hold several requests |
+| `NAME: none waiting` | No pane carries the token |
+| `NAME: not reachable` | `herdr --machine` failed or took over 20 seconds |
+| `NAME: cannot read its panes` | `pane list` printed something that is not Herdr's JSON |
+| `No other machines found.` | The popup's own `herdr machine list` found no enabled machine |
+
+`q`, Esc, Enter, or a tap closes it. The check only reads; answer a
+request on its own machine. The count is a hint: any program on that
+machine can set the token or rename a workspace, but none of that can
+approve a request. The screen shows that machine's workspace labels on
+every client that opens it, a phone included.
 
 ## Phone Question
 
@@ -290,6 +324,7 @@ Record fields, with those omitted when empty marked as optional:
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
+| `PDE_CHECK_MACHINES` | Set to `1` by the inbox for `--herdr-popup` when nothing waits here: show [other machines](#other-herdr-machines) |
 | `HERDR_PANE_ID` | Herdr sets it to the pane a terminal runs in; when `herdr agent list` does not list `OPENCODE_SESSION_ID`, `herdr pane get` on it gives the request's pane, workspace, and agent title |
 | `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
 | `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
@@ -328,6 +363,7 @@ the number, the write still works, but:
 | Wait for an answer | 90 seconds |
 | Record expiry | 4 hours after the last change; saving `moshi_pid`, `moshi_error`, `runner_pid`, or `dismissed` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
+| Each other-machine check by the inbox popup | 20 seconds |
 | Runner check interval | 1 second |
 | Saved `gh` output | 64 KiB |
 | Settle pause after each popup request appears | 600 milliseconds |

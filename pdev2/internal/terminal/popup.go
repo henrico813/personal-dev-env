@@ -166,9 +166,32 @@ func buttonRows(label string, width, height int) []string {
 func drawPopup(in *os.File, out io.Writer, v View) Layout {
 	cols, rows := terminalSize(in)
 	lines, layout := PopupScreen(v, cols, rows)
+	drawLines(out, lines)
+	return layout
+}
+
+func drawLines(out io.Writer, lines []string) {
 	fmt.Fprint(out, "\x1b[2J\x1b[H"+mouseReportingOn)
 	fmt.Fprint(out, strings.Join(lines, "\r\n"))
-	return layout
+}
+
+// enterPopup makes in raw and throws away input typed before the popup
+// draws. It returns the settings to restore and leave, which restores them
+// and turns mouse reporting off.
+func enterPopup(in *os.File, out io.Writer) (old *syscall.Termios, leave func(), err error) {
+	old, err = setRaw(in)
+	if err != nil {
+		return nil, nil, err
+	}
+	leave = func() {
+		fmt.Fprint(out, mouseReportingOff)
+		restore(in, old)
+	}
+	if err := flushInput(in); err != nil {
+		leave()
+		return nil, nil, err
+	}
+	return old, leave, nil
 }
 
 // An impatient second tap would otherwise answer the request that just
@@ -186,17 +209,13 @@ const SettleNotice = "one moment..."
 // that long after the popup opens; the queue passes PopupSettle for every
 // request.
 func AskPopup(in *os.File, out io.Writer, rec approval.Record, queue string, settle time.Duration) (string, error) {
-	old, err := setRaw(in)
+	// Runs for each queued request too, so input left from the previous answer
+	// is dropped.
+	old, leave, err := enterPopup(in, out)
 	if err != nil {
 		return "", err
 	}
-	defer restore(in, old)
-	defer fmt.Fprint(out, mouseReportingOff)
-	// Runs for each queued request too, so input left from the previous answer
-	// is dropped.
-	if err := flushInput(in); err != nil {
-		return "", err
-	}
+	defer leave()
 	v := &View{Rec: rec, Queue: queue}
 	if settle > 0 {
 		v.notice = SettleNotice
