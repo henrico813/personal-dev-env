@@ -30,6 +30,10 @@
 - When writing a design doc, load and follow the `design-doc` skill.
 - When cleaning up the worktree and branch of a completed plan, load and
   follow the `cleanup-plan` skill.
+- When asked to have an agent do a task and review it until it is ready,
+  load and follow the `delegate` skill. The subagent loads the skill for
+  the task itself, such as `create-plan` or `implement-plan`; review its
+  work with `review-plan` when it applies.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
