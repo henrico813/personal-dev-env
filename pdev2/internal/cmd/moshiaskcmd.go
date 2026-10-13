@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -36,6 +37,8 @@ func startMoshi(rec approval.Record) approval.Record {
 		return rec
 	}
 	rec.MoshiPID = cmd.Process.Pid
+	// The new question replaces a failed one, so its reason no longer applies.
+	rec.MoshiError = ""
 	// Reruns check this PID before sending a question. If it cannot be saved,
 	// stop the question, or a rerun would send a second one.
 	if err := approval.SaveKeepingAge(rec); err != nil {
@@ -63,17 +66,24 @@ func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
 	}
-	answer := approval.ChoiceNone
+	answer, failure := approval.ChoiceNone, ""
 	// The question comes from the saved record, so it shows what the popup shows.
 	if rec, err := approval.Load(args[0]); err == nil && rec.State == approval.StatePending {
-		commandErr := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec)).Run()
-		// moshi-hook ask exits 0 for yes and 1 for no; any other result, such as a
-		// timeout or a killed helper, is no answer.
+		ask := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec))
+		// This program runs detached and nobody reads its output, so moshi-hook's
+		// reason for failing is kept for the record.
+		var hookErr bytes.Buffer
+		ask.Stderr = &hookErr
+		commandErr := ask.Run()
+		// moshi-hook ask exits 0 for yes and 1 for no; any other result, such as
+		// exit 4 when Moshi cannot be reached or a killed helper, is no answer.
 		var exitErr *exec.ExitError
 		if commandErr == nil {
 			answer = approval.ChoiceYes
 		} else if errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1 {
 			answer = approval.ChoiceNo
+		} else {
+			failure = moshiFailure(commandErr, hookErr.String())
 		}
 	}
 	lock, err := approval.Lock(args[0])
@@ -94,15 +104,27 @@ func moshiAsk(args []string) int {
 	// Remove this program's PID whenever it ends while the request is live. The
 	// system reuses PIDs, so a stale one could name an unrelated program that
 	// looks like a running question, stop reruns from sending a new one, and
-	// be signaled by stopMoshi.
+	// be signaled by stopMoshi. The failure is saved with it, so the waiting
+	// pde-gh-write can report it.
 	if rec.MoshiPID != os.Getpid() {
 		return 0
 	}
 	rec.MoshiPID = 0
+	rec.MoshiError = failure
 	if err := approval.SaveKeepingAge(rec); err != nil {
 		return 1
 	}
 	return 0
+}
+
+// moshiFailure joins the exit status with the last line moshi-hook printed,
+// which names the cause, as in "moshi-hook: can't ask on your phone: ...".
+func moshiFailure(err error, output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if last := lines[len(lines)-1]; last != "" {
+		return err.Error() + ": " + last
+	}
+	return err.Error()
 }
 
 // Uses the popup's context lines, so the phone and the popup name a request the same way.
