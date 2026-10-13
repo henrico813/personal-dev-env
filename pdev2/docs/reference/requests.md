@@ -142,7 +142,10 @@ instead and exits 0 when closed.
 `No approvals waiting` notification, which it shows only when no enabled
 Herdr machine is saved. It exits 1 when the popup cannot be
 opened, after a notification that says why; see
-[When Herdr refuses the popup](#when-herdr-refuses-the-popup).
+[When Herdr refuses the popup](#when-herdr-refuses-the-popup). It also
+writes `pde-pr-approve: cannot open the approval popup: REASON` to
+standard error, and a line for each `herdr` command that failed, such as
+the notification. `herdr plugin log list` shows them.
 
 While it runs, `pde-pr-approve --herdr-popup` saves its process ID and
 the workspace ID from `HERDR_PLUGIN_CONTEXT_JSON` in the `open-popup` file and removes it on exit.
@@ -329,7 +332,7 @@ Record fields, with those omitted when empty marked as optional:
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
+| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |

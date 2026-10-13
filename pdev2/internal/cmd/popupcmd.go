@@ -113,9 +113,9 @@ func popupAnswer(rec approval.Record, queue string, settle time.Duration) string
 // Opens the popup on the oldest pending request, including dismissed ones.
 // With none here and a saved Herdr machine, the popup says where requests
 // wait on other machines; those are answered there.
-// When the popup does not open, a notification says why and the inbox exits
-// 1; if an approval popup is already open, it first moves to that popup's
-// workspace, because the user asked to see approvals.
+// When the popup does not open, stderr and a notification say why and the
+// inbox exits 1; if an approval popup is already open, it first moves to
+// that popup's workspace, because the user asked to see approvals.
 func openInbox() int {
 	pending := approval.Inbox()
 	var err error
@@ -126,16 +126,27 @@ func openInbox() int {
 		err = openPopup("inbox", map[string]string{checkMachinesEnv: "1"})
 	default:
 		// The key otherwise seems to do nothing.
-		_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "No approvals waiting").Run()
+		runInboxHerdr("notification", "show", "PR approval", "--body", "No approvals waiting")
 		return 0
 	}
 	if err == nil {
 		return 0
 	}
+	// Herdr keeps stderr in herdr plugin log list, so the reason shows even
+	// when herdr cannot be run to show the notification.
+	fmt.Fprintf(stderr, "pde-pr-approve: cannot open the approval popup: %v\n", err)
 	body, workspace := popupFailure(err)
 	if workspace != "" {
-		_ = exec.Command("herdr", "workspace", "focus", workspace).Run()
+		runInboxHerdr("workspace", "focus", workspace)
 	}
-	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", body).Run()
+	runInboxHerdr("notification", "show", "PR approval", "--body", body)
 	return 1
+}
+
+// runInboxHerdr runs a herdr command, such as notification show, and
+// writes its failure to stderr.
+func runInboxHerdr(args ...string) {
+	if err := exec.Command(herdrPath(), args...).Run(); err != nil {
+		fmt.Fprintf(stderr, "pde-pr-approve: herdr %s %s: %v\n", args[0], args[1], err)
+	}
 }
