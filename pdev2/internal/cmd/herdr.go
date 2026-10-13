@@ -27,9 +27,21 @@ type agentInfo struct {
 	Title     string
 }
 
+// herdrError is Herdr's answer to a refused socket request, such as ui_busy
+// while another popup is open.
+type herdrError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *herdrError) Error() string {
+	return fmt.Sprintf("herdr: %s (%s)", e.Message, e.Code)
+}
+
 // notifyRequest marks the agent's pane in the sidebar and opens the approval
-// popup and a notification when the agent runs inside Herdr. Errors are
-// ignored; the request can still be answered on the phone or in a terminal.
+// popup and a notification when the agent runs inside Herdr. Errors are not
+// returned; when the popup does not open, the notification says why. The
+// request can be answered on the phone or in a terminal instead.
 func notifyRequest(rec approval.Record) {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return
@@ -40,8 +52,29 @@ func notifyRequest(rec approval.Record) {
 		clearRecordMarker(rec)
 		return
 	}
-	_ = openApproval(rec.ID)
-	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "Approval is waiting", "--sound", "request").Run()
+	body := "Approval is waiting"
+	if err := openApproval(rec.ID); err != nil {
+		// Only the inbox moves to the open popup; a new request must not move
+		// the screen while the user types elsewhere.
+		body, _ = popupFailure(err)
+	}
+	_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", body, "--sound", "request").Run()
+}
+
+// popupFailure turns a popup that did not open into a notification body.
+// Herdr shows one popup at a time and answers ui_busy while any popup or menu
+// is open. A user in another workspace does not see an approval popup, so
+// when one is open the body names its workspace and its ID is returned.
+func popupFailure(err error) (body, workspace string) {
+	var refused *herdrError
+	if !errors.As(err, &refused) || refused.Code != "ui_busy" {
+		return "Cannot open the approval popup: " + err.Error(), ""
+	}
+	// A PID of 0 or less would make processAlive signal a process group.
+	if popup, err := approval.LoadPopup(); err == nil && popup.Workspace != "" && popup.PID > 0 && processAlive(popup.PID) {
+		return "Approval waiting: answer the popup in " + workspaceLabel(popup.Workspace), popup.Workspace
+	}
+	return "Close the open Herdr popup or menu, then press Ctrl+b a", ""
 }
 
 func openApproval(id string) error {
@@ -193,8 +226,22 @@ func sendHerdr(socket string, request herdrRequest) error {
 	if _, err = fmt.Fprintf(conn, "%s\n", data); err != nil {
 		return err
 	}
-	_, err = bufio.NewReader(conn).ReadBytes('\n')
-	return err
+	reply, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		return err
+	}
+	// Herdr refuses with an error object on an open connection, so a reply
+	// alone does not mean the request worked.
+	var answer struct {
+		Error *herdrError `json:"error"`
+	}
+	if err := json.Unmarshal(reply, &answer); err != nil {
+		return err
+	}
+	if answer.Error != nil {
+		return answer.Error
+	}
+	return nil
 }
 
 func focusRequest(rec approval.Record) {

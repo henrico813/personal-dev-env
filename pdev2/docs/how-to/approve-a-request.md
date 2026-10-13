@@ -24,6 +24,11 @@ To set a request aside without answering, press `q` or Esc. It keeps
 waiting but no longer opens on its own. To bring it back, press `prefix+a`
 (Ctrl+b, then a) in Herdr.
 
+Herdr shows one popup at a time. If a notification says
+`Approval waiting: answer the popup in NAME`, an unanswered popup in that workspace
+holds the other requests; Ctrl+b, then a, takes you there. See
+[If another popup is open](debug-a-stuck-request.md#6-if-another-popup-is-open).
+
 ## On the Phone
 
 Answer the question in the Moshi app. The phone shows only the first

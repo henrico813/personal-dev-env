@@ -68,6 +68,75 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	}
 }
 
+// Herdr shows one popup at a time. With an approval popup left open in a
+// workspace the user was not viewing, Herdr refused every new popup, but
+// Ctrl+b a treated the refusal as success: it showed nothing and exited 0,
+// and the user believed no approvals were waiting. The inbox must report
+// the failure, move to the open popup, and name its workspace. Herdr can
+// kill a popup before it removes its saved workspace, so a saved popup
+// whose process is gone must not send the user to an empty workspace.
+func TestInboxLeadsToOpenApprovalPopup(t *testing.T) {
+	tests := []struct {
+		name      string
+		pid       int
+		wantFocus bool
+		wantBody  string
+	}{
+		// This test process stands in for the popup open in workspace w1G.
+		{"popup open", os.Getpid(), true, "Approval waiting: answer the popup in hermes"},
+		{"popup killed", deadPID(t), false, "Close the open Herdr popup or menu, then press Ctrl+b a"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			if err := approval.Save(approval.Record{ID: "waiting", State: approval.StatePending}); err != nil {
+				t.Fatal(err)
+			}
+			if err := approval.SavePopup(approval.Popup{PID: tt.pid, Workspace: "w1G"}); err != nil {
+				t.Fatal(err)
+			}
+			// Herdr's socket refuses the popup as it does while another one is open.
+			socket := filepath.Join(t.TempDir(), "herdr.sock")
+			listener, err := net.Listen("unix", socket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				if _, err := bufio.NewReader(conn).ReadBytes('\n'); err == nil {
+					_, _ = conn.Write([]byte(`{"id":"waiting","error":{"code":"ui_busy","message":"a popup pane is already open"}}` + "\n"))
+				}
+			}()
+			// The fake herdr CLI reports the socket and the workspace's label, and
+			// logs every call.
+			log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"
+case "$1 $2" in
+"status server") echo socket: $HERDR_TEST_SOCKET ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1G","label":"hermes"}]}}' ;;
+esac`)
+			t.Setenv("HERDR_TEST_SOCKET", socket)
+
+			code := openInbox()
+
+			calls, _ := os.ReadFile(log)
+			if code != 1 {
+				t.Errorf("exit = %d, want 1", code)
+			}
+			if got := strings.Contains(string(calls), "workspace focus w1G"); got != tt.wantFocus {
+				t.Errorf("moved to w1G = %v, want %v: %q", got, tt.wantFocus, calls)
+			}
+			if !strings.Contains(string(calls), "notification show PR approval --body "+tt.wantBody) {
+				t.Errorf("notification does not say %q: %q", tt.wantBody, calls)
+			}
+		})
+	}
+}
+
 // One agent pane can ask twice; answering one request must not hide that
 // the other is still waiting.
 func TestMarkerStaysWhileSamePaneWaits(t *testing.T) {
