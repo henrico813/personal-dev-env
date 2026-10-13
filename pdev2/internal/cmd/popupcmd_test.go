@@ -77,6 +77,35 @@ func queueTwoMerges(t *testing.T) (*os.File, terminal.Layout) {
 	return master, layout
 }
 
+// Herdr shows one popup at a time, and a popup left open in a workspace the
+// user is not viewing hid every later request: Herdr refused their popups
+// and could not say where the open one was. The popup must save its
+// workspace while it is open, and only then, or the inbox cannot lead the
+// user to it.
+func TestPopupRecordsItsWorkspaceWhileOpen(t *testing.T) {
+	master, _ := queueTwoMerges(t)
+	// Herdr passes the workspace only in the plugin context, as in this
+	// trimmed copy from a real popup.
+	t.Setenv("HERDR_PLUGIN_CONTEXT_JSON", `{"workspace_id":"w1G","workspace_label":"home-hermes-stash","tab_id":"w1G:t1","focused_pane_id":"w1G:p1","invocation_source":"api","correlation_id":"plugin-pane"}`)
+	done := make(chan int, 1)
+	go func() { done <- approvePopup("first") }()
+
+	// The popup saves its workspace before it draws.
+	approvaltest.ReadUntil(t, master, "Typed:")
+	open, openErr := approval.LoadPopup()
+	// g closes the popup at once.
+	approvaltest.WriteTerminal(t, master, "g")
+	approvaltest.Receive(t, done)
+	_, closedErr := approval.LoadPopup()
+
+	if openErr != nil || open.PID != os.Getpid() || open.Workspace != "w1G" {
+		t.Fatalf("while open: popup = %#v, %v", open, openErr)
+	}
+	if closedErr == nil {
+		t.Fatal("popup location kept after the popup closed")
+	}
+}
+
 // Dismissing must stop a request from reopening in the popup queue while
 // the inbox can still find it. Dismissing first used the save that records an
 // answer, which restarted the four-hour expiry, so a request dismissed and

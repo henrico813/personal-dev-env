@@ -32,6 +32,7 @@ calls to those programs.
 | Which `gh pr` commands and options are accepted, or how the PR number is found | `internal/approval/request.go` |
 | What a record saves, when it expires, or the queue order | `internal/approval/record.go` |
 | The context lines on the popup and the phone, or the approval text | `internal/approval/text.go` |
+| Where the open popup's workspace is saved | `internal/approval/popup.go` |
 | How the popup looks | `internal/terminal/popup.go` |
 | What a key or tap does in the popup | `internal/terminal/input.go` |
 | The question of `pde-pr-approve ID` | `internal/terminal/prompt.go` |

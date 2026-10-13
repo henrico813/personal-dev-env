@@ -104,4 +104,33 @@ echo $HERDR_ENV
 If it prints nothing, the shell lost it; put `HERDR_ENV=1` before the
 command, as in `HERDR_ENV=1 pde-gh-write pr comment 12 --body "..."`.
 
+If a notification starts with `Cannot open the approval popup:`, the
+rest is Herdr's reason. If it names a workspace or says to close a
+popup, go to step 6.
+
 Record fields are listed in the [reference](../reference/requests.md#files).
+
+## 6. If Another Popup Is Open
+
+Herdr shows one popup at a time. An approval popup opens in the
+workspace in front of you, and once you switch away you no longer see
+it. Until you answer or close it, Herdr refuses every other popup, so
+later requests appear nowhere.
+
+Press Ctrl+b and then `a`. If an approval popup is open, Herdr moves to
+its workspace and a notification says
+`Approval waiting: answer the popup in NAME`.
+Answer there; the popup then moves on to the next waiting request. A
+new request shows the same notification instead of
+`Approval is waiting`.
+
+If the notification says `Close the open Herdr popup or menu, then
+press Ctrl+b a`, close Settings, Copy mode, or another plugin's popup,
+or check the other workspaces for an unanswered approval popup. Then
+press Ctrl+b and then `a` again.
+
+Herdr's log shows each refused popup as `outcome="error"`:
+
+```bash
+grep 'method="plugin.pane.open"' ~/.config/herdr/herdr-server.log | tail -5
+```
