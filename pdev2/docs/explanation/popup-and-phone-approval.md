@@ -108,8 +108,8 @@ New body
 When each request opened its own popup, several agents meant several
 popups, and a closed popup never came back. Now one popup works through
 every waiting request, and a request you dismiss keeps waiting; the inbox
-key brings it back. With nothing waiting, the inbox shows a notification,
-so the key never seems to do nothing.
+key brings it back. With nothing waiting and no other machine to check,
+the inbox shows a notification, so the key never seems to do nothing.
 
 The `Approval waiting` marker in Herdr's sidebar is set with a four-hour
 time limit, the request's lifetime, so that Herdr can drop a marker the
@@ -158,3 +158,15 @@ key goes there, because you pressed it to see your approvals. A new
 request only notifies, so an agent never moves the screen while you
 work. The popup stays one 40x16 popup that works on the phone; a second
 window for waiting requests would not fit there.
+
+## Why the Inbox Checks Other Machines but Does Not Answer There
+
+Herdr draws only the selected machine, and `prefix+a` runs that
+machine's inbox, so a request on another machine once looked like no
+request at all. With nothing waiting here, the inbox therefore reads
+each saved machine's panes through Herdr's own `herdr --machine`
+connection and says where requests wait. It looks for a pane token, not
+the `Approval waiting` title, because Herdr lists only the newest title
+any program set. It never answers there: an answer is saved only on the
+machine that runs `gh`, by its own popup or terminal, so no second way
+to approve exists for an agent to copy.

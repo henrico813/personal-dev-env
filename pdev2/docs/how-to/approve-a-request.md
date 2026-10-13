@@ -33,6 +33,19 @@ Herdr shows one popup at a time. If a notification says
 holds the other requests; Ctrl+b, then a, takes you there. See
 [If another popup is open](debug-a-stuck-request.md#6-if-another-popup-is-open).
 
+## When the Request Is on Another Machine
+
+Each machine keeps and answers its own requests. With nothing waiting
+here, `prefix+a` checks the other saved Herdr machines and says where
+requests wait, such as `Wallace: 1 waiting in` and `notes`. A request
+dismissed there counts too. To answer it, select that machine in
+Herdr, in the sidebar or with the machine switcher on the phone, and
+press `prefix+a` there.
+
+`Wallace: not reachable` means the check failed or took over 20
+seconds, so requests may still wait there. Check from here with
+`herdr --machine Wallace pane list`.
+
 ## On the Phone
 
 Answer the question in the Moshi app. The phone shows only the first

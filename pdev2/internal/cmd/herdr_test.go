@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -183,6 +184,69 @@ esac`)
 			}
 			if !strings.Contains(string(calls), "notification show PR approval --body "+tt.wantBody) {
 				t.Errorf("notification does not say %q: %q", tt.wantBody, calls)
+			}
+		})
+	}
+}
+
+// Ctrl+b a once said "No approvals waiting" while a request waited on
+// another machine, and merges stayed blocked. With a saved machine, the
+// inbox must still open a request waiting here first, and only with none
+// here ask the popup to check the other machines.
+func TestInboxPopupChecksOtherMachines(t *testing.T) {
+	tests := []struct {
+		name    string
+		waiting bool
+		wantEnv map[string]any
+	}{
+		{"request here", true, map[string]any{"PDE_REQUEST_ID": "waiting"}},
+		{"none here", false, map[string]any{"PDE_CHECK_MACHINES": "1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			if tt.waiting {
+				if err := approval.Save(approval.Record{ID: "waiting", State: approval.StatePending}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A Unix socket stands in for Herdr's and accepts the popup.
+			socket := filepath.Join(t.TempDir(), "herdr.sock")
+			listener, err := net.Listen("unix", socket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			received := make(chan map[string]any, 1)
+			go func() {
+				var message map[string]any
+				defer func() { received <- message }()
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				if json.NewDecoder(bufio.NewReader(conn)).Decode(&message) == nil {
+					_, _ = conn.Write([]byte("{}\n"))
+				}
+			}()
+			// The fake herdr reports the socket and one saved, enabled machine.
+			approvaltest.FakeHerdr(t, `case "$*" in
+"status server") echo socket: $HERDR_TEST_SOCKET ;;
+"machine list --json") echo '[{"id":"id-wallace","label":"Wallace","enabled":true}]' ;;
+esac`)
+			t.Setenv("HERDR_TEST_SOCKET", socket)
+
+			code := openInbox()
+
+			message := approvaltest.Receive(t, received)
+			params, _ := message["params"].(map[string]any)
+			env, _ := params["env"].(map[string]any)
+			if code != 0 {
+				t.Errorf("exit = %d, want 0", code)
+			}
+			if !maps.Equal(env, tt.wantEnv) {
+				t.Errorf("popup env = %#v, want %#v", env, tt.wantEnv)
 			}
 		})
 	}

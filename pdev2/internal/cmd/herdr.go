@@ -93,6 +93,12 @@ func popupFailure(err error) (body, workspace string) {
 }
 
 func openApproval(id string) error {
+	return openPopup(id, map[string]string{"PDE_REQUEST_ID": id})
+}
+
+// openPopup opens the approval popup with env set for its program; id only
+// names the socket request.
+func openPopup(id string, env map[string]string) error {
 	output, err := exec.Command("herdr", "status", "server").CombinedOutput()
 	if err != nil {
 		return err
@@ -110,23 +116,40 @@ func openApproval(id string) error {
 		"entrypoint": "approval",
 		"placement":  "popup",
 		"focus":      true,
-		"env":        map[string]string{"PDE_REQUEST_ID": id},
+		"env":        env,
 	}})
 }
 
-// Requests share one marker per pane, so it stays while another request from
-// that pane still waits.
+// Requests share one marker per pane. The sidebar title stays while another
+// undismissed request from that pane waits. The token stays while any request
+// from it is pending, dismissed or not, because the inbox lists dismissed
+// requests and other machines count the token. Callers save rec's new state
+// first.
 func clearRecordMarker(rec approval.Record) {
 	if rec.PaneID == "" {
 		return
 	}
-	for _, other := range approval.Queued() {
-		if other.ID != rec.ID && other.PaneID == rec.PaneID {
+	keepToken := false
+	for _, other := range approval.Inbox() {
+		if other.PaneID != rec.PaneID {
+			continue
+		}
+		if other.ID != rec.ID && !other.Dismissed {
 			return
 		}
+		keepToken = true
+	}
+	if keepToken {
+		_, _ = herdrOutput("pane", "report-metadata", "--source", "pde.approval", rec.PaneID, "--clear-title")
+		return
 	}
 	_ = reportMarker(rec.PaneID, false)
 }
+
+// markerToken marks a pane whose agent waits for an approval. Other machines
+// read it with herdr pane list; they cannot use the title, because Herdr
+// lists only the newest title any program reported for the pane.
+const markerToken = "pde-approval"
 
 // Shows or clears "Approval waiting" on the requesting agent's pane in the sidebar.
 func reportMarker(pane string, pending bool) error {
@@ -135,9 +158,9 @@ func reportMarker(pane string, pending bool) error {
 	}
 	args := []string{"pane", "report-metadata", "--source", "pde.approval", pane}
 	if pending {
-		args = append(args, "--title", "Approval waiting", "--ttl-ms", fmt.Sprint(approval.Expiry.Milliseconds()))
+		args = append(args, "--title", "Approval waiting", "--token", markerToken+"=waiting", "--ttl-ms", fmt.Sprint(approval.Expiry.Milliseconds()))
 	} else {
-		args = append(args, "--clear-title")
+		args = append(args, "--clear-title", "--clear-token", markerToken)
 	}
 	_, err := herdrOutput(args...)
 	return err
@@ -230,6 +253,12 @@ func listWorkspaces() []herdrWorkspace {
 	if err != nil {
 		return nil
 	}
+	return parseWorkspaces(output)
+}
+
+// parseWorkspaces reads herdr workspace list output; nil when it is not
+// Herdr's JSON.
+func parseWorkspaces(output []byte) []herdrWorkspace {
 	var envelope struct {
 		Result struct {
 			Workspaces []herdrWorkspace `json:"workspaces"`
