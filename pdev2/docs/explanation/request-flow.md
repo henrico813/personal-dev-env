@@ -176,7 +176,9 @@ longer.
 
 Agents often pass long text with `--body-file PATH`. The program reads the
 file when the request is made and later gives `gh` that saved text, so
-editing the file after you approve cannot change what gets posted.
+editing the file after you approve cannot change what gets posted. `gh`
+also reads short options joined to their value, such as `-F/path`. The
+program refuses those, so `gh` never reads a body file you did not see.
 
 ## Why an Unknown Option Hides the PR Number
 

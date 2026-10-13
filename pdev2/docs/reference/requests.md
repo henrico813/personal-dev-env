@@ -13,6 +13,16 @@
 
 `OPERATION` is one of `create`, `edit`, `comment`, `review`, `merge`, `ready`,
 `close`, or `reopen`. Other operations and `--web` or `-w` are refused.
+Also refused, because the program could show text other than what `gh`
+posts:
+
+- A short option joined to its value or to other options, such as
+  `-bTEXT`, `-b=TEXT`, or `-db`. Give each option on its own, with a
+  space before its value.
+- An argument starting with `-` right after an option that
+  `internal/approval/request.go` does not list for that operation, since
+  `gh` may take it as that option's value.
+- `--` and everything after it.
 
 ## States
 
@@ -319,7 +329,7 @@ Record fields, with those omitted when empty marked as optional:
 | Variable | Use |
 |---|---|
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
-| `PATH` | The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
+| `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
@@ -336,7 +346,8 @@ The ID is the SHA-256 of the JSON array
   approver.
 - `title` is the value of `--title`, `-t`, or `--subject`.
 - `body` is the value of `--body` or `-b`, or the contents of the
-  `--body-file` or `-F` file.
+  `--body-file` or `-F` file. For `pr close` and `pr reopen`, it is the
+  value of `--comment` or `-c`.
 - `directory` is the working directory of `pde-gh-write`.
 
 Looked-up values, such as the repository name and the PR title, are never
