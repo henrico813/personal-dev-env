@@ -48,6 +48,7 @@ Status lines on standard error:
 |---|---|
 | `pde-gh-write: waiting for approval` | A new request was saved; the line holds its ID |
 | `pde-gh-write: still waiting for approval of ID` | No answer within 90 seconds; exit 3 |
+| `pde-gh-write: the phone question failed` | After `still waiting`, when `moshi_error` is set; the line holds the reason |
 | `pde-gh-write: already ran ID, exit N` | A rerun of a request that ran; the saved `gh` output follows |
 | `pde-gh-write: declined ID` | A rerun of a declined request; exit 4 |
 | `pde-gh-write: interrupted ID` | A rerun of an interrupted request; exit 6 |
@@ -84,8 +85,14 @@ so the guard is found first.
 | Code | Meaning |
 |---|---|
 | `1` | No real `gh` on `PATH`; prints `gh guard cannot find the real gh executable` |
-| `2` | Refused; prints `Use pde-gh-write for pull-request writes; it asks the user for approval.` |
+| `2` | Refused; prints the message below for the command |
 | other | Passed through from the real `gh` |
+
+| Refused command | Message |
+|---|---|
+| `gh pr` writes except `new` | `Use pde-gh-write for pull-request writes; it asks the user for approval.` |
+| `gh pr new` | `Use pde-gh-write pr create instead of gh pr new; it asks the user for approval.` |
+| `gh api` writes | `gh api cannot change pull requests or comments here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.` |
 
 ## Herdr Popup
 
@@ -109,7 +116,8 @@ request still waiting.
 
 The popup is 40x16 in
 `chezmoi/dot_local/share/pde/herdr-plugins/pde-approval/herdr-plugin.toml.tmpl`,
-leaving 37x14 inside the border. Buttons are three rows tall from 16 rows, two rows from 11
+leaving 37x14 inside the border. Buttons are three rows tall from 16
+rows, two rows from 11
 to 15, and one row below 11; below 7 rows only the first line is drawn.
 Typed keys and notices share the line after the request text; when both
 do not fit, only the notice is shown.
@@ -190,7 +198,7 @@ asks in the terminal instead.
 |---|---|
 | `0` | Approve, if the request is still pending |
 | `1` | Decline, if the request is still pending |
-| other, or not started | No answer |
+| other, or not started | No answer; the exit status and the last line `moshi-hook` printed are saved in `moshi_error` |
 
 `--moshi-ask` itself exits 1 for wrong arguments or when the record cannot be
 locked or saved, and 0 otherwise. An answer from the terminal or popup, or
@@ -235,6 +243,7 @@ Record fields, with those omitted when empty marked as optional:
 | `output` (optional) | Up to 64 KiB of `gh`'s standard output and error |
 | `moshi_pid`, `runner_pid` (optional) | Process IDs of the running phone question and runner |
 | `dismissed` (optional) | Dismissed from the popup |
+| `moshi_error` (optional) | Why the last phone question ended without an answer; cleared when a new one starts |
 | `repo` (optional) | `--repo` value, or the repository `gh` found |
 | `pr_title` (optional) | Current PR title, when the request sets none |
 | `session_id` (optional) | OpenCode session that asked |
@@ -284,7 +293,7 @@ the number, the write still works, but:
 | Limit | Value |
 |---|---|
 | Wait for an answer | 90 seconds |
-| Record expiry | 4 hours after the last change; saving `moshi_pid`, `runner_pid`, or `dismissed` alone is not a change |
+| Record expiry | 4 hours after the last change; saving `moshi_pid`, `moshi_error`, `runner_pid`, or `dismissed` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
 | Runner check interval | 1 second |
 | Saved `gh` output | 64 KiB |

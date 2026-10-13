@@ -19,7 +19,8 @@ ls -t "${XDG_STATE_HOME:-$HOME/.local/state}"/pde/pr-write/*.json | head
 Show the fields that matter, with `ID` replaced:
 
 ```bash
-jq '{state, created, updated, dismissed, runner_pid, moshi_pid, gh, exit_code, pane_id}' \
+jq '{state, created, updated, dismissed, runner_pid, moshi_pid, moshi_error,
+  gh, exit_code, pane_id}' \
   "${XDG_STATE_HOME:-$HOME/.local/state}/pde/pr-write/ID.json"
 ```
 
@@ -55,6 +56,19 @@ A running runner prints a line ending in `--pde-runner ID`, and a running
 phone question one ending in `--moshi-ask ID`. No output means that program
 is gone. If the record is `approved` and the file named by `gh` is missing,
 the runner could not run it and left it approved for the next rerun.
+
+If `moshi_error` is set, the last phone question ended without an
+answer, and the waiting command printed `the phone question failed`.
+`exit status 4` means `moshi-hook` could not reach Moshi: its service is
+not running, it is not paired, the computer is offline, or the push was
+dropped. Check with:
+
+```bash
+moshi-hook status
+moshi-hook doctor
+```
+
+Then rerun the command to send a new question.
 
 ## 4. Rerun the Exact Command
 
