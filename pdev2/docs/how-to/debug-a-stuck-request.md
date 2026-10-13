@@ -134,3 +134,31 @@ Herdr's log shows each refused popup as `outcome="error"`:
 ```bash
 grep 'method="plugin.pane.open"' ~/.config/herdr/herdr-server.log | tail -5
 ```
+
+## 7. If Ctrl+b a Does Nothing
+
+Herdr runs `pde-pr-approve --herdr-inbox` for Ctrl+b a and keeps what it
+printed. Show the newest runs:
+
+```bash
+herdr plugin log list |
+  jq -c '.result.logs[] | select(.action_id == "inbox") | {exit_code, stderr}' |
+  tail -5
+```
+
+Exit 0 means the popup opened, or the inbox showed a notification. On
+exit 1, `stderr` holds
+`pde-pr-approve: cannot open the approval popup: REASON`. A
+`pde-pr-approve: herdr notification show:` line, with either exit code,
+means the notification could not be shown.
+
+If `REASON` is `exec: "herdr": executable file not found in $PATH`, the
+inbox found `herdr` neither on the `PATH` Herdr gave it nor next to
+`pde-pr-approve`. Check that `~/.local/bin/herdr` exists, and see the
+`PATH` of the Herdr server:
+
+```bash
+tr '\0' '\n' < /proc/$(pgrep -of 'herdr server')/environ | grep '^PATH='
+```
+
+For other reasons, see steps 5 and 6.
