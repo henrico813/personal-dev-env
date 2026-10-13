@@ -28,7 +28,9 @@ func sourceRepo(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	gitOK(t, repo, "add", "--", "foo.txt")
-	gitOK(t, repo, "-c", "user.name=Planner Test",
+	// Newer Git starts detached maintenance after a commit. Its lock file can
+	// appear in a test's snapshot and vanish later, failing the comparison.
+	gitOK(t, repo, "-c", "maintenance.auto=false", "-c", "user.name=Planner Test",
 		"-c", "user.email=planner@example.invalid",
 		"-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base commit")
 	return repo, gitOK(t, repo, "rev-parse", "HEAD")
