@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -52,9 +53,7 @@ func TestMainPicksEntryMode(t *testing.T) {
 			herdrLog := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"`)
 			moshiLog := approvaltest.FakeMoshiHook(t, `echo "$*" >> "$log"; exit 1`)
 			var output strings.Builder
-			old := stderr
-			stderr = &output
-			t.Cleanup(func() { stderr = old })
+			approvaltest.Replace[io.Writer](t, &stderr, &output)
 
 			code := Main(tc.args)
 

@@ -67,27 +67,17 @@ func TestRequestRecordsHerdrAgentContext(t *testing.T) {
 "notification show") touch '`+done+`' ;;
 esac`)
 	// The fake gh answers the repository and current-PR lookups.
-	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
+	approvaltest.FakeGH(t, approvaltest.GHAnswers("repo view", "owner/repo"),
+		approvaltest.GHAnswers("pr view", `{"title":"Ship it","body":"old"}`))
 	// The fake herdr comes first on PATH; HERDR_ENV turns the Herdr calls on.
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req = scopeRequest(req)
 
-	if _, err := loadOrCreate(req, gh); err != nil {
-		t.Fatal(err)
-	}
+	got := newRequest(t, []string{"pr", "edit", "185", "--body", "new"})
 	// The notification runs in the background; it must not outlive the test's PATH.
 	waitForFile(t, done)
 
-	got, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if got.PaneID != "w1:p2" || got.Workspace != "pdev-release" || got.SessionTitle != "OC | release" ||
 		got.Repo != "owner/repo" || got.PRTitle != "Ship it" {
 		t.Fatalf("context = %#v", got)
@@ -111,28 +101,18 @@ func TestSubagentRequestNeverNamesServerPane(t *testing.T) {
 "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"other-repo"}]}}' ;;
 "notification show") touch '`+done+`' ;;
 esac`)
-	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
+	approvaltest.FakeGH(t, approvaltest.GHAnswers("repo view", "owner/repo"),
+		approvaltest.GHAnswers("pr view", "Ship it"))
 	t.Setenv("HERDR_ENV", "1")
 	// Inherited from the shared server, not set for this agent.
 	t.Setenv("HERDR_PANE_ID", "w1:p2")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_subagent")
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "merge", "185"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req = scopeRequest(req)
 
-	if _, err := loadOrCreate(req, gh); err != nil {
-		t.Fatal(err)
-	}
+	got := newRequest(t, []string{"pr", "merge", "185"})
 	// The notification runs in the background; it must not outlive the test's PATH.
 	waitForFile(t, done)
 
-	got, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if got.PaneID != "" || got.Workspace != "" || got.SessionTitle != "" {
 		t.Fatalf("context = %#v", got)
 	}
@@ -171,22 +151,16 @@ func TestMarkerClearedWhenAnswerArrivesFirst(t *testing.T) {
   echo "$*" >> "$log" ;;
 "notification show") touch '`+done+`' ;;
 esac`)
-	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
+	approvaltest.FakeGH(t, approvaltest.GHAnswers("repo view", "owner/repo"),
+		approvaltest.GHAnswers("pr view", `{"title":"Ship it","body":"old"}`))
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_1")
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req = scopeRequest(req)
 
 	// Create the request, which starts the notification in the background,
 	// and approve it while the notification waits on the gate.
-	if state, err := loadOrCreate(req, gh); err != nil || state != approval.StatePending {
-		t.Fatalf("state %q, err %v", state, err)
-	}
-	if code := saveAnswer(req.ID, approval.ChoiceYes); code != 0 {
+	rec := newRequest(t, []string{"pr", "edit", "185", "--body", "new"})
+	if code := saveAnswer(rec.ID, approval.ChoiceYes); code != 0 {
 		t.Fatalf("saveAnswer returned %d", code)
 	}
 	// Release the notification and wait for it to finish.
@@ -220,22 +194,12 @@ func waitForNotification(t *testing.T, log, done string) []string {
 func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake gh answers the repository lookup and the PR title lookup.
-	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
+	approvaltest.FakeGH(t, approvaltest.GHAnswers("repo view", "owner/repo"),
+		approvaltest.GHAnswers("pr view", "Ship it"))
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "merge", "185", "--squash"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req = scopeRequest(req)
 
-	if _, err := loadOrCreate(req, gh); err != nil {
-		t.Fatal(err)
-	}
+	rec := newRequest(t, []string{"pr", "merge", "185", "--squash"})
 
-	rec, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	lines, _ := terminal.PopupScreen(terminal.View{Rec: rec, Queue: "1 of 1"}, 37, 14)
 	if rec.PRTitle != "Ship it" || !strings.Contains(strings.Join(lines[:4], "\n"), "Ship it") {
 		t.Fatalf("PR title %q, popup %q", rec.PRTitle, lines[:4])
@@ -247,27 +211,16 @@ func TestMergeShowsLookedUpPRTitle(t *testing.T) {
 func TestUnknownRepoShowsDirectoryLabel(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// Every gh lookup fails, as outside a repository or without network.
-	gh, _ := approvaltest.FakeGH(t, "exit 1")
+	approvaltest.FakeGH(t, "exit 1")
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.Mkdir(project, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	chdir(t, project)
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "merge", "185"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req = scopeRequest(req)
 
-	if _, err := loadOrCreate(req, gh); err != nil {
-		t.Fatal(err)
-	}
+	rec := newRequest(t, []string{"pr", "merge", "185"})
 
-	rec, err := approval.Load(req.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	if got := strings.Join(approval.ContextLines(rec), "\n"); got != "merge #185\ndir: project" {
 		t.Fatalf("context = %q", got)
 	}
