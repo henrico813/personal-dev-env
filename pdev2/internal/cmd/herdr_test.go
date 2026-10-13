@@ -68,6 +68,57 @@ func TestHerdrPopupUsesSocketRequest(t *testing.T) {
 	}
 }
 
+// An agent on another computer asked for approval. The owner's Herdr,
+// attached to that computer, showed only "Approval is waiting", and the
+// popup was drawn there, out of sight, so merges stayed blocked. The
+// notification must name the computer, and the workspace the popup opened
+// in: Herdr's focused one, not the agent's.
+func TestNotificationNamesComputerAndPopupWorkspace(t *testing.T) {
+	host, err := os.Hostname()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	rec := approval.Record{ID: "request-id", State: approval.StatePending, Workspace: "agent-work"}
+	if err := approval.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+	// Herdr's socket opens the popup.
+	socket := filepath.Join(t.TempDir(), "herdr.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if _, err := bufio.NewReader(conn).ReadBytes('\n'); err == nil {
+			_, _ = conn.Write([]byte("{}\n"))
+		}
+	}()
+	// The fake herdr reports the socket and lists the agent's workspace
+	// before the focused one, and logs every call.
+	log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"
+case "$1 $2" in
+"status server") echo socket: $HERDR_TEST_SOCKET ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"agent-work","focused":false},{"workspace_id":"w3","label":"review","focused":true}]}}' ;;
+esac`)
+	t.Setenv("HERDR_ENV", "1")
+	t.Setenv("HERDR_TEST_SOCKET", socket)
+
+	notifyRequest(rec)
+
+	calls, _ := os.ReadFile(log)
+	want := "notification show PR approval on " + host + " --body Answer the popup in review"
+	if !strings.Contains(string(calls), want) {
+		t.Fatalf("notification is not %q: %q", want, calls)
+	}
+}
+
 // Herdr shows one popup at a time. With an approval popup left open in a
 // workspace the user was not viewing, Herdr refused every new popup, but
 // Ctrl+b a treated the refusal as success: it showed nothing and exited 0,
