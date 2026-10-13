@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +38,27 @@ func TestEditReviewShowsCurrentAndRequested(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An empty PATH entry, as a stray colon leaves, names the working directory:
+// the agent's checkout. A gh there must never be run with PDE_GH_WRITE=1
+// after an approval, and must not hide the guard so the guard runs instead.
+func TestRealGHIgnoresEmptyPATHEntry(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"checkout", "guard", "real"} {
+		if err := os.Mkdir(filepath.Join(dir, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		approvaltest.WriteScript(t, filepath.Join(dir, name), "gh", "exit 0")
+	}
+	chdir(t, filepath.Join(dir, "checkout"))
+	t.Setenv("PATH", ":"+filepath.Join(dir, "guard")+":"+filepath.Join(dir, "real"))
+
+	gh := findRealGH()
+
+	if want := filepath.Join(dir, "real", "gh"); gh != want {
+		t.Errorf("findRealGH() = %q, want %q", gh, want)
 	}
 }
 
