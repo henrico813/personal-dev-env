@@ -84,7 +84,10 @@ jobs:
       - name: install Node packages
         run: npm ci
       - name: install test dependencies
-        run: sudo apt-get update && sudo apt-get install --yes neovim zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh
+      # The Neovim tests need the release users get, not Ubuntu's older one.
+      - name: install pinned Neovim
+        run: test/install-pinned-nvim.sh "$RUNNER_TEMP/nvim" >>"$GITHUB_PATH"
       - name: format
         run: test -z "$(gofmt -l .)"
       - name: test production paths
@@ -94,6 +97,7 @@ jobs:
           go vet ./...
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
+          test/nvim-clipboard.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest

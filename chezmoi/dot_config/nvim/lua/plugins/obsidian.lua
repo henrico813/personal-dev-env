@@ -2,69 +2,73 @@ local M = {}
 
 local pde_paths = require("core.pde_paths")
 
-local persisted_paths = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" }, {
-  path_keys = { "PDE_MAIN_VAULT", "PDE_WORK_VAULT" },
-})
+-- The same lookup nobs uses: $XDG_CONFIG_HOME/nobs/config.json when
+-- XDG_CONFIG_HOME is absolute, otherwise ~/.config/nobs/config.json.
+local function nobs_settings_path()
+  local xdg = vim.env.XDG_CONFIG_HOME
+  if xdg and xdg:sub(1, 1) == "/" then
+    return xdg .. "/nobs/config.json"
+  end
+  return vim.fn.expand("~/.config/nobs/config.json")
+end
 
-local function resolve_vault_path(key)
-  local persisted = persisted_paths[key]
-  if persisted and persisted ~= "" then
-    vim.env[key] = persisted
-    return persisted
+local settings_path = nobs_settings_path()
+
+-- Vaults added with `nobs vault set`, sorted by name. No file means no vaults.
+local function read_vaults()
+  local file = io.open(settings_path, "r")
+  if not file then
+    return {}
   end
 
-  local path = pde_paths.normalize_path(vim.env[key])
+  local content = file:read("*a")
+  file:close()
 
-  vim.env[key] = path
-  return path
-end
+  local ok, data = pcall(vim.json.decode, content)
+  if not ok or type(data) ~= "table" then
+    vim.notify_once("Invalid " .. settings_path, vim.log.levels.WARN)
+    return {}
+  end
+  -- nobs reads a missing or null vaults list as no vaults.
+  if data.vaults == nil or data.vaults == vim.NIL then
+    return {}
+  end
+  if type(data.vaults) ~= "table" then
+    vim.notify_once("Invalid " .. settings_path, vim.log.levels.WARN)
+    return {}
+  end
 
-local main_vault = resolve_vault_path("PDE_MAIN_VAULT")
-local work_vault = resolve_vault_path("PDE_WORK_VAULT")
-
-local vaults = {
-  main = { name = "main", path = main_vault, env = "PDE_MAIN_VAULT" },
-  work = { name = "work", path = work_vault, env = "PDE_WORK_VAULT" },
-}
-
-local sync_states = {
-  main = {
-    running = false,
-    job_id = nil,
-    last_ok_at = nil,
-    last_error = nil,
-    last_message = nil,
-  },
-  work = {
-    running = false,
-    job_id = nil,
-    last_ok_at = nil,
-    last_error = nil,
-    last_message = nil,
-  },
-}
-
-local cached_sync_status = ""
-
--- `ob sync` retries a failed connection forever, so `timeout` bounds each run.
-M.sync_timeout_seconds = 300
-
-local function is_configured(vault)
-  return vault.path and vault.path ~= "" and vim.fn.isdirectory(vault.path) == 1
-end
-
-local function configured_vaults()
   local out = {}
-  for _, key in ipairs({ "main", "work" }) do
-    local vault = vaults[key]
-    if is_configured(vault) then
-      table.insert(out, { name = vault.name, path = vault.path })
+  for name, vault in pairs(data.vaults) do
+    if type(vault) == "table" and type(vault.path) == "string" then
+      table.insert(out, { name = name, path = vault.path })
     end
   end
+  table.sort(out, function(a, b) return a.name < b.name end)
   return out
 end
 
-local workspaces = configured_vaults()
+local vaults = read_vaults()
+
+-- Until `nobs vault set` creates the nobs settings file, the vaults in
+-- ~/.config/pde/config.json are not used. Nothing is saved, so the warning
+-- stops once the file exists.
+if vim.fn.filereadable(settings_path) == 0 then
+  local old = pde_paths.read({ "PDE_MAIN_VAULT", "PDE_WORK_VAULT" })
+  if (old.PDE_MAIN_VAULT or "") ~= "" or (old.PDE_WORK_VAULT or "") ~= "" then
+    vim.notify_once(
+      "Neovim no longer reads vaults from ~/.config/pde/config.json. Run nobs vault set NAME PATH for each one, then restart Neovim.",
+      vim.log.levels.WARN
+    )
+  end
+end
+
+local workspaces = {}
+for _, vault in ipairs(vaults) do
+  if vim.fn.isdirectory(vault.path) == 1 then
+    table.insert(workspaces, vault)
+  end
+end
 
 local ok, obsidian = pcall(require, "obsidian")
 if ok and #workspaces > 0 then
@@ -83,24 +87,15 @@ end
 
 local fzf = require("fzf-lua")
 
-local function unset_msg(label)
-  return label .. " not configured. Run pde vault " .. label:gsub("PDE_", ""):gsub("_VAULT", ""):lower() .. " set <path>"
-end
-
-local function vault_files(path, label)
-  if not path or path == "" or vim.fn.isdirectory(path) ~= 1 then
-    vim.notify(unset_msg(label), vim.log.levels.WARN)
-    return
-  end
-  fzf.files({ cwd = path })
-end
+local no_vaults = "No vault folders found. Run nobs vault set NAME PATH, then restart Neovim"
 
 map("<leader>oo", function()
   local dirs = {}
-  if is_configured(vaults.main) then table.insert(dirs, vaults.main.path) end
-  if is_configured(vaults.work) then table.insert(dirs, vaults.work.path) end
+  for _, vault in ipairs(workspaces) do
+    table.insert(dirs, vault.path)
+  end
   if #dirs == 0 then
-    vim.notify("No vaults configured. Run pde vault main set <path> or pde vault work set <path>", vim.log.levels.WARN)
+    vim.notify(no_vaults, vim.log.levels.WARN)
   elseif #dirs == 1 then
     fzf.files({ cwd = dirs[1] })
   else
@@ -108,139 +103,68 @@ map("<leader>oo", function()
   end
 end, "open note")
 
-map("<leader>om", function() vault_files(vaults.main.path, vaults.main.env) end, "main vault")
-map("<leader>ow", function() vault_files(vaults.work.path, vaults.work.env) end, "work vault")
-
-local function format_time(ts)
-  return ts and os.date("%H:%M", ts) or nil
-end
-
-local function rebuild_sync_status()
-  local parts = {}
-  for _, key in ipairs({ "main", "work" }) do
-    local state = sync_states[key]
-    local label = vaults[key].name
-    if state.running then
-      table.insert(parts, "󰓦 " .. label .. " syncing")
-    elseif state.last_error then
-      table.insert(parts, "󰅚 " .. label .. " failed")
-    elseif state.last_ok_at then
-      table.insert(parts, "󰄬 " .. label .. " " .. format_time(state.last_ok_at))
+local function vault_files(name)
+  for _, vault in ipairs(workspaces) do
+    if vault.name == name then
+      fzf.files({ cwd = vault.path })
+      return
     end
   end
-  cached_sync_status = table.concat(parts, " · ")
+  vim.notify("No vault named " .. name, vim.log.levels.WARN)
 end
 
-local function refresh_sync_status()
-  rebuild_sync_status()
-  vim.schedule(function()
-    vim.cmd("redrawstatus")
-  end)
-end
+map("<leader>om", function() vault_files("main") end, "main vault")
+map("<leader>ow", function() vault_files("work") end, "work vault")
 
-function M.sync_status()
-  return cached_sync_status
-end
+-- Neovim stops nobs after 2 minutes. It cannot stop a docker
+-- compose that nobs started, so the result shows when that ends. The broker's
+-- sync runs on to its own limit, and nothing is left locked.
+M.sync_timeout_ms = 120000
 
-local function first_nonempty(data)
-  if not data then return nil end
-  for _, line in ipairs(data) do
-    if line and line ~= "" then
-      return line
+local function last_line(text)
+  local line
+  for each in (text or ""):gmatch("[^\n]+") do
+    if vim.trim(each) ~= "" then
+      line = each
     end
   end
-  return nil
+  return line
 end
 
-local function sync_vault(key)
-  local vault = vaults[key]
-  local state = sync_states[key]
-  if not is_configured(vault) then
-    vim.notify(unset_msg(vault.env), vim.log.levels.WARN)
-    return
-  end
-  if state.running then
-    vim.notify("Sync already running: " .. vault.name, vim.log.levels.INFO)
-    return
+local function sync_vault(vault)
+  local timeout = M.sync_timeout_ms
+  local function report(result)
+    local message, level = "Sync complete: " .. vault.name, vim.log.levels.INFO
+    -- Only the exit status means failure, never stderr: starting a stopped
+    -- broker prints Docker's progress there, and nobs prints its error last.
+    -- A process killed by a signal reports code 0, so check the signal too.
+    if result.code ~= 0 or result.signal ~= 0 then
+      local fallback = result.signal ~= 0 and ("signal " .. result.signal) or ("exit " .. result.code)
+      local reason = last_line(result.stderr) or fallback
+      if result.code == 124 then
+        -- vim.system's exit code when it stops the command at its time limit.
+        reason = "timed out after " .. timeout / 1000 .. "s"
+      end
+      message, level = "Sync failed: " .. vault.name .. " - " .. reason, vim.log.levels.WARN
+    end
+    vim.schedule(function() vim.notify(message, level) end)
   end
 
-  local stderr_buf = {}
-  local timeout = M.sync_timeout_seconds
-  state.running = true
-  state.last_error = nil
-  state.last_message = "syncing"
-  refresh_sync_status()
   vim.notify("Syncing " .. vault.name .. "...", vim.log.levels.INFO)
-
-  local cmd = { "timeout", "--kill-after=10", tostring(timeout), "ob", "sync", "--path", vault.path }
-  local job_id = vim.fn.jobstart(cmd, {
-    cwd = vault.path,
-    on_stdout = function(_, data)
-      local line = first_nonempty(data)
-      if line then
-        state.last_message = line
-      end
-    end,
-    on_stderr = function(_, data)
-      local line = first_nonempty(data)
-      if line then
-        table.insert(stderr_buf, line)
-        state.last_message = line
-        -- Show the first error now; a retrying sync may not exit until the timeout.
-        if #stderr_buf == 1 then
-          vim.schedule(function()
-            vim.notify("Sync error: " .. vault.name .. " - " .. line, vim.log.levels.WARN)
-          end)
-        end
-      end
-    end,
-    on_exit = function(_, code)
-      state.running = false
-      state.job_id = nil
-      if code == 0 then
-        state.last_ok_at = os.time()
-        state.last_error = nil
-        state.last_message = "synced"
-      elseif code == 124 or code == 137 then
-        -- `timeout` exits 124 after SIGTERM (`ob` itself exits 0), 137 after SIGKILL.
-        local cause = stderr_buf[1]
-        state.last_error = "timed out after " .. timeout .. "s" .. (cause and (": " .. cause) or "")
-        state.last_message = state.last_error
-      else
-        state.last_error = stderr_buf[1] or ("exit " .. code)
-        state.last_message = state.last_error
-      end
-      vim.schedule(function()
-        refresh_sync_status()
-        if code == 0 then
-          vim.notify("Sync complete: " .. vault.name, vim.log.levels.INFO)
-        else
-          vim.notify("Sync failed: " .. vault.name .. " - " .. state.last_error, vim.log.levels.WARN)
-        end
-      end)
-    end,
-  })
-
-  state.job_id = job_id > 0 and job_id or nil
-  if not state.job_id then
-    state.running = false
-    state.last_error = "failed to start sync job"
-    state.last_message = state.last_error
-    refresh_sync_status()
-    vim.notify("Sync failed: " .. vault.name .. " - " .. state.last_error, vim.log.levels.WARN)
+  local started, err = pcall(vim.system, { "nobs", "--vault", vault.name, "sync-now" },
+    { stdout = false, text = true, timeout = timeout }, report)
+  if not started then
+    local reason = tostring(err):find("ENOENT") and "nobs not found on PATH" or tostring(err)
+    report({ code = -1, signal = 0, stderr = reason })
   end
 end
 
 map("<leader>os", function()
-  local any = false
-  for _, key in ipairs({ "main", "work" }) do
-    if is_configured(vaults[key]) then
-      any = true
-      sync_vault(key)
-    end
+  if #vaults == 0 then
+    vim.notify("No vaults set up. Run nobs vault set NAME PATH, then restart Neovim", vim.log.levels.WARN)
   end
-  if not any then
-    vim.notify("No vaults configured. Run pde vault main set <path> or pde vault work set <path>", vim.log.levels.WARN)
+  for _, vault in ipairs(vaults) do
+    sync_vault(vault)
   end
 end, "sync vaults")
 

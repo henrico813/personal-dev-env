@@ -1,68 +1,159 @@
 #!/usr/bin/env bash
-# Runs <leader>os in headless Neovim against a fake `ob`.
+# Loads the Obsidian config in headless Neovim with a fake `nobs` and checks
+# the vault list, the old-settings warning and <leader>os.
+# Needs Neovim 0.10+ for vim.system; CI installs the PDE-pinned release.
 # Usage: pde-installer/test/nvim-obsidian-sync.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/bin" "$tmp/home" "$tmp/vault"
+mkdir -p "$tmp/bin"
 
-cat >"$tmp/bin/ob" <<'EOF'
+# Called as `nobs --vault NAME sync-now`. The vault name picks the outcome.
+# Every sync first prints Docker-style progress on stderr, as nobs does when
+# it starts a stopped broker.
+cat >"$tmp/bin/nobs" <<'EOF'
 #!/usr/bin/env bash
-case "$FAKE_OB" in
-ok) exit 0 ;;
-fail) echo "Sync failed: boom" >&2; exit 1 ;;
-# Like `ob sync` offline: report, retry forever, exit 0 on SIGTERM.
-stall) echo "Error: connect ECONNREFUSED" >&2; trap 'exit 0' TERM; while :; do sleep 0.1; done ;;
+echo "$*" >>"$NOBS_CALLS"
+echo "Container nobs-$2-nobs-1  Started" >&2
+case "$2" in
+broken) echo "obsidian sync is not configured" >&2; exit 5 ;;
+slow) exec sleep 10 ;;
+killed) kill -KILL $$ ;;
 esac
 EOF
-chmod +x "$tmp/bin/ob"
+chmod +x "$tmp/bin/nobs"
 
+# Presses each key in KEYS, waits for WANT_RESULTS sync reports, and writes
+# every notification to $NOTES.
 cat >"$tmp/driver.lua" <<'EOF'
 vim.opt.rtp:prepend(vim.env.NVIM_CONFIG)
-package.loaded["fzf-lua"] = {}
+package.loaded["fzf-lua"] = { files = function() end }
 local notes = {}
 vim.notify = function(msg) table.insert(notes, msg) end
 
 local obsidian = require("plugins.obsidian")
-obsidian.sync_timeout_seconds = 1
-vim.fn.maparg("<leader>os", "n", false, true).callback()
+obsidian.sync_timeout_ms = 300
+for key in (vim.env.KEYS or ""):gmatch("%S+") do
+  vim.fn.maparg(key, "n", false, true).callback()
+end
 
-local early = vim.env.WANT_EARLY
-if early and early ~= "" then
-  local seen = vim.wait(500, function()
-    return table.concat(notes, "\n"):find(early, 1, true) ~= nil
-  end, 10)
-  if not seen or not obsidian.sync_status():find("syncing") then
-    io.stderr:write(("%s: early warning missing while syncing\n%s\n"):format(
-      vim.env.FAKE_OB, table.concat(notes, "\n")
-    ))
-    os.exit(1)
+local want = tonumber(vim.env.WANT_RESULTS or "0")
+vim.wait(5000, function()
+  local done = 0
+  for _, note in ipairs(notes) do
+    if note:match("^Sync complete: ") or note:match("^Sync failed: ") then
+      done = done + 1
+    end
   end
-end
+  return done >= want
+end, 20)
 
-vim.wait(5000, function() return not obsidian.sync_status():find("syncing") end, 50)
-
-local status, all = obsidian.sync_status(), table.concat(notes, "\n")
-local want_status, want_note = vim.env.WANT_STATUS, vim.env.WANT_NOTE
-if not status:find(want_status) or not all:find(want_note, 1, true) then
-  io.stderr:write(("%s: status %q, notes:\n%s\n"):format(vim.env.FAKE_OB, status, all))
-  os.exit(1)
-end
+local out = assert(io.open(vim.env.NOTES, "w"))
+out:write(table.concat(notes, "\n"), "\n")
+out:close()
 os.exit(0)
 EOF
 
-run_case() {
-	FAKE_OB="$1" WANT_STATUS="$2" WANT_NOTE="$3" WANT_EARLY="${4:-}" \
-		HOME="$tmp/home" PATH="$tmp/bin:$PATH" \
-		PDE_MAIN_VAULT="" PDE_WORK_VAULT="$tmp/vault" \
+# Starts each case with a new HOME, so no real vault list is read.
+new_home() {
+	home="$tmp/home-$1"
+	rm -rf "$home"
+	mkdir -p "$home"
+	: >"$tmp/calls"
+}
+
+# Writes a nobs settings file to $1 listing the vault names that follow.
+write_nobs_settings() {
+	local file="$1" port=8781 sep=""
+	shift
+	mkdir -p "$(dirname "$file")"
+	{
+		printf '{"vaults": {'
+		for name in "$@"; do
+			printf '%s"%s": {"path": "%s/%s", "port": %d}' "$sep" "$name" "$tmp" "$name" "$port"
+			sep=", "
+			port=$((port + 1))
+		done
+		printf '}}\n'
+	} >"$file"
+}
+
+write_old_settings() {
+	mkdir -p "$home/.config/pde"
+	printf '{"main_vault": "%s/main"}\n' "$tmp" >"$home/.config/pde/config.json"
+}
+
+# XDG is the XDG_CONFIG_HOME to pass; when empty, it is unset.
+run_nvim() {
+	local xdg=(-u XDG_CONFIG_HOME)
+	if [ -n "${XDG:-}" ]; then
+		xdg=("XDG_CONFIG_HOME=$XDG")
+	fi
+	env "${xdg[@]}" HOME="$home" PATH="$tmp/bin:$PATH" NOBS_CALLS="$tmp/calls" NOTES="$tmp/notes" \
 		NVIM_CONFIG="$REPO_ROOT/chezmoi/dot_config/nvim" \
 		nvim --clean -l "$tmp/driver.lua"
 }
 
-run_case ok "work %d%d:%d%d" "Sync complete: work"
-run_case fail "work failed" "Sync failed: work - Sync failed: boom"
-run_case stall "work failed" "Sync failed: work - timed out after 1s: Error: connect ECONNREFUSED" \
-	"Sync error: work - Error: connect ECONNREFUSED"
+fail() {
+	echo "nvim obsidian sync: $1" >&2
+	echo "--- notifications:" >&2
+	cat "$tmp/notes" >&2
+	echo "--- nobs calls:" >&2
+	cat "$tmp/calls" >&2
+	exit 1
+}
+
+expect_note() {
+	grep -qxF "$1" "$tmp/notes" || fail "missing notification: $1"
+}
+
+# A computer with no vaults must open Neovim silently; this is how every new
+# computer starts.
+new_home zero
+run_nvim
+[ -z "$(tr -d '\n' <"$tmp/notes")" ] || fail "zero vaults must not notify"
+
+# After `nobs vault set`, the old pde settings stay until they are deleted
+# later, so the warning must stop once the nobs file exists. A sync whose
+# broker had to start prints Docker's output on stderr and still succeeds.
+# XDG_CONFIG_HOME is relative, so, like nobs, Neovim must use ~/.config.
+new_home one
+write_old_settings
+write_nobs_settings "$home/.config/nobs/config.json" notes
+XDG=relative/xdg KEYS="<leader>os" WANT_RESULTS=1 run_nvim
+if grep -qF "pde/config.json" "$tmp/notes"; then
+	fail "warned after nobs vault set"
+fi
+expect_note "Sync complete: notes"
+grep -qxF -- "--vault notes sync-now" "$tmp/calls" || fail "notes was not synced"
+
+# Vault names are not fixed, and every vault is synced. A failed sync shows
+# nobs's own error, not Docker's progress. The file is found through an
+# absolute XDG_CONFIG_HOME, as nobs finds it.
+new_home three
+write_nobs_settings "$tmp/xdg-three/nobs/config.json" alpha broken gamma
+XDG="$tmp/xdg-three" KEYS="<leader>os" WANT_RESULTS=3 run_nvim
+expect_note "Sync complete: alpha"
+expect_note "Sync failed: broken - obsidian sync is not configured"
+expect_note "Sync complete: gamma"
+[ "$(wc -l <"$tmp/calls")" -eq 3 ] || fail "want one sync per vault"
+
+# A computer that has not moved its vaults to nobs yet would otherwise lose
+# its vault list without a word. Pressing keys must not repeat the warning.
+new_home old
+write_old_settings
+KEYS="<leader>os <leader>oo <leader>os" run_nvim
+[ "$(grep -c "nobs vault set NAME PATH for each one, then restart Neovim" "$tmp/notes")" -eq 1 ] ||
+	fail "want the old-settings warning exactly once"
+
+# A broker that never answers must not leave the sync running forever. A
+# killed nobs is reported as code 0 with a signal, and must not look complete.
+new_home slow
+write_nobs_settings "$home/.config/nobs/config.json" killed slow
+KEYS="<leader>os" WANT_RESULTS=2 run_nvim
+expect_note "Sync failed: slow - timed out after 0.3s"
+grep -q "^Sync failed: killed" "$tmp/notes" || fail "a killed nobs must fail"
+
 echo "nvim obsidian sync: ok"
