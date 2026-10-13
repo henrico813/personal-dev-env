@@ -7,7 +7,7 @@
 | `pde-gh-write pr OPERATION [ARGS]` | Record the request, wait for an answer, run `gh` once |
 | `pde-pr-approve REQUEST_ID` | Show a pending request in `less` and ask for `yes` or `no` |
 | `pde-pr-approve --herdr-popup` | Run by Herdr to draw the popup, starting with the request in `PDE_REQUEST_ID` |
-| `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not |
+| `pde-pr-approve --herdr-inbox` | Open the popup on the oldest pending request, dismissed or not, or say why it cannot |
 | `pde-gh-write --moshi-ask ID` | Not for people: started by `pde-gh-write` to send the phone question and save the answer |
 | `pde-gh-write --pde-runner ID` | Not for people: started by `pde-gh-write` to run `gh` once the request is approved |
 
@@ -127,7 +127,12 @@ request is not pending, and 1 if saving an answer fails. It exits 0 when the
 queue is empty, when closed without an answer, or after `g`.
 
 `pde-pr-approve --herdr-inbox` exits 0 after opening the popup or showing a
-`No approvals waiting` notification, and 1 when the popup cannot be opened.
+`No approvals waiting` notification. It exits 1 when the popup cannot be
+opened, after a notification that says why; see
+[When Herdr refuses the popup](#when-herdr-refuses-the-popup).
+
+While it runs, `pde-pr-approve --herdr-popup` saves its process ID and
+the workspace ID from `HERDR_PLUGIN_CONTEXT_JSON` in the `open-popup` file and removes it on exit.
 
 ### Context Lines
 
@@ -149,7 +154,8 @@ next to the requested ones.
 ### Opening the Popup
 
 When `HERDR_ENV` is `1`, `pde-gh-write` does these steps for a new request
-in the background and ignores their errors:
+in the background. Their errors do not stop the request; a popup that
+does not open changes the notification in step 3:
 
 1. It sets the `Approval waiting` marker on the agent's pane.
 2. It runs `herdr status server` to find Herdr's socket and sends one
@@ -157,10 +163,27 @@ in the background and ignores their errors:
    a popup with the keyboard on it, with the request ID in
    `PDE_REQUEST_ID`. The plugin file tells Herdr the popup's size and to
    run `pde-pr-approve --herdr-popup` in it.
-3. It shows a Herdr notification, `Approval is waiting`, with a sound.
+3. It shows a Herdr notification with a sound: `Approval is waiting`
+   when the popup opened, otherwise why it did not.
 
 If the request is answered before step 2, the marker is removed and no
 popup opens.
+
+### When Herdr Refuses the Popup
+
+Herdr opens one popup at a time and answers `ui_busy` while a popup,
+Settings, or Copy mode is open. The notification body then says:
+
+| Body | When |
+|---|---|
+| `Approval waiting: answer the popup in NAME` | `ui_busy`, and `open-popup` names a running approval popup; `NAME` is its workspace label |
+| `Close the open Herdr popup or menu, then press Ctrl+b a` | `ui_busy` without a running approval popup in `open-popup` |
+| `Cannot open the approval popup: REASON` | Any other failure, such as no Herdr socket |
+
+For a new request the body replaces `Approval is waiting`. The inbox
+shows it too, and for the first body it first runs
+`herdr workspace focus` on that workspace. A new request never moves
+the screen.
 
 ## Queue, Inbox, and Marker
 
@@ -224,6 +247,7 @@ Requests are saved in the state directory,
 | `ID.json` | The request record |
 | `ID.json.lock` | Lock file; only the program holding it may change the record or run `gh` |
 | `.record-*` | Temporary file while a record is saved |
+| `open-popup` | JSON with `pid` and `workspace_id` of the open approval popup; removed when it closes |
 
 Record fields, with those omitted when empty marked as optional:
 
@@ -259,6 +283,7 @@ Record fields, with those omitted when empty marked as optional:
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
+| `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
 | `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
 
 ## Request ID
