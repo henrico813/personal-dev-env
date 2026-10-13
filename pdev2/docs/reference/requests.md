@@ -146,12 +146,11 @@ one as a question. A line whose value is unknown is left out.
 |---|---|---|
 | 1 | What is asked and of which PR: `comment #12`, `merge #185`, or `create PR`; `merge PR` when the number is unclear | The command |
 | 2 | The repository, or `dir: ` and the folder name when `gh` finds none | `--repo`, otherwise `gh repo view` |
-| 3 | The Herdr workspace and agent title, such as `app / review login fix`; the OpenCode session ID when Herdr does not know the agent | `herdr agent list`, found by `OPENCODE_SESSION_ID`, otherwise `herdr pane get` on `HERDR_PANE_ID`; then `herdr workspace list` |
+| 3 | The Herdr workspace and agent title, such as `app / review login fix`; the OpenCode session ID when Herdr does not know the agent | `herdr agent list`, found by `OPENCODE_SESSION_ID`, then `herdr workspace list` |
 | 4 | The new title when the request sets one, otherwise the PR's current title | The command, otherwise `gh pr view` |
 
 The lookups run once, when the request is made. Without
-`OPENCODE_SESSION_ID` and `HERDR_PANE_ID`, line 3 is left out and Herdr
-is not asked. For
+`OPENCODE_SESSION_ID`, line 3 is left out and Herdr is not asked. For
 `pr edit`, the approval text also shows the PR's current title and body
 next to the requested ones.
 
@@ -206,17 +205,17 @@ the screen.
   lists only the requests of the machine selected in Herdr.
 - While a request waits, Herdr's sidebar shows `Approval waiting` on the
   pane of the agent that asked. The pane is found by matching
-  `OPENCODE_SESSION_ID` in `herdr agent list`, otherwise it is the pane
-  in `HERDR_PANE_ID`, so a subagent's request marks its main agent's
-  pane. Without either there is no marker, and `g` only closes the
-  popup.
+  `OPENCODE_SESSION_ID` in `herdr agent list`. Herdr does not list a
+  subagent's session, and on some computers no OpenCode session at all;
+  such a request has no marker, and `g` only closes the popup.
 - The marker also sets the pane token `pde-approval`, which other
   machines read. The token stays until no waiting request from that
   pane is left, dismissed or not, because the inbox lists dismissed
   requests too. Herdr keeps neither the title nor the token when it
   restores a session after a restart, so a request still waiting then
   shows as `none waiting` on other machines until a new request from
-  that pane marks it again.
+  that pane marks it again. A request without a marker sets no token,
+  so other machines do not count it.
 - The `Approval waiting` title belongs to the pane, so it stays until
   no waiting, undismissed request from that pane is left. It is set with
   a four-hour time limit.
@@ -325,7 +324,6 @@ Record fields, with those omitted when empty marked as optional:
 | `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
 | `PDE_CHECK_MACHINES` | Set to `1` by the inbox for `--herdr-popup` when nothing waits here: show [other machines](#other-herdr-machines) |
-| `HERDR_PANE_ID` | Herdr sets it to the pane a terminal runs in; when `herdr agent list` does not list `OPENCODE_SESSION_ID`, `herdr pane get` on it gives the request's pane, workspace, and agent title |
 | `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
 | `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
 
