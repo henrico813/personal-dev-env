@@ -166,48 +166,19 @@ func reportMarker(pane string, pending bool) error {
 	return err
 }
 
-// Empty outside Herdr or when Herdr knows neither the session nor the pane.
-// Herdr does not list every session, never a subagent's, so the pane Herdr
-// started this process in comes next; a subagent's request then names its
-// main agent's pane.
+// Empty outside Herdr or when no Herdr agent runs the session. Herdr does not
+// list a subagent's session. HERDR_PANE_ID does not help: OpenCode runs tools
+// under one shared server, whose HERDR_PANE_ID is the pane that started it,
+// often another agent's. An unknown agent is better than a wrong one.
 func agentContext(session string) (pane, workspace, title string) {
 	if os.Getenv("HERDR_ENV") != "1" {
 		return "", "", ""
 	}
 	agent := findAgent(session)
 	if agent.Pane == "" {
-		agent = findPane(os.Getenv("HERDR_PANE_ID"))
-	}
-	if agent.Pane == "" {
 		return "", "", ""
 	}
 	return agent.Pane, workspaceLabel(agent.Workspace), agent.Title
-}
-
-// A pane moved to another workspace keeps answering to its old ID, so Herdr
-// is asked for its current ID and workspace; HERDR_WORKSPACE_ID can be stale.
-func findPane(id string) agentInfo {
-	if id == "" {
-		return agentInfo{}
-	}
-	output, err := herdrOutput("pane", "get", id)
-	if err != nil {
-		return agentInfo{}
-	}
-	var envelope struct {
-		Result struct {
-			Pane struct {
-				PaneID        string `json:"pane_id"`
-				WorkspaceID   string `json:"workspace_id"`
-				TerminalTitle string `json:"terminal_title"`
-			} `json:"pane"`
-		} `json:"result"`
-	}
-	if json.Unmarshal(output, &envelope) != nil {
-		return agentInfo{}
-	}
-	pane := envelope.Result.Pane
-	return agentInfo{Pane: pane.PaneID, Workspace: pane.WorkspaceID, Title: pane.TerminalTitle}
 }
 
 func findAgent(session string) agentInfo {
