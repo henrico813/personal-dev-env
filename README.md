@@ -112,6 +112,7 @@ binaries plus repo-managed AI config.
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
+| Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, and bidirectional agent cycling (`Tab` next, `Shift+Tab` previous) |
 | Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
