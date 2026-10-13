@@ -141,5 +141,9 @@ func reportOrRunOutput(id, gh string, output io.Writer) int {
 		return exitInterrupted
 	}
 	fmt.Fprintf(stderr, "pde-gh-write: still waiting for approval of %s; it runs once approved, so rerun this exact command later to read the result\n", id)
+	// The phone question runs detached, so this is where its failure is seen.
+	if rec.MoshiError != "" {
+		fmt.Fprintf(stderr, "pde-gh-write: the phone question failed (%s); ask the user to check moshi-hook with moshi-hook status and moshi-hook doctor\n", rec.MoshiError)
+	}
 	return exitWaiting
 }

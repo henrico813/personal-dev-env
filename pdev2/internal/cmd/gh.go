@@ -113,7 +113,7 @@ func ghLookup(gh, directory string, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
-// The first gh on PATH is the guard, a wrapper that blocks PR writes unless
+// The first gh on PATH is the guard ~/.local/bin/gh; it blocks PR writes unless
 // PDE_GH_WRITE=1 is set. The real gh is the next executable gh on PATH that
 // is neither the guard nor this program. It returns the PATH entry, not the
 // symlink target: aqua's gh links to aqua-proxy, which only runs gh when

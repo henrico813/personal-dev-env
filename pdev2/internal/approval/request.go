@@ -46,7 +46,7 @@ func Parse(args []string, stdin io.Reader) (Request, error) {
 	}
 	req := Request{Operation: args[1], Args: append([]string(nil), args...)}
 	if !slices.Contains(writeOperations, req.Operation) {
-		return Request{}, fmt.Errorf("refuses gh pr %s; use a read-only gh command or an allowlisted write", req.Operation)
+		return Request{}, fmt.Errorf("refuses gh pr %s; it accepts only pr %s; run other gh pr commands with gh", req.Operation, strings.Join(writeOperations, ", "))
 	}
 	for index := 2; index < len(args); index++ {
 		name, value, inline := strings.Cut(args[index], "=")

@@ -93,6 +93,35 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	waitForFile(t, stopped)
 }
 
+// The phone question runs detached with its output thrown away. When
+// moshi-hook could not reach Moshi, as when it is not paired, the question
+// ended silently, and the agent kept telling the user to answer on the
+// phone. The waiting command must say the question failed and how to check.
+func TestUnreachablePhoneWarnsWaitingAgent(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// moshi-hook exits 4 when it cannot reach Moshi.
+	approvaltest.FakeMoshiHook(t, `echo 'moshi-hook: not paired; run moshi-hook pair' >&2; exit 4`)
+	// moshiAsk runs in this test process, so the saved question PID is the
+	// test's own.
+	rec := approval.Record{ID: "unpaired", State: approval.StatePending, MoshiPID: os.Getpid()}
+	if err := approval.Save(rec); err != nil {
+		t.Fatal(err)
+	}
+	var messages strings.Builder
+	old := stderr
+	stderr = &messages
+	t.Cleanup(func() { stderr = old })
+
+	moshiAsk([]string{rec.ID})
+	reportOrRun(rec.ID, "")
+
+	for _, want := range []string{"phone question failed", "not paired", "moshi-hook status"} {
+		if !strings.Contains(messages.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, messages.String())
+		}
+	}
+}
+
 // Agents rerun a waiting command to learn what happened. While the first
 // phone question is still waiting, a rerun must not send another, or the phone
 // would show several questions for one request.
@@ -139,7 +168,8 @@ func TestMoshiRerunKeepsLiveAsk(t *testing.T) {
 // the request waiting with nothing to answer there. A rerun must send a new
 // question when the saved one is no longer running. That must keep the
 // record's age; otherwise a request whose question keeps failing would stay
-// pending forever as the agent reruns it.
+// pending forever as the agent reruns it. It must also clear the old
+// failure, or the agent would be told that the new question failed.
 func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake question program just sleeps, standing in for a new question
@@ -151,7 +181,8 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	// The saved PID belongs to a process that has already exited, and the
 	// request was made three hours ago.
 	saved := time.Now().Add(-3 * time.Hour).Round(0)
-	rec := approval.Record{ID: "dead", MoshiPID: deadPID(t), State: approval.StatePending, Updated: saved}
+	// It failed, so the record holds its reason.
+	rec := approval.Record{ID: "dead", MoshiPID: deadPID(t), MoshiError: "exit status 4", State: approval.StatePending, Updated: saved}
 	if err := approval.Write(rec); err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +206,9 @@ func TestMoshiRerunRestartsDeadAsk(t *testing.T) {
 	}
 	if !got.Updated.Equal(saved) {
 		t.Errorf("rerun moved the last change from %v to %v", saved, got.Updated)
+	}
+	if got.MoshiError != "" {
+		t.Errorf("old phone failure kept: %q", got.MoshiError)
 	}
 }
 
