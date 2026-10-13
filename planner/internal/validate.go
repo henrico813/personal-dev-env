@@ -241,8 +241,7 @@ func VerifyRenderedText(rendered string, plan Plan) error {
 }
 
 // validStatus is the single source of truth for allowed runtime statuses.
-// Unchecked items are represented as empty status; pending is normalized away
-// at the JSON boundary.
+// Unchecked items are represented as empty status.
 func validStatus(s ChecklistStatus) bool {
 	return s == "" || s == StatusDone
 }
