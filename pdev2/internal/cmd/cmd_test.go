@@ -32,7 +32,8 @@ func TestMainPicksEntryMode(t *testing.T) {
 		{name: "phone question", args: []string{"pde-gh-write", "--moshi-ask", "waiting"}, code: 0,
 			call: "ask --require-remote"},
 		{name: "popup without request ID", args: []string{"pde-pr-approve", "--herdr-popup"}, code: 1},
-		{name: "inbox", args: []string{"pde-pr-approve", "--herdr-inbox"}, code: 1, call: "status server"},
+		{name: "inbox", args: []string{"pde-pr-approve", "--herdr-inbox"}, code: 1, call: "status server",
+			stderr: "pde-pr-approve: cannot open the approval popup: herdr socket unavailable\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -62,7 +63,28 @@ func notifyRequest(rec approval.Record) {
 		// which need not be the agent's.
 		body = "Answer the popup in " + workspace
 	}
-	_ = exec.Command("herdr", "notification", "show", notificationTitle(), "--body", body, "--sound", "request").Run()
+	_ = exec.Command(herdrPath(), "notification", "show", notificationTitle(), "--body", body, "--sound", "request").Run()
+}
+
+// Tests replace this to put a fake herdr beside the program.
+var thisProgram = os.Executable
+
+// herdrPath finds herdr on PATH, then in this program's folder. Herdr runs
+// the inbox and the popup with its server's PATH, which can lack
+// ~/.local/bin, where the installer puts both herdr and pde-gh-write. With
+// neither, it returns "herdr", so running it fails with "not found in $PATH".
+// Not HERDR_BIN_PATH: after a reinstall it can name the server's deleted
+// binary.
+func herdrPath() string {
+	if path, err := exec.LookPath("herdr"); err == nil {
+		return path
+	}
+	if self, err := thisProgram(); err == nil {
+		if path := filepath.Join(filepath.Dir(self), "herdr"); isExecutable(path) {
+			return path
+		}
+	}
+	return "herdr"
 }
 
 // A Herdr client attached to several computers shows each one's
@@ -99,7 +121,7 @@ func openApproval(id string) error {
 // openPopup opens the approval popup with env set for its program; id only
 // names the socket request.
 func openPopup(id string, env map[string]string) error {
-	output, err := exec.Command("herdr", "status", "server").CombinedOutput()
+	output, err := exec.Command(herdrPath(), "status", "server").CombinedOutput()
 	if err != nil {
 		return err
 	}
@@ -271,7 +293,7 @@ func focusedWorkspace() string {
 func herdrOutput(args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, "herdr", args...).Output()
+	return exec.CommandContext(ctx, herdrPath(), args...).Output()
 }
 
 func herdrSocket(output string) string {
@@ -320,6 +342,6 @@ func focusRequest(rec approval.Record) {
 		pane = rec.PaneID
 	}
 	if pane != "" {
-		_ = exec.Command("herdr", "agent", "focus", pane).Run()
+		_ = exec.Command(herdrPath(), "agent", "focus", pane).Run()
 	}
 }

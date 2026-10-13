@@ -141,6 +141,7 @@ func TestInboxLeadsToOpenApprovalPopup(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			discardStderr(t)
 			if err := approval.Save(approval.Record{ID: "waiting", State: approval.StatePending}); err != nil {
 				t.Fatal(err)
 			}
@@ -249,6 +250,53 @@ esac`)
 				t.Errorf("popup env = %#v, want %#v", env, tt.wantEnv)
 			}
 		})
+	}
+}
+
+// Herdr runs Ctrl+b a with its server's PATH. On a computer whose Herdr
+// started without ~/.local/bin on PATH, the inbox could not find herdr and
+// showed nothing, so a dismissed request could not be reopened. The inbox
+// must use the herdr installed beside it.
+func TestInboxFindsHerdrBesideItself(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := approval.Save(approval.Record{ID: "dismissed", State: approval.StatePending, Dismissed: true}); err != nil {
+		t.Fatal(err)
+	}
+	// A Unix socket stands in for Herdr's and accepts the popup.
+	socket := filepath.Join(t.TempDir(), "herdr.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	received := make(chan map[string]any, 1)
+	go func() {
+		var message map[string]any
+		defer func() { received <- message }()
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if json.NewDecoder(bufio.NewReader(conn)).Decode(&message) == nil {
+			_, _ = conn.Write([]byte("{}\n"))
+		}
+	}()
+	// herdr is beside the program, as both are in ~/.local/bin, and PATH
+	// has no herdr.
+	bin := t.TempDir()
+	approvaltest.WriteScript(t, bin, "herdr", `if [ "$1" = status ]; then echo socket: $HERDR_TEST_SOCKET; fi`)
+	approvaltest.Replace(t, &thisProgram, func() (string, error) { return filepath.Join(bin, "pde-pr-approve"), nil })
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HERDR_TEST_SOCKET", socket)
+
+	code := openInbox()
+
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	if message := approvaltest.Receive(t, received); message["method"] != "plugin.pane.open" {
+		t.Fatalf("request = %#v", message)
 	}
 }
 

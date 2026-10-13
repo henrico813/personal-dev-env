@@ -126,7 +126,7 @@ func machineLines(machine savedMachine) []string {
 // them; failing that, Herdr's ssh settings should: a 10-second connect
 // timeout and keepalives that give up after about a minute.
 func remoteHerdr(ctx context.Context, machine string, args ...string) ([]byte, error) {
-	command := exec.CommandContext(ctx, "herdr", append([]string{"--machine", machine}, args...)...)
+	command := exec.CommandContext(ctx, herdrPath(), append([]string{"--machine", machine}, args...)...)
 	// Killing herdr at the time limit can leave its ssh child holding the
 	// output open; without this, Output would wait for that child.
 	command.WaitDelay = time.Second
