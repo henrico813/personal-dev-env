@@ -94,31 +94,30 @@ esac`)
 	}
 }
 
-// Herdr does not list every session: never a subagent's, and on one
-// computer no OpenCode session at all. Every request there had no pane, so
-// no sidebar marker and no workspace in the popup. The request must use
-// the pane Herdr started the agent in, under the ID and workspace Herdr
-// gives now: a pane moved to another workspace keeps its old ID.
-func TestRequestFallsBackToHerdrPane(t *testing.T) {
+// OpenCode runs every agent's tools under one shared server, so a
+// subagent's shell inherits the server's HERDR_PANE_ID: the pane the server
+// started in, which belongs to another agent. Using that pane once labeled a
+// merge request with another workspace's agent, and the owner declined it as
+// suspicious. A subagent Herdr does not list must show its session ID instead.
+func TestSubagentRequestNeverNamesServerPane(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// The fake herdr lists an agent without a session, as on that computer,
-	// knows pane w1:p2 as w2:p1 after a move, and touches done when the
+	// The fake herdr lists only the main agent that started the server, in
+	// pane w1:p2, answers pane get for that pane, and touches done when the
 	// notification is shown.
 	done := filepath.Join(t.TempDir(), "done")
 	approvaltest.FakeHerdr(t, `case "$1 $2" in
-"agent list") echo '{"result":{"agents":[{"agent_session":null,"pane_id":"w1:p2","workspace_id":"w1"}]}}' ;;
-"pane get") [ "$3" = w1:p2 ] && echo '{"result":{"pane":{"pane_id":"w2:p1","workspace_id":"w2","terminal_title":"OC | release"}}}' ;;
-"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w2","label":"work-repo"}]}}' ;;
+"agent list") echo '{"result":{"agents":[{"agent_session":{"value":"ses_main"},"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | other work"}]}}' ;;
+"pane get") echo '{"result":{"pane":{"pane_id":"w1:p2","workspace_id":"w1","terminal_title":"OC | other work"}}}' ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1","label":"other-repo"}]}}' ;;
 "notification show") touch '`+done+`' ;;
 esac`)
-	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo '{"title":"Ship it","body":"old"}' ;; esac`)
+	gh, _ := approvaltest.FakeGH(t, `case "$1 $2" in "repo view") echo owner/repo ;; "pr view") echo 'Ship it' ;; esac`)
 	t.Setenv("HERDR_ENV", "1")
+	// Inherited from the shared server, not set for this agent.
 	t.Setenv("HERDR_PANE_ID", "w1:p2")
-	// Herdr set this before the pane moved to w2, so it is stale.
-	t.Setenv("HERDR_WORKSPACE_ID", "w1")
 	t.Setenv("OPENCODE_SESSION_ID", "ses_subagent")
 	discardStderr(t)
-	req, err := approval.Parse([]string{"pr", "edit", "185", "--body", "new"}, nil)
+	req, err := approval.Parse([]string{"pr", "merge", "185"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +133,11 @@ esac`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.PaneID != "w2:p1" || got.Workspace != "work-repo" || got.SessionTitle != "OC | release" {
+	if got.PaneID != "" || got.Workspace != "" || got.SessionTitle != "" {
 		t.Fatalf("context = %#v", got)
+	}
+	if lines := approval.ContextLines(got); len(lines) < 3 || lines[2] != "ses_subagent" {
+		t.Fatalf("context lines = %q", lines)
 	}
 }
 
