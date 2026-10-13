@@ -65,6 +65,13 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 		},
 	}
 
+	// The installer runs the script with aqua's bin, where it installs jq,
+	// first on PATH, so take jq from the test's PATH the same way.
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Skip("jq is not on PATH; the installer provides it through aqua, so install first")
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			home := t.TempDir()
@@ -84,8 +91,8 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 			if err := os.WriteFile(script, []byte(renderHerdrSetup(t, home)), 0o700); err != nil {
 				t.Fatal(err)
 			}
-			// /usr/bin and /bin supply the host's jq.
-			path := bin + string(os.PathListSeparator) + "/usr/bin:/bin"
+			// jq's folder supplies jq, and /usr/bin and /bin the shell tools.
+			path := strings.Join([]string{bin, filepath.Dir(jq), "/usr/bin", "/bin"}, string(os.PathListSeparator))
 			// HERDR_MODE picks the fake's answers; HERDR_MANIFEST is the path it
 			// reports for an existing link to this manifest.
 			command := exec.Command("sh", script)

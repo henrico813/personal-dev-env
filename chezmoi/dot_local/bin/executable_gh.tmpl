@@ -26,13 +26,21 @@ if [[ ${PDE_GH_WRITE:-} == 1 ]]; then
 fi
 
 blocked=false
+message='Use pde-gh-write for pull-request writes; it asks the user for approval.'
 case "${1:-}" in
     pr)
         case "${2:-}" in
-            create|new|edit|comment|review|merge|ready|close|reopen) blocked=true ;;
+            create|edit|comment|review|merge|ready|close|reopen) blocked=true ;;
+            # pde-gh-write refuses gh's alias, so name the command it accepts.
+            new)
+                blocked=true
+                message='Use pde-gh-write pr create instead of gh pr new; it asks the user for approval.'
+                ;;
         esac
         ;;
     api)
+        # pde-gh-write accepts no gh api command, but most of these writes have a pr form.
+        message='gh api cannot change pull requests or comments here; use the matching pde-gh-write pr command, such as pr comment, or ask the user.'
         api_path=''
         method=''
         has_write_field=false
@@ -68,7 +76,7 @@ case "${1:-}" in
         ;;
 esac
 if [[ "$blocked" == true ]]; then
-    printf 'Use pde-gh-write for pull-request writes; it asks the user for approval.\n' >&2
+    printf '%s\n' "$message" >&2
     exit 2
 fi
 exec "$real_gh" "$@"
