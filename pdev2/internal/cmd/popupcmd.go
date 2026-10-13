@@ -11,11 +11,21 @@ import (
 	"pdev2/internal/terminal"
 )
 
+// The inbox sets this for a popup with no request, to show other machines.
+const checkMachinesEnv = "PDE_CHECK_MACHINES"
+
 // Answering or dismissing moves on to the oldest request still waiting, so one
-// popup can work through several requests.
+// popup can work through several requests. Without id, when the inbox sets
+// PDE_CHECK_MACHINES, it shows where approvals wait on other machines.
 func approvePopup(id string) int {
 	if id == "" {
-		return 1
+		if os.Getenv(checkMachinesEnv) != "1" {
+			return 1
+		}
+		if terminal.ShowOtherMachines(popupIn, popupOut, otherMachineLines) != nil {
+			return 1
+		}
+		return 0
 	}
 	rec, err := approval.Load(id)
 	if err != nil || rec.State != approval.StatePending || approval.Expired(rec) {
@@ -101,17 +111,24 @@ func popupAnswer(rec approval.Record, queue string, settle time.Duration) string
 }
 
 // Opens the popup on the oldest pending request, including dismissed ones.
+// With none here and a saved Herdr machine, the popup says where requests
+// wait on other machines; those are answered there.
 // When the popup does not open, a notification says why and the inbox exits
 // 1; if an approval popup is already open, it first moves to that popup's
 // workspace, because the user asked to see approvals.
 func openInbox() int {
 	pending := approval.Inbox()
-	if len(pending) == 0 {
+	var err error
+	switch {
+	case len(pending) > 0:
+		err = openApproval(pending[0].ID)
+	case len(savedMachines()) > 0:
+		err = openPopup("inbox", map[string]string{checkMachinesEnv: "1"})
+	default:
 		// The key otherwise seems to do nothing.
 		_ = exec.Command("herdr", "notification", "show", "PR approval", "--body", "No approvals waiting").Run()
 		return 0
 	}
-	err := openApproval(pending[0].ID)
 	if err == nil {
 		return 0
 	}
