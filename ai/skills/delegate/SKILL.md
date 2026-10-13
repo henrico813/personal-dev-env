@@ -20,8 +20,9 @@ bring it to the user.
    notes give for that kind of work. Give it the goal, the inputs,
    what to leave alone, which instructions it must load, and the report
    it must return.
-2. When it reports, check its claims against the real files, tests and
-   systems before trusting them.
+2. When it reports, check that it loaded the instructions you named,
+   and check its claims against the real files, tests and systems
+   before trusting them.
 3. Review the work. Send required fixes back to the same agent, and
    review again. Repeat until it passes.
 4. Give the user a short summary: what was done, the evidence, and any
@@ -29,6 +30,8 @@ bring it to the user.
 
 ## Rules
 
+- The subagent does the task itself. Do not tell it to use `delegate`.
+- The agent that did the work never reviews it; you or a new agent do.
 - Stop for the user before anything public or hard to undo, such as a
   push, merge, deploy or delete.
 - If the agent hits something unexpected, have it stop and report
