@@ -15,7 +15,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: planner/go.mod
-          cache-dependency-path: planner/go.sum
+          # The cache is keyed on go.sum, which planner lacks: it has no dependencies.
+          cache: false
       - name: install golangci-lint
         run: make init
       - name: check
@@ -136,7 +137,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: planner/go.mod
-          cache-dependency-path: planner/go.sum
+          # The cache is keyed on go.sum, which planner lacks: it has no dependencies.
+          cache: false
       - name: install test dependencies
         run: sudo apt-get update && sudo apt-get install --yes zsh
       - uses: astral-sh/setup-uv@v6

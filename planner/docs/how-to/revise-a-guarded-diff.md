@@ -96,9 +96,8 @@ commit is recorded and why the original commit is required.
 
 Planner patch starts from the base commit and applies every change through the
 edited one; it never applies later changes. On success it reports
-`prefix_applied: true`; the deprecated `prefix_replayed` alias has the same
-value for compatibility. It also reports
-`downstream_checked: false`. For whole-plan readiness, run:
+`prefix_applied: true` and `downstream_checked: false`. For whole-plan
+readiness, run:
 
 ```bash
 planner check plan.md --repo "$REPO" --base-commit "$BASE_COMMIT"

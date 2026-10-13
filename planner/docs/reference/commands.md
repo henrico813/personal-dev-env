@@ -209,8 +209,7 @@ one; it never applies later changes.
 - `changed`: whether patch modified the plan. It is false when the submitted
   file matches the current source, and `written` is then false too.
 - `structure_valid`, `patch_syntax_valid`: checks that ran.
-- `prefix_applied`: always `true` on success; use this field.
-- `prefix_replayed`: deprecated alias with the same value, kept for compatibility.
+- `prefix_applied`: always `true` on success.
 - `downstream_checked`: `false`; later changes are not applied.
 - `base_commit`: the base commit passed in.
 - `behavior_checked`: `false`.
@@ -224,15 +223,13 @@ planner check <plan.md> [--repo DIR] [--base-commit COMMIT] [--json-errors]
 `planner check` validates the plan structure, then applies every change against
 the base commit. If `--base-commit` is omitted, the first line of `### Current
 State` must be `Base commit: <full commit ID>`. If `--repo` is omitted, Planner
-uses the current working directory's Git repository. `--stdin` reads the plan
-from stdin. `--format` is not accepted.
+uses the current working directory's Git repository. `--stdin` and `--format`
+are not accepted.
 
 The check opens a disposable repository at the base commit and applies the
 whole plan in order. It reports `plan_sha256`, `structure_valid: true`,
 `applicability_checked: true`, `changes_applied`, `base_commit`,
 `source_state: "committed_snapshot_only"`, and `behavior_checked: false`.
-Use `changes_applied`. `changes_replayed` is a deprecated alias with the same
-value, kept for compatibility.
 `behavior_checked: false` means an applying patch is not proof that the result
 compiles or passes tests.
 

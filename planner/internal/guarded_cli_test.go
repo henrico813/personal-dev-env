@@ -62,6 +62,39 @@ func fooDiff(t *testing.T, before, after, mode string) string {
 	return strings.TrimSuffix(string(raw), "\n")
 }
 
+// BuildPlanExample returns a valid one-step plan that tests adjust for each
+// scenario.
+func BuildPlanExample() Plan {
+	return Plan{
+		Title:    "Short title for the plan",
+		Overview: "2-4 sentence summary of what the plan changes and why.",
+		DefinitionOfDone: DefinitionOfDone{
+			Narrative:    "Paragraph describing why the change matters and how the pieces fit together.",
+			Goals:        []ChecklistItem{{Text: "Concrete acceptance criterion"}},
+			CurrentState: "Current behavior, constraints, and relevant file:line references.",
+			ModuleShape:  "Target file and directory structure after the change.",
+		},
+		Implementation: []Step{
+			{
+				Title:   "Short step title",
+				Summary: "Narrative summary explaining what this step changes and why.",
+				FileChanges: []FileChange{
+					{
+						Filename:    "path/to/file.ext",
+						Explanation: "One sentence explaining why this code exists.",
+						Diff:        "Unified diff of the change to this file, with context lines.",
+					},
+				},
+			},
+		},
+		Verification: &Verification{
+			Summary:   "Optional summary describing how verification maps to the goals.",
+			Automated: []ChecklistItem{{Text: "Runnable automated check"}},
+			Manual:    []ChecklistItem{{Text: "Manual verification step"}},
+		},
+	}
+}
+
 // writeRenderedPlan renders plan to a fresh temp Markdown file.
 func writeRenderedPlan(t *testing.T, plan Plan) string {
 	t.Helper()
@@ -270,8 +303,7 @@ func TestPatchWritesPlanFromScratch(t *testing.T) {
 	}
 	result := revisionPatch(t, name, target, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
-	if !result.Written || !result.PrefixApplied || !result.PrefixReplayed ||
-		result.DownstreamChecked {
+	if !result.Written || !result.PrefixApplied || result.DownstreamChecked {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 	if result.PlanSHA256 == "" || result.BaseCommit != baseCommit {
@@ -421,8 +453,7 @@ func TestPrefixApplyIgnoresLaterBrokenChange(t *testing.T) {
 	}
 	result := revisionPatch(t, name, first, view.EditExpect, repo, baseCommit,
 		"--after-file", scratch)
-	if !result.PrefixApplied || !result.PrefixReplayed ||
-		result.DownstreamChecked {
+	if !result.PrefixApplied || result.DownstreamChecked {
 		t.Fatalf("prefix apply flags wrong: %+v", result)
 	}
 	code, _, diagnostic := revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)
@@ -1107,7 +1138,7 @@ func TestDiffFileFromStdin(t *testing.T) {
 		t.Fatalf("stdin diff: exit %d: %s", code, diagnostic)
 	}
 	result := decodeGuardedResult[guardedPatchResult](t, out)
-	if !result.Written || !result.PrefixApplied || !result.PrefixReplayed {
+	if !result.Written || !result.PrefixApplied {
 		t.Fatalf("stdin diff result: %+v", result)
 	}
 	code, _, diagnostic = revisionExecute("check", name, "--repo", repo, "--base-commit", baseCommit)

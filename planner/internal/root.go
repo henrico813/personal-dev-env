@@ -158,11 +158,7 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
 		return 2
 	}
-	positional, pf, err := splitPreviewArgs(rest, true, false)
-	if err != nil {
-		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, err, err.Error()))
-		return 2
-	}
+	positional, pf := splitPreviewArgs(rest)
 	if len(positional) != 1 {
 		reportError(stderr, "new", newPlannerCLIError(PlannerUsageError, nil, usage))
 		return 2
@@ -189,12 +185,32 @@ func runNew(args []string, stdout io.Writer, stderr io.Writer) int {
 		reportError(stderr, "new", newPlannerCLIError(PlannerRenderOutputError, err, "plan markdown"))
 		return 1
 	}
-	return runPreview(stdout, stderr, pf, rendered, outputPath, "new", func() error {
-		if err := planpatch.WriteNew(outputPath, []byte(rendered)); err != nil {
-			return newPlannerCLIError(PlannerWriteOutputError, err, outputPath)
+	if pf.diff {
+		// The destination does not exist, so the preview adds every line.
+		var preview strings.Builder
+		for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n") {
+			preview.WriteString("+ ")
+			preview.WriteString(line)
+			preview.WriteByte('\n')
 		}
-		return nil
-	}, outputPath)
+		_, _ = io.WriteString(stdout, preview.String())
+	}
+	if pf.dryRun {
+		// A dry run that printed a preview exits 1, as diff does when there
+		// is content to review.
+		if pf.diff {
+			return 1
+		}
+		return 0
+	}
+	if err := planpatch.WriteNew(outputPath, []byte(rendered)); err != nil {
+		reportError(stderr, "new", newPlannerCLIError(PlannerWriteOutputError, err, outputPath))
+		return 1
+	}
+	if !pf.diff {
+		_, _ = io.WriteString(stdout, outputPath+"\n")
+	}
+	return 0
 }
 
 // newIssueOptions carries the optional issue-frontmatter flags for planner new.
@@ -278,36 +294,29 @@ func runInspect(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-// previewFlags carries the preview-state flags stripped before subcommand
-// parsing. Write is the default; --dry-run opts out of it.
+// previewFlags carries the preview flags of planner new. Write is the
+// default; --dry-run opts out of it.
 type previewFlags struct {
-	stdin  bool
 	diff   bool
 	dryRun bool
 }
 
-// splitPreviewArgs separates --stdin/--diff/--dry-run from positional and
-// subcommand flags. When allowPreview is false, --diff/--dry-run are passed
-// through unchanged (reject at the subcommand layer). When allowStdin is
-// false, --stdin is also passed through.
-func splitPreviewArgs(args []string, allowPreview, allowStdin bool) ([]string, previewFlags, error) {
+// splitPreviewArgs removes --diff and --dry-run and returns the other
+// arguments.
+func splitPreviewArgs(args []string) ([]string, previewFlags) {
 	kept := []string{}
 	pf := previewFlags{}
 	for _, a := range args {
-		switch {
-		case a == "--stdin" && allowStdin:
-			pf.stdin = true
-		case a == "--diff" && allowPreview:
+		switch a {
+		case "--diff":
 			pf.diff = true
-		case a == "--dry-run" && allowPreview:
+		case "--dry-run":
 			pf.dryRun = true
-		case a == "--write":
-			return nil, pf, fmt.Errorf("unknown flag %q", a)
 		default:
 			kept = append(kept, a)
 		}
 	}
-	return kept, pf, nil
+	return kept, pf
 }
 
 type InspectPlan struct {
@@ -368,48 +377,4 @@ func buildUpdateDiffExpect(selector, filename, explanation, diffRaw string) stri
 	_, _ = io.WriteString(h, "\x00")
 	_, _ = io.WriteString(h, diffRaw)
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
-}
-
-// runPreview orchestrates the create preview flow. Write is the default;
-// --dry-run suppresses it. --diff is additive and still writes unless dry-run
-// is set. stdoutPathOnWrite is printed on successful writes when --diff is not
-// set, preserving the legacy "create prints the output path on success" stdout
-// contract.
-func runPreview(stdout, stderr io.Writer, pf previewFlags, rendered, outputPath, cmdName string, doWrite func() error, stdoutPathOnWrite string) int {
-	existing, err := readExistingOutput(outputPath)
-	if err != nil {
-		reportError(stderr, cmdName, newPlannerCLIError(PlannerReadInputError, err, outputPath))
-		return 1
-	}
-	d := diffLines(existing, rendered)
-	if pf.diff && d != "" {
-		_, _ = io.WriteString(stdout, d)
-	}
-	if !pf.dryRun {
-		if err := doWrite(); err != nil {
-			reportError(stderr, cmdName, err)
-			return 1
-		}
-		if !pf.diff && stdoutPathOnWrite != "" {
-			_, _ = io.WriteString(stdout, stdoutPathOnWrite+"\n")
-		}
-		return 0
-	}
-	if pf.diff && d != "" {
-		return 1
-	}
-	return 0
-}
-
-// readExistingOutput returns the current contents of the file at outputPath,
-// or "" if none exists, so the --diff preview can show what the write changes.
-func readExistingOutput(outputPath string) (string, error) {
-	data, err := os.ReadFile(outputPath)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
 }

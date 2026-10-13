@@ -62,12 +62,6 @@ func TestRenderPlanEmitsCheckedForStatusDone(t *testing.T) {
 	}
 }
 
-func TestRenderPlanFromExampleDoesNotError(t *testing.T) {
-	if _, err := RenderPlan(BuildPlanExample()); err != nil {
-		t.Fatalf("BuildPlanExample should render cleanly: %v", err)
-	}
-}
-
 func minimalPlan() Plan {
 	return Plan{
 		Title:    "T",

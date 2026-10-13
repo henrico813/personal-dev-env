@@ -1,5 +1,5 @@
-// Markdown parsing reconstructs Plan values from canonical planner-rendered
-// plans and keeps section spans for splice-based partial replacement.
+// Markdown parsing reconstructs Plan values from planner-rendered plans and
+// records where each diff body sits, so inspect and patch can find it.
 package internal
 
 import (
@@ -38,30 +38,18 @@ type Span struct {
 	End   int `json:"end"`
 }
 
-// SectionSpans holds the byte ranges for each top-level plan section.
-type SectionSpans struct {
-	Title            Span `json:"title"`
-	Overview         Span `json:"overview"`
-	DefinitionOfDone Span `json:"definition_of_done"`
-	Implementation   Span `json:"implementation"`
-	Verification     Span `json:"verification"`
-}
-
-// ParseResult bundles the parsed plan with the byte spans needed by splice
-// operations.
+// ParseResult bundles the parsed plan with the byte span of each file
+// change's diff body, indexed by step and then by file change.
 type ParseResult struct {
 	Plan         Plan
-	Sections     SectionSpans
-	Steps        []Span
 	DiffContents [][]Span
 }
 
-// ParseMarkdown parses canonical planner-rendered markdown and returns the
-// reconstructed plan plus byte spans for sections, steps, and FileChange diff
-// bodies. Returns an error if the input does not match canonical format (fail
-// closed on drift). Optional YAML frontmatter (--- fenced block before the
-// title) is stripped before parsing; returned spans are absolute into the
-// original input so splice-based replace still works.
+// ParseMarkdown parses planner-rendered markdown and returns the plan plus the
+// byte span of each FileChange diff body. It returns an error when the input
+// drifts from the rendered format. Optional YAML frontmatter (a --- fenced
+// block before the title) is stripped first; spans stay absolute offsets into
+// input.
 func ParseMarkdown(input string) (ParseResult, error) {
 	if strings.Contains(input, "\r") {
 		return ParseResult{}, fmt.Errorf("CRLF line endings not supported; convert to LF")
@@ -85,8 +73,6 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	plan := Plan{}
 	titleLine := strings.SplitN(body, "\n", 2)[0]
 	plan.Title = strings.TrimSpace(strings.TrimPrefix(titleLine, "# "))
-	spansTyped := toSectionSpans(sectionSpans)
-	spansTyped.Title = Span{Start: prefixLen + len("# "), End: prefixLen + len(titleLine)}
 
 	overviewBody, _, err := sectionBody(input, sectionSpans["Overview"])
 	if err != nil {
@@ -109,7 +95,7 @@ func ParseMarkdown(input string) (ParseResult, error) {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
 	implBodyLine := strings.Count(input[:implBodyStart], "\n") + 1
-	steps, stepSpans, diffSpans, err := parseImplementation(implBody, implBodyStart, implBodyLine)
+	steps, diffSpans, err := parseImplementation(implBody, implBodyStart, implBodyLine)
 	if err != nil {
 		return ParseResult{}, wrapMarkdownParseError(envelope, err)
 	}
@@ -125,7 +111,7 @@ func ParseMarkdown(input string) (ParseResult, error) {
 	}
 	plan.Verification = parsedVerification
 
-	return ParseResult{Plan: plan, Sections: spansTyped, Steps: stepSpans, DiffContents: diffSpans}, nil
+	return ParseResult{Plan: plan, DiffContents: diffSpans}, nil
 }
 
 // splitMarkdownEnvelope separates the supported vault issue wrapper from the
@@ -319,16 +305,6 @@ func findTopLevelSections(input string) (map[string]Span, error) {
 	return spans, nil
 }
 
-func toSectionSpans(spans map[string]Span) SectionSpans {
-	return SectionSpans{
-		Title:            Span{},
-		Overview:         spans["Overview"],
-		DefinitionOfDone: spans["Definition of Done"],
-		Implementation:   spans["Implementation"],
-		Verification:     spans["Verification"],
-	}
-}
-
 func sectionBody(input string, span Span) (string, int, error) {
 	if span.Start < 0 || span.End > len(input) || span.Start >= span.End {
 		return "", 0, fmt.Errorf("invalid section span")
@@ -416,7 +392,7 @@ func parseDefinitionOfDone(body string) (DefinitionOfDone, error) {
 	}, nil
 }
 
-func parseImplementation(body string, base int, baseLine int) ([]Step, []Span, [][]Span, error) {
+func parseImplementation(body string, base int, baseLine int) ([]Step, [][]Span, error) {
 	rawHeadings := scanHeadings(body, "### ")
 	headings := []headingMatch{}
 	for _, h := range rawHeadings {
@@ -426,15 +402,14 @@ func parseImplementation(body string, base int, baseLine int) ([]Step, []Span, [
 	}
 
 	if len(headings) == 0 {
-		// Allow empty implementation body so append can bootstrap from scratch.
+		// An empty body parses; plan validation then reports the missing step.
 		if strings.TrimSpace(body) == "" {
-			return nil, nil, nil, nil
+			return nil, nil, nil
 		}
-		return nil, nil, nil, fmt.Errorf("implementation section has no steps")
+		return nil, nil, fmt.Errorf("implementation section has no steps")
 	}
 
 	steps := []Step{}
-	spans := []Span{}
 	diffSpans := [][]Span{}
 	for i, h := range headings {
 		end := len(body)
@@ -446,14 +421,13 @@ func parseImplementation(body string, base int, baseLine int) ([]Step, []Span, [
 		chunkLine := baseLine + strings.Count(body[:h.Start], "\n")
 		step, fcSpans, err := parseStepChunk(chunk, h.Text, chunkStart, chunkLine)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		steps = append(steps, step)
-		spans = append(spans, Span{Start: base + h.Start, End: base + end})
 		diffSpans = append(diffSpans, fcSpans)
 	}
 
-	return steps, spans, diffSpans, nil
+	return steps, diffSpans, nil
 }
 
 func parseStepChunk(chunk string, title string, chunkStart int, chunkLine int) (Step, []Span, error) {
