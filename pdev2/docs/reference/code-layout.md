@@ -57,3 +57,21 @@ requests saved by the old one.
 Tests sit in the package of the code they check. Tests in `cmd` replace
 package variables, such as `answerTimeout`, and set environment variables
 such as `PATH` and `XDG_STATE_HOME`, so they do not run in parallel.
+
+### What the Tests Protect
+
+Each approval promise, and the tests that fail when it breaks:
+
+| Promise | Tests |
+|---|---|
+| gh posts the text the approver saw | `TestParseReadsEveryFlagForm`, `TestPostsApprovedTextAfterFileChanges` |
+| A request whose meaning to gh is unclear is refused | `TestParseRejectsUnsafeRequests` |
+| An approval covers one command, text, and directory | `TestRequestIDChangesWithPostedText`, `TestOtherDirectoryNeedsNewApproval` |
+| Only a typed yes or a second tap approves | `TestPromptNeedsDeliberateAnswer`, `TestPopupRejectsLoneY`, `TestPopupDiscardsEarlyInput`, `TestPopupAppliesTapAndSettleRules` |
+| A later answer cannot change a decision | `TestLateYesKeepsDeclinedRequest`, `TestMoshiAnswersPendingRequest` |
+| A declined or interrupted request never runs gh | `TestDecidedRequestsNeverRunGH` |
+| gh runs at most once per approval | `TestRerunReportsResultWithoutRunningAgain`, `TestConcurrentRunsCallGHOnce`, `TestRerunSurvivesFailedRepoLookup` |
+| An approval expires four hours after its last change | `TestExpiredApprovalNeedsNewAnswer` |
+| Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |
+| An approval given after the agent stops waiting still runs | `TestRunnerSavesApprovedOutputForRerun`, `TestApprovalRestartsDeadRunner` |
+| Only the real gh runs, never one in the checkout | `TestRealGHIgnoresEmptyPATHEntry` |
