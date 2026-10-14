@@ -270,6 +270,10 @@ the body and the rest of the command stay on this computer.
 `--require-remote` means only the phone can answer: `moshi-hook` never
 asks in the terminal instead.
 
+When `HERDR_ENV` is `1`, `--moshi-ask` first waits until the request is
+30 seconds old, then reloads the record and runs `moshi-hook` only if the
+request is still pending. Otherwise it runs `moshi-hook` at once.
+
 | moshi-hook exit | Result |
 |---|---|
 | `0` | Approve, if the request is still pending |
@@ -279,7 +283,9 @@ asks in the terminal instead.
 `--moshi-ask` itself exits 1 for wrong arguments or when the record cannot be
 locked or saved, and 0 otherwise. An answer from the terminal or popup, or
 the runner when the request expires, ends a running phone question with
-`SIGTERM` to its process group.
+`SIGTERM` to its process group. `moshi-hook` has no way to withdraw a
+question it already sent, so that card stays on the phone and shows
+"timed out" when its four hours end.
 
 ## Runner
 
@@ -334,7 +340,7 @@ Record fields, with those omitted when empty marked as optional:
 | `XDG_STATE_HOME` | Root of the state directory; `~/.local/state` when unset |
 | `PATH` | Only full-path folders count, so an empty entry or `.` never picks a `gh` in the working directory. The first `gh` is [the guard](#the-guard), which blocks PR writes unless `PDE_GH_WRITE=1`; the next executable `gh` that is neither the guard nor this program is the one run. `herdr` is the first on `PATH`, otherwise the one in this program's folder: Herdr runs the inbox and popup with its server's `PATH`, which may lack `~/.local/bin`, where the installer puts both |
 | `PDE_GH_WRITE` | Set to `1` for the approved `gh` only, so the guard lets it through |
-| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, and looks up the Herdr agent |
+| `HERDR_ENV` | Herdr sets it to `1` in its terminals; then a new request opens the Herdr popup, shows a notification, sets the sidebar marker, looks up the Herdr agent, and makes the phone question wait until the request is 30 seconds old |
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
 | `PDE_CHECK_MACHINES` | Set to `1` by the inbox for `--herdr-popup` when nothing waits here: show [other machines](#other-herdr-machines) |
 | `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
@@ -373,6 +379,7 @@ the number, the write still works, but:
 | Limit | Value |
 |---|---|
 | Wait for an answer | 90 seconds |
+| Wait before asking the phone, when `HERDR_ENV` is `1` | Until the request is 30 seconds old |
 | Record expiry | 4 hours after the last change; saving `moshi_pid`, `moshi_error`, `runner_pid`, or `dismissed` alone is not a change |
 | Each `gh` and Herdr lookup while creating a request | 3 seconds |
 | Each other-machine check by the inbox popup | 20 seconds |

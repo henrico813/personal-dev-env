@@ -36,8 +36,8 @@ a terminal. Each one saves your answer only if the request is still
 waiting. It checks while holding the request's lock (see
 [Why gh runs only once](request-flow.md#why-gh-runs-only-once)), so two
 answers cannot both be saved. A popup still showing a request answered
-elsewhere stays open, and a phone question that could not be ended stays on
-the phone, but a later answer from either finds the request already
+elsewhere stays open, and a phone question already sent stays on the
+phone, but a later answer from either finds the request already
 answered or expired and changes nothing. So a tap on an old popup cannot
 undo an approval after `gh` may have posted, and an old phone question
 cannot approve a request you declined.

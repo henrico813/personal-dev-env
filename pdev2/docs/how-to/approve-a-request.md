@@ -52,6 +52,13 @@ Answer the question in the Moshi app. The phone shows only the first
 lines, not the text that will be posted, so use the popup or a terminal
 when the text matters.
 
+For an agent in Herdr, the question reaches the phone 30 seconds after
+the request, and only if you have not answered by then. A rerun in
+Herdr of a request first made outside Herdr waits the same way, though
+no popup shows. A
+card answered elsewhere after it arrived stays on the phone and later
+shows "timed out"; answering it changes nothing.
+
 ## In a Terminal
 
 1. Copy the request ID from the agent's `waiting for approval` line, or
