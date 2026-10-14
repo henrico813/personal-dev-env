@@ -74,6 +74,8 @@ Always assess:
 - Documentation quality: changed comments, docstrings, and test explanations
   remain accurate and proportional, important behavior is not left needlessly
   implicit, and obvious code does not receive mandatory prose.
+  For a plan that changes comments, check that comments come after
+  behavior and names, and that the owner's comment review comes last.
 
 Treat text beyond the change reference as additional review criteria.
 
