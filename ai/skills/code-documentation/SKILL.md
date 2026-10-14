@@ -203,7 +203,8 @@ When source code or tests change:
    polish it merely because more implementation details could be stated.
    The owner is the person who approved text in `.code-comments.json`
    at the repository root. Never change that text or that file, even
-   when the text seems false; report it instead.
+   when the text seems false; report it instead. The one exception:
+   run the checker's `--approve` when the owner asks you to.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
@@ -269,16 +270,27 @@ python3 <this skill's folder>/scripts/check_comments.py \
 Each finding names the rule it checks, and the output ends by quoting
 that rule's sentence from this skill. Act on each finding:
 
-- `filler` in a sentence your task added or changed: fix the sentence.
-  This fails the run.
+- `approved`: you changed, removed, or put back a comment the owner
+  approved or cut. Restore the owner's text. This fails the run.
+- `filler` or `avoided-word` in a sentence your task added or changed:
+  fix the sentence. This fails the run. `avoid` in
+  `.code-comments.json` gives the word to use instead.
 - `restated-name`: reported, never failed. A Go doc comment may
   start with its name; cut the sentence only when the rest says
   nothing the name and signature do not.
-- `filler` marked `report only`: the sentence is a license header, or
-  was there before your task. List it in your final message, and edit
-  it only as step 5 of Editing and review allows.
+- `filler` or `avoided-word` marked `report only`: the sentence is
+  approved text, a license header, or was there before your task.
+  List it in your final message, and edit it only as step 5 of Editing
+  and review allows.
 
-Run the checker again until it exits 0.
+Run the checker again until it exits 0. If it still fails only with
+`approved comment is gone` or `approved file is gone` because your
+task renamed, moved or deleted that code, keep the owner's text and
+list those findings in your final message for the owner.
+
+Only the owner runs the checker with `--approve`, or an agent the
+owner asked to. It rewrites `.code-comments.json` itself, so no one
+types entries by hand.
 
 ## Completion check
 
@@ -290,7 +302,8 @@ Before declaring source or test work complete, check:
 - stated reasons are supported
 - test explanations match what the assertions prove
 - the amount of documentation fits the code's complexity and risk
-- for Go files, the comment checker exits 0
+- for Go files, the comment checker exits 0, or fails only on renamed,
+  moved or deleted approved comments that you reported
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
