@@ -6,42 +6,68 @@ Example:
     python3 check_comments.py --repo . --base main internal/shop/*.go
 
 Prints one line per finding, then quotes each broken rule's sentence
-from the skill. The rules are:
+from the skill. ``.code-comments.json`` at the repository root holds
+the owner's approved text, ``""`` for a cut comment, and words to
+avoid::
 
+    {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
+                   "text": "// Total is in cents.\n"}],
+     "avoid": {"client": "say customer"}}
+
+The rules are:
+
+- ``approved``: approved text changed, a cut comment came back, or an
+  approved comment or its file is gone. Every file the settings name
+  is checked, even when it is not given.
 - ``filler``: a sentence about the code uses one of the skill's vague
   filler phrases, such as "facilitates".
+- ``avoided-word``: a sentence uses a word from the avoid list.
 - ``restated-name``: a comment's first sentence repeats the name of the
   code below it. This never fails the run.
 
 With ``--base``, sentences present at that commit never fail the run,
-and ``restated-name`` findings on them are left out. Filler in a
-license header above ``package`` is only reported. Generated files are
-skipped.
+and ``restated-name`` findings on them are left out. Filler and
+avoided words in approved text, or in a license header above
+``package``, are only reported. Generated files are skipped.
 
 Exit codes:
     0: Nothing failed.
-    1: With ``--base``, a sentence not present at that commit has filler.
-    2: A path is a folder or unreadable, no Go file was given, or
-        ``--base`` is not a commit.
+    1: An ``approved`` finding, or, with ``--base``, filler or an
+        avoided word in a sentence not present at that commit.
+    2: A path is a folder or unreadable, no Go file was given,
+        ``--base`` is not a commit, or the settings file has another
+        shape.
 """
 
 from __future__ import annotations
 
 import argparse
 import enum
+import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, TypeGuard
 
+SETTINGS = ".code-comments.json"
 # Each rule and the code-documentation sentence it checks, word for word.
 RULES = {
+    "approved": (
+        "On a later pass over unchanged behavior, edit existing prose only "
+        "to fix a specific false or unsupported claim, an omission that "
+        "makes it misleading for safe use, or an applicable convention "
+        "violation; otherwise leave it byte-for-byte unchanged."
+    ),
     "restated-name": (
         "Prose derived directly from a name, signature, single statement, "
         "or a test's name, inputs, and assertions is a restatement and "
         "must not be added."
+    ),
+    "avoided-word": (
+        "Explain project-specific terms when a new contributor would not "
+        "know them."
     ),
     "filler": "Avoid vague filler such as:",
 }
@@ -81,15 +107,19 @@ class Comment:
     Names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
     for a struct field or map entry, and ``const Red`` for a comment
     above a ``const (`` block. A comment inside a function body, with a
-    blank line after it, or above an empty block has the name ``""``.
-    ``header`` is true for a comment above the ``package`` line with a
-    blank line after it, where license text usually sits. A package doc
-    comment touches the ``package`` line, so it is named, not a header.
+    blank line after it, or above an empty block has the name ``""``,
+    and so does one whose name another comment in the file shares, once
+    ``unname_shared`` runs. Such comments cannot be approved. ``old`` is
+    its exact text, as approved text stores it. ``header`` is true for a
+    comment above the ``package`` line with a blank line after it, where
+    license text usually sits. A package doc comment touches the
+    ``package`` line, so it is named, not a header.
     """
 
     file: str
     line: int
     name: str
+    old: str
     prose: str
     header: bool = False
 
@@ -159,12 +189,14 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
                 name = name_code_below_comment(
                     lines, number, outer_name, scope
                 )
+            comment_lines = lines[start - 1 : number - 1]
             comments.append(
                 Comment(
                     file=file,
                     line=start,
                     name=name,
-                    prose=join_comment_prose(lines[start - 1 : number - 1]),
+                    old="".join(comment_lines),
+                    prose=join_comment_prose(comment_lines),
                     header=not seen_package and not name,
                 )
             )
@@ -293,26 +325,101 @@ def find_filler(sentences: list[str], name: str) -> list[RuleMatch]:
     return matches
 
 
+def find_avoided_words(
+    sentences: list[str], avoid: dict[str, str]
+) -> list[RuleMatch]:
+    """Match each avoided word, as a whole word in any sentence."""
+    matches = []
+    for word, instead in avoid.items():
+        whole_word = rf"\b{re.escape(word.lower())}\b"
+        found = [s for s in sentences if re.search(whole_word, s.lower())]
+        if found:
+            matches.append(
+                RuleMatch("avoided-word", f'"{word}": {instead}', found)
+            )
+    return matches
+
+
+def find_gone_approvals(
+    files: set[str],
+    comments: list[Comment],
+    approved: dict[tuple[str, str], str],
+) -> list[Finding]:
+    """Find approved comments, or their files, that are gone.
+
+    A cut comment that stays gone is what the owner asked for, so only
+    entries with text count.
+    """
+    current = {(c.file, c.name) for c in comments}
+    findings = []
+    for (file, name), text in sorted(approved.items()):
+        if not text:
+            continue
+        gone = Comment(file=file, line=0, name=name, old="", prose="")
+        if file not in files:
+            findings.append(Finding(gone, "approved", "approved file is gone"))
+        elif (file, name) not in current:
+            message = "approved comment is gone"
+            findings.append(Finding(gone, "approved", message))
+    return findings
+
+
+def find_changed_approval(
+    comment: Comment, approved: dict[tuple[str, str], str]
+) -> Finding | None:
+    """Find a comment whose text differs from what the owner approved."""
+    approved_text = approved[(comment.file, comment.name)]
+    if approved_text == comment.old:
+        return None
+    if not approved_text:
+        return Finding(comment, "approved", "the owner cut this comment")
+    return Finding(comment, "approved", "approved text changed; restore it")
+
+
 def find_rule_violations(
-    comments: list[Comment], base_sentences: set[str] | None
+    files: set[str],
+    comments: list[Comment],
+    approved: dict[tuple[str, str], str],
+    avoid: dict[str, str],
+    base_sentences: set[str] | None,
 ) -> list[Finding]:
     """Check every comment against the ``RULES``.
 
     Args:
-        comments: Comments from the checked files.
+        files: Paths of the checked files, relative to the repository.
+        comments: Comments from those files.
+        approved: Approved text by ``(file, name)``; ``""`` means the
+            owner cut the comment.
+        avoid: Words not to use, each with what to say instead.
         base_sentences: The sentences of every Go comment under the
             repository at ``--base``, or ``None`` without it.
 
     Returns:
-        Findings in file order.
+        Gone approved comments, then findings in file order.
     """
-    findings = []
+    findings = find_gone_approvals(files, comments, approved)
     for comment in comments:
+        is_approved = (
+            bool(comment.name)
+            and (
+                comment.file,
+                comment.name,
+            )
+            in approved
+        )
+        if is_approved:
+            changed = find_changed_approval(comment, approved)
+            # The owner's text must come back as it was, so other rules
+            # would only ask the agent to edit it.
+            if changed:
+                findings.append(changed)
+                continue
         sentences = split_sentences(comment.prose)
         # Prose names code without its qualifier: "Cart.Total" is written
         # "Total", and "const Red" is written "Red".
         name = re.split(r"[. ]", comment.name)[-1]
-        matches = find_restated_name(sentences, name)
+        matches = [] if is_approved else find_restated_name(sentences, name)
+        matches += find_avoided_words(sentences, avoid)
         matches += find_filler(sentences, name)
         for match in matches:
             # A sentence present at --base may be a person's words, so it
@@ -323,12 +430,71 @@ def find_rule_violations(
             if present_at_base and match.rule == "restated-name":
                 continue
             note = ""
-            if comment.header:
+            if is_approved:
+                note = "approved: report only"
+            elif comment.header:
                 note = "header: report only"
             elif present_at_base:
                 note = "existing: report only"
             findings.append(Finding(comment, match.rule, match.message, note))
     return findings
+
+
+def load_settings(
+    repo: Path,
+) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+    """Read approved text and avoided words from ``.code-comments.json``.
+
+    Exits 2 when the file is not JSON of the shape in the module
+    docstring.
+
+    Args:
+        repo: The folder given as ``--repo``.
+
+    Returns:
+        Approved text by ``(file, name)`` and the avoid list; both are
+        empty when no file exists.
+    """
+    path = repo / SETTINGS
+    if not path.exists():
+        return {}, {}
+    try:
+        settings = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        print(f"{path}: {error}", file=sys.stderr)
+        sys.exit(2)
+    is_object = isinstance(settings, dict)
+    entries = settings.get("approved", []) if is_object else None
+    avoid = settings.get("avoid", {}) if is_object else None
+    if not (
+        isinstance(entries, list)
+        and all(
+            strings(e) and set(e) >= {"file", "name", "text"} for e in entries
+        )
+        and strings(avoid)
+    ):
+        print(
+            f'{path}: expected {{"approved": [{{"file", "name", "text"}}], '
+            '"avoid": {word: advice}} of strings; see check_comments.py',
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    approved = {(e["file"], e["name"]): e["text"] for e in entries}
+    return approved, avoid
+
+
+def strings(value: object) -> TypeGuard[dict[str, str]]:
+    """Return whether ``value`` is a JSON object whose values are strings.
+
+    Args:
+        value: A value read from the settings file.
+
+    Returns:
+        True for a dict with string keys and values.
+    """
+    return isinstance(value, dict) and all(
+        isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+    )
 
 
 def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
@@ -339,6 +505,10 @@ def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
 
     Args:
         repo: The folder given as ``--repo``, inside a Git repository.
+
+    Returns:
+        The comments in every Go file at ``rev``, with shared names
+        removed.
 
     Raises:
         ValueError: ``rev`` is not a commit in ``repo``.
@@ -366,7 +536,36 @@ def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
         # An old file need not be UTF-8; only its comments matter.
         source = shown.decode("utf-8", errors="replace")
         found += parse_go_comments(source, file)
-    return found
+    return unname_shared(found)[0]
+
+
+def unname_shared(
+    comments: list[Comment],
+) -> tuple[list[Comment], dict[tuple[str, str], list[int]]]:
+    """Take the name off comments whose name another comment shares.
+
+    Two ``func init()`` or two ``var _`` lines in one file are ordinary
+    Go, but approved text could not tell their comments apart.
+
+    Args:
+        comments: Every checked comment.
+
+    Returns:
+        The comments, with shared names set to ``""``, and the lines
+        of each shared name by ``(file, name)``.
+    """
+    lines: dict[tuple[str, str], list[int]] = {}
+    for comment in comments:
+        if comment.name:
+            lines.setdefault((comment.file, comment.name), []).append(
+                comment.line
+            )
+    shared = {key: found for key, found in lines.items() if len(found) > 1}
+    unnamed = [
+        replace(c, name="") if (c.file, c.name) in shared else c
+        for c in comments
+    ]
+    return unnamed, shared
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -386,9 +585,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
+    approved, avoid = load_settings(repo)
+    # An unlisted file keeps its approved text checked; a missing one is
+    # reported as gone.
+    named = sorted({repo / f for f, _ in approved})
+    paths = list(args.paths) + [path for path in named if path.exists()]
     checked_files: set[str] = set()
     comments: list[Comment] = []
-    for path in args.paths:
+    for path in paths:
         if path.is_dir():
             print(f"{path}: a folder; pass its Go files", file=sys.stderr)
             return 2
@@ -412,6 +616,13 @@ def main(argv: list[str] | None = None) -> int:
     if not checked_files:
         print("no Go file to check", file=sys.stderr)
         return 2
+    comments, shared = unname_shared(comments)
+    for (file, name), found in shared.items():
+        for line in found:
+            print(
+                f"{file}:{line} {name}: cannot be approved; "
+                f"{len(found)} comments in this file have this name"
+            )
 
     base_sentences = None
     if args.base:
@@ -426,19 +637,27 @@ def main(argv: list[str] | None = None) -> int:
             for sentence in split_sentences(comment.prose)
         }
 
-    findings = find_rule_violations(comments, base_sentences)
+    findings = find_rule_violations(
+        checked_files, comments, approved, avoid, base_sentences
+    )
     broken_rules: list[str] = []
     for finding in findings:
         comment = finding.comment
-        place = f"{comment.file}:{comment.line} {comment.name or '-'}"
+        # A gone comment has no line to point at.
+        at_line = f":{comment.line}" if comment.line else ""
+        place = f"{comment.file}{at_line} {comment.name or '-'}"
         note = f" ({finding.note})" if finding.note else ""
         print(f"{place}: {finding.rule}: {finding.message}{note}")
         if finding.rule not in broken_rules:
             broken_rules.append(finding.rule)
     for rule in broken_rules:
         print(f'{rule} rule: "{RULES[rule]}"')
-    failed = base_sentences is not None and any(
-        finding.rule == "filler" and not finding.note for finding in findings
+    failing_rules = {"approved"}
+    if base_sentences is not None:
+        failing_rules |= {"avoided-word", "filler"}
+    failed = any(
+        finding.rule in failing_rules and not finding.note
+        for finding in findings
     )
     return 1 if failed else 0
 
