@@ -36,5 +36,7 @@ bring it to the user.
   push, merge, deploy or delete.
 - If the agent hits something unexpected, have it stop and report
   rather than improvise a fix.
+- When the work changes code comments, bring the comments to the user
+  for review last, after behavior and names are done.
 - Make minor decisions yourself and say so. Ask only about real ones.
 - Keep updates short; put detail in files, not chat.

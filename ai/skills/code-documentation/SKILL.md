@@ -165,9 +165,18 @@ When source code or tests change:
    makes it misleading for safe use, or an applicable convention violation;
    otherwise leave it byte-for-byte unchanged. Do not broaden, reformat, or
    polish it merely because more implementation details could be stated.
+   The owner is the person who approved text in `.code-comments.json`
+   at the repository root. Never change that text or that file, even
+   when the text seems false; report it instead.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
+
+Write and review comments after behavior, tests, and names have
+settled, because a later rename or behavior change makes reviewed
+comments false. When one task changes all of these, do them in this
+order: behavior and tests, then names, then comments, then the owner's
+review of the comments, last.
 
 For abstract or injected I/O dependencies, distinguish method calls from their
 effects. Do not infer storage, mapping, durability, verification, or rollback
@@ -203,8 +212,48 @@ During implementation, make supported in-scope documentation fixes
 automatically. During review-only work, report findings without editing unless
 the user explicitly asks for fixes.
 
+When a subagent checks whether terms make sense to a new contributor,
+give it only the code and tests, not the design doc or plan. Check
+claims against requirements yourself.
+
 If a documentation issue reveals unclear requirements or a possible code bug,
 report it instead of hiding it with prose.
+
+## Go comment checker
+
+For Go files whose comments you write or review, run the checker in
+this skill's `scripts/` folder. It needs Python 3.10 or later:
+
+```bash
+python3 <this skill's folder>/scripts/check_comments.py \
+  --repo <repository root> --base <commit your task started from> \
+  <Go files>
+```
+
+Each finding names the rule it checks, and the output ends by quoting
+that rule's sentence from this skill. Act on each finding:
+
+- `approved`: you changed, removed, or put back a comment the owner
+  approved or cut. Restore the owner's text. This fails the run.
+- `filler` or `avoided-word` in a sentence your task added or changed:
+  fix the sentence. This fails the run. `avoid` in
+  `.code-comments.json` gives the word to use instead.
+- `restated-name` or `repeated-fact`: a question, not a failure. A Go
+  doc comment may start with its name; cut the sentence only when the
+  rest says nothing the name and signature do not. Keep a repeated
+  fact in one comment, and never cut it from approved text.
+- `filler` or `avoided-word` marked `report only`: the sentence is
+  approved text, a license header, or was there before your task.
+  List it in your final message, and edit it only as step 5 of Editing
+  and review allows.
+
+Run the checker again until it exits 0. If it still fails only with
+`approved comment is gone` or `approved file is gone` because your
+task renamed or moved that code, list those findings in your final
+message for the owner.
+
+Only the owner runs the checker with `--approve`. It prints the
+entries for `.code-comments.json`, so no one types them by hand.
 
 ## Completion check
 
@@ -216,6 +265,8 @@ Before declaring source or test work complete, check:
 - stated reasons are supported
 - test explanations match what the assertions prove
 - the amount of documentation fits the code's complexity and risk
+- for Go files, the comment checker exits 0, or fails only on renamed
+  or moved approved comments that you reported
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
