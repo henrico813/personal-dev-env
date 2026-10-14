@@ -62,8 +62,10 @@ func TestMoshiAnswersPendingRequest(t *testing.T) {
 	}
 }
 
-// A phone question outlived popup answers by up to four hours, leaving a
-// question on the phone that could no longer decide anything.
+// An answer given elsewhere must end the phone question's helper, or it
+// keeps waiting on moshi-hook for up to four hours. A card moshi-hook has
+// already sent stays on the phone; TestPhoneWaitsForPopupInHerdr covers how
+// most requests avoid sending one.
 func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	// The fake moshi-hook never answers, like a phone nobody looks at. It
@@ -90,6 +92,57 @@ func TestAnsweredRequestStopsPhoneAsk(t *testing.T) {
 	saveAnswer(rec.ID, approval.ChoiceYes)
 
 	waitForFile(t, stopped)
+}
+
+// moshi-hook cannot take back a question, so the phone question sent with
+// every request left a card that showed "timed out" four hours later for
+// each one the owner approved in the popup. A request from Herdr now waits
+// first, and one answered meanwhile must never reach the phone. One still
+// waiting must, or the owner could not answer away from Herdr. Outside
+// Herdr no popup shows, so the phone must be asked without the wait.
+func TestPhoneWaitsForPopupInHerdr(t *testing.T) {
+	for _, tc := range []struct {
+		name, herdrEnv string
+		popupAnswers   bool
+		wantAsked      bool
+	}{
+		{"popup answers first", "1", true, false},
+		{"still pending", "1", false, true},
+		// The fake wait declines here too; outside Herdr it must not run, so
+		// the phone is still asked.
+		{"no popup", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			t.Setenv("HERDR_ENV", tc.herdrEnv)
+			// The fake moshi-hook logs each call and approves.
+			log := approvaltest.FakeMoshiHook(t, `echo ask >> "$log"`)
+			rec := approval.Record{ID: "new", State: approval.StatePending, Created: time.Now()}
+			if err := approval.Save(rec); err != nil {
+				t.Fatal(err)
+			}
+			// Stands in for the 30 seconds and records how long it would be; in
+			// the popup cases the owner declines in the popup during it.
+			var waited time.Duration
+			approvaltest.Replace(t, &waitBeforePhone, func(d time.Duration) {
+				waited = d
+				if tc.popupAnswers {
+					saveAnswer(rec.ID, approval.ChoiceNo)
+				}
+			})
+
+			moshiAsk([]string{rec.ID})
+
+			_, err := os.Stat(log)
+			if asked := err == nil; asked != tc.wantAsked {
+				t.Errorf("phone asked = %t, want %t", asked, tc.wantAsked)
+			}
+			// A new request waits nearly the whole 30 seconds.
+			if tc.herdrEnv == "1" && waited < 25*time.Second {
+				t.Errorf("waited %v before asking the phone, want about %v", waited, phoneDelay)
+			}
+		})
+	}
 }
 
 // The phone question runs detached with its output thrown away. When

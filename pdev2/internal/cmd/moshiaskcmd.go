@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"pdev2/internal/approval"
 )
@@ -14,6 +15,15 @@ import (
 // The phone question is sent by this same program, started again with
 // --moshi-ask. Tests replace moshiProgram so they never message a phone.
 var moshiProgram = os.Executable
+
+// moshi-hook cannot take back a question it has sent, so one sent for a
+// request later answered in the Herdr popup stays on the phone until it shows
+// "timed out" four hours later. Most popup answers come within seconds, so a
+// request from Herdr asks the phone only once it is phoneDelay old. Tests
+// replace waitBeforePhone so they do not wait.
+const phoneDelay = 30 * time.Second
+
+var waitBeforePhone = time.Sleep
 
 // startMoshi sends the phone question unless the one saved in the record is
 // still running, so reruns of a waiting request never send a second question.
@@ -48,27 +58,37 @@ func startMoshi(rec approval.Record) approval.Record {
 	return rec
 }
 
-// Ends a phone question that can no longer decide anything, so it does not
-// stay on the phone for hours. The question runs in its own session, so its
-// PID is also its process group ID. moshiAsk must not call this for its own
-// answer.
+// Ends a phone question that can no longer decide anything. One still in its
+// wait never reaches the phone; one moshi-hook already sent stays there. The
+// question runs in its own session, so its PID is also its process group ID.
+// moshiAsk must not call this for its own answer.
 func stopMoshi(pid int) {
 	if pid != 0 && processAlive(pid) {
 		_ = syscall.Kill(-pid, syscall.SIGTERM)
 	}
 }
 
-// moshiAsk runs as pde-gh-write --moshi-ask ID. It waits up to four hours for
-// the phone answer and saves it only if the request is still pending; a later
-// answer changes nothing. It never runs gh: the request's runner, the waiting
-// pde-gh-write, or a rerun does.
+// moshiAsk runs as pde-gh-write --moshi-ask ID. For a request from Herdr it
+// first waits until the request is phoneDelay old. It then waits up to four
+// hours for the phone answer and saves it only if the request is still
+// pending; a later answer changes nothing. It never runs gh: the request's
+// runner, the waiting pde-gh-write, or a rerun does.
 func moshiAsk(args []string) int {
 	if len(args) != 1 {
 		return 1
 	}
 	answer, failure := approval.ChoiceNone, ""
+	rec, err := approval.Load(args[0])
+	// Outside Herdr no popup shows, so the phone is asked at once. An answer
+	// during the wait ends this program through stopMoshi; the reload checks
+	// again before anything is sent. A rerun of an older request asks at once.
+	if err == nil && rec.State == approval.StatePending && os.Getenv("HERDR_ENV") == "1" {
+		// The cap keeps a clock set back after the request from delaying the phone.
+		waitBeforePhone(min(time.Until(rec.Created.Add(phoneDelay)), phoneDelay))
+		rec, err = approval.Load(args[0])
+	}
 	// The question comes from the saved record, so it shows what the popup shows.
-	if rec, err := approval.Load(args[0]); err == nil && rec.State == approval.StatePending {
+	if err == nil && rec.State == approval.StatePending {
 		ask := exec.Command("moshi-hook", "ask", "--require-remote", "--source", "pde-gh-write", "--timeout", "4h", moshiQuestion(rec))
 		// This program runs detached and nobody reads its output, so moshi-hook's
 		// reason for failing is kept for the record.
@@ -91,7 +111,7 @@ func moshiAsk(args []string) int {
 		return 1
 	}
 	defer lock.Close()
-	rec, err := approval.Load(args[0])
+	rec, err = approval.Load(args[0])
 	if err != nil || approval.Expired(rec) {
 		return 0
 	}

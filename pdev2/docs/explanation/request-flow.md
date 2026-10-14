@@ -32,7 +32,8 @@ One request goes like this:
    `pde-pr-approve --herdr-popup`; `pde-pr-approve` is another name for
    `pde-gh-write`.
 5. It also starts `pde-gh-write --moshi-ask`, which runs `moshi-hook ask`
-   to put the question on your phone.
+   to put the question on your phone. Inside Herdr, it first waits until
+   the request is 30 seconds old, and asks only if you have not answered.
 6. You answer in the popup, on the phone, or with `pde-pr-approve ID` in
    a terminal. The first answer counts.
 7. After an approval, the agent's waiting command or the runner, whichever
@@ -131,8 +132,41 @@ same as the request's lifetime.
 When you answer on the phone, it saves your answer if the request is still
 waiting. It never runs `gh`; the runner, the agent's waiting command, or
 its next rerun does that. An answer in the popup or a terminal, or the
-request expiring, ends the phone question, so a question that can no
-longer decide anything does not stay on your phone.
+request expiring, ends the phone question. A question `moshi-hook` has
+already sent stays on your phone, though; the next section explains why
+and how the program avoids sending one.
+
+### Why the Phone Waits 30 Seconds
+
+`moshi-hook` cannot take back a question once it is on the phone. A
+question left there after you answered in the popup shows "timed out"
+when its four hours run out, and answering it changes nothing. When the
+phone was asked at the same time as the popup, every request you
+approved in the popup left such a card.
+
+Most requests are answered within seconds: across 158 saved requests,
+the median time from creation to the last change was about 7 seconds,
+and about 80% came within 30 seconds. So when the command that started
+the phone question ran inside Herdr, the phone question waits until the
+request is 30 seconds old, then asks only if the request is still
+waiting. An answer during the wait ends the phone question before
+anything is sent. A rerun inside Herdr of a request first made outside
+Herdr waits too, though a rerun opens no popup.
+
+The phone is asked without waiting when no popup shows, because the
+agent runs outside Herdr, and when a rerun replaces a phone question of
+a request older than 30 seconds. Inside Herdr it waits even when the
+popup fails to open: the popup opens in the background while the phone
+question starts. The notification then says why: when another popup is
+open, how to reach it; otherwise "Cannot open the approval popup" and the
+reason. When herdr itself cannot be reached, no notification arrives.
+A card can still be left on the phone when you answer in the popup or a
+terminal after the question was sent.
+
+The agent's command waits 90 seconds, so a phone question that fails
+within a minute of asking, such as when `moshi-hook` is not paired, is
+still reported to the agent before that wait ends. A later failure is
+reported by the agent's next rerun.
 
 ### Why a Rerun Does Not Send a Second Question
 
