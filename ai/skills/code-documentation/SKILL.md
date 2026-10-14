@@ -167,7 +167,8 @@ When source code or tests change:
    polish it merely because more implementation details could be stated.
    The owner is the person who approved text in `.code-comments.json`
    at the repository root. Never change that text or that file, even
-   when the text seems false; report it instead.
+   when the text seems false; report it instead. The one exception:
+   run the checker's `--approve` when the owner asks you to.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
@@ -235,6 +236,13 @@ that rule's sentence from this skill. Act on each finding:
 
 - `approved`: you changed, removed, or put back a comment the owner
   approved or cut. Restore the owner's text. This fails the run.
+  If your task renamed the code, keep the owner's text unchanged on
+  the new name and report the finding. In your final message, list
+  each rename as an exact `--rename OLD=NEW` pair for the owner's
+  `--approve`, quoting names with spaces, such as
+  `--rename 'const Red=const Crimson'`. Unchanged text under a new
+  name is reported as `approved text moved` and does not fail. A gone
+  comment's finding may add `possibly now <name> at <line>`.
 - `filler` or `avoided-word` in a sentence your task added or changed:
   fix the sentence. This fails the run. `avoid` in
   `.code-comments.json` gives the word to use instead.
@@ -249,11 +257,15 @@ that rule's sentence from this skill. Act on each finding:
 
 Run the checker again until it exits 0. If it still fails only with
 `approved comment is gone` or `approved file is gone` because your
-task renamed or moved that code, list those findings in your final
-message for the owner.
+task renamed or moved that code, keep the owner's text and list those
+findings in your final message for the owner.
 
-Only the owner runs the checker with `--approve`. It prints the
-entries for `.code-comments.json`, so no one types them by hand.
+Only the owner runs the checker with `--approve`, or an agent the
+owner asked to. It rewrites `.code-comments.json` itself, so no one
+types entries by hand. Pass `--rename OLD=NEW` once for each renamed
+comment, so its approved or cut entry moves to the new name. For many
+renames, put one `--rename=OLD=NEW` per line in a file and pass
+`@<file>`.
 
 ## Completion check
 

@@ -1,8 +1,10 @@
 """Guard the rules of the code-documentation skill."""
 
 import os
+import re
 import runpy
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -65,3 +67,26 @@ def test_every_rule_quotes_the_skill() -> None:
     missing = [rule for rule, quote in rules.items() if quote not in skill]
 
     assert missing == []
+
+
+def test_skill_names_only_real_checker_options() -> None:
+    """Fail when the skill tells agents to pass an option the checker lacks.
+
+    Agents follow the skill's commands word for word: after a rename
+    they are told to report ``--approve --rename OLD=NEW`` to the
+    owner. If the option is renamed or dropped, that instruction fails
+    for the owner with a usage error.
+    """
+    skill = (ROOT / SKILL).read_text()
+    shown = subprocess.run(
+        [sys.executable, str(CHECKER), "--help"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    named = set(re.findall(r"--[a-z][a-z-]*", skill))
+    accepted = set(re.findall(r"--[a-z][a-z-]*", shown))
+
+    assert named
+    assert named - accepted == set()

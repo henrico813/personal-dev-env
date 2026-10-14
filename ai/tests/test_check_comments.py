@@ -448,14 +448,27 @@ def test_only_license_headers_are_report_only(tmp_path: Path) -> None:
     assert "gen.go" not in result.stdout
 
 
+def settings_of(repo: Path) -> object:
+    """Read the settings file the checker wrote.
+
+    Args:
+        repo: Repository written by ``write_repo``.
+
+    Returns:
+        The parsed ``.code-comments.json``.
+    """
+    return json.loads((repo / ".code-comments.json").read_text())
+
+
 def test_approve_round_trips_exact_text(tmp_path: Path) -> None:
-    """Print a settings file that the checker then passes unchanged.
+    """Write a settings file that the checker then passes unchanged.
 
     A hand-typed entry that drops a tab or the final newline makes the
     checker report the owner's own comment as changed, and the agent
     restores the wrong text. Cut comments must be listed too, or an
-    agent can put them back. The owner saves the output as the
-    settings file, so it must keep the avoid list and load as it is.
+    agent can put them back. The owner first saved printed output with
+    a shell redirect, which emptied the file before the checker read
+    it, so ``--approve`` writes the file and prints only a summary.
     """
     blue = '\t// Blue: "blue" is shown when none is set.\n'
     source = f'package shop\n\nconst (\n{blue}\tBlue = "blue"\n)\n'
@@ -466,10 +479,12 @@ def test_approve_round_trips_exact_text(tmp_path: Path) -> None:
     (repo / "cart.go").write_text(source + "func Total()\n")
 
     printed = run_checker(repo, "--base", "HEAD", "--approve")
-    (repo / ".code-comments.json").write_text(printed.stdout)
     result = run_checker(repo)
 
-    assert json.loads(printed.stdout) == {
+    assert printed.stdout == (
+        ".code-comments.json: 1 added or changed, 0 kept, 1 cut\n"
+    )
+    assert settings_of(repo) == {
         "approved": [
             {"file": "cart.go", "name": "Blue", "text": blue},
             {"file": "cart.go", "name": "Total", "text": ""},
@@ -482,7 +497,7 @@ def test_approve_round_trips_exact_text(tmp_path: Path) -> None:
 def test_approve_keeps_other_files_approvals(tmp_path: Path) -> None:
     """Keep every earlier approval when the owner approves another file.
 
-    The owner approves one package at a time and saves the output over
+    The owner approves one package at a time, and each run rewrites
     the settings file. Dropping the other package's entries would let
     agents rewrite that text, and dropping a cut entry would let them
     put the comment back.
@@ -493,11 +508,10 @@ def test_approve_keeps_other_files_approvals(tmp_path: Path) -> None:
     repo = write_repo(tmp_path, files, [("b.go", "Old", "")], avoid)
 
     for file in ("a.go", "b.go"):
-        printed = run_checker(repo, "--approve", only=file)
-        (repo / ".code-comments.json").write_text(printed.stdout)
+        run_checker(repo, "--approve", only=file)
     result = run_checker(repo)
 
-    assert json.loads(printed.stdout) == {
+    assert settings_of(repo) == {
         "approved": [
             {"file": "b.go", "name": "B", "text": sends},
             {"file": "a.go", "name": "A", "text": adds},
@@ -506,6 +520,188 @@ def test_approve_keeps_other_files_approvals(tmp_path: Path) -> None:
         "avoid": avoid,
     }
     assert result.returncode == 0
+
+
+def test_rename_carries_approvals_to_new_names(tmp_path: Path) -> None:
+    """Record approved and cut comments under the names after a rename.
+
+    Approved entries are keyed by name. When a task renamed the code,
+    ``--approve`` recorded the owner's reviewed comments as cut under
+    the old names, and left earlier cuts under names nothing has, so
+    an agent could add those comments back unnoticed.
+    """
+    reads = "// Load reads the saved cart.\n"
+    source = "package shop\n\n" + TOTAL + "func Total() {}\n\n"
+    write_repo(
+        tmp_path,
+        {"cart.go": source + reads + "func Load() {}\n"},
+        [("cart.go", "Total", TOTAL), ("cart.go", "Empty", "")],
+    )
+    commit_all(tmp_path)
+    renamed = "package shop\n\n" + TOTAL + "func Sum() {}\n\n"
+    (tmp_path / "cart.go").write_text(renamed + reads + "func Read() {}\n")
+
+    run_checker(
+        tmp_path,
+        "--base",
+        "HEAD",
+        "--approve",
+        "--rename",
+        "Total=Sum",
+        "--rename",
+        "Load=Read",
+        "--rename",
+        "Empty=IsEmpty",
+    )
+
+    assert settings_of(tmp_path) == {
+        "approved": [
+            {"file": "cart.go", "name": "Sum", "text": TOTAL},
+            {"file": "cart.go", "name": "Read", "text": reads},
+            {"file": "cart.go", "name": "IsEmpty", "text": ""},
+        ],
+        "avoid": {},
+    }
+
+
+def test_moved_approved_text_is_reported_not_failed(tmp_path: Path) -> None:
+    """Keep approved text protected under its new name until recorded.
+
+    After a rename, the owner's unchanged text sits under a name the
+    settings file does not know. Failing would push the agent to undo
+    the rename; treating the text as new would let it be rewritten.
+    Without ``--base`` the checker cannot tell a new name from an old
+    one, so the comment still counts as gone.
+    """
+    total = "// This is responsible for the cart total.\n"
+    repo = write_repo(tmp_path, {}, [("cart.go", "Total", total)])
+    commit_all(repo)
+    source = "package shop\n\n" + total + "func Sum() {}\n"
+    (repo / "cart.go").write_text(source)
+
+    result = run_checker(repo, "--base", "HEAD")
+    without_base = run_checker(repo)
+
+    assert result.returncode == 0
+    assert (
+        "cart.go Total: approved: approved text moved to cart.go:3 Sum; "
+        "record it with --approve --rename (renamed: report only)\n"
+        in result.stdout
+    )
+    assert "(approved: report only)" in result.stdout
+    assert without_base.returncode == 1
+
+
+DEPRECATED = "// Deprecated: do not use.\n"
+
+
+@pytest.mark.parametrize(
+    "before, after, approved, name",
+    [
+        pytest.param(
+            DEPRECATED + "func A() {}\n",
+            "func A() {}\n\n" + DEPRECATED + "func B() {}\n",
+            [("cart.go", "A", DEPRECATED), ("cart.go", "B", DEPRECATED)],
+            "A",
+            id="copy-has-own-entry",
+        ),
+        pytest.param(
+            TOTAL + "func Total() {}\n\n// Pay charges the card.\n"
+            "func Pay() {}\n",
+            TOTAL + "func Pay() {}\n",
+            [("cart.go", "Total", TOTAL)],
+            "Total",
+            id="copy-over-older-comment",
+        ),
+        pytest.param(
+            DEPRECATED + "func A() {}\n\n" + DEPRECATED + "func B() {}\n",
+            DEPRECATED + "func C() {}\n",
+            [("cart.go", "A", DEPRECATED), ("cart.go", "B", DEPRECATED)],
+            "B",
+            id="one-copy-for-two",
+        ),
+    ],
+)
+def test_copies_cannot_hide_a_deleted_comment(
+    tmp_path: Path,
+    before: str,
+    after: str,
+    approved: list[tuple[str, str, str]],
+    name: str,
+) -> None:
+    """Fail on a deleted approved comment even when its text remains.
+
+    Short approved text such as a ``Deprecated:`` line often sits on
+    several declarations. Counting another copy as the deleted comment
+    under a new name would let an agent delete the owner's text and
+    pass. Only a name with no comment at ``--base`` and no entry can
+    receive moved text, and each copy can stand for one comment.
+    """
+    package = "package shop\n\n"
+    repo = write_repo(tmp_path, {"cart.go": package + before}, approved)
+    commit_all(repo)
+    (repo / "cart.go").write_text(package + after)
+
+    result = run_checker(repo, "--base", "HEAD")
+
+    assert result.returncode == 1
+    assert f"cart.go {name}: approved: approved comment is gone" in (
+        result.stdout
+    )
+
+
+def test_unknown_rename_name_is_warned(tmp_path: Path) -> None:
+    """Warn when ``--rename`` names nothing in the checked files.
+
+    A mistyped old name changes nothing: the comment is still recorded
+    as cut under its old name, and the owner believes the rename was
+    recorded. The run itself still succeeds.
+    """
+    source = "package shop\n\n" + TOTAL + "func Total() {}\n"
+    repo = write_repo(tmp_path, {"cart.go": source})
+    commit_all(repo)
+    (repo / "cart.go").write_text(
+        "package shop\n\n" + TOTAL + "func Add() {}\n"
+    )
+
+    result = run_checker(
+        repo, "--base", "HEAD", "--approve", "--rename", "Totl=Add"
+    )
+
+    assert result.returncode == 0
+    assert (
+        "--rename Totl=Add: no entry or --base comment is named 'Totl' "
+        "in the checked files\n" in result.stderr
+    )
+
+
+def test_gone_approved_comment_names_likely_rename(tmp_path: Path) -> None:
+    """Point at the comment a gone approved comment probably became.
+
+    A Go doc comment starts with its name, so a rename changes the
+    approved text and the checker can only say it is gone. Naming the
+    comment that differs only in identifiers tells the agent where the
+    owner's text went. A comment that says something else is not named.
+    """
+    total = "// Total is in cents, so ParseCart rounds half-cents down.\n"
+    source = (
+        "package shop\n\n"
+        "// Sum is in cents, so ParseOrder rounds half-cents down.\n"
+        "func Sum() {}\n\n"
+        "// Count is in items, so ParseOrder rounds half-items down.\n"
+        "func Count() {}\n"
+    )
+    repo = write_repo(
+        tmp_path, {"cart.go": source}, [("cart.go", "Total", total)]
+    )
+
+    result = run_checker(repo)
+
+    assert result.returncode == 1
+    assert (
+        "cart.go Total: approved: approved comment is gone; "
+        "possibly now Sum at 3\n" in result.stdout
+    )
 
 
 @pytest.mark.parametrize(

@@ -5,16 +5,24 @@ Example:
     python3 check_comments.py --repo . internal/shop/*.go
     python3 check_comments.py --repo . --base main internal/shop/*.go
     python3 check_comments.py --repo . --base main --approve shop/*.go
+    python3 check_comments.py --repo . --base main --approve \
+        --rename Total=Sum shop/*.go
 
 Reads whole-line Go ``//`` comments. ``.code-comments.json`` at the
 repository root holds the owner's approved text, ``""`` for a cut
-comment, and words to avoid. ``--approve`` prints the whole file::
+comment, and words to avoid. ``--approve`` rewrites that file::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
      "avoid": {"client": "say customer"}}
 
+``--rename OLD=NEW`` moves the entries for a renamed comment in the
+checked files, and its comment at ``--base``, to the new name first.
+Without it, a renamed comment is recorded as cut under its old name.
+
 Exits 1 when approved text changed or is gone, in any file it names.
+With ``--base``, approved text found unchanged under a name that had no
+comment at that commit and no entry is reported as moved, not failed.
 With ``--base``, it also exits 1 when a sentence no Go file had at that
 commit has an avoided word or filler. Exits 2 on unreadable input,
 including a settings file of another shape.
@@ -24,9 +32,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TypeGuard
@@ -265,12 +276,68 @@ def content_words(sentence: str) -> set[str]:
     return words
 
 
+def renamed_from(
+    name: str, text: str, file: str, comments: list[Comment]
+) -> list[Comment]:
+    """Find comments that may be a gone approved comment after a rename.
+
+    A comment matches when its first sentence has the same words as the
+    approved text's first sentence, except for words that look like Go
+    identifiers (``MarkUnclear``, ``io.Reader``, ``max_size``, ``V2``)
+    or are either comment's own name.
+
+    Args:
+        name: The gone comment's name.
+        text: Its approved text.
+        file: The file it was approved in.
+        comments: Every checked comment.
+
+    Returns:
+        The matching named comments in ``file``, in file order.
+    """
+    first = sentences(go_prose(text.splitlines(keepends=True)))[:1]
+    words = first[0].split() if first else []
+    likely = []
+    for c in comments:
+        if c.file != file or not c.name or c.name == name:
+            continue
+        own = sentences(c.prose)[:1]
+        theirs = own[0].split() if own else []
+        names = {re.split(r"[. ]", n)[-1] for n in (name, c.name)}
+        if (
+            words
+            and len(theirs) == len(words)
+            and all(
+                a == b or identifier(a, names) or identifier(b, names)
+                for a, b in zip(words, theirs)
+            )
+        ):
+            likely.append(c)
+    return likely
+
+
+def identifier(word: str, names: set[str]) -> bool:
+    """Return whether a prose word looks like a Go identifier.
+
+    Args:
+        word: One word of a sentence, with any punctuation around it.
+        names: Names that count as identifiers here.
+
+    Returns:
+        True for one of ``names``, or a word with a capital letter after
+        its first, a digit, ``_`` or an inner ``.``.
+    """
+    core = word.strip("`'\",;:()[]!?").rstrip(".")
+    return core in names or bool(re.search(r".[A-Z]|[0-9_]|\w\.\w", core))
+
+
 def check(
     files: set[str],
     comments: list[Comment],
     approved: dict[tuple[str, str], str],
     avoid: dict[str, str],
     base: set[str] | None,
+    base_names: set[tuple[str, str]],
 ) -> list[Finding]:
     """Check every comment against the ``RULES``.
 
@@ -282,28 +349,61 @@ def check(
         avoid: Words not to use, each with what to say instead.
         base: The sentences of every Go comment under the repository at
             ``--base``, or ``None`` without it.
+        base_names: ``(file, name)`` of every named comment at
+            ``--base``.
 
     Returns:
         Findings in file order. A finding with a ``note`` is only
         reported: it is in approved text, in a header, or in a sentence
-        the task did not add or change.
+        the task did not add or change, or it is approved text that
+        moved to a new name unchanged.
     """
     findings = []
     found = {(c.file, c.name) for c in comments}
+    # Comments holding approved text under a new name stay approved.
+    moved: set[Comment] = set()
     for (file, name), text in sorted(approved.items()):
         gone = Comment(file, 0, name, "", "")
         if text and file not in files:
             findings.append(Finding(gone, "approved", "approved file is gone"))
         elif text and (file, name) not in found:
+            # The text counts as moved only to a name that is new since
+            # --base and has no entry, so a copy elsewhere cannot hide a
+            # deletion. Only a named comment can be recorded.
+            same = [
+                c
+                for c in comments
+                if base is not None
+                and c.file == file
+                and c.name
+                and c.old == text
+                and (c.file, c.name) not in approved
+                and (c.file, c.name) not in base_names
+                and c not in moved
+            ]
+            if same:
+                moved.add(same[0])
+                message = (
+                    f"approved text moved to {file}:{same[0].line} "
+                    f"{same[0].name}; record it with --approve --rename"
+                )
+                note = "renamed: report only"
+                findings.append(Finding(gone, "approved", message, note))
+                continue
             message = "approved comment is gone"
+            likely = renamed_from(name, text, file, comments)
+            if likely:
+                places = ", ".join(f"{c.name} at {c.line}" for c in likely)
+                message += f"; possibly now {places}"
             findings.append(Finding(gone, "approved", message))
     split = [
         (c, s, content_words(s)) for c in comments for s in sentences(c.prose)
     ]
     for comment in comments:
         key = (comment.file, comment.name)
-        is_approved = bool(comment.name) and key in approved
-        if is_approved and approved[key] != comment.old:
+        has_entry = bool(comment.name) and key in approved
+        is_approved = has_entry or comment in moved
+        if has_entry and approved[key] != comment.old:
             message = (
                 "the owner cut this comment"
                 if not approved[key]
@@ -535,6 +635,101 @@ def approve(
     return entries
 
 
+def rename(
+    renames: dict[str, str],
+    files: set[str],
+    approved: dict[tuple[str, str], str],
+    before: list[Comment],
+) -> tuple[dict[tuple[str, str], str], list[Comment]]:
+    """Move entries and ``--base`` comments in ``files`` to new names.
+
+    Renaming the ``--base`` comments keeps ``approve`` from recording a
+    renamed comment as cut. An entry already under the new name wins.
+
+    Args:
+        renames: New names by old name.
+        files: Paths of the checked files; entries elsewhere keep their
+            names, since another package may use the same name.
+        approved: Entries from ``.code-comments.json``.
+        before: Every comment at ``--base``.
+
+    Returns:
+        The renamed entries and ``--base`` comments.
+    """
+
+    def moves(file: str, name: str) -> bool:
+        """Return whether ``--rename`` applies to this comment."""
+        return file in files and name in renames
+
+    entries = {key: text for key, text in approved.items() if not moves(*key)}
+    for (file, name), text in sorted(approved.items()):
+        if moves(file, name):
+            entries.setdefault((file, renames[name]), text)
+    renamed = [
+        replace(c, name=renames[c.name]) if moves(c.file, c.name) else c
+        for c in before
+    ]
+    return entries, renamed
+
+
+def save_settings(
+    repo: Path,
+    entries: list[dict[str, str]],
+    avoid: dict[str, str],
+    approved: dict[tuple[str, str], str],
+) -> str:
+    """Replace ``.code-comments.json`` in one step and summarize it.
+
+    The new file is written beside the old one and renamed over it, so
+    an interrupted run leaves the old file whole. A shell redirect
+    would empty the file before the checker could read it.
+
+    Args:
+        repo: The folder given as ``--repo``.
+        entries: The approved entries to write.
+        avoid: The avoid list to keep.
+        approved: The entries the file held, after ``--rename``.
+
+    Returns:
+        A line counting entries added or changed, kept, and cut.
+    """
+    path = repo / SETTINGS
+    text = json.dumps({"approved": entries, "avoid": avoid}, indent=1)
+    handle, temp = tempfile.mkstemp(dir=repo, prefix=f"{SETTINGS}.")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write(text + "\n")
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        os.chmod(temp, mode)
+        os.replace(temp, path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    cut = sum(1 for e in entries if not e["text"])
+    kept = sum(
+        1
+        for e in entries
+        if e["text"] and approved.get((e["file"], e["name"])) == e["text"]
+    )
+    added = len(entries) - cut - kept
+    return f"{SETTINGS}: {added} added or changed, {kept} kept, {cut} cut"
+
+
+def rename_pair(value: str) -> tuple[str, str]:
+    """Parse one ``--rename OLD=NEW`` value.
+
+    Args:
+        value: The option's text.
+
+    Returns:
+        The old and new names.
+    """
+    old, _, new = value.partition("=")
+    if not old or not new:
+        raise argparse.ArgumentTypeError(f"{value!r} is not OLD=NEW")
+    return old, new
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check the given Go files and print one line per finding.
 
@@ -544,14 +739,30 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         The exit code described in the module docstring.
     """
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # "@renames.txt" reads one argument per line, such as
+    # "--rename=const Red=const Crimson".
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0], fromfile_prefix_chars="@"
+    )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--base", help="commit the task started from")
     parser.add_argument(
-        "--approve", action="store_true", help="owner only: print settings"
+        "--approve",
+        action="store_true",
+        help=f"rewrite {SETTINGS}; only the owner, or at their request",
+    )
+    parser.add_argument(
+        "--rename",
+        action="append",
+        default=[],
+        type=rename_pair,
+        metavar="OLD=NEW",
+        help="with --approve: a renamed comment; repeat for each",
     )
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
+    if args.rename and not args.approve:
+        parser.error("--rename needs --approve")
     repo = args.repo.resolve()
     approved, avoid = load_settings(repo)
     paths = list(args.paths)
@@ -581,8 +792,18 @@ def main(argv: list[str] | None = None) -> int:
     comments, shared = unname_shared(comments)
     before = base_comments(repo, args.base) if args.base else []
     if args.approve:
+        known = {n for f, n in approved if f in files}
+        known |= {c.name for c in before if c.file in files}
+        for old, new in args.rename:
+            if old not in known:
+                print(
+                    f"--rename {old}={new}: no entry or --base comment "
+                    f"is named {old!r} in the checked files",
+                    file=sys.stderr,
+                )
+        approved, before = rename(dict(args.rename), files, approved, before)
         entries = approve(files, comments, before, approved)
-        print(json.dumps({"approved": entries, "avoid": avoid}, indent=1))
+        print(save_settings(repo, entries, avoid, approved))
         return 0
     for (file, name), found in shared.items():
         for line in found:
@@ -593,7 +814,8 @@ def main(argv: list[str] | None = None) -> int:
     base = None
     if args.base:
         base = {s for c in before for s in sentences(c.prose)}
-    findings = check(files, comments, approved, avoid, base)
+    base_names = {(c.file, c.name) for c in before if c.name}
+    findings = check(files, comments, approved, avoid, base, base_names)
     for f in findings:
         # A gone comment has no line to point at.
         at = f":{f.comment.line}" if f.comment.line else ""
