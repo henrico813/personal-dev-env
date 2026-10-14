@@ -4,11 +4,12 @@
 Example:
     python3 check_comments.py --repo . internal/shop/*.go
     python3 check_comments.py --repo . --base main internal/shop/*.go
+    python3 check_comments.py --repo . --base main --approve shop/*.go
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` at the repository root holds
 the owner's approved text, ``""`` for a cut comment, and words to
-avoid::
+avoid. ``--approve`` rewrites the approved text from the checked files::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
@@ -17,8 +18,8 @@ avoid::
 The rules are:
 
 - ``approved``: approved text changed, a cut comment came back, or an
-  approved comment or its file is gone. Every file the settings name
-  is checked, even when it is not given.
+  approved comment or its file is gone. Without ``--approve``, every
+  file the settings name is checked, even when it is not given.
 - ``filler``: a sentence about the code uses one of the skill's vague
   filler phrases, such as "facilitates".
 - ``avoided-word``: a sentence uses a word from the avoid list.
@@ -44,9 +45,12 @@ from __future__ import annotations
 import argparse
 import enum
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import NamedTuple, TypeGuard
@@ -568,6 +572,104 @@ def unname_shared(
     return unnamed, shared
 
 
+def approve(
+    repo: Path,
+    files: set[str],
+    comments: list[Comment],
+    before: list[Comment],
+    approved: dict[tuple[str, str], str],
+) -> tuple[list[dict[str, str]], int]:
+    """List approved entries for the checked files, for the owner.
+
+    Running ``--approve`` is the owner's approval of what changed: a
+    comment gone from a checked file is recorded as cut, and the
+    entries of a deleted file are dropped.
+
+    Args:
+        repo: The folder given as ``--repo``.
+        files: Paths of the checked files.
+        comments: Their current comments.
+        before: Every comment at ``--base``, or none without it.
+        approved: Entries already in ``.code-comments.json``.
+
+    Returns:
+        The entries: one per named comment, then ``""`` for each named
+        comment of these files that was there at ``--base`` or had an
+        entry and is now gone, then the entries of other files that
+        still exist. Also the number of entries dropped with deleted
+        files.
+    """
+    now = {(c.file, c.name) for c in comments}
+    entries = [
+        {"file": c.file, "name": c.name, "text": c.old}
+        for c in comments
+        if c.name
+    ]
+    gone = [(c.file, c.name) for c in before if c.name]
+    gone += [key for key in sorted(approved) if key[0] in files]
+    for file, name in dict.fromkeys(gone):
+        if file in files and (file, name) not in now:
+            entries.append({"file": file, "name": name, "text": ""})
+    removed = 0
+    for (file, name), text in sorted(approved.items()):
+        if file in files:
+            continue
+        if not (repo / file).exists():
+            removed += 1
+            continue
+        entries.append({"file": file, "name": name, "text": text})
+    return entries, removed
+
+
+def save_settings(
+    repo: Path,
+    entries: list[dict[str, str]],
+    avoid: dict[str, str],
+    approved: dict[tuple[str, str], str],
+    removed: int,
+) -> str:
+    """Replace ``.code-comments.json`` in one step and summarize it.
+
+    The new file is written beside the old one and renamed over it, so
+    an interrupted run leaves the old file whole. A shell redirect
+    would empty the file before the checker could read it.
+
+    Args:
+        repo: The folder given as ``--repo``.
+        entries: The approved entries to write.
+        avoid: The avoid list to keep.
+        approved: The entries the file held.
+        removed: Entries dropped with deleted files.
+
+    Returns:
+        A line counting entries added or changed, kept, cut, and
+        removed with deleted files.
+    """
+    path = repo / SETTINGS
+    text = json.dumps({"approved": entries, "avoid": avoid}, indent=1)
+    handle, temp = tempfile.mkstemp(dir=repo, prefix=f"{SETTINGS}.")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write(text + "\n")
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        os.chmod(temp, mode)
+        os.replace(temp, path)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
+    cut = sum(1 for e in entries if not e["text"])
+    kept = sum(
+        1
+        for e in entries
+        if e["text"] and approved.get((e["file"], e["name"])) == e["text"]
+    )
+    added = len(entries) - cut - kept
+    summary = f"{SETTINGS}: {added} added or changed, {kept} kept, {cut} cut"
+    if removed:
+        summary += f", {removed} removed with deleted files"
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check the given Go files and print one line per finding.
 
@@ -582,14 +684,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--base", help="commit to compare with; its sentences never fail"
     )
+    parser.add_argument(
+        "--approve",
+        action="store_true",
+        help=f"rewrite {SETTINGS}; only the owner, or at their request",
+    )
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
     approved, avoid = load_settings(repo)
-    # An unlisted file keeps its approved text checked; a missing one is
-    # reported as gone.
-    named = sorted({repo / f for f, _ in approved})
-    paths = list(args.paths) + [path for path in named if path.exists()]
+    paths = list(args.paths)
+    if not args.approve:
+        # An unlisted file keeps its approved text checked; a missing one
+        # is reported as gone.
+        named = sorted({repo / f for f, _ in approved})
+        paths += [path for path in named if path.exists()]
     checked_files: set[str] = set()
     comments: list[Comment] = []
     for path in paths:
@@ -617,6 +726,19 @@ def main(argv: list[str] | None = None) -> int:
         print("no Go file to check", file=sys.stderr)
         return 2
     comments, shared = unname_shared(comments)
+    before: list[Comment] = []
+    if args.base:
+        try:
+            before = read_comments_at_commit(repo, args.base)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+    if args.approve:
+        entries, removed = approve(
+            repo, checked_files, comments, before, approved
+        )
+        print(save_settings(repo, entries, avoid, approved, removed))
+        return 0
     for (file, name), found in shared.items():
         for line in found:
             print(
@@ -626,14 +748,9 @@ def main(argv: list[str] | None = None) -> int:
 
     base_sentences = None
     if args.base:
-        try:
-            base_comments = read_comments_at_commit(repo, args.base)
-        except ValueError as error:
-            print(error, file=sys.stderr)
-            return 2
         base_sentences = {
             sentence
-            for comment in base_comments
+            for comment in before
             for sentence in split_sentences(comment.prose)
         }
 
