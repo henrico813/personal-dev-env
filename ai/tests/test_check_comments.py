@@ -472,3 +472,132 @@ class TestSettingsFile:
 
         assert result.returncode == 2
         assert "Traceback" not in result.stderr
+
+
+def settings_of(repo: Path) -> object:
+    """Read the settings file the checker wrote.
+
+    Args:
+        repo: The repository folder.
+
+    Returns:
+        The parsed ``.code-comments.json``.
+    """
+    return json.loads((repo / ".code-comments.json").read_text())
+
+
+class TestApprove:
+    """Record the owner's approval exactly, without losing any."""
+
+    @pytest.mark.parametrize(
+        "approved, args",
+        [
+            pytest.param([], ["--base", "HEAD"], id="gone-since-base"),
+            pytest.param([("cart.go", "Total", TOTAL)], [], id="gone-entry"),
+        ],
+    )
+    def test_approve_round_trips_exact_text(
+        self,
+        tmp_path: Path,
+        approved: list[tuple[str, str, str]],
+        args: list[str],
+    ) -> None:
+        """Write entries that the checker then passes unchanged.
+
+        A hand-typed entry that drops a tab or the final newline makes
+        the checker report the owner's own comment as changed, so the
+        agent restores the wrong text. Names are the keys: a constant in
+        a block must be keyed by its own name, and a comment inside a
+        function, which moves with every edit there, must not be keyed
+        at all. A comment that is gone, whether it was there at
+        ``--base`` or only had an entry, is recorded as cut; dropping it
+        would let an agent add it back unnoticed. The owner first saved
+        printed output with a shell redirect, which emptied the file
+        before the checker read it, so ``--approve`` writes the file and
+        prints a summary.
+        """
+        blue = '\t// Blue: "blue" is shown when none is set.\n'
+        colors = f'package shop\n\nconst (\n{blue}\tBlue = "blue"\n)\n\n'
+        pay = (
+            "func Pay(\n\tc Cart,\n) {\n"
+            "\t// There is nothing to pay for an empty cart.\n"
+            "\tif c.Empty() {\n\t\treturn\n\t}\n}\n"
+        )
+        avoid = {"client": "say customer"}
+        (tmp_path / "cart.go").write_text(colors + TOTAL + "func Total()\n")
+        write_settings(tmp_path, approved, avoid)
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "cart.go").write_text(colors + pay)
+
+        printed = run_checker(tmp_path, *args, "--approve")
+        result = run_checker(tmp_path)
+
+        assert printed.stdout == (
+            ".code-comments.json: 1 added or changed, 0 kept, 1 cut\n"
+        )
+        assert settings_of(tmp_path) == {
+            "approved": [
+                {"file": "cart.go", "name": "Blue", "text": blue},
+                {"file": "cart.go", "name": "Total", "text": ""},
+            ],
+            "avoid": avoid,
+        }
+        assert result.returncode == 0
+
+    def test_approve_keeps_other_files_approvals(self, tmp_path: Path) -> None:
+        """Keep other files' approvals when the owner approves one file.
+
+        The owner approves one package at a time, and each run rewrites
+        the settings file. Dropping another file's entries, or a cut
+        entry, would let agents rewrite that text or add the comment
+        back. Approving only the files given matters as much: here
+        ``b.go`` changes after its approval, and approving ``a.go`` must
+        not approve that change too.
+        """
+        adds, sends = "// A adds the prices.\n", "// B sends the bill.\n"
+        (tmp_path / "a.go").write_text(adds + "func A() {}\n")
+        (tmp_path / "b.go").write_text(sends + "func B() {}\n")
+        avoid = {"client": "say customer"}
+        write_settings(tmp_path, [("b.go", "Old", "")], avoid)
+
+        for file in ("a.go", "b.go"):
+            run_checker(tmp_path, "--approve", paths=[str(tmp_path / file)])
+        (tmp_path / "b.go").write_text("// B mails it.\nfunc B() {}\n")
+        run_checker(tmp_path, "--approve", paths=[str(tmp_path / "a.go")])
+
+        assert settings_of(tmp_path) == {
+            "approved": [
+                {"file": "a.go", "name": "A", "text": adds},
+                {"file": "b.go", "name": "B", "text": sends},
+                {"file": "b.go", "name": "Old", "text": ""},
+            ],
+            "avoid": avoid,
+        }
+
+    def test_approve_clears_deleted_files_approvals(
+        self, tmp_path: Path
+    ) -> None:
+        """Drop the approvals of a deleted file, and say how many.
+
+        The check fails while a file with approved text is gone, and the
+        owner running ``--approve`` approves the deletion. Keeping the
+        entries would leave every later task failing with no way to
+        finish.
+        """
+        adds = "// A adds the prices.\n"
+        (tmp_path / "a.go").write_text(adds + "func A() {}\n")
+        gone = [("gone.go", "Total", TOTAL), ("gone.go", "Empty", "")]
+        write_settings(tmp_path, gone)
+
+        printed = run_checker(tmp_path, "--approve")
+        result = run_checker(tmp_path)
+
+        assert printed.stdout == (
+            ".code-comments.json: 1 added or changed, 0 kept, 0 cut, "
+            "2 removed with deleted files\n"
+        )
+        assert settings_of(tmp_path) == {
+            "approved": [{"file": "a.go", "name": "A", "text": adds}],
+            "avoid": {},
+        }
+        assert result.returncode == 0
