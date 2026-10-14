@@ -69,6 +69,7 @@ Each approval promise, and the tests that fail when it breaks:
 | An approval covers one command, text, and directory | `TestRequestIDChangesWithPostedText`, `TestOtherDirectoryNeedsNewApproval` |
 | Only a typed yes or a second tap approves | `TestPromptNeedsDeliberateAnswer`, `TestPopupRejectsLoneY`, `TestPopupDiscardsEarlyInput`, `TestPopupAppliesTapAndSettleRules` |
 | A later answer cannot change a decision | `TestLateYesKeepsDeclinedRequest`, `TestMoshiAnswersPendingRequest` |
+| A request answered in the popup within 30 seconds never reaches the phone | `TestPhoneWaitsForPopupInHerdr` |
 | A declined or interrupted request never runs gh | `TestDecidedRequestsNeverRunGH` |
 | gh runs at most once per approval | `TestRerunReportsResultWithoutRunningAgain`, `TestConcurrentRunsCallGHOnce`, `TestRerunSurvivesFailedRepoLookup` |
 | An approval expires four hours after its last change | `TestExpiredApprovalNeedsNewAnswer` |

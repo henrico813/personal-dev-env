@@ -54,7 +54,9 @@ ps -o pid=,args= -p MOSHI_PID
 
 A running runner prints a line ending in `--pde-runner ID`, and a running
 phone question one ending in `--moshi-ask ID`. No output means that program
-is gone. If the record is `approved` and the file named by `gh` is missing,
+is gone. For an agent in Herdr, a running phone question sends nothing to
+the phone until the request is 30 seconds old.
+If the record is `approved` and the file named by `gh` is missing,
 the runner could not run it and left it approved for the next rerun.
 
 If `moshi_error` is set, the last phone question ended without an
