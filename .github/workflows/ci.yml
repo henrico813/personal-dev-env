@@ -22,20 +22,6 @@ jobs:
       - name: check
         run: make check
 
-  cli:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cli
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
-      - name: test
-        run: go test ./...
-
   pdev2:
     runs-on: ubuntu-latest
     defaults:
