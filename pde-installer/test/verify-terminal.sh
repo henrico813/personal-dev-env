@@ -39,6 +39,9 @@ bat --list-themes | grep -Fxq TwoDark
 
 cli_home="$(mktemp -d)"
 mkdir -p "$cli_home/.config/opencode"
+git_stub="$(mktemp -d)"
+printf '#!/bin/sh\n' >"$git_stub/git"
+chmod 0755 "$git_stub/git"
 cat >"$cli_home/.config/opencode/cli.json" <<'EOF'
 {
   "mouse": false,
@@ -55,6 +58,7 @@ render_opencode_cli() {
 	PDE_PROFILE=full \
 	PDE_COLOR_PROFILE="$profile" \
 	PDE_REPO_ROOT="$REPO_ROOT" \
+	PATH="$git_stub:$PATH" \
 	chezmoi \
 		--config /dev/null \
 		--config-format toml \
@@ -88,7 +92,7 @@ grep -Fxq '{"keybinds":[]}' "$cli_home/.config/opencode/cli.json"
 rm "$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
 jq -e '. == {"theme":{"name":"everforest"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
-rm -rf "$cli_home"
+rm -rf "$cli_home" "$git_stub"
 
 before_rollback="$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")"
 zsh_template="$REPO_ROOT/chezmoi/dot_zshrc.tmpl"
