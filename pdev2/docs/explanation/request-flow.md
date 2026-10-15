@@ -151,7 +151,8 @@ the phone question ran inside Herdr, the phone question waits until the
 request is 30 seconds old, then asks only if the request is still
 waiting. An answer during the wait ends the phone question before
 anything is sent. A rerun inside Herdr of a request first made outside
-Herdr waits too, though a rerun opens no popup.
+Herdr waits too, though a rerun opens no popup unless the request was
+dismissed.
 
 The phone is asked without waiting when no popup shows, because the
 agent runs outside Herdr, and when a rerun replaces a phone question of

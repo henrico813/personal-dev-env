@@ -20,9 +20,9 @@ safeguards are in
 4. Tap APPROVE or DECLINE, then tap the same button again. Or type `yes`
    or `no` and press Enter.
 
-To set a request aside without answering, press `q` or Esc. It keeps
+To set a request aside without answering, press `q`. It keeps
 waiting but no longer opens on its own. To bring it back, press `prefix+a`
-(Ctrl+b, then a) in Herdr.
+(Ctrl+b, then a) in Herdr, or have the agent rerun the command.
 
 A notification titled `PR approval on HOST` names the computer that
 asked and, when the popup opened, its workspace. If `HOST` is another
