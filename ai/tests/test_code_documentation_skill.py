@@ -12,9 +12,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = "ai/skills/code-documentation/SKILL.md"
 CHECKER = ROOT / "ai/skills/code-documentation/scripts/check_comments.py"
-# The skill before checker support was added. Later changes add text
-# next to the rule they support and keep every one of these lines.
-BASE = "e1d01592d5e8347d416473e53b6f40875cc0b8fe"
+# The skill on main before checker support was added, with its function
+# naming rules. Later changes add text next to the rule they support and
+# keep every one of these lines.
+BASE = "71467ccac1e61a60fdf753cacbbdb5698361c70b"
 
 
 class TestSkillText:
