@@ -55,9 +55,10 @@ Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
 Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
 preview ordered work without making changes.
 
-Installation migrates known vault values from deprecated `paths.env` state
-before removing it. It records the selected checkout in `config.json` and
-preserves unrelated fields. Set vaults with `nobs vault set NAME PATH`.
+The installer saves which checkout it installed from in
+`~/.config/pde/config.json`. To tell Neovim and nobs where your Obsidian
+vaults are, run `nobs vault set NAME PATH` once for each vault, for
+example `nobs vault set main ~/Documents/main-vault`.
 
 See [`pde-installer/README.md`](./pde-installer/README.md) for installer details.
 
