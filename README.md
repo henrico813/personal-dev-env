@@ -1,9 +1,7 @@
 # Personal Dev Environment
 
-Shell, editor, and AI tooling configuration with two Go applications:
-
-- **`pde-installer`** installs machine, config, Obsidian, and AI tooling.
-- **`pde`** manages vault configuration and lookup only.
+Shell, editor, and AI tooling configuration. **`pde-installer`** installs
+machine, config, Obsidian, and AI tooling.
 
 ## PDE Quick Start
 
@@ -57,17 +55,9 @@ Mutating commands reject UID 0. The installer uses `sudo apt-get` for missing
 Ubuntu dependencies. Other managed files stay below `HOME`. Use `--dry-run` to
 preview ordered work without making changes.
 
-Build the separate vault-only CLI when vault commands are needed:
-
-```bash
-go build -C cli -o ~/.local/bin/pde .
-export PATH="$HOME/.local/bin:$PATH"
-pde vault --help
-```
-
 Installation migrates known vault values from deprecated `paths.env` state
 before removing it. It records the selected checkout in `config.json` and
-preserves unrelated fields. Future vault changes use `pde vault`.
+preserves unrelated fields. Set vaults with `nobs vault set NAME PATH`.
 
 See [`pde-installer/README.md`](./pde-installer/README.md) for installer details.
 
