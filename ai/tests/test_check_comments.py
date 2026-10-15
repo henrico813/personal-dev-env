@@ -74,6 +74,29 @@ class TestCommentNames:
             'the name "Total"\n'
         ) in result.stdout
 
+    def test_block_comment_takes_first_entry_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Guard filler detection above const and var blocks.
+
+        The first entry of a Go block often has a comment or a blank
+        line above it, and an earlier version read that line as the
+        entry, so the block's comment got the name "const " or none.
+        Filler only counts in a sentence that starts with "This" or the
+        code's name, so "Red facilitates ..." above the block passed
+        unnoticed.
+        """
+        (tmp_path / "colors.go").write_text(
+            "// Red facilitates the sale colors.\nconst (\n"
+            "\t// Red marks a sale price.\n\n\tRed = 1\n)\n"
+        )
+
+        result = run_checker(tmp_path)
+
+        assert 'colors.go:1 const Red: filler: "facilitates"\n' in (
+            result.stdout
+        )
+
 
 class TestFiller:
     """Fail on the skill's filler examples in sentences not at ``--base``."""
