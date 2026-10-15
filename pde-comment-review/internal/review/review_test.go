@@ -29,7 +29,7 @@ func Read(path string) (map[string]string, error) { return ParseConfig(path) }
 // Names one setting in the config file.
 //go:generate stringer -type=Setting
 type Setting int
-`
+` + "\nvar sample = `\n// Sample settings, as the help text prints them.\nport = 8080\n`\n"
 
 // Writes config.go into a new repository folder, points the review state at
 // a new folder, and returns the repository path.
@@ -125,6 +125,11 @@ func TestParseProposalsRefusesUnsafeFiles(t *testing.T) {
 		{
 			name: "comment above a directive",
 			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeKeep, Old: "// Names one setting in the config file.\n"}),
+		},
+		{
+			name: "comment inside a string",
+			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "// Sample settings, as the help text prints them.\n"}),
+			want: "inside a string",
 		},
 		{
 			name: "id used twice",
