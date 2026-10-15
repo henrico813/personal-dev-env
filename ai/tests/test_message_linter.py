@@ -11,15 +11,71 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 MSG = ROOT / "ai/skills/git-messages/scripts/msg"
+KEY_PREFIX = "KEY-[0-9]+ "
+PREFIXED_FORMAT_ERROR = (
+    "line 1: title must match [<msg.titlePrefix>]<type>[(scope)][!]: <summary>"
+)
 
 
-def run_msg(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run msg against an isolated message file."""
+def isolated_git(tmp_path: Path, global_config: str = os.devnull) -> dict[str, str]:
+    """Return an environment for git that ignores the developer's config.
+
+    Git reads only tmp_path's config and the given global file, so the
+    developer's own settings, or a checkout above tmp_path, cannot change
+    what msg enforces.
+
+    Args:
+        tmp_path: Test directory; git does not search above it.
+        global_config: File git reads as global config.
+
+    Returns:
+        A copy of the process environment with git isolated.
+    """
+    return os.environ | {
+        "GIT_CONFIG_GLOBAL": global_config,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CEILING_DIRECTORIES": str(tmp_path.parent),
+    }
+
+
+def run_msg(
+    tmp_path: Path, *args: str, global_config: str = os.devnull
+) -> subprocess.CompletedProcess[str]:
+    """Run msg against an isolated message file.
+
+    Args:
+        tmp_path: Directory holding ``message``; msg runs from it.
+        args: msg subcommand and options.
+        global_config: File git reads as global config.
+
+    Returns:
+        The finished msg process with captured output.
+    """
     return subprocess.run(
         [sys.executable, str(MSG), *args, str(tmp_path / "message")],
+        cwd=tmp_path,
+        env=isolated_git(tmp_path, global_config),
         capture_output=True,
         text=True,
     )
+
+
+def init_repo(tmp_path: Path, title_prefix: str | None = None) -> None:
+    """Make tmp_path a git checkout, optionally setting msg.titlePrefix.
+
+    Args:
+        tmp_path: Directory to initialize.
+        title_prefix: Value for msg.titlePrefix, or None to leave it unset.
+    """
+    environment = isolated_git(tmp_path)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, env=environment, check=True)
+    if title_prefix is not None:
+        subprocess.run(
+            ["git", "config", "msg.titlePrefix", title_prefix],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+        )
 
 
 def test_lint_accepts_issue_suffix(tmp_path: Path) -> None:
@@ -188,6 +244,108 @@ def test_squash_requires_overview(tmp_path: Path) -> None:
     result = run_msg(tmp_path, "squash")
     assert result.returncode == 1
     assert "non-empty Overview" in result.stderr
+
+
+class TestTitlePrefix:
+    """Let one checkout allow a ticket key before commit titles.
+
+    Some repositories start titles with a key such as KEY-123. Each
+    sets msg.titlePrefix in its own git config, so the key is optional,
+    counts toward the title limit, and still needs a valid type after it.
+    """
+
+    @pytest.mark.parametrize(
+        ("args", "title", "code", "output"),
+        [
+            pytest.param(
+                ("lint",),
+                "KEY-123 feat: " + "x" * 36 + " (#45)",
+                0,
+                [],
+                id="keyed-squash-subject-at-limit",
+            ),
+            pytest.param(("lint",), "feat: add a check", 0, [], id="unkeyed-title"),
+            pytest.param(
+                ("lint",),
+                "KEY-123 feat: " + "x" * 37 + " (#45)",
+                1,
+                ["line 1: 51 chars, max 50 (over by 1)"],
+                id="key-counts-toward-limit",
+            ),
+            pytest.param(
+                ("lint", "--hook"),
+                "KEY-123 add a check",
+                1,
+                [PREFIXED_FORMAT_ERROR],
+                id="hook-rejects-bad-type",
+            ),
+            pytest.param(
+                ("lint", "--hook"),
+                "fixup! KEY-123 add a check",
+                0,
+                [],
+                id="hook-skips-generated-subject",
+            ),
+        ],
+    )
+    def test_prefix_allows_key_before_type(
+        self,
+        tmp_path: Path,
+        args: tuple[str, ...],
+        title: str,
+        code: int,
+        output: list[str],
+    ) -> None:
+        """Accept an optional key and keep the other title rules.
+
+        Changelog tools may read only unkeyed subjects, so the key must
+        stay optional. GitHub adds the (#N) suffix on merge, and the key counts
+        toward the 50 characters. `git commit --fixup` runs the hook, so
+        generated subjects must still pass in a keyed repository.
+        """
+        init_repo(tmp_path, KEY_PREFIX)
+        (tmp_path / "message").write_text(title + "\n")
+
+        result = run_msg(tmp_path, *args)
+
+        assert (result.returncode, result.stdout.splitlines()) == (code, output)
+
+    def test_invalid_prefix_names_setting_and_repo(self, tmp_path: Path) -> None:
+        """Fail on a bad pattern and say which setting and repository.
+
+        A typo in one checkout's config must not quietly turn the check
+        off or into another rule. "KEY-[" is invalid alone but compiles
+        once TITLE_RE follows it, which would hide the mistake.
+        """
+        init_repo(tmp_path, "KEY-[")
+        (tmp_path / "message").write_text("feat: add a check\n")
+
+        result = run_msg(tmp_path, "lint")
+
+        assert result.returncode == 1
+        assert result.stdout.startswith(
+            f"msg.titlePrefix in {tmp_path}: invalid regex: "
+        )
+
+    def test_global_prefix_is_ignored(self, tmp_path: Path) -> None:
+        """Ignore a prefix set outside the checkout's own config.
+
+        A global value would loosen the title rule in every repository on
+        the machine, and a bad pattern there would break lint in all of
+        them. A repository without its own setting keeps today's format
+        error.
+        """
+        global_config = tmp_path / "global.gitconfig"
+        global_config.write_text(f'[msg]\n\ttitlePrefix = "{KEY_PREFIX}"\n')
+        init_repo(tmp_path)
+        (tmp_path / "message").write_text("KEY-123 feat: add a check\n")
+
+        result = run_msg(tmp_path, "lint", global_config=str(global_config))
+
+        assert result.returncode == 1
+        assert result.stdout == (
+            "line 1: title must match <type>[(scope)][!]: <summary>\n"
+        )
 
 
 @pytest.mark.local_ai
