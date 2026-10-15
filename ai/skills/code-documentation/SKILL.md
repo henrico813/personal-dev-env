@@ -106,6 +106,10 @@ For public or exported APIs, follow language and repository conventions. Explain
 what a caller needs to use the API correctly: important behavior, parameter
 meaning, results, side effects, failures, ordering, ownership, or state rules.
 
+Do not start a doc comment with the name it documents, such as
+`// Total returns ...`, in any language; the one exception is a Go
+package comment, which starts with `Package <name>`.
+
 Private functions do not need docstrings merely because they exist.
 
 Use inline comments for local context such as:
@@ -283,9 +287,7 @@ that rule's sentence from this skill. Act on each finding:
 - `filler` or `avoided-word` in a sentence your task added or changed:
   fix the sentence. This fails the run. `avoid` in
   `.code-comments.json` gives the word to use instead.
-- `restated-name`: reported, never failed. A Go doc comment may
-  start with its name; cut the sentence only when the rest says
-  nothing the name and signature do not.
+- `restated-name`: reported, never failed.
 - `filler` or `avoided-word` marked `report only`: the sentence is
   approved text, a license header, or was there before your task.
   List it in your final message, and edit it only as step 5 of Editing
