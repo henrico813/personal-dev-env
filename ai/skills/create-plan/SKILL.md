@@ -84,6 +84,9 @@ When this skill is invoked:
   requirement, invariant, or meaningful testing boundary justifies them.
 - Exclude unrelated cleanup and speculative extensibility from required scope.
   Put genuinely useful extras in optional suggestions instead.
+- When a plan changes code comments, order its steps as
+  `code-documentation` says: behavior and tests, then names, then
+  comments, then the owner's review of the comments, last.
 - A draft may expose an unresolved implementation decision early when expanding
   the wrong choice would create substantial rework. Label it as a draft; the
   final plan must resolve blocking decisions.
