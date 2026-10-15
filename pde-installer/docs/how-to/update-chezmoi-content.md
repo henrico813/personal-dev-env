@@ -4,7 +4,9 @@
 2. For an external archive, update its URL and pinned SHA-256 value in
    `../chezmoi/.chezmoiexternal.toml.tmpl`.
 3. When changing files under `../ai/`, do not update a checksum; local
-   `file://` externals intentionally omit hand-maintained hashes.
+   `file://` externals intentionally omit hand-maintained hashes. A new
+   file under `../ai/skills/` needs no template change once it is added
+   to Git: the template installs every skill file that Git tracks.
 4. Preview the complete saved-selection reconciliation:
 
    ```bash
