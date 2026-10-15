@@ -98,10 +98,7 @@ func notificationTitle() string {
 	return "PR approval on " + host
 }
 
-// popupFailure turns a popup that did not open into a notification body.
-// Herdr shows one popup at a time and answers ui_busy while any popup or menu
-// is open. A user in another workspace does not see an approval popup, so
-// when one is open the body names its workspace and its ID is returned.
+// Turns a popup that did not open into a notification body.
 func popupFailure(err error) (body, workspace string) {
 	var refused *herdrError
 	if !errors.As(err, &refused) || refused.Code != "ui_busy" {
@@ -109,7 +106,11 @@ func popupFailure(err error) (body, workspace string) {
 	}
 	// A PID of 0 or less would make processAlive signal a process group.
 	if popup, err := approval.LoadPopup(); err == nil && popup.Workspace != "" && popup.PID > 0 && processAlive(popup.PID) {
-		return "Approval waiting: answer the popup in " + workspaceLabel(popup.Workspace), popup.Workspace
+		where := workspaceLabel(popup.Workspace)
+		if popup.Name != "" {
+			return popup.Name + " is open in " + where + ". Close it, then press Ctrl+b a", popup.Workspace
+		}
+		return "Approval waiting: answer the popup in " + where, popup.Workspace
 	}
 	return "Close the open Herdr popup or menu, then press Ctrl+b a", ""
 }
