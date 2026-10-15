@@ -191,6 +191,38 @@ func TestExpiredApprovalNeedsNewAnswer(t *testing.T) {
 	}
 }
 
+// An Esc meant for the agent dismissed a request in the Herdr popup. The
+// owner asked the agent to send it again, but the rerun only kept waiting,
+// and the request sat unseen for half an hour. A rerun must put it back in
+// the popup queue, open the popup again, and tell the agent.
+func TestRerunShowsDismissedRequestAgain(t *testing.T) {
+	env := setupFlow(t, "")
+	args := []string{"pr", "ready", "12"}
+	rec := newRequest(t, args)
+	dismissRequest(rec.ID)
+	// The rerun runs inside Herdr. The fake herdr touches done when it shows
+	// the notification that follows the attempt to open the popup.
+	done := filepath.Join(t.TempDir(), "done")
+	approvaltest.FakeHerdr(t, `if [ "$1 $2" = "notification show" ]; then touch '`+done+`'; fi`)
+	t.Setenv("HERDR_ENV", "1")
+
+	code := requestWrite(args)
+
+	if code != exitWaiting {
+		t.Errorf("rerun returned %d, want %d", code, exitWaiting)
+	}
+	if queued := approval.Queued(); len(queued) != 1 {
+		t.Errorf("%d requests in the popup queue, want 1", len(queued))
+	}
+	want := fmt.Sprintf("pde-gh-write: %s had been dismissed in the Herdr popup; it is back in the popup queue\n", rec.ID)
+	if !strings.Contains(env.output.String(), want) {
+		t.Errorf("output is missing %q:\n%s", want, env.output)
+	}
+	// The popup opens in the background; this also keeps it from outliving
+	// the test's PATH.
+	waitForFile(t, done)
+}
+
 // gh's exit codes overlap this program's, so agents tell the two apart by the
 // "pde-gh-write:" prefix. The line printed when the wait ends once lacked it.
 func TestUnansweredRequestLinesHaveProgramPrefix(t *testing.T) {
