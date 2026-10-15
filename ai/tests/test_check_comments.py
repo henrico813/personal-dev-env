@@ -26,7 +26,7 @@ def init_repo_and_commit_all(root: Path) -> None:
     )
 
 
-def write_settings(
+def write_settings_file(
     repo: Path,
     approved: Sequence[tuple[str, str, str]] = (),
     avoid: dict[str, str] | None = None,
@@ -34,7 +34,6 @@ def write_settings(
     """Write the repository's ``.code-comments.json``.
 
     Args:
-        repo: The repository folder.
         approved: ``(file, name, text)`` entries the owner approved.
         avoid: Words not to use, each with what to say instead.
     """
@@ -372,7 +371,7 @@ class TestApprovedText:
         """
         (tmp_path / "cart.go").write_text(source)
         (tmp_path / "send.go").write_text("package shop\n")
-        write_settings(tmp_path, approved)
+        write_settings_file(tmp_path, approved)
 
         result = run_checker(tmp_path, paths=[str(tmp_path / listed)])
 
@@ -383,11 +382,12 @@ class TestApprovedText:
     def test_shared_names_are_reported_not_failed(
         self, tmp_path: Path
     ) -> None:
-        """Name, but do not fail on, comments that cannot be approved.
+        """Keep ordinary Go with repeated names from blocking every run.
 
         Two ``var _`` interface checks in one file are ordinary Go and
-        cannot be renamed. Stopping on them would block every run on
-        such a file, so the checker only says they cannot be approved.
+        cannot be renamed, but approved text cannot tell their comments
+        apart. Failing on them would block every run on such a file, so
+        the checker only says they cannot be approved.
         """
         source = (
             "// Cart must be a Reader.\nvar _ io.Reader = (*Cart)(nil)\n\n"
@@ -404,17 +404,17 @@ class TestApprovedText:
     def test_approved_text_is_reported_not_failed(
         self, tmp_path: Path
     ) -> None:
-        """Only report filler in approved text, even when it is new.
+        """Never make an agent rewrite text the owner approved.
 
         Only the owner changes their own words. The owner may approve a
-        comment the task wrote, so it is new since ``--base``; if the
+        comment an agent wrote, so it is new since ``--base``; if the
         checker failed on its filler, the agent would have to rewrite
         the owner's approved text to pass.
         """
         init_repo_and_commit_all(tmp_path)
         comment = "// This is responsible for the cart total.\n"
         (tmp_path / "cart.go").write_text(comment + "func Total() {}\n")
-        write_settings(tmp_path, [("cart.go", "Total", comment)])
+        write_settings_file(tmp_path, [("cart.go", "Total", comment)])
 
         result = run_checker(tmp_path, "--base", "HEAD")
 
@@ -429,16 +429,17 @@ class TestSettingsFile:
     """Read the words to avoid and the owner's hand edits safely."""
 
     def test_avoided_word_fails_in_new_sentence(self, tmp_path: Path) -> None:
-        """Fail on a word the owner listed, and say what to write instead.
+        """Make agents replace words the owner found confusing.
 
         The owner lists words that confused readers, such as one thing
-        having two names. The checker decides these alone, so the agent
-        must fix them in the sentences it wrote.
+        having two names, with the word to use instead. The checker
+        decides these alone, so the agent must fix them in the sentences
+        it wrote, and the message must say what to write.
         """
         init_repo_and_commit_all(tmp_path)
         source = "// Post hands the bill to the client.\nfunc Post() {}\n"
         (tmp_path / "post.go").write_text(source)
-        write_settings(tmp_path, avoid={"client": "say customer"})
+        write_settings_file(tmp_path, avoid={"client": "say customer"})
 
         result = run_checker(tmp_path, "--base", "HEAD")
 
@@ -474,15 +475,8 @@ class TestSettingsFile:
         assert "Traceback" not in result.stderr
 
 
-def settings_of(repo: Path) -> object:
-    """Read the settings file the checker wrote.
-
-    Args:
-        repo: The repository folder.
-
-    Returns:
-        The parsed ``.code-comments.json``.
-    """
+def read_settings_file(repo: Path) -> object:
+    """Return the parsed ``.code-comments.json`` the checker wrote."""
     return json.loads((repo / ".code-comments.json").read_text())
 
 
@@ -496,25 +490,21 @@ class TestApprove:
             pytest.param([("cart.go", "Total", TOTAL)], [], id="gone-entry"),
         ],
     )
-    def test_approve_round_trips_exact_text(
+    def test_approve_writes_entries_the_check_accepts(
         self,
         tmp_path: Path,
         approved: list[tuple[str, str, str]],
         args: list[str],
     ) -> None:
-        """Write entries that the checker then passes unchanged.
+        """Let the owner approve comments without the check then failing.
 
-        A hand-typed entry that drops a tab or the final newline makes
-        the checker report the owner's own comment as changed, so the
-        agent restores the wrong text. Names are the keys: a constant in
-        a block must be keyed by its own name, and a comment inside a
-        function, which moves with every edit there, must not be keyed
-        at all. A comment that is gone, whether it was there at
-        ``--base`` or only had an entry, is recorded as cut; dropping it
-        would let an agent add it back unnoticed. The owner first saved
-        printed output with a shell redirect, which emptied the file
-        before the checker read it, so ``--approve`` writes the file and
-        prints a summary.
+        Hand-typed entries lost tabs and final newlines, so the checker
+        called the owner's own comment changed. A block constant is keyed
+        by its own name, and a comment inside a function body is not
+        keyed, since it moves with every edit there. A gone comment is
+        recorded as cut, or an agent could add it back unnoticed.
+        ``--approve`` writes the file itself because saving printed
+        output with a shell redirect emptied it.
         """
         blue = '\t// Blue: "blue" is shown when none is set.\n'
         colors = f'package shop\n\nconst (\n{blue}\tBlue = "blue"\n)\n\n'
@@ -525,7 +515,7 @@ class TestApprove:
         )
         avoid = {"client": "say customer"}
         (tmp_path / "cart.go").write_text(colors + TOTAL + "func Total()\n")
-        write_settings(tmp_path, approved, avoid)
+        write_settings_file(tmp_path, approved, avoid)
         init_repo_and_commit_all(tmp_path)
         (tmp_path / "cart.go").write_text(colors + pay)
 
@@ -533,9 +523,9 @@ class TestApprove:
         result = run_checker(tmp_path)
 
         assert printed.stdout == (
-            ".code-comments.json: 1 added or changed, 0 kept, 1 cut\n"
+            ".code-comments.json: 1 added or changed, 0 kept, 1 newly cut\n"
         )
-        assert settings_of(tmp_path) == {
+        assert read_settings_file(tmp_path) == {
             "approved": [
                 {"file": "cart.go", "name": "Blue", "text": blue},
                 {"file": "cart.go", "name": "Total", "text": ""},
@@ -545,27 +535,39 @@ class TestApprove:
         assert result.returncode == 0
 
     def test_approve_keeps_other_files_approvals(self, tmp_path: Path) -> None:
-        """Keep other files' approvals when the owner approves one file.
+        """Never lose approvals when the owner approves one package.
 
         The owner approves one package at a time, and each run rewrites
         the settings file. Dropping another file's entries, or a cut
         entry, would let agents rewrite that text or add the comment
         back. Approving only the files given matters as much: here
         ``b.go`` changes after its approval, and approving ``a.go`` must
-        not approve that change too.
+        not approve that change too, nor, with ``--base``, record
+        ``b.go``'s comments as cut. An old cut entry is kept, not newly
+        cut, or the summary tells the owner something was cut in ``a.go``.
         """
         adds, sends = "// A adds the prices.\n", "// B sends the bill.\n"
         (tmp_path / "a.go").write_text(adds + "func A() {}\n")
         (tmp_path / "b.go").write_text(sends + "func B() {}\n")
         avoid = {"client": "say customer"}
-        write_settings(tmp_path, [("b.go", "Old", "")], avoid)
+        write_settings_file(tmp_path, [("b.go", "Old", "")], avoid)
 
         for file in ("a.go", "b.go"):
             run_checker(tmp_path, "--approve", paths=[str(tmp_path / file)])
+        init_repo_and_commit_all(tmp_path)
         (tmp_path / "b.go").write_text("// B mails it.\nfunc B() {}\n")
-        run_checker(tmp_path, "--approve", paths=[str(tmp_path / "a.go")])
+        printed = run_checker(
+            tmp_path,
+            "--base",
+            "HEAD",
+            "--approve",
+            paths=[str(tmp_path / "a.go")],
+        )
 
-        assert settings_of(tmp_path) == {
+        assert printed.stdout == (
+            ".code-comments.json: 0 added or changed, 3 kept, 0 newly cut\n"
+        )
+        assert read_settings_file(tmp_path) == {
             "approved": [
                 {"file": "a.go", "name": "A", "text": adds},
                 {"file": "b.go", "name": "B", "text": sends},
@@ -577,7 +579,7 @@ class TestApprove:
     def test_approve_clears_deleted_files_approvals(
         self, tmp_path: Path
     ) -> None:
-        """Drop the approvals of a deleted file, and say how many.
+        """Let work finish once the owner approves a deleted file.
 
         The check fails while a file with approved text is gone, and the
         owner running ``--approve`` approves the deletion. Keeping the
@@ -587,16 +589,16 @@ class TestApprove:
         adds = "// A adds the prices.\n"
         (tmp_path / "a.go").write_text(adds + "func A() {}\n")
         gone = [("gone.go", "Total", TOTAL), ("gone.go", "Empty", "")]
-        write_settings(tmp_path, gone)
+        write_settings_file(tmp_path, gone)
 
         printed = run_checker(tmp_path, "--approve")
         result = run_checker(tmp_path)
 
         assert printed.stdout == (
-            ".code-comments.json: 1 added or changed, 0 kept, 0 cut, "
+            ".code-comments.json: 1 added or changed, 0 kept, 0 newly cut, "
             "2 removed with deleted files\n"
         )
-        assert settings_of(tmp_path) == {
+        assert read_settings_file(tmp_path) == {
             "approved": [{"file": "a.go", "name": "A", "text": adds}],
             "avoid": {},
         }
