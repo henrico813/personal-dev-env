@@ -15,6 +15,9 @@ const usage = `usage:
       save proposals FILE as the next round of review NAME
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
+  pde-comment-review apply NAME
+      write the owner's decisions on review NAME into its repository, then
+      approve every comment in its files; only the owner runs this
   pde-comment-review help
       show this help
 `
@@ -30,6 +33,8 @@ func Main(args []string) int {
 		err = addRound(args[1], args[2])
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
+	case len(args) == 2 && args[0] == "apply":
+		err = applyDecisions(args[1])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return 2
