@@ -52,6 +52,8 @@ func TestCheckWholeLinesRefusesNonComments(t *testing.T) {
 		{name: "indented comment", text: "\t// One.\n\t//\n\t// Two.\n"},
 		{name: "no final newline", text: "// One.", wantErr: true},
 		{name: "code between comments", text: "// One.\nx := 1\n// Two.\n", wantErr: true},
+		{name: "code example", text: "// One:\n//\tx := 1\n"},
+		{name: "go directive", text: "// One.\n//go:generate stringer -type=Code\n", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
