@@ -222,10 +222,14 @@ def name_code_below_comment(
         return ""
     if not line[0].isspace():
         if CONST_OR_VAR_BLOCK.match(text) and number < len(lines):
-            # A block takes the name of its first entry: "const Red".
+            # A block takes the name of its first entry, such as
+            # "const Red", skipping blank and comment lines before it.
             keyword = text.split()[0]
-            next_line = lines[number]
-            first_entry = DECLARED_NAME.match(next_line.strip())
+            inside = (later.strip() for later in lines[number:])
+            first_line = next(
+                (t for t in inside if t and not t.startswith("//")), ""
+            )
+            first_entry = DECLARED_NAME.match(first_line)
             if not first_entry:
                 return ""
             return f"{keyword} {first_entry[1]}"

@@ -232,7 +232,7 @@ that rule's sentence from this skill. Act on each finding:
 
 - `filler` in a sentence your task added or changed: fix the sentence.
   This fails the run.
-- `restated-name`: a question, not a failure. A Go doc comment may
+- `restated-name`: reported, never failed. A Go doc comment may
   start with its name; cut the sentence only when the rest says
   nothing the name and signature do not.
 - `filler` marked `report only`: the sentence is a license header, or
