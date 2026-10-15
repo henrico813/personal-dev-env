@@ -114,8 +114,7 @@ func popupAnswer(rec approval.Record, queue string, settle time.Duration) string
 // With none here and a saved Herdr machine, the popup says where requests
 // wait on other machines; those are answered there.
 // When the popup does not open, stderr and a notification say why and the
-// inbox exits 1; if an approval popup is already open, it first moves to
-// that popup's workspace, because the user asked to see approvals.
+// inbox exits 1, after moving to the open popup if it saved its workspace.
 func openInbox() int {
 	pending := approval.Inbox()
 	var err error
