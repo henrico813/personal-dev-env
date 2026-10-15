@@ -9,6 +9,8 @@ Follow the repository's documented style first. Otherwise use these defaults.
 
 1. Use `<type>[(scope)][!]: <summary>` with `feat`, `fix`, `docs`, `test`,
    `refactor`, `perf`, `build`, `ci`, `chore`, `style`, or `revert`.
+   A repository's git config may allow a title prefix before the type,
+   which `msg lint` enforces.
 2. Keep titles to 50 characters, excluding a trailing ` (#N)`, and omit a
    final period. Put a blank line after the title.
 3. For a commit body, explain why the change matters, what changed, and any
@@ -20,17 +22,16 @@ Follow the repository's documented style first. Otherwise use these defaults.
 5. In Testing, write a short prose block: why the check matters, how to run a
    human-runnable check in a code fence, what to expect, and the real result.
    Report only checks actually run.
-6. Review all text for plain direct English and AI slop: would a new reader
+6. Leave out branch-only commit hashes, meaningless test counts, private
+   tracker references, unexplained project terms, and AI attribution.
+7. Review all text for plain direct English and AI slop: would a new reader
    understand every term, does each sentence say something specific, are the
    results real, and can it be shorter?
 
-7. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
+8. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
    `python3 ~/.agents/skills/git-messages/scripts/msg lint [--pr] FILE`.
    `fmt` wraps text and `lint` reports exact counts. Recheck up to three times,
    fixing only reported lines. Repositories may keep their own copy.
-
-Leave out branch-only commit hashes, meaningless test counts, private tracker
-references, unexplained project terms, and AI attribution.
 
 Example commit:
 

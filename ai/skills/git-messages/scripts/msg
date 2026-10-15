@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -15,6 +16,9 @@ TYPES = "feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert"
 TITLE_RE = re.compile(rf"^(?:{TYPES})(?:\([^)]+\))?!?: .+")
 SUFFIX_RE = re.compile(r" \(#\d+\)$")
 SECTIONS = ("## Overview", "## Changes", "## Testing")
+PREFIXED_FORMAT_ERROR = (
+    "line 1: title must match [<msg.titlePrefix>]<type>[(scope)][!]: <summary>"
+)
 
 
 def read_message(path: Path) -> list[str]:
@@ -27,8 +31,46 @@ def title_without_suffix(title: str) -> str:
     return SUFFIX_RE.sub("", title)
 
 
-def lint(lines: list[str], pull_request: bool, hook: bool = False) -> list[str]:
-    """Return all rule violations in a message."""
+def git_output(*args: str) -> str | None:
+    """Return git's output minus its final newline, or None if git fails.
+
+    Only the newline is removed, so a quoted trailing space in a value stays.
+
+    Args:
+        args: Arguments after ``git``, run in the current directory.
+
+    Returns:
+        The output, or None when git is missing or exits nonzero.
+    """
+    try:
+        result = subprocess.run(["git", *args], capture_output=True, text=True)
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.removesuffix("\n")
+
+
+def lint(
+    lines: list[str],
+    pull_request: bool,
+    hook: bool = False,
+    prefixed_title: re.Pattern[str] | None = None,
+) -> list[str]:
+    """Return all rule violations in a message.
+
+    Args:
+        lines: Message lines, title first.
+        pull_request: Also require the PR description sections.
+        hook: Check as the commit-msg hook does: skip comments, and check
+            only lengths unless ``prefixed_title`` is set.
+        prefixed_title: Pattern built from msg.titlePrefix. It replaces
+            ``TITLE_RE``, and hook mode checks it too, except for
+            generated subjects such as ``fixup!``.
+
+    Returns:
+        One line per violation; empty when the message passes.
+    """
     errors: list[str] = []
     if hook:
         for index, line in enumerate(lines):
@@ -46,6 +88,8 @@ def lint(lines: list[str], pull_request: bool, hook: bool = False) -> list[str]:
             errors.append(
                 f"line 1: {len(title_body)} chars, max 50 (over by {len(title_body) - 50})"
             )
+        if prefixed_title and not generated_subject and not prefixed_title.fullmatch(title_body):
+            errors.append(PREFIXED_FORMAT_ERROR)
         fenced = False
         for number, line in enumerate(lines[1:], 2):
             if line.startswith("```"):
@@ -62,7 +106,10 @@ def lint(lines: list[str], pull_request: bool, hook: bool = False) -> list[str]:
         count = len(title_body)
         if count > MAX_TITLE:
             errors.append(f"line 1: {count} chars, max 50 (over by {count - 50})")
-        if not TITLE_RE.fullmatch(title_body):
+        if prefixed_title:
+            if not prefixed_title.fullmatch(title_body):
+                errors.append(PREFIXED_FORMAT_ERROR)
+        elif not TITLE_RE.fullmatch(title_body):
             errors.append("line 1: title must match <type>[(scope)][!]: <summary>")
         if title_body.endswith("."):
             errors.append("line 1: title must not end with a period")
@@ -194,7 +241,21 @@ def main() -> int:
             print(f"error: {error}", file=sys.stderr)
             return 1
         return 0
-    errors = lint(read_message(args.message), args.pr, args.hook)
+    prefixed_title = None
+    # Only this checkout's own setting counts. FILE may be a temp file
+    # outside the repository, so look it up from the current directory.
+    prefix = git_output("config", "--local", "--get", "msg.titlePrefix")
+    if prefix is not None:
+        try:
+            # Compile the prefix alone first: "KEY-[" is invalid, but compiles
+            # once TITLE_RE follows it and would quietly become another rule.
+            re.compile(prefix)
+            prefixed_title = re.compile(rf"(?:{prefix})?{TITLE_RE.pattern[1:]}")
+        except re.error as error:
+            repository = git_output("rev-parse", "--show-toplevel") or Path.cwd()
+            print(f"msg.titlePrefix in {repository}: invalid regex: {error}")
+            return 1
+    errors = lint(read_message(args.message), args.pr, args.hook, prefixed_title)
     for error in errors:
         print(error)
     return 1 if errors else 0
