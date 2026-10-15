@@ -1,6 +1,5 @@
 """Behavior tests for the comment checker in the code-documentation skill."""
 
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -9,10 +8,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "ai/skills/code-documentation/scripts/check_comments.py"
-go_comments = runpy.run_path(str(CHECKER))["go_comments"]
 
 
-def commit_all(root: Path) -> None:
+def init_repo_and_commit_all(root: Path) -> None:
     """Make ``root`` a Git repository and commit everything in it.
 
     Args:
@@ -32,7 +30,6 @@ def run_checker(
     """Run the checker in ``repo``.
 
     Args:
-        repo: The repository folder.
         *args: Extra checker options, such as ``--base``.
         paths: Paths to check; every Go file in ``repo`` when ``None``.
 
@@ -51,23 +48,35 @@ def run_checker(
 class TestCommentNames:
     """Name each comment after the code below it."""
 
-    def test_method_comment_takes_the_method_name(self) -> None:
-        """Name a method's comment ``Recv.Method``, not ``func``.
+    def test_method_comment_takes_the_method_name(
+        self, tmp_path: Path
+    ) -> None:
+        """Guard filler detection on Go methods.
 
-        A method declaration starts with its receiver, so the plain
-        declaration pattern would name its comment ``func``. Filler
-        counts only in a sentence about the code, such as one that
-        starts with its name, so "Total facilitates ..." would pass.
+        A method line starts with its receiver, "func (c *Cart)", so a
+        naive parse names the comment "func". Filler only counts in a
+        sentence that starts with "This" or the code's name, so with the
+        wrong name "Total facilitates ..." would pass unnoticed. The
+        same name drives ``restated-name``, which is only ever reported,
+        so no exit code would show it going quiet.
         """
-        source = "// Total adds up the prices.\nfunc (c *Cart) Total() int {\n"
+        (tmp_path / "cart.go").write_text(
+            "// Total facilitates the prices.\nfunc (c *Cart) Total() int {\n"
+        )
 
-        comments = go_comments(source, "cart.go")
+        result = run_checker(tmp_path)
 
-        assert [c.name for c in comments] == ["Cart.Total"]
+        assert 'cart.go:1 Cart.Total: filler: "facilitates"\n' in (
+            result.stdout
+        )
+        assert (
+            "cart.go:1 Cart.Total: restated-name: first sentence repeats "
+            'the name "Total"\n'
+        ) in result.stdout
 
 
 class TestFiller:
-    """Fail on the skill's filler examples in sentences a task added."""
+    """Fail on the skill's filler examples in sentences not at ``--base``."""
 
     @pytest.mark.parametrize(
         "comment, fails",
@@ -81,17 +90,17 @@ class TestFiller:
             ),
         ],
     )
-    def test_filler_fails_only_about_the_code(
+    def test_filler_fails_when_code_is_subject(
         self, tmp_path: Path, comment: str, fails: bool
     ) -> None:
-        """Fail on filler about the code, not on facts about the caller.
+        """Fail on filler that describes the code, not the caller's duties.
 
-        The skill lists "is responsible for" as filler, and it also asks
-        comments to say who owns what. Failing on "The caller is
-        responsible for closing it" would push agents to cut that fact,
-        and missing "Post facilitates" lets the filler through.
+        The skill lists "is responsible for" as filler, but also asks
+        comments to say who must close or free things. If "The caller
+        is responsible for closing it" failed, agents would delete a
+        fact readers need.
         """
-        commit_all(tmp_path)
+        init_repo_and_commit_all(tmp_path)
         source = "package shop\n\n" + comment + "func Post() {}\n"
         (tmp_path / "post.go").write_text(source)
 
@@ -102,7 +111,7 @@ class TestFiller:
 
 
 class TestExistingSentences:
-    """Leave the sentences that were there before the task to people."""
+    """Leave sentences present at ``--base`` to the people who wrote them."""
 
     @pytest.mark.parametrize(
         "folder, before, after, added",
@@ -121,15 +130,14 @@ class TestExistingSentences:
     def test_older_sentences_stay_report_only(
         self, tmp_path: Path, folder: str, before: str, after: str, added: str
     ) -> None:
-        """Only report filler in a sentence that was there at ``--base``.
+        """Never fail an agent for filler it did not write.
 
-        Such a sentence may be a person's words, and the agent must not
-        rewrite them to pass. The checker compares sentences, not whole
-        comments, reads ``--base`` from the folder given as ``--repo``,
-        and reads every Go file there, so adding a sentence, a repository
-        in a subfolder, or a moved file must not make the old sentence
-        new. Questions about old sentences are left out too, so the
-        agent is asked only about its own text.
+        A sentence already present at --base may be a person's words,
+        and the agent must not rewrite them to pass. Each case is one
+        way an old sentence can look new to a simpler check: a sentence
+        added to the same comment, --repo below the Git root, and a
+        moved file. ``restated-name`` findings on old sentences are dropped,
+        so the agent is asked only about its own text.
         """
         repo = tmp_path / folder
         repo.mkdir(exist_ok=True)
@@ -137,7 +145,7 @@ class TestExistingSentences:
             "package shop\n\n// Send facilitates the queue. It keeps order.\n"
         )
         (repo / before).write_text(old + "func Send() {}\n")
-        commit_all(tmp_path)
+        init_repo_and_commit_all(tmp_path)
         (repo / before).unlink()
         (repo / after).write_text(old + added + "func Send() {}\n")
 
@@ -153,25 +161,32 @@ class TestExistingSentences:
 class TestHeaders:
     """Keep license headers and generated files out of the agent's way."""
 
-    def test_only_license_headers_are_report_only(
+    def test_license_header_filler_is_report_only(
         self, tmp_path: Path
     ) -> None:
-        """Report license headers and skip generated files, but not docs.
+        """Only report filler in a license header, even in a new file.
 
-        A license header above ``package`` and a generated file are text
-        no agent should rewrite, even when they are new. A package doc
-        comment also sits above ``package``, but an agent writes it, so
-        new filler there must still fail; an earlier version let it pass
-        as a header.
+        A license header above "package" is text no agent should
+        rewrite, so failing on it would push agents to edit legal text.
         """
-        commit_all(tmp_path)
+        init_repo_and_commit_all(tmp_path)
         (tmp_path / "send.go").write_text(
             "// Copyright Shop. This facilitates nothing.\n\npackage shop\n"
         )
-        (tmp_path / "gen.go").write_text(
-            "// Code generated by stringer. DO NOT EDIT.\n\n"
-            "package shop\n\n// Red facilitates the palette.\nconst Red = 1\n"
-        )
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
+        assert "(header: report only)" in result.stdout
+
+    def test_package_doc_filler_fails(self, tmp_path: Path) -> None:
+        """Fail on new filler in a package doc comment.
+
+        A package doc comment sits above "package" like a license
+        header, but an agent writes it, so new filler there must fail.
+        An earlier version mistook it for a header and let it pass.
+        """
+        init_repo_and_commit_all(tmp_path)
         (tmp_path / "doc.go").write_text(
             "// Package shop seamlessly sells things.\npackage shop\n"
         )
@@ -179,8 +194,24 @@ class TestHeaders:
         result = run_checker(tmp_path, "--base", "HEAD")
 
         assert result.returncode == 1
-        assert "(header: report only)" in result.stdout
         assert 'doc.go:1 shop: filler: "seamlessly"\n' in result.stdout
+
+    def test_generated_files_are_skipped(self, tmp_path: Path) -> None:
+        """Skip generated files, even new ones.
+
+        A generator writes these files and rewrites them on its next
+        run, so an agent cannot fix their comments.
+        """
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "post.go").write_text("package shop\n")
+        (tmp_path / "gen.go").write_text(
+            "// Code generated by stringer. DO NOT EDIT.\n\n"
+            "package shop\n\n// Red facilitates the palette.\nconst Red = 1\n"
+        )
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
         assert "gen.go" not in result.stdout
 
 
@@ -194,16 +225,16 @@ class TestInput:
             pytest.param("sub", id="directory"),
         ],
     )
-    def test_unreadable_input_exits_two(
+    def test_uncheckable_path_exits_two(
         self, tmp_path: Path, path: str
     ) -> None:
         """Exit 2 when a given path cannot be checked as a Go file.
 
         An agent that passes a folder, or a file that is not there,
-        would otherwise see exit 0 and believe its comments passed,
-        even when they hold new filler.
+        would otherwise be skipped like a non-Go file and exit 0, and
+        the agent would believe its comments passed.
         """
-        commit_all(tmp_path)
+        init_repo_and_commit_all(tmp_path)
         (tmp_path / "post.go").write_text("package shop\n")
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "s.go").write_text(
