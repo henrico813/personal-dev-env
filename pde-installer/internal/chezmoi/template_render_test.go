@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"text/template"
@@ -605,6 +606,50 @@ func TestRenderedExternalsPinRemoteChecksums(t *testing.T) {
 	}
 }
 
+func TestExternalsInstallEverySkillFile(t *testing.T) {
+	checkout := t.TempDir()
+	for name, text := range map[string]string{
+		"ai/skills/demo/SKILL.md":         "tracked\n",
+		"ai/skills/demo/scripts/check.py": "tracked\n",
+		"ai/skills/demo/notes.md":         "untracked\n",
+	} {
+		path := filepath.Join(checkout, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "ai/skills/demo/SKILL.md", "ai/skills/demo/scripts/check.py"}} {
+		command := exec.Command("git", append([]string{"-C", checkout}, args...)...)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, output)
+		}
+	}
+
+	text, err := renderTemplateForCheckout(t, ".chezmoiexternal.toml.tmpl", "full", "tokyo-night", checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var skillTargets []string
+	for _, target := range renderedExternalTargets(text) {
+		if strings.HasPrefix(target, ".agents/skills/") {
+			skillTargets = append(skillTargets, target)
+		}
+	}
+	slices.Sort(skillTargets)
+	want := []string{".agents/skills/demo/SKILL.md", ".agents/skills/demo/scripts/check.py"}
+	if !slices.Equal(skillTargets, want) {
+		t.Fatalf("skill targets = %q, want %q", skillTargets, want)
+	}
+	url := fmt.Sprintf("url = 'file://%s/ai/skills/demo/scripts/check.py'", checkout)
+	if !containsLine(text, url) {
+		t.Fatalf("rendered externals omit %s", url)
+	}
+}
+
 func renderProfileTemplate(t *testing.T, name, profile string) string {
 	t.Helper()
 	text, err := renderTemplate(t, name, profile)
@@ -620,6 +665,11 @@ func renderTemplate(t *testing.T, name, profile string) (string, error) {
 
 func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) (string, error) {
 	t.Helper()
+	return renderTemplateForCheckout(t, name, profile, colorProfile, repoRoot(t))
+}
+
+func renderTemplateForCheckout(t *testing.T, name, profile, colorProfile, checkout string) (string, error) {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", name))
 	if err != nil {
 		t.Fatal(err)
@@ -630,7 +680,7 @@ func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) 
 				return profile
 			}
 			if key == "PDE_REPO_ROOT" {
-				return repoRoot(t)
+				return checkout
 			}
 			if key == "PDE_COLOR_PROFILE" {
 				return colorProfile
@@ -638,6 +688,11 @@ func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) 
 			return ""
 		},
 		"fail": func(message string) (string, error) { return "", &templateError{message} },
+		"output": func(name string, args ...string) (string, error) {
+			output, err := exec.Command(name, args...).Output()
+			return string(output), err
+		},
+		"splitList": func(separator, text string) []string { return strings.Split(text, separator) },
 	}
 	tmpl, err := template.New(name).Option("missingkey=error").Funcs(functions).Parse(string(data))
 	if err != nil {
