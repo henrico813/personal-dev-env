@@ -7,7 +7,7 @@ Example:
     python3 check_comments.py --repo . --base main --approve shop/*.go
 
 Prints one line per finding, then quotes each broken rule's sentence
-from the skill. ``.code-comments.json`` at the repository root holds
+from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
 the owner's approved text, ``""`` for a cut comment, and words to
 avoid. ``--approve`` rewrites the approved text from the checked files::
 
@@ -36,8 +36,8 @@ Exit codes:
     1: An ``approved`` finding, or, with ``--base``, filler or an
         avoided word in a sentence not present at that commit.
     2: A path is a folder or unreadable, no Go file was given,
-        ``--base`` is not a commit, or the settings file has another
-        shape.
+        ``--base`` is not a commit, or the settings file is not JSON of
+        the shape above.
 """
 
 from __future__ import annotations
@@ -109,21 +109,22 @@ class Comment:
     """One comment and the name of the code it sits on.
 
     Names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
-    for a struct field or map entry, and ``const Red`` for a comment
-    above a ``const (`` block. A comment inside a function body, with a
-    blank line after it, or above an empty block has the name ``""``,
-    and so does one whose name another comment in the file shares, once
-    ``unname_shared`` runs. Such comments cannot be approved. ``old`` is
-    its exact text, as approved text stores it. ``header`` is true for a
-    comment above the ``package`` line with a blank line after it, where
-    license text usually sits. A package doc comment touches the
-    ``package`` line, so it is named, not a header.
+    for a struct field or map entry, and ``const Red`` for a comment above
+    a ``const (`` block. A comment has the name ``""`` inside a function
+    body, with a blank line after it, above an empty block, or, after
+    ``unname_shared_names``, when another comment in the file has the same
+    name. Such comments cannot be approved.
+
+    ``text`` is the comment exactly as written, which approved text is
+    compared with. ``header`` is true for a comment above ``package`` with
+    a blank line after it, where license text sits; a package doc comment
+    touches ``package``, so it is named instead.
     """
 
     file: str
     line: int
     name: str
-    old: str
+    text: str
     prose: str
     header: bool = False
 
@@ -132,9 +133,9 @@ class Comment:
 class Finding:
     """A problem in one comment, under one of the ``RULES``.
 
-    ``note`` says why the finding is only reported, or is empty. Only a
-    ``filler`` finding with an empty note, in a run with ``--base``,
-    fails the run.
+    ``note`` says why the finding is only reported, or is empty. A finding
+    with an empty note fails the run when its rule is ``approved``, or,
+    with ``--base``, ``filler`` or ``avoided-word``.
     """
 
     comment: Comment
@@ -199,7 +200,7 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
                     file=file,
                     line=start,
                     name=name,
-                    old="".join(comment_lines),
+                    text="".join(comment_lines),
                     prose=join_comment_prose(comment_lines),
                     header=not seen_package and not name,
                 )
@@ -359,7 +360,7 @@ def find_gone_approvals(
     for (file, name), text in sorted(approved.items()):
         if not text:
             continue
-        gone = Comment(file=file, line=0, name=name, old="", prose="")
+        gone = Comment(file=file, line=0, name=name, text="", prose="")
         if file not in files:
             findings.append(Finding(gone, "approved", "approved file is gone"))
         elif (file, name) not in current:
@@ -373,7 +374,7 @@ def find_changed_approval(
 ) -> Finding | None:
     """Find a comment whose text differs from what the owner approved."""
     approved_text = approved[(comment.file, comment.name)]
-    if approved_text == comment.old:
+    if approved_text == comment.text:
         return None
     if not approved_text:
         return Finding(comment, "approved", "the owner cut this comment")
@@ -391,7 +392,6 @@ def find_rule_violations(
 
     Args:
         files: Paths of the checked files, relative to the repository.
-        comments: Comments from those files.
         approved: Approved text by ``(file, name)``; ``""`` means the
             owner cut the comment.
         avoid: Words not to use, each with what to say instead.
@@ -403,14 +403,8 @@ def find_rule_violations(
     """
     findings = find_gone_approvals(files, comments, approved)
     for comment in comments:
-        is_approved = (
-            bool(comment.name)
-            and (
-                comment.file,
-                comment.name,
-            )
-            in approved
-        )
+        key = (comment.file, comment.name)
+        is_approved = bool(comment.name) and key in approved
         if is_approved:
             changed = find_changed_approval(comment, approved)
             # The owner's text must come back as it was, so other rules
@@ -449,15 +443,13 @@ def load_settings(
 ) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
     """Read approved text and avoided words from ``.code-comments.json``.
 
-    Exits 2 when the file is not JSON of the shape in the module
-    docstring.
-
-    Args:
-        repo: The folder given as ``--repo``.
-
     Returns:
         Approved text by ``(file, name)`` and the avoid list; both are
         empty when no file exists.
+
+    Raises:
+        ValueError: The file is not JSON of the shape in the module
+            docstring. The owner edits the avoid list by hand.
     """
     path = repo / SETTINGS
     if not path.exists():
@@ -465,37 +457,28 @@ def load_settings(
     try:
         settings = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        print(f"{path}: {error}", file=sys.stderr)
-        sys.exit(2)
+        raise ValueError(f"{path}: {error}") from error
     is_object = isinstance(settings, dict)
     entries = settings.get("approved", []) if is_object else None
     avoid = settings.get("avoid", {}) if is_object else None
     if not (
         isinstance(entries, list)
         and all(
-            strings(e) and set(e) >= {"file", "name", "text"} for e in entries
+            is_string_map(entry) and {"file", "name", "text"} <= set(entry)
+            for entry in entries
         )
-        and strings(avoid)
+        and is_string_map(avoid)
     ):
-        print(
+        raise ValueError(
             f'{path}: expected {{"approved": [{{"file", "name", "text"}}], '
-            '"avoid": {word: advice}} of strings; see check_comments.py',
-            file=sys.stderr,
+            '"avoid": {word: advice}} of strings; see check_comments.py'
         )
-        sys.exit(2)
     approved = {(e["file"], e["name"]): e["text"] for e in entries}
     return approved, avoid
 
 
-def strings(value: object) -> TypeGuard[dict[str, str]]:
-    """Return whether ``value`` is a JSON object whose values are strings.
-
-    Args:
-        value: A value read from the settings file.
-
-    Returns:
-        True for a dict with string keys and values.
-    """
+def is_string_map(value: object) -> TypeGuard[dict[str, str]]:
+    """Return whether ``value`` is a dict of strings to strings."""
     return isinstance(value, dict) and all(
         isinstance(k, str) and isinstance(v, str) for k, v in value.items()
     )
@@ -540,19 +523,16 @@ def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
         # An old file need not be UTF-8; only its comments matter.
         source = shown.decode("utf-8", errors="replace")
         found += parse_go_comments(source, file)
-    return unname_shared(found)[0]
+    return unname_shared_names(found)[0]
 
 
-def unname_shared(
+def unname_shared_names(
     comments: list[Comment],
 ) -> tuple[list[Comment], dict[tuple[str, str], list[int]]]:
     """Take the name off comments whose name another comment shares.
 
     Two ``func init()`` or two ``var _`` lines in one file are ordinary
     Go, but approved text could not tell their comments apart.
-
-    Args:
-        comments: Every checked comment.
 
     Returns:
         The comments, with shared names set to ``""``, and the lines
@@ -572,44 +552,43 @@ def unname_shared(
     return unnamed, shared
 
 
-def approve(
+def build_approved_entries(
     repo: Path,
     files: set[str],
     comments: list[Comment],
-    before: list[Comment],
+    base_comments: list[Comment],
     approved: dict[tuple[str, str], str],
 ) -> tuple[list[dict[str, str]], int]:
-    """List approved entries for the checked files, for the owner.
+    """Build the settings entries that ``--approve`` writes.
 
     Running ``--approve`` is the owner's approval of what changed: a
     comment gone from a checked file is recorded as cut, and the
     entries of a deleted file are dropped.
 
     Args:
-        repo: The folder given as ``--repo``.
         files: Paths of the checked files.
-        comments: Their current comments.
-        before: Every comment at ``--base``, or none without it.
+        base_comments: Every comment at ``--base``, or none without it.
         approved: Entries already in ``.code-comments.json``.
 
     Returns:
-        The entries: one per named comment, then ``""`` for each named
-        comment of these files that was there at ``--base`` or had an
-        entry and is now gone, then the entries of other files that
-        still exist. Also the number of entries dropped with deleted
-        files.
+        The entries to write, and how many were dropped with deleted
+        files. Checked files get one entry per named comment, plus a cut
+        entry for each comment gone since ``--base`` or since its entry.
+        Other files keep their entries. Entries are sorted by file.
     """
-    now = {(c.file, c.name) for c in comments}
     entries = [
-        {"file": c.file, "name": c.name, "text": c.old}
+        {"file": c.file, "name": c.name, "text": c.text}
         for c in comments
         if c.name
     ]
-    gone = [(c.file, c.name) for c in before if c.name]
-    gone += [key for key in sorted(approved) if key[0] in files]
-    for file, name in dict.fromkeys(gone):
-        if file in files and (file, name) not in now:
+    # Record gone comments as cut, so they cannot come back unnoticed.
+    current = {(c.file, c.name) for c in comments}
+    earlier = [(c.file, c.name) for c in base_comments if c.name]
+    earlier += [key for key in sorted(approved) if key[0] in files]
+    for file, name in dict.fromkeys(earlier):  # In order, without repeats.
+        if file in files and (file, name) not in current:
             entries.append({"file": file, "name": name, "text": ""})
+    # Keep other files' entries, unless the file no longer exists.
     removed = 0
     for (file, name), text in sorted(approved.items()):
         if file in files:
@@ -618,32 +597,19 @@ def approve(
             removed += 1
             continue
         entries.append({"file": file, "name": name, "text": text})
+    # Sort by file, keeping comment order within each, so the diff of an
+    # approval shows only real changes.
+    entries.sort(key=lambda entry: entry["file"])
     return entries, removed
 
 
-def save_settings(
-    repo: Path,
-    entries: list[dict[str, str]],
-    avoid: dict[str, str],
-    approved: dict[tuple[str, str], str],
-    removed: int,
-) -> str:
-    """Replace ``.code-comments.json`` in one step and summarize it.
+def replace_settings_file(
+    repo: Path, entries: list[dict[str, str]], avoid: dict[str, str]
+) -> None:
+    """Write ``.code-comments.json`` to a temporary file, then rename it over.
 
-    The new file is written beside the old one and renamed over it, so
-    an interrupted run leaves the old file whole. A shell redirect
-    would empty the file before the checker could read it.
-
-    Args:
-        repo: The folder given as ``--repo``.
-        entries: The approved entries to write.
-        avoid: The avoid list to keep.
-        approved: The entries the file held.
-        removed: Entries dropped with deleted files.
-
-    Returns:
-        A line counting entries added or changed, kept, cut, and
-        removed with deleted files.
+    An interrupted run leaves the old file whole. The old file's mode is
+    kept.
     """
     path = repo / SETTINGS
     text = json.dumps({"approved": entries, "avoid": avoid}, indent=1)
@@ -657,14 +623,33 @@ def save_settings(
     except BaseException:
         Path(temp).unlink(missing_ok=True)
         raise
-    cut = sum(1 for e in entries if not e["text"])
-    kept = sum(
-        1
-        for e in entries
-        if e["text"] and approved.get((e["file"], e["name"])) == e["text"]
+
+
+def summarize_approval(
+    entries: list[dict[str, str]],
+    approved: dict[tuple[str, str], str],
+    removed: int,
+) -> str:
+    """Return the line ``--approve`` prints.
+
+    For example, ``1 added or changed, 0 kept, 1 newly cut``. An entry
+    whose text matches its old entry is kept, ``""`` included, so only
+    a comment cut by this approval counts as newly cut.
+
+    Args:
+        approved: The entries the file held before.
+        removed: Entries dropped with deleted files.
+    """
+    old_texts = [approved.get((e["file"], e["name"])) for e in entries]
+    kept = sum(1 for e, old in zip(entries, old_texts) if old == e["text"])
+    newly_cut = sum(
+        1 for e, old in zip(entries, old_texts) if not e["text"] and old != ""
     )
-    added = len(entries) - cut - kept
-    summary = f"{SETTINGS}: {added} added or changed, {kept} kept, {cut} cut"
+    added = len(entries) - kept - newly_cut
+    summary = (
+        f"{SETTINGS}: {added} added or changed, {kept} kept, "
+        f"{newly_cut} newly cut"
+    )
     if removed:
         summary += f", {removed} removed with deleted files"
     return summary
@@ -692,13 +677,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
-    approved, avoid = load_settings(repo)
+    try:
+        approved, avoid = load_settings(repo)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     paths = list(args.paths)
     if not args.approve:
         # An unlisted file keeps its approved text checked; a missing one
         # is reported as gone.
-        named = sorted({repo / f for f, _ in approved})
-        paths += [path for path in named if path.exists()]
+        approved_paths = sorted({repo / file for file, _ in approved})
+        paths += [path for path in approved_paths if path.exists()]
     checked_files: set[str] = set()
     comments: list[Comment] = []
     for path in paths:
@@ -725,32 +714,33 @@ def main(argv: list[str] | None = None) -> int:
     if not checked_files:
         print("no Go file to check", file=sys.stderr)
         return 2
-    comments, shared = unname_shared(comments)
-    before: list[Comment] = []
+    comments, shared = unname_shared_names(comments)
+    base_comments: list[Comment] = []
     if args.base:
         try:
-            before = read_comments_at_commit(repo, args.base)
+            base_comments = read_comments_at_commit(repo, args.base)
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2
-    if args.approve:
-        entries, removed = approve(
-            repo, checked_files, comments, before, approved
-        )
-        print(save_settings(repo, entries, avoid, approved, removed))
-        return 0
     for (file, name), found in shared.items():
         for line in found:
             print(
                 f"{file}:{line} {name}: cannot be approved; "
                 f"{len(found)} comments in this file have this name"
             )
+    if args.approve:
+        entries, removed = build_approved_entries(
+            repo, checked_files, comments, base_comments, approved
+        )
+        replace_settings_file(repo, entries, avoid)
+        print(summarize_approval(entries, approved, removed))
+        return 0
 
     base_sentences = None
     if args.base:
         base_sentences = {
             sentence
-            for comment in before
+            for comment in base_comments
             for sentence in split_sentences(comment.prose)
         }
 
