@@ -95,8 +95,9 @@ func ParseProposals(data []byte) (Proposals, error) {
 }
 
 func findItemProblem(repo string, item Item) error {
-	if !filepath.IsLocal(item.File) {
-		return fmt.Errorf("file %q must be a relative path inside the repo", item.File)
+	// Apply would write "./a.go" and "a.go" separately, losing one's edits.
+	if !filepath.IsLocal(item.File) || filepath.Clean(item.File) != item.File {
+		return fmt.Errorf("file %q must be a plain relative path inside the repo, such as a/b.go", item.File)
 	}
 	if !strings.HasSuffix(item.File, ".go") {
 		return fmt.Errorf("file %q must be a Go file", item.File)
@@ -130,8 +131,8 @@ func findItemProblem(repo string, item Item) error {
 }
 
 // Returns where old starts in text. Refuses old unless it appears exactly
-// once, starts a line, and has no comment line just above or below it, not
-// counting a Go directive.
+// once, starts a line, is not inside a string or /* */ comment, and has
+// no comment line just above or below it, not counting a Go directive.
 func findOnce(text, old string) (int, error) {
 	switch n := strings.Count(text, old); n {
 	case 0:
@@ -145,6 +146,9 @@ func findOnce(text, old string) (int, error) {
 		return 0, errors.New("comment does not start a line")
 	}
 	if err := comment.RefusePartialComment(text, at, at+len(old)); err != nil {
+		return 0, fmt.Errorf("old %w", err)
+	}
+	if err := comment.RefuseTextOutsideComments(text, at, at+len(old)); err != nil {
 		return 0, fmt.Errorf("old %w", err)
 	}
 	return at, nil

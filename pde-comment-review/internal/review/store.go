@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 )
 
@@ -18,21 +19,37 @@ type Note struct {
 	Round int    `json:"round"`
 }
 
+// The owner's answer to one item in one round.
+type Decision struct {
+	Action string `json:"action"`
+	Text   string `json:"text,omitempty"` // the owner's comment lines, for ActionEdited
+	Round  int    `json:"round"`
+}
+
+const (
+	ActionKeep   = "keep"
+	ActionCut    = "cut"
+	ActionAccept = "accept" // take the AI's proposal
+	ActionEdited = "edited" // use the owner's own wording
+)
+
 // One named review: its rounds of proposals and the owner's notes, saved in
 // Dir.
 type Review struct {
-	Name   string
-	Dir    string
-	Rounds []Proposals // Rounds[0] is round 1.
-	Notes  map[int]Note
+	Name      string
+	Dir       string
+	Rounds    []Proposals // Rounds[0] is round 1.
+	Notes     map[int]Note
+	Decisions map[int]Decision
 }
 
 // The newest version of an item, the round it is from, and the owner's
 // note on that version.
 type Entry struct {
-	Item  Item
-	Round int
-	Note  string // the open note, or ""
+	Item     Item
+	Round    int
+	Note     string    // the open note, or ""
+	Decision *Decision // nil until the owner answers this round's version
 }
 
 var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -81,7 +98,7 @@ func loadReview(name string) (*Review, error) {
 	if !namePattern.MatchString(name) {
 		return nil, fmt.Errorf("review name %q may use only a-z, 0-9, '.', '_', and '-'", name)
 	}
-	r := &Review{Name: name, Dir: filepath.Join(findStateRoot(), name), Notes: map[int]Note{}}
+	r := &Review{Name: name, Dir: filepath.Join(findStateRoot(), name), Notes: map[int]Note{}, Decisions: map[int]Decision{}}
 	for round := 1; ; round++ {
 		data, err := os.ReadFile(buildRoundFilePath(r.Dir, round))
 		if errors.Is(err, fs.ErrNotExist) {
@@ -97,6 +114,9 @@ func loadReview(name string) (*Review, error) {
 		r.Rounds = append(r.Rounds, p)
 	}
 	if err := readJSONFile(filepath.Join(r.Dir, "notes.json"), &r.Notes); err != nil {
+		return nil, err
+	}
+	if err := readJSONFile(filepath.Join(r.Dir, "decisions.json"), &r.Decisions); err != nil {
 		return nil, err
 	}
 	return r, nil
@@ -122,6 +142,9 @@ func (r *Review) ListEntries() []Entry {
 		if n, ok := r.Notes[id]; ok && n.Round == e.Round {
 			e.Note = n.Text
 		}
+		if d, ok := r.Decisions[id]; ok && d.Round == e.Round {
+			e.Decision = &d
+		}
 		entries = append(entries, e)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Item.ID < entries[j].Item.ID })
@@ -136,6 +159,37 @@ func (r *Review) SetNote(id int, text string) error {
 		r.Notes[id] = Note{Text: text, Round: r.findLatestRound(id)}
 	}
 	return replaceJSONFile(filepath.Join(r.Dir, "notes.json"), r.Notes)
+}
+
+// Saves the owner's answer to the latest round of item id. The answer
+// covers only that round's text: if the AI proposes the item again, it
+// needs a new answer.
+func (r *Review) SetDecision(id int, action, text string) error {
+	r.Decisions[id] = Decision{Action: action, Text: text, Round: r.findLatestRound(id)}
+	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Decisions)
+}
+
+// Returns every file the review's items are in, sorted.
+func (r *Review) ListFiles() []string {
+	var files []string
+	for _, e := range r.ListEntries() {
+		files = append(files, e.Item.File)
+	}
+	sort.Strings(files)
+	return slices.Compact(files)
+}
+
+// Returns the AI's "OLD=NEW" renames from every round, each once.
+func (r *Review) ListRenames() []string {
+	var pairs []string
+	for _, p := range r.Rounds {
+		for _, pair := range p.Renames {
+			if !slices.Contains(pairs, pair) {
+				pairs = append(pairs, pair)
+			}
+		}
+	}
+	return pairs
 }
 
 func (r *Review) findLatestRound(id int) int {
