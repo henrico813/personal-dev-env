@@ -5,11 +5,15 @@ Example:
     python3 check_comments.py --repo . internal/shop/*.go
     python3 check_comments.py --repo . --base main internal/shop/*.go
     python3 check_comments.py --repo . --base main --approve shop/*.go
+    python3 check_comments.py --repo . --base main --approve \
+        --rename Total=Sum --rename cart.go=basket.go shop/*.go
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
 the owner's approved text, ``""`` for a cut comment, and words to
-avoid. ``--approve`` rewrites the approved text from the checked files::
+avoid. ``--approve`` rewrites the approved text from the checked files,
+after ``--rename OLD=NEW`` moves the entries of each renamed comment or
+``.go`` file, so a rename is not recorded as a cut::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
@@ -47,11 +51,12 @@ import enum
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple, TypeGuard
 
@@ -299,6 +304,75 @@ def split_sentences(prose: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+", prose) if s]
 
 
+def find_rename_candidates(
+    name: str,
+    text: str,
+    file: str,
+    comments: list[Comment],
+    approved: dict[tuple[str, str], str],
+) -> list[Comment]:
+    """Find comments that may be a gone approved comment after a rename.
+
+    A comment matches when its first sentence has the same words as the
+    approved text's first sentence, except where both words look like
+    Go identifiers (``Total``, ``io.Reader``, ``max_size``, ``V2``) or
+    are the two comments' names. A comment with approved text of its
+    own is the owner's other comment, not this one, so it never matches.
+
+    Args:
+        text: The gone comment's approved text.
+
+    Returns:
+        The matching named comments in ``file``, in file order.
+    """
+    approved_words = split_first_sentence(
+        join_comment_prose(text.splitlines(keepends=True))
+    )
+    candidates = []
+    for comment in comments:
+        if comment.file != file or not comment.name or comment.name == name:
+            continue
+        if approved.get((comment.file, comment.name)):
+            continue
+        words = split_first_sentence(comment.prose)
+        bare_names = {re.split(r"[. ]", n)[-1] for n in (name, comment.name)}
+        if (
+            approved_words
+            and len(words) == len(approved_words)
+            and all(
+                a == b
+                or (
+                    looks_like_identifier(a, bare_names)
+                    and looks_like_identifier(b, bare_names)
+                )
+                for a, b in zip(approved_words, words)
+            )
+        ):
+            candidates.append(comment)
+    return candidates
+
+
+def split_first_sentence(prose: str) -> list[str]:
+    """Return the words of the first sentence, with their punctuation."""
+    first = split_sentences(prose)[:1]
+    return first[0].split() if first else []
+
+
+def looks_like_identifier(word: str, names: set[str]) -> bool:
+    """Return whether a prose word looks like a Go identifier.
+
+    Args:
+        word: One word of a sentence, with any punctuation around it.
+        names: Names that count as identifiers here.
+
+    Returns:
+        True for one of ``names``, or a word with a capital letter, a
+        digit, ``_`` or an inner ``.``.
+    """
+    core = word.strip("`'\",;:()[]!?").rstrip(".")
+    return core in names or bool(re.search(r"[A-Z]|[0-9_]|\w\.\w", core))
+
+
 def find_restated_name(sentences: list[str], name: str) -> list[RuleMatch]:
     """Match a first sentence that contains the name of the code below."""
     if (
@@ -365,6 +439,15 @@ def find_gone_approvals(
             findings.append(Finding(gone, "approved", "approved file is gone"))
         elif (file, name) not in current:
             message = "approved comment is gone"
+            candidates = find_rename_candidates(
+                name, text, file, comments, approved
+            )
+            for candidate in candidates:
+                pair = shlex.quote(f"{name}={candidate.name}")
+                message += (
+                    f"; possibly now {candidate.name} at {candidate.line}"
+                )
+                message += f" (--approve --rename {pair})"
             findings.append(Finding(gone, "approved", message))
     return findings
 
@@ -603,6 +686,92 @@ def build_approved_entries(
     return entries, removed
 
 
+@dataclass
+class RenameRules:
+    """The ``--rename`` pairs.
+
+    ``used`` records each old name or path that renamed something.
+    """
+
+    file_moves: dict[str, str]
+    name_changes: dict[str, str]
+    checked_files: set[str]
+    current_keys: set[tuple[str, str]]
+    used: set[str] = field(default_factory=set)
+
+    def move_key(self, file: str, name: str) -> tuple[str, str]:
+        """Return ``(file, name)`` after the renames.
+
+        Also records each old name or path it applied in ``used``.
+        """
+        if file in self.file_moves:
+            self.used.add(file)
+            file = self.file_moves[file]
+        # Another file may still use the old name, so rename only in a
+        # checked file where the old name is no longer a comment.
+        if (
+            file in self.checked_files
+            and name in self.name_changes
+            and (file, name) not in self.current_keys
+        ):
+            self.used.add(name)
+            name = self.name_changes[name]
+        return file, name
+
+
+def apply_renames(
+    renames: dict[str, str],
+    files: set[str],
+    current_keys: set[tuple[str, str]],
+    approved: dict[tuple[str, str], str],
+    base_comments: list[Comment],
+) -> tuple[dict[tuple[str, str], str], list[Comment], list[str]]:
+    """Move entries and ``--base`` comments to their new names.
+
+    A pair of ``.go`` paths, relative to ``--repo``, moves a file; no Go
+    name ends in ``.go``, since ``go`` is a keyword. Other pairs rename a
+    comment. Files move first, and an entry already under the new name
+    wins.
+
+    Args:
+        renames: New names or paths by old ones.
+        current_keys: ``(file, name)`` of every comment in ``files``.
+
+    Returns:
+        The renamed entries and ``--base`` comments, and each old name
+        or path that renamed nothing.
+    """
+    rename_rules = RenameRules(
+        file_moves={o: n for o, n in renames.items() if o.endswith(".go")},
+        name_changes={
+            o: n for o, n in renames.items() if not o.endswith(".go")
+        },
+        checked_files=files,
+        current_keys=current_keys,
+    )
+    new_keys = {key: rename_rules.move_key(*key) for key in sorted(approved)}
+    # Unrenamed entries first, so one already under the new name wins.
+    entries = {
+        key: approved[key] for key, new in new_keys.items() if new == key
+    }
+    for key, new in new_keys.items():
+        entries.setdefault(new, approved[key])
+    moved = []
+    for comment in base_comments:
+        file, name = rename_rules.move_key(comment.file, comment.name)
+        moved.append(replace(comment, file=file, name=name))
+    unused = [old for old in renames if old not in rename_rules.used]
+    return entries, moved, unused
+
+
+def parse_rename_pair(value: str) -> tuple[str, str]:
+    """Split one ``--rename OLD=NEW`` value into the old and new names."""
+    old, _, new = value.partition("=")
+    if not old or not new:
+        raise argparse.ArgumentTypeError(f"{value!r} is not OLD=NEW")
+    return old, new
+
+
 def replace_settings_file(
     repo: Path, entries: list[dict[str, str]], avoid: dict[str, str]
 ) -> None:
@@ -664,7 +833,11 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         The exit code described in the module docstring.
     """
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # "@renames.txt" reads one argument per line, such as
+    # "--rename=const Red=const Crimson".
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0], fromfile_prefix_chars="@"
+    )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument(
         "--base", help="commit to compare with; its sentences never fail"
@@ -674,8 +847,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=f"rewrite {SETTINGS}; only the owner, or at their request",
     )
+    parser.add_argument(
+        "--rename",
+        action="append",
+        default=[],
+        type=parse_rename_pair,
+        metavar="OLD=NEW",
+        help="with --approve: a renamed comment or .go file; repeat for each",
+    )
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
+    if args.rename and not args.approve:
+        parser.error("--rename needs --approve")
     repo = args.repo.resolve()
     try:
         approved, avoid = load_settings(repo)
@@ -729,6 +912,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"{len(found)} comments in this file have this name"
             )
     if args.approve:
+        # Rename first, so a renamed comment's entry moves instead of
+        # being cut as gone or dropped with a deleted file.
+        current_keys = {(c.file, c.name) for c in comments}
+        approved, base_comments, unused = apply_renames(
+            dict(args.rename),
+            checked_files,
+            current_keys,
+            approved,
+            base_comments,
+        )
+        for old in unused:
+            print(
+                f"--rename {old}: matches no entry or --base comment in "
+                "the checked files",
+                file=sys.stderr,
+            )
         entries, removed = build_approved_entries(
             repo, checked_files, comments, base_comments, approved
         )

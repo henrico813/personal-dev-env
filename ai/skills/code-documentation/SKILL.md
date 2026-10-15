@@ -272,6 +272,14 @@ that rule's sentence from this skill. Act on each finding:
 
 - `approved`: you changed, removed, or put back a comment the owner
   approved or cut. Restore the owner's text. This fails the run.
+  If your task renamed the code, keep the owner's text on the new
+  name, changing only the renamed identifiers, and report the finding.
+  In your final message, list each rename as an exact
+  `--rename OLD=NEW` pair for the owner's `--approve`, quoting names
+  with spaces, such as `--rename 'const Red=const Crimson'`. A gone
+  comment's finding may add `possibly now <name> at <line>` with the
+  pair to record. List a hinted pair only if your task made that
+  rename.
 - `filler` or `avoided-word` in a sentence your task added or changed:
   fix the sentence. This fails the run. `avoid` in
   `.code-comments.json` gives the word to use instead.
@@ -290,7 +298,11 @@ list those findings in your final message for the owner.
 
 Only the owner runs the checker with `--approve`, or an agent the
 owner asked to. It rewrites `.code-comments.json` itself, so no one
-types entries by hand.
+types entries by hand. Pass `--rename OLD=NEW` once for each renamed
+comment, so its approved or cut entry moves to the new name, and a
+pair of `.go` paths, relative to `--repo`, for a moved file. For many
+renames, put one `--rename=OLD=NEW` per line in a file and pass
+`@<file>`.
 
 ## Completion check
 
