@@ -11,19 +11,48 @@ import (
 
 const lineWidth = 79
 
-// Returns an error if text could change code when written in place of a
-// comment. Every line must start with "//", after any spaces or tabs, and
-// text must end in a newline.
+// Returns an error unless text is whole "//" comment lines ending in a
+// newline. Go directives such as //go:generate are refused too, because
+// changing one changes how the code builds.
 func CheckWholeLines(text string) error {
 	if !strings.HasSuffix(text, "\n") {
 		return errors.New("must be whole comment lines ending in a newline")
 	}
 	for i, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		if !strings.HasPrefix(strings.TrimLeft(line, " \t"), "//") {
+		if !isCommentLine(line) {
 			return fmt.Errorf("line %d is not a // comment: %q", i+1, line)
+		}
+		// Rewrapping turns //go:generate into "// go:generate", which Go
+		// reads as a plain comment, and cutting one changes the build.
+		if isDirectiveLine(line) {
+			return fmt.Errorf("line %d has no space after //, so Go may read it as a directive: %q", i+1, line)
 		}
 	}
 	return nil
+}
+
+// Returns an error if src[start:end] is only some lines of a longer
+// comment: a "//" line sits just above or just below it. A Go directive
+// such as //go:generate there is fine, as it is not part of the comment.
+func RefusePartialComment(src string, start, end int) error {
+	above := strings.TrimSuffix(src[:start], "\n")
+	above = above[strings.LastIndex(above, "\n")+1:]
+	below, _, _ := strings.Cut(src[end:], "\n")
+	if isCommentLine(above) && !isDirectiveLine(above) || isCommentLine(below) && !isDirectiveLine(below) {
+		return errors.New("is only part of a comment: a // line is just above or below it")
+	}
+	return nil
+}
+
+func isCommentLine(line string) bool {
+	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "//")
+}
+
+// Reports whether "//" is followed by something other than a space, a tab
+// or the line's end, as in //go:generate.
+func isDirectiveLine(line string) bool {
+	body, ok := strings.CutPrefix(strings.TrimLeft(line, " \t"), "//")
+	return ok && body != "" && body[0] != ' ' && body[0] != '\t'
 }
 
 // One block of a comment: sentences, or a code example when Code is true. An
