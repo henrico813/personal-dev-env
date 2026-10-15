@@ -98,7 +98,7 @@ Looks good. One question:              <- the comment, as much as fits
 should the timeout be 30s?
 The old value was 10s.
 Typed:                                 <- keys typed so far, then notices
-v: full; g: focus; q/Esc: dismiss
+v: full; g: focus; q: dismiss
 
              [ APPROVE ]               <- tap row 10 or 11 to approve
 
@@ -128,8 +128,15 @@ New body
 When each request opened its own popup, several agents meant several
 popups, and a closed popup never came back. Now one popup works through
 every waiting request, and a request you dismiss keeps waiting; the inbox
-key brings it back. With nothing waiting and no other machine to check,
+key brings it back. So does the agent running the same command again,
+because that is all an agent can do when you ask it to send the request
+again. With nothing waiting and no other machine to check,
 the inbox shows a notification, so the key never seems to do nothing.
+
+Only `q` dismisses. The popup takes the keyboard when it opens, and in
+OpenCode Esc interrupts the agent and Up recalls its history. An Esc
+meant for the agent once dismissed a request, which then waited unseen
+for half an hour, and Up closed the popup. Both keys now do nothing.
 
 The `Approval waiting` marker in Herdr's sidebar is set with a four-hour
 time limit, the request's lifetime, so that Herdr can drop a marker the
