@@ -37,7 +37,8 @@ func requestWrite(args []string) int {
 // The lock stops two identical first requests from both creating a record;
 // the later save could overwrite an approval or a finished run. A new request
 // also starts the Herdr notification, the phone question, and the runner; a
-// pending one restarts a phone question or runner that died.
+// pending one restarts a phone question or runner that died, and opens the
+// popup again if it was dismissed.
 func loadOrCreate(req approval.Request, gh string) (string, error) {
 	lockFile, err := approval.Lock(req.ID)
 	if err != nil {
@@ -49,6 +50,18 @@ func loadOrCreate(req approval.Request, gh string) (string, error) {
 	// command needs a new approval and may run again.
 	if err == nil && !approval.Expired(rec) {
 		if rec.State == approval.StatePending {
+			// The owner asks the agent to send a dismissed request again, and a
+			// rerun is all the agent can do. Saved here, because startMoshi and
+			// ensureRunner save rec only when they restart something.
+			if rec.Dismissed {
+				rec.Dismissed = false
+				// Like dismissing, this keeps the request's age.
+				if err := approval.SaveKeepingAge(rec); err != nil {
+					return "", err
+				}
+				fmt.Fprintf(stderr, "pde-gh-write: %s had been dismissed in the Herdr popup; it is back in the popup queue\n", rec.ID)
+				go notifyRequest(rec)
+			}
 			// Replace a phone question that ended without an answer, or the
 			// request would wait with nothing to answer on the phone. startMoshi
 			// does nothing while the earlier question is still running.

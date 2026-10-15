@@ -57,6 +57,7 @@ Status lines on standard error:
 | Line starts with | When |
 |---|---|
 | `pde-gh-write: waiting for approval` | A new request was saved; the line holds its ID |
+| `pde-gh-write: ID had been dismissed in the Herdr popup; it is back in the popup queue` | A rerun of a waiting request dismissed in the popup; the popup opens it again |
 | `pde-gh-write: still waiting for approval of ID` | No answer within 90 seconds; exit 3 |
 | `pde-gh-write: the phone question failed` | After `still waiting`, when `moshi_error` is set; the line holds the reason |
 | `pde-gh-write: already ran ID, exit N` | A rerun of a request that ran; the saved `gh` output follows |
@@ -115,7 +116,8 @@ so the guard is found first.
 | Backspace or Delete | Remove the last typed character |
 | `v` | Show the full request in `less`; leftover keys are discarded after it closes |
 | `g` | Close the popup and focus the requesting agent's pane |
-| `q` or Esc | Dismiss: the request stays pending but no longer opens on its own |
+| `q` | Dismiss: the request stays pending but no longer opens on its own |
+| Esc or an arrow key | Nothing; Esc interrupts the agent and Up recalls its history, so neither dismisses |
 
 Only the press of a left-button tap counts. Input typed before the screen
 draws is discarded, and taps and Enter are ignored for 600 ms after each
@@ -210,8 +212,9 @@ the screen.
 - The queue is every waiting request that is not dismissed, oldest first
   by creation time. One popup works through it; whichever popup you
   answer in moves on through the same queue.
-- `q` or Esc dismisses a request: it keeps waiting and can still be
-  answered on the phone or in a terminal, but the queue skips it.
+- `q` dismisses a request: it keeps waiting and can still be
+  answered on the phone or in a terminal, but the queue skips it
+  until the agent reruns the command, which opens the popup again.
 - The inbox, `pde-pr-approve --herdr-inbox`, runs from `prefix+a`
   (Ctrl+b, then a) in Herdr. It opens the popup on the oldest waiting
   request, dismissed or not, then continues through the queue. It

@@ -32,7 +32,7 @@ such process was saved, so there is nothing to check in step 3. For
 
 | State | What it means | What to do |
 |---|---|---|
-| `pending`, `dismissed: true` | You dismissed it, so it no longer opens on its own | Press Ctrl+b and then `a` in Herdr, or run `pde-pr-approve ID` |
+| `pending`, `dismissed: true` | You dismissed it, so it no longer opens on its own | Press Ctrl+b and then `a` in Herdr, run `pde-pr-approve ID`, or have the agent rerun the command |
 | `pending` | Nobody has answered | Check the runner and the phone question in step 3 |
 | `approved` | Answered, but `gh` has not run | Check the runner and the `gh` path in step 3 |
 | `declined` | Declined | Ask again with a change, or after four hours |
@@ -76,7 +76,8 @@ Then rerun the command to send a new question.
 
 Run the identical command from the same folder; the folder is part of the
 request ID. For a waiting request, this starts a new runner and phone
-question if the saved ones are gone, then waits up to 90 seconds again. For
+question if the saved ones are gone, opens the popup again if the request
+was dismissed, then waits up to 90 seconds again. For
 an approved request, it runs `gh` with the `gh` it finds on `PATH`. For a
 finished request, it prints the result.
 

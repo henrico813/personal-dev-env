@@ -31,7 +31,7 @@ func TestPopupScreenFitsHerdrPane(t *testing.T) {
 				t.Fatalf("%dx%d line exceeded columns: %q", size.cols, size.rows, line)
 			}
 		}
-		if strings.Count(strings.Join(lines, "\n"), "v: full; g: focus; q/Esc: dismiss") != 1 {
+		if strings.Count(strings.Join(lines, "\n"), "v: full; g: focus; q: dismiss") != 1 {
 			t.Fatal("dismiss hint was not shown once")
 		}
 		for label, want := range map[string]string{"[ APPROVE ]": "yes", "[ DECLINE ]": "no"} {
@@ -149,12 +149,41 @@ func TestPopupDiscardsEarlyInput(t *testing.T) {
 	}
 }
 
-// q and Esc must close the popup and leave the request waiting. In live
-// testing both keys were ignored, so users could not close the popup without
-// approving or declining.
+// q must close the popup and leave the request waiting. In live testing q
+// was ignored, so users could not close the popup without approving or
+// declining.
 func TestPopupDismissesWithoutAnswer(t *testing.T) {
-	for _, dismiss := range []string{"q", "\x1b"} {
-		t.Run(dismiss, func(t *testing.T) {
+	// Run the popup on a pseudo-terminal at Herdr's size; see
+	// TestPopupDiscardsEarlyInput.
+	master, terminal := approvaltest.OpenPTY(t)
+	approvaltest.SetPopupSize(t, terminal, 37, 14)
+	result := make(chan string, 1)
+	go func() {
+		choice, _ := AskPopup(approvaltest.PopupTerminal(t, terminal), terminal, approval.Record{ID: "id", ApprovalText: "command"}, "1 of 1", 0)
+		result <- choice
+	}()
+	// Wait for the draw; a key sent earlier would be discarded as early input.
+	approvaltest.ReadUntil(t, master, "Typed:")
+
+	if _, err := master.WriteString("q"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := approvaltest.Receive(t, result); got != approval.ChoiceDismiss {
+		t.Fatalf("answer %q", got)
+	}
+}
+
+// Esc interrupts an OpenCode agent and Up recalls its history, and the popup
+// takes the keyboard when it opens. An Esc meant for the agent once
+// dismissed a request, which then sat unseen for half an hour, and Up,
+// ESC [ A, closed the popup. Both keys must leave the popup open.
+func TestPopupIgnoresEscKey(t *testing.T) {
+	for _, tc := range []struct{ name, key string }{
+		{"esc", "\x1b"},
+		{"up-arrow", "\x1b[A"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			// Run the popup on a pseudo-terminal at Herdr's size; see
 			// TestPopupDiscardsEarlyInput.
 			master, terminal := approvaltest.OpenPTY(t)
@@ -167,12 +196,13 @@ func TestPopupDismissesWithoutAnswer(t *testing.T) {
 			// Wait for the draw; a key sent earlier would be discarded as early input.
 			approvaltest.ReadUntil(t, master, "Typed:")
 
-			if _, err := master.WriteString(dismiss); err != nil {
+			// The key, then a typed no, which answers only if the popup is still open.
+			if _, err := master.WriteString(tc.key + "no\n"); err != nil {
 				t.Fatal(err)
 			}
 
-			if got := approvaltest.Receive(t, result); got != approval.ChoiceDismiss {
-				t.Fatalf("answer %q", got)
+			if got := approvaltest.Receive(t, result); got != approval.ChoiceNo {
+				t.Fatalf("answer %q, want %q", got, approval.ChoiceNo)
 			}
 		})
 	}
