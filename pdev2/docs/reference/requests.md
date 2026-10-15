@@ -199,11 +199,12 @@ Settings, or Copy mode is open. The notification body then says:
 | Body | When |
 |---|---|
 | `Approval waiting: answer the popup in NAME` | `ui_busy`, and `open-popup` names a running approval popup; `NAME` is its workspace label |
-| `Close the open Herdr popup or menu, then press Ctrl+b a` | `ui_busy` without a running approval popup in `open-popup` |
+| `POPUP is open in NAME. Close it, then press Ctrl+b a` | `ui_busy`, and `open-popup` names a running popup of another PDE tool; `POPUP` is its `name`, such as `Comment review` |
+| `Close the open Herdr popup or menu, then press Ctrl+b a` | `ui_busy` without a running popup in `open-popup` |
 | `Cannot open the approval popup: REASON` | Any other failure, such as no Herdr socket |
 
 For a new request the body replaces `Answer the popup in NAME`. The inbox
-shows it too, and for the first body it first runs
+shows it too, and for the first two bodies it first runs
 `herdr workspace focus` on that workspace. A new request never moves
 the screen.
 
@@ -309,7 +310,7 @@ Requests are saved in the state directory,
 | `ID.json` | The request record |
 | `ID.json.lock` | Lock file; only the program holding it may change the record or run `gh` |
 | `.record-*` | Temporary file while a record is saved |
-| `open-popup` | JSON with `pid` and `workspace_id` of the open approval popup; removed when it closes |
+| `open-popup` | JSON with `pid`, `workspace_id`, and for another tool's popup `name`, of the open PDE popup; removed when it closes. See [Another Tool's Popup](#another-tools-popup) |
 
 Record fields, with those omitted when empty marked as optional:
 
@@ -335,6 +336,23 @@ Record fields, with those omitted when empty marked as optional:
 | `session_id` (optional) | OpenCode session that asked |
 | `session_title`, `workspace` (optional) | Herdr agent title and workspace label |
 | `pane_id` (optional) | Herdr pane of the agent that asked |
+
+### Another Tool's Popup
+
+A PDE tool with a Herdr popup, such as comment review, should save
+the same file while its popup runs, so a refused approval can name
+it. It should write one JSON object, in any language:
+
+```json
+{"pid":4242,"workspace_id":"w1G","name":"Comment review"}
+```
+
+`pid` is the popup's own process ID. `workspace_id` is
+`workspace_id` from `HERDR_PLUGIN_CONTEXT_JSON`. `name` is what the
+user calls the popup; keep it under 20 characters. The tool should
+remove the file when its popup exits. A file whose `pid` is not running is
+ignored, so a killed popup does no harm. Files without `name` are
+approval popups.
 
 ## Environment
 

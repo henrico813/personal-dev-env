@@ -185,7 +185,11 @@ request seemed to vanish, and the inbox key did nothing.
 Herdr cannot say where a popup is: a popup is not a pane and has no
 pane ID. So the popup saves its own workspace while it runs. When Herdr
 refuses a popup, the notification names that workspace, and the inbox
-key goes there, because you pressed it to see your approvals. A new
+key goes there, because you pressed it to see your approvals. Another
+PDE tool's popup, such as comment review, blocks approvals the same
+way, so it can save its name and workspace in the same file. The
+notification then names it and asks you to close it, since it holds
+no request to answer. A new
 request only notifies, so an agent never moves the screen while you
 work. The popup stays one 40x16 popup that works on the phone; a second
 window for waiting requests would not fit there.

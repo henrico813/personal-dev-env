@@ -127,6 +127,12 @@ Answer there; the popup then moves on to the next waiting request. A
 new request shows the same notification instead of
 `Answer the popup in NAME`.
 
+If it says `POPUP is open in NAME. Close it, then press Ctrl+b a`,
+another PDE tool's popup, such as comment review, holds Herdr, and
+Ctrl+b a has moved you to its workspace. Close that popup, then press
+Ctrl+b and then `a` again. A new request shows the same notification
+but does not move the screen.
+
 If the notification says `Close the open Herdr popup or menu, then
 press Ctrl+b a`, close Settings, Copy mode, or another plugin's popup,
 or check the other workspaces for an unanswered approval popup. Then

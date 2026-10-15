@@ -6,12 +6,10 @@ import (
 	"path/filepath"
 )
 
-// Popup is where the open approval popup is. Herdr shows one popup at a time
-// and cannot say where it is, so the popup saves this while it runs; a
-// request whose own popup Herdr refuses can then point the user to it.
 type Popup struct {
 	PID       int    `json:"pid"`
 	Workspace string `json:"workspace_id"` // Herdr workspace ID, such as "w1G".
+	Name      string `json:"name,omitempty"`
 }
 
 // The name does not end in .json, so the queue never reads it as a request.

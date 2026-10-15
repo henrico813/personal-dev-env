@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"net"
 	"os"
@@ -120,74 +121,101 @@ esac`)
 	}
 }
 
-// Herdr shows one popup at a time. With an approval popup left open in a
-// workspace the user was not viewing, Herdr refused every new popup, but
-// Ctrl+b a treated the refusal as success: it showed nothing and exited 0,
-// and the user believed no approvals were waiting. The inbox must report
-// the failure, move to the open popup, and name its workspace. Herdr can
-// kill a popup before it removes its saved workspace, so a saved popup
-// whose process is gone must not send the user to an empty workspace.
-func TestInboxLeadsToOpenApprovalPopup(t *testing.T) {
+// Herdr shows one popup at a time, so a popup open in another workspace
+// blocks every approval. The inbox must say where that popup is and go
+// there, or the user cannot find it.
+func TestInboxMovesToOpenPopup(t *testing.T) {
 	tests := []struct {
-		name      string
-		pid       int
-		wantFocus bool
-		wantBody  string
+		name     string
+		popup    string
+		wantBody string
 	}{
-		// This test process stands in for the popup open in workspace w1G.
-		{"popup open", os.Getpid(), true, "Approval waiting: answer the popup in hermes"},
-		{"popup killed", deadPID(t), false, "Close the open Herdr popup or menu, then press Ctrl+b a"},
+		{"approval popup", `{"pid":%d,"workspace_id":"w1G"}`, "Approval waiting: answer the popup in hermes"},
+		{"other tool's popup", `{"pid":%d,"workspace_id":"w1G","name":"Comment review"}`, "Comment review is open in hermes. Close it, then press Ctrl+b a"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("XDG_STATE_HOME", t.TempDir())
-			discardStderr(t)
-			if err := approval.Save(approval.Record{ID: "waiting", State: approval.StatePending}); err != nil {
-				t.Fatal(err)
-			}
-			if err := approval.SavePopup(approval.Popup{PID: tt.pid, Workspace: "w1G"}); err != nil {
-				t.Fatal(err)
-			}
-			// Herdr's socket refuses the popup as it does while another one is open.
-			socket := filepath.Join(t.TempDir(), "herdr.sock")
-			listener, err := net.Listen("unix", socket)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer listener.Close()
-			go func() {
-				conn, err := listener.Accept()
-				if err != nil {
-					return
-				}
-				defer conn.Close()
-				if _, err := bufio.NewReader(conn).ReadBytes('\n'); err == nil {
-					_, _ = conn.Write([]byte(`{"id":"waiting","error":{"code":"ui_busy","message":"a popup pane is already open"}}` + "\n"))
-				}
-			}()
-			// The fake herdr CLI reports the socket and the workspace's label, and
-			// logs every call.
-			log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"
-case "$1 $2" in
-"status server") echo socket: $HERDR_TEST_SOCKET ;;
-"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1G","label":"hermes"}]}}' ;;
-esac`)
-			t.Setenv("HERDR_TEST_SOCKET", socket)
+			// This test process stands in for the popup open in workspace w1G.
+			code, calls := openInboxWhileHerdrRefuses(t, fmt.Sprintf(tt.popup, os.Getpid()))
 
-			code := openInbox()
-
-			calls, _ := os.ReadFile(log)
 			if code != 1 {
 				t.Errorf("exit = %d, want 1", code)
 			}
-			if got := strings.Contains(string(calls), "workspace focus w1G"); got != tt.wantFocus {
-				t.Errorf("moved to w1G = %v, want %v: %q", got, tt.wantFocus, calls)
+			if !strings.Contains(calls, "workspace focus w1G") {
+				t.Errorf("did not move to w1G: %q", calls)
 			}
-			if !strings.Contains(string(calls), "notification show PR approval --body "+tt.wantBody) {
+			if !strings.Contains(calls, "notification show PR approval --body "+tt.wantBody) {
 				t.Errorf("notification does not say %q: %q", tt.wantBody, calls)
 			}
 		})
 	}
+}
+
+// Herdr can kill a popup before it removes its file. The inbox must ignore
+// that file, or it sends the user to an empty workspace.
+func TestKilledPopupFileIsIgnored(t *testing.T) {
+	popup := fmt.Sprintf(`{"pid":%d,"workspace_id":"w1G","name":"Comment review"}`, deadPID(t))
+
+	code, calls := openInboxWhileHerdrRefuses(t, popup)
+
+	wantBody := "Close the open Herdr popup or menu, then press Ctrl+b a"
+	if code != 1 {
+		t.Errorf("exit = %d, want 1", code)
+	}
+	if strings.Contains(calls, "workspace focus w1G") {
+		t.Errorf("moved to the killed popup's workspace: %q", calls)
+	}
+	if !strings.Contains(calls, "notification show PR approval --body "+wantBody) {
+		t.Errorf("notification does not say %q: %q", wantBody, calls)
+	}
+}
+
+// Runs the inbox with one request waiting while Herdr refuses its popup as
+// busy, and returns the exit code and every herdr call. Herdr labels
+// workspace w1G "hermes".
+func openInboxWhileHerdrRefuses(t *testing.T, popup string) (code int, calls string) {
+	t.Helper()
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	discardStderr(t)
+	if err := approval.Save(approval.Record{ID: "waiting", State: approval.StatePending}); err != nil {
+		t.Fatal(err)
+	}
+	// Other tools write this JSON, so a renamed key or moved file must fail.
+	popupFile := filepath.Join(state, "pde", "pr-write", "open-popup")
+	if err := os.WriteFile(popupFile, []byte(popup), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Herdr's socket refuses the popup as it does while another one is open.
+	socket := filepath.Join(t.TempDir(), "herdr.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		if _, err := bufio.NewReader(conn).ReadBytes('\n'); err == nil {
+			_, _ = conn.Write([]byte(`{"id":"waiting","error":{"code":"ui_busy","message":"a popup pane is already open"}}` + "\n"))
+		}
+	}()
+	// The fake herdr CLI reports the socket and the workspace's label, and
+	// logs every call.
+	log := approvaltest.FakeHerdr(t, `echo "$*" >> "$log"
+case "$1 $2" in
+"status server") echo socket: $HERDR_TEST_SOCKET ;;
+"workspace list") echo '{"result":{"workspaces":[{"workspace_id":"w1G","label":"hermes"}]}}' ;;
+esac`)
+	t.Setenv("HERDR_TEST_SOCKET", socket)
+
+	code = openInbox()
+
+	output, _ := os.ReadFile(log)
+	return code, string(output)
 }
 
 // Ctrl+b a once said "No approvals waiting" while a request waited on
