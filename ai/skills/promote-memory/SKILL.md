@@ -33,10 +33,9 @@ Choose the narrowest one:
 
 1. Restate the learning as one concise, future-facing rule.
 2. Search `ai/skills/` for overlap before creating a package.
-3. Write the skill and install it through
-   `chezmoi/.chezmoiexternal.toml.tmpl` entries for
-   `.agents/skills/<name>/SKILL.md` and `.codex/skills/<name>/SKILL.md`.
-   These local file externals need no checksum.
+3. Write the skill under `ai/skills/<name>/` and add its files to
+   Git. The installer copies every file in it that Git tracks, so it
+   needs no install entry.
 4. Document the skill in the `README.md` installed-layout table and
    `ai/README.md`.
 5. Run `(cd pde-installer && go test ./... && go vet ./...)` and
