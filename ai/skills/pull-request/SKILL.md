@@ -7,7 +7,8 @@ metadata:
 
 # Pull Requests
 
-Use repository instructions first. Use these defaults otherwise.
+Guardrails always apply. Repository instructions may replace the other
+steps' defaults.
 
 ## Guardrails
 
