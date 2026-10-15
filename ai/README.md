@@ -29,8 +29,8 @@ instructions, skill descriptions, or planning workflows. Run
 shared workflow skills. Run it locally with `cd ai && uv run pytest`.
 
 `pde-installer install full` installs planner, `codex`, `opencode`,
-`opencode-inline-shim`, `pi`, and `vibe`, then installs each
-mapped package under `skills/` to `~/.agents/skills/<name>/`, including the
+`opencode-inline-shim`, `pi`, and `vibe`, then installs every file under
+`skills/` that Git tracks to `~/.agents/skills/`, including the
 shared workflow skills. It syncs `opencode/` and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
@@ -48,5 +48,5 @@ installation does not configure one for OpenCode.
 
 The `promote-memory` skill turns an explicitly requested learning into a
 reviewed source change. It targets this repository by default from any
-checkout, installs skills through checksummed chezmoi externals, and opens a
-pull request with Git author email `henryco4388@gmail.com`.
+checkout, writes the skill under `skills/`; it needs no install entry, and
+opens a pull request with Git author email `henryco4388@gmail.com`.
