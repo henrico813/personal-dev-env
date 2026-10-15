@@ -1,7 +1,9 @@
 """Behavior tests for the comment checker in the code-documentation skill."""
 
+import json
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,26 @@ def init_repo_and_commit_all(root: Path) -> None:
     subprocess.run(
         [*git, "commit", "-qm", "base", "--allow-empty"], check=True
     )
+
+
+def write_settings_file(
+    repo: Path,
+    approved: Sequence[tuple[str, str, str]] = (),
+    avoid: dict[str, str] | None = None,
+) -> None:
+    """Write the repository's ``.code-comments.json``.
+
+    Args:
+        approved: ``(file, name, text)`` entries the owner approved.
+        avoid: Words not to use, each with what to say instead.
+    """
+    settings = {
+        "approved": [
+            {"file": f, "name": n, "text": t} for f, n, t in approved
+        ],
+        "avoid": avoid or {},
+    }
+    (repo / ".code-comments.json").write_text(json.dumps(settings))
 
 
 def run_checker(
@@ -272,3 +294,312 @@ class TestInput:
         )
 
         assert result.returncode == 2
+
+
+TOTAL = "// Total is in cents, so a half-cent discount rounds down.\n"
+
+
+class TestApprovedText:
+    """Keep the owner's approved comments as the owner left them."""
+
+    @pytest.mark.parametrize(
+        "source, approved, listed, expected",
+        [
+            pytest.param(
+                "// Total returns the cart total.\nfunc Total() {}\n",
+                [("cart.go", "Total", TOTAL)],
+                "cart.go",
+                "cart.go:1 Total: approved: approved text changed",
+                id="reworded",
+            ),
+            pytest.param(
+                "// Empty reports whether the cart is empty.\n"
+                "func Empty() {}\n",
+                [("cart.go", "Empty", "")],
+                "cart.go",
+                "cart.go:1 Empty: approved: the owner cut this comment",
+                id="cut-comment-restored",
+            ),
+            pytest.param(
+                "func Total() {}\n",
+                [("cart.go", "Total", TOTAL)],
+                "cart.go",
+                "cart.go Total: approved: approved comment is gone",
+                id="deleted",
+            ),
+            pytest.param(
+                "// Load the default colors.\nfunc init() {}\n\n"
+                "// Load the saved colors.\nfunc init() {}\n",
+                [("cart.go", "init", "// Load the default colors.\n")],
+                "cart.go",
+                "cart.go init: approved: approved comment is gone",
+                id="name-shared",
+            ),
+            pytest.param(
+                TOTAL + "func Total() {}\n",
+                [("old.go", "Total", TOTAL)],
+                "cart.go",
+                "old.go Total: approved: approved file is gone",
+                id="file-moved",
+            ),
+            pytest.param(
+                "// Total returns the cart total.\nfunc Total() {}\n",
+                [("cart.go", "Total", TOTAL)],
+                "send.go",
+                "cart.go:1 Total: approved: approved text changed",
+                id="file-not-listed",
+            ),
+        ],
+    )
+    def test_changed_approved_text_fails(
+        self,
+        tmp_path: Path,
+        source: str,
+        approved: list[tuple[str, str, str]],
+        listed: str,
+        expected: str,
+    ) -> None:
+        """Fail when an agent rewords, restores or deletes the owner's text.
+
+        After the owner reviewed a Go package's comments one by one,
+        later agent rounds reworded them and put back comments the owner
+        had cut. A failing exit keeps that work from passing as done.
+        Two comments with one name must not share an entry, or the agent
+        is told to copy one over the other. Moving the file, or leaving
+        it off the command line as agents do with files they did not
+        mean to change, must not take the text out of the check.
+        """
+        (tmp_path / "cart.go").write_text(source)
+        (tmp_path / "send.go").write_text("package shop\n")
+        write_settings_file(tmp_path, approved)
+
+        result = run_checker(tmp_path, paths=[str(tmp_path / listed)])
+
+        assert result.returncode == 1
+        assert expected in result.stdout
+        assert result.stdout.count(": approved: ") == 1
+
+    def test_shared_names_are_reported_not_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """Keep ordinary Go with repeated names from blocking every run.
+
+        Two ``var _`` interface checks in one file are ordinary Go and
+        cannot be renamed, but approved text cannot tell their comments
+        apart. Failing on them would block every run on such a file, so
+        the checker only says they cannot be approved.
+        """
+        source = (
+            "// Cart must be a Reader.\nvar _ io.Reader = (*Cart)(nil)\n\n"
+            "// Till must be a Reader.\nvar _ io.Reader = (*Till)(nil)\n"
+        )
+        (tmp_path / "cart.go").write_text(source)
+
+        result = run_checker(tmp_path)
+
+        assert result.returncode == 0
+        assert "cart.go:1 _: cannot be approved" in result.stdout
+        assert "cart.go:4 _: cannot be approved" in result.stdout
+
+    def test_approved_text_is_reported_not_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """Never make an agent rewrite text the owner approved.
+
+        Only the owner changes their own words. The owner may approve a
+        comment an agent wrote, so it is new since ``--base``; if the
+        checker failed on its filler, the agent would have to rewrite
+        the owner's approved text to pass.
+        """
+        init_repo_and_commit_all(tmp_path)
+        comment = "// This is responsible for the cart total.\n"
+        (tmp_path / "cart.go").write_text(comment + "func Total() {}\n")
+        write_settings_file(tmp_path, [("cart.go", "Total", comment)])
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
+        assert (
+            'Total: filler: "is responsible for" (approved: report only)'
+            in result.stdout
+        )
+
+
+class TestSettingsFile:
+    """Read the words to avoid and the owner's hand edits safely."""
+
+    def test_avoided_word_fails_in_new_sentence(self, tmp_path: Path) -> None:
+        """Make agents replace words the owner found confusing.
+
+        The owner lists words that confused readers, such as one thing
+        having two names, with the word to use instead. The checker
+        decides these alone, so the agent must fix them in the sentences
+        it wrote, and the message must say what to write.
+        """
+        init_repo_and_commit_all(tmp_path)
+        source = "// Post hands the bill to the client.\nfunc Post() {}\n"
+        (tmp_path / "post.go").write_text(source)
+        write_settings_file(tmp_path, avoid={"client": "say customer"})
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 1
+        assert 'post.go:1 Post: avoided-word: "client": say customer\n' in (
+            result.stdout
+        )
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param('{"avoid": ["client"]}', id="avoid-not-object"),
+            pytest.param(
+                '{"avoid": {"client": "say customer",}}', id="not-json"
+            ),
+        ],
+    )
+    def test_wrong_settings_shape_exits_two(
+        self, tmp_path: Path, text: str
+    ) -> None:
+        """Exit 2 with a message when a hand edit breaks the file.
+
+        The owner edits the avoid list by hand, since nothing writes it.
+        Without the check, either edit crashes the checker with exit 1,
+        which agents read as approved text to restore.
+        """
+        (tmp_path / "cart.go").write_text("package shop\n")
+        (tmp_path / ".code-comments.json").write_text(text)
+
+        result = run_checker(tmp_path)
+
+        assert result.returncode == 2
+        assert "Traceback" not in result.stderr
+
+
+def read_settings_file(repo: Path) -> object:
+    """Return the parsed ``.code-comments.json`` the checker wrote."""
+    return json.loads((repo / ".code-comments.json").read_text())
+
+
+class TestApprove:
+    """Record the owner's approval exactly, without losing any."""
+
+    @pytest.mark.parametrize(
+        "approved, args",
+        [
+            pytest.param([], ["--base", "HEAD"], id="gone-since-base"),
+            pytest.param([("cart.go", "Total", TOTAL)], [], id="gone-entry"),
+        ],
+    )
+    def test_approve_writes_entries_the_check_accepts(
+        self,
+        tmp_path: Path,
+        approved: list[tuple[str, str, str]],
+        args: list[str],
+    ) -> None:
+        """Let the owner approve comments without the check then failing.
+
+        Hand-typed entries lost tabs and final newlines, so the checker
+        called the owner's own comment changed. A block constant is keyed
+        by its own name, and a comment inside a function body is not
+        keyed, since it moves with every edit there. A gone comment is
+        recorded as cut, or an agent could add it back unnoticed.
+        ``--approve`` writes the file itself because saving printed
+        output with a shell redirect emptied it.
+        """
+        blue = '\t// Blue: "blue" is shown when none is set.\n'
+        colors = f'package shop\n\nconst (\n{blue}\tBlue = "blue"\n)\n\n'
+        pay = (
+            "func Pay(\n\tc Cart,\n) {\n"
+            "\t// There is nothing to pay for an empty cart.\n"
+            "\tif c.Empty() {\n\t\treturn\n\t}\n}\n"
+        )
+        avoid = {"client": "say customer"}
+        (tmp_path / "cart.go").write_text(colors + TOTAL + "func Total()\n")
+        write_settings_file(tmp_path, approved, avoid)
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "cart.go").write_text(colors + pay)
+
+        printed = run_checker(tmp_path, *args, "--approve")
+        result = run_checker(tmp_path)
+
+        assert printed.stdout == (
+            ".code-comments.json: 1 added or changed, 0 kept, 1 newly cut\n"
+        )
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "cart.go", "name": "Blue", "text": blue},
+                {"file": "cart.go", "name": "Total", "text": ""},
+            ],
+            "avoid": avoid,
+        }
+        assert result.returncode == 0
+
+    def test_approve_keeps_other_files_approvals(self, tmp_path: Path) -> None:
+        """Never lose approvals when the owner approves one package.
+
+        The owner approves one package at a time, and each run rewrites
+        the settings file. Dropping another file's entries, or a cut
+        entry, would let agents rewrite that text or add the comment
+        back. Approving only the files given matters as much: here
+        ``b.go`` changes after its approval, and approving ``a.go`` must
+        not approve that change too, nor, with ``--base``, record
+        ``b.go``'s comments as cut. An old cut entry is kept, not newly
+        cut, or the summary tells the owner something was cut in ``a.go``.
+        """
+        adds, sends = "// A adds the prices.\n", "// B sends the bill.\n"
+        (tmp_path / "a.go").write_text(adds + "func A() {}\n")
+        (tmp_path / "b.go").write_text(sends + "func B() {}\n")
+        avoid = {"client": "say customer"}
+        write_settings_file(tmp_path, [("b.go", "Old", "")], avoid)
+
+        for file in ("a.go", "b.go"):
+            run_checker(tmp_path, "--approve", paths=[str(tmp_path / file)])
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "b.go").write_text("// B mails it.\nfunc B() {}\n")
+        printed = run_checker(
+            tmp_path,
+            "--base",
+            "HEAD",
+            "--approve",
+            paths=[str(tmp_path / "a.go")],
+        )
+
+        assert printed.stdout == (
+            ".code-comments.json: 0 added or changed, 3 kept, 0 newly cut\n"
+        )
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "a.go", "name": "A", "text": adds},
+                {"file": "b.go", "name": "B", "text": sends},
+                {"file": "b.go", "name": "Old", "text": ""},
+            ],
+            "avoid": avoid,
+        }
+
+    def test_approve_clears_deleted_files_approvals(
+        self, tmp_path: Path
+    ) -> None:
+        """Let work finish once the owner approves a deleted file.
+
+        The check fails while a file with approved text is gone, and the
+        owner running ``--approve`` approves the deletion. Keeping the
+        entries would leave every later task failing with no way to
+        finish.
+        """
+        adds = "// A adds the prices.\n"
+        (tmp_path / "a.go").write_text(adds + "func A() {}\n")
+        gone = [("gone.go", "Total", TOTAL), ("gone.go", "Empty", "")]
+        write_settings_file(tmp_path, gone)
+
+        printed = run_checker(tmp_path, "--approve")
+        result = run_checker(tmp_path)
+
+        assert printed.stdout == (
+            ".code-comments.json: 1 added or changed, 0 kept, 0 newly cut, "
+            "2 removed with deleted files\n"
+        )
+        assert read_settings_file(tmp_path) == {
+            "approved": [{"file": "a.go", "name": "A", "text": adds}],
+            "avoid": {},
+        }
+        assert result.returncode == 0
