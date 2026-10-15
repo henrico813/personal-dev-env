@@ -611,120 +611,152 @@ READS = "// Load reads the saved cart.\n"
 class TestRenames:
     """Keep the owner's approvals with code that a task renamed."""
 
-    @pytest.mark.parametrize(
-        "before, approved, after, checked, renames, expected, warned",
-        [
-            pytest.param(
-                {
-                    "cart.go": TOTAL
-                    + "func Total() {}\n\n"
-                    + READS
-                    + "func Load() {}\n",
-                    "till.go": TOTAL + "func Total() {}\n",
-                    "other.go": TOTAL + "func Total() {}\n",
-                },
-                [
-                    ("cart.go", "Total", TOTAL),
-                    ("cart.go", "Empty", ""),
-                    ("till.go", "Total", TOTAL),
-                    ("other.go", "Total", TOTAL),
-                ],
-                {
-                    "cart.go": TOTAL
-                    + "func Sum() {}\n\n"
-                    + READS
-                    + "func Read() {}\n",
-                    "till.go": TOTAL + "func Total() {}\n",
-                    "other.go": TOTAL + "func Total() {}\n",
-                },
-                ["cart.go", "till.go"],
-                ["Total=Sum", "Load=Read", "Empty=IsEmpty", "Totl=Add"],
-                [
-                    ("cart.go", "Sum", TOTAL),
-                    ("cart.go", "Read", READS),
-                    ("cart.go", "IsEmpty", ""),
-                    ("other.go", "Total", TOTAL),
-                    ("till.go", "Total", TOTAL),
-                ],
-                "--rename Totl: matches no entry or --base comment in "
-                "the checked files\n",
-                id="names",
-            ),
-            pytest.param(
-                {"old.go": TOTAL + "func Total() {}\n"},
-                [("old.go", "Total", TOTAL), ("old.go", "Empty", "")],
-                {"new.go": TOTAL + "func Total() {}\n"},
-                ["new.go"],
-                ["old.go=new.go"],
-                [("new.go", "Total", TOTAL), ("new.go", "Empty", "")],
-                "",
-                id="file",
-            ),
-        ],
-    )
-    def test_rename_carries_approvals_to_new_names(
-        self,
-        tmp_path: Path,
-        before: dict[str, str],
-        approved: list[tuple[str, str, str]],
-        after: dict[str, str],
-        checked: list[str],
-        renames: list[str],
-        expected: list[tuple[str, str, str]],
-        warned: str,
-    ) -> None:
-        """Move approved and cut entries to the names after a rename.
+    def test_rename_moves_entries_to_new_names(self, tmp_path: Path) -> None:
+        """Keep the owner's review when a task renames code.
 
-        Entries are keyed by file and name. Without ``--rename``,
-        ``--approve`` cut the owner's reviewed comments as gone under
-        their old names, dropped a moved file's entries as deleted, and
-        let cut comments come back under the new name. A name renames a
-        comment only in a file given where the old name is gone: another
-        checked file that still has it must keep its entry, not get a
-        cut under the new name, and a file not given is left alone. A
-        mistyped old name is pointed out instead of doing nothing.
+        Entries are keyed by file and name, so before --rename, --approve
+        recorded renamed comments as cut, letting cut comments return
+        under the new name.
         """
-        for name, text in before.items():
-            (tmp_path / name).write_text(text)
-        write_settings_file(tmp_path, approved)
+        (tmp_path / "cart.go").write_text(
+            TOTAL + "func Total() {}\n\n" + READS + "func Load() {}\n"
+        )
+        (tmp_path / "till.go").write_text(TOTAL + "func Total() {}\n")
+        (tmp_path / "other.go").write_text(TOTAL + "func Total() {}\n")
+        write_settings_file(
+            tmp_path,
+            [
+                ("cart.go", "Total", TOTAL),
+                ("cart.go", "Empty", ""),
+                ("till.go", "Total", TOTAL),
+                ("other.go", "Total", TOTAL),
+            ],
+        )
         init_repo_and_commit_all(tmp_path)
-        for name in before:
-            (tmp_path / name).unlink()
-        for name, text in after.items():
-            (tmp_path / name).write_text(text)
-        options = [f"--rename={pair}" for pair in renames]
-        given = [str(tmp_path / name) for name in checked]
+        (tmp_path / "cart.go").write_text(
+            TOTAL + "func Sum() {}\n\n" + READS + "func Read() {}\n"
+        )
 
+        # till.go still has Total, and other.go is not given, so both keep
+        # their Total entries. "Totl" is a typo that renames nothing.
         printed = run_checker(
-            tmp_path, "--base", "HEAD", "--approve", *options, paths=given
+            tmp_path,
+            "--base",
+            "HEAD",
+            "--approve",
+            "--rename=Total=Sum",
+            "--rename=Load=Read",
+            "--rename=Empty=IsEmpty",
+            "--rename=Totl=Add",
+            paths=[str(tmp_path / "cart.go"), str(tmp_path / "till.go")],
         )
         result = run_checker(tmp_path)
 
         assert read_settings_file(tmp_path) == {
             "approved": [
-                {"file": f, "name": n, "text": t} for f, n, t in expected
+                {"file": "cart.go", "name": "Sum", "text": TOTAL},
+                {"file": "cart.go", "name": "Read", "text": READS},
+                {"file": "cart.go", "name": "IsEmpty", "text": ""},
+                {"file": "other.go", "name": "Total", "text": TOTAL},
+                {"file": "till.go", "name": "Total", "text": TOTAL},
             ],
             "avoid": {},
         }
-        assert printed.stderr == warned
+        assert printed.stderr == (
+            "--rename Totl: matches no entry or --base comment in "
+            "the checked files\n"
+        )
+        assert result.returncode == 0
+
+    def test_file_move_keeps_its_entries(self, tmp_path: Path) -> None:
+        """Keep a moved file's approvals, cut entries included.
+
+        Entries are keyed by file and name, so before --rename, --approve
+        dropped a moved file's entries as if the file were deleted, and
+        the owner's cuts no longer held in the new file.
+        """
+        (tmp_path / "old.go").write_text(TOTAL + "func Total() {}\n")
+        write_settings_file(
+            tmp_path, [("old.go", "Total", TOTAL), ("old.go", "Empty", "")]
+        )
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "old.go").rename(tmp_path / "new.go")
+
+        printed = run_checker(
+            tmp_path,
+            "--base",
+            "HEAD",
+            "--approve",
+            "--rename=old.go=new.go",
+            paths=[str(tmp_path / "new.go")],
+        )
+        result = run_checker(tmp_path)
+
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "new.go", "name": "Total", "text": TOTAL},
+                {"file": "new.go", "name": "Empty", "text": ""},
+            ],
+            "avoid": {},
+        }
+        assert printed.stderr == ""
+        assert result.returncode == 0
+
+    @pytest.mark.parametrize(
+        "moved_file",
+        [
+            pytest.param("basket.go", id="sorts-before-new"),
+            pytest.param("old.go", id="sorts-after-new"),
+        ],
+    )
+    def test_existing_entry_wins_over_moved_one(
+        self, tmp_path: Path, moved_file: str
+    ) -> None:
+        """Keep the approval of code that was already under the new name.
+
+        A file can be moved onto a name that already has approved
+        entries. The owner approved the comments that are there now, so
+        moved text must not replace them, whichever file name sorts
+        first.
+        """
+        (tmp_path / "new.go").write_text(TOTAL + "func Total() {}\n")
+        (tmp_path / "a.go").write_text("// A adds the prices.\nfunc A() {}\n")
+        moved = "// Total is in dollars.\n"
+        write_settings_file(
+            tmp_path,
+            [(moved_file, "Total", moved), ("new.go", "Total", TOTAL)],
+        )
+
+        run_checker(
+            tmp_path,
+            "--approve",
+            f"--rename={moved_file}=new.go",
+            paths=[str(tmp_path / "a.go")],
+        )
+        result = run_checker(tmp_path)
+
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {
+                    "file": "a.go",
+                    "name": "A",
+                    "text": "// A adds the prices.\n",
+                },
+                {"file": "new.go", "name": "Total", "text": TOTAL},
+            ],
+            "avoid": {},
+        }
         assert result.returncode == 0
 
     def test_gone_comment_names_its_likely_rename(
         self, tmp_path: Path
     ) -> None:
-        """Point a gone approved comment at the comment it probably became.
+        """Tell the agent where the owner's text went after a rename.
 
-        A Go doc comment starts with its name, so a rename changes the
-        approved text and the checker can only say it is gone. Naming
-        the comment that differs only in identifiers, with the pair to
-        record, tells the agent where the owner's text went. A comment
-        that says something else, here ``len(items)`` for ``ParseCart``,
-        must not be named, or the agent puts the owner's text on the
-        wrong code. The names are unexported, so only being the two
-        comments' names makes them count as identifiers. Another
-        approved comment with the same words is the owner's own:
-        following a hint to it would never record that ``total`` was
-        deleted.
+        A Go doc comment starts with its name, so after a rename the
+        checker could only say the approved comment was gone. A wrong
+        hint is worse than none: the agent would move the owner's text
+        onto other code, or never record a real deletion.
         """
         total = "// total is in cents, so ParseCart rounds half-cents down.\n"
         till = "// till is in cents, so ParseTill rounds half-cents down.\n"
@@ -732,7 +764,9 @@ class TestRenames:
             "// sum is in cents, so ParseOrder rounds half-cents down.\n"
             "func sum() {}\n\n"
             "// count is in cents, so len(items) rounds half-cents down.\n"
-            "func count() {}\n\n" + till + "func till() {}\n"
+            "func count() {}\n\n"
+            "// part is in cents, so ParsePart rounds\n"
+            "func part() {}\n\n" + till + "func till() {}\n"
         )
         (tmp_path / "cart.go").write_text(source)
         approved = [("cart.go", "total", total), ("cart.go", "till", till)]
@@ -740,8 +774,13 @@ class TestRenames:
 
         result = run_checker(tmp_path)
 
+        # Not hints: count says something else, part has only the start
+        # of the sentence, and till is the owner's other approved comment.
         assert result.returncode == 1
         assert (
             "cart.go total: approved: approved comment is gone; possibly now "
-            "sum at 1 (--approve --rename total=sum)\n" in result.stdout
+            "sum at 1 (--approve --rename total=sum)" in result.stdout
         )
+        assert "possibly now count" not in result.stdout
+        assert "possibly now part" not in result.stdout
+        assert "possibly now till" not in result.stdout
