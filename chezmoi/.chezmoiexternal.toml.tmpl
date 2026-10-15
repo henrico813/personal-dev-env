@@ -232,7 +232,7 @@ exact = true
 stripComponents = 1
 checksum.sha256 = "894eec70433cdaf68d3f1a8f81fc87fcc3ffaa96cdf3e7201c0590a4e981291d"
 
-# Repository AI sources remain authoritative; checksummed file externals make
+# Repository AI sources remain authoritative; file externals make
 # their user destinations part of the chezmoi state.
 [".config/opencode/AGENTS.md"]
 type = "file"
@@ -321,6 +321,10 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
 [".claude/CLAUDE.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
+
+# Skill entries come from the files Git tracks, so a new skill file
+# installs once it is added to Git, with no entry here. Untracked and
+# ignored files, such as Rust build output, are skipped.
 {{- $repoRoot := env "PDE_REPO_ROOT" }}
 {{- range splitList "\x00" (output "git" "-C" (print $repoRoot "/ai") "ls-files" "-z" "--" "skills") }}
 {{- if . }}
