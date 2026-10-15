@@ -54,7 +54,15 @@ func addRound(name, file string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("saved round %d of review %s\n", round, name)
+	r, err := review.OpenReview(name)
+	if err != nil {
+		return err
+	}
+	origin := findReviewOrigin(p.Repo)
+	if err := r.SetOrigin(origin); err != nil {
+		return err
+	}
+	fmt.Printf("saved round %d of review %s: %s\n", round, name, origin.Label())
 	return nil
 }
 
