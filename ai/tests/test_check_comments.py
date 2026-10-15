@@ -603,3 +603,108 @@ class TestApprove:
             "avoid": {},
         }
         assert result.returncode == 0
+
+
+READS = "// Load reads the saved cart.\n"
+
+
+class TestRenames:
+    """Keep the owner's approvals with code that a task renamed."""
+
+    @pytest.mark.parametrize(
+        "before, approved, after, checked, renames, expected, warned",
+        [
+            pytest.param(
+                {
+                    "cart.go": TOTAL
+                    + "func Total() {}\n\n"
+                    + READS
+                    + "func Load() {}\n",
+                    "till.go": TOTAL + "func Total() {}\n",
+                    "other.go": TOTAL + "func Total() {}\n",
+                },
+                [
+                    ("cart.go", "Total", TOTAL),
+                    ("cart.go", "Empty", ""),
+                    ("till.go", "Total", TOTAL),
+                    ("other.go", "Total", TOTAL),
+                ],
+                {
+                    "cart.go": TOTAL
+                    + "func Sum() {}\n\n"
+                    + READS
+                    + "func Read() {}\n",
+                    "till.go": TOTAL + "func Total() {}\n",
+                    "other.go": TOTAL + "func Total() {}\n",
+                },
+                ["cart.go", "till.go"],
+                ["Total=Sum", "Load=Read", "Empty=IsEmpty", "Totl=Add"],
+                [
+                    ("cart.go", "Sum", TOTAL),
+                    ("cart.go", "Read", READS),
+                    ("cart.go", "IsEmpty", ""),
+                    ("other.go", "Total", TOTAL),
+                    ("till.go", "Total", TOTAL),
+                ],
+                "--rename Totl: matches no entry or --base comment in "
+                "the checked files\n",
+                id="names",
+            ),
+            pytest.param(
+                {"old.go": TOTAL + "func Total() {}\n"},
+                [("old.go", "Total", TOTAL), ("old.go", "Empty", "")],
+                {"new.go": TOTAL + "func Total() {}\n"},
+                ["new.go"],
+                ["old.go=new.go"],
+                [("new.go", "Total", TOTAL), ("new.go", "Empty", "")],
+                "",
+                id="file",
+            ),
+        ],
+    )
+    def test_rename_carries_approvals_to_new_names(
+        self,
+        tmp_path: Path,
+        before: dict[str, str],
+        approved: list[tuple[str, str, str]],
+        after: dict[str, str],
+        checked: list[str],
+        renames: list[str],
+        expected: list[tuple[str, str, str]],
+        warned: str,
+    ) -> None:
+        """Move approved and cut entries to the names after a rename.
+
+        Entries are keyed by file and name. Without ``--rename``,
+        ``--approve`` cut the owner's reviewed comments as gone under
+        their old names, dropped a moved file's entries as deleted, and
+        let cut comments come back under the new name. A name renames a
+        comment only in a file given where the old name is gone: another
+        checked file that still has it must keep its entry, not get a
+        cut under the new name, and a file not given is left alone. A
+        mistyped old name is pointed out instead of doing nothing.
+        """
+        for name, text in before.items():
+            (tmp_path / name).write_text(text)
+        write_settings_file(tmp_path, approved)
+        init_repo_and_commit_all(tmp_path)
+        for name in before:
+            (tmp_path / name).unlink()
+        for name, text in after.items():
+            (tmp_path / name).write_text(text)
+        options = [f"--rename={pair}" for pair in renames]
+        given = [str(tmp_path / name) for name in checked]
+
+        printed = run_checker(
+            tmp_path, "--base", "HEAD", "--approve", *options, paths=given
+        )
+        result = run_checker(tmp_path)
+
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": f, "name": n, "text": t} for f, n, t in expected
+            ],
+            "avoid": {},
+        }
+        assert printed.stderr == warned
+        assert result.returncode == 0

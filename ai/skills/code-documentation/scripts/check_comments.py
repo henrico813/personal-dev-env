@@ -5,11 +5,15 @@ Example:
     python3 check_comments.py --repo . internal/shop/*.go
     python3 check_comments.py --repo . --base main internal/shop/*.go
     python3 check_comments.py --repo . --base main --approve shop/*.go
+    python3 check_comments.py --repo . --base main --approve \
+        --rename Total=Sum --rename cart.go=basket.go shop/*.go
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
 the owner's approved text, ``""`` for a cut comment, and words to
-avoid. ``--approve`` rewrites the approved text from the checked files::
+avoid. ``--approve`` rewrites the approved text from the checked files,
+after ``--rename OLD=NEW`` moves the entries of each renamed comment or
+``.go`` file, so a rename is not recorded as a cut::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
@@ -603,6 +607,71 @@ def build_approved_entries(
     return entries, removed
 
 
+def rename(
+    renames: dict[str, str],
+    files: set[str],
+    now: set[tuple[str, str]],
+    approved: dict[tuple[str, str], str],
+    before: list[Comment],
+) -> tuple[dict[tuple[str, str], str], list[Comment], list[str]]:
+    """Move entries and ``--base`` comments to their new names.
+
+    A pair of ``.go`` paths, relative to ``--repo``, moves a file; no Go
+    name ends in ``.go``, since ``go`` is a keyword. Other pairs rename a
+    comment only in a checked file where the old name is no longer a
+    comment, since another file may still use it. Files move first, and
+    an entry already under the new name wins.
+
+    Args:
+        renames: New names or paths by old ones.
+        files: Paths of the checked files.
+        now: ``(file, name)`` of every comment in those files.
+        approved: Entries from ``.code-comments.json``.
+        before: Every comment at ``--base``.
+
+    Returns:
+        The renamed entries and ``--base`` comments, and each old name
+        or path that renamed nothing.
+    """
+    paths = {o: n for o, n in renames.items() if o.endswith(".go")}
+    names = {o: n for o, n in renames.items() if not o.endswith(".go")}
+    used: set[str] = set()
+
+    def renamed(file: str, name: str) -> tuple[str, str]:
+        """Return the key a comment has after the renames."""
+        if file in paths:
+            used.add(file)
+            file = paths[file]
+        if file in files and name in names and (file, name) not in now:
+            used.add(name)
+            name = names[name]
+        return file, name
+
+    entries = {k: v for k, v in approved.items() if renamed(*k) == k}
+    for key, text in sorted(approved.items()):
+        entries.setdefault(renamed(*key), text)
+    moved = []
+    for c in before:
+        file, name = renamed(c.file, c.name)
+        moved.append(replace(c, file=file, name=name))
+    return entries, moved, [old for old in renames if old not in used]
+
+
+def rename_pair(value: str) -> tuple[str, str]:
+    """Parse one ``--rename OLD=NEW`` value.
+
+    Args:
+        value: The option's text.
+
+    Returns:
+        The old and new names.
+    """
+    old, _, new = value.partition("=")
+    if not old or not new:
+        raise argparse.ArgumentTypeError(f"{value!r} is not OLD=NEW")
+    return old, new
+
+
 def replace_settings_file(
     repo: Path, entries: list[dict[str, str]], avoid: dict[str, str]
 ) -> None:
@@ -664,7 +733,11 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         The exit code described in the module docstring.
     """
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # "@renames.txt" reads one argument per line, such as
+    # "--rename=const Red=const Crimson".
+    parser = argparse.ArgumentParser(
+        description=__doc__.splitlines()[0], fromfile_prefix_chars="@"
+    )
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument(
         "--base", help="commit to compare with; its sentences never fail"
@@ -674,8 +747,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=f"rewrite {SETTINGS}; only the owner, or at their request",
     )
+    parser.add_argument(
+        "--rename",
+        action="append",
+        default=[],
+        type=rename_pair,
+        metavar="OLD=NEW",
+        help="with --approve: a renamed comment or .go file; repeat for each",
+    )
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
+    if args.rename and not args.approve:
+        parser.error("--rename needs --approve")
     repo = args.repo.resolve()
     try:
         approved, avoid = load_settings(repo)
@@ -729,6 +812,18 @@ def main(argv: list[str] | None = None) -> int:
                 f"{len(found)} comments in this file have this name"
             )
     if args.approve:
+        # Rename first, so a renamed comment's entry moves instead of
+        # being cut as gone or dropped with a deleted file.
+        now = {(c.file, c.name) for c in comments}
+        approved, base_comments, unused = rename(
+            dict(args.rename), checked_files, now, approved, base_comments
+        )
+        for old in unused:
+            print(
+                f"--rename {old}: matches no entry or --base comment in "
+                "the checked files",
+                file=sys.stderr,
+            )
         entries, removed = build_approved_entries(
             repo, checked_files, comments, base_comments, approved
         )
