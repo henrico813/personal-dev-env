@@ -71,6 +71,7 @@ Each approval promise, and the tests that fail when it breaks:
 | A later answer cannot change a decision | `TestLateYesKeepsDeclinedRequest`, `TestMoshiAnswersPendingRequest` |
 | A request answered in the popup within 30 seconds never reaches the phone | `TestPhoneWaitsForPopupInHerdr` |
 | A declined or interrupted request never runs gh | `TestDecidedRequestsNeverRunGH` |
+| A dismissed request comes back when the agent asks again, and Esc or Up never closes the popup | `TestRerunShowsDismissedRequestAgain`, `TestPopupIgnoresEscKey` |
 | gh runs at most once per approval | `TestRerunReportsResultWithoutRunningAgain`, `TestConcurrentRunsCallGHOnce`, `TestRerunSurvivesFailedRepoLookup` |
 | An approval expires four hours after its last change | `TestExpiredApprovalNeedsNewAnswer` |
 | Restarting the runner or phone question keeps the request's age | `TestRunnerRestartKeepsRequestAge`, `TestMoshiRerunRestartsDeadAsk` |

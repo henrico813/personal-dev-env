@@ -82,7 +82,7 @@ func PopupScreen(v View, cols, rows int) ([]string, Layout) {
 		requestRows--
 	}
 	lines = append(lines, typedLine(v.typed, v.notice, cols))
-	lines = append(lines, clip("v: full; g: focus; q/Esc: dismiss", cols))
+	lines = append(lines, clip("v: full; g: focus; q: dismiss", cols))
 	approveTop := len(lines) + 1
 	lines = append(lines, buttonRows(buttonLabel("APPROVE", v.selected == approval.ChoiceYes), cols, buttonHeight)...)
 	lines = append(lines, "")
@@ -202,7 +202,7 @@ const PopupSettle = 600 * time.Millisecond
 const SettleNotice = "one moment..."
 
 // AskPopup draws the popup and returns "yes" or "no" for a confirmed tap on a
-// button or a typed yes or no and Enter, "dismiss" for q or Esc, or "focus"
+// button or a typed yes or no and Enter, "dismiss" for q, or "focus"
 // for g. Input typed before the popup is drawn is thrown away. The program
 // asks Herdr to put the keyboard on the popup when it opens, so keys meant for
 // another terminal could otherwise answer. settle ignores taps and Enter for
