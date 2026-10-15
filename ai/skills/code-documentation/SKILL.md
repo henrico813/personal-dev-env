@@ -1,6 +1,6 @@
 ---
 name: code-documentation
-description: Use when planning changes to, writing, changing, or reviewing source code or automated tests where comments, docstrings, or inline explanations affect maintainability, onboarding, or correct use.
+description: Use when planning changes to, writing, changing, or reviewing source code or automated tests where comments, docstrings, inline explanations, or function names affect maintainability, onboarding, or correct use.
 ---
 
 # Code Documentation
@@ -132,6 +132,42 @@ Useful:
 if wrote_any_bytes:
     return PARTIAL_WRITE
 ```
+
+## Function names
+
+These rules cover functions and methods that the change adds or
+renames, and their bodies. They do not cover test functions, which
+follow `behavior-focused-testing`, or names required by the language,
+a framework, or an implemented interface, such as `main`, `String()`,
+`__repr__` or `Drop::drop`.
+
+Apply DAMP: Descriptive And Meaningful Phrases to names and function
+bodies.
+
+Every function name must contain at most seven words. Count snake_case
+and camelCase/PascalCase word boundaries; an acronym counts as one
+word. Do not evade the limit through obscure abbreviations or
+concatenation.
+
+Name actions with verbs first, such as `parse_config` and
+`write_report`. Name boolean queries clearly, such as `is_empty`.
+Ordinary getters omit `get_`: `report.title()`. Use `as_` for cheap
+views, `to_` for conversions that do work, and `into_` for conversions
+that consume the value. Use the language's casing: `ParseConfig` in
+Go.
+
+```text
+parse_config
+write_report
+is_empty
+to_json
+ParseConfig
+```
+
+Name what the function does or returns, not merely its input or type.
+Avoid vague names such as `check` and `save`. Use module or class
+context to avoid repetition while keeping call sites understandable.
+Put additional detail in the body.
 
 ## Tests
 
