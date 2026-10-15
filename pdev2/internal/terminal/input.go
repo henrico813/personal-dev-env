@@ -30,8 +30,11 @@ const (
 func (v *View) handle(in popupInput, layout Layout, settling bool) (choice string, redraw bool) {
 	switch b := in.b; {
 	case b == keyEscape:
+		// Esc also interrupts an OpenCode agent, and the popup takes the
+		// keyboard when it opens, so an Esc meant for the agent dismissed a
+		// request. Only q dismisses.
 		if !in.isMouse {
-			return approval.ChoiceDismiss, false
+			return approval.ChoiceNone, false
 		}
 		// A tap also sends a release. Counting it would confirm the button the
 		// same tap just selected.
@@ -136,8 +139,14 @@ func readMouse(r *bufio.Reader) (mouseReport, bool, error) {
 	if _, err := r.ReadByte(); err != nil {
 		return result, false, err
 	}
-	if a, err := r.ReadByte(); err != nil || a != '<' {
-		return result, false, io.ErrUnexpectedEOF
+	a, err := r.ReadByte()
+	if err != nil {
+		return result, false, err
+	}
+	// A key such as Up, ESC [ A, is read as Esc, which the popup ignores. As
+	// an error it closed the popup, and Up is OpenCode's history key.
+	if a != '<' {
+		return result, false, nil
 	}
 	var text []byte
 	for {
