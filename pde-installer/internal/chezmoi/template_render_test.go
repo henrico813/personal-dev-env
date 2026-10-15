@@ -606,6 +606,10 @@ func TestRenderedExternalsPinRemoteChecksums(t *testing.T) {
 	}
 }
 
+// Each skill file once needed its own entry in the template, and a missed
+// one left agents told to run a comment checker that was never installed.
+// Entries now come from the files Git tracks, so a tracked file in any
+// folder of a skill installs and an untracked one does not.
 func TestExternalsInstallEverySkillFile(t *testing.T) {
 	checkout := t.TempDir()
 	for name, text := range map[string]string{

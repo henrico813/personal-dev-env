@@ -39,6 +39,9 @@ bat --list-themes | grep -Fxq TwoDark
 
 cli_home="$(mktemp -d)"
 mkdir -p "$cli_home/.config/opencode"
+# This copy of the repository has no .git (see .dockerignore), so
+# `git ls-files` would fail; the full-profile render uses a git that
+# lists no files. Real installs keep the real git.
 git_stub="$(mktemp -d)"
 printf '#!/bin/sh\n' >"$git_stub/git"
 chmod 0755 "$git_stub/git"
