@@ -708,3 +708,40 @@ class TestRenames:
         }
         assert printed.stderr == warned
         assert result.returncode == 0
+
+    def test_gone_comment_names_its_likely_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Point a gone approved comment at the comment it probably became.
+
+        A Go doc comment starts with its name, so a rename changes the
+        approved text and the checker can only say it is gone. Naming
+        the comment that differs only in identifiers, with the pair to
+        record, tells the agent where the owner's text went. A comment
+        that says something else, here ``len(items)`` for ``ParseCart``,
+        must not be named, or the agent puts the owner's text on the
+        wrong code. The names are unexported, so only being the two
+        comments' names makes them count as identifiers. Another
+        approved comment with the same words is the owner's own:
+        following a hint to it would never record that ``total`` was
+        deleted.
+        """
+        total = "// total is in cents, so ParseCart rounds half-cents down.\n"
+        till = "// till is in cents, so ParseTill rounds half-cents down.\n"
+        source = (
+            "// sum is in cents, so ParseOrder rounds half-cents down.\n"
+            "func sum() {}\n\n"
+            "// count is in cents, so len(items) rounds half-cents down.\n"
+            "func count() {}\n\n" + till + "func till() {}\n"
+        )
+        (tmp_path / "cart.go").write_text(source)
+        approved = [("cart.go", "total", total), ("cart.go", "till", till)]
+        write_settings_file(tmp_path, approved)
+
+        result = run_checker(tmp_path)
+
+        assert result.returncode == 1
+        assert (
+            "cart.go total: approved: approved comment is gone; possibly now "
+            "sum at 1 (--approve --rename total=sum)\n" in result.stdout
+        )

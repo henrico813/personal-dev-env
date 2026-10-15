@@ -51,6 +51,7 @@ import enum
 import json
 import os
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -303,6 +304,71 @@ def split_sentences(prose: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+", prose) if s]
 
 
+def renamed_from(
+    name: str,
+    text: str,
+    file: str,
+    comments: list[Comment],
+    approved: dict[tuple[str, str], str],
+) -> list[Comment]:
+    """Find comments that may be a gone approved comment after a rename.
+
+    A comment matches when its first sentence has the same words as the
+    approved text's first sentence, except where both words look like
+    Go identifiers (``Total``, ``io.Reader``, ``max_size``, ``V2``) or
+    are the two comments' names. A comment with approved text of its
+    own is the owner's other comment, not this one, so it never matches.
+
+    Args:
+        name: The gone comment's name.
+        text: Its approved text.
+        file: The file it was approved in.
+        comments: Every checked comment.
+        approved: Approved text by ``(file, name)``.
+
+    Returns:
+        The matching named comments in ``file``, in file order.
+    """
+    first = split_sentences(
+        join_comment_prose(text.splitlines(keepends=True))
+    )[:1]
+    words = first[0].split() if first else []
+    likely = []
+    for c in comments:
+        if c.file != file or not c.name or c.name == name:
+            continue
+        if approved.get((c.file, c.name)):
+            continue
+        own = split_sentences(c.prose)[:1]
+        theirs = own[0].split() if own else []
+        names = {re.split(r"[. ]", n)[-1] for n in (name, c.name)}
+        if (
+            words
+            and len(theirs) == len(words)
+            and all(
+                a == b or (identifier(a, names) and identifier(b, names))
+                for a, b in zip(words, theirs)
+            )
+        ):
+            likely.append(c)
+    return likely
+
+
+def identifier(word: str, names: set[str]) -> bool:
+    """Return whether a prose word looks like a Go identifier.
+
+    Args:
+        word: One word of a sentence, with any punctuation around it.
+        names: Names that count as identifiers here.
+
+    Returns:
+        True for one of ``names``, or a word with a capital letter, a
+        digit, ``_`` or an inner ``.``.
+    """
+    core = word.strip("`'\",;:()[]!?").rstrip(".")
+    return core in names or bool(re.search(r"[A-Z]|[0-9_]|\w\.\w", core))
+
+
 def find_restated_name(sentences: list[str], name: str) -> list[RuleMatch]:
     """Match a first sentence that contains the name of the code below."""
     if (
@@ -369,6 +435,10 @@ def find_gone_approvals(
             findings.append(Finding(gone, "approved", "approved file is gone"))
         elif (file, name) not in current:
             message = "approved comment is gone"
+            for c in renamed_from(name, text, file, comments, approved):
+                pair = shlex.quote(f"{name}={c.name}")
+                message += f"; possibly now {c.name} at {c.line}"
+                message += f" (--approve --rename {pair})"
             findings.append(Finding(gone, "approved", message))
     return findings
 
