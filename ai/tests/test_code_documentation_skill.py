@@ -49,7 +49,7 @@ class TestSkillText:
 
         assert missing == []
 
-    def test_skill_matches_the_checker(self) -> None:
+    def test_skill_quotes_checker_rules_and_options(self) -> None:
         """Fail when the skill and the checker drift apart.
 
         Each rule may only enforce a sentence the skill states; an

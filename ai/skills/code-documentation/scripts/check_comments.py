@@ -1,26 +1,40 @@
 #!/usr/bin/env python3
-"""Flag Go comments that break a code-documentation rule.
+"""Report Go comments that break a code-documentation rule.
 
 Example:
     python3 check_comments.py --repo . internal/shop/*.go
     python3 check_comments.py --repo . --base main internal/shop/*.go
 
-Reads whole-line Go ``//`` comments and names the code each one sits on.
-Each finding names a rule, and the output quotes that rule's sentence
-from the skill. With ``--base``, it exits 1 when a sentence no Go file
-had at that commit has filler, and leaves out questions about older
-sentences. Exits 2 on a folder, an unreadable file, or no Go file to
-check.
+Prints one line per finding, then quotes each broken rule's sentence
+from the skill. The rules are:
+
+- ``filler``: a sentence about the code uses one of the skill's vague
+  filler phrases, such as "facilitates".
+- ``restated-name``: a comment's first sentence repeats the name of the
+  code below it. This never fails the run.
+
+With ``--base``, sentences present at that commit never fail the run,
+and ``restated-name`` findings on them are left out. Filler in a
+license header above ``package`` is only reported. Generated files are
+skipped.
+
+Exit codes:
+    0: Nothing failed.
+    1: With ``--base``, a sentence not present at that commit has filler.
+    2: A path is a folder or unreadable, no Go file was given, or
+        ``--base`` is not a commit.
 """
 
 from __future__ import annotations
 
 import argparse
+import enum
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 # Each rule and the code-documentation sentence it checks, word for word.
 RULES = {
@@ -46,12 +60,18 @@ FILLER = (
     "seamless",
     "seamlessly",
 )
-DECLARATION = re.compile(
+# "func Send", "type Cart", "const Red", or a bare name such as a field.
+DECLARED_NAME = re.compile(
     r"(?:func\s+|type\s+|const\s+|var\s+|package\s+)?(\w+)"
 )
-METHOD = re.compile(r"func\s+\(\s*(?:\w+\s+)?\*?\s*(\w+)[^)]*\)\s*(\w+)")
-BLOCK = re.compile(r"(const|var)\s*\($")
-GENERATED = re.compile(r"^// Code generated .* DO NOT EDIT\.$", re.M)
+# "func (c *Cart) Total": group 1 is the receiver type, 2 the method.
+METHOD_DECLARATION = re.compile(
+    r"func\s+\(\s*(?:\w+\s+)?\*?\s*(\w+)[^)]*\)\s*(\w+)"
+)
+CONST_OR_VAR_BLOCK = re.compile(r"(const|var)\s*\($")
+GENERATED_FILE_MARKER = re.compile(
+    r"^// Code generated .* DO NOT EDIT\.$", re.M
+)
 
 
 @dataclass(frozen=True)
@@ -60,11 +80,11 @@ class Comment:
 
     Names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
     for a struct field or map entry, and ``const Red`` for a comment
-    above a ``const (`` block. A comment inside a function body, or with
-    a blank line after it, has the name ``""``. ``header`` is true for a
-    comment above the ``package`` line with a blank line after it, where
-    license text usually sits. A package doc comment touches the
-    ``package`` line, so it is named, not a header.
+    above a ``const (`` block. A comment inside a function body, with a
+    blank line after it, or above an empty block has the name ``""``.
+    ``header`` is true for a comment above the ``package`` line with a
+    blank line after it, where license text usually sits. A package doc
+    comment touches the ``package`` line, so it is named, not a header.
     """
 
     file: str
@@ -78,8 +98,9 @@ class Comment:
 class Finding:
     """A problem in one comment, under one of the ``RULES``.
 
-    ``note`` is empty when the finding can fail the run, and otherwise
-    says why it is only reported.
+    ``note`` says why the finding is only reported, or is empty. Only a
+    ``filler`` finding with an empty note, in a run with ``--base``,
+    fails the run.
     """
 
     comment: Comment
@@ -88,11 +109,32 @@ class Finding:
     note: str = ""
 
 
-def go_comments(source: str, file: str) -> list[Comment]:
+class RuleMatch(NamedTuple):
+    """A rule a comment breaks, before the ``--base`` policy applies."""
+
+    rule: str
+    message: str
+    sentences: list[str]
+
+
+class Scope(enum.Enum):
+    """Where a line sits in a Go file, which decides a comment's name."""
+
+    # Behaves like DECLARATION with no outer name.
+    TOP_LEVEL = enum.auto()
+    # Inside a function body, where comments are unnamed.
+    FUNCTION = enum.auto()
+    # Inside "const (" or "var (", where names stand alone: "Red".
+    BLOCK = enum.auto()
+    # Inside a type, a var with a literal, or another declaration, where
+    # names include the declaration's name: "Cart.Items".
+    DECLARATION = enum.auto()
+
+
+def parse_go_comments(source: str, file: str) -> list[Comment]:
     """Return each run of whole-line ``//`` comments in a Go file.
 
     Args:
-        source: The Go file's text.
         file: Its path relative to the repository, used in findings.
 
     Returns:
@@ -101,41 +143,53 @@ def go_comments(source: str, file: str) -> list[Comment]:
     """
     lines = source.splitlines(keepends=True)
     comments: list[Comment] = []
-    outer, kind, seen_package = "", "", False
+    outer_name, scope, seen_package = "", Scope.TOP_LEVEL, False
     start: int | None = None
 
-    for number, line in enumerate(lines + ["\n"], 1):
+    # A blank line past the end closes a comment on the file's last lines.
+    for number, line in enumerate([*lines, "\n"], 1):
         text = line.strip()
         if text.startswith("//"):
             start = number if start is None else start
             continue
         if start is not None:
-            run = lines[start - 1 : number - 1]
-            end = number > len(lines)
-            name = "" if end else go_name(lines, number, outer, kind)
+            # The blank line past the end has no code to name.
+            name = ""
+            if number <= len(lines):
+                name = name_code_below_comment(
+                    lines, number, outer_name, scope
+                )
             comments.append(
                 Comment(
-                    file,
-                    start,
-                    name,
-                    go_prose(run),
-                    not seen_package and not name,
+                    file=file,
+                    line=start,
+                    name=name,
+                    prose=join_comment_prose(lines[start - 1 : number - 1]),
+                    header=not seen_package and not name,
                 )
             )
             start = None
-        if line[:1].isalpha():
-            outer, kind = declaration(text), text.split()[0]
-            seen_package = seen_package or kind == "package"
-            if BLOCK.match(text):
-                kind = "block"
-        elif line[:1] == "}" or (line[:1] == ")" and kind == "block"):
-            # A ")" at column 0 also closes a multi-line signature, which
-            # is still inside the function.
-            outer, kind = "", ""
+        # Top-level declarations start at column 0, so a letter there
+        # opens one and a "}" there closes it.
+        starts_declaration = line[:1].isalpha()
+        if starts_declaration:
+            keyword = text.split()[0]
+            outer_name = parse_declared_name(text)
+            seen_package = seen_package or keyword == "package"
+            if CONST_OR_VAR_BLOCK.match(text):
+                scope = Scope.BLOCK
+            elif keyword == "func":
+                scope = Scope.FUNCTION
+            else:
+                scope = Scope.DECLARATION
+        # Only a block ends at a ")" in column 0; a multi-line signature
+        # also ends there, but its body follows.
+        elif line[:1] == "}" or (line[:1] == ")" and scope is Scope.BLOCK):
+            outer_name, scope = "", Scope.TOP_LEVEL
     return comments
 
 
-def declaration(text: str) -> str:
+def parse_declared_name(text: str) -> str:
     """Name a declaration that starts at column 0.
 
     Args:
@@ -144,22 +198,20 @@ def declaration(text: str) -> str:
     Returns:
         ``Recv.Method`` for a method, otherwise the declared name.
     """
-    method = METHOD.match(text)
+    method = METHOD_DECLARATION.match(text)
     if method:
         return f"{method[1]}.{method[2]}"
-    word = DECLARATION.match(text)
-    return word[1] if word else ""
+    declared = DECLARED_NAME.match(text)
+    return declared[1] if declared else ""
 
 
-def go_name(lines: list[str], number: int, outer: str, kind: str) -> str:
+def name_code_below_comment(
+    lines: list[str], number: int, outer_name: str, scope: Scope
+) -> str:
     """Name the code on 1-based line ``number``, just below a comment.
 
     Args:
-        lines: Every line of the file.
-        number: The line below the comment, counted from 1.
-        outer: Name of the declaration the line sits in, if any.
-        kind: ``block`` inside ``const (`` or ``var (``, ``func`` inside
-            a function, otherwise the declaration's keyword.
+        outer_name: Name of the declaration the line sits in, if any.
 
     Returns:
         The comment's name, or ``""`` when it has none.
@@ -169,105 +221,113 @@ def go_name(lines: list[str], number: int, outer: str, kind: str) -> str:
     if not text:
         return ""
     if not line[0].isspace():
-        if BLOCK.match(text) and number < len(lines):
-            first = DECLARATION.match(lines[number].strip())
-            return f"{text.split()[0]} {first[1] if first else ''}"
-        return declaration(text)
-    word = DECLARATION.match(text)
-    if kind == "func" or not word:
+        if CONST_OR_VAR_BLOCK.match(text) and number < len(lines):
+            # A block takes the name of its first entry: "const Red".
+            keyword = text.split()[0]
+            next_line = lines[number]
+            first_entry = DECLARED_NAME.match(next_line.strip())
+            if not first_entry:
+                return ""
+            return f"{keyword} {first_entry[1]}"
+        return parse_declared_name(text)
+    declared = DECLARED_NAME.match(text)
+    if scope is Scope.FUNCTION or not declared:
         return ""
-    if kind == "block":
-        return word[1]
-    return f"{outer}.{word[1]}"
+    if scope is Scope.BLOCK:
+        return declared[1]
+    return f"{outer_name}.{declared[1]}"
 
 
-def go_prose(run: list[str]) -> str:
-    """Join comment lines into one paragraph, leaving out code and lists.
+def join_comment_prose(comment_lines: list[str]) -> str:
+    """Join comment lines into one line of prose, leaving out code and lists.
 
     Args:
-        run: The comment's lines, with their ``//`` markers.
-
-    Returns:
-        The comment's prose on one line.
+        comment_lines: The comment's lines, with their ``//`` markers.
     """
     words = []
-    for line in run:
+    for line in comment_lines:
         text = line.strip()[2:]
+        # Go doc comments indent code blocks and lists.
         if text.strip() and not text.startswith(("\t", "  ")):
             words.append(text.strip())
     return " ".join(words)
 
 
-def sentences(prose: str) -> list[str]:
-    """Split prose after ``.``, ``!`` or ``?`` followed by a space.
-
-    Args:
-        prose: Comment prose on one line.
-
-    Returns:
-        The sentences, without empty ones.
-    """
+def split_sentences(prose: str) -> list[str]:
+    """Split prose after ``.``, ``!`` or ``?`` followed by a space."""
     return [s for s in re.split(r"(?<=[.!?])\s+", prose) if s]
 
 
-def check(comments: list[Comment], base: set[str] | None) -> list[Finding]:
+def find_restated_name(sentences: list[str], name: str) -> list[RuleMatch]:
+    """Match a first sentence that contains the name of the code below."""
+    if (
+        name
+        and sentences
+        and re.search(rf"\b{re.escape(name)}\b", sentences[0])
+    ):
+        message = f'first sentence repeats the name "{name}"'
+        return [RuleMatch("restated-name", message, sentences[:1])]
+    return []
+
+
+def find_filler(sentences: list[str], name: str) -> list[RuleMatch]:
+    """Match each ``FILLER`` phrase in sentences whose subject is the code.
+
+    A sentence is about the code when it starts with "This", the code's
+    name, or "Package" and the name.
+    """
+    subject = r"This\b"
+    if name:
+        subject = rf"(?:This|{re.escape(name)}|Package {re.escape(name)})\b"
+    about_code = [s for s in sentences if re.match(subject, s)]
+    matches = []
+    for phrase in FILLER:
+        whole_words = rf"\b{re.escape(phrase)}\b"
+        found = [s for s in about_code if re.search(whole_words, s.lower())]
+        if found:
+            matches.append(RuleMatch("filler", f'"{phrase}"', found))
+    return matches
+
+
+def find_rule_violations(
+    comments: list[Comment], base_sentences: set[str] | None
+) -> list[Finding]:
     """Check every comment against the ``RULES``.
 
     Args:
         comments: Comments from the checked files.
-        base: The sentences of every Go comment under the repository at
-            ``--base``, or ``None`` without it.
+        base_sentences: The sentences of every Go comment under the
+            repository at ``--base``, or ``None`` without it.
 
     Returns:
-        Findings in file order. A finding with a ``note`` is only
-        reported: it is in a header, or in a sentence the task did not
-        add or change.
+        Findings in file order.
     """
     findings = []
     for comment in comments:
-        note = "header: report only" if comment.header else ""
-
-        def add(rule: str, message: str, found: list[str]) -> None:
-            """Record a finding on the current comment.
-
-            Args:
-                rule: The key in ``RULES`` the finding belongs to.
-                message: What the checker found.
-                found: The sentences involved. When all were there at
-                    ``--base``, a question is dropped and a failure is
-                    only reported.
-            """
-            why = note
-            if base is not None and all(s in base for s in found):
-                if rule == "restated-name":
-                    return
-                why = why or "existing: report only"
-            findings.append(Finding(comment, rule, message, why))
-
-        own = sentences(comment.prose)
+        sentences = split_sentences(comment.prose)
+        # Prose names code without its qualifier: "Cart.Total" is written
+        # "Total", and "const Red" is written "Red".
         name = re.split(r"[. ]", comment.name)[-1]
-        if name and own and re.search(rf"\b{re.escape(name)}\b", own[0]):
-            message = f'first sentence repeats the name "{name}"'
-            add("restated-name", message, own[:1])
-
-        def having(pattern: str) -> list[str]:
-            """Return the sentences with ``pattern`` as whole words."""
-            whole = rf"\b{re.escape(pattern.lower())}\b"
-            return [s for s in own if re.search(whole, s.lower())]
-
-        # The code is the subject: "This ...", "Name ...", or "Package name".
-        subject = rf"(?:This|{re.escape(name)}|Package {re.escape(name)})\b"
-        about_code = [
-            s for s in own if re.match(subject if name else r"This\b", s)
-        ]
-        for phrase in FILLER:
-            matched = [s for s in having(phrase) if s in about_code]
-            if matched:
-                add("filler", f'"{phrase}"', matched)
+        matches = find_restated_name(sentences, name)
+        matches += find_filler(sentences, name)
+        for match in matches:
+            # A sentence present at --base may be a person's words, so it
+            # never fails the run, and the agent is not asked to cut it.
+            present_at_base = base_sentences is not None and all(
+                s in base_sentences for s in match.sentences
+            )
+            if present_at_base and match.rule == "restated-name":
+                continue
+            note = ""
+            if comment.header:
+                note = "header: report only"
+            elif present_at_base:
+                note = "existing: report only"
+            findings.append(Finding(comment, match.rule, match.message, note))
     return findings
 
 
-def base_comments(repo: Path, rev: str) -> list[Comment]:
+def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
     """Read every Go comment under ``repo`` at ``rev``.
 
     Every Go file counts, not only the checked ones, so a person's
@@ -275,10 +335,9 @@ def base_comments(repo: Path, rev: str) -> list[Comment]:
 
     Args:
         repo: The folder given as ``--repo``, inside a Git repository.
-        rev: A commit, branch or tag.
 
-    Returns:
-        The comments in every Go file at ``rev``.
+    Raises:
+        ValueError: ``rev`` is not a commit in ``repo``.
     """
     git = ["git", "-C", str(repo)]
     known = subprocess.run(
@@ -286,8 +345,7 @@ def base_comments(repo: Path, rev: str) -> list[Comment]:
         capture_output=True,
     )
     if known.returncode != 0:
-        print(f"--base {rev}: not a commit in {repo}", file=sys.stderr)
-        sys.exit(2)
+        raise ValueError(f"--base {rev}: not a commit in {repo}")
     listed = subprocess.run(
         [*git, "ls-tree", "-r", "--name-only", rev, "--", "."],
         capture_output=True,
@@ -303,7 +361,7 @@ def base_comments(repo: Path, rev: str) -> list[Comment]:
         ).stdout
         # An old file need not be UTF-8; only its comments matter.
         source = shown.decode("utf-8", errors="replace")
-        found += go_comments(source, file)
+        found += parse_go_comments(source, file)
     return found
 
 
@@ -318,11 +376,13 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", type=Path, default=Path("."))
-    parser.add_argument("--base", help="commit the task started from")
+    parser.add_argument(
+        "--base", help="commit to compare with; its sentences never fail"
+    )
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args(argv)
     repo = args.repo.resolve()
-    files: set[str] = set()
+    checked_files: set[str] = set()
     comments: list[Comment] = []
     for path in args.paths:
         if path.is_dir():
@@ -333,33 +393,48 @@ def main(argv: list[str] | None = None) -> int:
             continue
         try:
             file = path.resolve().relative_to(repo).as_posix()
-            if file in files:
+            # Skip a file given twice, such as "a.go" and "./a.go".
+            if file in checked_files:
                 continue
             source = path.read_text(encoding="utf-8")
         except (OSError, ValueError) as error:
             print(f"{path}: {error}", file=sys.stderr)
             return 2
-        if GENERATED.search(source):
+        if GENERATED_FILE_MARKER.search(source):
             print(f"{path}: skipped; generated", file=sys.stderr)
             continue
-        comments += go_comments(source, file)
-        files.add(file)
-    if not files:
+        comments += parse_go_comments(source, file)
+        checked_files.add(file)
+    if not checked_files:
         print("no Go file to check", file=sys.stderr)
         return 2
-    base = None
+
+    base_sentences = None
     if args.base:
-        before = base_comments(repo, args.base)
-        base = {s for c in before for s in sentences(c.prose)}
-    findings = check(comments, base)
-    for f in findings:
-        place = f"{f.comment.file}:{f.comment.line} {f.comment.name or '-'}"
-        note = f" ({f.note})" if f.note else ""
-        print(f"{place}: {f.rule}: {f.message}{note}")
-    for rule in dict.fromkeys(f.rule for f in findings):
+        try:
+            base_comments = read_comments_at_commit(repo, args.base)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        base_sentences = {
+            sentence
+            for comment in base_comments
+            for sentence in split_sentences(comment.prose)
+        }
+
+    findings = find_rule_violations(comments, base_sentences)
+    broken_rules: list[str] = []
+    for finding in findings:
+        comment = finding.comment
+        place = f"{comment.file}:{comment.line} {comment.name or '-'}"
+        note = f" ({finding.note})" if finding.note else ""
+        print(f"{place}: {finding.rule}: {finding.message}{note}")
+        if finding.rule not in broken_rules:
+            broken_rules.append(finding.rule)
+    for rule in broken_rules:
         print(f'{rule} rule: "{RULES[rule]}"')
-    failed = base is not None and any(
-        f.rule == "filler" and not f.note for f in findings
+    failed = base_sentences is not None and any(
+        finding.rule == "filler" and not finding.note for finding in findings
     )
     return 1 if failed else 0
 
