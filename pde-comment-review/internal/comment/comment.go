@@ -5,6 +5,8 @@ package comment
 import (
 	"errors"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"strings"
 	"unicode/utf8"
 )
@@ -40,6 +42,34 @@ func RefusePartialComment(src string, start, end int) error {
 	below, _, _ := strings.Cut(src[end:], "\n")
 	if isCommentLine(above) && !isDirectiveLine(above) || isCommentLine(below) && !isDirectiveLine(below) {
 		return errors.New("is only part of a comment: a // line is just above or below it")
+	}
+	return nil
+}
+
+// Returns an error unless each line of src[start:end] starts a comment when
+// Go reads src. A "//" line inside a string, such as a test fixture, or
+// inside a /* */ comment is refused.
+func RefuseTextOutsideComments(src string, start, end int) error {
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(src))
+	var s scanner.Scanner
+	s.Init(file, []byte(src), nil, scanner.ScanComments)
+	commentStarts := map[int]bool{}
+	for {
+		pos, tok, _ := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.COMMENT {
+			commentStarts[file.Offset(pos)] = true
+		}
+	}
+	for at := start; at < end; {
+		line, _, _ := strings.Cut(src[at:end], "\n")
+		if !commentStarts[at+len(line)-len(strings.TrimLeft(line, " \t"))] {
+			return errors.New("is not a comment when Go reads the file: it is inside a string or a /* */ comment")
+		}
+		at += len(line) + 1
 	}
 	return nil
 }
