@@ -56,7 +56,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple, TypeGuard
 
@@ -304,7 +304,7 @@ def split_sentences(prose: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+", prose) if s]
 
 
-def renamed_from(
+def find_rename_candidates(
     name: str,
     text: str,
     file: str,
@@ -320,41 +320,45 @@ def renamed_from(
     own is the owner's other comment, not this one, so it never matches.
 
     Args:
-        name: The gone comment's name.
-        text: Its approved text.
-        file: The file it was approved in.
-        comments: Every checked comment.
-        approved: Approved text by ``(file, name)``.
+        text: The gone comment's approved text.
 
     Returns:
         The matching named comments in ``file``, in file order.
     """
-    first = split_sentences(
+    approved_words = split_first_sentence(
         join_comment_prose(text.splitlines(keepends=True))
-    )[:1]
-    words = first[0].split() if first else []
-    likely = []
-    for c in comments:
-        if c.file != file or not c.name or c.name == name:
+    )
+    candidates = []
+    for comment in comments:
+        if comment.file != file or not comment.name or comment.name == name:
             continue
-        if approved.get((c.file, c.name)):
+        if approved.get((comment.file, comment.name)):
             continue
-        own = split_sentences(c.prose)[:1]
-        theirs = own[0].split() if own else []
-        names = {re.split(r"[. ]", n)[-1] for n in (name, c.name)}
+        words = split_first_sentence(comment.prose)
+        bare_names = {re.split(r"[. ]", n)[-1] for n in (name, comment.name)}
         if (
-            words
-            and len(theirs) == len(words)
+            approved_words
+            and len(words) == len(approved_words)
             and all(
-                a == b or (identifier(a, names) and identifier(b, names))
-                for a, b in zip(words, theirs)
+                a == b
+                or (
+                    looks_like_identifier(a, bare_names)
+                    and looks_like_identifier(b, bare_names)
+                )
+                for a, b in zip(approved_words, words)
             )
         ):
-            likely.append(c)
-    return likely
+            candidates.append(comment)
+    return candidates
 
 
-def identifier(word: str, names: set[str]) -> bool:
+def split_first_sentence(prose: str) -> list[str]:
+    """Return the words of the first sentence, with their punctuation."""
+    first = split_sentences(prose)[:1]
+    return first[0].split() if first else []
+
+
+def looks_like_identifier(word: str, names: set[str]) -> bool:
     """Return whether a prose word looks like a Go identifier.
 
     Args:
@@ -435,9 +439,14 @@ def find_gone_approvals(
             findings.append(Finding(gone, "approved", "approved file is gone"))
         elif (file, name) not in current:
             message = "approved comment is gone"
-            for c in renamed_from(name, text, file, comments, approved):
-                pair = shlex.quote(f"{name}={c.name}")
-                message += f"; possibly now {c.name} at {c.line}"
+            candidates = find_rename_candidates(
+                name, text, file, comments, approved
+            )
+            for candidate in candidates:
+                pair = shlex.quote(f"{name}={candidate.name}")
+                message += (
+                    f"; possibly now {candidate.name} at {candidate.line}"
+                )
                 message += f" (--approve --rename {pair})"
             findings.append(Finding(gone, "approved", message))
     return findings
@@ -677,65 +686,86 @@ def build_approved_entries(
     return entries, removed
 
 
-def rename(
+@dataclass
+class RenameRules:
+    """The ``--rename`` pairs.
+
+    ``used`` records each old name or path that renamed something.
+    """
+
+    file_moves: dict[str, str]
+    name_changes: dict[str, str]
+    checked_files: set[str]
+    current_keys: set[tuple[str, str]]
+    used: set[str] = field(default_factory=set)
+
+    def move_key(self, file: str, name: str) -> tuple[str, str]:
+        """Return ``(file, name)`` after the renames.
+
+        Also records each old name or path it applied in ``used``.
+        """
+        if file in self.file_moves:
+            self.used.add(file)
+            file = self.file_moves[file]
+        # Another file may still use the old name, so rename only in a
+        # checked file where the old name is no longer a comment.
+        if (
+            file in self.checked_files
+            and name in self.name_changes
+            and (file, name) not in self.current_keys
+        ):
+            self.used.add(name)
+            name = self.name_changes[name]
+        return file, name
+
+
+def apply_renames(
     renames: dict[str, str],
     files: set[str],
-    now: set[tuple[str, str]],
+    current_keys: set[tuple[str, str]],
     approved: dict[tuple[str, str], str],
-    before: list[Comment],
+    base_comments: list[Comment],
 ) -> tuple[dict[tuple[str, str], str], list[Comment], list[str]]:
     """Move entries and ``--base`` comments to their new names.
 
     A pair of ``.go`` paths, relative to ``--repo``, moves a file; no Go
     name ends in ``.go``, since ``go`` is a keyword. Other pairs rename a
-    comment only in a checked file where the old name is no longer a
-    comment, since another file may still use it. Files move first, and
-    an entry already under the new name wins.
+    comment. Files move first, and an entry already under the new name
+    wins.
 
     Args:
         renames: New names or paths by old ones.
-        files: Paths of the checked files.
-        now: ``(file, name)`` of every comment in those files.
-        approved: Entries from ``.code-comments.json``.
-        before: Every comment at ``--base``.
+        current_keys: ``(file, name)`` of every comment in ``files``.
 
     Returns:
         The renamed entries and ``--base`` comments, and each old name
         or path that renamed nothing.
     """
-    paths = {o: n for o, n in renames.items() if o.endswith(".go")}
-    names = {o: n for o, n in renames.items() if not o.endswith(".go")}
-    used: set[str] = set()
-
-    def renamed(file: str, name: str) -> tuple[str, str]:
-        """Return the key a comment has after the renames."""
-        if file in paths:
-            used.add(file)
-            file = paths[file]
-        if file in files and name in names and (file, name) not in now:
-            used.add(name)
-            name = names[name]
-        return file, name
-
-    entries = {k: v for k, v in approved.items() if renamed(*k) == k}
-    for key, text in sorted(approved.items()):
-        entries.setdefault(renamed(*key), text)
+    rename_rules = RenameRules(
+        file_moves={o: n for o, n in renames.items() if o.endswith(".go")},
+        name_changes={
+            o: n for o, n in renames.items() if not o.endswith(".go")
+        },
+        checked_files=files,
+        current_keys=current_keys,
+    )
+    new_keys = {key: rename_rules.move_key(*key) for key in sorted(approved)}
+    # Unrenamed entries first, so one already under the new name wins.
+    entries = {
+        key: approved[key] for key, new in new_keys.items() if new == key
+    }
+    for key, new in new_keys.items():
+        entries.setdefault(new, approved[key])
     moved = []
-    for c in before:
-        file, name = renamed(c.file, c.name)
-        moved.append(replace(c, file=file, name=name))
-    return entries, moved, [old for old in renames if old not in used]
+    for comment in base_comments:
+        file, name = rename_rules.move_key(comment.file, comment.name)
+        moved.append(replace(comment, file=file, name=name))
+    unused = [old for old in renames if old not in rename_rules.used]
+    return entries, moved, unused
 
 
-def rename_pair(value: str) -> tuple[str, str]:
-    """Parse one ``--rename OLD=NEW`` value.
-
-    Args:
-        value: The option's text.
-
-    Returns:
-        The old and new names.
-    """
+def parse_rename_pair(value: str) -> tuple[str, str]:
+    """Split one ``--rename OLD=NEW`` value into the old and new names."""
     old, _, new = value.partition("=")
     if not old or not new:
         raise argparse.ArgumentTypeError(f"{value!r} is not OLD=NEW")
@@ -821,7 +851,7 @@ def main(argv: list[str] | None = None) -> int:
         "--rename",
         action="append",
         default=[],
-        type=rename_pair,
+        type=parse_rename_pair,
         metavar="OLD=NEW",
         help="with --approve: a renamed comment or .go file; repeat for each",
     )
@@ -884,9 +914,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.approve:
         # Rename first, so a renamed comment's entry moves instead of
         # being cut as gone or dropped with a deleted file.
-        now = {(c.file, c.name) for c in comments}
-        approved, base_comments, unused = rename(
-            dict(args.rename), checked_files, now, approved, base_comments
+        current_keys = {(c.file, c.name) for c in comments}
+        approved, base_comments, unused = apply_renames(
+            dict(args.rename),
+            checked_files,
+            current_keys,
+            approved,
+            base_comments,
         )
         for old in unused:
             print(
