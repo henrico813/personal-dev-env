@@ -22,17 +22,26 @@ func applyDecisions(name string) error {
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
+	checker, err := findCheckerPath()
 	if err != nil {
 		return err
 	}
-	checker := filepath.Join(home, ".agents", "skills", "code-documentation", "scripts", "check_comments.py")
 	report, err := writeAndApproveDecisions(r, checker)
 	if err != nil {
 		return err
 	}
 	fmt.Print(report)
 	return nil
+}
+
+// Returns the installed comment checker, the one program that writes
+// .code-comments.json.
+func findCheckerPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".agents", "skills", "code-documentation", "scripts", "check_comments.py"), nil
 }
 
 // Writes the owner's decisions into the code and approves them, so the

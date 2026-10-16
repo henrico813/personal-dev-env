@@ -194,9 +194,10 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// Ctrl+b e opens the newest waiting review. The owner once left ten notes on
-// another session's review, so the wrong order, an applied or removed review
-// still listed, or a new round left out costs real answers.
+// Ctrl+b e opens the only waiting review, or lists them newest first within
+// each session. The owner once left ten notes on another session's review,
+// so the wrong order, an applied or removed review still listed, or a new
+// round left out costs real answers.
 func TestWaitingReviewsListNewestFirst(t *testing.T) {
 	repo := newRepo(t)
 	start := time.Now()
