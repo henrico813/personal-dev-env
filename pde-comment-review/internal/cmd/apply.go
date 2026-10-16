@@ -77,6 +77,9 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 	if err != nil {
 		return "", explainAfterWrite(err, repo, checker, written, files)
 	}
+	if err := r.SetApplied(); err != nil {
+		return "", fmt.Errorf("applied, but the review still shows as waiting: %w", err)
+	}
 	report := ""
 	if len(renames) > 0 {
 		report += "moved approvals to renamed code: " + strings.Join(renames, ", ") + "\n"

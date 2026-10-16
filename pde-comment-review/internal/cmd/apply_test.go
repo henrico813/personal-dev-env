@@ -139,6 +139,14 @@ func Valid(prices []int) bool { return true }
 	if !reflect.DeepEqual(got, wantApproved) {
 		t.Errorf(".code-comments.json approves %q, want %q", got, wantApproved)
 	}
+	// An applied review must stop waiting for Ctrl+b e.
+	applied, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.AppliedRound != 1 {
+		t.Errorf("applied round = %d, want 1", applied.AppliedRound)
+	}
 }
 
 // applyDecisions writes the owner's answers into the code. It cannot run

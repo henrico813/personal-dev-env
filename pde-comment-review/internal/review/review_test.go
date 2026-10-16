@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 const configGo = `package config
@@ -189,5 +191,65 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 	if e := r.ListEntries()[1]; e.Note != "name the keys" {
 		t.Errorf("item 2 note = %q, want the note made in round 2 open", e.Note)
+	}
+}
+
+// Ctrl+b e opens the newest waiting review. The owner once left ten notes on
+// another session's review, so the wrong order, an applied or removed review
+// still listed, or a new round left out costs real answers.
+func TestWaitingReviewsListNewestFirst(t *testing.T) {
+	repo := newRepo(t)
+	start := time.Now()
+	// Sets a round's file time, since rounds saved in one test can share one.
+	setRoundTime := func(name string, round int, minutes int) {
+		t.Helper()
+		r, err := OpenReview(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		added := start.Add(time.Duration(minutes) * time.Minute)
+		if err := os.Chtimes(buildRoundFilePath(r.Dir, round), added, added); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setApplied := func(name string) {
+		t.Helper()
+		r, err := OpenReview(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.SetApplied(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, name := range []string{"older", "applied", "newer", "readded"} {
+		addTestRound(t, name, marshalProposals(t, repo, rewordParse))
+		setRoundTime(name, 1, i)
+	}
+	setApplied("applied")
+	// An applied review waits again once an AI adds a round.
+	setApplied("readded")
+	addTestRound(t, "readded", marshalProposals(t, repo, rewordParse))
+	setRoundTime("readded", 2, 10)
+	gone := t.TempDir()
+	if err := os.WriteFile(filepath.Join(gone, "config.go"), []byte(configGo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	addTestRound(t, "gone", marshalProposals(t, gone, rewordParse))
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	waiting, err := ListWaitingReviews()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, r := range waiting {
+		names = append(names, r.Name)
+	}
+	if want := []string{"readded", "newer", "older"}; !slices.Equal(names, want) {
+		t.Errorf("waiting reviews = %q, want %q", names, want)
 	}
 }

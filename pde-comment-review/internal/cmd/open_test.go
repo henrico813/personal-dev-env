@@ -126,7 +126,7 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	master, terminal := openFakeTerminal(t)
 
 	done := make(chan error, 1)
-	go func() { done <- runReviewScreen("cart", terminal, terminal, 0) }()
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
 	// Step 1: while git runs, type a key meant for another program.
 	waitForFile(t, started)
 	typeKeys(t, master, "c")
@@ -143,7 +143,7 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("runReviewScreen() error = %v", err)
+			t.Fatalf("answerReview() error = %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the screen did not close on q")

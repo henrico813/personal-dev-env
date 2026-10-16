@@ -41,6 +41,8 @@ type Review struct {
 	Rounds    []Proposals // Rounds[0] is round 1.
 	Notes     map[int]Note
 	Decisions map[int]Decision
+	// The round apply last wrote into the code, or 0.
+	AppliedRound int
 }
 
 // The newest version of an item, the round it is from, and the owner's
@@ -56,7 +58,7 @@ var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Returns the folder that holds every review:
 // $XDG_STATE_HOME/pde/comment-review, or ~/.local/state/pde/comment-review.
-func findStateRoot() string {
+func FindStateRoot() string {
 	root := os.Getenv("XDG_STATE_HOME")
 	if root == "" {
 		home, _ := os.UserHomeDir()
@@ -98,7 +100,7 @@ func loadReview(name string) (*Review, error) {
 	if !namePattern.MatchString(name) {
 		return nil, fmt.Errorf("review name %q may use only a-z, 0-9, '.', '_', and '-'", name)
 	}
-	r := &Review{Name: name, Dir: filepath.Join(findStateRoot(), name), Notes: map[int]Note{}, Decisions: map[int]Decision{}}
+	r := &Review{Name: name, Dir: filepath.Join(FindStateRoot(), name), Notes: map[int]Note{}, Decisions: map[int]Decision{}}
 	for round := 1; ; round++ {
 		data, err := os.ReadFile(buildRoundFilePath(r.Dir, round))
 		if errors.Is(err, fs.ErrNotExist) {
@@ -119,6 +121,11 @@ func loadReview(name string) (*Review, error) {
 	if err := readJSONFile(filepath.Join(r.Dir, "decisions.json"), &r.Decisions); err != nil {
 		return nil, err
 	}
+	var applied appliedFile
+	if err := readJSONFile(filepath.Join(r.Dir, "applied.json"), &applied); err != nil {
+		return nil, err
+	}
+	r.AppliedRound = applied.Round
 	return r, nil
 }
 
