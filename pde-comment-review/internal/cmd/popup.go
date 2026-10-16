@@ -18,16 +18,83 @@ type popupRecord struct {
 	Name      string `json:"name"`
 }
 
-// Runs in Herdr's popup, on the review named in its environment.
+// Runs in Herdr's popup. Without a review name in its environment, it first
+// lists the waiting reviews to pick from.
 func runReviewPopup(in, out *os.File) error {
-	r, origin, err := openReviewWithOrigin(os.Getenv(reviewNameEnv))
+	if saveOpenPopup("Comment review") == nil {
+		defer removeOpenPopup()
+	}
+	name := os.Getenv(reviewNameEnv)
+	if name == "" {
+		var err error
+		name, err = pickWaitingReview(in, out)
+		if err != nil || name == "" {
+			return err
+		}
+	}
+	r, origin, err := openReviewWithOrigin(name)
 	if err != nil {
 		return err
 	}
-	if saveOpenPopup(popup.BuildRecordName(origin)) == nil {
-		defer removeOpenPopup()
-	}
+	_ = saveOpenPopup(popup.BuildRecordName(origin))
 	return runReviewScreen(r, origin, in, out, popup.Settle)
+}
+
+// Returns the review the owner picks, or "" if they quit or none wait.
+func pickWaitingReview(in, out *os.File) (string, error) {
+	choices, err := listWaitingChoices()
+	if err != nil || len(choices) == 0 {
+		return "", err
+	}
+	picker := popup.NewPicker(choices)
+	term, err := popup.Start(in, out)
+	if err != nil {
+		return "", err
+	}
+	defer term.Restore()
+	for {
+		key, err := term.DrawAndReadKey(func(cols, rows int) []string {
+			picker.Cols, picker.Rows = cols, rows
+			return picker.BuildScreen()
+		})
+		if err != nil {
+			return "", err
+		}
+		switch picker.PressKey(key) {
+		case popup.Quit:
+			return "", nil
+		case popup.Open:
+			return picker.Chosen(), nil
+		}
+	}
+}
+
+func listWaitingChoices() ([]popup.Choice, error) {
+	waiting, err := review.ListWaitingReviews()
+	if err != nil {
+		return nil, err
+	}
+	var choices []popup.Choice
+	for _, r := range waiting {
+		origin, err := readReviewOrigin(r)
+		if err != nil {
+			return nil, err
+		}
+		entries := r.ListEntries()
+		answered := 0
+		for _, e := range entries {
+			if e.Decision != nil {
+				answered++
+			}
+		}
+		choices = append(choices, popup.Choice{
+			Name:     r.Name,
+			Origin:   origin,
+			Items:    len(entries),
+			Answered: answered,
+		})
+	}
+	return choices, nil
 }
 
 func findOpenPopupPath() string {

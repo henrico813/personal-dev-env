@@ -17,7 +17,7 @@ const usage = `usage:
   pde-comment-review open NAME
       answer the items of review NAME one per screen, each saved at once:
       o keep, c cut, a accept, m note for the AI, j/k scroll,
-      h/l previous/next item, q quit
+      h/l previous/next item, q quit; once all are answered, y applies
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
   pde-comment-review apply NAME
