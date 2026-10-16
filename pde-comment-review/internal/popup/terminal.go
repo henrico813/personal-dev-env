@@ -8,6 +8,11 @@ import (
 	"unsafe"
 )
 
+const (
+	ioctlFlush   = 0x540b // TCFLSH
+	flushPending = 0      // TCIFLUSH
+)
+
 // The screen's terminal in raw mode, where each key reaches the program as
 // soon as it is pressed, without echo.
 type Terminal struct {
@@ -16,8 +21,9 @@ type Terminal struct {
 	pending []byte // keys read but not yet returned
 }
 
-// Switches the terminal to raw mode and hides the cursor. If hiding the
-// cursor fails, the old settings are restored first.
+// Switches the terminal to raw mode, hides the cursor, and drops keys typed
+// so far, so a key meant for another program never answers an item. Later
+// failures restore the old settings.
 func Start(in, out *os.File) (*Terminal, error) {
 	t := &Terminal{in: in, out: out}
 	if err := ioctl(in, syscall.TCGETS, &t.old); err != nil {
@@ -31,6 +37,12 @@ func Start(in, out *os.File) (*Terminal, error) {
 	raw.Cc[syscall.VMIN], raw.Cc[syscall.VTIME] = 0, 1
 	if err := ioctl(in, syscall.TCSETS, &raw); err != nil {
 		return nil, err
+	}
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
+		in.Fd(), ioctlFlush, flushPending)
+	if errno != 0 {
+		t.Restore()
+		return nil, errno
 	}
 	if _, err := out.WriteString("\x1b[?25l"); err != nil {
 		t.Restore()

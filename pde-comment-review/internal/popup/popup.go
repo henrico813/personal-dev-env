@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -26,11 +27,22 @@ const (
 // How many lines of code the screen shows above and below a comment.
 const codeLinesAround = 100
 
+// How long answer and note keys are ignored after an item appears. On a
+// phone a key is easily pressed twice, and the second press must not answer
+// the next item.
+const Settle = 600 * time.Millisecond
+
 var decisionStatus = map[string]string{
 	review.ActionKeep:   "kept",
 	review.ActionCut:    "cut",
 	review.ActionAccept: "accepted",
 	review.ActionEdited: "edited",
+}
+
+var answerKeys = map[string]Action{
+	"o": Keep,
+	"c": Cut,
+	"a": Accept,
 }
 
 // What a key asks the caller to do.
@@ -39,6 +51,10 @@ type Action int
 const (
 	None Action = iota // only the view changed
 	Quit
+	Keep
+	Cut
+	Accept
+	SaveNote // save View.Typed as the item's note
 )
 
 // What the screen shows: one entry, scrolled down scroll rows.
@@ -49,22 +65,50 @@ type View struct {
 	Index      int
 	scroll     int
 	Cols, Rows int
+	Settle     time.Duration
+	notice     string // shown above the key hint until the next key
+	typing     bool   // the owner is typing a note into Typed
+	Typed      string
+	shownAt    time.Time
 }
 
 func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
 
 // Shows entry index scrolled past the code above, so its proposal is in
 // view first.
-func (v *View) Show(index int) {
+func (v *View) Show(index int, now time.Time) {
 	v.Index = index
+	v.typing = false
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
+	v.shownAt = now
+}
+
+// Shows the first entry from index on, wrapping around, that has no
+// decision. An entry with only a note still waits for one.
+func (v *View) ShowNextUndecided(index int, now time.Time) {
+	for i := range v.Entries {
+		next := (index + i) % len(v.Entries)
+		if v.Entries[next].Decision == nil {
+			v.Show(next, now)
+			return
+		}
+	}
+	v.Show(index%len(v.Entries), now)
+	v.notice = "every item is answered"
 }
 
 // Handles one key press; l and h wrap around at the last and first item.
-func (v *View) PressKey(key string) Action {
+func (v *View) PressKey(key string, now time.Time) Action {
+	v.notice = ""
+	if key == "\x03" { // Ctrl-c
+		return Quit
+	}
+	if v.typing {
+		return v.typeNote(key)
+	}
 	switch key {
-	case "q", "\x03": // q or Ctrl-c
+	case "q":
 		return Quit
 	case "j":
 		rows, _ := v.body()
@@ -74,9 +118,39 @@ func (v *View) PressKey(key string) Action {
 	case "k":
 		v.scroll = max(v.scroll-1, 0)
 	case "l":
-		v.Show((v.Index + 1) % len(v.Entries))
+		v.Show((v.Index+1)%len(v.Entries), now)
 	case "h":
-		v.Show((v.Index + len(v.Entries) - 1) % len(v.Entries))
+		v.Show((v.Index+len(v.Entries)-1)%len(v.Entries), now)
+	case "o", "c", "a", "m":
+		if now.Sub(v.shownAt) < v.Settle {
+			v.notice = "one moment, then press again"
+			return None
+		}
+		if key == "m" {
+			v.typing = true
+			v.Typed = v.Entry().Note
+			return None
+		}
+		return answerKeys[key]
+	}
+	return None
+}
+
+// Handles a key while the owner types a note. The note starts as the saved
+// one, so Enter alone changes nothing, and an empty note removes it.
+func (v *View) typeNote(key string) Action {
+	switch key {
+	case "\r", "\n":
+		v.typing = false
+		return SaveNote
+	case "\x7f", "\x08": // Backspace
+		_, size := utf8.DecodeLastRuneInString(v.Typed)
+		v.Typed = v.Typed[:len(v.Typed)-size]
+	default:
+		r, _ := utf8.DecodeRuneInString(key)
+		if unicode.IsPrint(r) {
+			v.Typed += key
+		}
 	}
 	return None
 }
@@ -116,11 +190,21 @@ func (v *View) Lines() []string {
 	for len(lines) < v.Rows-1 {
 		lines = append(lines, "")
 	}
+	if v.notice != "" {
+		lines[len(lines)-1] = yellow + clip(v.notice, v.Cols) + reset
+	}
 	return append(lines, v.footer())
 }
 
 func (v *View) footer() string {
-	return dim + clip("j/k scroll h/l item q quit", v.Cols) + reset
+	if v.typing {
+		prompt := "note for AI: "
+		// The end of a long note stays visible, so what was just typed shows.
+		width := max(1, v.Cols-len(prompt))
+		typed := lastColumns(escapeControlCharacters(v.Typed), width)
+		return prompt + typed
+	}
+	return dim + clip("a accept o keep c cut m note q quit", v.Cols) + reset
 }
 
 // Returns the entry's rows with its code around it, and the index of the
