@@ -9,6 +9,13 @@ type = "plugin_action"
 command = "pde.approval.inbox"
 description = "open approval inbox"
 
+# Replaces Herdr's default prefix+e, which opens the scrollback in an editor.
+[[keys.command]]
+key = "prefix+e"
+type = "plugin_action"
+command = "pde.comment-review.open"
+description = "open comment review"
+
 [theme]
 name = "vesper"
 auto_switch = false
