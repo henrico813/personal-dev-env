@@ -19,6 +19,7 @@ const (
 	popupPaneID = "popup"
 )
 
+// An empty review name makes the popup list the waiting reviews.
 const reviewNameEnv = "PDE_COMMENT_REVIEW"
 
 // Herdr's answer to a refused request, such as ui_busy while another popup
@@ -32,9 +33,9 @@ func (e *herdrError) Error() string {
 	return fmt.Sprintf("herdr: %s (%s)", e.Message, e.Code)
 }
 
-// Opens the newest waiting review in Herdr's popup. Only the owner's Ctrl+b e
-// may run it, since a popup an agent opens is drawn out of sight and blocks
-// every PR approval.
+// Opens the one waiting review in Herdr's popup, or the list when several
+// wait. Only the owner's Ctrl+b e may run it, since a popup an agent opens
+// is drawn out of sight and blocks every PR approval.
 func openWaitingReview() error {
 	if os.Getenv("HERDR_PLUGIN_ACTION_ID") == "" {
 		return errors.New("only Herdr's Ctrl+b e opens the review popup; in a terminal, run open NAME")
@@ -56,12 +57,16 @@ func openWaitingPopup() error {
 	if len(waiting) == 0 {
 		return showNotification("No comment reviews are waiting")
 	}
+	name := ""
+	if len(waiting) == 1 {
+		name = waiting[0].Name
+	}
 	return sendHerdrRequest("plugin.pane.open", map[string]any{
 		"plugin_id":  pluginID,
 		"entrypoint": popupPaneID,
 		"placement":  "popup",
 		"focus":      true,
-		"env":        map[string]string{reviewNameEnv: waiting[0].Name},
+		"env":        map[string]string{reviewNameEnv: name},
 	})
 }
 
