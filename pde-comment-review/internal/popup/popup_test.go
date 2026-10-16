@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"pde-comment-review/internal/review"
 )
@@ -19,7 +20,7 @@ func newView(t *testing.T, code string, items ...review.Item) *View {
 	if err := os.WriteFile(filepath.Join(repo, "wire.go"), []byte(code), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	v := &View{Repo: repo, Cols: popupCols, Rows: popupRows}
+	v := &View{Repo: repo, Cols: popupCols, Rows: popupRows, Settle: Settle}
 	for _, item := range items {
 		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
 	}
@@ -49,7 +50,7 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		Branch:   "feat/review-apply-screen-画面表示",
 	}
 
-	v.Show(0)
+	v.Show(0, time.Now())
 	lines := v.Lines()
 
 	if len(lines) != popupRows {
@@ -79,5 +80,35 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 	}
 	if lines[popupRows-2] == "" {
 		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
+	}
+}
+
+// On a phone a key is easily pressed twice. The second press must not
+// answer, or start a note on, the item the first press moved to.
+func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
+	v := newView(t, "package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
+		review.Item{ID: 1, File: "wire.go", Proposal: review.ProposeCut, Old: "// One.\n"},
+		review.Item{ID: 2, File: "wire.go", Proposal: review.ProposeCut, Old: "// Two.\n"})
+	start := time.Now()
+	v.ShowNextUndecided(0, start)
+
+	first := v.PressKey("o", start.Add(Settle))
+	v.Entries[0].Decision = &review.Decision{Action: review.ActionKeep, Round: 1}
+	v.ShowNextUndecided(1, start.Add(Settle))
+	quick := start.Add(Settle + 50*time.Millisecond)
+	again := v.PressKey("o", quick)
+	v.PressKey("m", quick)
+	typing := v.typing
+	later := v.PressKey("o", start.Add(2*Settle))
+
+	if first != Keep {
+		t.Errorf("press after the pause = %v, want Keep", first)
+	}
+	if again != None || typing || v.Index != 1 {
+		t.Errorf("quick o = %v, m started a note = %v, on item %d; want None, false, item 2",
+			again, typing, v.Index+1)
+	}
+	if later != Keep {
+		t.Errorf("press after the next pause = %v, want Keep", later)
 	}
 }
