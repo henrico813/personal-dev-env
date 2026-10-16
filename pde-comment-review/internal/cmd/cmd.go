@@ -13,6 +13,9 @@ import (
 const usage = `usage:
   pde-comment-review add NAME FILE
       save proposals FILE as the next round of review NAME
+  pde-comment-review open NAME
+      show the items of review NAME one per screen: j/k scroll,
+      h/l previous/next item, q quit
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
   pde-comment-review apply NAME
@@ -31,6 +34,8 @@ func Main(args []string) int {
 	switch {
 	case len(args) == 3 && args[0] == "add":
 		err = addRound(args[1], args[2])
+	case len(args) == 2 && args[0] == "open":
+		err = runReviewScreen(args[1], os.Stdin, os.Stdout)
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
 	case len(args) == 2 && args[0] == "apply":

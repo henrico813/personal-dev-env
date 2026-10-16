@@ -1,0 +1,83 @@
+package popup
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"pde-comment-review/internal/review"
+)
+
+// Herdr's 40x16 popup leaves 37x14 inside its border.
+const popupCols, popupRows = 37, 14
+
+func newView(t *testing.T, code string, items ...review.Item) *View {
+	t.Helper()
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "wire.go"), []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	v := &View{Repo: repo, Cols: popupCols, Rows: popupRows}
+	for _, item := range items {
+		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
+	}
+	return v
+}
+
+var colorCodes = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// A row wider than the popup wraps and pushes the label off a phone
+// screen. Row 1 names the review because the owner once left ten notes on
+// another session's review. Agent text must not reach the terminal as
+// control or right-to-left characters, which could redraw or reorder it.
+func TestScreenFitsPhonePopup(t *testing.T) {
+	code := "package wire\n\n" +
+		strings.Repeat("var unrelatedVariableWithAVeryLongName = map[string]int{\"first\": 1, \"second\": 2}\n", 30) +
+		"var docs = \"https://go.dev/doc/comment#doc-comments-for-constants-and-variables\"\n" +
+		"// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n" +
+		"func Shared() bool { return true }\n"
+	v := newView(t, code, review.Item{
+		ID: 11, File: "wire.go", Proposal: review.ProposeReword,
+		Old: "// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n",
+		New: "// Reports whether no tool may declare code.\n",
+		Why: "Restates the name\x1b[2J\u202e. 判定:✅名前と同じことを言っているだけなので、読み手には何も伝わりません。",
+	})
+	v.Origin = review.Origin{
+		RepoName: "personal-dev-env-sandbox-copy",
+		Branch:   "feat/review-apply-screen-画面表示",
+	}
+
+	v.Show(0)
+	lines := v.Lines()
+
+	if len(lines) != popupRows {
+		t.Fatalf("screen has %d lines, want %d:\n%s", len(lines), popupRows, strings.Join(lines, "\n"))
+	}
+	for i, line := range lines {
+		plain := colorCodes.ReplaceAllString(line, "")
+		if width := displayWidth(plain); width > popupCols {
+			t.Errorf("line %d is %d columns, want at most %d: %q", i+1, width, popupCols, line)
+		}
+	}
+	// Each of 面表示 takes two columns, so the label is 36 wide, not 33.
+	if want := "personal-dev-env-sa… · review…面表示"; lines[0] != want {
+		t.Errorf("row 1 = %q, want %q", lines[0], want)
+	}
+	screen := colorCodes.ReplaceAllString(strings.Join(lines, "\n"), "")
+	// ✅ takes two columns, so its row holds 13 more characters, not 14.
+	for _, want := range []string{
+		"1/1 reword? wire.go",
+		"why: Restates the name^[[2J\\u202e.",
+		"判定:✅名前と同じことを言っている\n",
+		"+// Reports whether no tool may",
+	} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("screen does not show %q:\n%s", want, screen)
+		}
+	}
+	if lines[popupRows-2] == "" {
+		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
+	}
+}
