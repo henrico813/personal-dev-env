@@ -154,6 +154,28 @@ func findOnce(text, old string) (int, error) {
 	return at, nil
 }
 
+// Returns up to codeLinesAround lines of code above and below the item's
+// comment in repo, to show it in place.
+func ReadCodeAround(repo string, item Item, codeLinesAround int) (before, after []string, err error) {
+	data, err := os.ReadFile(filepath.Join(repo, item.File))
+	if err != nil {
+		return nil, nil, err
+	}
+	text := string(data)
+	at, err := findOnce(text, item.Old)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", item.File, err)
+	}
+	// A comment at the start or end of the file has no code on that side.
+	if at > 0 {
+		before = strings.Split(strings.TrimSuffix(text[:at], "\n"), "\n")
+	}
+	if rest := text[at+len(item.Old):]; rest != "" {
+		after = strings.Split(strings.TrimSuffix(rest, "\n"), "\n")
+	}
+	return before[max(0, len(before)-codeLinesAround):], after[:min(codeLinesAround, len(after))], nil
+}
+
 // Returns the line where each copy of old starts in text, such as "3, 9".
 func listCopyLines(text, old string) string {
 	var found []string
