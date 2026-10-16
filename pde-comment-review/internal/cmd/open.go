@@ -9,21 +9,37 @@ import (
 	"pde-comment-review/internal/review"
 )
 
-// Shows review name one item per screen until the owner quits. Each answer
-// and note is saved when its key is pressed, so the owner can stop and come
-// back later.
-func runReviewScreen(name string, in, out *os.File, settle time.Duration) error {
-	r, err := review.OpenReview(name)
+func answerReview(name string, in, out *os.File, settle time.Duration) error {
+	r, origin, err := openReviewWithOrigin(name)
 	if err != nil {
 		return err
 	}
+	return runReviewScreen(r, origin, in, out, settle)
+}
+
+// Opens review name with the repository and branch it came from. Reviews
+// saved before those were recorded use the checkout as it is now.
+func openReviewWithOrigin(name string) (*review.Review, review.Origin, error) {
+	r, err := review.OpenReview(name)
+	if err != nil {
+		return nil, review.Origin{}, err
+	}
 	origin, err := r.ReadOrigin()
 	if err != nil {
-		return err
+		return nil, review.Origin{}, err
 	}
 	if origin.RepoName == "" {
 		origin = findReviewOrigin(r.Repo())
 	}
+	return r, origin, nil
+}
+
+// Shows review r one item per screen until the owner quits. Each answer
+// and note is saved when its key is pressed, so the owner can stop and come
+// back later.
+func runReviewScreen(
+	r *review.Review, origin review.Origin, in, out *os.File, settle time.Duration,
+) error {
 	v := &popup.View{
 		Entries: r.ListEntries(),
 		Repo:    r.Repo(),
@@ -37,21 +53,13 @@ func runReviewScreen(name string, in, out *os.File, settle time.Duration) error 
 	defer term.Restore()
 	v.Cols, v.Rows = term.Size()
 	v.ShowNextUndecided(0, time.Now())
-	redraw := true
 	for {
-		if cols, rows := term.Size(); redraw || cols != v.Cols || rows != v.Rows {
+		key, err := term.DrawAndReadKey(func(cols, rows int) []string {
 			v.Cols, v.Rows = cols, rows
-			if err := term.Draw(v.Lines()); err != nil {
-				return err
-			}
-		}
-		key, err := term.ReadKey()
+			return v.Lines()
+		})
 		if err != nil {
 			return err
-		}
-		redraw = key != ""
-		if !redraw {
-			continue
 		}
 		switch v.PressKey(key, time.Now()) {
 		case popup.Quit:

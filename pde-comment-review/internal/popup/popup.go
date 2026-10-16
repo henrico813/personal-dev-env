@@ -274,11 +274,33 @@ func fitLabel(o review.Origin, width int) string {
 		repo = clip(repo, maxRepoColumns-1) + "…"
 	}
 	room := width - displayWidth(repo+" · ")
-	if displayWidth(branch) > room && room >= 3 {
-		head := clip(branch, (room-1)/2)
-		branch = head + "…" + lastColumns(branch, room-1-displayWidth(head))
+	return clip(repo+" · "+cutMiddle(branch, room), width)
+}
+
+// The popup record's name, which a refused PR approval shows on a phone, has
+// at most 19 characters.
+const recordNameColumns = 19
+
+// Returns the name the popup record gives a review: its label after
+// "Review: ", or only its branch when the label is too long.
+func BuildRecordName(o review.Origin) string {
+	const prefix = "Review: "
+	room := recordNameColumns - len(prefix)
+	name := escapeControlCharacters(o.Label())
+	if displayWidth(name) > room && o.Branch != "" {
+		name = escapeControlCharacters(o.BranchWithoutPrefix())
 	}
-	return clip(repo+" · "+branch, width)
+	return prefix + cutMiddle(name, room)
+}
+
+// Returns s in at most width columns, cutting its middle so both ends stay
+// readable.
+func cutMiddle(s string, width int) string {
+	if displayWidth(s) <= width || width < 3 {
+		return clip(s, width)
+	}
+	head := clip(s, (width-1)/2)
+	return head + "…" + lastColumns(s, width-1-displayWidth(head))
 }
 
 // Writes out control and format characters, such as ^[ for Esc, because

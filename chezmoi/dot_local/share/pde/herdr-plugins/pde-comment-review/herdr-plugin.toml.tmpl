@@ -1,0 +1,19 @@
+id = "pde.comment-review"
+name = "PDE comment review"
+version = "0.1.0"
+min_herdr_version = "0.9.1"
+platforms = ["linux"]
+
+[[panes]]
+id = "popup"
+title = "Comment review"
+placement = "popup"
+width = 40
+height = 16
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "popup"]
+
+[[actions]]
+id = "open"
+title = "Open comment review"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "open"]

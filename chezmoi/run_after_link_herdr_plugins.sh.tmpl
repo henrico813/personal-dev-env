@@ -1,11 +1,20 @@
 #!/bin/sh
 set -u
 
-# Runs after every chezmoi apply and links the approval plugin into Herdr. It
+# Runs after every chezmoi apply and links PDE's Herdr plugins into Herdr. It
 # always exits 0, so a missing or stopped Herdr never fails an install, and it
 # prints how to link later.
 
-plugin_dir="{{ .chezmoi.destDir }}/.local/share/pde/herdr-plugins/pde-approval"
+# With no arguments, runs again for each plugin, given its id and folder.
+# Each run's exit 0 below ends only that plugin's run.
+if [ $# -eq 0 ]; then
+	sh "$0" pde.approval pde-approval
+	sh "$0" pde.comment-review pde-comment-review
+	exit 0
+fi
+
+plugin_id=$1
+plugin_dir="{{ .chezmoi.destDir }}/.local/share/pde/herdr-plugins/$2"
 manifest_path="$plugin_dir/herdr-plugin.toml"
 # The installer installs Herdr here, and this directory may not be on PATH yet.
 PATH="{{ .chezmoi.destDir }}/.local/bin:$PATH"
@@ -34,7 +43,7 @@ if ! plugins=$(herdr plugin list --json 2>&1); then
 	exit 0
 fi
 
-if ! plugin_path=$(printf '%s\n' "$plugins" | jq -r '.result.plugins[]? | select(.plugin_id == "pde.approval") | .manifest_path' 2>&1); then
+if ! plugin_path=$(printf '%s\n' "$plugins" | jq -r --arg id "$plugin_id" '.result.plugins[]? | select(.plugin_id == $id) | .manifest_path' 2>&1); then
 	printf 'Cannot parse the Herdr plugin list: %s\n' "$plugin_path"
 	exit 0
 fi
@@ -44,10 +53,9 @@ if [ "$plugin_path" = "$manifest_path" ]; then
 fi
 
 # Herdr identifies a linked plugin by id alone (unlink takes only the id), so
-# remove a link to an older manifest, such as the one previously in
-# pdev2/plugin/, before linking this one.
+# remove a link to an older manifest before linking this one.
 if [ -n "$plugin_path" ]; then
-	if ! error=$(herdr plugin unlink pde.approval 2>&1); then
+	if ! error=$(herdr plugin unlink "$plugin_id" 2>&1); then
 		printf 'Herdr plugin unlink failed: %s\n' "$error"
 		exit 0
 	fi
