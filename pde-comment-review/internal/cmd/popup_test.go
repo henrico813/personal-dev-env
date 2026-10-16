@@ -1,0 +1,169 @@
+package cmd
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync"
+	"testing"
+	"time"
+
+	"pde-comment-review/internal/review"
+)
+
+// Herdr shows one popup at a time. A comment review left open in another
+// workspace once blocked every PR approval, and the owner could not tell
+// which popup to close. A record left behind would name a popup that is
+// gone.
+func TestPopupRecordNamesItsReview(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// Keeps a live Herdr out of the test.
+	t.Setenv("HERDR_ENV", "")
+	t.Setenv(reviewNameEnv, "cart")
+	t.Setenv("HERDR_PLUGIN_CONTEXT_JSON", `{"workspace_id":"w1"}`)
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
+	p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
+	if _, err := review.AddRound("cart", p); err != nil {
+		t.Fatal(err)
+	}
+	r, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetOrigin(review.Origin{RepoName: "shop", Branch: "feat/fix-cart-rounding-v2"}); err != nil {
+		t.Fatal(err)
+	}
+	master, terminal := openFakeTerminal(t)
+
+	done := make(chan error, 1)
+	go func() { done <- runReviewPopup(terminal, terminal) }()
+	// Step 1: the review is on screen; read the record.
+	waitForScreen(t, master, "1/1 cut? cart.go")
+	var record popupRecord
+	data, err := os.ReadFile(findOpenPopupPath())
+	if err == nil {
+		err = json.Unmarshal(data, &record)
+	}
+	// Step 2: quit, then check the record is gone.
+	typeKeys(t, master, "q")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runReviewPopup() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the popup did not close on q")
+	}
+
+	if err != nil {
+		t.Fatalf("reading the record while the popup ran: %v", err)
+	}
+	// A refused approval shows the name on a phone, so it has 19 characters.
+	want := popupRecord{PID: os.Getpid(), Workspace: "w1", Name: "Review: fix-c…ng-v2"}
+	if record != want {
+		t.Errorf("record = %+v, want %+v", record, want)
+	}
+	if _, err := os.Stat(findOpenPopupPath()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("record still exists after the popup closed: %v", err)
+	}
+}
+
+// Starts a fake Herdr socket that answers every request and returns the
+// requests it got, each as its method and the review name it carried.
+func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
+	t.Helper()
+	socket = filepath.Join(t.TempDir(), "herdr.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	var mu sync.Mutex
+	var requests []string
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			var request struct {
+				Method string `json:"method"`
+				Params struct {
+					Env map[string]string `json:"env"`
+				} `json:"params"`
+			}
+			line, _ := bufio.NewReader(conn).ReadBytes('\n')
+			if json.Unmarshal(line, &request) == nil {
+				mu.Lock()
+				requests = append(requests, request.Method+" "+request.Params.Env[reviewNameEnv])
+				mu.Unlock()
+			}
+			fmt.Fprintln(conn, `{"id":"comment-review","result":{}}`)
+			conn.Close()
+		}
+	}()
+	received = func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(requests)
+	}
+	return socket, received
+}
+
+// Ctrl+b e must open the review the owner means: two sessions' reviews once
+// sat side by side and the owner answered the wrong one. Only Herdr's action
+// may open it, since a popup an agent opens is drawn out of sight and blocks
+// every PR approval.
+func TestHerdrActionOpensRightReview(t *testing.T) {
+	tests := []struct {
+		name        string
+		actionID    string
+		reviews     []string // oldest first
+		want        []string
+		wantRefused bool
+	}{
+		{name: "outside the action", reviews: []string{"cart"}, wantRefused: true},
+		{name: "none waiting", actionID: "open", want: []string{"notification.show "}},
+		{name: "one waiting", actionID: "open", reviews: []string{"cart"}, want: []string{"plugin.pane.open cart"}},
+		{name: "several waiting", actionID: "open", reviews: []string{"older", "newer"}, want: []string{"plugin.pane.open newer"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			t.Setenv("HERDR_PLUGIN_ACTION_ID", tt.actionID)
+			socket, received := startFakeHerdr(t)
+			t.Setenv("HERDR_SOCKET_PATH", socket)
+			repo := t.TempDir()
+			writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
+			start := time.Now()
+			for i, name := range tt.reviews {
+				p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
+				if _, err := review.AddRound(name, p); err != nil {
+					t.Fatal(err)
+				}
+				// Rounds saved in one test can share a timestamp, so set them apart.
+				added := start.Add(time.Duration(i) * time.Minute)
+				round := filepath.Join(review.FindStateRoot(), name, "round-1.json")
+				if err := os.Chtimes(round, added, added); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err := openWaitingReview()
+
+			if (err != nil) != tt.wantRefused {
+				t.Errorf("open with no name = %v, want refused %v", err, tt.wantRefused)
+			}
+			if got := received(); !slices.Equal(got, tt.want) {
+				t.Errorf("requests = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

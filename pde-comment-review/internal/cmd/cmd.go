@@ -25,6 +25,8 @@ const usage = `usage:
       approve every comment in its files; only the owner runs this
   pde-comment-review help
       show this help
+Herdr runs pde-comment-review popup itself, and pde-comment-review open
+with no NAME when the owner presses Ctrl+b e.
 `
 
 func Main(args []string) int {
@@ -36,8 +38,12 @@ func Main(args []string) int {
 	switch {
 	case len(args) == 3 && args[0] == "add":
 		err = addRound(args[1], args[2])
+	case len(args) == 1 && args[0] == "open":
+		err = openWaitingReview()
 	case len(args) == 2 && args[0] == "open":
-		err = runReviewScreen(args[1], os.Stdin, os.Stdout, popup.Settle)
+		err = answerReview(args[1], os.Stdin, os.Stdout, popup.Settle)
+	case len(args) == 1 && args[0] == "popup":
+		err = runReviewPopup(os.Stdin, os.Stdout)
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
 	case len(args) == 2 && args[0] == "apply":

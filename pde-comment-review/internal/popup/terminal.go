@@ -102,3 +102,24 @@ func ioctl(file *os.File, request uintptr, termios *syscall.Termios) error {
 	}
 	return nil
 }
+
+// Asks lines for the rows that fit the terminal's size, draws them, and waits
+// for a key, drawing again whenever the terminal is resized.
+func (t *Terminal) DrawAndReadKey(lines func(cols, rows int) []string) (string, error) {
+	drawn := false
+	var drawnCols, drawnRows int
+	for {
+		cols, rows := t.Size()
+		if !drawn || cols != drawnCols || rows != drawnRows {
+			if err := t.Draw(lines(cols, rows)); err != nil {
+				return "", err
+			}
+			drawn = true
+			drawnCols, drawnRows = cols, rows
+		}
+		key, err := t.ReadKey()
+		if err != nil || key != "" {
+			return key, err
+		}
+	}
+}
