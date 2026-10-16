@@ -9,11 +9,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"pde-comment-review/internal/popup"
 	"pde-comment-review/internal/review"
 )
 
@@ -102,7 +105,7 @@ func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
 			line, _ := bufio.NewReader(conn).ReadBytes('\n')
 			if json.Unmarshal(line, &request) == nil {
 				mu.Lock()
-				requests = append(requests, request.Method+" "+request.Params.Env[reviewNameEnv])
+				requests = append(requests, fmt.Sprintf("%s %q", request.Method, request.Params.Env[reviewNameEnv]))
 				mu.Unlock()
 			}
 			fmt.Fprintln(conn, `{"id":"comment-review","result":{}}`)
@@ -130,9 +133,9 @@ func TestHerdrActionOpensRightReview(t *testing.T) {
 		wantRefused bool
 	}{
 		{name: "outside the action", reviews: []string{"cart"}, wantRefused: true},
-		{name: "none waiting", actionID: "open", want: []string{"notification.show "}},
-		{name: "one waiting", actionID: "open", reviews: []string{"cart"}, want: []string{"plugin.pane.open cart"}},
-		{name: "several waiting", actionID: "open", reviews: []string{"older", "newer"}, want: []string{"plugin.pane.open newer"}},
+		{name: "none waiting", actionID: "open", want: []string{`notification.show ""`}},
+		{name: "one waiting", actionID: "open", reviews: []string{"cart"}, want: []string{`plugin.pane.open "cart"`}},
+		{name: "several waiting", actionID: "open", reviews: []string{"older", "newer"}, want: []string{`plugin.pane.open ""`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -165,5 +168,84 @@ func TestHerdrActionOpensRightReview(t *testing.T) {
 				t.Errorf("requests = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// Several sessions' reviews once sat side by side, and the owner left ten
+// notes on the wrong one. The list groups reviews under the agent session
+// that added them, and leaves out applied reviews and removed checkouts.
+func TestPickerGroupsWaitingReviewsBySession(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	start := time.Now()
+	// Oldest first; beta renamed its session after alpha.
+	reviews := []struct{ name, session, agent string }{
+		{"alpha", "s1", "OC | Old title"},
+		{"gamma", "s2", "OC | Other work"},
+		{"beta", "s1", "OC | New title"},
+		{"delta", "", ""},
+		{"applied", "s2", "OC | Other work"},
+		{"gone", "s1", "OC | New title"},
+	}
+	repos := map[string]string{}
+	for i, saved := range reviews {
+		repo := t.TempDir()
+		repos[saved.name] = repo
+		writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
+		p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
+		if _, err := review.AddRound(saved.name, p); err != nil {
+			t.Fatal(err)
+		}
+		r, err := review.OpenReview(saved.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		origin := review.Origin{RepoName: "shop", Branch: saved.name, Session: saved.session, Agent: saved.agent}
+		if err := r.SetOrigin(origin); err != nil {
+			t.Fatal(err)
+		}
+		added := start.Add(time.Duration(i) * time.Minute)
+		if err := os.Chtimes(filepath.Join(r.Dir, "round-1.json"), added, added); err != nil {
+			t.Fatal(err)
+		}
+		if saved.name == "applied" {
+			if err := r.SetApplied(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := os.RemoveAll(repos["gone"]); err != nil {
+		t.Fatal(err)
+	}
+
+	choices, err := listWaitingChoices()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	picker := popup.NewPicker(choices)
+	picker.Cols, picker.Rows = 37, 14
+	colorCodes := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	var lines []string
+	for _, line := range picker.BuildScreen() {
+		lines = append(lines, colorCodes.ReplaceAllString(line, ""))
+	}
+	want := []string{
+		"Comment reviews waiting",
+		"OC | New title",
+		"> shop · beta",
+		"    beta · 0/1 answered",
+		"  shop · alpha",
+		"    alpha · 0/1 answered",
+		"OC | Other work",
+		"  shop · gamma",
+		"    gamma · 0/1 answered",
+		"Unknown session",
+		"  shop · delta",
+		"    delta · 0/1 answered",
+		"",
+		"j/k move Enter open q quit",
+	}
+	if !slices.Equal(lines, want) {
+		t.Errorf("list =\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
 	}
 }

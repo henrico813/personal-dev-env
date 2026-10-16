@@ -161,3 +161,83 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 		t.Errorf("review other saved %+v, want nothing", other.Decisions)
 	}
 }
+
+// Apply from the screen writes the owner's answers into the code. An AI can
+// add a round while the apply question is open; that round must open, or
+// every y is refused and its item can never be answered.
+func TestScreenAppliesNewRoundAfterRefusal(t *testing.T) {
+	checker := findRepoChecker(t)
+	home := t.TempDir()
+	installed := filepath.Join(home, ".agents", "skills", "code-documentation", "scripts", "check_comments.py")
+	if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(checker, installed); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("HERDR_ENV", "")
+	r := startReview(t, cartGo, `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`, nil)
+	setDecisions(t, r, map[int]review.Decision{1: {Action: review.ActionAccept}, 2: {Action: review.ActionAccept}})
+	master, terminal := openFakeTerminal(t)
+
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	// Step 1: keep the last item, then go back with n and answer again.
+	waitForScreen(t, master, "3/3 keep? cart.go")
+	typeKeys(t, master, "o")
+	waitForScreen(t, master, "all 3 answered")
+	typeKeys(t, master, "n")
+	waitForScreen(t, master, "1/3 cut? cart.go")
+	typeKeys(t, master, "a")
+	waitForScreen(t, master, "all 3 answered")
+	// Step 2: an AI adds a round before the owner presses y.
+	p := review.Proposals{Version: review.Version, Repo: r.Repo(), Items: []review.Item{{ID: 4, File: "cart.go",
+		Proposal: review.ProposeCut, Old: "// Reports whether every price is above zero.\n"}}}
+	if _, err := review.AddRound("cart", p); err != nil {
+		t.Fatal(err)
+	}
+	typeKeys(t, master, "y")
+	// Step 3: the new item opens; answer it and apply.
+	waitForScreen(t, master, "4/4 cut? cart.go")
+	typeKeys(t, master, "o")
+	waitForScreen(t, master, "all 4 answered")
+	typeKeys(t, master, "y")
+	waitForScreen(t, master, "git -C")
+	typeKeys(t, master, "q")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("answerReview() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q")
+	}
+
+	want := `package cart
+
+const (
+	Max      = 50
+	Currency = "USD"
+)
+
+// Returns the sum of prices, in cents.
+func Total(prices []int) int { return 0 }
+
+// Reports whether a price is too high.
+func TooHigh(price int) bool { return price > 1000 }
+
+// Reports whether every price is above zero.
+func Valid(prices []int) bool { return true }
+`
+	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != want {
+		t.Errorf("cart.go =\n%s\nwant\n%s", got, want)
+	}
+	applied, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.AppliedRound != 2 {
+		t.Errorf("applied round = %d, want 2", applied.AppliedRound)
+	}
+}

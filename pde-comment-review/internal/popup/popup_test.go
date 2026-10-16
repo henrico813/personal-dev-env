@@ -50,22 +50,27 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		Branch:   "feat/review-apply-screen-画面表示",
 	}
 
-	v.Show(0, time.Now())
-	lines := v.Lines()
-
-	if len(lines) != popupRows {
-		t.Fatalf("screen has %d lines, want %d:\n%s", len(lines), popupRows, strings.Join(lines, "\n"))
-	}
-	for i, line := range lines {
-		plain := colorCodes.ReplaceAllString(line, "")
-		if width := displayWidth(plain); width > popupCols {
-			t.Errorf("line %d is %d columns, want at most %d: %q", i+1, width, popupCols, line)
+	checkFits := func(lines []string) {
+		t.Helper()
+		if len(lines) != popupRows {
+			t.Fatalf("screen has %d lines, want %d:\n%s", len(lines), popupRows, strings.Join(lines, "\n"))
+		}
+		for i, line := range lines {
+			plain := colorCodes.ReplaceAllString(line, "")
+			if width := displayWidth(plain); width > popupCols {
+				t.Errorf("line %d is %d columns, want at most %d: %q", i+1, width, popupCols, line)
+			}
+		}
+		// Each of 面表示 takes two columns, so the label is 36 wide, not 33.
+		if want := "personal-dev-env-sa… · review…面表示"; lines[0] != want {
+			t.Errorf("row 1 = %q, want %q", lines[0], want)
 		}
 	}
-	// Each of 面表示 takes two columns, so the label is 36 wide, not 33.
-	if want := "personal-dev-env-sa… · review…面表示"; lines[0] != want {
-		t.Errorf("row 1 = %q, want %q", lines[0], want)
-	}
+
+	v.Show(0, time.Now())
+	lines := v.BuildScreen()
+
+	checkFits(lines)
 	screen := colorCodes.ReplaceAllString(strings.Join(lines, "\n"), "")
 	// ✅ takes two columns, so its row holds 13 more characters, not 14.
 	for _, want := range []string{
@@ -80,6 +85,27 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 	}
 	if lines[popupRows-2] == "" {
 		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
+	}
+
+	// The rename and apply questions after the last answer fit too, with an
+	// agent's long rename shown escaped.
+	v.Entries[0].Decision = &review.Decision{Action: review.ActionAccept, Round: 1}
+	v.Renames = []string{"Shared=IsSharedCodeThatNoToolMayDeclareAsItsOwn\x1b[2J"}
+	asked := time.Now()
+	v.ShowNextUndecided(0, asked)
+	renameRows := v.BuildScreen()
+	v.PressKey("y", asked.Add(Settle))
+	applyRows := v.BuildScreen()
+
+	checkFits(renameRows)
+	checkFits(applyRows)
+	renameText := colorCodes.ReplaceAllString(strings.Join(renameRows, "\n"), "")
+	if !strings.Contains(renameText, "Shared ->") || !strings.Contains(renameText, "^[[2J") {
+		t.Errorf("rename screen does not show the escaped rename:\n%s", renameText)
+	}
+	applyText := colorCodes.ReplaceAllString(strings.Join(applyRows, "\n"), "")
+	if !strings.Contains(applyText, "Apply and approve") {
+		t.Errorf("apply screen does not ask to apply:\n%s", applyText)
 	}
 }
 
@@ -110,5 +136,28 @@ func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
 	}
 	if later != Keep {
 		t.Errorf("press after the next pause = %v, want Keep", later)
+	}
+}
+
+// The rename question and the apply question come one after the other. A y
+// pressed twice on the phone must not answer both, or the second y would
+// apply and approve before the owner read the question.
+func TestApplyQuestionWaitsAfterRenameAnswer(t *testing.T) {
+	v := newView(t, "package wire\n\n// One.\nvar one = 1\n",
+		review.Item{ID: 1, File: "wire.go", Proposal: review.ProposeCut, Old: "// One.\n"})
+	v.Entries[0].Decision = &review.Decision{Action: review.ActionCut, Round: 1}
+	v.Renames = []string{"Check=Valid"}
+	start := time.Now()
+	v.ShowNextUndecided(0, start)
+
+	renames := v.PressKey("y", start.Add(Settle))
+	again := v.PressKey("y", start.Add(Settle+50*time.Millisecond))
+	later := v.PressKey("y", start.Add(2*Settle))
+
+	if renames != None || again != None {
+		t.Errorf("y on the rename question, then a quick y = %v, %v; want None, None", renames, again)
+	}
+	if later != ApplyAll {
+		t.Errorf("y after the pause = %v, want ApplyAll", later)
 	}
 }
