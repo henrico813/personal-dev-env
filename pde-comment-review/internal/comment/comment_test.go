@@ -6,10 +6,8 @@ import (
 )
 
 // The owner edits a comment as plain text, and that text goes back into the
-// Go file. The Python prototype put each line of a code example in a
-// paragraph of its own, so saving added a blank "//" line between them. This
-// checks that an edit keeps the example's lines together and unchanged,
-// rewraps the prose, and keeps the old comment's indentation.
+// Go file. Saving once added a blank "//" line between the lines of a code
+// example, because each line became a paragraph of its own.
 func TestEditedTextBecomesGoComment(t *testing.T) {
 	old := "\t// ParseConfig reads the config file at path and returns its\n" +
 		"\t// settings.\n" +
