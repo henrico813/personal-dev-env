@@ -184,16 +184,19 @@ text.
 
 Press `d` to see the changes, in a new tab when you are in Herdr. If
 something is wrong, apply writes nothing and says why under the
-question. For example, when the review leaves out a comment in its
-file:
+question. `add` already refuses a review that leaves out an
+unapproved comment or changes an approved one, so this happens when
+the code changed after `add`. For example, when an AI added a comment
+to `cart.go` after `add`:
 
 ```text
  nothing was written: these
    comments would be approved, but
    the owner has not seen them:
- cart.go TooHigh: not in the
-   review, and the owner never
-   approved it
+ cart.go Clear: not in the review,
+   and the owner never approved it.
+   Add it as an item, with old copied
+   from the file.
 ```
 
 Ask the AI to add the missing comment as an item in a new round, then
