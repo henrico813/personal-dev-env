@@ -70,15 +70,47 @@ func FindStateRoot() string {
 // Saves p as the next round of the review called name, starting the review
 // if it is new. Returns the round number.
 func AddRound(name string, p Proposals) (int, error) {
-	r, err := loadReview(name)
+	r, err := BuildReviewWithRound(
+		name,
+		p,
+	)
 	if err != nil {
 		return 0, err
 	}
-	if len(r.Rounds) > 0 && r.Repo() != p.Repo {
-		return 0, fmt.Errorf("review %s is for %s, not %s", name, r.Repo(), p.Repo)
+	round := len(r.Rounds)
+	return round, replaceJSONFile(
+		buildRoundFilePath(
+			r.Dir,
+			round,
+		),
+		p,
+	)
+}
+
+// Returns the whole review called name, every earlier round plus p as
+// its next one, without saving anything, so add can check it before the
+// owner sees it.
+func BuildReviewWithRound(
+	name string,
+	p Proposals,
+) (*Review, error) {
+	r, err := loadReview(name)
+	if err != nil {
+		return nil, err
 	}
-	round := len(r.Rounds) + 1
-	return round, replaceJSONFile(buildRoundFilePath(r.Dir, round), p)
+	if len(r.Rounds) > 0 && r.Repo() != p.Repo {
+		return nil, fmt.Errorf(
+			"review %s is for %s, not %s",
+			name,
+			r.Repo(),
+			p.Repo,
+		)
+	}
+	r.Rounds = append(
+		r.Rounds,
+		p,
+	)
+	return r, nil
 }
 
 // Loads the review called name, which must have at least one round.

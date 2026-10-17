@@ -1,0 +1,384 @@
+package cmd
+
+import (
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"pde-comment-review/internal/review"
+)
+
+const validApproval = `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`
+
+// Saves items as a proposals file for a scratch repository holding code
+// as cart.go and approvals as .code-comments.json, then runs add on it.
+// Returns the path round 1 is saved at, and add's error.
+func addScratchReview(
+	t *testing.T,
+	code string,
+	approvals string,
+	items ...review.Item,
+) (string, error) {
+	t.Helper()
+	t.Setenv(
+		"XDG_STATE_HOME",
+		t.TempDir(),
+	)
+	repo := t.TempDir()
+	writeFile(
+		t,
+		filepath.Join(
+			repo,
+			"cart.go",
+		),
+		code,
+	)
+	writeFile(
+		t,
+		filepath.Join(
+			repo,
+			".code-comments.json",
+		),
+		approvals,
+	)
+	roundFile := filepath.Join(
+		review.FindStateRoot(),
+		"cart",
+		"round-1.json",
+	)
+	return roundFile, addRound(
+		"cart",
+		writeProposals(
+			t,
+			repo,
+			items...,
+		),
+		findRepoChecker(t),
+	)
+}
+
+// Writes items as a proposals file for repo and returns its path.
+func writeProposals(
+	t *testing.T,
+	repo string,
+	items ...review.Item,
+) string {
+	t.Helper()
+	data, err := json.Marshal(review.Proposals{
+		Version: review.Version,
+		Repo:    repo,
+		Items:   items,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposals := filepath.Join(
+		t.TempDir(),
+		"proposals.json",
+	)
+	writeFile(
+		t,
+		proposals,
+		string(data),
+	)
+	return proposals
+}
+
+// Saves round 1 of a scratch review of cartGo, then writes files, by name,
+// into its repository, ready for round 2. Returns the repository.
+func startSecondRound(
+	t *testing.T,
+	files map[string]string,
+) string {
+	t.Helper()
+	_, err := addScratchReview(
+		t,
+		cartGo,
+		validApproval,
+		cutCurrency,
+		rewordTotal,
+		keepTooHigh,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range files {
+		writeFile(
+			t,
+			filepath.Join(
+				r.Repo(),
+				name,
+			),
+			text,
+		)
+	}
+	return r.Repo()
+}
+
+// An agent's review once failed at apply after the owner had answered
+// all 22 items. Add must refuse such a review before the owner sees it.
+func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
+	tests := []struct {
+		name   string
+		onDisk string
+		extra  []review.Item // items after the three every row has
+		want   []string
+	}{
+		{
+			name: "approved comment rewritten before add",
+			onDisk: strings.Replace(
+				cartGo,
+				"every price is above zero",
+				"no price is negative",
+				1,
+			),
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeKeep,
+				Old:      "// Reports whether no price is negative.\n",
+			}},
+			want: []string{
+				"cart.go Valid: differs from the text the owner approved",
+				"\n    // Reports whether every price is above zero.",
+			},
+		},
+		{
+			name:   "unapproved comment left out",
+			onDisk: cartGo + "\n// Deletes every order.\nfunc Clear() {}\n",
+			want: []string{
+				"cart.go Clear: not in the review, and the owner never approved it",
+			},
+		},
+		{
+			name:   "two items for one comment",
+			onDisk: cartGo,
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeKeep,
+				Old:      keepTooHigh.Old,
+			}},
+			want: []string{
+				"items 3 and 4 are the same comment in cart.go",
+			},
+		},
+		{
+			// The checker reads the directive as part of the comment, and
+			// old may not hold a directive, so no item can ever match it.
+			name:   "comment beside a directive",
+			onDisk: cartGo + "\n// Builds the price table.\n//go:generate go run gen.go\nfunc Table() {}\n",
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeKeep,
+				Old:      "// Builds the price table.\n",
+			}},
+			want: []string{
+				"cart.go Table: a line has no space after //",
+			},
+		},
+		{
+			// "//Empties" is not a Go directive, but the tool cannot tell
+			// such a line from one, and rewrapping would break a real
+			// one, so old may not hold it; adding the space fixes it.
+			name:   "comment line with no space after //",
+			onDisk: cartGo + "\n//Empties the cart.\nfunc Empty() {}\n",
+			want: []string{
+				"cart.go Empty: a line has no space after //",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				items := append(
+					[]review.Item{
+						cutCurrency,
+						rewordTotal,
+						keepTooHigh,
+					},
+					tt.extra...,
+				)
+
+				roundFile, err := addScratchReview(
+					t,
+					tt.onDisk,
+					validApproval,
+					items...,
+				)
+
+				if err == nil {
+					t.Fatal("addRound() saved a review that apply would refuse")
+				}
+				wants := append(
+					tt.want,
+					"nothing was saved",
+				)
+				for _, want := range wants {
+					if !strings.Contains(
+						err.Error(),
+						want,
+					) {
+						t.Errorf(
+							"addRound() error = %v, want it to contain %q",
+							err,
+							want,
+						)
+					}
+				}
+				_, err = os.Stat(roundFile)
+				if !errors.Is(
+					err,
+					fs.ErrNotExist,
+				) {
+					t.Errorf(
+						"round file %s was left behind: %v",
+						roundFile,
+						err,
+					)
+				}
+			},
+		)
+	}
+}
+
+// After the first real review was refused, the agent fixed it with items
+// whose old was the approved text, and the refusal now tells agents to do
+// that. If add refused these too, agents could never propose a change to
+// an approved comment.
+func TestAddSavesItemQuotingApprovedText(t *testing.T) {
+	rewordValid := review.Item{
+		ID:       4,
+		File:     "cart.go",
+		Proposal: review.ProposeReword,
+		Old:      "// Reports whether every price is above zero.\n",
+		New:      "// Reports whether no price is negative.\n",
+	}
+
+	roundFile, err := addScratchReview(
+		t,
+		cartGo,
+		validApproval,
+		cutCurrency,
+		rewordTotal,
+		keepTooHigh,
+		rewordValid,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"addRound() error = %v",
+			err,
+		)
+	}
+	if _, err := os.Stat(roundFile); err != nil {
+		t.Errorf(
+			"round 1 was not saved: %v",
+			err,
+		)
+	}
+}
+
+// The first real review's rewritten comments sat in files that earlier
+// rounds listed. If add checked only the new round's files, a round 2 for
+// another file would save a review that apply must still refuse.
+func TestAddChecksFilesOfEarlierRounds(t *testing.T) {
+	repo := startSecondRound(
+		t,
+		map[string]string{
+			"cart.go": strings.Replace(
+				cartGo,
+				"every price is above zero",
+				"no price is negative",
+				1,
+			),
+			"tax.go": "package cart\n\n// Returns the tax on a price.\nfunc Tax(price int) int { return 0 }\n",
+		},
+	)
+	keepTax := review.Item{
+		ID:       4,
+		File:     "tax.go",
+		Proposal: review.ProposeKeep,
+		Old:      "// Returns the tax on a price.\n",
+	}
+
+	err := addRound(
+		"cart",
+		writeProposals(
+			t,
+			repo,
+			keepTax,
+		),
+		findRepoChecker(t),
+	)
+
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"cart.go Valid: differs from the text the owner approved",
+	) {
+		t.Fatalf(
+			"addRound() error = %v, want it to name cart.go Valid",
+			err,
+		)
+	}
+	roundTwo := filepath.Join(
+		review.FindStateRoot(),
+		"cart",
+		"round-2.json",
+	)
+	if _, err := os.Stat(roundTwo); !errors.Is(
+		err,
+		fs.ErrNotExist,
+	) {
+		t.Errorf(
+			"round file %s was left behind: %v",
+			roundTwo,
+			err,
+		)
+	}
+}
+
+// Short comments such as "// Sums the prices." repeat across files. Two
+// items are the same comment only when both their file and old match, so
+// equal wording in two files must not be refused as a repeated item.
+func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
+	repo := startSecondRound(
+		t,
+		map[string]string{
+			"tax.go": "package cart\n\n// Sums the prices.\nfunc SumTax() {}\n",
+		},
+	)
+	sumTax := review.Item{
+		ID:       4,
+		File:     "tax.go",
+		Proposal: review.ProposeKeep,
+		Old:      rewordTotal.Old,
+	}
+
+	err := addRound(
+		"cart",
+		writeProposals(
+			t,
+			repo,
+			sumTax,
+		),
+		findRepoChecker(t),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"addRound() error = %v",
+			err,
+		)
+	}
+}
