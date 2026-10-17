@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"pde-comment-review/internal/popup"
 	"pde-comment-review/internal/review"
@@ -16,8 +18,9 @@ const usage = `usage:
       save proposals FILE as the next round of review NAME
   pde-comment-review open NAME
       answer the items of review NAME one per screen, each saved at once:
-      o keep, c cut, a accept, m note for the AI, j/k scroll,
-      h/l previous/next item, q quit; once all are answered, y applies
+      o keep, c cut, a accept, e edit in nvim, m note for the AI,
+      v view the file, s search with rg, j/k scroll, h/l previous/next
+      item, q quit; once all are answered, y applies and d shows the diff
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
   pde-comment-review apply NAME
@@ -25,11 +28,12 @@ const usage = `usage:
       approve every comment in its files; only the owner runs this
   pde-comment-review help
       show this help
-Herdr runs pde-comment-review popup itself, and pde-comment-review open
-with no NAME when the owner presses Ctrl+b e.
+Herdr runs pde-comment-review popup, edit and diff itself, and
+pde-comment-review open with no NAME when the owner presses Ctrl+b e.
 `
 
 func Main(args []string) int {
+	setUpToolEnvironment()
 	if len(args) == 1 && args[0] == "help" {
 		fmt.Print(usage)
 		return 0
@@ -44,6 +48,10 @@ func Main(args []string) int {
 		err = answerReview(args[1], os.Stdin, os.Stdout, popup.Settle)
 	case len(args) == 1 && args[0] == "popup":
 		err = runReviewPopup(os.Stdin, os.Stdout)
+	case len(args) == 1 && args[0] == "edit":
+		err = runEditTab()
+	case len(args) == 1 && args[0] == "diff":
+		err = runDiffTab()
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
 	case len(args) == 2 && args[0] == "apply":
@@ -57,6 +65,33 @@ func Main(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// Herdr runs plugin commands with its server's environment, which may lack
+// ~/.local/bin and aqua's folder and settings. Without the settings, aqua's
+// rg and delta fail with "command is not found". Unset settings get the
+// full profile's values from chezmoi/dot_zshrc.tmpl.
+func setUpToolEnvironment() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	aquaConfig := filepath.Join(home, ".config", "aquaproj-aqua")
+	for name, value := range map[string]string{
+		"AQUA_ROOT_DIR":       filepath.Join(home, ".local", "share", "aquaproj-aqua"),
+		"AQUA_GLOBAL_CONFIG":  filepath.Join(aquaConfig, "aqua.yaml"),
+		"AQUA_CHECKSUMS_PATH": filepath.Join(aquaConfig, "aqua-checksums.json"),
+	} {
+		if os.Getenv(name) == "" {
+			os.Setenv(name, value)
+		}
+	}
+	folders := []string{
+		os.Getenv("PATH"),
+		filepath.Join(home, ".local", "bin"),
+		filepath.Join(os.Getenv("AQUA_ROOT_DIR"), "bin"),
+	}
+	os.Setenv("PATH", strings.Join(folders, string(os.PathListSeparator)))
 }
 
 func addRound(name, file string) error {

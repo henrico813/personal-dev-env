@@ -176,6 +176,19 @@ func ReadCodeAround(repo string, item Item, codeLinesAround int) (before, after 
 	return before[max(0, len(before)-codeLinesAround):], after[:min(codeLinesAround, len(after))], nil
 }
 
+// Returns the line the item's comment starts on in repo, counting from 1.
+func FindCommentLine(repo string, item Item) (int, error) {
+	data, err := os.ReadFile(filepath.Join(repo, item.File))
+	if err != nil {
+		return 0, err
+	}
+	at, err := findOnce(string(data), item.Old)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", item.File, err)
+	}
+	return strings.Count(string(data[:at]), "\n") + 1, nil
+}
+
 // Returns the line where each copy of old starts in text, such as "3, 9".
 func listCopyLines(text, old string) string {
 	var found []string

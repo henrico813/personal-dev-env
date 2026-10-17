@@ -124,7 +124,7 @@ func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
 	quick := start.Add(Settle + 50*time.Millisecond)
 	again := v.PressKey("o", quick)
 	v.PressKey("m", quick)
-	typing := v.typing
+	typing := v.typingFor == SaveNote
 	later := v.PressKey("o", start.Add(2*Settle))
 
 	if first != Keep {

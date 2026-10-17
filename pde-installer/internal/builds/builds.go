@@ -73,7 +73,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}
 	stageRoot := filepath.Join(m.Home, ".local", "state", "pde", "build-stage")
 	if m.Runner.DryRun {
-		for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write"} {
+		for _, name := range []string{
+			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review",
+		} {
 			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
 				return nil, err
 			}
@@ -148,6 +150,18 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			},
 			alias: approveAlias,
 		},
+		{
+			name:   "pde-comment-review",
+			source: filepath.Join(m.RepoRoot, "pde-comment-review"),
+			output: filepath.Join(stageRoot, "pde-comment-review"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-comment-review"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
+			},
+		},
 	}
 	cargoTargets := map[string]string{
 		"vibe": filepath.Join(stageRoot, "vibe-target"),
@@ -207,7 +221,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		}
 	}
 	// pde-gh-write has no side-effect-free help mode, so it is not run here.
-	for _, check := range []struct{ name, arg string }{{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}} {
+	for _, check := range []struct{ name, arg string }{
+		{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}, {"pde-comment-review", "help"},
+	} {
 		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
@@ -464,6 +480,7 @@ func (m Manager) inputs() (map[string]string, error) {
 		"opencode-inline-shim": filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
 		"vibe":                 filepath.Join(m.RepoRoot, "vibe"),
 		"pde-gh-write":         filepath.Join(m.RepoRoot, "pdev2"),
+		"pde-comment-review":   filepath.Join(m.RepoRoot, "pde-comment-review"),
 	} {
 		hash, err := hashTree(source)
 		if err != nil {
