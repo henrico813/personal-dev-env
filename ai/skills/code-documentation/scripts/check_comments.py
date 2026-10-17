@@ -7,6 +7,7 @@ Example:
     python3 check_comments.py --repo . --base main --approve shop/*.go
     python3 check_comments.py --repo . --base main --approve \
         --rename Total=Sum --rename cart.go=basket.go shop/*.go
+    python3 check_comments.py --repo . --approve-comment shop/cart.go Total
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
@@ -18,6 +19,9 @@ after ``--rename OLD=NEW`` moves the entries of each renamed comment or
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
      "avoid": {"client": "say customer"}}
+
+``--approve-comment FILE NAME`` records only that comment's text, or
+``""`` when it is gone, and leaves every other entry as it was.
 
 The rules are:
 
@@ -40,8 +44,10 @@ Exit codes:
     1: An ``approved`` finding, or, with ``--base``, filler or an
         avoided word in a sentence not present at that commit.
     2: A path is a folder or unreadable, no Go file was given,
-        ``--base`` is not a commit, or the settings file is not JSON of
-        the shape above.
+        ``--base`` is not a commit, the settings file is not JSON of
+        the shape above, or ``--approve-comment`` names a FILE that is
+        not Go, an empty NAME, or a NAME that two comments in FILE
+        share.
 """
 
 from __future__ import annotations
@@ -824,6 +830,56 @@ def summarize_approval(
     return summary
 
 
+def approve_one_comment(repo: Path, file: str, name: str) -> int:
+    """Record one comment's text as approved, leaving every other entry.
+
+    A comment review approves each answer as it is given; ``--approve``
+    would also approve the file's later comments before the owner
+    reached them.
+
+    Args:
+        repo: The folder holding ``.code-comments.json``.
+        file: The Go file, relative to ``repo``.
+        name: The comment's name; a comment gone from ``file`` is
+            recorded as cut.
+
+    Returns:
+        The exit code described in the module docstring.
+    """
+    try:
+        file = (repo / file).resolve().relative_to(repo).as_posix()
+        approved, avoid = load_settings(repo)
+        source = (repo / file).read_text(encoding="utf-8")
+    except (OSError, ValueError) as error:
+        print(error, file=sys.stderr)
+        return 2
+    if not file.endswith(".go") or not name:
+        print(
+            "--approve-comment needs a Go file and a comment name, "
+            f"not {file!r} {name!r}",
+            file=sys.stderr,
+        )
+        return 2
+    comments, shared = unname_shared_names(parse_go_comments(source, file))
+    if (file, name) in shared:
+        print(
+            f"{file} {name}: cannot be approved; "
+            f"{len(shared[file, name])} comments in this file have this name",
+            file=sys.stderr,
+        )
+        return 2
+    text = next((c.text for c in comments if c.name == name), "")
+    entry = {"file": file, "name": name, "text": text}
+    entries = [
+        {"file": f, "name": n, "text": t}
+        for (f, n), t in {**approved, (file, name): text}.items()
+    ]
+    entries.sort(key=lambda e: e["file"])
+    replace_settings_file(repo, entries, avoid)
+    print(summarize_approval([entry], approved, 0))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check the given Go files and print one line per finding.
 
@@ -855,11 +911,25 @@ def main(argv: list[str] | None = None) -> int:
         metavar="OLD=NEW",
         help="with --approve: a renamed comment or .go file; repeat for each",
     )
-    parser.add_argument("paths", nargs="+", type=Path)
+    parser.add_argument(
+        "--approve-comment",
+        nargs=2,
+        metavar=("FILE", "NAME"),
+        help="approve one comment; only the owner, or at their request",
+    )
+    parser.add_argument("paths", nargs="*", type=Path)
     args = parser.parse_args(argv)
     if args.rename and not args.approve:
         parser.error("--rename needs --approve")
     repo = args.repo.resolve()
+    if args.approve_comment:
+        if args.approve or args.base or args.paths:
+            parser.error(
+                "--approve-comment takes no --approve, --base or paths"
+            )
+        return approve_one_comment(repo, *args.approve_comment)
+    if not args.paths:
+        parser.error("give the Go files to check")
     try:
         approved, avoid = load_settings(repo)
     except ValueError as error:
