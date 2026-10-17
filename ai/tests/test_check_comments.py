@@ -605,6 +605,123 @@ class TestApprove:
         assert result.returncode == 0
 
 
+class TestApproveComment:
+    """Approve the one comment the owner answered, and nothing else."""
+
+    @pytest.mark.parametrize(
+        "path, total, earlier",
+        [
+            pytest.param(
+                "cart.go",
+                "// Total sums the prices.\n",
+                [("cart.go", "Total", TOTAL)],
+                id="reworded",
+            ),
+            pytest.param(
+                "cart.go", "", [("cart.go", "Total", TOTAL)], id="cut"
+            ),
+            pytest.param("cart.go", TOTAL, [], id="first-approval"),
+            pytest.param(
+                "./cart.go",
+                "// Total sums the prices.\n",
+                [("cart.go", "Total", TOTAL)],
+                id="dot-slash-path",
+            ),
+        ],
+    )
+    def test_approves_only_the_named_comment(
+        self,
+        tmp_path: Path,
+        path: str,
+        total: str,
+        earlier: list[tuple[str, str, str]],
+    ) -> None:
+        """Never approve a comment the owner has not answered yet.
+
+        On the first real comment review the owner answered 22 items.
+        Approving each answer by whole file would approve the file's
+        later items before the owner reached them. A code review found
+        that ``./cart.go`` wrote an entry separate from ``cart.go``'s,
+        which broke every later check.
+        """
+        clear = "// Clear empties the cart.\n"
+        (tmp_path / "cart.go").write_text(
+            total + "func Total() {}\n\n" + clear + "func Clear() {}\n"
+        )
+        avoid = {"client": "say customer"}
+        write_settings_file(
+            tmp_path, [("till.go", "Open", ""), *earlier], avoid
+        )
+
+        result = run_checker(
+            tmp_path, "--approve-comment", path, "Total", paths=[]
+        )
+
+        assert result.returncode == 0
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "cart.go", "name": "Total", "text": total},
+                {"file": "till.go", "name": "Open", "text": ""},
+            ],
+            "avoid": avoid,
+        }
+
+    @pytest.mark.parametrize(
+        "file, source, name, message",
+        [
+            pytest.param(
+                "cart.go",
+                "// Loads the prices.\nfunc init() {}\n\n"
+                "// Loads the taxes.\nfunc init() {}\n",
+                "init",
+                "cart.go init: cannot be approved",
+                id="shared-name",
+            ),
+            pytest.param(
+                "notes.txt",
+                "// Total sums the prices.\n",
+                "Total",
+                "needs a Go file and a comment name",
+                id="not-go",
+            ),
+            pytest.param(
+                "cart.go",
+                "func Pay() {\n\t// Nothing to pay.\n\treturn\n}\n",
+                "",
+                "needs a Go file and a comment name",
+                id="empty-name",
+            ),
+        ],
+    )
+    def test_refuses_comment_it_cannot_approve(
+        self,
+        tmp_path: Path,
+        file: str,
+        source: str,
+        name: str,
+        message: str,
+    ) -> None:
+        """Refuse what cannot name one comment, and change nothing.
+
+        Two ``func init()`` in one file are valid Go, but entries are
+        keyed by file and name, so without the refusal the answer was
+        recorded as a cut. A code review found that a file that is not
+        Go also recorded a cut, and that an empty name approved an
+        unnamed comment inside a function body.
+        """
+        (tmp_path / file).write_text(source)
+        write_settings_file(tmp_path)
+        before = (tmp_path / ".code-comments.json").read_text()
+
+        result = run_checker(
+            tmp_path, "--approve-comment", file, name, paths=[]
+        )
+
+        assert result.returncode == 2
+        assert message in result.stderr
+        assert (tmp_path / ".code-comments.json").read_text() == before
+
+
 READS = "// Load reads the saved cart.\n"
 
 
