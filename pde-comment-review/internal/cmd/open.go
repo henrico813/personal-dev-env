@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,7 +15,14 @@ func answerReview(name string, in, out *os.File, settle time.Duration) error {
 	if err != nil {
 		return err
 	}
-	return runReviewScreen(r, origin, in, out, settle)
+	return runReviewScreen(r, origin, in, out, screenOptions{settle: settle})
+}
+
+type screenOptions struct {
+	settle time.Duration
+	// In Herdr's popup, e and d open tabs, since nvim and less need more
+	// room than the popup has.
+	inPopup bool
 }
 
 // Opens review name with the repository and branch it came from. Reviews
@@ -42,17 +50,17 @@ func readReviewOrigin(r *review.Review) (review.Origin, error) {
 	return origin, nil
 }
 
-// Shows review r one item per screen until the owner quits. Each answer
-// and note is saved when its key is pressed, so the owner can stop and come
-// back later.
+// Shows review r one item per screen until the owner quits, or until e or
+// d in the popup hands the screen to a Herdr tab. Each answer and note is
+// saved when its key is pressed, so the owner can stop and come back later.
 func runReviewScreen(
-	r *review.Review, origin review.Origin, in, out *os.File, settle time.Duration,
+	r *review.Review, origin review.Origin, in, out *os.File, opts screenOptions,
 ) error {
 	v := &popup.View{
 		Entries: r.ListEntries(),
 		Repo:    r.Repo(),
 		Origin:  origin,
-		Settle:  settle,
+		Settle:  opts.settle,
 		Renames: r.ListRenames(),
 		Files:   r.ListFiles(),
 	}
@@ -85,11 +93,64 @@ func runReviewScreen(
 		case popup.SaveNote:
 			err = r.SetNote(v.Entry().Item.ID, strings.TrimSpace(v.Typed))
 			v.Entries = r.ListEntries()
+		case popup.Edit:
+			if !opts.inPopup {
+				err = editInPlace(term, r, v, in, out)
+			} else if openEditTab(r, v) {
+				return nil
+			}
+		case popup.ShowDiff:
+			if !opts.inPopup {
+				err = runOutsideScreen(term, v, func() error { return showDiff(r, out) })
+			} else if openTabOrShowWhy(v, diffPaneID, map[string]string{reviewNameEnv: r.Name}) {
+				return nil
+			}
+		case popup.ViewFile:
+			item := v.Entry().Item
+			err = runOutsideScreen(term, v, func() error { return viewFile(r.Repo(), item, in, out) })
+		case popup.Search:
+			text := v.Typed
+			err = runOutsideScreen(term, v, func() error { return searchRepo(r.Repo(), text, out) })
 		}
 		if err != nil {
 			return err
 		}
 	}
+}
+
+func openEditTab(r *review.Review, v *popup.View) bool {
+	env := map[string]string{reviewNameEnv: r.Name, itemIDEnv: strconv.Itoa(v.Entry().Item.ID)}
+	return openTabOrShowWhy(v, editPaneID, env)
+}
+
+func editInPlace(term *popup.Terminal, r *review.Review, v *popup.View, in, out *os.File) error {
+	id := v.Entry().Item.ID
+	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
+	v.Entries = r.ListEntries()
+	// Moves on even when nothing was saved, as the popup does when the edit
+	// tab reopens it at the next unanswered item.
+	v.ShowNextUndecided(v.Index+1, time.Now())
+	return err
+}
+
+// Returns true once Herdr opens the tab, so the popup can close and leave
+// the screen to it.
+func openTabOrShowWhy(v *popup.View, pane string, env map[string]string) bool {
+	if err := openPluginPane(pane, "tab", env); err != nil {
+		v.ShowNotice("cannot open the " + pane + " tab: " + err.Error())
+		return false
+	}
+	return true
+}
+
+// Hands the terminal to run, such as nvim, then takes it back. A failure
+// shows on the screen instead of closing it.
+func runOutsideScreen(term *popup.Terminal, v *popup.View, run func() error) error {
+	term.Restore()
+	if err := run(); err != nil {
+		v.ShowNotice(err.Error())
+	}
+	return term.Resume()
 }
 
 func saveAnswerAndShowNext(r *review.Review, v *popup.View, action string) error {

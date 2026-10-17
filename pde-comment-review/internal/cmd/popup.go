@@ -37,7 +37,7 @@ func runReviewPopup(in, out *os.File) error {
 		return err
 	}
 	_ = saveOpenPopup(popup.BuildRecordName(origin))
-	return runReviewScreen(r, origin, in, out, popup.Settle)
+	return runReviewScreen(r, origin, in, out, screenOptions{settle: popup.Settle, inPopup: true})
 }
 
 // Returns the review the owner picks, or "" if they quit or none wait.

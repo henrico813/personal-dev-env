@@ -57,6 +57,10 @@ const (
 	SaveNote // save View.Typed as the item's note
 	Open     // open the review the picker shows as chosen
 	ApplyAll // write every answer into the code and approve the comments
+	Edit     // edit the item's comment in nvim
+	ViewFile // open the item's file read-only at its comment
+	Search   // search the repository for View.Typed
+	ShowDiff // show the uncommitted changes in the review's files
 )
 
 type screen int
@@ -78,7 +82,7 @@ type View struct {
 	Cols, Rows int
 	Settle     time.Duration
 	notice     string // shown above the key hint until the next key
-	typing     bool   // the owner is typing a note into Typed
+	typingFor  Action // SaveNote or Search while the owner types into Typed
 	Typed      string
 	shownAt    time.Time
 	Renames    []string // the AI's "OLD=NEW" pairs, asked about before applying
@@ -94,7 +98,7 @@ func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
 // view first.
 func (v *View) Show(index int, now time.Time) {
 	v.Index = index
-	v.typing = false
+	v.typingFor = None
 	v.screen = itemScreen
 	v.problem = ""
 	rows, focus := v.body()
@@ -139,6 +143,8 @@ func (v *View) ShowProblem(problem string) {
 	v.scroll = 0
 }
 
+func (v *View) ShowNotice(notice string) { v.notice = notice }
+
 func (v *View) ShowResult(report string) {
 	v.screen = resultScreen
 	v.result = report
@@ -151,8 +157,8 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	if key == "\x03" { // Ctrl-c
 		return Quit
 	}
-	if v.typing {
-		return v.typeNote(key)
+	if v.typingFor != None {
+		return v.typeText(key)
 	}
 	// q, j and k work on every screen; the other keys depend on the screen.
 	switch key {
@@ -166,6 +172,9 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	case "k":
 		v.scroll = max(v.scroll-1, 0)
 	}
+	if v.screen == resultScreen && key == "d" {
+		return ShowDiff
+	}
 	if v.screen != itemScreen {
 		return v.answerQuestion(key, now)
 	}
@@ -174,13 +183,20 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		v.Show((v.Index+1)%len(v.Entries), now)
 	case "h":
 		v.Show((v.Index+len(v.Entries)-1)%len(v.Entries), now)
+	case "e":
+		return Edit
+	case "v":
+		return ViewFile
+	case "s":
+		v.typingFor = Search
+		v.Typed = ""
 	case "o", "c", "a", "m":
 		if now.Sub(v.shownAt) < v.Settle {
 			v.notice = "one moment, then press again"
 			return None
 		}
 		if key == "m" {
-			v.typing = true
+			v.typingFor = SaveNote
 			v.Typed = v.Entry().Note
 			return None
 		}
@@ -219,13 +235,15 @@ func (v *View) answerQuestion(key string, now time.Time) Action {
 	return None
 }
 
-// Handles a key while the owner types a note. The note starts as the saved
-// one, so Enter alone changes nothing, and an empty note removes it.
-func (v *View) typeNote(key string) Action {
+// Handles a key while the owner types a note or a search. A note starts as
+// the saved one, so Enter alone changes nothing, and an empty note removes
+// it.
+func (v *View) typeText(key string) Action {
 	switch key {
 	case "\r", "\n":
-		v.typing = false
-		return SaveNote
+		action := v.typingFor
+		v.typingFor = None
+		return action
 	case "\x7f", "\x08": // Backspace
 		_, size := utf8.DecodeLastRuneInString(v.Typed)
 		v.Typed = v.Typed[:len(v.Typed)-size]
@@ -239,7 +257,7 @@ func (v *View) typeNote(key string) Action {
 }
 
 // How many body rows fit between the two header rows and the key hint.
-func (v *View) room() int { return max(1, v.Rows-3) }
+func (v *View) room() int { return max(1, v.Rows-2-len(v.footer())) }
 
 // Returns every row of the screen. No row is wider than Cols, since a row
 // the terminal wraps would push the header off a phone screen.
@@ -262,13 +280,19 @@ func (v *View) BuildScreen() []string {
 		shown[len(shown)-1] = dim + clip(fmt.Sprintf("  ... %d more (j)", below+1), v.Cols) + reset
 	}
 	lines = append(lines, shown...)
-	for len(lines) < v.Rows-1 {
+	for len(lines) < v.Rows-len(v.footer()) {
 		lines = append(lines, "")
 	}
 	if v.notice != "" {
-		lines[len(lines)-1] = yellow + clip(v.notice, v.Cols) + reset
+		// A long notice, such as why nvim failed, wraps upward over the body.
+		notice := fold(escapeControlCharacters(v.notice), v.Cols)
+		rowsBelowHeader := len(lines) - 2
+		notice = notice[max(0, len(notice)-rowsBelowHeader):]
+		for i, row := range notice {
+			lines[len(lines)-len(notice)+i] = yellow + row + reset
+		}
 	}
-	return append(lines, v.footer())
+	return append(lines, v.footer()...)
 }
 
 // Returns row 2, which says which item, question or result is on screen.
@@ -291,23 +315,29 @@ func (v *View) header() (left, status string) {
 	return left, status
 }
 
-func (v *View) footer() string {
-	if v.typing {
+// Returns the key hint: two rows on the item screen, since its keys do not
+// fit in one row of the phone popup.
+func (v *View) footer() []string {
+	hint := func(keys string) string { return dim + clip(keys, v.Cols) + reset }
+	switch v.screen {
+	case renameScreen:
+		return []string{hint("y move approvals  n stop")}
+	case applyScreen:
+		return []string{hint("y apply and approve  n back")}
+	case resultScreen:
+		return []string{hint("d diff j/k scroll q close")}
+	}
+	if v.typingFor != None {
 		prompt := "note for AI: "
+		if v.typingFor == Search {
+			prompt = "search: "
+		}
 		// The end of a long note stays visible, so what was just typed shows.
 		width := max(1, v.Cols-len(prompt))
 		typed := lastColumns(escapeControlCharacters(v.Typed), width)
-		return prompt + typed
+		return []string{hint("type, then Enter"), prompt + typed}
 	}
-	switch v.screen {
-	case renameScreen:
-		return dim + clip("y move approvals  n stop", v.Cols) + reset
-	case applyScreen:
-		return dim + clip("y apply and approve  n back", v.Cols) + reset
-	case resultScreen:
-		return dim + clip("j/k scroll q close", v.Cols) + reset
-	}
-	return dim + clip("a accept o keep c cut m note q quit", v.Cols) + reset
+	return []string{hint("a accept o keep c cut e edit"), hint("m note v view s search q quit")}
 }
 
 // Returns the entry's rows with its code around it, and the index of the
@@ -349,11 +379,15 @@ func (v *View) body() ([]string, int) {
 	if e.Item.Why != "" {
 		add(yellow, ">", "why: "+e.Item.Why)
 	}
-	switch e.Item.Proposal {
-	case review.ProposeReword:
+	// The owner's own wording, once saved, takes the place of the AI's.
+	switch {
+	case e.Decision != nil && e.Decision.Action == review.ActionEdited:
+		addComment(red, "-", e.Item.Old)
+		addComment(green, "+", e.Decision.Text)
+	case e.Item.Proposal == review.ProposeReword:
 		addComment(red, "-", e.Item.Old)
 		addComment(green, "+", e.Item.New)
-	case review.ProposeCut:
+	case e.Item.Proposal == review.ProposeCut:
 		addComment(red, "-", e.Item.Old)
 		add(green, "+", "(cut)")
 	default:
