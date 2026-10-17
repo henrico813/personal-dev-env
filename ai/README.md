@@ -10,7 +10,9 @@ This directory is the neutral repo-managed source for PDE AI tooling.
 - `pi/agent/` holds Pi settings and any Pi-specific resources.
 
 Shared skills include `git-messages` for commit and PR text, `pull-request` for PR procedure, `behavior-focused-testing` for automated tests,
-`code-documentation` for proportional source explanations, `go-development`
+`code-documentation` for proportional source explanations,
+`comment-review` for putting code comments in front of the user,
+`go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `obsidian-daily-note` for approved sections in today's daily note,
 `python-development` for Python code, and `rust-development` for Rust code.
