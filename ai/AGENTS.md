@@ -28,6 +28,9 @@
 - When implementing an approved plan, load and follow the `implement-plan`
   skill.
 - When writing a design doc, load and follow the `design-doc` skill.
+- When you want to put code comments in front of the user for review,
+  load and follow the `comment-review` skill. Save reviews with
+  `pde-comment-review add`.
 - When cleaning up the worktree and branch of a completed plan, load and
   follow the `cleanup-plan` skill.
 - When asked to have an agent do a task and review it until it is ready,
