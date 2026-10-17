@@ -59,6 +59,12 @@ one is wrong. It names each problem, for example:
   says what to do;
 - `new` is missing for `reword`, set for `keep` or `cut`, or the same
   as `old`;
-- an `id` is used twice, or a rename is not `OLD=NEW`.
+- an `id` is used twice, or a rename is not `OLD=NEW`;
+- two items are the same comment;
+- applying would approve a comment in a listed file that the user
+  has not seen: a comment the user approved or cut was changed,
+  removed or brought back, a comment on a declaration is not an
+  item, or a comment has a line with no space after `//`, such as a
+  Go directive. The error says what to do for each.
 
-Fix the items it names and run `add` again.
+Fix what it names and run `add` again.

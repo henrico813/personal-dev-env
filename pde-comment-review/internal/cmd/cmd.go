@@ -41,7 +41,14 @@ func Main(args []string) int {
 	var err error
 	switch {
 	case len(args) == 3 && args[0] == "add":
-		err = addRound(args[1], args[2])
+		var checker string
+		if checker, err = findCheckerPath(); err == nil {
+			err = addRound(
+				args[1],
+				args[2],
+				checker,
+			)
+		}
 	case len(args) == 1 && args[0] == "open":
 		err = openWaitingReview()
 	case len(args) == 2 && args[0] == "open":
@@ -94,7 +101,11 @@ func setUpToolEnvironment() {
 	os.Setenv("PATH", strings.Join(folders, string(os.PathListSeparator)))
 }
 
-func addRound(name, file string) error {
+func addRound(
+	name string,
+	file string,
+	checker string,
+) error {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return err
@@ -102,6 +113,23 @@ func addRound(name, file string) error {
 	p, err := review.ParseProposals(data)
 	if err != nil {
 		return err
+	}
+	next, err := review.BuildReviewWithRound(
+		name,
+		p,
+	)
+	if err != nil {
+		return err
+	}
+	err = refuseUnwritableReview(
+		next,
+		checker,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"nothing was saved: %w",
+			err,
+		)
 	}
 	round, err := review.AddRound(name, p)
 	if err != nil {
