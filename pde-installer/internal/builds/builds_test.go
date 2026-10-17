@@ -41,7 +41,9 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
+	for _, source := range []string{
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
+	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
 	// Fake go and cargo scripts write placeholder binaries and log each build.
@@ -51,7 +53,9 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	manager := New(home, repoRoot, run.Runner{})
 
 	// Files from the previous install, including a plain-file pde-pr-approve.
-	for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve"} {
+	for _, name := range []string{
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review",
+	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
@@ -73,7 +77,9 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if err := journal.Rollback(); err != nil {
 		t.Fatalf("Rollback() error = %v", err)
 	}
-	for _, name := range []string{"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve"} {
+	for _, name := range []string{
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review",
+	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
 	assertBuildFile(t, manager.statePath(), "old state\n")
@@ -104,6 +110,16 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if !bytes.Equal(after, before) {
 		t.Fatalf("unchanged Reconcile() rebuilt tools: before %q, after %q", before, after)
 	}
+
+	// A tool left out of the source hashes would never rebuild after a change.
+	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review", "input.txt"), "changed\n", 0o644)
+	journal, err = manager.Reconcile()
+	if err != nil {
+		t.Fatalf("changed Reconcile() error = %v", err)
+	}
+	if len(journal.Changes) == 0 {
+		t.Fatal("changed pde-comment-review source did not rebuild")
+	}
 }
 
 // Herdr's approval popup and its Ctrl+b a key run pde-pr-approve, a link to
@@ -113,7 +129,9 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2"} {
+	for _, source := range []string{
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
+	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
 	logPath := filepath.Join(t.TempDir(), "build.log")
@@ -350,6 +368,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
 		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
+		"pde-comment-review": "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

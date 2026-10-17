@@ -12,6 +12,18 @@ width = 40
 height = 16
 command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "popup"]
 
+[[panes]]
+id = "edit"
+title = "Edit comment"
+placement = "tab"
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "edit"]
+
+[[panes]]
+id = "diff"
+title = "Comment review changes"
+placement = "tab"
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "diff"]
+
 [[actions]]
 id = "open"
 title = "Open comment review"

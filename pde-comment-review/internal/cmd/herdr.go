@@ -17,10 +17,15 @@ import (
 const (
 	pluginID    = "pde.comment-review"
 	popupPaneID = "popup"
+	editPaneID  = "edit"
+	diffPaneID  = "diff"
 )
 
 // An empty review name makes the popup list the waiting reviews.
 const reviewNameEnv = "PDE_COMMENT_REVIEW"
+
+// The ID of the item the edit tab edits.
+const itemIDEnv = "PDE_COMMENT_REVIEW_ITEM"
 
 // Herdr's answer to a refused request, such as ui_busy while another popup
 // is open.
@@ -61,13 +66,25 @@ func openWaitingPopup() error {
 	if len(waiting) == 1 {
 		name = waiting[0].Name
 	}
+	return openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name})
+}
+
+// Opens the popup, or the edit or diff tab, with env for its program.
+func openPluginPane(pane, placement string, env map[string]string) error {
 	return sendHerdrRequest("plugin.pane.open", map[string]any{
 		"plugin_id":  pluginID,
-		"entrypoint": popupPaneID,
-		"placement":  "popup",
+		"entrypoint": pane,
+		"placement":  placement,
 		"focus":      true,
-		"env":        map[string]string{reviewNameEnv: name},
+		"env":        env,
 	})
+}
+
+// Closes the tab this program runs in, so none is left behind on the
+// phone. Herdr keeps a tab open after its program exits, and ends the
+// program when the tab closes, so call this last.
+func closeOwnTab() error {
+	return sendHerdrRequest("pane.close", map[string]any{"pane_id": os.Getenv("HERDR_PANE_ID")})
 }
 
 func explainOpenFailure(err error) string {

@@ -29,26 +29,36 @@ func Start(in, out *os.File) (*Terminal, error) {
 	if err := ioctl(in, syscall.TCGETS, &t.old); err != nil {
 		return nil, err
 	}
+	if err := t.Resume(); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// Switches back to raw mode after another program, such as nvim, used the
+// terminal, and drops the keys typed into it.
+func (t *Terminal) Resume() error {
 	raw := t.old
 	raw.Lflag &^= syscall.ICANON | syscall.ECHO | syscall.ISIG
 	raw.Iflag &^= syscall.ISTRIP | syscall.INLCR | syscall.ICRNL | syscall.IXON
 	raw.Oflag &^= syscall.OPOST
 	// Reads return after 0.1 s with no key, so resizes redraw.
 	raw.Cc[syscall.VMIN], raw.Cc[syscall.VTIME] = 0, 1
-	if err := ioctl(in, syscall.TCSETS, &raw); err != nil {
-		return nil, err
+	if err := ioctl(t.in, syscall.TCSETS, &raw); err != nil {
+		return err
 	}
+	t.pending = nil
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL,
-		in.Fd(), ioctlFlush, flushPending)
+		t.in.Fd(), ioctlFlush, flushPending)
 	if errno != 0 {
 		t.Restore()
-		return nil, errno
+		return errno
 	}
-	if _, err := out.WriteString("\x1b[?25l"); err != nil {
+	if _, err := t.out.WriteString("\x1b[?25l"); err != nil {
 		t.Restore()
-		return nil, err
+		return err
 	}
-	return t, nil
+	return nil
 }
 
 // Restores the terminal's old settings, shows the cursor and clears the
@@ -59,10 +69,13 @@ func (t *Terminal) Restore() {
 }
 
 // Returns the terminal's columns and rows.
-func (t *Terminal) Size() (int, int) {
+func (t *Terminal) Size() (int, int) { return FindSize(t.out) }
+
+// Returns the columns and rows of the terminal out draws on.
+func FindSize(out *os.File) (cols, rows int) {
 	var size struct{ rows, cols, x, y uint16 }
 	_, _, _ = syscall.Syscall(syscall.SYS_IOCTL,
-		t.out.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&size)))
+		out.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&size)))
 	return int(size.cols), int(size.rows)
 }
 
