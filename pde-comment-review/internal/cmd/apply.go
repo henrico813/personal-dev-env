@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/review"
 )
 
@@ -64,7 +65,10 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 			strings.ReplaceAll(listed, "\n", ", "))
 	}
 	if err == nil {
-		err = refuseUnseenComments(r, checker)
+		err = refuseUnwritableReview(
+			r,
+			checker,
+		)
 	}
 	// Approve the text as it is now, so the run after the write records cuts.
 	if err == nil {
@@ -100,6 +104,56 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 }
 
 type commentKey struct{ file, name string }
+
+// Returns an error naming each problem in r that no answer can fix: items
+// apply could not write, and comments it would approve unseen. Add runs it
+// so the owner never answers a review that apply must refuse; apply runs it
+// again, since the code can change after add.
+func refuseUnwritableReview(
+	r *review.Review,
+	checker string,
+) error {
+	return errors.Join(
+		refuseRepeatedItems(r.ListEntries()),
+		refuseUnseenComments(
+			r,
+			checker,
+		),
+	)
+}
+
+// Returns an error naming each pair of items that are the same comment.
+// Apply finds each item's comment by its old text, in item order: if the
+// first answer changes the comment, apply refuses the second item, and if
+// it keeps it, the second answer silently wins.
+func refuseRepeatedItems(entries []review.Entry) error {
+	type place struct {
+		file string
+		old  string
+	}
+	firstID := map[place]int{}
+	var problems []error
+	for _, e := range entries {
+		at := place{
+			file: e.Item.File,
+			old:  e.Item.Old,
+		}
+		if id, ok := firstID[at]; ok {
+			problems = append(
+				problems,
+				fmt.Errorf(
+					"items %d and %d are the same comment in %s; keep only one of them",
+					id,
+					e.Item.ID,
+					e.Item.File,
+				),
+			)
+			continue
+		}
+		firstID[at] = e.Item.ID
+	}
+	return errors.Join(problems...)
+}
 
 // Returns an error naming each comment the owner has not seen that
 // approving would record. Without it, apply would also approve any
@@ -160,25 +214,51 @@ func refuseUnseenComments(r *review.Review, checker string) error {
 		}
 		place := key.file + " " + key.name
 		seen := ok && text == old || (!ok || renamed) && inReview[reviewedText{key.file, text}]
-		switch {
-		case seen:
-		case ok && old == "":
-			unseen = append(unseen, place+": the owner cut this comment")
-		case ok && text == "":
-			unseen = append(unseen, place+": the owner's approved comment is gone")
-		case ok:
-			unseen = append(unseen, place+": differs from the text the owner approved")
-		default:
-			unseen = append(unseen, place+": not in the review, and the owner never approved it")
+		if seen {
+			continue
 		}
+		asItem := " To change it, list it as an item with this as old:\n" + strings.ReplaceAll(
+			"    "+strings.TrimSuffix(
+				old,
+				"\n",
+			),
+			"\n",
+			"\n    ",
+		)
+		var problem string
+		switch {
+		case ok && old == "":
+			problem = "the owner cut this comment. Delete it from the code."
+		case ok && text == "":
+			problem = "the owner's approved comment is gone. If you renamed it, add the " +
+				"rename to renames; otherwise put it back." + asItem
+		case ok:
+			problem = "differs from the text the owner approved. Put it back." + asItem
+		// The checker's text is whole // lines, so only a line with no
+		// space after //, such as //go:generate, fails this.
+		case comment.CheckWholeLines(text) != nil:
+			problem = "a line has no space after //, so Go may read it as a directive. " +
+				"Add the space if it is prose, or leave " + key.file + " out of the review."
+		default:
+			problem = "not in the review, and the owner never approved it. " +
+				"Add it as an item, with old copied from the file."
+		}
+		unseen = append(
+			unseen,
+			place+": "+problem,
+		)
 	}
 	if len(unseen) == 0 {
 		return nil
 	}
 	sort.Strings(unseen)
-	return fmt.Errorf("these comments would be approved, but the owner has not seen them:\n%s\n"+
-		"Have the agent restore the owner's text, or add each comment to the review as an item.",
-		strings.Join(unseen, "\n"))
+	return fmt.Errorf(
+		"these comments would be approved, but the owner has not seen them:\n%s",
+		strings.Join(
+			unseen,
+			"\n",
+		),
+	)
 }
 
 // Returns the approved text per comment in dir's .code-comments.json, ""
