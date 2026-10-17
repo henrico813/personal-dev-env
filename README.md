@@ -97,6 +97,7 @@ Vibe binaries plus repo-managed AI config.
 | Delegate | `ai/skills/delegate/` | `~/.agents/skills/delegate/` | Shared workflow skill for handing a task to an agent and reviewing it |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
+| Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
@@ -114,6 +115,7 @@ Vibe binaries plus repo-managed AI config.
 | Herdr | `pde-installer/internal/direct/` | `~/.local/bin/herdr` | Agent-aware terminal workspace |
 | nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
 | PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
+| Comment review | `pde-comment-review/`, `chezmoi/` | `~/.local/bin/pde-comment-review`, `~/.local/share/pde/herdr-plugins/pde-comment-review/` (full only) | Decide on an AI's comments one per phone screen with Ctrl+b e; see the [comment review docs](pde-comment-review/docs/README.md) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 

@@ -102,3 +102,9 @@ See the [maintenance guide](../pde-installer/docs/how-to/update-chezmoi-content.
 
 The full profile makes agents ask you before they write to a pull request; see
 the [approval docs](../pdev2/docs/README.md).
+
+## Comment review
+
+The full profile binds Ctrl+b e, in place of Herdr's scrollback editor,
+to a phone-sized Herdr popup for deciding on an AI's proposals for Go
+comments; see the [comment review docs](../pde-comment-review/docs/README.md).

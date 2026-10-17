@@ -151,9 +151,9 @@ func TestParseProposalsRefusesUnsafeFiles(t *testing.T) {
 }
 
 // The owner leaves notes, and the AI's next round may answer only some of
-// them. The Python prototype kept each round in its own file, so answers
-// were merged by hand. A new round must replace only its own items and
-// close their notes; other notes stay open, as does a new note on it.
+// them. Each round was once its own file, so answers were merged by hand.
+// A new round replaces only the items it answers and closes their notes;
+// the other notes stay open, and so does a note made after that round.
 func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	repo := newRepo(t)
 	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
