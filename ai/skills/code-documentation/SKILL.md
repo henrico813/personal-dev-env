@@ -260,6 +260,11 @@ claims against requirements yourself.
 If a documentation issue reveals unclear requirements or a possible code bug,
 report it instead of hiding it with prose.
 
+## The owner's comment review
+
+To put code comments in front of the owner for review, load and
+follow the `comment-review` skill.
+
 ## Go comment checker
 
 For Go files whose comments you write or review, run the checker in
