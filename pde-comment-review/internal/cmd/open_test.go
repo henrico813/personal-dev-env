@@ -162,20 +162,12 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	}
 }
 
-// Apply from the screen writes the owner's answers into the code. An AI can
-// add a round while the apply question is open; that round must open, or
-// every y is refused and its item can never be answered.
+// The last answer writes every answer into the code, with no question.
+// An AI can add a round while the screen is open; that round must
+// open, or its item could never be answered and nothing would be
+// written.
 func TestScreenAppliesNewRoundAfterRefusal(t *testing.T) {
-	checker := findRepoChecker(t)
-	home := t.TempDir()
-	installed := filepath.Join(home, ".agents", "skills", "code-documentation", "scripts", "check_comments.py")
-	if err := os.MkdirAll(filepath.Dir(installed), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(checker, installed); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("HOME", home)
+	installRepoChecker(t)
 	t.Setenv("HERDR_ENV", "")
 	r := startReview(t, cartGo, `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`, nil)
 	setDecisions(t, r, map[int]review.Decision{1: {Action: review.ActionAccept}, 2: {Action: review.ActionAccept}})
@@ -183,27 +175,24 @@ func TestScreenAppliesNewRoundAfterRefusal(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
-	// Step 1: keep the last item, then go back with n and answer again.
 	waitForScreen(t, master, "3/3 keep? cart.go")
-	typeKeys(t, master, "o")
-	waitForScreen(t, master, "all 3 answered")
-	typeKeys(t, master, "n")
-	waitForScreen(t, master, "1/3 cut? cart.go")
-	typeKeys(t, master, "a")
-	waitForScreen(t, master, "all 3 answered")
-	// Step 2: an AI adds a round before the owner presses y.
 	p := review.Proposals{Version: review.Version, Repo: r.Repo(), Items: []review.Item{{ID: 4, File: "cart.go",
 		Proposal: review.ProposeCut, Old: "// Reports whether every price is above zero.\n"}}}
 	if _, err := review.AddRound("cart", p); err != nil {
 		t.Fatal(err)
 	}
-	typeKeys(t, master, "y")
-	// Step 3: the new item opens; answer it and apply.
+	typeKeys(
+		t,
+		master,
+		"o",
+	)
 	waitForScreen(t, master, "4/4 cut? cart.go")
 	typeKeys(t, master, "o")
-	waitForScreen(t, master, "all 4 answered")
-	typeKeys(t, master, "y")
-	waitForScreen(t, master, "git -C")
+	waitForScreen(
+		t,
+		master,
+		"Done.",
+	)
 	typeKeys(t, master, "q")
 	select {
 	case err := <-done:
@@ -240,4 +229,109 @@ func Valid(prices []int) bool { return true }
 	if applied.AppliedRound != 2 {
 		t.Errorf("applied round = %d, want 2", applied.AppliedRound)
 	}
+}
+
+// The owner switches between the review and their session, so reviews
+// must save state.
+func TestReopenWritesFullyAnsweredReview(t *testing.T) {
+	installRepoChecker(t)
+	t.Setenv(
+		"HERDR_ENV",
+		"",
+	)
+	r := startReview(
+		t,
+		cartGo,
+		validApproval,
+		nil,
+	)
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionKeep},
+			2: {Action: review.ActionAccept},
+			3: {Action: review.ActionKeep},
+		},
+	)
+
+	openUntilDone(t)
+	// Reopening once more must find the answers already written.
+	openUntilDone(t)
+
+	written, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.AppliedRound != 1 {
+		t.Errorf(
+			"written round = %d, want 1",
+			written.AppliedRound,
+		)
+	}
+}
+
+func openUntilDone(t *testing.T) {
+	t.Helper()
+	master, terminal := openFakeTerminal(t)
+	done := make(
+		chan error,
+		1,
+	)
+	go func() {
+		done <- answerReview(
+			"cart",
+			terminal,
+			terminal,
+			0,
+		)
+	}()
+	waitForScreen(
+		t,
+		master,
+		"Done.",
+	)
+	typeKeys(
+		t,
+		master,
+		"q",
+	)
+	if err := <-done; err != nil {
+		t.Fatalf(
+			"answerReview() error = %v",
+			err,
+		)
+	}
+}
+
+// Points HOME at a folder whose installed comment checker is this
+// checkout's, since the screen runs the installed one.
+func installRepoChecker(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	installed := filepath.Join(
+		home,
+		".agents",
+		"skills",
+		"code-documentation",
+		"scripts",
+		"check_comments.py",
+	)
+	err := os.MkdirAll(
+		filepath.Dir(installed),
+		0o755,
+	)
+	if err == nil {
+		err = os.Symlink(
+			findRepoChecker(t),
+			installed,
+		)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(
+		"HOME",
+		home,
+	)
 }

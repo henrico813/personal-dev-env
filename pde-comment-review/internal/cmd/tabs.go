@@ -51,7 +51,7 @@ func editItemByID(name, itemID string) error {
 // files, then closes the tab.
 func runDiffTab() error {
 	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") != diffPaneID {
-		return errors.New("only Herdr's diff tab runs diff; press d after apply in the review popup")
+		return errors.New("only Herdr's diff tab runs diff; press d in the review popup")
 	}
 	r, err := review.OpenReview(os.Getenv(reviewNameEnv))
 	if err == nil {
