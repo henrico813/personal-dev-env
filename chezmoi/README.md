@@ -77,13 +77,14 @@ tm
 
 `tm` requires Herdr on `PATH`; the full profile installs it. The command creates
 `hub` and `pocket` sessions containing Herdr and an empty shell, plus a `dash`
-session containing the four-pane `tw` layout. It attaches `pocket` at 72 columns
-and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or `tm dash` to
-select a view explicitly. All three sessions record the project root and use
-names derived from its absolute path, so environments for multiple directories
-can coexist. Hub and Pocket both attach Herdr's `default` session, so they expose
-the same agents. Herdr owns those shared agent panes and their PTY dimensions;
-the separate tmux sessions isolate only the surrounding presentation geometry.
+session containing the four-pane `tw` layout. It attaches `pocket` at 100
+columns and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or
+`tm dash` to select a view explicitly. All three sessions record the project
+root and use names derived from its absolute path, so environments for multiple
+directories can coexist. Hub and Pocket both attach Herdr's `default` session,
+so they expose the same agents. Herdr owns those shared agent panes and their
+PTY dimensions; the separate tmux sessions isolate only the surrounding
+presentation geometry.
 
 Plain `tw DIR` remains available for adding another project window with left,
 top, bottom, and right panes, using positional commands or the project's
@@ -92,7 +93,7 @@ inspect that file before trusting it. Herdr's saved-machine catalog remains
 user-owned state.
 
 Use `Ctrl-A` for tmux and `Ctrl-B` for Herdr. Herdr uses its mobile status header
-and full-screen machine switcher at 72 columns and below. Machine labels
+and full-screen machine switcher at 100 columns and below. Machine labels
 distinguish Local and Wallace agents. The managed config is validated with Herdr
 0.9.1, so run `herdr config check` after upgrades.
 
