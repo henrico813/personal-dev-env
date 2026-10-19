@@ -33,7 +33,17 @@ the chat instead.
    unsure whether a comment is approved, list it as `keep`. Comments
    inside function bodies, or with a blank line after them, are
    never approved, so listing them is optional.
-   - `old` is the comment as it is in the file now.
+   - `old` is the comment as it is in the file now. Never edit a
+     comment the user approved, even when a plan says to: leave it,
+     and propose your change as an item, so `old` is the approved
+     text.
+   - List every rename in `renames`.
+   - If your task deleted code whose comment the user approved, `add`
+     says the comment is gone. Ask the user one plain yes-or-no
+     question that names each comment and says its code was removed.
+     With their yes, run the comment checker's
+     `--approve-comment FILE NAME` for each; never record a cut
+     without it.
    - Propose a change as `reword`, with the new lines in `new`, or
      as `cut`.
    - A comment with no change is `keep`.
@@ -75,6 +85,9 @@ the chat instead.
    and save it with `add` under the same name. Only those items
    need a new answer; every other answer stays.
 6. Never commit `.code-comments.json`, the tool's file at the repo root.
+7. Never edit a review's saved files in
+   `~/.local/state/pde/comment-review/`: change a review only with
+   `add`, and leave the answers and notes to the user.
 
 ## When the tool is missing
 
