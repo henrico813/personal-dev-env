@@ -1,12 +1,13 @@
--- Phone view: at 72 columns or fewer, as over SSH from a phone, hides line
+-- Phone view: at 100 columns or fewer, as over SSH from a phone, hides line
 -- numbers, the sign column, the status line and the tab line, and wraps long
 -- lines. The desktop view comes back when the screen widens.
 local markdown = require("core.phone_markdown")
 
 local M = {}
 
--- `tm` in ~/.zshrc picks its phone layout at the same width.
-local max_columns = 72
+-- 100 keeps a phone held sideways (88 columns) in the phone view. `tm` in
+-- ~/.zshrc and Herdr's mobile_width_threshold use the same width.
+local max_columns = 100
 
 local phone_window_opts = {
   number = false,

@@ -46,7 +46,7 @@ lua/
   core/
     options.lua           global vim options and CodeCompanion buffer styling autocmds
     keymaps.lua           non-LSP global keymaps (buffers, tabs, terminal)
-    phone_view.lua        phone view at 72 columns or fewer
+    phone_view.lua        phone view at 100 columns or fewer
     phone_markdown.lua    phone view folds and diff marks in Markdown
   plugins/                one file per plugin (setup + keymaps together)
 bin/

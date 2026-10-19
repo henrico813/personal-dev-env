@@ -130,7 +130,8 @@ tm() {
         return 1
     }
     if [[ -z "$target" ]]; then
-        if (( COLUMNS <= 72 )); then
+        # Herdr's mobile_width_threshold and nvim's phone view use the same width.
+        if (( COLUMNS <= 100 )); then
             target=pocket
         else
             target=hub
