@@ -154,6 +154,7 @@ func ValidationRules() []string {
 		"each file change filename must be unique per step, non-empty, whitespace-free, at most 200 bytes, and path-shaped",
 		"each file change must include a filename, explanation, and diff",
 		"verification must be present",
+		"an optional ## Notes for agents section must come last, after Verification; its text is not checked",
 		fmt.Sprintf("title must be at most %d characters", MaxTitleLength),
 		fmt.Sprintf("overview must be at most %d characters", MaxOverviewLength),
 		fmt.Sprintf("definition_of_done.narrative must be at most %d characters", MaxDoDNarrativeLength),

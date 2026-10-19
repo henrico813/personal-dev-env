@@ -366,6 +366,53 @@ func TestParseMarkdownAllowsEmptyImplementationSection(t *testing.T) {
 	}
 }
 
+// Before planner knew the agent notes, it read them as part of
+// Verification, so a checkbox in the notes became a manual check.
+func TestAgentNotesStayOutOfVerification(t *testing.T) {
+	md, err := RenderPlan(minimalPlan())
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	notesStart := strings.Index(md, "## Notes for agents")
+	input := md[:notesStart] + "## Notes for agents\n---\n\n- [ ] Not a verification check\n"
+
+	result, err := ParseMarkdown(input)
+
+	if err != nil {
+		t.Fatalf("ParseMarkdown: %v", err)
+	}
+	want := []ChecklistItem{{Text: "m"}}
+	if got := result.Plan.Verification.Manual; !reflect.DeepEqual(got, want) {
+		t.Fatalf(
+			"Verification.Manual = %#v, want %#v",
+			got,
+			want,
+		)
+	}
+}
+
+// Notes put before Verification must get an error saying they go
+// last, not the parser's "invalid section span".
+func TestAgentNotesMustComeLast(t *testing.T) {
+	md, err := RenderPlan(minimalPlan())
+	if err != nil {
+		t.Fatalf("RenderPlan: %v", err)
+	}
+	notesStart := strings.Index(md, "## Notes for agents")
+	input := strings.Replace(
+		md[:notesStart],
+		"## Verification",
+		md[notesStart:]+"\n## Verification",
+		1,
+	)
+
+	_, err = ParseMarkdown(input)
+
+	if err == nil || !strings.Contains(err.Error(), "must come last") {
+		t.Fatalf("ParseMarkdown error = %v, want notes order error", err)
+	}
+}
+
 func TestParseChecklistItemsRejectsMalformedMarker(t *testing.T) {
 	_, err := parseChecklistItems("- [?] bad marker")
 	if err == nil {
