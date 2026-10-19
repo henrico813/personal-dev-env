@@ -275,24 +275,42 @@ func refuseUnseenComments(r *review.Review, checker string) error {
 // Returns the approved text per comment in dir's .code-comments.json, ""
 // for a cut one, to compare what approving would change.
 func readApprovals(dir string) (map[commentKey]string, error) {
+	entries, err := readApprovalEntries(dir)
+	if err != nil {
+		return nil, err
+	}
+	approvals := map[commentKey]string{}
+	for _, entry := range entries {
+		approvals[commentKey{entry.File, entry.Name}] = entry.Text
+	}
+	return approvals, nil
+}
+
+// One entry of .code-comments.json: a comment's approved text, or "" when
+// the owner cut it.
+type namedComment struct {
+	File string `json:"file"`
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+// Returns the entries of dir's .code-comments.json in the order the
+// checker wrote them, which keeps each file's comments in file order.
+func readApprovalEntries(dir string) ([]namedComment, error) {
 	data, err := os.ReadFile(filepath.Join(dir, settingsFile))
 	if errors.Is(err, fs.ErrNotExist) {
-		return map[commentKey]string{}, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	var settings struct {
-		Approved []struct{ File, Name, Text string }
+		Approved []namedComment `json:"approved"`
 	}
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("%s: %w", settingsFile, err)
 	}
-	approvals := map[commentKey]string{}
-	for _, entry := range settings.Approved {
-		approvals[commentKey{entry.File, entry.Name}] = entry.Text
-	}
-	return approvals, nil
+	return settings.Approved, nil
 }
 
 // Approves through the checker's --approve, since only the checker
