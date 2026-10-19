@@ -80,10 +80,9 @@ func writeShopCheckout(t *testing.T) string {
 	return repo
 }
 
-// The owner answers only what the draft lists, and the write after the
-// last answer approves it. A missed edit or a guessed rename would approve
-// text the owner never saw; a renamed function taken for deleted code
-// would ask the owner to drop a comment that is still there.
+// Verifies that a draft lists each approved comment that was edited,
+// renamed or deleted, and no other. A missed one would let the write
+// approve text the owner never saw.
 func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	repo := writeShopCheckout(t)
 	writeFile(
@@ -138,8 +137,8 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	}
 }
 
-// A draft the tool cannot be sure of must not reach the owner: the tool
-// says what to fix.
+// Verifies that a draft that could mislead the owner is refused, with
+// what to fix.
 func TestUnsureDraftIsRefused(t *testing.T) {
 	tests := []struct {
 		name   string
