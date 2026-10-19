@@ -87,7 +87,7 @@ jobs:
       - name: install Node packages
         run: npm ci
       - name: install test dependencies
-        run: sudo apt-get update && sudo apt-get install --yes zsh
+        run: sudo apt-get update && sudo apt-get install --yes zsh ripgrep
       # The Neovim tests need the release users get, not Ubuntu's older one.
       - name: install pinned Neovim
         run: test/install-pinned-nvim.sh "$RUNNER_TEMP/nvim" >>"$GITHUB_PATH"
