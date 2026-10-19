@@ -20,12 +20,10 @@ const usage = `usage:
       answer the items of review NAME one per screen, each saved at once:
       o keep, c cut, a accept, e edit in nvim, m note for the AI,
       v view the file, s search with rg, j/k scroll, h/l previous/next
-      item, q quit; once all are answered, y applies and d shows the diff
+      item, q quit; after the last answer, every answer is written into the
+      code and approved, and d shows the diff
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
-  pde-comment-review apply NAME
-      write the owner's decisions on review NAME into its repository, then
-      approve every comment in its files; only the owner runs this
   pde-comment-review help
       show this help
 Herdr runs pde-comment-review popup, edit and diff itself, and
@@ -61,8 +59,6 @@ func Main(args []string) int {
 		err = runDiffTab()
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
-	case len(args) == 2 && args[0] == "apply":
-		err = applyDecisions(args[1])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return 2

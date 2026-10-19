@@ -7,7 +7,6 @@
 | `pde-comment-review add NAME FILE` | Checks proposals `FILE` against its repository and saves it as the next round of review `NAME`. |
 | `pde-comment-review open NAME` | Shows review `NAME` one comment per screen in this terminal. |
 | `pde-comment-review notes NAME` | Prints the open notes as JSON, each with the item it is about. |
-| `pde-comment-review apply NAME` | Writes every answer into the repository, runs `gofmt`, and approves every comment in the review's files. Only the owner runs it, or an AI the owner asked to. |
 | `pde-comment-review help` | Prints the commands. |
 
 A review name may use only `a-z`, `0-9`, `.`, `_` and `-`. A command
@@ -34,7 +33,7 @@ Each review has its own folder:
 | `NAME/origin.json` | The repository and branch, and the agent session that added the review. |
 | `NAME/decisions.json` | Your answer to each item, and the round it answered. |
 | `NAME/notes.json` | Your note on each item, and the round it was written on. |
-| `NAME/applied.json` | The round that apply last wrote into the code. |
+| `NAME/applied.json` | The round last written into the code. |
 
 An item shows its proposal from the newest round that has it. An
 answer or note given on an older round no longer counts for it. To
@@ -42,7 +41,7 @@ start a review over, delete its folder.
 
 ## Which reviews Ctrl+b e opens
 
-A review waits until apply writes its newest round. A review whose
+A review waits until its newest round is written. A review whose
 repository is gone does not wait. With one review waiting, Ctrl+b e
 opens it; with several, it lists them under the agent session that
 added them, newest first; with none, Herdr shows "No comment reviews
@@ -51,8 +50,7 @@ are waiting".
 ## Keys
 
 The screen opens at the first comment with no answer. When every
-comment is answered, it opens at the questions that come after the
-last one.
+comment is answered, it writes the answers or shows they are written.
 
 | Key | What it does |
 | --- | --- |
@@ -65,12 +63,11 @@ last one.
 | `s` | Type text and see where it appears in the repository, through `rg`. |
 | `j`, `k` | Scroll down or up. |
 | `l`, `h` | Next or previous comment. |
-| `y`, `n` | Answer the rename or apply question; `n` goes back to the first comment. |
-| `d` | After apply, show the changes: in a new tab in Herdr, in place in a terminal. |
+| `d` | After the last answer, show the changes: in a new tab in Herdr, in place in a terminal. |
 | `q`, Ctrl-c | Close the screen. |
 
-`a`, `o`, `c`, `m`, `y` and `n` do nothing for 600 ms after a comment
-or question appears, so a key pressed twice answers once. Keys typed
+`a`, `o`, `c` and `m` do nothing for 600 ms after a comment appears,
+so a key pressed twice on a phone answers only once. Keys typed
 before the screen draws, or while nvim or less is open, are dropped.
 
 The top row names the repository and branch. The second row shows
@@ -91,9 +88,9 @@ old comment and rewrapped. Text with no words cuts the comment.
 Unchanged text saves nothing. Nothing is saved, and the screen says
 why, when the `# ----` line was deleted or nvim quit with an error.
 
-## What apply checks
+## What the write checks
 
-Apply writes nothing, and says why, when:
+Nothing is written, and the screen says why, when:
 
 - a comment has no answer, such as one a new round asked about again;
 - a comment's text in the file changed since the review was saved;
@@ -102,17 +99,18 @@ Apply writes nothing, and says why, when:
   cut;
 - the file has a comment on a declaration, such as the package
   clause, a function or a type, that is not in the review and that
-  you have not approved as it is now.
+  you have not approved as it is now;
+- a listed rename would move no approved comment: its file has no item.
 
 Two comments on declarations with the same exact wording in one file
-cannot be applied while either copy is unapproved: `add` refuses them
-as items, and apply refuses an unapproved copy that is left out.
+cannot be written while either copy is unapproved: `add` refuses
+them as items, and the write refuses an unapproved copy left out.
 Change an unapproved copy's wording before `add`, or leave the whole
 file out of the review and read its comments in the pull request. A
 doc comment followed by a Go directive, such as `//go:noinline`, can
-never be applied either; leave its file out of the review too.
+never be approved either; leave its file out of the review too.
 
-Apply approves through the comment checker of the `code-documentation`
+Approval goes through the comment checker of the `code-documentation`
 skill, `~/.agents/skills/code-documentation/scripts/check_comments.py`,
 which needs `python3`. The checker is the only program that writes
 `.code-comments.json`. Every comment in the review's files is
@@ -146,4 +144,4 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 | `internal/comment` | Everything that knows Go comment syntax. |
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
-| `internal/cmd` | The commands, apply, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
+| `internal/cmd` | The commands, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
