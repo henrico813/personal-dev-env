@@ -32,9 +32,9 @@ type Proposals struct {
 	Renames []string `json:"renames,omitempty"`
 }
 
-// One comment and what the AI proposes for it. Old is the comment copied
-// exactly from File: all of its lines, each with its indentation and
-// newline.
+// One comment and what the AI proposes for it. Old is the comment's
+// whole lines exactly as in File, or on a draft's item the approved
+// text.
 type Item struct {
 	ID       int      `json:"id"`
 	File     string   `json:"file"`
@@ -43,6 +43,12 @@ type Item struct {
 	New      string   `json:"new,omitempty"`
 	Why      string   `json:"why,omitempty"`
 	AlsoAt   []string `json:"also_at,omitempty"`
+	// The comment checker's name for the comment, such as "Cart.Total",
+	// on items a draft found.
+	Name string `json:"name,omitempty"`
+	// Set when the code under an approved comment was deleted; Old is the
+	// approved text, which is no longer in File.
+	CodeRemoved bool `json:"code_removed,omitempty"`
 }
 
 const (
