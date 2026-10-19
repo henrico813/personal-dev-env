@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Loads the Obsidian config in headless Neovim with a fake `nobs` and checks
-# the vault list, the old-settings warning and <leader>os.
+# the vault list, the old-settings warning, <leader>os and the note pickers.
 # Needs Neovim 0.10+ for vim.system; CI installs the PDE-pinned release.
 # Usage: pde-installer/test/nvim-obsidian-sync.sh
 set -euo pipefail
@@ -26,10 +26,13 @@ EOF
 chmod +x "$tmp/bin/nobs"
 
 # Presses each key in KEYS, waits for WANT_RESULTS sync reports, and writes
-# every notification to $NOTES.
+# every notification to $NOTES and each picker's folder and command to $PICKS.
 cat >"$tmp/driver.lua" <<'EOF'
 vim.opt.rtp:prepend(vim.env.NVIM_CONFIG)
-package.loaded["fzf-lua"] = { files = function() end }
+local picks = {}
+package.loaded["fzf-lua"] = {
+  files = function(opts) table.insert(picks, opts.cwd .. "\t" .. opts.cmd) end,
+}
 local notes = {}
 vim.notify = function(msg) table.insert(notes, msg) end
 
@@ -53,6 +56,9 @@ end, 20)
 local out = assert(io.open(vim.env.NOTES, "w"))
 out:write(table.concat(notes, "\n"), "\n")
 out:close()
+local picked = assert(io.open(vim.env.PICKS, "w"))
+picked:write(table.concat(picks, "\n"), "\n")
+picked:close()
 os.exit(0)
 EOF
 
@@ -91,7 +97,7 @@ run_nvim() {
 	if [ -n "${XDG:-}" ]; then
 		xdg=("XDG_CONFIG_HOME=$XDG")
 	fi
-	env "${xdg[@]}" HOME="$home" PATH="$tmp/bin:$PATH" NOBS_CALLS="$tmp/calls" NOTES="$tmp/notes" \
+	env "${xdg[@]}" HOME="$home" PATH="$tmp/bin:$PATH" NOBS_CALLS="$tmp/calls" NOTES="$tmp/notes" PICKS="$tmp/picks" \
 		NVIM_CONFIG="$REPO_ROOT/chezmoi/dot_config/nvim" \
 		nvim --clean -l "$tmp/driver.lua"
 }
@@ -107,6 +113,13 @@ fail() {
 
 expect_note() {
 	grep -qxF "$1" "$tmp/notes" || fail "missing notification: $1"
+}
+
+# Prints the files that picker number $1 would list.
+picker_files() {
+	local cwd cmd
+	IFS=$'\t' read -r cwd cmd < <(sed -n "$1p" "$tmp/picks")
+	(cd "$cwd" && eval "$cmd")
 }
 
 # A computer with no vaults must open Neovim silently; this is how every new
@@ -155,5 +168,24 @@ write_nobs_settings "$home/.config/nobs/config.json" killed slow
 KEYS="<leader>os" WANT_RESULTS=2 run_nvim
 expect_note "Sync failed: slow - timed out after 0.3s"
 grep -q "^Sync failed: killed" "$tmp/notes" || fail "a killed nobs must fail"
+
+# The main vault's .gitignore skips every note, and a phone has no Alt-i to
+# show ignored files, so the pickers must list them anyway. .obsidian stays
+# out. The space in "work notes" checks that <leader>oo quotes each path.
+new_home pickers
+write_nobs_settings "$home/.config/nobs/config.json" main "work notes"
+git init -q "$tmp/main"
+printf '*\n!*/\n!.gitignore\n' >"$tmp/main/.gitignore"
+mkdir -p "$tmp/main/.obsidian" "$tmp/work notes"
+touch "$tmp/main/plan.md" "$tmp/main/.obsidian/app.json" "$tmp/work notes/todo.md"
+KEYS="<leader>om <leader>oo" run_nvim
+picker_files 1 >"$tmp/main-files"
+grep -qxF "plan.md" "$tmp/main-files" || fail "<leader>om must list ignored notes"
+if grep -qF "app.json" "$tmp/main-files"; then
+	fail "<leader>om must leave out .obsidian"
+fi
+picker_files 2 >"$tmp/all-files"
+grep -qxF "$tmp/main/plan.md" "$tmp/all-files" || fail "<leader>oo must list the main vault"
+grep -qxF "$tmp/work notes/todo.md" "$tmp/all-files" || fail "<leader>oo must list the work vault"
 
 echo "nvim obsidian sync: ok"
