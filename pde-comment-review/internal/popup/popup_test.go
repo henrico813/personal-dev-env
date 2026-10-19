@@ -87,25 +87,31 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
 	}
 
-	// The rename and apply questions after the last answer fit too, with an
-	// agent's long rename shown escaped.
-	v.Entries[0].Decision = &review.Decision{Action: review.ActionAccept, Round: 1}
-	v.Renames = []string{"Shared=IsSharedCodeThatNoToolMayDeclareAsItsOwn\x1b[2J"}
-	asked := time.Now()
-	v.ShowNextUndecided(0, asked)
-	renameRows := v.BuildScreen()
-	v.PressKey("y", asked.Add(Settle))
-	applyRows := v.BuildScreen()
+	v.ShowNotWritten("nothing was written: wire.go: item 11 changed in the file after it was added\x1b[2J")
+	resultRows := v.BuildScreen()
 
-	checkFits(renameRows)
-	checkFits(applyRows)
-	renameText := colorCodes.ReplaceAllString(strings.Join(renameRows, "\n"), "")
-	if !strings.Contains(renameText, "Shared ->") || !strings.Contains(renameText, "^[[2J") {
-		t.Errorf("rename screen does not show the escaped rename:\n%s", renameText)
-	}
-	applyText := colorCodes.ReplaceAllString(strings.Join(applyRows, "\n"), "")
-	if !strings.Contains(applyText, "Apply and approve") {
-		t.Errorf("apply screen does not ask to apply:\n%s", applyText)
+	checkFits(resultRows)
+	resultText := colorCodes.ReplaceAllString(
+		strings.Join(
+			resultRows,
+			"\n",
+		),
+		"",
+	)
+	for _, want := range []string{
+		"not written",
+		"was added^[[2J",
+	} {
+		if !strings.Contains(
+			resultText,
+			want,
+		) {
+			t.Errorf(
+				"result screen does not show %q:\n%s",
+				want,
+				resultText,
+			)
+		}
 	}
 }
 
@@ -136,28 +142,5 @@ func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
 	}
 	if later != Keep {
 		t.Errorf("press after the next pause = %v, want Keep", later)
-	}
-}
-
-// The rename question and the apply question come one after the other. A y
-// pressed twice on the phone must not answer both, or the second y would
-// apply and approve before the owner read the question.
-func TestApplyQuestionWaitsAfterRenameAnswer(t *testing.T) {
-	v := newView(t, "package wire\n\n// One.\nvar one = 1\n",
-		review.Item{ID: 1, File: "wire.go", Proposal: review.ProposeCut, Old: "// One.\n"})
-	v.Entries[0].Decision = &review.Decision{Action: review.ActionCut, Round: 1}
-	v.Renames = []string{"Check=Valid"}
-	start := time.Now()
-	v.ShowNextUndecided(0, start)
-
-	renames := v.PressKey("y", start.Add(Settle))
-	again := v.PressKey("y", start.Add(Settle+50*time.Millisecond))
-	later := v.PressKey("y", start.Add(2*Settle))
-
-	if renames != None || again != None {
-		t.Errorf("y on the rename question, then a quick y = %v, %v; want None, None", renames, again)
-	}
-	if later != ApplyAll {
-		t.Errorf("y after the pause = %v, want ApplyAll", later)
 	}
 }

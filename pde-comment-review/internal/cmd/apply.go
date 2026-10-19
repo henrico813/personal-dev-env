@@ -18,23 +18,6 @@ import (
 
 const settingsFile = ".code-comments.json"
 
-func applyDecisions(name string) error {
-	r, err := review.OpenReview(name)
-	if err != nil {
-		return err
-	}
-	checker, err := findCheckerPath()
-	if err != nil {
-		return err
-	}
-	report, err := writeAndApproveDecisions(r, checker)
-	if err != nil {
-		return err
-	}
-	fmt.Print(report)
-	return nil
-}
-
 // Returns the installed comment checker, the one program that writes
 // .code-comments.json.
 func findCheckerPath() (string, error) {
@@ -184,8 +167,36 @@ func refuseUnseenComments(r *review.Review, checker string) error {
 			return err
 		}
 	}
-	if _, err := approveComments(trial, checker, files, r.ListRenames()); err != nil {
+	printed, err := approveComments(
+		trial,
+		checker,
+		files,
+		r.ListRenames(),
+	)
+	if err != nil {
 		return err
+	}
+	// The checker says "--rename OLD: matches no entry" when a rename moved
+	// nothing, as it does in a file the review does not check.
+	for _, line := range strings.Split(
+		printed,
+		"\n",
+	) {
+		old, isUnused := strings.CutPrefix(
+			line,
+			"--rename ",
+		)
+		if !isUnused {
+			continue
+		}
+		renamed, _, _ := strings.Cut(
+			old,
+			":",
+		)
+		return fmt.Errorf(
+			"rename %s would move no approved comment, because its file has no item. Add an item for that comment in its file, or remove the rename if the comment was never approved",
+			renamed,
+		)
 	}
 	wouldApprove, err := readApprovals(trial)
 	if err != nil {
@@ -316,15 +327,18 @@ func runGofmt(repo, flag string, files []string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// Adds to err how to finish by hand, since once a file is written apply
-// cannot run on this review again.
+// Adds to err how to finish by hand, since once a file is written the
+// review cannot write it again.
 func explainAfterWrite(err error, repo, checker string, written, files []string) error {
 	if len(written) == 0 {
-		return fmt.Errorf("no Go file was written; fix this and run apply again: %w", err)
+		return fmt.Errorf(
+			"no Go file was written; fix this and open the review again: %w",
+			err,
+		)
 	}
 	return fmt.Errorf("%w\n"+
 		"The owner's decisions are written into %s, but .code-comments.json still\n"+
-		"approves the old comments, and apply cannot run on this review again.\n"+
+		"approves the old comments, and the review cannot write them again.\n"+
 		"Check the change with git diff, then in %s run:\n"+
 		"  gofmt -w %s\n"+
 		"  python3 %s --repo . --approve %s",
