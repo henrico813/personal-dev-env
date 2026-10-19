@@ -43,6 +43,12 @@ type Item struct {
 	New      string   `json:"new,omitempty"`
 	Why      string   `json:"why,omitempty"`
 	AlsoAt   []string `json:"also_at,omitempty"`
+	// The comment checker's name for the comment, such as "Cart.Total",
+	// on items a draft found.
+	Name string `json:"name,omitempty"`
+	// Set when the code under an approved comment was deleted; Old is the
+	// approved text, which is no longer in File.
+	CodeRemoved bool `json:"code_removed,omitempty"`
 }
 
 const (
