@@ -32,9 +32,9 @@ type Proposals struct {
 	Renames []string `json:"renames,omitempty"`
 }
 
-// One comment and what the AI proposes for it. Old is the comment copied
-// exactly from File: all of its lines, each with its indentation and
-// newline.
+// One comment and what the AI proposes for it. Old is the comment's
+// whole lines exactly as in File, or on a draft's item the approved
+// text.
 type Item struct {
 	ID       int      `json:"id"`
 	File     string   `json:"file"`

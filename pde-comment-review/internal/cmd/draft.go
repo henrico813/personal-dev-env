@@ -113,7 +113,7 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 	}, nil
 }
 
-// Returns the named comments in the approved files of the checkout, and
+// Returns the comments in the checkout's files that have approvals, and
 // what the checker printed when it checked them.
 func readCheckoutComments(
 	repo string,
@@ -143,9 +143,9 @@ func readCheckoutComments(
 	)
 }
 
-// Copies sources, by path, into a new folder with approvals as its
-// .code-comments.json, and runs the checker there, so the checkout is
-// never touched. Returns each named comment in file order, and what the
+// Approves every comment in a copy of sources, with approvals as its
+// .code-comments.json, to learn each comment's name and text without
+// touching the checkout. Returns them in file order, and what the
 // checker printed before approving.
 func readNamedComments(
 	sources map[string]string,
@@ -262,9 +262,9 @@ func readCheckerFindings(dir, checker string, files []string) (string, error) {
 	return string(output), nil
 }
 
-// Moves each gone approval to the comment the checker suggests it was
-// renamed to, when that is its one candidate and has no approval of its
-// own. Returns the old name of each moved approval by its new key.
+// Moves each approval whose comment is gone to the checker's one
+// suggested new name, unless that name has its own approval. Returns
+// each moved approval's old name, keyed by its new one.
 func moveRenamedApprovals(
 	approvals map[commentKey]string,
 	named []namedComment,
@@ -326,8 +326,8 @@ func findRenameCandidates(checked string, gone commentKey) []string {
 	return nil
 }
 
-// Reports whether the checker printed that more than one comment in the
-// file has key's name, so it named none of them.
+// Reports whether the checker found more than one comment in the file
+// with key's name, so key's comment looks gone.
 func isNameShared(checked string, key commentKey) bool {
 	shared := regexp.MustCompile(
 		`(?m)^` + regexp.QuoteMeta(key.file) + `:\d+ ` + regexp.QuoteMeta(key.name) + `: cannot be approved;`,
