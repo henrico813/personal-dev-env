@@ -155,6 +155,8 @@ Before the next step, confirm:
 - relevant verification passes
 - changed source and tests satisfy `code-documentation`: existing explanations
   remain accurate, useful missing context is present, and no filler was added
+- a step that rewrites a comment the owner approved is proposed with the
+  `comment-review` skill, not done by editing the code
 
 Remove only drift introduced by the run, verify it, and create a separate
 cleanup commit before continuing. The managed worktree must be clean before the
