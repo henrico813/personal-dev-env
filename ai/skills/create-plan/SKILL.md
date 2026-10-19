@@ -105,6 +105,12 @@ When this skill is invoked:
   use the direct command.
 - Exact code in diff blocks is required for every implementation and
   verification change in the final plan.
+- Write each paragraph and list item of plan prose as one line, with no
+  hand-wrapping, so the plan wraps cleanly at any width, such as on a
+  phone. Code blocks keep their own lines. Two exceptions, because
+  planner requires them: the `Base commit:` line stays alone as the
+  first line of Current State, and each Module Shape file entry stays
+  on its own line of at most 66 characters.
 - When given a task, finish with a plan file. Do not implement code instead of
   writing the plan, even for small tasks.
 
