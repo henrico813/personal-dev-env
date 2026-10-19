@@ -7,6 +7,8 @@ require("core.options")
 require("core.keymaps")
 require("plugins.colorscheme")
 require("plugins.ui")
+-- After plugins.ui, so the phone view can hide bufferline's tab line again.
+require("core.phone_view").setup()
 require("plugins.fzf")
 require("plugins.completion")
 require("plugins.copilot")

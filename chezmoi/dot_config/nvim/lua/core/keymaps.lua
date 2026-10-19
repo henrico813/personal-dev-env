@@ -39,7 +39,14 @@ map("n", "<leader><leader>", "<cmd>FzfLua files<cr>", { desc = "Find files" })
 
 -- fzf-lua
 map("n", "<leader>ff", "<cmd>FzfLua files<cr>", { desc = "Find files" })
-map("n", "<leader>fg", "<cmd>FzfLua live_grep<cr>", { desc = "Live grep" })
+map("n", "<leader>fg", function()
+  -- On a phone, short folder names and no help row leave room for results.
+  local opts = {}
+  if require("core.phone_view").is_narrow() then
+    opts = { path_shorten = 1, headers = false }
+  end
+  require("fzf-lua").live_grep(opts)
+end, { desc = "Live grep" })
 map("n", "<leader>fb", "<cmd>FzfLua buffers<cr>", { desc = "Buffers" })
 map("n", "<leader>fr", "<cmd>FzfLua oldfiles<cr>", { desc = "Recent files" })
 map("n", "<leader>/", "<cmd>FzfLua blines<cr>", { desc = "Search buffer" })
@@ -64,6 +71,11 @@ end, { desc = "Jump to tab #" })
 map("t", "<C-q>", "<C-\\><C-n>", { desc = "Exit terminal mode" })
 map("n", "<C-/>", "<cmd>split | terminal<cr><cmd>startinsert<cr>", { desc = "Open terminal" })
 map("n", "<C-_>", "<cmd>split | terminal<cr><cmd>startinsert<cr>", { desc = "Open terminal" })
+
+-- wrapped lines: j/k move by screen line, but a count such as 5j moves real
+-- lines so relative line numbers still match
+map({ "n", "x" }, "j", "v:count == 0 ? 'gj' : 'j'", { expr = true })
+map({ "n", "x" }, "k", "v:count == 0 ? 'gk' : 'k'", { expr = true })
 
 -- misc
 map("n", "<Esc>", "<cmd>nohlsearch<cr>")
