@@ -35,7 +35,14 @@ func (r *Review) BuildChangedFiles() (map[string]string, error) {
 		// it, so two items in one file both land.
 		at, err := findOnce(text, e.Item.Old)
 		if err != nil {
-			problems = append(problems, fmt.Errorf("item %d: %s: %w", e.Item.ID, file, err))
+			problems = append(
+				problems,
+				fmt.Errorf(
+					"%s: item %d changed in the file after it was added; ask the AI to send it again",
+					file,
+					e.Item.ID,
+				),
+			)
 			continue
 		}
 		replacement, err := chooseReplacement(e)

@@ -13,7 +13,7 @@ type appliedFile struct {
 	Round int `json:"round"`
 }
 
-// Records that the apply command wrote the latest round into the code, so
+// Records that the latest round's answers were written into the code, so
 // the review stops waiting until an AI adds another round.
 func (r *Review) SetApplied() error {
 	applied := appliedFile{Round: len(r.Rounds)}
