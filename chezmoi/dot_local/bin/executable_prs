@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# Read open pull requests that involve you, sized for a phone screen.
+#
+#   prs            pick a PR; the preview below the list shows its state
+#   prs NUM        show one PR's full view, from the current folder's repo
+#   prs REPO NUM   show one PR's full view, such as: prs owner/app 12
+#
+# It only reads from GitHub. Set NO_COLOR to turn colors off.
+
+# The jq programs and GraphQL query use $ for their own variables.
+# shellcheck disable=SC2016
+set -euo pipefail
+
+self=$(readlink -f "$0")
+color=true
+[[ -n "${NO_COLOR:-}" ]] && color=false
+
+meta_fields=number,title,url,state,isDraft,author,baseRefName,headRefName,reviewDecision,mergeStateStatus,additions,deletions,changedFiles,labels,statusCheckRollup,updatedAt
+
+# The 16 basic colors, so the terminal's color profile picks the shades.
+palette='
+def paint($code): if $color then "\u001b[\($code)m\(.)\u001b[0m" else . end;
+def red: paint("31");
+def green: paint("32");
+def yellow: paint("33");
+def magenta: paint("35");
+def cyan: paint("36");
+def gray: paint("90");
+def bold: paint("1");
+def heading: "== \(.) ==" | paint("1;34");
+def short_time: .[0:16] | sub("T"; " ");
+'
+
+# Check runs and commit statuses report results in different fields.
+render_meta='
+def outcome:
+  if .__typename == "StatusContext" then .state
+  elif .status != "COMPLETED" then "PENDING"
+  else .conclusion end;
+def bucket:
+  if . == "SUCCESS" or . == "NEUTRAL" or . == "SKIPPED" then "pass"
+  elif . == "PENDING" or . == "EXPECTED" then "pending"
+  else "fail" end;
+def count($result): [.[] | select(.result == $result)] | length;
+def paint_result:
+  if . == "pass" then green elif . == "fail" then red else yellow end;
+def tally($result):
+  count($result) as $n
+  | "\($n) \($result)"
+  | if $n == 0 then gray
+    elif $result == "pass" then green
+    elif $result == "fail" then red
+    else yellow end;
+def paint_state:
+  if . == "OPEN" then green elif . == "MERGED" then magenta else red end;
+def paint_review:
+  if . == "APPROVED" then green
+  elif . == "CHANGES_REQUESTED" then red
+  elif . == "REVIEW_REQUIRED" then yellow
+  else gray end;
+def paint_merge:
+  if . == "CLEAN" or . == "HAS_HOOKS" then green
+  elif . == "DIRTY" then red
+  elif . == "BLOCKED" or . == "BEHIND" or . == "UNSTABLE" then yellow
+  else gray end;
+([.statusCheckRollup[] | {name: (.name // .context), result: (outcome | bucket)}]) as $checks
+| "\("#\(.number)" | bold) \(.state | paint_state)\(if .isDraft then " " + ("draft" | gray) else "" end)",
+  (.title | bold),
+  (.url | split("/")[3:5] | join("/") | cyan),
+  "\("by" | gray) \(.author.login | cyan)",
+  ("\(.baseRefName) <- \(.headRefName)" | gray),
+  "\("+\(.additions)" | green) \("-\(.deletions)" | red) in \(.changedFiles) files",
+  "review: \(if (.reviewDecision // "") == "" then "none" else .reviewDecision end | paint_review)",
+  "merge: \(.mergeStateStatus | paint_merge)",
+  "checks: \($checks | tally("pass")), \($checks | tally("fail")), \($checks | tally("pending"))",
+  ($checks[] | select(.result != "pass") | "  \(.result | paint_result): \(.name)"),
+  (if (.labels | length) > 0 then "labels: \([.labels[].name] | join(", "))" | gray else empty end),
+  ("updated: \(.updatedAt | short_time)" | gray)
+'
+
+# first: N keeps the oldest N, so newer items past N are not shown.
+feedback_query='
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      comments(first: 100) { nodes { author { login } createdAt body } }
+      reviews(first: 100) { nodes { author { login } state submittedAt body } }
+      reviewThreads(first: 100) {
+        nodes {
+          isResolved isOutdated path line originalLine
+          comments(first: 50) { nodes { author { login } createdAt body diffHunk } }
+        }
+      }
+    }
+  }
+}'
+
+render_feedback='
+def paint_review:
+  if . == "APPROVED" then green
+  elif . == "CHANGES_REQUESTED" then red
+  else gray end;
+def paint_hunk:
+  if startswith("+") then green
+  elif startswith("-") then red
+  elif startswith("@@") then cyan
+  else gray end;
+def byline: "-- \(.who | cyan)\(if .state == "" then "" else " " + (.state | paint_review) end) \(.at | short_time | gray)";
+def place: "\("##" | gray) \("\(.path):\(.line // .originalLine)" | bold)";
+.data.repository.pullRequest as $pr
+| ([$pr.comments.nodes[] | {at: .createdAt, who: .author.login, state: "", body}]
+   + [$pr.reviews.nodes[]
+      # A PENDING review is your unsent draft and has no date yet. An approval
+      # with no text is kept, since it is still a decision.
+      | select(.state != "PENDING" and (.body != "" or .state != "COMMENTED"))
+      | {at: .submittedAt, who: .author.login, state, body}]
+  | sort_by(.at)) as $conversation
+| [$pr.reviewThreads.nodes[] | select(.isResolved | not)] as $open
+| [$pr.reviewThreads.nodes[] | select(.isResolved)] as $resolved
+| ("Conversation (\($conversation | length))" | heading),
+  ($conversation[] | "", byline, (if .body == "" then empty else .body end)),
+  "",
+  ("Code threads (\($open | length) open, \($resolved | length) resolved)" | heading),
+  ($open[]
+   | "",
+     "\(place) \("OPEN" | yellow)\(if .isOutdated then " " + ("outdated" | gray) else "" end)",
+     (.comments.nodes[0].diffHunk | split("\n") | .[-4:][] | paint_hunk),
+     (.comments.nodes[] | {who: .author.login, state: "", at: .createdAt, body} | "", byline, .body)),
+  # Resolved threads take one line each, so open ones stand out.
+  (if $resolved == [] then empty else "" end),
+  ($resolved[] | "\(place) \("resolved" | green)")
+'
+
+render_list='
+.[]
+| [.repository.nameWithOwner,
+   .number,
+   "\("#\(.number)" | yellow) \(.title)\(if .isDraft then " " + ("[draft]" | gray) else "" end)"]
+| @tsv
+'
+
+render_files='
+"", ("Files" | heading),
+(.files[] | "\("+\(.additions)" | green) \("-\(.deletions)" | red) \(.path)"),
+"", ("Description" | heading)
+'
+
+render() {
+    jq -r --argjson color "$color" "$palette$1"
+}
+
+list_prs() {
+    gh search prs --state=open --involves=@me --sort=updated --limit=50 \
+        --json repository,number,title,isDraft \
+        | render "$render_list"
+}
+
+show_meta() {
+    gh pr view "$2" --repo "$1" --json "$meta_fields" | render "$render_meta"
+}
+
+show_feedback() {
+    gh api graphql \
+        -F owner="${1%%/*}" \
+        -F name="${1#*/}" \
+        -F number="$2" \
+        -f query="$feedback_query" \
+        | render "$render_feedback"
+}
+
+show_full() {
+    local pr bat_color=never
+    "$color" && bat_color=always
+    pr=$(gh pr view "$2" --repo "$1" --json "$meta_fields,files,body")
+    render "$render_meta" <<<"$pr"
+    render "$render_files" <<<"$pr"
+    # BAT_THEME may use 24-bit colors; the ansi theme keeps to the 16 basic ones.
+    jq -r .body <<<"$pr" \
+        | bat --language=md --style=plain --theme=ansi --color="$bat_color" --paging=never
+    printf '\n'
+    show_feedback "$1" "$2"
+}
+
+show_diff() {
+    gh pr diff "$2" --repo "$1" --color=never \
+        | delta --navigate --wrap-max-lines=unlimited --paging=always
+}
+
+pick_pr() {
+    local cmd keys
+    cmd=$(printf '%q' "$self")
+    keys=j,k,g,G,l,d,c,p,r,q,J,K,/
+    # The height, border, margin and padding flags undo the shell's
+    # FZF_DEFAULT_OPTS box, which costs a phone most of its rows.
+    # Bound letters are commands, as in vim; / frees them for typing until
+    # Esc.
+    list_prs | fzf \
+        --ansi \
+        --delimiter='\t' \
+        --with-nth=3 \
+        --exact \
+        --no-sort \
+        --layout=reverse \
+        --height=100% \
+        --no-border \
+        --margin=0 \
+        --padding=0 \
+        --no-info \
+        --prompt='prs ' \
+        --header=$'l open  d diff  c comments  / search\nJ/K preview  p hide  r reload  q quit' \
+        --preview="$cmd _meta {1} {2}" \
+        --preview-window='down,55%,wrap,border-top' \
+        --bind='j:down,k:up,g:first,G:last' \
+        --bind='ctrl-d:half-page-down,ctrl-u:half-page-up' \
+        --bind='J:preview-half-page-down,K:preview-half-page-up' \
+        --bind="l:execute($cmd _full {1} {2})" \
+        --bind="enter:execute($cmd _full {1} {2})" \
+        --bind="double-click:execute($cmd _full {1} {2})" \
+        --bind="c:execute($cmd _feedback {1} {2})" \
+        --bind="d:execute($cmd _diff {1} {2})" \
+        --bind='p:toggle-preview' \
+        --bind="r:reload($cmd _list)" \
+        --bind='q:abort' \
+        --bind="/:unbind($keys)+change-prompt(/ )" \
+        --bind="esc:clear-query+rebind($keys)+change-prompt(prs )"
+}
+
+# Commands starting with _ are run by the picker. less wraps long
+# lines, and copies its input unchanged when not writing to a terminal.
+case "${1:-}" in
+    '') pick_pr ;;
+    _list) list_prs ;;
+    _meta) show_meta "$2" "$3" ;;
+    _full) show_full "$2" "$3" | less -R ;;
+    _feedback) show_feedback "$2" "$3" | less -R ;;
+    _diff) show_diff "$2" "$3" ;;
+    *)
+        if (($# == 1)) && [[ $1 =~ ^[0-9]+$ ]]; then
+            repo=$(gh repo view --json nameWithOwner 2>/dev/null | jq -r .nameWithOwner) || repo=''
+            [[ -n "$repo" ]] && set -- "$repo" "$1"
+        fi
+        if (($# != 2)); then
+            printf 'usage: prs [NUMBER | OWNER/REPO NUMBER]\n' >&2
+            exit 2
+        fi
+        show_full "$1" "$2" | less -R
+        ;;
+esac
