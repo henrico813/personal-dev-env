@@ -42,7 +42,7 @@ saves it with `pde-comment-review add NAME FILE`.
 | `items[].new` | The new comment lines, for `reword` only. |
 | `items[].why` | Optional: one or two sentences the user sees as `why:`. |
 | `items[].also_at` | Optional: other places that say the same thing, as `file:line`. |
-| `renames` | Optional: code you renamed, as `OLD=NEW` pairs, the way the comment checker's `--rename` takes them. The user decides whether approvals move to the new names. |
+| `renames` | Optional: code you renamed, as `OLD=NEW` pairs, the way the comment checker's `--rename` takes them. Each moves its approval when the answers are written; `add` refuses one that would move no approved comment, because its file has no item. |
 
 ## When `add` refuses a file
 
@@ -61,7 +61,9 @@ one is wrong. It names each problem, for example:
   as `old`;
 - an `id` is used twice, or a rename is not `OLD=NEW`;
 - two items are the same comment;
-- applying would approve a comment in a listed file that the user
+- a rename would move no approved comment, because its file has no
+  item. Add an item for that comment in its file;
+- the write would approve a comment in a listed file that the user
   has not seen: a comment the user approved or cut was changed,
   removed or brought back, a comment on a declaration is not an
   item, or a comment has a line with no space after `//`, such as a

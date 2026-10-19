@@ -56,7 +56,6 @@ const (
 	Accept
 	SaveNote // save View.Typed as the item's note
 	Open     // open the review the picker shows as chosen
-	ApplyAll // write every answer into the code and approve the comments
 	Edit     // edit the item's comment in nvim
 	ViewFile // open the item's file read-only at its comment
 	Search   // search the repository for View.Typed
@@ -67,9 +66,7 @@ type screen int
 
 const (
 	itemScreen   screen = iota
-	renameScreen        // asks whether approvals move to the AI's renamed code
-	applyScreen         // asks whether to apply and approve
-	resultScreen        // shows what apply did
+	resultScreen        // shows what writing the answers did
 )
 
 // What the screen shows: one entry, scrolled down scroll rows.
@@ -85,11 +82,9 @@ type View struct {
 	typingFor  Action // SaveNote or Search while the owner types into Typed
 	Typed      string
 	shownAt    time.Time
-	Renames    []string // the AI's "OLD=NEW" pairs, asked about before applying
-	Files      []string // the files apply approves, listed on the apply screen
 	screen     screen
-	problem    string // why apply failed, shown under the question
-	result     string // what apply did, shown on the result screen
+	result     string // what writing the answers did, or why it did not
+	written    bool   // whether the answers reached the code
 }
 
 func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
@@ -100,15 +95,15 @@ func (v *View) Show(index int, now time.Time) {
 	v.Index = index
 	v.typingFor = None
 	v.screen = itemScreen
-	v.problem = ""
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
 	v.shownAt = now
 }
 
 // Shows the first entry from index on, wrapping around, that has no
-// decision. An entry with only a note still waits for one. When every entry
-// has one, it moves on to the questions before apply.
+// decision. An entry with only a note still waits for one. When every
+// entry has one, it leaves the screen as it is, for the caller to
+// write the answers.
 func (v *View) ShowNextUndecided(index int, now time.Time) {
 	for i := range v.Entries {
 		next := (index + i) % len(v.Entries)
@@ -117,37 +112,30 @@ func (v *View) ShowNextUndecided(index int, now time.Time) {
 			return
 		}
 	}
-	v.askToApply(now)
 }
 
-// Shows the questions after the last answer: the AI's renames, if any, then
-// whether to apply and approve.
-func (v *View) askToApply(now time.Time) {
-	v.screen = applyScreen
-	if len(v.Renames) > 0 {
-		v.screen = renameScreen
+func (v *View) IsAllAnswered() bool {
+	for _, e := range v.Entries {
+		if e.Decision == nil {
+			return false
+		}
 	}
-	v.problem = ""
-	v.scroll = 0
-	v.shownAt = now
-}
-
-// Shows why apply refused, under the question. If an item from a new round
-// is on screen instead, a notice says to answer it first.
-func (v *View) ShowProblem(problem string) {
-	if v.screen == itemScreen {
-		v.notice = "an AI added a round; answer it first"
-		return
-	}
-	v.problem = problem
-	v.scroll = 0
+	return true
 }
 
 func (v *View) ShowNotice(notice string) { v.notice = notice }
 
-func (v *View) ShowResult(report string) {
+func (v *View) ShowDone() {
 	v.screen = resultScreen
-	v.result = report
+	v.result = "Done. Your answers are in the code. d shows the changes."
+	v.written = true
+	v.scroll = 0
+}
+
+func (v *View) ShowNotWritten(reason string) {
+	v.screen = resultScreen
+	v.result = reason
+	v.written = false
 	v.scroll = 0
 }
 
@@ -175,8 +163,8 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	if v.screen == resultScreen && key == "d" {
 		return ShowDiff
 	}
-	if v.screen != itemScreen {
-		return v.answerQuestion(key, now)
+	if v.screen == resultScreen {
+		return None
 	}
 	switch key {
 	case "l":
@@ -201,36 +189,6 @@ func (v *View) PressKey(key string, now time.Time) Action {
 			return None
 		}
 		return answerKeys[key]
-	}
-	return None
-}
-
-// Takes y or n on the rename and apply screens. Like answer keys, they are
-// ignored at first, so a y pressed twice cannot answer both questions.
-func (v *View) answerQuestion(key string, now time.Time) Action {
-	if v.screen == resultScreen {
-		return None
-	}
-	if key != "y" && key != "n" {
-		return None
-	}
-	if now.Sub(v.shownAt) < v.Settle {
-		v.notice = "one moment, then press again"
-		return None
-	}
-	if key == "n" {
-		// Without the renames, apply refuses the old names' approvals as
-		// gone, so n on either question goes back to the items.
-		v.Show(0, now)
-		return None
-	}
-	if v.screen == renameScreen {
-		v.screen = applyScreen
-		v.shownAt = now
-		return None
-	}
-	if v.screen == applyScreen {
-		return ApplyAll
 	}
 	return None
 }
@@ -262,7 +220,7 @@ func (v *View) room() int { return max(1, v.Rows-2-len(v.footer())) }
 // Returns every row of the screen. No row is wider than Cols, since a row
 // the terminal wraps would push the header off a phone screen.
 func (v *View) BuildScreen() []string {
-	left, status := v.header()
+	left, status := v.buildHeader()
 	if v.scroll > 0 {
 		left += fmt.Sprintf(" ↑%d", v.scroll) // rows above, reached with k
 	}
@@ -295,13 +253,18 @@ func (v *View) BuildScreen() []string {
 	return append(lines, v.footer()...)
 }
 
-// Returns row 2, which says which item, question or result is on screen.
-func (v *View) header() (left, status string) {
-	switch v.screen {
-	case resultScreen:
-		return "applied", "done"
-	case renameScreen, applyScreen:
-		return fmt.Sprintf("all %d answered", len(v.Entries)), "y/n"
+// Returns row 2, which says which item or result is on screen.
+func (v *View) buildHeader() (left, status string) {
+	if v.screen == resultScreen {
+		status = "not written"
+		if v.written {
+			status = "done"
+		}
+		left = fmt.Sprintf(
+			"all %d answered",
+			len(v.Entries),
+		)
+		return left, status
 	}
 	e := v.Entry()
 	status = "?"
@@ -319,12 +282,7 @@ func (v *View) header() (left, status string) {
 // fit in one row of the phone popup.
 func (v *View) footer() []string {
 	hint := func(keys string) string { return dim + clip(keys, v.Cols) + reset }
-	switch v.screen {
-	case renameScreen:
-		return []string{hint("y move approvals  n stop")}
-	case applyScreen:
-		return []string{hint("y apply and approve  n back")}
-	case resultScreen:
+	if v.screen == resultScreen {
 		return []string{hint("d diff j/k scroll q close")}
 	}
 	if v.typingFor != None {
@@ -343,12 +301,26 @@ func (v *View) footer() []string {
 // Returns the entry's rows with its code around it, and the index of the
 // first row after the code above, which Show scrolls to.
 func (v *View) body() ([]string, int) {
-	if v.screen != itemScreen {
-		return v.questionRows(), 0
-	}
-	e := v.Entry()
 	width := max(10, v.Cols-1) // one column for the -, + or > mark
 	var rows []string
+	if v.screen == resultScreen {
+		for _, line := range strings.Split(
+			v.result,
+			"\n",
+		) {
+			for _, row := range fold(
+				escapeControlCharacters(line),
+				width,
+			) {
+				rows = append(
+					rows,
+					" "+row,
+				)
+			}
+		}
+		return rows, 0
+	}
+	e := v.Entry()
 	add := func(color, mark, text string) {
 		text = escapeControlCharacters(strings.ReplaceAll(text, "\t", "  "))
 		prefix := mark
@@ -398,46 +370,6 @@ func (v *View) body() ([]string, int) {
 		add(dim, " ", line)
 	}
 	return rows, focus
-}
-
-// Returns the rows of the rename, apply or result screen, with what the owner
-// must read first at the top.
-func (v *View) questionRows() []string {
-	var rows []string
-	add := func(color, text string) {
-		for _, row := range fold(escapeControlCharacters(text), max(10, v.Cols-1)) {
-			rows = append(rows, color+" "+row+reset)
-		}
-	}
-	addProblem := func() {
-		if v.problem != "" {
-			for _, line := range strings.Split(v.problem, "\n") {
-				add(red, line)
-			}
-		}
-	}
-	switch v.screen {
-	case renameScreen:
-		add(bold, "These functions were renamed: keep your approvals on the new names? y/n")
-		addProblem()
-		for _, pair := range v.Renames {
-			before, after, _ := strings.Cut(pair, "=")
-			add("", before+" -> "+after)
-		}
-	case applyScreen:
-		add(bold, "Apply and approve these comments? y/n")
-		addProblem()
-		add(yellow, "Comments inside function bodies, and comments that share a name, can't be approved or protected.")
-		add("", "y writes your answers, then approves every comment in these files. It writes nothing if an agent changed a comment you have not seen:")
-		for _, file := range v.Files {
-			add(dim, file)
-		}
-	case resultScreen:
-		for _, line := range strings.Split(strings.TrimSuffix(v.result, "\n"), "\n") {
-			add("", line)
-		}
-	}
-	return rows
 }
 
 // Returns "repo · branch" in at most width columns, cutting the middle of a

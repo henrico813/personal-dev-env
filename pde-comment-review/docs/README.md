@@ -7,7 +7,7 @@ Pick the page for what you need to do:
 
 - Run a review, from the AI's proposals to the commit:
   [Review comments](how-to/review-comments.md).
-- Look up a command, a key, what apply checks, or where reviews are
+- Look up a command, a key, what the write checks, or where reviews are
   saved: [Commands, files, and keys](reference/commands-files-and-keys.md).
 - Write proposals as an AI: the
   [comment-review skill](../../ai/skills/comment-review/SKILL.md).

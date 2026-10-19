@@ -61,8 +61,6 @@ func runReviewScreen(
 		Repo:    r.Repo(),
 		Origin:  origin,
 		Settle:  opts.settle,
-		Renames: r.ListRenames(),
-		Files:   r.ListFiles(),
 	}
 	term, err := popup.Start(in, out)
 	if err != nil {
@@ -71,6 +69,13 @@ func runReviewScreen(
 	defer term.Restore()
 	v.Cols, v.Rows = term.Size()
 	v.ShowNextUndecided(0, time.Now())
+	r, err = writeWhenAllAnswered(
+		r,
+		v,
+	)
+	if err != nil {
+		return err
+	}
 	for {
 		key, err := term.DrawAndReadKey(func(cols, rows int) []string {
 			v.Cols, v.Rows = cols, rows
@@ -83,19 +88,35 @@ func runReviewScreen(
 		case popup.Quit:
 			return nil
 		case popup.Keep:
-			err = saveAnswerAndShowNext(r, v, review.ActionKeep)
+			r, err = saveAnswerAndShowNext(
+				r,
+				v,
+				review.ActionKeep,
+			)
 		case popup.Cut:
-			err = saveAnswerAndShowNext(r, v, review.ActionCut)
+			r, err = saveAnswerAndShowNext(
+				r,
+				v,
+				review.ActionCut,
+			)
 		case popup.Accept:
-			err = saveAnswerAndShowNext(r, v, review.ActionAccept)
-		case popup.ApplyAll:
-			r, err = applyFromScreen(r.Name, v)
+			r, err = saveAnswerAndShowNext(
+				r,
+				v,
+				review.ActionAccept,
+			)
 		case popup.SaveNote:
 			err = r.SetNote(v.Entry().Item.ID, strings.TrimSpace(v.Typed))
 			v.Entries = r.ListEntries()
 		case popup.Edit:
 			if !opts.inPopup {
-				err = editInPlace(term, r, v, in, out)
+				r, err = editInPlace(
+					term,
+					r,
+					v,
+					in,
+					out,
+				)
 			} else if openEditTab(r, v) {
 				return nil
 			}
@@ -123,14 +144,26 @@ func openEditTab(r *review.Review, v *popup.View) bool {
 	return openTabOrShowWhy(v, editPaneID, env)
 }
 
-func editInPlace(term *popup.Terminal, r *review.Review, v *popup.View, in, out *os.File) error {
+func editInPlace(
+	term *popup.Terminal,
+	r *review.Review,
+	v *popup.View,
+	in *os.File,
+	out *os.File,
+) (*review.Review, error) {
 	id := v.Entry().Item.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
 	v.Entries = r.ListEntries()
 	// Moves on even when nothing was saved, as the popup does when the edit
 	// tab reopens it at the next unanswered item.
 	v.ShowNextUndecided(v.Index+1, time.Now())
-	return err
+	if err != nil {
+		return r, err
+	}
+	return writeWhenAllAnswered(
+		r,
+		v,
+	)
 }
 
 // Returns true once Herdr opens the tab, so the popup can close and leave
@@ -153,13 +186,33 @@ func runOutsideScreen(term *popup.Terminal, v *popup.View, run func() error) err
 	return term.Resume()
 }
 
-func saveAnswerAndShowNext(r *review.Review, v *popup.View, action string) error {
+func saveAnswerAndShowNext(
+	r *review.Review,
+	v *popup.View,
+	action string,
+) (*review.Review, error) {
 	if err := r.SetDecision(v.Entry().Item.ID, action, ""); err != nil {
-		return err
+		return r, err
 	}
 	v.Entries = r.ListEntries()
 	v.ShowNextUndecided(v.Index+1, time.Now())
-	return nil
+	return writeWhenAllAnswered(
+		r,
+		v,
+	)
+}
+
+func writeWhenAllAnswered(
+	r *review.Review,
+	v *popup.View,
+) (*review.Review, error) {
+	if !v.IsAllAnswered() {
+		return r, nil
+	}
+	return applyFromScreen(
+		r.Name,
+		v,
+	)
 }
 
 // Applies the review and returns it as read again, for the screen to use
@@ -174,15 +227,29 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	if err != nil {
 		return nil, err
 	}
-	report, err := writeAndApproveDecisions(r, checker)
-	if err != nil {
-		// A refusal for an item the new round added opens that item, so
-		// the owner can answer it and apply again.
-		v.Entries, v.Renames, v.Files = r.ListEntries(), r.ListRenames(), r.ListFiles()
-		v.ShowNextUndecided(0, time.Now())
-		v.ShowProblem(err.Error())
+	// A second screen, or a review reopened after its write, finds the
+	// answers already in the code.
+	if r.AppliedRound == len(r.Rounds) {
+		v.ShowDone()
 		return r, nil
 	}
-	v.ShowResult(report)
+	_, err = writeAndApproveDecisions(
+		r,
+		checker,
+	)
+	v.Entries = r.ListEntries()
+	switch {
+	case err != nil && !v.IsAllAnswered():
+		// A refusal for an item the new round added opens that item; the
+		// answers are written once the owner answers it.
+		v.ShowNextUndecided(
+			0,
+			time.Now(),
+		)
+	case err != nil:
+		v.ShowNotWritten(err.Error())
+	default:
+		v.ShowDone()
+	}
 	return r, nil
 }

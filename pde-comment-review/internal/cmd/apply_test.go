@@ -149,9 +149,10 @@ func Valid(prices []int) bool { return true }
 	}
 }
 
-// applyDecisions writes the owner's answers into the code. It cannot run
-// again on comments it already changed, so a failed check must say why
-// and change nothing. An early draft approved comments the owner never saw.
+// The write after the last answer puts the owner's answers into the
+// code. It cannot run again on comments it already changed, so a
+// failed check must say why and change nothing. An early draft
+// approved comments the owner never saw.
 func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 	approveValid := `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
 		{"file": "cart.go", "name": "Reset", "text": ""}], "avoid": {}}`
@@ -174,7 +175,7 @@ func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 			// Approving it would approve wording the owner never saw.
 			name:   "kept comment edited after review",
 			onDisk: strings.Replace(cartGo, "a price is too high", "a price is over the limit", 1),
-			want:   "item 3: cart.go: comment found 0 times",
+			want:   "cart.go: item 3 changed in the file after it was added",
 		},
 		{
 			// A file with Windows line endings is refused this way too.
@@ -205,6 +206,14 @@ func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 			onDisk:  strings.Replace(cartGo, "// Reports whether every price is above zero.\nfunc Valid", "// Always returns true; safe to skip.\nfunc Check", 1),
 			renames: []string{"Valid=Check"},
 			want:    "cart.go Check: differs from the text the owner approved",
+		},
+		{
+			// A rename once reported success without moving an approved comment,
+			// leaving the checker unable to find it later.
+			name:    "rename that moves nothing",
+			onDisk:  cartGo,
+			renames: []string{"Check=Sum"},
+			want:    "rename Check would move no approved comment",
 		},
 		{
 			name:   "unreviewed comment added",

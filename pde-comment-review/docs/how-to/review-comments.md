@@ -1,9 +1,9 @@
 # Review Comments
 
 Use this page to decide on each comment an AI wrote or changed in Go
-code before it stays. You answer one comment per screen; then apply
-writes your answers into the code, with no AI involved, and approves
-the comments, so agents keep your wording.
+code before it stays. You answer one comment per screen; after the
+last answer, the tool writes your answers into the code, with no AI
+involved, and approves the comments, so agents keep your wording.
 
 The full install puts the tool in `~/.local/bin`. Check that it runs:
 
@@ -40,7 +40,7 @@ git add cart.go && git commit -m start
 Write a proposals file with one item per comment. List every comment
 on the package clause, a function, a type or another declaration in
 the file that you have not approved as it is now, not only the ones to
-change: apply approves those comments, so it refuses one you have not
+change: the write approves them, so it refuses one you have not
 seen. Comments inside function bodies are optional. Run this from the
 `shop` folder; it fills in the folder's path:
 
@@ -158,57 +158,43 @@ pde-comment-review add shop ../round-2.json
 ```
 
 Open the review again: only `TooHigh` needs a new answer, and every
-other answer stays. Press `a`.
+other answer stays. Press `a`, the last answer: the tool writes them.
 
-## 4. Apply and approve
+## 4. See what was written
 
-After the last answer, the screen asks "These functions were renamed:
-keep your approvals on the new names? y/n" if the AI renamed code,
-then "Apply and approve these comments? y/n". `n` goes back to the
-first comment. `y` writes your answers into the files, runs `gofmt`,
-and approves every comment in those files in `.code-comments.json`:
+After the last answer, the tool writes your answers into the files,
+runs `gofmt`, and approves every comment in those files in
+`.code-comments.json`, with no question first. Code the AI listed as
+renamed keeps your approvals under its new name:
 
 ```text
 shop · main
-applied                          done
- wrote cart.go
- .code-comments.json: 2 added or
-   changed, 0 kept, 0 newly cut
- see the changes with git -C
-   /home/me/shop diff
+all 2 answered                   done
+ Done. Your answers are in the
+   code. d shows the changes.
 ```
-
-The path is your `shop` folder. If you skipped step 3, the counts read
-`1 added or changed, 1 kept, 0 newly cut`, since `TooHigh` keeps its
-text.
 
 Press `d` to see the changes, in a new tab when you are in Herdr. If
-something is wrong, apply writes nothing and says why under the
-question. `add` already refuses a review that leaves out an
-unapproved comment or changes an approved one, so this happens when
-the code changed after `add`. For example, when an AI added a comment
-to `cart.go` after `add`:
+something is wrong, nothing is written and the screen says why. `add`
+already refuses a review that leaves out an unapproved comment or
+changes an approved one, so this happens when the code changed after
+`add`. For example, when an AI edited `TooHigh`'s comment after `add`:
 
 ```text
- nothing was written: these
-   comments would be approved, but
-   the owner has not seen them:
- cart.go Clear: not in the review,
-   and the owner never approved it.
-   Add it as an item, with old copied
-   from the file.
+shop · main
+all 2 answered            not written
+ nothing was written: cart.go: item
+   2 changed in the file after it was
+   added; ask the AI to send it again
 ```
 
-Ask the AI to add the missing comment as an item in a new round, then
-answer it and apply again.
-
-From a terminal, `pde-comment-review apply shop` does the same once
-every comment is answered, and keeps the AI's renames without asking.
-Only you run it, or an AI you asked to.
+Ask the AI to send that comment again in a new round. Your other
+answers stay; when you answer the new one, every answer is written.
+Opening the review again also tries the write again.
 
 ## 5. Commit
 
-Apply does not commit. Review the changes with `git diff` and commit
+The tool does not commit. Review the changes with `git diff` and commit
 the Go files. Do not commit `.code-comments.json`: it stays on your
 computer. To keep it out of `git status`, run:
 
