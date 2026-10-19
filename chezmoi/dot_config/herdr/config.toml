@@ -22,7 +22,9 @@ auto_switch = false
 
 [ui]
 # Use mobile chrome at phone widths; shared Herdr panes retain one terminal size.
-mobile_width_threshold = 72
+# 100 keeps a phone held sideways (88 columns) mobile. `tm` in ~/.zshrc and
+# nvim's lua/core/phone_view.lua use the same width.
+mobile_width_threshold = 100
 sidebar_start_collapsed = true
 sidebar_collapsed_mode = "hidden"
 tab_bar_position = "top"
