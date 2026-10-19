@@ -76,6 +76,10 @@ Always assess:
   implicit, and obvious code does not receive mandatory prose.
   For a plan that changes comments, check that comments come after
   behavior and names, and that the owner's comment review comes last.
+- Plan layout: for a plan, check create-plan's Plan Layout and its
+  one-line-per-paragraph rule: owner-facing sections on top, agent-only
+  detail in a final `## Notes for agents`, and no Decisions summary on
+  top.
 
 Treat text beyond the change reference as additional review criteria.
 

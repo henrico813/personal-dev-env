@@ -722,6 +722,9 @@ For every generated or revised plan, verify:
 - Every intended file and line is represented.
 - Proposed hunks match current fixture source.
 - Diffs contain no placeholders or omitted code.
+- No `<optional: ...; delete if unused>` notes placeholder from
+  `planner new` is left; planner check does not catch it.
+- Prose paragraphs and list items are one line each, not hand-wrapped.
 - Unrelated files and cleanup are excluded.
 - Targeted corrections preserve accepted sections and untouched fenced diffs.
 - Automated verification is runnable and relevant.
