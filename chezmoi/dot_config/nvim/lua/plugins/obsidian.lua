@@ -89,6 +89,11 @@ local fzf = require("fzf-lua")
 
 local no_vaults = "No vault folders found. Run nobs vault set NAME PATH, then restart Neovim"
 
+-- Lists notes even when the vault's .gitignore skips them all, but leaves out
+-- dot folders such as .obsidian and .trash. Pass no_ignore = true with it, so
+-- fzf-lua's Alt-i hides ignored notes on the first press.
+local notes_cmd = "rg --files --no-ignore --follow --glob '!.git'"
+
 map("<leader>oo", function()
   local dirs = {}
   for _, vault in ipairs(workspaces) do
@@ -97,16 +102,22 @@ map("<leader>oo", function()
   if #dirs == 0 then
     vim.notify(no_vaults, vim.log.levels.WARN)
   elseif #dirs == 1 then
-    fzf.files({ cwd = dirs[1] })
+    fzf.files({ cwd = dirs[1], cmd = notes_cmd, no_ignore = true })
   else
-    fzf.files({ cwd = dirs[1], search_paths = dirs })
+    -- fzf-lua ignores search_paths when cmd is set, so the paths go in cmd.
+    local paths = vim.tbl_map(vim.fn.shellescape, dirs)
+    fzf.files({
+      cwd = dirs[1],
+      cmd = notes_cmd .. " " .. table.concat(paths, " "),
+      no_ignore = true,
+    })
   end
 end, "open note")
 
 local function vault_files(name)
   for _, vault in ipairs(workspaces) do
     if vault.name == name then
-      fzf.files({ cwd = vault.path })
+      fzf.files({ cwd = vault.path, cmd = notes_cmd, no_ignore = true })
       return
     end
   end
