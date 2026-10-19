@@ -263,7 +263,9 @@ report it instead of hiding it with prose.
 ## The owner's comment review
 
 To put code comments in front of the owner for review, load and
-follow the `comment-review` skill.
+follow the `comment-review` skill. Use it also to change a comment
+the owner approved, even when a plan says to; never edit that
+comment in the code.
 
 ## Go comment checker
 
