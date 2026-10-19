@@ -18,7 +18,9 @@ prepend the vault issue frontmatter. See the
 [command reference](../reference/commands.md) for the supported shape.
 
 The scaffold contains a title, overview, definition of done, at least one
-implementation step, and verification. See the [command
+implementation step, and verification. It ends with an optional
+`## Notes for agents` section for detail only agents need; planner
+requires it to come last and does not check its text. See the [command
 reference](../reference/commands.md) for the fields and limits.
 
 ## 2. Write the plan

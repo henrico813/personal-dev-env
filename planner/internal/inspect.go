@@ -273,13 +273,21 @@ func offsetSpans(spans map[string]Span, offset int) map[string]Span {
 	return out
 }
 
+const agentNotesHeading = "Notes for agents"
+
+// Returns the span of each of the four required sections.
+// Verification stops at the optional agent notes, so their text
+// is never checked.
 func findTopLevelSections(input string) (map[string]Span, error) {
 	headings := scanHeadings(input, "## ")
 	filtered := []headingMatch{}
+	notes := []headingMatch{}
 	for _, h := range headings {
 		switch h.Text {
 		case "Overview", "Definition of Done", "Implementation", "Verification":
 			filtered = append(filtered, h)
+		case agentNotesHeading:
+			notes = append(notes, h)
 		}
 	}
 
@@ -287,9 +295,17 @@ func findTopLevelSections(input string) (map[string]Span, error) {
 		return nil, fmt.Errorf("expected 4 top-level sections, got %d", len(filtered))
 	}
 
+	lastEnd := len(input)
+	if len(notes) > 0 {
+		if notes[0].Start < filtered[len(filtered)-1].Start {
+			return nil, fmt.Errorf("section %q must come last, after Verification", agentNotesHeading)
+		}
+		lastEnd = notes[0].Start
+	}
+
 	spans := map[string]Span{}
 	for i, h := range filtered {
-		end := len(input)
+		end := lastEnd
 		if i+1 < len(filtered) {
 			end = filtered[i+1].Start
 		}

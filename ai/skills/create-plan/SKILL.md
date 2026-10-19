@@ -236,6 +236,25 @@ mandatory approval stage.
     present or report the plan ready until it passes.
     Confirm Current State still starts with the `Base commit:` line.
 
+#### Plan Layout
+
+The owner reads a plan from the top: the Overview, the Definition of
+Done narrative and Goals, Current State, Module Shape, the steps with
+their diffs, and Verification. Keep those short and plain, and add no
+other sections or subsections among them.
+
+Put what only agents need in one `## Notes for agents` section, the
+last section of the plan: numbered decisions with their labels and
+evidence, file:line references, what the tests leave out, known limits,
+and dependencies on other plans. Planner checks only that it comes
+last. Delete the scaffold's notes placeholder when there are no notes.
+
+Do not add a Decisions summary at the top.
+When the owner must notice a choice,
+such as an `orchestrator-proposed` decision or a plan that lands after
+another, say it in one sentence in the Overview or the Definition of
+Done narrative, and keep its evidence in the notes.
+
 #### Revisions After Human Feedback
 
 Treat review as a correction loop, not a restart:
