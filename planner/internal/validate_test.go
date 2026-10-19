@@ -234,6 +234,46 @@ func TestValidatePlanRejectsNewLengthCaps(t *testing.T) {
 	}
 }
 
+// Planner once limited every Module Shape line, so Decisions prose
+// had to be hand-wrapped and broke up on a phone. The limit must stop
+// at the first ### heading.
+func TestModuleShapeLimitStopsAtSubsection(t *testing.T) {
+	longLine := strings.Repeat("x", MaxModuleShapeLineLength+1)
+	tests := []struct {
+		name        string
+		moduleShape string
+		wantErr     bool
+	}{
+		{
+			name:        "long line under a later subsection passes",
+			moduleShape: "planner/internal/validate.go\n\n### Decisions\n\n" + longLine,
+			wantErr:     false,
+		},
+		{
+			name:        "long line in the shape still fails",
+			moduleShape: longLine + "\n\n### Decisions\n\nShort.",
+			wantErr:     true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := validPlan()
+			plan.DefinitionOfDone.ModuleShape = tc.moduleShape
+
+			err := ValidatePlan(plan)
+
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Fatalf(
+					"ValidatePlan() error = %v, want error: %v",
+					err,
+					tc.wantErr,
+				)
+			}
+		})
+	}
+}
+
 func TestValidatePlanAllReportsAllViolations(t *testing.T) {
 	plan := validPlan()
 	plan.Title = ""

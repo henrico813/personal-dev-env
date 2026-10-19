@@ -48,7 +48,7 @@ func TestValidationRulesUseExportedLimits(t *testing.T) {
 		{"overview", MaxOverviewLength, fmt.Sprintf("overview must be at most %d characters", MaxOverviewLength)},
 		{"dod_narrative", MaxDoDNarrativeLength, fmt.Sprintf("definition_of_done.narrative must be at most %d characters", MaxDoDNarrativeLength)},
 		{"dod_current_state", MaxCurrentStateLength, fmt.Sprintf("definition_of_done.current_state must be at most %d characters", MaxCurrentStateLength)},
-		{"dod_module_shape", MaxModuleShapeLineLength, fmt.Sprintf("each line of definition_of_done.module_shape must be at most %d characters", MaxModuleShapeLineLength)},
+		{"dod_module_shape", MaxModuleShapeLineLength, fmt.Sprintf("each line of definition_of_done.module_shape before its first ### heading must be at most %d characters", MaxModuleShapeLineLength)},
 		{"dod_goals_count", MaxDoDGoals, fmt.Sprintf("definition_of_done.goals must contain between 1 and %d items", MaxDoDGoals)},
 		{"dod_goal_length", MaxDoDGoalLength, fmt.Sprintf("each definition_of_done.goals item must be at most %d characters", MaxDoDGoalLength)},
 		{"step_title", MaxStepTitleLength, fmt.Sprintf("each implementation step title must be at most %d characters", MaxStepTitleLength)},
