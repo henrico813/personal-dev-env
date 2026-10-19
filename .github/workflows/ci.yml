@@ -99,6 +99,7 @@ jobs:
           bash -n test/*.sh
           test/nvim-obsidian-sync.sh
           test/nvim-clipboard.sh
+          test/nvim-phone-view.sh
 
   pde-installer-smoke:
     runs-on: ubuntu-latest
