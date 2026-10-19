@@ -73,10 +73,16 @@ func walkValidationRules(plan Plan) []ValidationError {
 	} else if got := utf8.RuneCountInString(dod.CurrentState); got > MaxCurrentStateLength {
 		add("definition_of_done.current_state", fmt.Sprintf("definition_of_done.current_state must be no more than %d characters (got %d)", MaxCurrentStateLength, got), got)
 	}
-	if strings.TrimSpace(dod.ModuleShape) == "" {
+	// Only the file list above the first ### heading has a line limit,
+	// so Decisions and later sections can wrap on a phone.
+	moduleShape := dod.ModuleShape
+	if subsections := scanHeadings(moduleShape, "### "); len(subsections) > 0 {
+		moduleShape = moduleShape[:subsections[0].Start]
+	}
+	if strings.TrimSpace(moduleShape) == "" {
 		add("definition_of_done.module_shape", "definition_of_done.module_shape is required", 0)
 	} else {
-		for i, line := range strings.Split(dod.ModuleShape, "\n") {
+		for i, line := range strings.Split(moduleShape, "\n") {
 			if got := utf8.RuneCountInString(line); got > MaxModuleShapeLineLength {
 				add(fmt.Sprintf("definition_of_done.module_shape[line %d]", i+1), fmt.Sprintf("definition_of_done.module_shape line %d must be no more than %d characters (got %d)", i+1, MaxModuleShapeLineLength, got), got)
 			}
