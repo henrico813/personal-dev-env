@@ -276,7 +276,9 @@ failures the same way; see [Diagnose guarded failures](../how-to/diagnose-guarde
 - Structure validation runs on parsed plan fields. It enforces required
   sections, non-empty fields, length limits, unique filenames per step, at
   least one goal, at least one implementation step, and at least one file
-  change per step. It does not read source.
+  change per step. It does not read source. An optional
+  `## Notes for agents` section may follow Verification; its text is
+  not checked.
 - Guarded apply validation applies every diff against the base commit in a
   disposable Git repository. It confirms applicability, not behavior.
 

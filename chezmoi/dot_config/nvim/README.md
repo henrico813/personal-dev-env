@@ -132,6 +132,22 @@ path, the same file `nobs` uses. Add a vault with
 `nobs vault set NAME PATH`. Until that file exists, Neovim warns once
 per session if `~/.config/pde/config.json` still lists vaults.
 
+### Phone view
+
+When the screen is 100 columns or fewer, as over SSH from a phone, nvim switches to a phone view, and back to the desktop view when the screen widens. It hides line numbers, the sign column, the status line and the tab line, and wraps long lines.
+
+- **Markdown:** each code block, the frontmatter and each diff header fold to one labeled line, such as `▸ lua · 12 lines`. `zo` opens a fold, `zc` closes it, and `zj` / `zk` jump to the next or previous block. In a `diff` block, every screen row of a wrapped added or removed line gets a colored bar.
+- **Pickers:** fzf-lua fills the screen with no preview. `j` / `k` move, `Enter` opens, `q` closes, and `/` starts typing; after `/`, `j` and `k` type until the picker closes.
+- **which-key:** waits 300 ms before its popup, so a quick key sequence does not flash it over the screen.
+
+Known limits:
+
+- The width is nvim's whole screen, so on the desktop a terminal pane 100 columns or narrower also gets the phone view.
+- Setting a phone-view option by hand, such as `:set nowrap` to read a table, keeps that window in its phone values when the screen widens.
+- `~~~` fences do not fold, and two blocks with no line between them fold as one.
+- Only `<leader>fg` shortens folder names in live grep; `:FzfLua live_grep` typed by hand does not.
+- Long hidden links leave blank rows, and wide tables wrap badly.
+
 ### Add a plugin
 
 ```bash
@@ -275,4 +291,5 @@ The right column lists the 5 most recent persistence.nvim sessions (mtime-sorted
 - **LSP keymaps are buffer-local.** They only exist in buffers where a server has attached (via the `LspAttach` autocmd in `lsp.lua`). If you don't see `<leader>c*` in which-key, no LSP is attached to that filetype.
 - **Utility panels use `winfixbuf`.** Clicking a bufferline tab from inside a locked panel would normally error — bufferline's `left_mouse_command` override jumps to the first non-locked window first. Same wrapper protects `<S-h>` / `<S-l>` buffer cycling.
 - **Which-key helix preset is heavy.** We've tuned it with `icons.mappings = false` and a `desc`-only filter. If it's still slow on your machine, change `preset` to `modern` or `classic` in `whichkey.lua`.
+- **Some phone-view changes apply on the desktop too.** `j` / `k` move by screen line unless given a count, so `5j` still moves five real lines. Markdown shows raw text on the cursor line only in insert mode, so a hidden link or fence needs insert mode to see. Pickers list the file name before its folder. Markdown lists and quotes wrap with a hanging indent.
 - **Tab labels auto-detect diffview and CodeCompanion.** `ui.lua`'s `name_formatter` shows "Diff" for Diffview tabs and "AI" for CodeCompanion tabs, otherwise uses `vim.t.name` (set via `<leader><Tab>r`) or the filename.
