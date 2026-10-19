@@ -1,5 +1,8 @@
 require("which-key").setup({
-  delay = 0,
+  -- On a phone the popup covers the screen, so it waits for a pause.
+  delay = function()
+    return require("core.phone_view").is_narrow() and 300 or 0
+  end,
   preset = "helix",
   icons = {
     mappings = false,
