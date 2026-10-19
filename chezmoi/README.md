@@ -52,6 +52,24 @@ gh pr diff 123 --color=never |
   delta --side-by-side --line-numbers --navigate
 ```
 
+On a phone, run `prs` to pick from the open pull requests that involve you in
+any repository. The selected one's repository, state, review, and checks show
+below the list, in color; set `NO_COLOR` to turn colors off. The keys follow
+vim: `j` and `k` move, `g` and `G` jump to the first and last, `Ctrl-D` and
+`Ctrl-U` move half a page, and `J` and `K` scroll the preview. Press `l` or
+Enter, or double-tap, for the full view, which adds the files, description,
+comments, reviews, and code threads. Open threads come first with their code;
+resolved ones take one line each. Press `c` for only the comments, `d` for the
+diff, `p` to hide the preview, `r` to reload, and `q` to quit. Press `/` to
+search the list, and Esc to clear the search and get the keys back. `prs` only
+reads from GitHub. To show one pull request without the list, give its number
+inside its repository, or its repository and number from anywhere:
+
+```bash
+prs 123
+prs OWNER/REPO 123
+```
+
 Check out a pull request when review requires repository search or tests. Use
 the merge base to isolate changes introduced by its branch:
 
