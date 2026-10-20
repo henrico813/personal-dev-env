@@ -113,6 +113,13 @@ CONST_OR_VAR_BLOCK = re.compile(r"(const|var)\s*\($")
 GENERATED_FILE_MARKER = re.compile(
     r"^// Code generated .* DO NOT EDIT\.$", re.M
 )
+# Go comments and string literals, matched from left to right, so a
+# backtick or "/*" inside one starts nothing.
+GO_COMMENT_OR_STRING = re.compile(
+    r"//[^\n]*|/\*.*?\*/|`[^`]*`"
+    r"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'""",
+    re.S,
+)
 
 
 @dataclass(frozen=True)
@@ -188,12 +195,17 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
         below it.
     """
     lines = source.splitlines(keepends=True)
+    inside_text = find_lines_inside_comment_or_string(source)
     comments: list[Comment] = []
     outer_name, scope, seen_package = "", Scope.TOP_LEVEL, False
     start: int | None = None
 
     # A blank line past the end closes a comment on the file's last lines.
     for number, line in enumerate([*lines, "\n"], 1):
+        # A line inside a raw string or "/* */" may look like a comment
+        # or declaration, such as a shell script's "esac" in a test.
+        if number in inside_text:
+            continue
         text = line.strip()
         if text.startswith("//"):
             start = number if start is None else start
@@ -235,6 +247,17 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
         elif line[:1] == "}" or (line[:1] == ")" and scope is Scope.BLOCK):
             outer_name, scope = "", Scope.TOP_LEVEL
     return comments
+
+
+def find_lines_inside_comment_or_string(source: str) -> set[int]:
+    """Return the 1-based lines starting inside a raw string or ``/* */``."""
+    inside: set[int] = set()
+    for match in GO_COMMENT_OR_STRING.finditer(source):
+        newlines = match[0].count("\n")
+        if newlines:
+            first = source.count("\n", 0, match.start()) + 2
+            inside.update(range(first, first + newlines))
+    return inside
 
 
 def parse_declared_name(text: str) -> str:
