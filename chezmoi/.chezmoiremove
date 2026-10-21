@@ -18,6 +18,7 @@ Projects/CLAUDE.md
 .codex/skills/rust-development
 .config/opencode/commands/document_codebase.md
 .codex/skills/document-codebase
+.config/opencode/plugins/pde-approval-session.js
 
 # Old Codex workflow skills (now in shared skills)
 .codex/skills/create-plan
