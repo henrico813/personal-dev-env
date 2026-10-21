@@ -16,11 +16,6 @@ for plugin in colored-man-pages command-not-found git git-extras{{ if eq (env "P
 done
 fpath=("$PDE_ZSH_PLUGINS/zsh-completions/src" $fpath)
 autoload -Uz compinit && compinit
-# Lets wt switch change this shell's directory. Comes after compinit so
-# wt's completions load.
-if command -v wt &>/dev/null; then
-    eval "$(wt config shell init zsh)"
-fi
 source "$PDE_ZSH_PLUGINS/powerlevel10k/powerlevel10k.zsh-theme"
 source "$PDE_ZSH_PLUGINS/zsh-z/zsh-z.plugin.zsh"
 source "$PDE_ZSH_PLUGINS/zsh-autosuggestions/zsh-autosuggestions.zsh"
@@ -72,6 +67,11 @@ export AQUA_CHECKSUMS_PATH="$HOME/.config/aquaproj-aqua/aqua-checksums.json"
 {{- end }}
 export PATH="$AQUA_ROOT_DIR/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
+# Lets wt switch change this shell's directory. Comes after compinit so
+# wt's completions load.
+if command -v wt &>/dev/null; then
+    eval "$(wt config shell init zsh)"
+fi
 
 export BAT_THEME="{{ $colors.bat }}"
 
