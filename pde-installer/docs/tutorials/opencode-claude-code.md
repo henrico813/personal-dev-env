@@ -34,3 +34,7 @@ List the Claude Code models available through the managed adapter with:
 ```bash
 opencode models --standalone | grep '^claude-code/'
 ```
+
+The installer sets OpenCode's default model to
+`claude-code/claude-opus-5-5[1m]` on every install, replacing any `model`
+set by hand in `~/.config/opencode/opencode.json`.
