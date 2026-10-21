@@ -50,8 +50,7 @@ links `pde-pr-approve` to it; the program picks its mode from the name it
 was started under, so one build serves both. It also installs
 `moshi-hook`. chezmoi, which the installer also runs, places the files
 that tie the program into your tools: the guard as `~/.local/bin/gh`, the
-Herdr plugin, the `prefix+a` inbox key, and an OpenCode plugin that tells
-`pde-gh-write` which session asked. Herdr loads plugins only into a
+Herdr plugin, and the `prefix+a` inbox key. Herdr loads plugins only into a
 running server, so a separate script links the plugin after each install
 and, when Herdr is not running, prints how to link it later. The
 terminal profile installs none of this, and removes the guard,
