@@ -149,6 +149,7 @@ func aquaRepository(t *testing.T, name string) string {
 		"jq": "jqlang/jq", "chezmoi": "twpayne/chezmoi", "eza": "eza-community/eza", "zoxide": "ajeetdsouza/zoxide",
 		"gh":     "cli/cli",
 		"delta":  "dandavison/delta",
+		"wt":     "max-sixty/worktrunk",
 		"bottom": "ClementTsang/bottom", "yq": "mikefarah/yq", "yazi": "sxyazi/yazi", "gopls": "golang.org/x/tools/gopls",
 		"lua-language-server": "LuaLS/lua-language-server",
 	}

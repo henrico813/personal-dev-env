@@ -15,7 +15,9 @@ change. A memory write never authorizes this work on its own.
   current repository.
 - Edit the current repository only when the user explicitly asks for
   repository-local guidance.
-- Create a branch and worktree from `main`; never commit directly to `main`.
+- Create a branch and worktree from `main` with
+  `wt switch --create <branch> --no-cd --format=json`, and work in the
+  `path` it prints; never commit directly to `main`.
 
 ## Destinations
 

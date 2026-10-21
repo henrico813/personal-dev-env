@@ -9,8 +9,9 @@ Follow the repository's documented style first. Otherwise use these defaults.
 
 1. Use `<type>[(scope)][!]: <summary>` with `feat`, `fix`, `docs`, `test`,
    `refactor`, `perf`, `build`, `ci`, `chore`, `style`, or `revert`.
-   A repository's git config may allow a title prefix before the type,
-   which `msg lint` enforces.
+   Before writing a title, run
+   `git config --local --get msg.titlePrefix`. A value is a regex for a
+   prefix allowed before the type, which `msg lint` enforces.
 2. Keep titles to 50 characters, excluding a trailing ` (#N)`, and omit a
    final period. Put a blank line after the title.
 3. For a commit body, explain why the change matters, what changed, and any

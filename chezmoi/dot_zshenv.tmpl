@@ -1,3 +1,6 @@
+# Every zsh reads this file, including non-interactive agent shells, so wt
+# finds these settings wherever it runs.
+export WORKTRUNK_SYSTEM_CONFIG_PATH="$HOME/.config/pde/worktrunk.toml"
 {{- if eq (env "PDE_PROFILE") "full" }}
 # Load the Vibe Goog endpoint for interactive and agent Zsh shells.
 env_file="$HOME/.config/vibe/goog.env"

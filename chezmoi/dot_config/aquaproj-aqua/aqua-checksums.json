@@ -226,6 +226,31 @@
       "algorithm": "sha256"
     },
     {
+      "id": "github_release/github.com/max-sixty/worktrunk/v0.81.0/worktrunk-aarch64-apple-darwin.tar.xz",
+      "checksum": "B9C3F2F8071554CF88500466D65D35E18AD5EDAD5762479A1F14BCDDD5AB7882",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/max-sixty/worktrunk/v0.81.0/worktrunk-aarch64-unknown-linux-musl.tar.xz",
+      "checksum": "7A334D2E64C577AFD0247E2411EFF673360AB1F18897564F2D2E5D5374FBD74B",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/max-sixty/worktrunk/v0.81.0/worktrunk-x86_64-apple-darwin.tar.xz",
+      "checksum": "211FA3585AFA0CE243DE0F007FBE2D8B86C5C88C85EDA17D09311B32E8533714",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/max-sixty/worktrunk/v0.81.0/worktrunk-x86_64-pc-windows-msvc.zip",
+      "checksum": "389B595CB67482085419968939E329D61901CCA9E959E4B6C288F01387B768B8",
+      "algorithm": "sha256"
+    },
+    {
+      "id": "github_release/github.com/max-sixty/worktrunk/v0.81.0/worktrunk-x86_64-unknown-linux-musl.tar.xz",
+      "checksum": "0C253F216985CE9CD7B202A11606B5CE6AA934B1019FD1FBB9B7CE2B47B1C74A",
+      "algorithm": "sha256"
+    },
+    {
       "id": "github_release/github.com/mikefarah/yq/v4.53.3/yq_darwin_amd64",
       "checksum": "2DAB400281CD0937E353C0CEEBC1AF53416C4EDADA490010A5FBA231B40D1D31650727D84338C26E20D726E430B5E8B97716056EA35540AC703550CA898F40CD",
       "algorithm": "sha512"
