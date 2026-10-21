@@ -119,6 +119,53 @@ class TestCommentNames:
             result.stdout
         )
 
+    def test_go_string_text_is_never_named(self, tmp_path: Path) -> None:
+        """Keep the owner's approvals on real code in Go tests.
+
+        Go tests hold shell scripts and Go files in raw strings. The
+        checker read a script's "esac" and a fixture's "func Total" as
+        code, so the owner approved comments under names such as
+        "esac.rec" and "Total" that no code has. ``quote`` checks that a
+        backtick in an ordinary string starts no raw string.
+        """
+        (tmp_path / "cart_test.go").write_text(
+            "package cart\n\n"
+            "// A cart file for the tests.\n"
+            "const cartGo = `\n"
+            "// Sums the prices.\n"
+            "func Total() int { return 0 }\n"
+            "`\n\n"
+            "func TestTotal(t *testing.T) {\n"
+            '\tquote := "`"\n'
+            '\tfake(t, `case "$1" in\n'
+            "esac\n"
+            "`)\n"
+            "\t// The fake has run.\n"
+            "\tcheck(t, quote)\n"
+            "}\n\n"
+            "// Returns the cart's total.\n"
+            "func cartTotal() int { return 0 }\n"
+        )
+
+        result = run_checker(tmp_path, "--approve")
+
+        assert result.returncode == 0
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {
+                    "file": "cart_test.go",
+                    "name": "cartGo",
+                    "text": "// A cart file for the tests.\n",
+                },
+                {
+                    "file": "cart_test.go",
+                    "name": "cartTotal",
+                    "text": "// Returns the cart's total.\n",
+                },
+            ],
+            "avoid": {},
+        }
+
 
 class TestFiller:
     """Fail on the skill's filler examples in sentences not at ``--base``."""
