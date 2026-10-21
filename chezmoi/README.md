@@ -83,6 +83,35 @@ git diff "origin/$base"...HEAD
 Delta only displays changes. Submit the overall review with `gh pr review`, or
 use `gh pr diff 123 --web` when line-specific comments are needed.
 
+## Worktrees and Branch Names
+
+Both profiles install Worktrunk (`wt`). A worktree's folder is its branch with
+`/` replaced by `-`, under the repository's `worktrees/` folder, so
+`fix/abc-12-login-timeout` lives in `worktrees/fix-abc-12-login-timeout`. List
+worktrees with their branches, or check out a pull request into its own folder:
+
+```bash
+wt list
+wt switch pr:123
+```
+
+A new branch must be `<type>/<words>`: a commit type or `vibe`, then lowercase
+letters and digits joined by hyphens. Existing branches and pull request
+branches are not checked. A repository can replace the rule in its own Git
+config with an extended regular expression, as used by `grep -E`:
+
+```bash
+git config pde.branchPattern '^[A-Z]+-[0-9]+-[a-z0-9-]+$'
+```
+
+`~/.zshenv` points Worktrunk at `~/.config/pde/worktrunk.toml`, and
+`~/.config/worktrunk/config.toml` can override it. Do not use `wt merge` or
+`wt remove`: changes merge through pull requests, and `wt remove` deletes
+ignored files such as `.env` without asking. After each Worktrunk upgrade, check
+in a fresh `zsh -c` that `wt switch --create docs/x` makes `worktrees/docs-x`
+and `wt switch --create Bad_Name` is refused, since a renamed setting would
+otherwise go unnoticed.
+
 ## Terminal Workspaces
 
 Use tmux as the attachment and recovery layer, with separate presentation

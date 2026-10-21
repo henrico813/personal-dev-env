@@ -60,6 +60,9 @@ Before changing anything:
 - If a Vibe key is available, identify the repository checkout first, then run `vibe status --key <key>` from that repository.
 - If `vibe status` fails and no other artifact proves identity, stop and ask for clarification.
 - If a target worktree exists, confirm its path, branch, and whether it is a plan worktree or an ad hoc checkout.
+- To find the worktree for a branch, run `wt list --format=json` and
+  read `.worktree.path` from the entry in `.items[]` whose `.branch`
+  matches.
 - If no target worktree exists and none was explicitly supplied, skip worktree removal and continue with the remaining artifacts.
 - If a supplied worktree path does not exist, stop and report the missing explicit artifact.
 - If a plan note exists, identify whether it should be marked complete or updated with follow-up status.
@@ -184,6 +187,8 @@ Only after the safety checks pass:
 - If local deletion was requested and all checks passed, run `git branch -d <branch>` from another checkout after any worktree using that branch has been removed, then verify the local branch is gone with `git branch --list <branch>`.
 - If a main checkout exists, confirm it is still on the expected branch and matches its fetched upstream after any update.
 - Do not run global `git worktree prune` as part of targeted cleanup.
+- Never use `wt remove`. It deletes ignored files such as `.env`
+  without asking, which skips the ignored-file policy above.
 
 ## Response Format
 
