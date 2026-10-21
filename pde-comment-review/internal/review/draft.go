@@ -14,10 +14,9 @@ type Draft struct {
 	Proposals Proposals `json:"proposals"`
 }
 
-// Returns the review name for a Git branch: lower case, with each
-// character a name may not use turned into "-". For example,
-// "vibe/Add-Tax" becomes "vibe-add-tax".
-func NameForBranch(branch string) (string, error) {
+// Returns the review name for a branch, such as "vibe-add-tax" for
+// "vibe/Add-Tax".
+func ReviewNameForBranch(branch string) (string, error) {
 	name := strings.Map(
 		func(r rune) rune {
 			if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("._-", r) {
@@ -37,8 +36,7 @@ func NameForBranch(branch string) (string, error) {
 	return name, nil
 }
 
-// Saves d as the draft of the review called name, replacing any
-// earlier draft. Saved rounds, notes and decisions are not touched.
+// Saves d as the draft of the review called name, replacing any old one.
 func SaveDraft(name string, d Draft) error {
 	dir, err := buildReviewDir(name)
 	if err != nil {

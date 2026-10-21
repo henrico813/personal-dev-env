@@ -16,10 +16,8 @@ import (
 	"pde-comment-review/internal/review"
 )
 
-// Finds the Go comments in the checkout at dir that the owner must answer,
-// and saves them as the draft of the review named after the branch. When
-// it cannot be sure what the owner should see, such as with no base or a
-// rename with two candidates, it saves nothing and says what to fix.
+// Saves the comments the owner must answer as the draft of the branch's
+// review.
 func saveBranchDraft(dir, checker string) (review.Draft, error) {
 	name, d, err := buildBranchDraft(dir, checker)
 	if err != nil {
@@ -57,7 +55,7 @@ func buildBranchDraft(dir, checker string) (string, review.Draft, error) {
 			"no branch is checked out, so the review has no name; check out a branch, such as with git switch -c NAME",
 		)
 	}
-	name, err := review.NameForBranch(branch)
+	name, err := review.ReviewNameForBranch(branch)
 	if err != nil {
 		return "", review.Draft{}, err
 	}
@@ -83,9 +81,7 @@ func buildBranchDraft(dir, checker string) (string, review.Draft, error) {
 }
 
 // Returns the commit where the branch left the remote's default branch,
-// such as origin/main. Not the branch's upstream: once a branch is
-// pushed, that is often its own pushed copy, which would hide the
-// comments already pushed.
+// such as origin/main.
 func findDraftBase(repo string) (string, error) {
 	listed, err := runGit(
 		repo,
@@ -130,8 +126,7 @@ func findDraftBase(repo string) (string, error) {
 	return strings.TrimSpace(base), err
 }
 
-// Returns an item for each comment the owner must answer: an approved
-// comment that changed, was renamed or lost its code.
+// Returns an item for each comment the owner must answer.
 func buildDraft(repo, base, checker string) (review.Draft, error) {
 	changed, err := listChangedGoFiles(repo, base)
 	if err != nil {
@@ -248,10 +243,8 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 	}, nil
 }
 
-// Returns each Go file changed since base, staged, unstaged or untracked,
-// with its path at base: "" for a new file, and the old path for a file
-// Git saw moved. Deleted files are left out: their approved comments
-// count as gone.
+// Returns each Go file in the checkout that changed since base, with its
+// path at base, or "" for a new file.
 func listChangedGoFiles(repo, base string) (map[string]string, error) {
 	diff, err := runGit(
 		repo,
@@ -301,9 +294,8 @@ func listChangedGoFiles(repo, base string) (map[string]string, error) {
 	return changed, nil
 }
 
-// Returns the owner's approvals with each file Git saw moved under its new
-// path, and an "OLD=NEW" pair for each moved file that has approvals, so
-// the comments of a moved file are not taken for deleted ones.
+// Returns the approvals with moved files under their new paths, and an
+// OLD=NEW pair for each moved file that has approvals.
 func readMovedApprovals(repo string, changed map[string]string) (map[commentKey]string, []string, error) {
 	approved, err := readApprovals(repo)
 	if err != nil {
@@ -329,8 +321,8 @@ func readMovedApprovals(repo string, changed map[string]string) (map[commentKey]
 	return approvals, renames, nil
 }
 
-// Returns the comments in the checkout's files that have approvals, and
-// what the checker printed when it checked them.
+// Returns the comments in the checkout's changed files and files with
+// approvals, and what the checker printed for them.
 func readCheckoutComments(
 	repo string,
 	checker string,
@@ -363,8 +355,7 @@ func readCheckoutComments(
 	)
 }
 
-// Returns the text each named comment had at base, for the changed files
-// that existed then, under the files' current paths.
+// Returns the text each changed file's comments had at base.
 func readBaseComments(
 	repo string,
 	base string,
@@ -593,8 +584,6 @@ func isNameShared(checked string, key commentKey) bool {
 	return shared.MatchString(checked)
 }
 
-// Runs git in repo and returns what it printed, or an error with what it
-// printed to stderr.
 func runGit(repo string, args ...string) (string, error) {
 	gitArgs := append(
 		[]string{"-C", repo},
