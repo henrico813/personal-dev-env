@@ -13,10 +13,8 @@ so their requests reach you in Herdr and on your phone. Keep your normal
    [How it gets installed](../explanation/request-flow.md#how-it-gets-installed)
    says what this puts in place.
 
-2. Restart every OpenCode server and client. OpenCode loads plugins only
-   when it starts, and without the session plugin a request cannot say
-   which agent asked. A server started before the install also keeps its
-   old `PATH`, so its agents can get past the guard; see
+2. Restart every OpenCode server and client. A server started before the
+   install keeps its old `PATH`, so its agents can get past the guard; see
    [OpenCode server refresh](../../../pde-installer/docs/explanation/opencode-server-refresh.md).
 3. Reload Herdr's settings so `prefix+a` (Ctrl+b, then a) opens the
    approval inbox:
