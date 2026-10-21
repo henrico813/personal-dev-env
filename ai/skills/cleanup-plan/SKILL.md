@@ -150,7 +150,10 @@ Classify every remaining ignored file in this order:
    `pde/user-config.yml` is also sensitive.
 2. Allow a non-sensitive file only when it is beneath the root `vibe/target/` directory,
    or any `__pycache__/` directory, any `.pytest_cache/` directory, or `ai/.venv/`.
-3. Block every other ignored path.
+3. Allow the root `.code-comments.json` only after "Keep the owner's
+   comment approvals" below has backed it up and, for a merged pull
+   request, merged it.
+4. Block every other ignored path.
 
 Interpret the result:
 
@@ -165,6 +168,44 @@ Interpret the result:
 
 Files with tracked local changes or non-ignored untracked status are blockers if removing the worktree would delete them.
 Untracked files outside the artifact being updated or removed do not block unrelated cleanup actions unless that action would overwrite or remove them.
+
+### Keep the owner's comment approvals
+
+A worktree's root `.code-comments.json` holds the comment text the
+owner approved there, and removing the worktree loses it. When the
+target worktree has one, after main synchronization:
+
+1. From the main checkout, back up both copies:
+
+   ```bash
+   dir=~/.local/state/pde/approval-backups
+   mkdir -p "$dir"
+   backup=$(mktemp -d "$dir/$(date +%Y%m%d-%H%M%S)-XXXX")
+   mkdir "$backup/worktree"
+   cp -p <worktree path>/.code-comments.json "$backup/worktree/"
+   [ ! -f .code-comments.json ] || cp -p .code-comments.json "$backup/"
+   ```
+
+   If any of these commands fails, stop: do not merge or remove the
+   worktree, and report the failure.
+2. Read the pull request with
+   `gh pr view <pr> --json state,mergeCommit`. If there is no merged
+   pull request, skip the merge; the backup keeps the approvals.
+3. Otherwise load the `code-documentation` skill to learn its folder,
+   and bring the approvals in with the comment checker there:
+
+   ```bash
+   python3 <that skill's folder>/scripts/check_comments.py \
+     --repo . --merge-approvals <worktree path> <merge commit>
+   ```
+
+4. Exit 0 means the approvals are kept. Report its output, including
+   skipped and dropped entries, and the backup folder. Any other exit
+   blocks worktree removal; report the output. If it refuses a comment
+   that a later merged pull request also reworded, clean up that later
+   pull request's worktree first, then run this again.
+5. Apart from the backups and the worktree removal, never copy, edit
+   or delete a `.code-comments.json`.
 
 ### 3. Finish housekeeping
 

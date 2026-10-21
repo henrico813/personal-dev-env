@@ -948,3 +948,130 @@ class TestRenames:
         assert "possibly now count" not in result.stdout
         assert "possibly now part" not in result.stdout
         assert "possibly now till" not in result.stdout
+
+
+def commit_all(root: Path) -> None:
+    """Commit every change in ``root``, as merging a pull request does."""
+    git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "merged"], check=True)
+
+
+SUMS = "// Total sums the prices.\n"
+
+
+class TestMergeApprovals:
+    """Bring a removed worktree's approvals to the main checkout."""
+
+    def test_merge_keeps_only_approvals_matching_code(
+        self, tmp_path: Path
+    ) -> None:
+        """Keep only approvals that match the merged code.
+
+        Older worktrees held older text for newer approvals, so copying a
+        whole file back undid them. A review found a renamed comment's old
+        name left in the main copy, failing the check in every new
+        worktree.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        worktree.mkdir()
+        opens = "// Open starts the day's sales.\n"
+        old_name = ("cart.go", "Add", "// Add puts an item in the cart.\n")
+        new_name = ("cart.go", "Put", "// Put puts an item in the cart.\n")
+        not_in_code = ("cart.go", "Sum", "// Sum adds the prices.\n")
+        (main / "cart.go").write_text(
+            TOTAL + "func Total() {}\n\n" + old_name[2] + "func Add() {}\n"
+        )
+        (main / "till.go").write_text(opens + "func Open() {}\n")
+        (main / "old.go").write_text(READS + "func Load() {}\n")
+        init_repo_and_commit_all(main)
+        (main / "cart.go").write_text(
+            SUMS + "func Total() {}\n\n" + new_name[2] + "func Put() {}\n"
+        )
+        (main / "old.go").unlink()
+        commit_all(main)
+        write_settings_file(
+            main,
+            [
+                old_name,
+                ("cart.go", "Gone", ""),
+                ("cart.go", "Total", TOTAL),
+                ("old.go", "Load", READS),
+                ("till.go", "Open", opens),
+            ],
+        )
+        write_settings_file(
+            worktree,
+            [
+                ("cart.go", "Clear", ""),
+                new_name,
+                not_in_code,
+                ("cart.go", "Total", SUMS),
+                ("till.go", "Open", "// Open opens the till.\n"),
+            ],
+        )
+
+        merged = run_checker(
+            main, "--merge-approvals", str(worktree), "HEAD", paths=[]
+        )
+        result = run_checker(main)
+
+        assert merged.returncode == 0
+        assert merged.stdout.endswith(
+            "3 taken from " + str(worktree) + ", 1 skipped, 1 dropped, "
+            "1 removed with deleted files\n"
+        )
+        assert read_settings_file(main) == {
+            "approved": [
+                {"file": "cart.go", "name": "Gone", "text": ""},
+                {"file": "cart.go", "name": "Total", "text": SUMS},
+                {"file": "cart.go", "name": "Clear", "text": ""},
+                {"file": "cart.go", "name": "Put", "text": new_name[2]},
+                {"file": "till.go", "name": "Open", "text": opens},
+            ],
+            "avoid": {},
+        }
+        assert result.returncode == 0
+
+    @pytest.mark.parametrize(
+        "folder, exit_code, message",
+        [
+            pytest.param(
+                "worktree",
+                1,
+                "cart.go Total: approved differently",
+                id="copies-disagree",
+            ),
+            pytest.param("missing", 2, "no such file", id="no-settings-file"),
+        ],
+    )
+    def test_writes_nothing_when_merge_is_refused(
+        self, tmp_path: Path, folder: str, exit_code: int, message: str
+    ) -> None:
+        """Leave the choice to the owner when no copy is the code.
+
+        Taking either text could drop the owner's real decision, so the
+        comment is named for the owner to approve. A review found that a
+        wrong folder dropped entries and rewrote the main copy, so it is
+        refused too.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        worktree.mkdir()
+        (main / "cart.go").write_text(TOTAL + "func Total() {}\n")
+        init_repo_and_commit_all(main)
+        (main / "cart.go").write_text(SUMS + "func Total() {}\n")
+        commit_all(main)
+        adds = [("cart.go", "Total", "// Total adds the prices.\n")]
+        write_settings_file(main, adds)
+        write_settings_file(worktree, [("cart.go", "Total", TOTAL)])
+        before = (main / ".code-comments.json").read_text()
+
+        result = run_checker(
+            main, "--merge-approvals", str(tmp_path / folder), "HEAD", paths=[]
+        )
+
+        assert result.returncode == exit_code
+        assert message in result.stderr
+        assert (main / ".code-comments.json").read_text() == before

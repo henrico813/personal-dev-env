@@ -8,6 +8,7 @@ Example:
     python3 check_comments.py --repo . --base main --approve \
         --rename Total=Sum --rename cart.go=basket.go shop/*.go
     python3 check_comments.py --repo . --approve-comment shop/cart.go Total
+    python3 check_comments.py --repo . --merge-approvals ../wt 1a2b3c4
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
@@ -22,6 +23,11 @@ after ``--rename OLD=NEW`` moves the entries of each renamed comment or
 
 ``--approve-comment FILE NAME`` records only that comment's text, or
 ``""`` when it is gone, and leaves every other entry as it was.
+
+``--merge-approvals FOLDER COMMIT`` takes ``FOLDER``'s approvals, such
+as a worktree's before removal, for the Go files ``COMMIT`` changed,
+when their text is the comment now. If the two files approve a comment
+differently and neither is the comment now, nothing is written.
 
 The rules are:
 
@@ -42,12 +48,16 @@ avoided words in approved text, or in a license header above
 Exit codes:
     0: Nothing failed.
     1: An ``approved`` finding, or, with ``--base``, filler or an
-        avoided word in a sentence not present at that commit.
+        avoided word in a sentence not present at that commit, or
+        ``--merge-approvals`` found two approvals of a comment, neither
+        of them the comment now.
     2: A path is a folder or unreadable, no Go file was given,
         ``--base`` is not a commit, the settings file is not JSON of
-        the shape above, or ``--approve-comment`` names a FILE that is
+        the shape above, ``--approve-comment`` names a FILE that is
         not Go, an empty NAME, or a NAME that two comments in FILE
-        share.
+        share, or ``--merge-approvals`` names a FOLDER without
+        ``.code-comments.json``, or a COMMIT that ``--repo``'s HEAD
+        lacks or whose changes Git cannot list.
 """
 
 from __future__ import annotations
@@ -903,6 +913,139 @@ def approve_one_comment(repo: Path, file: str, name: str) -> int:
     return 0
 
 
+def list_changed_go_files(repo: Path, commit: str) -> set[str]:
+    """Return the Go files ``commit`` changed, deleted ones included.
+
+    Raises:
+        subprocess.CalledProcessError: Git cannot compare ``commit``
+            with its first parent.
+    """
+    diff = ["diff", "--name-only", "--no-renames", "--relative"]
+    changed = subprocess.run(
+        ["git", "-C", str(repo), *diff, f"{commit}^", commit],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    return {file for file in changed if file.endswith(".go")}
+
+
+def read_named_comments(
+    repo: Path, files: set[str]
+) -> dict[tuple[str, str], str]:
+    """Return each named comment's text in ``files`` by ``(file, name)``,
+    leaving out names two comments share.
+    """
+    comments: list[Comment] = []
+    for file in sorted(files):
+        source = (repo / file).read_text(encoding="utf-8")
+        comments += parse_go_comments(source, file)
+    return {
+        (c.file, c.name): c.text
+        for c in unname_shared_names(comments)[0]
+        if c.name
+    }
+
+
+def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
+    """Take ``folder``'s approvals for the Go files ``commit`` changed.
+
+    An entry is taken when its text is the comment now, since another
+    worktree may have approved a later change. In those files, entries
+    of deleted files, and approved text of gone comments ``folder``
+    lacks, such as an old ``--rename`` name, are dropped.
+
+    Args:
+        repo: The main checkout; its HEAD must contain ``commit``.
+        folder: The worktree whose ``.code-comments.json`` is read.
+        commit: The merged pull request's commit.
+
+    Returns:
+        The exit code described in the module docstring.
+    """
+    git = ["git", "-C", str(repo)]
+    ancestor_check = subprocess.run(
+        [*git, "merge-base", "--is-ancestor", commit, "HEAD"],
+        capture_output=True,
+    )
+    if ancestor_check.returncode != 0:
+        print(
+            f"{repo}: HEAD does not contain {commit}; update it first",
+            file=sys.stderr,
+        )
+        return 2
+    if not (folder / SETTINGS).exists():
+        print(f"{folder / SETTINGS}: no such file", file=sys.stderr)
+        return 2
+    try:
+        approved, avoid = load_settings(repo)
+        incoming, _ = load_settings(folder)
+        changed_files = list_changed_go_files(repo, commit)
+    except (ValueError, subprocess.CalledProcessError) as error:
+        print(error, file=sys.stderr)
+        return 2
+    present_files = {f for f in changed_files if (repo / f).exists()}
+    comments_now = read_named_comments(repo, present_files)
+    merged = {
+        (file, name): text
+        for (file, name), text in approved.items()
+        if file not in changed_files or file in present_files
+    }
+    removed = len(approved) - len(merged)
+    dropped = [
+        (file, name)
+        for (file, name), text in merged.items()
+        if file in present_files
+        and (file, name) not in incoming
+        and (file, name) not in comments_now
+        and text
+    ]
+    for key in dropped:
+        del merged[key]
+    taken = 0
+    skipped: list[tuple[str, str]] = []
+    conflicts: list[tuple[str, str]] = []
+    for key, text in sorted(incoming.items()):
+        file, _ = key
+        if file not in present_files or approved.get(key) == text:
+            continue
+        text_now = comments_now.get(key, "")
+        if text == text_now:
+            merged[key] = text
+            taken += 1
+        elif key not in approved:
+            # Taking it would fail the checker and have agents restore
+            # older text.
+            skipped.append(key)
+        elif approved[key] != text_now:
+            conflicts.append(key)
+    for file, name in conflicts:
+        print(
+            f"{file} {name}: approved differently in {folder}, and neither "
+            "text is the comment now; nothing written",
+            file=sys.stderr,
+        )
+    if conflicts:
+        return 1
+    for file, name in skipped:
+        print(
+            f"{file} {name}: skipped; the approved text is not the comment now"
+        )
+    for file, name in dropped:
+        print(f"{file} {name}: dropped; no longer a comment")
+    if taken or removed or dropped:
+        entries = [
+            {"file": f, "name": n, "text": t} for (f, n), t in merged.items()
+        ]
+        entries.sort(key=lambda e: e["file"])
+        replace_settings_file(repo, entries, avoid)
+    print(
+        f"{SETTINGS}: {taken} taken from {folder}, {len(skipped)} skipped, "
+        f"{len(dropped)} dropped, {removed} removed with deleted files"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check the given Go files and print one line per finding.
 
@@ -940,11 +1083,23 @@ def main(argv: list[str] | None = None) -> int:
         metavar=("FILE", "NAME"),
         help="approve one comment; only the owner, or at their request",
     )
+    parser.add_argument(
+        "--merge-approvals",
+        nargs=2,
+        metavar=("FOLDER", "COMMIT"),
+        help="take FOLDER's approvals for the Go files COMMIT changed; run "
+        "as the cleanup-plan skill says",
+    )
     parser.add_argument("paths", nargs="*", type=Path)
     args = parser.parse_args(argv)
     if args.rename and not args.approve:
         parser.error("--rename needs --approve")
     repo = args.repo.resolve()
+    if args.merge_approvals:
+        if args.approve or args.approve_comment or args.base or args.paths:
+            parser.error("--merge-approvals takes no other option or paths")
+        folder, commit = args.merge_approvals
+        return merge_approvals(repo, Path(folder).resolve(), commit)
     if args.approve_comment:
         if args.approve or args.base or args.paths:
             parser.error(

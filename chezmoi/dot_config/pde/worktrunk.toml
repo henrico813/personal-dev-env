@@ -13,3 +13,10 @@ delete-branch = false
 # no quotes.
 [pre-switch]
 branch-name = "{% if branch and not pr_number %}pde-check-branch {{ branch }}{% endif %}"
+
+# Copy the main checkout's approved comments into a new worktree, so the
+# comment checker protects them there. Only when Git ignores the file, so
+# it is never committed; [ ! -e ] replaces cp -n, which warns in
+# coreutils 9.4.
+[pre-start]
+comment-approvals = "if [ -f {{ primary_worktree_path }}/.code-comments.json ] && [ ! -e .code-comments.json ] && git check-ignore -q .code-comments.json; then cp {{ primary_worktree_path }}/.code-comments.json .; fi"

@@ -115,6 +115,11 @@ in a fresh `zsh -c` that `wt switch --create docs/x` makes `worktrees/docs-x`
 and `wt switch --create Bad_Name` is refused, since a renamed setting would
 otherwise go unnoticed.
 
+A new worktree starts with a copy of the main checkout's
+`.code-comments.json`, your approved comments, when Git ignores that
+file. Removing a worktree with the `cleanup-plan` skill brings its
+approvals back to the main checkout.
+
 ## Terminal Workspaces
 
 Use tmux as the attachment and recovery layer, with separate presentation

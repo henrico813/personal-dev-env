@@ -207,8 +207,9 @@ When source code or tests change:
    polish it merely because more implementation details could be stated.
    The owner is the person who approved text in `.code-comments.json`
    at the repository root. Never change that text or that file, even
-   when the text seems false; report it instead. The one exception:
-   run the checker's `--approve` when the owner asks you to.
+   when the text seems false; report it instead. The exceptions: run
+   the checker's `--approve` when the owner asks you to, and its
+   `--merge-approvals` as the `cleanup-plan` skill says.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
