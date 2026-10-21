@@ -85,8 +85,11 @@ use `gh pr diff 123 --web` when line-specific comments are needed.
 
 ## Worktrees and Branch Names
 
-Both profiles install Worktrunk (`wt`). A worktree's folder is its branch with
-`/` replaced by `-`, under the repository's `worktrees/` folder, so
+Both profiles install Worktrunk (`wt`). It needs Git 2.43 or newer, so stock
+Ubuntu 22.04, which ships Git 2.34, needs a newer Git first.
+
+A worktree's folder is its branch with `/` replaced by `-`, under the
+repository's `worktrees/` folder, so
 `fix/abc-12-login-timeout` lives in `worktrees/fix-abc-12-login-timeout`. List
 worktrees with their branches, or check out a pull request into its own folder:
 
