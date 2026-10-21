@@ -51,6 +51,7 @@ func TestTerminalInventory(t *testing.T) {
 				"jq",
 				"gh",
 				"delta",
+				"wt",
 				"chezmoi",
 				"eza",
 				"zoxide",

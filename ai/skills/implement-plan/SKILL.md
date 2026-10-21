@@ -85,7 +85,9 @@ Before every implementation step:
   `completed` or `noop`. Any prior failure or active/incomplete state requires
   explicit recovery. Then verify its managed worktree path, `vibe/$KEY` branch, HEAD,
   ownership, and cleanliness. Omit `--base`; Vibe rejects it for existing state.
-- For non-Vibe execution, create or select the target worktree first.
+- For non-Vibe execution, select the target worktree first, or create
+  one with `wt switch --create <branch> --no-cd --format=json` and work
+  in the `path` it prints.
 - In that checkout, verify proposed hunk context, affected files, directly
   affected callers, relevant tests, and configuration.
 - Reuse prior evidence as context, not proof of freshness.

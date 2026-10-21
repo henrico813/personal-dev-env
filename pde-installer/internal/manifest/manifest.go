@@ -74,6 +74,7 @@ func Items() []Item {
 		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua, Terminal: true},
 		{Name: "gh", Version: "v2.101.0", Owner: Aqua, Terminal: true},
 		{Name: "delta", Version: "0.19.2", Owner: Aqua, Terminal: true},
+		{Name: "wt", Version: "v0.81.0", Owner: Aqua, Terminal: true},
 		{Name: "chezmoi", Version: "v2.72.0", Owner: Aqua, Terminal: true},
 		{Name: "eza", Version: "v0.23.4", Owner: Aqua, Terminal: true}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua, Terminal: true},
 		{Name: "bottom", Version: "0.11.4", Owner: Aqua, Terminal: true}, {Name: "yq", Version: "v4.53.3", Owner: Aqua, Terminal: true},
