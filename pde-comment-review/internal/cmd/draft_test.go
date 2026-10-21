@@ -14,8 +14,6 @@ import (
 	"pde-comment-review/internal/review"
 )
 
-// Written line by line, not as one raw string, so the comment checker
-// does not take these lines for this file's own comments.
 const shopGo = "package shop\n" +
 	"\n" +
 	"// Sums the prices.\n" +
@@ -65,9 +63,8 @@ const editedShopGo = "package shop\n" +
 	"// Registers the shop's prices.\n" +
 	"func init() {}\n"
 
-// Returns a clone, on a new branch, of a new repository whose main holds
-// shop.go, price.go and cart.go, with shopApprovals as its approval
-// record. Keeps the owner's Git settings and saved reviews out of the test.
+// Returns a clone of a test repository on a new branch, kept apart from the
+// owner's Git settings and reviews.
 func newShopClone(t *testing.T, branch string) string {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -118,8 +115,6 @@ func newShopClone(t *testing.T, branch string) string {
 	return repo
 }
 
-// Runs script with sh in dir, stopping at the first command that fails,
-// and returns what it printed.
 func runScript(t *testing.T, dir, script string) string {
 	t.Helper()
 	run := exec.Command(
@@ -140,9 +135,8 @@ func runScript(t *testing.T, dir, script string) string {
 	return strings.TrimSpace(string(output))
 }
 
-// Verifies that a draft lists each approved comment that was edited,
-// renamed or deleted, and no other. A missed one would let the write
-// approve text the owner never saw.
+// Verifies that a draft lists every comment the owner must answer and no
+// other, so no comment is approved unseen.
 func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	repo := newShopClone(t, "vibe/Add-Tax")
 	// Pushed, so the branch's upstream is its own copy; the base must still
