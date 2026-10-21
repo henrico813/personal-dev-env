@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const COMMENT_APPROVALS: &str = ".code-comments.json";
+
 pub struct RepoLayout {
     pub repo_root: PathBuf,
     pub git_common_dir: PathBuf,
@@ -215,7 +217,8 @@ pub fn ensure_worktree(
                 &base_ref,
             ],
         )?;
-        return validate_worktree(worktree, branch, git_common_dir);
+        validate_worktree(worktree, branch, git_common_dir)?;
+        return copy_comment_approvals(repo_root, worktree);
     }
 
     let existing_branch = branch_exists(repo_root, branch)?;
@@ -241,7 +244,23 @@ pub fn ensure_worktree(
             ],
         )?;
     }
-    validate_worktree(worktree, branch, git_common_dir)
+    validate_worktree(worktree, branch, git_common_dir)?;
+    copy_comment_approvals(repo_root, worktree)
+}
+
+/// Copies the owner's approved comments from the main checkout into a new
+/// worktree, so the comment checker in the container protects them. Skips a
+/// repository that does not ignore the file, since Vibe commits every file it
+/// finds.
+fn copy_comment_approvals(repo_root: &Path, worktree: &Path) -> Result<(), String> {
+    let approvals = repo_root.join(COMMENT_APPROVALS);
+    let ignored = git(worktree, &["check-ignore", "--quiet", COMMENT_APPROVALS]).is_ok();
+    if !approvals.is_file() || !ignored {
+        return Ok(());
+    }
+    std::fs::copy(&approvals, worktree.join(COMMENT_APPROVALS))
+        .map(|_| ())
+        .map_err(|error| format!("copy {}: {error}", approvals.display()))
 }
 
 pub fn is_dirty(repo: &Path) -> Result<bool, String> {
@@ -728,6 +747,27 @@ mod tests {
         .expect("create worktree");
 
         assert_eq!(head_sha(&worktree).expect("worktree head"), remote_main);
+    }
+
+    // The owner's approved comments once lived only in worktrees, so a new
+    // worktree started with none and the comment checker protected nothing.
+    #[test]
+    fn new_worktree_gets_comment_approvals() {
+        let (_temp, repo, _remote) = setup_repo();
+        let approvals = r#"{"approved": [], "avoid": {}}"#;
+        std::fs::write(repo.join(".code-comments.json"), approvals).expect("write approvals");
+        std::fs::create_dir_all(repo.join(".git/info")).expect("mkdir info");
+        std::fs::write(repo.join(".git/info/exclude"), ".code-comments.json\n")
+            .expect("ignore approvals");
+        let worktree = repo.join("worktrees/approvals");
+        std::fs::create_dir_all(worktree.parent().expect("worktree parent")).expect("mkdir");
+
+        ensure_worktree(&repo, &worktree, "vibe/approvals", &common_dir(&repo), None)
+            .expect("create worktree");
+
+        let copied =
+            std::fs::read_to_string(worktree.join(".code-comments.json")).expect("read copy");
+        assert_eq!(copied, approvals);
     }
 
     // Reusing a key works offline because its worktree already exists.
