@@ -64,6 +64,8 @@ pub fn setup_fixture(key: &str) -> Fixture {
         &repo,
         &["-c", "core.hooksPath=/dev/null", "commit", "-m", "fixture"],
     );
+    // Uses the folder name from before `vibe-<key>`, so every run test also
+    // checks that Vibe reuses a worktree found by its branch.
     let worktree = repo.join("worktrees").join(key);
     run_git(
         &repo,

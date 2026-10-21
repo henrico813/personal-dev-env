@@ -155,6 +155,21 @@ fn branch_exists(repo_root: &Path, branch: &str) -> Result<bool, String> {
     Ok(status.success())
 }
 
+/// Returns the linked worktree that has `branch` checked out, if any. Skips
+/// the main checkout, so Vibe never runs a task there.
+pub fn find_branch_worktree(repo_root: &Path, branch: &str) -> Result<Option<PathBuf>, String> {
+    let wanted = format!("branch refs/heads/{branch}");
+    let mut path = None;
+    for line in git_paths_z(repo_root, &["worktree", "list", "--porcelain", "-z"])? {
+        if let Some(found) = line.strip_prefix("worktree ") {
+            path = Some(PathBuf::from(found));
+        } else if line == wanted {
+            return Ok(path.filter(|checkout| checkout != repo_root));
+        }
+    }
+    Ok(None)
+}
+
 pub fn validate_base_target(
     repo_root: &Path,
     worktree: &Path,
