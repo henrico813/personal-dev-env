@@ -365,7 +365,7 @@ approval popups.
 | `PDE_REQUEST_ID` | Set by Herdr for `--herdr-popup`: the request to show first |
 | `PDE_CHECK_MACHINES` | Set to `1` by the inbox for `--herdr-popup` when nothing waits here: show [other machines](#other-herdr-machines) |
 | `HERDR_PLUGIN_CONTEXT_JSON` | Set by Herdr for `--herdr-popup`: JSON whose `workspace_id` is the workspace the popup opened in; saved in `open-popup`. Herdr does not set `HERDR_WORKSPACE_ID` there |
-| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, when set by `chezmoi/dot_config/opencode/plugins/pde-approval-session.js`; recorded as `session_id` and used to find the agent's pane |
+| `OPENCODE_SESSION_ID` | The OpenCode session running the agent, which OpenCode sets for every shell command an agent runs; recorded as `session_id` and used to find the agent's pane |
 
 ## Request ID
 
