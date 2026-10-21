@@ -107,6 +107,35 @@ func TestModifierPreservesSettings(t *testing.T) {
 	}
 }
 
+// Keeps every machine on Claude Opus 5.5. Before this, each machine kept
+// whatever model was set by hand, such as an OpenRouter model. small_model
+// is left alone, because OpenCode uses it for small jobs such as titles.
+func TestModifierSetsDefaultModel(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{
+		"model": "openrouter/example/flash",
+		"small_model": "openrouter/example/small"
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var config struct {
+		Model      string `json:"model"`
+		SmallModel string `json:"small_model"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+	want := "claude-code/claude-opus-5-5[1m]"
+	if config.Model != want {
+		t.Errorf("model = %q, want %q", config.Model, want)
+	}
+	if config.SmallModel != "openrouter/example/small" {
+		t.Errorf("small_model = %q, want unchanged", config.SmallModel)
+	}
+}
+
 func TestMemoryModifierPreservesSettings(t *testing.T) {
 	t.Parallel()
 	output, err := runMemoryModifier(t, `{"custom":true,"chatMessage":{"injectOn":"always"}}`, true)
