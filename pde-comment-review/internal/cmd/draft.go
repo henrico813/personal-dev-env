@@ -9,26 +9,155 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"pde-comment-review/internal/review"
 )
 
+// Finds the Go comments in the checkout at dir that the owner must answer,
+// and saves them as the draft of the review named after the branch. When
+// it cannot be sure what the owner should see, such as with no base or a
+// rename with two candidates, it saves nothing and says what to fix.
+func saveBranchDraft(dir, checker string) (review.Draft, error) {
+	name, d, err := buildBranchDraft(dir, checker)
+	if err != nil {
+		return review.Draft{}, fmt.Errorf("nothing was saved: %w", err)
+	}
+	if err := review.SaveDraft(name, d); err != nil {
+		return review.Draft{}, err
+	}
+	return d, nil
+}
+
+// Returns the review name for the branch checked out at dir, and its
+// draft.
+func buildBranchDraft(dir, checker string) (string, review.Draft, error) {
+	repo, err := runGit(
+		dir,
+		"rev-parse",
+		"--show-toplevel",
+	)
+	if err != nil {
+		return "", review.Draft{}, err
+	}
+	repo = strings.TrimSpace(repo)
+	branch, err := runGit(
+		repo,
+		"branch",
+		"--show-current",
+	)
+	if err != nil {
+		return "", review.Draft{}, err
+	}
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return "", review.Draft{}, errors.New(
+			"no branch is checked out, so the review has no name; check out a branch, such as with git switch -c NAME",
+		)
+	}
+	name, err := review.NameForBranch(branch)
+	if err != nil {
+		return "", review.Draft{}, err
+	}
+	// A new worktree has none, and without it an edited approved comment
+	// would look new, so the owner would never see the approved text.
+	if _, err := os.Stat(filepath.Join(repo, settingsFile)); errors.Is(err, fs.ErrNotExist) {
+		return "", review.Draft{}, fmt.Errorf(
+			`%s is missing, so the draft cannot tell which comments the owner approved; copy it from the checkout where the owner last approved comments, such as one that git worktree list shows. Only if the owner confirms this repository never had approved comments, create an empty one with: echo '{}' > %s`,
+			settingsFile,
+			settingsFile,
+		)
+	}
+	base, err := findDraftBase(repo)
+	if err != nil {
+		return "", review.Draft{}, err
+	}
+	d, err := buildDraft(
+		repo,
+		base,
+		checker,
+	)
+	return name, d, err
+}
+
+// Returns the commit where the branch left the remote's default branch,
+// such as origin/main. Not the branch's upstream: once a branch is
+// pushed, that is often its own pushed copy, which would hide the
+// comments already pushed.
+func findDraftBase(repo string) (string, error) {
+	listed, err := runGit(
+		repo,
+		"for-each-ref",
+		"--format=%(refname)",
+		"refs/remotes/*/HEAD",
+	)
+	if err != nil {
+		return "", err
+	}
+	defaults := strings.Fields(listed)
+	switch {
+	case len(defaults) == 0:
+		return "", errors.New(
+			"no remote has a default branch to compare the branch with; set one with git remote set-head REMOTE --auto",
+		)
+	// Git 2.48 and later set a missing default again on each fetch, so
+	// deleting one lasts only with followRemoteHEAD off.
+	case len(defaults) > 1:
+		remotes := strings.Join(defaults, " and ")
+		remotes = strings.ReplaceAll(remotes, "refs/remotes/", "")
+		remotes = strings.ReplaceAll(remotes, "/HEAD", "")
+		return "", fmt.Errorf(
+			"remotes %s each have a default branch, so which one to compare the branch with is unclear; for each remote but one, run git remote set-head NAME -d and git config remote.NAME.followRemoteHEAD never",
+			remotes,
+		)
+	}
+	base, err := runGit(
+		repo,
+		"merge-base",
+		"HEAD",
+		defaults[0],
+	)
+	// merge-base exits 1, printing nothing, when there is no shared commit.
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return "", fmt.Errorf(
+			"the branch shares no commit with %s, so its changes are unknown; if this clone is shallow, fetch its history with git fetch --unshallow",
+			strings.TrimPrefix(defaults[0], "refs/remotes/"),
+		)
+	}
+	return strings.TrimSpace(base), err
+}
+
 // Returns an item for each comment the owner must answer: an approved
 // comment that changed, was renamed or lost its code.
-func buildDraft(repo, checker string) (review.Proposals, error) {
-	approvals, err := readApprovals(repo)
+func buildDraft(repo, base, checker string) (review.Draft, error) {
+	changed, err := listChangedGoFiles(repo, base)
 	if err != nil {
-		return review.Proposals{}, err
+		return review.Draft{}, err
+	}
+	approvals, renames, err := readMovedApprovals(repo, changed)
+	if err != nil {
+		return review.Draft{}, err
 	}
 	named, checked, err := readCheckoutComments(
 		repo,
 		checker,
+		changed,
 		approvals,
 	)
 	if err != nil {
-		return review.Proposals{}, err
+		return review.Draft{}, err
+	}
+	textAtBase, err := readBaseComments(
+		repo,
+		base,
+		checker,
+		changed,
+	)
+	if err != nil {
+		return review.Draft{}, err
 	}
 	renamed := moveRenamedApprovals(
 		approvals,
@@ -41,6 +170,8 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 		key := commentKey{c.File, c.Name}
 		old, isApproved := approvals[key]
 		_, isRenamed := renamed[key]
+		_, inChangedFile := changed[c.File]
+		before, wasAtBase := textAtBase[key]
 		switch {
 		case isApproved && old == "":
 			problems = append(
@@ -52,8 +183,10 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 		// only in a file that has an item.
 		case isApproved && old == c.Text && !isRenamed:
 			continue
-		case !isApproved:
+		case !isApproved && (!inChangedFile || wasAtBase && before == c.Text):
 			continue
+		case !isApproved:
+			old = c.Text
 		}
 		item := review.Item{
 			File:     c.File,
@@ -92,12 +225,11 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 	}
 	if len(problems) > 0 {
 		sort.Strings(problems)
-		return review.Proposals{}, fmt.Errorf(
+		return review.Draft{}, fmt.Errorf(
 			"fix these comments first:\n%s",
 			strings.Join(problems, "\n"),
 		)
 	}
-	var renames []string
 	for key, from := range renamed {
 		renames = append(renames, from+"="+key.name)
 	}
@@ -105,12 +237,96 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 	for i := range items {
 		items[i].ID = i + 1
 	}
-	return review.Proposals{
-		Version: review.Version,
-		Repo:    repo,
-		Items:   items,
-		Renames: renames,
+	return review.Draft{
+		Base: base,
+		Proposals: review.Proposals{
+			Version: review.Version,
+			Repo:    repo,
+			Items:   items,
+			Renames: renames,
+		},
 	}, nil
+}
+
+// Returns each Go file changed since base, staged, unstaged or untracked,
+// with its path at base: "" for a new file, and the old path for a file
+// Git saw moved. Deleted files are left out: their approved comments
+// count as gone.
+func listChangedGoFiles(repo, base string) (map[string]string, error) {
+	diff, err := runGit(
+		repo,
+		"diff",
+		"-z",
+		"--name-status",
+		"-M",
+		base,
+		"--",
+	)
+	if err != nil {
+		return nil, err
+	}
+	untracked, err := runGit(
+		repo,
+		"ls-files",
+		"-z",
+		"--others",
+		"--exclude-standard",
+	)
+	if err != nil {
+		return nil, err
+	}
+	isNUL := func(r rune) bool { return r == 0 }
+	changed := map[string]string{}
+	// Each change is a status and a path; a move has the old path too.
+	fields := strings.FieldsFunc(diff, isNUL)
+	for i := 0; i+1 < len(fields); i += 2 {
+		status, path, from := fields[i], fields[i+1], fields[i+1]
+		if strings.HasPrefix(status, "R") {
+			i++
+			path = fields[i+1]
+		}
+		switch {
+		case status == "D" || !strings.HasSuffix(path, ".go"):
+		case status == "A":
+			changed[path] = ""
+		default:
+			changed[path] = from
+		}
+	}
+	for _, path := range strings.FieldsFunc(untracked, isNUL) {
+		if strings.HasSuffix(path, ".go") {
+			changed[path] = ""
+		}
+	}
+	return changed, nil
+}
+
+// Returns the owner's approvals with each file Git saw moved under its new
+// path, and an "OLD=NEW" pair for each moved file that has approvals, so
+// the comments of a moved file are not taken for deleted ones.
+func readMovedApprovals(repo string, changed map[string]string) (map[commentKey]string, []string, error) {
+	approved, err := readApprovals(repo)
+	if err != nil {
+		return nil, nil, err
+	}
+	movedTo := map[string]string{}
+	for path, from := range changed {
+		if from != "" && from != path {
+			movedTo[from] = path
+		}
+	}
+	approvals := map[commentKey]string{}
+	var renames []string
+	for key, text := range approved {
+		if to, ok := movedTo[key.file]; ok {
+			if pair := key.file + "=" + to; !slices.Contains(renames, pair) {
+				renames = append(renames, pair)
+			}
+			key.file = to
+		}
+		approvals[key] = text
+	}
+	return approvals, renames, nil
 }
 
 // Returns the comments in the checkout's files that have approvals, and
@@ -118,9 +334,13 @@ func buildDraft(repo, checker string) (review.Proposals, error) {
 func readCheckoutComments(
 	repo string,
 	checker string,
+	changed map[string]string,
 	approvals map[commentKey]string,
 ) ([]namedComment, string, error) {
 	files := map[string]bool{}
+	for file := range changed {
+		files[file] = true
+	}
 	for key := range approvals {
 		files[key.file] = true
 	}
@@ -141,6 +361,44 @@ func readCheckoutComments(
 		approvals,
 		checker,
 	)
+}
+
+// Returns the text each named comment had at base, for the changed files
+// that existed then, under the files' current paths.
+func readBaseComments(
+	repo string,
+	base string,
+	checker string,
+	changed map[string]string,
+) (map[commentKey]string, error) {
+	sources := map[string]string{}
+	for file, from := range changed {
+		if from == "" {
+			continue
+		}
+		text, err := runGit(
+			repo,
+			"show",
+			base+":"+from,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sources[file] = text
+	}
+	named, _, err := readNamedComments(
+		sources,
+		nil,
+		checker,
+	)
+	if err != nil {
+		return nil, err
+	}
+	texts := map[commentKey]string{}
+	for _, c := range named {
+		texts[commentKey{c.File, c.Name}] = c.Text
+	}
+	return texts, nil
 }
 
 // Approves every comment in a copy of sources, with approvals as its
@@ -333,4 +591,26 @@ func isNameShared(checked string, key commentKey) bool {
 		`(?m)^` + regexp.QuoteMeta(key.file) + `:\d+ ` + regexp.QuoteMeta(key.name) + `: cannot be approved;`,
 	)
 	return shared.MatchString(checked)
+}
+
+// Runs git in repo and returns what it printed, or an error with what it
+// printed to stderr.
+func runGit(repo string, args ...string) (string, error) {
+	gitArgs := append(
+		[]string{"-C", repo},
+		args...,
+	)
+	run := exec.Command("git", gitArgs...)
+	var stderr strings.Builder
+	run.Stderr = &stderr
+	output, err := run.Output()
+	if err != nil {
+		return "", fmt.Errorf(
+			"git %s: %w: %s",
+			strings.Join(args, " "),
+			err,
+			strings.TrimSpace(stderr.String()),
+		)
+	}
+	return string(output), nil
 }
