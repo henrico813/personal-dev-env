@@ -75,7 +75,7 @@ Before every implementation step:
   of at most 48 characters matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Run
   `vibe status --key "$KEY" --long`; treat only its specific no-record error as
   absence. Also inspect Git's worktree list,
-  `refs/heads/vibe/$KEY`, and the expected `worktrees/$KEY` path. Use
+  `refs/heads/vibe/$KEY`, and the `worktrees/vibe-$KEY` path. Use
   `--base "$BASE"` only when none exists. Vibe rejects a concurrent run or
   existing managed state atomically. Stop if relevant dirty content is not
   represented by that commit.
