@@ -291,7 +291,7 @@ pde-installer install --repo-root "$REPO_ROOT"
 pde-installer doctor --repo-root "$REPO_ROOT"
 
 inventory="$(pde-installer list --repo-root "$REPO_ROOT")"
-expected_items='zsh git xclip unzip tmux aqua fd fzf ripgrep bat jq gh delta chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect'
+expected_items='zsh git xclip unzip tmux aqua fd fzf ripgrep bat jq gh delta wt chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect'
 actual_items="$(awk -F '\t' 'NR > 1 { print $2 }' <<<"$inventory" | paste -sd ' ' -)"
 [[ "$actual_items" == "$expected_items" ]]
 item_status() {
@@ -301,7 +301,7 @@ item_status() {
 for item in zsh git xclip unzip; do
 	item_status "$item" installed
 done
-for item in tmux aqua fd fzf ripgrep bat jq gh delta chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect; do
+for item in tmux aqua fd fzf ripgrep bat jq gh delta wt chezmoi eza zoxide bottom yq yazi ya repository-config antidote tpm ohmyzsh powerlevel10k zsh-z zsh-autosuggestions zsh-completions zsh-syntax-highlighting zsh-history-substring-search tmux-sensible tmux-resurrect; do
 	item_status "$item" current
 done
 for item in build-essential bison gopls lua-language-server '@opencode/cli' opencode-inline-shim '@openai/codex' '@earendil-works/pi-coding-agent' '@anthropic-ai/claude-code' planner blink.cmp FiraCode JetBrainsMono neovim go rust node keychain; do

@@ -1,0 +1,15 @@
+# Worktrunk settings for this setup. ~/.zshenv points
+# WORKTRUNK_SYSTEM_CONFIG_PATH here, so settings in
+# ~/.config/worktrunk/config.toml still win.
+
+# A worktree's folder is its branch with "/" replaced by "-".
+worktree-path = "{{ repo_path }}/worktrees/{{ branch | sanitize }}"
+
+[remove]
+delete-branch = false
+
+# Refuse a badly named new branch, but not a pull request's (wt switch
+# pr:N), which its author named. Worktrunk shell-escapes {{ branch }}, so
+# no quotes.
+[pre-switch]
+branch-name = "{% if branch and not pr_number %}pde-check-branch {{ branch }}{% endif %}"

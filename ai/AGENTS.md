@@ -114,6 +114,27 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
 - Only `nobs read` accepts the full path that `nobs find` prints.
   `nobs find` and the other `nobs` commands take vault-relative paths.
 
+## Branches and Worktrees
+
+- Before naming a branch or writing a commit title, run
+  `git config --local --get-regexp '^(msg|pde)\.'`. It prints nothing
+  when the repository sets neither. A `pde.branchPattern` value
+  replaces the branch rule below, and `msg.titlePrefix` allows a prefix
+  before the commit type.
+- Name a new branch `<type>/<words>`: a `git-messages` commit type or
+  `vibe`, then lowercase letters and digits joined by single hyphens,
+  at most 48 characters, issue key first when there is one, such as
+  `fix/abc-12-login-timeout`.
+- Create a worktree only with
+  `wt switch --create <branch> --no-cd --format=json`, and work in the
+  `path` it prints. `--create` starts from the default branch, so a
+  stacked branch adds `--base <parent>`. Vibe creates its own worktrees.
+- Check out a pull request with
+  `wt switch pr:<number> --no-cd --format=json`, and find a branch's
+  worktree with `wt list --format=json`.
+- Never run `wt merge` or `wt remove`. Merge with the `pull-request`
+  skill, and remove worktrees with the `cleanup-plan` skill.
+
 ## Git Workflow
 
 - Verify the exact files in a PR diff before merging.

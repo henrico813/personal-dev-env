@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Refuse a badly named new branch. Worktrunk runs this before wt switch
+# (see ~/.config/pde/worktrunk.toml).
+#
+# A repository can replace the <type>/<words> rule with a regex in
+# `git config pde.branchPattern`.
+set -euo pipefail
+
+branch=$1
+
+# A branch that already exists here or on a remote always passes; it was
+# named before this rule or by someone else.
+if git show-ref --verify --quiet "refs/heads/$branch"; then
+    exit 0
+fi
+for remote in $(git remote); do
+    if git show-ref --verify --quiet "refs/remotes/$remote/$branch"; then
+        exit 0
+    fi
+done
+
+# Only this repository's config counts, never a global one.
+if pattern=$(git config --local --get pde.branchPattern); then
+    # [[ =~ ]] returns 2 when the pattern is not a valid regex.
+    status=0
+    [[ $branch =~ $pattern ]] || status=$?
+    case $status in
+        0) exit 0 ;;
+        1)
+            printf 'branch %s must match pde.branchPattern: %s\n' "$branch" "$pattern" >&2
+            exit 1
+            ;;
+        *)
+            printf 'pde.branchPattern in %s is not a valid regex: %s\n' "$(git rev-parse --show-toplevel)" "$pattern" >&2
+            exit 2
+            ;;
+    esac
+fi
+
+types='feat|fix|docs|test|refactor|perf|build|ci|chore|style|revert|vibe'
+rule="^($types)/[a-z0-9]+(-[a-z0-9]+)*$"
+words=${branch#*/}
+if [[ ! $branch =~ $rule ]] || ((${#words} > 48)); then
+    printf 'branch %s must be <type>/<words>, such as fix/abc-12-login-timeout\n' "$branch" >&2
+    printf 'type: %s\n' "${types//|/, }" >&2
+    printf 'words: lowercase letters and digits joined by single hyphens, at most 48 characters\n' >&2
+    exit 1
+fi
