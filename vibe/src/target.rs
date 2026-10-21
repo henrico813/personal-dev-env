@@ -74,7 +74,9 @@ impl RunTarget {
         format!("vibe/{}", self.slug)
     }
     pub(crate) fn worktree_path(&self) -> PathBuf {
-        self.repo_root.join("worktrees").join(&self.slug)
+        self.repo_root
+            .join("worktrees")
+            .join(format!("vibe-{}", self.slug))
     }
     pub(crate) fn state_dir(&self, home: &Path) -> PathBuf {
         home.join(".local/state/vibe")
@@ -168,5 +170,22 @@ mod tests {
     #[test]
     fn empty_slug_falls_back() {
         assert_eq!(slugify("---"), "vibe");
+    }
+
+    // Verifies that a Vibe worktree folder is its branch with `/` replaced by
+    // `-`, so the owner can find the folder from a pull request's branch.
+    #[test]
+    fn folder_name_follows_branch_name() {
+        let target = RunTarget::from_parts(
+            "Demo key",
+            PathBuf::from("/repo"),
+            PathBuf::from("/repo/.git"),
+        );
+
+        assert_eq!(target.branch(), "vibe/demo-key");
+        assert_eq!(
+            target.worktree_path(),
+            PathBuf::from("/repo/worktrees/vibe-demo-key")
+        );
     }
 }
