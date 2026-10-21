@@ -121,6 +121,7 @@ fi
 
 printf '%s\n' "$input" | jq \
     --arg plugin "@openchamber/opencode-claude@1.1.0" \
+    --arg model "claude-code/claude-opus-5-5[1m]" \
     --arg baseURL "$goog_base_url" \
     --arg keyFile "{file:~/.config/opencode/goog.key}" \
     --argjson googModels "${goog_models:-null}" \
@@ -160,6 +161,8 @@ printf '%s\n' "$input" | jq \
     end
     | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
     | del(.plugin)
+    # Replace any hand-set model so every machine starts on Claude Opus 5.5.
+    | .model = $model
     | (if $writeGoog then
         (if (.provider? | type) == "object" then .provider |= del(.ollama) else . end)
         | (if .provider? == {} then del(.provider) else . end)
