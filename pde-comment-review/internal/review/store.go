@@ -127,12 +127,11 @@ func OpenReview(name string) (*Review, error) {
 
 // Reads whatever is saved for name; a new review has no rounds.
 func loadReview(name string) (*Review, error) {
-	// The name becomes a folder name, so it must not climb out of the state
-	// folder.
-	if !namePattern.MatchString(name) {
-		return nil, fmt.Errorf("review name %q may use only a-z, 0-9, '.', '_', and '-'", name)
+	dir, err := buildReviewDir(name)
+	if err != nil {
+		return nil, err
 	}
-	r := &Review{Name: name, Dir: filepath.Join(FindStateRoot(), name), Notes: map[int]Note{}, Decisions: map[int]Decision{}}
+	r := &Review{Name: name, Dir: dir, Notes: map[int]Note{}, Decisions: map[int]Decision{}}
 	for round := 1; ; round++ {
 		data, err := os.ReadFile(buildRoundFilePath(r.Dir, round))
 		if errors.Is(err, fs.ErrNotExist) {
@@ -159,6 +158,15 @@ func loadReview(name string) (*Review, error) {
 	}
 	r.AppliedRound = applied.Round
 	return r, nil
+}
+
+func buildReviewDir(name string) (string, error) {
+	// The name becomes a folder name, so it must not climb out of the state
+	// folder.
+	if !namePattern.MatchString(name) {
+		return "", fmt.Errorf("review name %q may use only a-z, 0-9, '.', '_', and '-'", name)
+	}
+	return filepath.Join(FindStateRoot(), name), nil
 }
 
 func buildRoundFilePath(dir string, round int) string {
