@@ -95,8 +95,11 @@ pub fn validate_base_target(target: &RunTarget, base: Option<&str>) -> Result<()
 }
 
 pub fn prepare(target: &RunTarget, base: Option<&str>) -> Result<WorktreeSession, String> {
-    let worktree = target.worktree_path();
     let branch = target.branch();
+    // Reuse the worktree that already has this branch, such as one from
+    // before folders were named `vibe-<slug>`.
+    let worktree = git::find_branch_worktree(target.repo_root(), &branch)?
+        .unwrap_or_else(|| target.worktree_path());
     git::ensure_worktree(
         target.repo_root(),
         &worktree,

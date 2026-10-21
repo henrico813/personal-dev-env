@@ -11,8 +11,8 @@ longer needed, stop Vibe and remove only the stale claim file:
 `~/.local/state/vibe/<basename>-<16-hex-git-common-dir-hash>/<slug>/key`
 
 Removing that file discards the ownership marker, not the run directories.
-The next run with the new key reuses the existing `vibe/<slug>` branch,
-`worktrees/<slug>` worktree, and slug state directory. `vibe status --key
+The next run with the new key reuses the existing `vibe/<slug>` branch, its
+worktree, and slug state directory. `vibe status --key
 <old-key>` then reports a stored-key conflict. Back up or remove the old run
 state separately only when it is no longer needed. There is no Vibe command
 that clears a claim.

@@ -35,7 +35,9 @@ Each slug directory contains:
 it. `runs_index.jsonl` is only a lookup aid; status also scans the runs
 directory and ignores index paths outside it.
 
-The managed branch is `vibe/<slug>` and its worktree is
+The managed branch is `vibe/<slug>`. A new worktree is
+`<repo-root>/worktrees/vibe-<slug>`, the branch name with `/` replaced by `-`.
+A run first reuses any worktree already on the branch, such as an older
 `<repo-root>/worktrees/<slug>`. State from the pre-0.8.0
 `~/.local/state/vibe/<basename>/` layout is orphaned and is not migrated.
 
