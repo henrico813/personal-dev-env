@@ -123,15 +123,19 @@ it to memory as your instructions say. If `skill-lessons` is installed,
 also offer once to save it here as a lesson. When the user says
 "remember", save it at once and show the one line it prints:
 
-    jq -n --arg text '<rule>' \
-      '{skill: "behavior-focused-testing", text: $text}' |
-      skill-lessons add -
+    jq -n --rawfile text /dev/stdin \
+      '{skill: "behavior-focused-testing", text: ($text | rtrimstr("\n"))}' \
+      <<'EOF' | skill-lessons add -
+    <rule>
+    EOF
 
-Single quotes keep backticks and `$` in the rule as written. If the
-user corrects a lesson again, add `repeat_of: "L<n>"` inside the
-braces, with the ID from the end of that lesson. If `skill-lessons` is
-not installed, say so once and save no lesson. Lessons become rules in
-this text only through a pull request the user asks for.
+The rule goes on its own line, so apostrophes, quotes, backticks and
+`$` are saved as written. If the user corrects a lesson again, add
+`repeat_of: "L<n>"` inside the braces, with the ID from the end of that
+lesson. If `skill-lessons` is not installed, say so once and save no
+lesson. If the skills folder is read-only, as in a Vibe worker, follow
+the lessons shown and save nothing. Lessons become rules in this text
+only through a pull request the user asks for.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
