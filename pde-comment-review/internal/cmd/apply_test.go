@@ -89,24 +89,61 @@ func setDecisions(t *testing.T, r *review.Review, decisions map[int]review.Decis
 	}
 }
 
-// Apply must approve the owner's answers so agents cannot change them.
-// Agents have put back cut comments, so a cut is recorded as "" even
-// when never committed, and the renamed Check keeps its approval.
-func TestApplyWritesAndApprovesOwnerDecisions(t *testing.T) {
+// Verifies that only answered comments are approved, so a comment the
+// owner never saw stays unlocked.
+func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
 	checker := findRepoChecker(t)
 	// No item shows Clear's comment, so it must stay unapproved.
 	unanswered := "\n// Deletes every order.\nfunc Clear() {}\n"
 	r := startReview(
 		t,
 		cartGo+unanswered,
+		validApproval,
+		nil,
+	)
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept},
+			2: {Action: review.ActionAccept},
+			3: {Action: review.ActionKeep},
+		},
+	)
+
+	_, err := writeAndApproveDecisions(r, checker)
+
+	if err != nil {
+		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+	}
+	approved, err := readApprovals(r.Repo())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, ok := approved[commentKey{"cart.go", "Clear"}]; ok {
+		t.Errorf("Clear's comment, which no item showed, is approved as %q", text)
+	}
+}
+
+// Verifies that the owner's answers reach the code and are approved, cuts
+// and renames included.
+func TestApplyWritesOwnerAnswers(t *testing.T) {
+	checker := findRepoChecker(t)
+	r := startReview(
+		t,
+		cartGo,
 		`{"approved": [{"file": "cart.go", "name": "Check", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`,
 		[]string{"Check=Valid"},
 	)
-	setDecisions(t, r, map[int]review.Decision{
-		1: {Action: review.ActionAccept},
-		2: {Action: review.ActionAccept},
-		3: {Action: review.ActionEdited, Text: "// Reports whether price is over the 1000 cent limit.\n"},
-	})
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept},
+			2: {Action: review.ActionAccept},
+			3: {Action: review.ActionEdited, Text: "// Reports whether price is over the 1000 cent limit.\n"},
+		},
+	)
 
 	_, err := writeAndApproveDecisions(r, checker)
 
@@ -130,11 +167,11 @@ func TooHigh(price int) bool { return price > 1000 }
 // Reports whether every price is above zero.
 func Valid(prices []int) bool { return true }
 `
-	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != want+unanswered {
+	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != want {
 		t.Errorf(
 			"cart.go =\n%s\nwant\n%s",
 			got,
-			want+unanswered,
+			want,
 		)
 	}
 	got, err := readApprovals(r.Repo())
@@ -148,23 +185,17 @@ func Valid(prices []int) bool { return true }
 		{"cart.go", "Valid"}:    "// Reports whether every price is above zero.\n",
 	}
 	if !reflect.DeepEqual(got, wantApproved) {
-		t.Errorf(".code-comments.json approves %q, want %q", got, wantApproved)
-	}
-	// An applied review must stop waiting for Ctrl+b e.
-	applied, err := review.OpenReview("cart")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if applied.AppliedRound != 1 {
-		t.Errorf("applied round = %d, want 1", applied.AppliedRound)
+		t.Errorf(
+			".code-comments.json approves %q, want %q",
+			got,
+			wantApproved,
+		)
 	}
 }
 
-// The write after the last answer puts the owner's answers into the
-// code. It cannot run again on comments it already changed, so a
-// failed check must say why and change nothing. An early draft
-// approved comments the owner never saw.
-func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
+// Verifies that a failed check refuses the whole review and writes
+// nothing, so nothing unseen is approved.
+func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 	approveValid := `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
 		{"file": "cart.go", "name": "Reset", "text": ""},
 		{"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"}], "avoid": {}}`

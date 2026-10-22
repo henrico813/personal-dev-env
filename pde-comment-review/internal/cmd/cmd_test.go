@@ -123,9 +123,9 @@ func startSecondRound(
 	return r.Repo()
 }
 
-// An agent's review once failed at apply after the owner had answered
-// all 22 items. Add must refuse such a review before the owner sees it.
-func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
+// Verifies that saving refuses a review the final write would refuse,
+// since one review failed after the owner answered all 22 items.
+func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 	tests := []struct {
 		name   string
 		onDisk string
@@ -249,10 +249,8 @@ func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
 	}
 }
 
-// After the first real review was refused, the agent fixed it with items
-// whose old was the approved text, and the refusal now tells agents to do
-// that. If add refused these too, agents could never propose a change to
-// an approved comment.
+// Verifies that an item may quote the approved wording, which is how
+// agents propose rewording an approved comment.
 func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 	rewordValid := review.Item{
 		ID:       4,
@@ -261,8 +259,43 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 		Old:      "// Reports whether every price is above zero.\n",
 		New:      "// Reports whether no price is negative.\n",
 	}
+
+	roundFile, err := addScratchReview(
+		t,
+		cartGo,
+		validApproval,
+		cutCurrency,
+		rewordTotal,
+		keepTooHigh,
+		rewordValid,
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"addRound() error = %v",
+			err,
+		)
+	}
+	if _, err := os.Stat(roundFile); err != nil {
+		t.Errorf(
+			"round 1 was not saved: %v",
+			err,
+		)
+	}
+}
+
+// Verifies that two approved comments with the same words are told apart
+// by name, so an agent can propose rewording both.
+func TestAddKeepsSameWordedCommentsApart(t *testing.T) {
+	rewordValid := review.Item{
+		ID:       1,
+		File:     "cart.go",
+		Proposal: review.ProposeReword,
+		Old:      "// Reports whether every price is above zero.\n",
+		New:      "// Reports whether no price is negative.\n",
+	}
 	rewordPositive := review.Item{
-		ID:       5,
+		ID:       2,
 		File:     "cart.go",
 		Name:     "Positive",
 		Proposal: review.ProposeReword,
@@ -275,9 +308,6 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 		cartGo+"\n// Reports whether no price is below zero.\nfunc Positive() bool { return true }\n",
 		`{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
 			{"file": "cart.go", "name": "Positive", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`,
-		cutCurrency,
-		rewordTotal,
-		keepTooHigh,
 		rewordValid,
 		rewordPositive,
 	)
@@ -296,10 +326,9 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 	}
 }
 
-// The first real review's rewritten comments sat in files that earlier
-// rounds listed. If add checked only the new round's files, a round 2 for
-// another file would save a review that apply must still refuse.
-func TestAddChecksFilesOfEarlierRounds(t *testing.T) {
+// Verifies that saving a later round rechecks earlier rounds' files, so a
+// problem there is caught before the owner answers.
+func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
 	repo := startSecondRound(
 		t,
 		map[string]string{
