@@ -144,3 +144,41 @@ func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
 		t.Errorf("press after the next pause = %v, want Keep", later)
 	}
 }
+
+// Keeping a comment whose code was removed would be recorded as a cut the
+// owner never chose.
+func TestRemovedCodeCannotBeKept(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n",
+		review.Item{
+			ID:          1,
+			File:        "wire.go",
+			Name:        "Dial",
+			Old:         "// Dials the server.\n",
+			Proposal:    review.ProposeCut,
+			CodeRemoved: true,
+		},
+	)
+	start := time.Now()
+	v.Show(0, start)
+
+	screen := colorCodes.ReplaceAllString(strings.Join(v.BuildScreen(), "\n"), "")
+	keep := v.PressKey("o", start.Add(Settle))
+	cut := v.PressKey("c", start.Add(Settle))
+
+	if want := "Code removed. Drop this comment?\n-// Dials the server."; !strings.Contains(screen, want) {
+		t.Errorf(
+			"screen does not show %q:\n%s",
+			want,
+			screen,
+		)
+	}
+	if keep != None || cut != Cut {
+		t.Errorf(
+			"o = %v, c = %v; want None, Cut",
+			keep,
+			cut,
+		)
+	}
+}

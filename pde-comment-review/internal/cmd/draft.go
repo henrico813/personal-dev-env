@@ -13,20 +13,41 @@ import (
 	"sort"
 	"strings"
 
+	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/review"
 )
 
+// Saves the branch's draft as round 1 of a new review and returns it.
+func draftReview(dir, checker string) (review.Proposals, error) {
+	name, d, err := saveBranchDraft(dir, checker)
+	if err != nil || len(d.Proposals.Items) == 0 {
+		return d.Proposals, err
+	}
+	data, err := json.Marshal(d.Proposals)
+	if err == nil {
+		err = saveRound(
+			name,
+			data,
+			checker,
+		)
+	}
+	return d.Proposals, err
+}
+
 // Saves the comments the owner must answer as the draft of the branch's
 // review.
-func saveBranchDraft(dir, checker string) (review.Draft, error) {
+func saveBranchDraft(dir, checker string) (string, review.Draft, error) {
 	name, d, err := buildBranchDraft(dir, checker)
+	if err == nil {
+		err = review.MoveFinishedReviewAside(name)
+	}
 	if err != nil {
-		return review.Draft{}, fmt.Errorf("nothing was saved: %w", err)
+		return "", review.Draft{}, fmt.Errorf("nothing was saved: %w", err)
 	}
 	if err := review.SaveDraft(name, d); err != nil {
-		return review.Draft{}, err
+		return "", review.Draft{}, err
 	}
-	return d, nil
+	return name, d, nil
 }
 
 // Returns the review name for the branch checked out at dir, and its
@@ -168,6 +189,9 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 		_, inChangedFile := changed[c.File]
 		before, wasAtBase := textAtBase[key]
 		switch {
+		// A comment with a directive line cannot be written back.
+		case comment.CheckWholeLines(c.Text) != nil:
+			continue
 		case isApproved && old == "":
 			problems = append(
 				problems,

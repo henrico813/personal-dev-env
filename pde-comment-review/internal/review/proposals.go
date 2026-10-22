@@ -126,6 +126,13 @@ func findItemProblem(repo string, item Item) error {
 	default:
 		return fmt.Errorf("proposal %q must be keep, cut, or reword", item.Proposal)
 	}
+	if item.CodeRemoved && (item.Name == "" || item.Proposal != ProposeCut) {
+		return errors.New("an item with code_removed needs a name and proposal cut")
+	}
+	// The write finds a named item by its name, so its old may be gone.
+	if item.Name != "" {
+		return nil
+	}
 	data, err := os.ReadFile(filepath.Join(repo, item.File))
 	if err != nil {
 		return err
@@ -162,13 +169,18 @@ func findOnce(text, old string) (int, error) {
 
 // Returns up to codeLinesAround lines of code above and below the item's
 // comment in repo, to show it in place.
-func ReadCodeAround(repo string, item Item, codeLinesAround int) (before, after []string, err error) {
+func ReadCodeAround(
+	repo string,
+	item Item,
+	foundByName map[int]string,
+	codeLinesAround int,
+) (before, after []string, err error) {
 	data, err := os.ReadFile(filepath.Join(repo, item.File))
 	if err != nil {
 		return nil, nil, err
 	}
-	text := string(data)
-	at, err := findOnce(text, item.Old)
+	text, current := string(data), findCurrentComment(item, foundByName)
+	at, err := findOnce(text, current)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", item.File, err)
 	}
@@ -176,23 +188,35 @@ func ReadCodeAround(repo string, item Item, codeLinesAround int) (before, after 
 	if at > 0 {
 		before = strings.Split(strings.TrimSuffix(text[:at], "\n"), "\n")
 	}
-	if rest := text[at+len(item.Old):]; rest != "" {
+	if rest := text[at+len(current):]; rest != "" {
 		after = strings.Split(strings.TrimSuffix(rest, "\n"), "\n")
 	}
 	return before[max(0, len(before)-codeLinesAround):], after[:min(codeLinesAround, len(after))], nil
 }
 
 // Returns the line the item's comment starts on in repo, counting from 1.
-func FindCommentLine(repo string, item Item) (int, error) {
+func FindCommentLine(
+	repo string,
+	item Item,
+	foundByName map[int]string,
+) (int, error) {
 	data, err := os.ReadFile(filepath.Join(repo, item.File))
 	if err != nil {
 		return 0, err
 	}
-	at, err := findOnce(string(data), item.Old)
+	at, err := findOnce(string(data), findCurrentComment(item, foundByName))
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", item.File, err)
 	}
 	return strings.Count(string(data[:at]), "\n") + 1, nil
+}
+
+// Returns the item's comment as its file has it now.
+func findCurrentComment(item Item, foundByName map[int]string) string {
+	if text, ok := foundByName[item.ID]; ok {
+		return text
+	}
+	return item.Old
 }
 
 // Returns the line where each copy of old starts in text, such as "3, 9".

@@ -151,13 +151,14 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 		filepath.Join(repo, "shop.go"),
 		editedShopGo,
 	)
+	// Fill's comment ends in a directive, so the draft leaves it out.
 	writeFile(
 		t,
 		filepath.Join(repo, "clear.go"),
-		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n\n// Fills the cart.\n//go:noinline\nfunc Fill() {}\n",
 	)
 
-	d, err := saveBranchDraft(repo, findRepoChecker(t))
+	_, d, err := saveBranchDraft(repo, findRepoChecker(t))
 
 	if err != nil {
 		t.Fatalf("saveBranchDraft() error = %v", err)
@@ -241,6 +242,110 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	}
 }
 
+// Verifies that a draft's answers are written by comment name, since an
+// edited approved comment's old text is gone from its file.
+func TestDraftedAnswersApproveOnlyAnsweredComments(t *testing.T) {
+	repo := newShopClone(t, "vibe/Add-Tax")
+	runScript(
+		t,
+		repo,
+		"git mv price.go prices.go && git commit -q -m 'move prices'",
+	)
+	writeFile(
+		t,
+		filepath.Join(repo, "shop.go"),
+		editedShopGo,
+	)
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	checker := findRepoChecker(t)
+
+	// The agent drafts the review, and the owner answers it.
+	if _, err := draftReview(repo, checker); err != nil {
+		t.Fatalf("draftReview() error = %v", err)
+	}
+	r, err := review.OpenReview("vibe-add-tax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin, err := r.ReadOrigin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept}, // Clear, a new comment
+			2: {Action: review.ActionKeep},   // Total, back to its approved text
+			3: {Action: review.ActionAccept}, // SalesTax, renamed from Tax
+			4: {Action: review.ActionCut},    // Discount, an edited comment
+			5: {Action: review.ActionAccept}, // Valid, whose code was removed
+		},
+	)
+	_, err = writeAndApproveDecisions(r, checker)
+	// A second draft sets the finished review aside.
+	_, again := draftReview(repo, checker)
+
+	if err != nil || again != nil {
+		t.Fatalf(
+			"writeAndApproveDecisions() error = %v, second draftReview() error = %v",
+			err,
+			again,
+		)
+	}
+	if origin.Branch != "vibe/Add-Tax" {
+		t.Errorf("origin branch = %q, want vibe/Add-Tax", origin.Branch)
+	}
+	wantShop := strings.NewReplacer(
+		"// Returns the sum of prices, in cents.\n",
+		"// Sums the prices.\n",
+		"// Returns the discount on a price, in cents.\n",
+		"",
+	).Replace(editedShopGo)
+	if got, _ := os.ReadFile(filepath.Join(repo, "shop.go")); string(got) != wantShop {
+		t.Errorf(
+			"shop.go =\n%s\nwant\n%s",
+			got,
+			wantShop,
+		)
+	}
+	approved, err := readApprovals(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Comments no one answered stay unapproved.
+	wantApproved := map[commentKey]string{
+		{"clear.go", "Clear"}:   "// Empties the cart.\n",
+		{"shop.go", "Total"}:    "// Sums the prices.\n",
+		{"shop.go", "SalesTax"}: "// Returns the tax on a price.\n",
+		{"shop.go", "Discount"}: "",
+		{"shop.go", "Valid"}:    "",
+		{"shop.go", "init"}:     "// Registers the shop's prices.\n",
+		{"shop.go", "Reset"}:    "",
+		{"prices.go", "Price"}:  "// Prices are in cents, so sums never round.\n",
+		{"cart.go", "Cart"}:     "// Holds the prices to pay.\n",
+	}
+	if !reflect.DeepEqual(approved, wantApproved) {
+		t.Errorf(
+			".code-comments.json approves %q, want %q",
+			approved,
+			wantApproved,
+		)
+	}
+	_, err = os.Stat(filepath.Join(
+		review.FindStateRoot(),
+		"vibe-add-tax.1",
+		"round-1.json",
+	))
+	if err != nil {
+		t.Errorf("the finished review was not moved aside: %v", err)
+	}
+}
+
 // Verifies that a draft that could mislead the owner is refused, with
 // what to fix.
 func TestUnsureDraftIsRefused(t *testing.T) {
@@ -300,6 +405,13 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 			script: "git update-ref refs/remotes/origin/lone $(git commit-tree -m lone $(git hash-object -t tree /dev/null)) && git remote set-head origin lone",
 			want:   "the branch shares no commit with origin/HEAD",
 		},
+		{
+			// A draft numbers its items from 1, so it would replace the owner's answers.
+			name:   "round waiting for the owner",
+			shopGo: shopGo,
+			script: `mkdir -p "$XDG_STATE_HOME/pde/comment-review/feat" && echo '{"repo": "/x"}' > "$XDG_STATE_HOME/pde/comment-review/feat/round-1.json"`,
+			want:   "review feat, for /x, has a round waiting for the owner",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(
@@ -317,7 +429,7 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 					tt.script,
 				)
 
-				_, err := saveBranchDraft(repo, findRepoChecker(t))
+				_, _, err := saveBranchDraft(repo, findRepoChecker(t))
 
 				if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was saved") {
 					t.Fatalf(
