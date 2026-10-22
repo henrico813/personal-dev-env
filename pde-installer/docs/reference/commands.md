@@ -36,6 +36,16 @@ OpenCode modifier sets the selected theme and bidirectional agent cycling in
 original formatting is not retained. Restart OpenCode after changing profiles
 because it reads CLI configuration at startup.
 
+When `cli.json` lists Herdr's `./herdr-opencode` plugin, the modifier adds
+`-herdr.opencode.session-selection` and `./pde-herdr-opencode` after it. The
+first turns Herdr's plugin off; the second runs it through a wrapper that keeps
+the pane working while background subagents of its session run. Herdr's entry
+stays, so `herdr integration status` still shows opencode as current. After
+installing or uninstalling Herdr's OpenCode integration, run a full install,
+then restart OpenCode: installing after an uninstall, or installing Herdr after
+PDE, lists Herdr's entry after the PDE entries, so both would report, and an
+uninstall leaves the wrapper without Herdr's plugin to load.
+
 Rendering is static and does not emit terminal palette escape sequences. An SSH
 client keeps its local terminal palette while a remote PDE prompt and tmux
 session use the remote host's selected RGB colors.
