@@ -107,8 +107,7 @@ func TestModifierPreservesSettings(t *testing.T) {
 	}
 }
 
-// Forcing the Claude Code model on every install broke a machine that has no
-// Claude login and uses GitHub Copilot.
+// An install must not replace a model chosen for one machine.
 func TestModifierKeepsMachineModel(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -122,9 +121,9 @@ func TestModifierKeepsMachineModel(t *testing.T) {
 			want:  "claude-code/claude-opus-5-5[1m]",
 		},
 		{
-			name:  "machine model",
-			input: `{"model": "github-copilot/claude-opus-5.5"}`,
-			want:  "github-copilot/claude-opus-5.5",
+			name:  "chosen model",
+			input: `{"model": "example/model"}`,
+			want:  "example/model",
 		},
 	}
 	for _, tt := range tests {
