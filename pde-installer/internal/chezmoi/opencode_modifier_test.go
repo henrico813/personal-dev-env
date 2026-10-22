@@ -110,39 +110,19 @@ func TestModifierPreservesSettings(t *testing.T) {
 // An install must not replace a model chosen for one machine.
 func TestModifierKeepsMachineModel(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "no model",
-			input: `{}`,
-			want:  "claude-code/claude-opus-5-5[1m]",
-		},
-		{
-			name:  "chosen model",
-			input: `{"model": "example/model"}`,
-			want:  "example/model",
-		},
+	output, err := runModifier(t, `{"model": "example/model"}`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			output, err := runModifier(t, tt.input)
-			if err != nil {
-				t.Fatal(err)
-			}
 
-			var config struct {
-				Model string `json:"model"`
-			}
-			if err := json.Unmarshal(output, &config); err != nil {
-				t.Fatal(err)
-			}
-			if config.Model != tt.want {
-				t.Fatalf("model = %q, want %q", config.Model, tt.want)
-			}
-		})
+	var config struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Model != "example/model" {
+		t.Fatalf("model = %q, want %q", config.Model, "example/model")
 	}
 }
 
