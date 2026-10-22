@@ -145,9 +145,9 @@ func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
 	}
 }
 
-// Keeping a comment whose code was removed would be recorded as a cut the
-// owner never chose.
-func TestRemovedCodeCannotBeKept(t *testing.T) {
+// Verifies that removed code offers only drop, since keeping its comment
+// would record a cut the owner never chose.
+func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	v := newView(
 		t,
 		"package wire\n",
