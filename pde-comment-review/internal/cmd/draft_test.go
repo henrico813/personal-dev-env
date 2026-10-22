@@ -151,13 +151,14 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 		filepath.Join(repo, "shop.go"),
 		editedShopGo,
 	)
+	// Fill's comment ends in a directive, so the draft leaves it out.
 	writeFile(
 		t,
 		filepath.Join(repo, "clear.go"),
-		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n\n// Fills the cart.\n//go:noinline\nfunc Fill() {}\n",
 	)
 
-	d, err := saveBranchDraft(repo, findRepoChecker(t))
+	_, d, err := saveBranchDraft(repo, findRepoChecker(t))
 
 	if err != nil {
 		t.Fatalf("saveBranchDraft() error = %v", err)
@@ -241,6 +242,133 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	}
 }
 
+// Verifies that answers reach the right comment by name, since an edited
+// approved comment's old text is gone from its file.
+func TestDraftAnswersLandOnNamedComments(t *testing.T) {
+	repo := newShopClone(t, "vibe/Add-Tax")
+	runScript(
+		t,
+		repo,
+		"git mv price.go prices.go && git commit -q -m 'move prices'",
+	)
+	writeFile(
+		t,
+		filepath.Join(repo, "shop.go"),
+		editedShopGo,
+	)
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	checker := findRepoChecker(t)
+	// The agent drafts the review, and the owner answers it.
+	if _, err := draftReview(repo, checker); err != nil {
+		t.Fatalf("draftReview() error = %v", err)
+	}
+	r, err := review.OpenReview("vibe-add-tax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept}, // Clear, a new comment
+			2: {Action: review.ActionKeep},   // Total, back to its approved text
+			3: {Action: review.ActionAccept}, // SalesTax, renamed from Tax
+			4: {Action: review.ActionCut},    // Discount, an edited comment
+			5: {Action: review.ActionAccept}, // Valid, whose code was removed
+		},
+	)
+
+	_, err = writeAndApproveDecisions(r, checker)
+
+	if err != nil {
+		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+	}
+	wantShop := strings.NewReplacer(
+		"// Returns the sum of prices, in cents.\n",
+		"// Sums the prices.\n",
+		"// Returns the discount on a price, in cents.\n",
+		"",
+	).Replace(editedShopGo)
+	if got, _ := os.ReadFile(filepath.Join(repo, "shop.go")); string(got) != wantShop {
+		t.Errorf(
+			"shop.go =\n%s\nwant\n%s",
+			got,
+			wantShop,
+		)
+	}
+	approved, err := readApprovals(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantApproved := map[commentKey]string{
+		{"clear.go", "Clear"}:   "// Empties the cart.\n",
+		{"shop.go", "Total"}:    "// Sums the prices.\n",
+		{"shop.go", "SalesTax"}: "// Returns the tax on a price.\n",
+		{"shop.go", "Discount"}: "",
+		{"shop.go", "Valid"}:    "",
+	}
+	for key, want := range wantApproved {
+		got, ok := approved[key]
+		if !ok || got != want {
+			t.Errorf(
+				"%s %s approval = %q, recorded %v; want %q",
+				key.file,
+				key.name,
+				got,
+				ok,
+				want,
+			)
+		}
+	}
+}
+
+// Verifies that a new draft sets the finished review aside, so its
+// answers are kept.
+func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	checker := findRepoChecker(t)
+	if _, err := draftReview(repo, checker); err != nil {
+		t.Fatalf("draftReview() error = %v", err)
+	}
+	r, err := review.OpenReview("feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept},
+		},
+	)
+	if _, err := writeAndApproveDecisions(r, checker); err != nil {
+		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+	}
+
+	_, err = draftReview(repo, checker)
+
+	if err != nil {
+		t.Fatalf("second draftReview() error = %v", err)
+	}
+	_, err = os.Stat(filepath.Join(
+		review.FindStateRoot(),
+		"feat.1",
+		"round-1.json",
+	))
+	if err != nil {
+		t.Errorf("the finished review was not moved aside: %v", err)
+	}
+}
+
 // Verifies that a draft that could mislead the owner is refused, with
 // what to fix.
 func TestUnsureDraftIsRefused(t *testing.T) {
@@ -317,7 +445,7 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 					tt.script,
 				)
 
-				_, err := saveBranchDraft(repo, findRepoChecker(t))
+				_, _, err := saveBranchDraft(repo, findRepoChecker(t))
 
 				if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was saved") {
 					t.Fatalf(
@@ -336,5 +464,38 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+// Verifies that drafting refuses while a round waits for the owner, since
+// a new draft would replace the owner's answers.
+func TestDraftRefusesWhileRoundAwaitsOwner(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	waiting := filepath.Join(
+		review.FindStateRoot(),
+		"feat",
+	)
+	if err := os.MkdirAll(waiting, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(
+		t,
+		filepath.Join(waiting, "round-1.json"),
+		`{"repo": "/x"}`,
+	)
+
+	_, _, err := saveBranchDraft(repo, findRepoChecker(t))
+
+	want := "review feat, for /x, has a round waiting for the owner"
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "nothing was saved") {
+		t.Fatalf(
+			"saveBranchDraft() error = %v, want it to contain %q and say nothing was saved",
+			err,
+			want,
+		)
+	}
+	_, err = os.Stat(filepath.Join(waiting, "draft.json"))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("draft.json was saved: %v", err)
 	}
 }

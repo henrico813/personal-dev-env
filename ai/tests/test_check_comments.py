@@ -755,15 +755,11 @@ class TestApproveComment:
         name: str,
         message: str,
     ) -> None:
-        """Refuse what cannot name one comment, and change nothing.
+        """Refuse a comment the checker cannot pin down, and change nothing.
 
-        Two ``func init()`` in one file are valid Go, but entries are
-        keyed by file and name, so without the refusal the answer was
-        recorded as a cut. A code review found that a file that is not
-        Go also recorded a cut, and that an empty name approved an
-        unnamed comment inside a function body. A plan review found
-        that letting a deleted file record a cut would let a mistyped
-        one do so too.
+        A non-Go file, an empty name, a name two comments share and a
+        missing file each approved or cut the wrong entry, or would
+        have.
         """
         if source is not None:
             (tmp_path / file).write_text(source)
@@ -781,12 +777,11 @@ class TestApproveComment:
     def test_answers_after_renames_keep_checks_passing(
         self, tmp_path: Path
     ) -> None:
-        """Move approvals first, and cut the comments of a deleted file.
+        """Carry approvals through renames and moves when approving one answer.
 
-        The review tool approves each answer on its own. Without this,
-        a moved file's and a renamed function's approvals stay under
-        their old names, and a deleted file's comments could not be
-        cut, so every later check fails.
+        Answers are approved one at a time, so without this a renamed
+        function or moved file keeps its approval under the old name and
+        every later check fails.
         """
         (tmp_path / "new.go").write_text(
             TOTAL + "func Sum() {}\n\n" + READS + "func Load() {}\n"
@@ -796,7 +791,6 @@ class TestApproveComment:
             [
                 ("old.go", "Total", TOTAL),
                 ("old.go", "Load", READS),
-                ("gone.go", "Open", "// Open opens the till.\n"),
             ],
         )
 
@@ -809,6 +803,30 @@ class TestApproveComment:
             "--rename=Total=Sum",
             paths=[],
         )
+        result = run_checker(tmp_path)
+
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "new.go", "name": "Load", "text": READS},
+                {"file": "new.go", "name": "Sum", "text": TOTAL},
+            ],
+            "avoid": {},
+        }
+        assert result.returncode == 0
+
+    def test_cuts_comment_of_deleted_file(self, tmp_path: Path) -> None:
+        """Cut a deleted file's approved comment when its answer is approved.
+
+        When code is removed, the owner can only drop its comment, so
+        approving that answer must record a cut, or every later check
+        fails on the gone comment.
+        """
+        (tmp_path / "till.go").write_text("package till\n")
+        write_settings_file(
+            tmp_path,
+            [("gone.go", "Open", "// Open opens the till.\n")],
+        )
+
         run_checker(
             tmp_path,
             "--approve-comment",
@@ -819,11 +837,7 @@ class TestApproveComment:
         result = run_checker(tmp_path)
 
         assert read_settings_file(tmp_path) == {
-            "approved": [
-                {"file": "gone.go", "name": "Open", "text": ""},
-                {"file": "new.go", "name": "Load", "text": READS},
-                {"file": "new.go", "name": "Sum", "text": TOTAL},
-            ],
+            "approved": [{"file": "gone.go", "name": "Open", "text": ""}],
             "avoid": {},
         }
         assert result.returncode == 0
