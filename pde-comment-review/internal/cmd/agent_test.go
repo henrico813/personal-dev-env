@@ -74,3 +74,51 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 		t.Errorf("rounds = %+v, want round 2 to hold only item 1's new wording", r.Rounds)
 	}
 }
+
+// Verifies that status, set and submit refuse another clone, since its
+// agent would change a review of code it does not have.
+func TestStatusSetSubmitRefuseOtherCheckout(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	runScript(
+		t,
+		filepath.Dir(repo),
+		"git clone -q origin other && git -C other switch -q -c feat",
+	)
+	other := filepath.Join(filepath.Dir(repo), "other")
+	checker := findRepoChecker(t)
+	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
+
+	// The other clone tries the first clone's draft, then its waiting round.
+	refused := []agentReply{
+		replyToStatus(other),
+		replyToSet(
+			other,
+			1,
+			review.ProposeCut,
+			"",
+		),
+		replyToSubmit(other, checker),
+	}
+	replyToSubmit(repo, checker)
+	refused = append(refused, replyToStatus(other))
+
+	for _, reply := range refused {
+		if len(reply.Problems) == 0 || !strings.Contains(reply.Problems[0], "tell the owner if that is another checkout") {
+			t.Errorf("reply in the other clone = %+v, want a refusal", reply)
+		}
+	}
+	r, err := review.OpenReview("feat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Rounds) != 1 || len(r.Rounds[0].Items) != 1 || r.Rounds[0].Items[0].Proposal != review.ProposeKeep {
+		t.Errorf("rounds = %+v, want one round keeping item 1, as the first clone drafted it", r.Rounds)
+	}
+}
