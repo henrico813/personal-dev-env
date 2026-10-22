@@ -17,4 +17,19 @@
 {{- $config = $config | setValueAtPath "theme.name" $colors.opencode -}}
 {{- $keybinds = mergeOverwrite $keybinds (dict "agent.cycle" "tab" "agent.cycle.reverse" "shift+tab") -}}
 {{- $config = set $config "keybinds" $keybinds -}}
+{{- /* Herdr's ./herdr-opencode stays so Herdr reports its integration current.
+"-herdr.opencode.session-selection" turns that plugin off, and
+./pde-herdr-opencode runs it through PDE's wrapper instead. A "-" entry only
+turns off plugins listed before it, so both go at the end. */ -}}
+{{- if hasKey $config "plugins" -}}
+{{- $plugins := get $config "plugins" -}}
+{{- if not (kindIs "slice" $plugins) -}}
+{{- fail "OpenCode CLI plugins must be an array" -}}
+{{- end -}}
+{{- $plugins = without $plugins "-herdr.opencode.session-selection" "./pde-herdr-opencode" -}}
+{{- if has "./herdr-opencode" $plugins -}}
+{{- $plugins = concat $plugins (list "-herdr.opencode.session-selection" "./pde-herdr-opencode") -}}
+{{- end -}}
+{{- $config = set $config "plugins" $plugins -}}
+{{- end -}}
 {{ $config | toPrettyJson }}

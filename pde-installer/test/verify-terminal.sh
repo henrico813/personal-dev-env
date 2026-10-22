@@ -95,6 +95,12 @@ grep -Fxq '{"keybinds":[]}' "$cli_home/.config/opencode/cli.json"
 rm "$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
 jq -e '. == {"theme":{"name":"everforest"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
+printf '{"plugins":["x","./herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
+rendered="$(render_opencode_cli everforest-dark)"
+jq -e '.plugins == ["x","./herdr-opencode","-herdr.opencode.session-selection","./pde-herdr-opencode"]' <<<"$rendered" >/dev/null
+printf '{"plugins":["x","-herdr.opencode.session-selection","./pde-herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
+rendered="$(render_opencode_cli everforest-dark)"
+jq -e '.plugins == ["x"]' <<<"$rendered" >/dev/null
 rm -rf "$cli_home" "$git_stub"
 
 before_rollback="$(sha256sum "$HOME/.config/pde/config.json" "$HOME/.zshrc" "$HOME/.tmux.conf" "$HOME/.p10k.zsh")"
