@@ -77,7 +77,16 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	_, after, err := review.ReadCodeAround(r.Repo(), e.Item, 30)
+	foundByName, err := readCommentsByName(r)
+	if err != nil {
+		return err
+	}
+	_, after, err := review.ReadCodeAround(
+		r.Repo(),
+		e.Item,
+		foundByName,
+		30,
+	)
 	if err != nil {
 		return err
 	}
@@ -153,8 +162,18 @@ func showDiff(r *review.Review, out *os.File) error {
 }
 
 // Opens the item's file read-only in nvim at its comment.
-func viewFile(repo string, item review.Item, in, out *os.File) error {
-	line, err := review.FindCommentLine(repo, item)
+func viewFile(
+	repo string,
+	item review.Item,
+	foundByName map[int]string,
+	in *os.File,
+	out *os.File,
+) error {
+	line, err := review.FindCommentLine(
+		repo,
+		item,
+		foundByName,
+	)
 	if err != nil {
 		return err
 	}

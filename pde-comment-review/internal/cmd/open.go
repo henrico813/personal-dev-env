@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -56,11 +57,16 @@ func readReviewOrigin(r *review.Review) (review.Origin, error) {
 func runReviewScreen(
 	r *review.Review, origin review.Origin, in, out *os.File, opts screenOptions,
 ) error {
+	foundByName, err := readCommentsByName(r)
 	v := &popup.View{
-		Entries: r.ListEntries(),
-		Repo:    r.Repo(),
-		Origin:  origin,
-		Settle:  opts.settle,
+		Entries:     r.ListEntries(),
+		Repo:        r.Repo(),
+		Origin:      origin,
+		Settle:      opts.settle,
+		FoundByName: foundByName,
+	}
+	if err != nil {
+		v.ShowNotice(err.Error())
 	}
 	term, err := popup.Start(in, out)
 	if err != nil {
@@ -128,7 +134,19 @@ func runReviewScreen(
 			}
 		case popup.ViewFile:
 			item := v.Entry().Item
-			err = runOutsideScreen(term, v, func() error { return viewFile(r.Repo(), item, in, out) })
+			err = runOutsideScreen(
+				term,
+				v,
+				func() error {
+					return viewFile(
+						r.Repo(),
+						item,
+						v.FoundByName,
+						in,
+						out,
+					)
+				},
+			)
 		case popup.Search:
 			text := v.Typed
 			err = runOutsideScreen(term, v, func() error { return searchRepo(r.Repo(), text, out) })
@@ -137,6 +155,24 @@ func runReviewScreen(
 			return err
 		}
 	}
+}
+
+// Returns each named item's comment as its file has it now, running the
+// checker only when r has a named item.
+func readCommentsByName(r *review.Review) (map[int]string, error) {
+	isNamed := func(e review.Entry) bool { return e.Item.Name != "" }
+	if !slices.ContainsFunc(r.ListEntries(), isNamed) {
+		return nil, nil
+	}
+	checker, err := findCheckerPath()
+	if err != nil {
+		return nil, err
+	}
+	named, err := readReviewComments(r, checker)
+	if err != nil {
+		return nil, err
+	}
+	return findCommentsByName(r, named), nil
 }
 
 func openEditTab(r *review.Review, v *popup.View) bool {

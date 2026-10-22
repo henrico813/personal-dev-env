@@ -85,6 +85,8 @@ type View struct {
 	screen     screen
 	result     string // what writing the answers did, or why it did not
 	written    bool   // whether the answers reached the code
+	// Each named item's comment as it is in its file now, by item ID.
+	FoundByName map[int]string
 }
 
 func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
@@ -164,6 +166,11 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		return ShowDiff
 	}
 	if v.screen == resultScreen {
+		return None
+	}
+	// Keeping, editing or viewing a comment needs its code.
+	if v.Entry().Item.CodeRemoved && (key == "o" || key == "e" || key == "v") {
+		v.notice = "The code is gone. c or a drops the comment, and m asks the AI for the code back."
 		return None
 	}
 	switch key {
@@ -334,7 +341,16 @@ func (v *View) body() ([]string, int) {
 			add(color, mark, row)
 		}
 	}
-	before, after, err := review.ReadCodeAround(v.Repo, e.Item, codeLinesAround)
+	var before, after []string
+	var err error
+	if !e.Item.CodeRemoved {
+		before, after, err = review.ReadCodeAround(
+			v.Repo,
+			e.Item,
+			v.FoundByName,
+			codeLinesAround,
+		)
+	}
 	for _, line := range before {
 		add(dim, " ", line)
 	}
@@ -353,6 +369,17 @@ func (v *View) body() ([]string, int) {
 	}
 	// The owner's own wording, once saved, takes the place of the AI's.
 	switch {
+	case e.Item.CodeRemoved:
+		add(
+			yellow,
+			">",
+			"Code removed. Drop this comment?",
+		)
+		addComment(
+			red,
+			"-",
+			e.Item.Old,
+		)
 	case e.Decision != nil && e.Decision.Action == review.ActionEdited:
 		addComment(red, "-", e.Item.Old)
 		addComment(green, "+", e.Decision.Text)
