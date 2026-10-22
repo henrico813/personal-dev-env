@@ -34,6 +34,9 @@ const usage = `usage:
       code and approved, and d shows the diff
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
+  pde-comment-review mcp
+      serve status, draft, set and submit as MCP tools on stdin and
+      stdout, for an agent harness to start
   pde-comment-review help
       show this help
 Herdr runs pde-comment-review popup, edit and diff itself, and
@@ -83,6 +86,11 @@ func Main(args []string) int {
 		err = runDiffTab()
 	case len(args) == 2 && args[0] == "notes":
 		err = printNotes(args[1])
+	case len(args) == 1 && args[0] == "mcp":
+		var checker string
+		if checker, err = findCheckerPath(); err == nil {
+			err = runMCPServer(checker)
+		}
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return 2

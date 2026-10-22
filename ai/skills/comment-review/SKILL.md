@@ -15,6 +15,13 @@ review; the user answers each one; after the last answer the tool
 writes the answers into the code and approves the answered comments,
 so the comment checker stops later agents from changing them.
 
+If your harness lists the MCP tools `review_status`, `review_draft`,
+`review_set` and `review_submit`, perhaps with a prefix, use them in
+place of `status`, `draft`, `set` and `submit`. Each takes `dir`, the
+checkout's absolute path, and `review_set` also takes `id`, `answer`
+and `text`. They reply with the same JSON as the commands, naming
+tools as next steps.
+
 The tool supports Go comments today. Until it supports a language,
 show that language's comments to the user in the pull request or
 the chat instead.

@@ -180,9 +180,14 @@ while [ "$#" -gt 0 ]; do
   fi
   shift
 done
-mkdir -p "$GOCACHE" "$GOMODCACHE"
+mkdir -p "$GOCACHE" "$GOMODCACHE/module"
 printf '%%s\n' cache > "$GOCACHE/content"
-printf '%%s\n' module > "$GOMODCACHE/content"
+printf '%%s\n' module > "$GOMODCACHE/module/content"
+# Like Go, leave the module folder read-only unless GOFLAGS has -modcacherw.
+case " ${GOFLAGS:-} " in
+  *" -modcacherw "*) ;;
+  *) chmod a-w "$GOMODCACHE/module" ;;
+esac
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by go' > "$output"
 chmod +x "$output"

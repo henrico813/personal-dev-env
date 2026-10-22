@@ -9,6 +9,8 @@ Pick the page for what you need to do:
   [Review comments](how-to/review-comments.md).
 - Look up a command, a key, what the write checks, or where reviews are
   saved: [Commands, files, and keys](reference/commands-files-and-keys.md).
+- Let an agent harness start the MCP server:
+  [The MCP server](reference/commands-files-and-keys.md#the-mcp-server).
 - Write proposals as an AI: the
   [comment-review skill](../../ai/skills/comment-review/SKILL.md).
 
