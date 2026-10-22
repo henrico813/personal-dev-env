@@ -14,6 +14,9 @@ import (
 )
 
 const usage = `usage:
+  pde-comment-review draft
+      save the comments on this branch that the owner must answer as
+      round 1 of a new review, and print it as JSON
   pde-comment-review add NAME FILE
       save proposals FILE as the next round of review NAME
   pde-comment-review open NAME
@@ -46,6 +49,15 @@ func Main(args []string) int {
 				args[2],
 				checker,
 			)
+		}
+	case len(args) == 1 && args[0] == "draft":
+		var checker string
+		var round review.Proposals
+		if checker, err = findCheckerPath(); err == nil {
+			round, err = draftReview(".", checker)
+		}
+		if err == nil {
+			err = printRound(round)
 		}
 	case len(args) == 1 && args[0] == "open":
 		err = openWaitingReview()
@@ -106,6 +118,20 @@ func addRound(
 	if err != nil {
 		return err
 	}
+	return saveRound(
+		name,
+		data,
+		checker,
+	)
+}
+
+// Saves proposals data as the next round of review name, unless the write
+// would refuse it.
+func saveRound(
+	name string,
+	data []byte,
+	checker string,
+) error {
 	p, err := review.ParseProposals(data)
 	if err != nil {
 		return err
@@ -141,6 +167,18 @@ func addRound(
 	}
 	fmt.Printf("saved round %d of review %s: %s\n", round, name, origin.Label())
 	return nil
+}
+
+// Prints round as JSON, or says that no comment needs the owner's answer.
+func printRound(round review.Proposals) error {
+	if len(round.Items) == 0 {
+		_, err := fmt.Println("no comment on this branch needs the owner's answer")
+		return err
+	}
+	out := json.NewEncoder(os.Stdout)
+	out.SetIndent("", "  ")
+	out.SetEscapeHTML(false)
+	return out.Encode(round)
 }
 
 type noteForAI struct {

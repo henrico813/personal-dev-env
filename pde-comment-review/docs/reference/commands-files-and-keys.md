@@ -4,6 +4,7 @@
 
 | Command | What it does |
 | --- | --- |
+| `pde-comment-review draft` | Saves the comments on the current branch that you must answer as round 1 of a new review named after the branch, and prints it as JSON. Refuses while a round waits for your answers. |
 | `pde-comment-review add NAME FILE` | Checks proposals `FILE` against its repository and saves it as the next round of review `NAME`. |
 | `pde-comment-review open NAME` | Shows review `NAME` one comment per screen in this terminal. |
 | `pde-comment-review notes NAME` | Prints the open notes as JSON, each with the item it is about. |
@@ -29,7 +30,9 @@ Each review has its own folder:
 
 | File | Holds |
 | --- | --- |
-| `NAME/round-N.json` | Round `N`'s proposals, as `add` saved them. |
+| `NAME/round-N.json` | Round `N`'s proposals, as `draft` or `add` saved them. |
+| `NAME/draft.json` | The comments `draft` found last, and the commit it compared the branch with. |
+| `NAME.N/` | A finished review that `draft` moved aside to start the branch's review again. |
 | `NAME/origin.json` | The repository and branch, and the agent session that added the review. |
 | `NAME/decisions.json` | Your answer to each item, and the round it answered. |
 | `NAME/notes.json` | Your note on each item, and the round it was written on. |
@@ -66,6 +69,9 @@ comment is answered, it writes the answers or shows they are written.
 | `d` | After the last answer, show the changes: in a new tab in Herdr, in place in a terminal. |
 | `q`, Ctrl-c | Close the screen. |
 
+On a comment whose code was removed, `o`, `e` and `v` only say why
+they do nothing.
+
 `a`, `o`, `c` and `m` do nothing for 600 ms after a comment appears,
 so a key pressed twice on a phone answers only once. Keys typed
 before the screen draws, or while nvim or less is open, are dropped.
@@ -93,17 +99,20 @@ why, when the `# ----` line was deleted or nvim quit with an error.
 Nothing is written, and the screen says why, when:
 
 - a comment has no answer, such as one a new round asked about again;
-- a comment's text in the file changed since the review was saved;
+- a comment's text in the file changed since the review was saved,
+  except for an item from `draft` whose `old` is the text you
+  approved, where your answer replaces the change;
+- an item from `draft` has no comment by its name in its file, or
+  its removed code is back;
 - `gofmt` would change a file for reasons other than the comments;
 - an item is for a comment you cut, or its `old` is not the text you
   approved;
 - a listed rename would move no approved comment: its file has no item.
 
-`add` refuses an item whose comment has the same wording as another
-in its file. Change an unapproved copy's wording before `add`, or
-leave both copies out and read them in the pull request. A doc
-comment followed by a Go directive, such as `//go:noinline`, stays
-unapproved even when you answer it.
+`draft` and `add` refuse an item whose comment has the same wording
+as another in its file. Change an unapproved copy's wording first.
+`draft` leaves out a doc comment followed by a Go directive, such as
+`//go:noinline`, and it stays unapproved even when you answer it.
 
 Approval goes through the comment checker of the `code-documentation`
 skill, `~/.agents/skills/code-documentation/scripts/check_comments.py`,

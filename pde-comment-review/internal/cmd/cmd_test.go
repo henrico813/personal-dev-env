@@ -164,6 +164,35 @@ func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
 				"items 3 and 4 are the same comment in cart.go",
 			},
 		},
+		{
+			name:   "drafted comment worded like another",
+			onDisk: cartGo + "\n// Reports whether every price is above zero.\nfunc Positive() bool { return true }\n",
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Name:     "Positive",
+				Proposal: review.ProposeKeep,
+				Old:      "// Reports whether every price is above zero.\n",
+			}},
+			want: []string{
+				"item 4: cart.go: comment found 2 times",
+			},
+		},
+		{
+			name:   "removed code back",
+			onDisk: cartGo,
+			extra: []review.Item{{
+				ID:          4,
+				File:        "cart.go",
+				Name:        "Valid",
+				Proposal:    review.ProposeCut,
+				Old:         "// Reports whether every price is above zero.\n",
+				CodeRemoved: true,
+			}},
+			want: []string{
+				"item 4: cart.go Valid: its removed code is back",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(
@@ -232,15 +261,25 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 		Old:      "// Reports whether every price is above zero.\n",
 		New:      "// Reports whether no price is negative.\n",
 	}
+	rewordPositive := review.Item{
+		ID:       5,
+		File:     "cart.go",
+		Name:     "Positive",
+		Proposal: review.ProposeReword,
+		Old:      "// Reports whether every price is above zero.\n",
+		New:      "// Reports whether no price is below zero.\n",
+	}
 
 	roundFile, err := addScratchReview(
 		t,
-		cartGo,
-		validApproval,
+		cartGo+"\n// Reports whether no price is below zero.\nfunc Positive() bool { return true }\n",
+		`{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
+			{"file": "cart.go", "name": "Positive", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`,
 		cutCurrency,
 		rewordTotal,
 		keepTooHigh,
 		rewordValid,
+		rewordPositive,
 	)
 
 	if err != nil {
