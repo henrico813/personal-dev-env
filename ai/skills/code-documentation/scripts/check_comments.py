@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report Go comments that break a code-documentation rule.
+"""Report Go and Python comments that break a code-documentation rule.
 
 Example:
     python3 check_comments.py --repo . internal/shop/*.go
@@ -15,7 +15,7 @@ from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
 the owner's approved text, ``""`` for a cut comment, and words to
 avoid. ``--approve`` rewrites the approved text from the checked files,
 after ``--rename OLD=NEW`` moves the entries of each renamed comment or
-``.go`` file, so a rename is not recorded as a cut::
+file, so a rename is not recorded as a cut::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
@@ -23,21 +23,27 @@ after ``--rename OLD=NEW`` moves the entries of each renamed comment or
 
 ``--approve-comment FILE NAME`` records only that comment's text, or
 ``""`` when it is gone, after the renames, and leaves every other entry
-as it was. A ``--rename`` pair of ``.go`` paths moves that file's
+as it was. A ``--rename`` pair of paths moves that file's
 entries, and a name pair renames an entry only in FILE. FILE may be
 deleted only when, after the renames, it has an entry for NAME; that
 entry is then recorded as cut.
 
 ``--merge-approvals FOLDER COMMIT`` takes ``FOLDER``'s approvals, such
-as a worktree's before removal, for the Go files ``COMMIT`` changed,
+as a worktree's before removal, for the files ``COMMIT`` changed,
 when their text is the comment now. If the two files approve a comment
 differently and neither is the comment now, nothing is written.
+
+In Python, every docstring is named, such as ``RenameRules.move_key``
+or ``<module>`` for the module docstring, and so is a ``#`` comment
+above a ``def``, a ``class`` or an assignment outside functions, such
+as ``# RULES`` above ``RULES``.
 
 The rules are:
 
 - ``approved``: approved text changed, a cut comment came back, or an
   approved comment or its file is gone. Without ``--approve``, every
-  file the settings name is checked, even when it is not given.
+  file the settings name is checked, even when it is not given. An
+  approved file that Python cannot read fails too.
 - ``filler``: a sentence about the code uses one of the skill's vague
   filler phrases, such as "facilitates".
 - ``avoided-word``: a sentence uses a word from the avoid list.
@@ -47,7 +53,9 @@ The rules are:
 With ``--base``, sentences present at that commit never fail the run,
 and ``restated-name`` findings on them are left out. Filler and
 avoided words in approved text, or in a license header above
-``package``, are only reported. Generated files are skipped.
+``package`` or a Python file's first statement, are only reported.
+Generated files are skipped. A sentence is present only in a file of
+the same language.
 
 Exit codes:
     0: Nothing failed.
@@ -55,20 +63,24 @@ Exit codes:
         avoided word in a sentence not present at that commit, or
         ``--merge-approvals`` found two approvals of a comment, neither
         of them the comment now.
-    2: A path is a folder or unreadable, no Go file was given,
+    2: A path is a folder or unreadable, no Go or Python file was given,
         ``--base`` is not a commit, the settings file is not JSON of
         the shape above, ``--approve-comment`` names a FILE that is
-        not Go, an empty NAME, a NAME that two comments in FILE share,
+        not Go or Python, an empty NAME, a NAME that cannot be approved,
         or a deleted FILE with no entry for NAME, or
         ``--merge-approvals`` names a FOLDER without
         ``.code-comments.json``, or a COMMIT that ``--repo``'s HEAD
-        lacks or whose changes Git cannot list.
+        lacks or whose changes Git cannot list. ``--approve-comment``
+        and ``--merge-approvals`` also exit 2 on a file Python cannot
+        read.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import enum
+import io
 import json
 import os
 import re
@@ -77,6 +89,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tokenize
+import warnings
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple, TypeGuard
@@ -125,9 +140,23 @@ METHOD_DECLARATION = re.compile(
     r"func\s+\(\s*(?:\w+\s+)?\*?\s*(\w+)[^)]*\)\s*(\w+)"
 )
 CONST_OR_VAR_BLOCK = re.compile(r"(const|var)\s*\($")
-GENERATED_FILE_MARKER = re.compile(
-    r"^// Code generated .* DO NOT EDIT\.$", re.M
+GO_GENERATED_MARKER = re.compile(r"^// Code generated .* DO NOT EDIT\.$", re.M)
+PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+PYTHON_GENERATED_MARKER = re.compile(
+    r"^# (?:Code generated .* DO NOT EDIT\.$|@generated\b)", re.M
 )
+# A tool directive such as noqa, which is for a tool, so it gets no name.
+PYTHON_DIRECTIVE = re.compile(
+    r"#\s*(?:noqa\b|(?:type|pragma|fmt|ruff|pylint|mypy|pyright|isort):)"
+)
+# A shebang or an encoding line, which belongs to the file, not the code.
+PYTHON_FIRST_LINE = re.compile(r"\s*#(?:!|.*coding[:=])")
+# The prefix and quotes that open a docstring, or the quotes that end it.
+DOCSTRING_QUOTES = re.compile(
+    r"""^\s*[rRuU]?("{3}|'{3}|["'])|("{3}|'{3}|["'])\s*$"""
+)
+# A Google-style section heading on its own line, such as Args.
+SECTION_HEADING = re.compile(r"[A-Z][a-z]+(?: [A-Za-z][a-z]+)?:")
 # Go comments and string literals, matched from left to right, so a
 # backtick or "/*" inside one starts nothing.
 GO_COMMENT_OR_STRING = re.compile(
@@ -141,17 +170,21 @@ GO_COMMENT_OR_STRING = re.compile(
 class Comment:
     """One comment and the name of the code it sits on.
 
-    Names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
+    Go names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
     for a struct field or map entry, and ``const Red`` for a comment above
-    a ``const (`` block. A comment has the name ``""`` inside a function
+    a ``const (`` block. A Go comment has the name ``""`` inside a function
     body, with a blank line after it, above an empty block, or, after
     ``unname_shared_names``, when another comment in the file has the same
-    name. Such comments cannot be approved.
+    name, as does a refused docstring. Such comments cannot be approved.
 
     ``text`` is the comment exactly as written, which approved text is
     compared with. ``header`` is true for a comment above ``package`` with
     a blank line after it, where license text sits; a package doc comment
-    touches ``package``, so it is named instead.
+    touches ``package``, so it is named instead. In Python, it is true for
+    an unnamed comment above the first statement.
+
+    ``refusal`` says why a named comment cannot be approved, such as a
+    docstring that shares a line with code.
     """
 
     file: str
@@ -160,6 +193,7 @@ class Comment:
     text: str
     prose: str
     header: bool = False
+    refusal: str = ""
 
 
 @dataclass(frozen=True)
@@ -197,6 +231,19 @@ class Scope(enum.Enum):
     # Inside a type, a var with a literal, or another declaration, where
     # names include the declaration's name: "Cart.Items".
     DECLARATION = enum.auto()
+
+
+class SourceError(Exception):
+    """A file its parser cannot read, so its comments are unknown."""
+
+
+@dataclass(frozen=True)
+class Language:
+    """How the checker reads the files of one suffix, such as ``.py``."""
+
+    read_comments: Callable[[str, str], list[Comment]]
+    join_prose: Callable[[str], str]
+    generated_marker: re.Pattern[str]
 
 
 def parse_go_comments(source: str, file: str) -> list[Comment]:
@@ -239,7 +286,7 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
                     line=start,
                     name=name,
                     text="".join(comment_lines),
-                    prose=join_comment_prose(comment_lines),
+                    prose=join_comment_prose("".join(comment_lines)),
                     header=not seen_package and not name,
                 )
             )
@@ -328,19 +375,220 @@ def name_code_below_comment(
     return f"{outer_name}.{declared[1]}"
 
 
-def join_comment_prose(comment_lines: list[str]) -> str:
+def join_comment_prose(comment: str, marker: str = "//") -> str:
     """Join comment lines into one line of prose, leaving out code and lists.
 
     Args:
-        comment_lines: The comment's lines, with their ``//`` markers.
+        comment: The comment's lines, each starting with ``marker``.
     """
     words = []
-    for line in comment_lines:
-        text = line.strip()[2:]
+    for line in comment.splitlines():
+        text = line.strip()[len(marker) :]
         # Go doc comments indent code blocks and lists.
         if text.strip() and not text.startswith(("\t", "  ")):
             words.append(text.strip())
     return " ".join(words)
+
+
+def parse_python_comments(source: str, file: str) -> list[Comment]:
+    """Return each docstring and each run of whole-line ``#`` comments.
+
+    A ``#`` run takes the name of the code just below it, unless that
+    code is inside a function. Lines split only at line feeds, as
+    ``ast`` counts them, so a form feed cannot shift a name.
+
+    Raises:
+        SourceError: Python cannot parse ``source``.
+    """
+    try:
+        # Python would print warnings, such as an invalid escape.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = ast.parse(source)
+            tokens = list(
+                tokenize.generate_tokens(io.StringIO(source).readline)
+            )
+    except (SyntaxError, ValueError, tokenize.TokenError) as error:
+        line = error.lineno if isinstance(error, SyntaxError) else None
+        where = f" at line {line}" if line else ""
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        reason = f"Python {version}: {type(error).__name__}{where}"
+        raise SourceError(f"cannot be read ({reason})") from error
+    lines = source.split("\n")
+    # Each line with its line end, so a comment's text is exact.
+    kept = [line + "\n" for line in lines[:-1]] + lines[-1:]
+    owners: list[tuple[ast.AST, str]] = [(tree, "<module>")]
+    named_lines: dict[int, str] = {}
+    for node, name, in_function in list_python_definitions(tree.body):
+        owners.append((node, name))
+        if not in_function:
+            # The outer or first name on a line names the comment above.
+            named_lines.setdefault(find_first_line(node), name)
+    comments = []
+    for owner, name in owners:
+        span = find_docstring_span(owner, tokens)
+        if span:
+            first, last, refusal = span
+            text = "".join(kept[first - 1 : last])
+            comments.append(
+                Comment(
+                    file=file,
+                    line=first,
+                    name=name,
+                    text=text,
+                    prose=join_python_prose(text),
+                    refusal=refusal,
+                )
+            )
+    first_statement = min(
+        map(find_first_line, tree.body), default=len(lines) + 1
+    )
+    for first, last in find_comment_runs(tokens, lines):
+        text = "".join(kept[first - 1 : last])
+        name = named_lines.get(last + 1, "")
+        if PYTHON_DIRECTIVE.search(text) or (
+            first <= 2 and PYTHON_FIRST_LINE.match(text)
+        ):
+            name = ""
+        comments.append(
+            Comment(
+                file=file,
+                line=first,
+                name=f"# {name}" if name else "",
+                text=text,
+                prose=join_python_prose(text),
+                header=not name and last < first_statement,
+            )
+        )
+    return sorted(comments, key=lambda comment: comment.line)
+
+
+def list_python_definitions(
+    body: list[ast.stmt], outer: str = "", in_function: bool = False
+) -> Iterator[tuple[ast.stmt, str, bool]]:
+    """Yield each definition and one-name assignment, its dotted name, and
+    whether it sits in a function.
+
+    Args:
+        outer: The dotted name of the code around ``body``, and a dot.
+    """
+    for node in body:
+        prefix, inside_function = outer, in_function
+        target: ast.expr | None = None
+        if isinstance(node, PYTHON_DEFINITIONS):
+            yield node, outer + node.name, in_function
+            prefix = f"{outer}{node.name}."
+            inside_function = in_function or not isinstance(node, ast.ClassDef)
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        if isinstance(target, ast.Name):
+            yield node, outer + target.id, in_function
+        # An if, try, with or loop block adds nothing to a name.
+        inner = []
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.stmt):
+                inner.append(child)
+            elif isinstance(child, (ast.ExceptHandler, ast.match_case)):
+                inner += child.body
+        yield from list_python_definitions(
+            inner,
+            prefix,
+            inside_function,
+        )
+
+
+def find_first_line(node: ast.stmt) -> int:
+    """Return a statement's first line, counting its decorators."""
+    if isinstance(node, PYTHON_DEFINITIONS) and node.decorator_list:
+        return node.decorator_list[0].lineno
+    return node.lineno
+
+
+def find_docstring_span(
+    owner: ast.AST, tokens: list[tokenize.TokenInfo]
+) -> tuple[int, int, str] | None:
+    """Return a docstring's first and last line, and its refusal or ``""``.
+
+    A docstring sharing a line with code is refused, since its text is
+    its whole lines. Returns ``None`` when ``owner`` has no docstring.
+    """
+    if not isinstance(owner, (ast.Module, *PYTHON_DEFINITIONS)):
+        return None
+    if ast.get_docstring(owner, clean=False) is None:
+        return None
+    statement = owner.body[0]
+    first, last = statement.lineno, statement.end_lineno or statement.lineno
+    # Tokens that only lay out code, which a docstring line may hold.
+    layout = {tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE, tokenize.NL}
+    found = [
+        token
+        for token in tokens
+        if first <= token.start[0] <= last and token.type not in layout
+    ]
+    if [token.type for token in found] == [tokenize.STRING]:
+        return first, last, ""
+    return first, last, "its docstring shares a line with other code"
+
+
+def find_comment_runs(
+    tokens: list[tokenize.TokenInfo], lines: list[str]
+) -> list[tuple[int, int]]:
+    """Return the first and last line of each run of whole-line comments."""
+    runs: list[tuple[int, int]] = []
+    for token in tokens:
+        row, column = token.start
+        if token.type != tokenize.COMMENT or lines[row - 1][:column].strip():
+            continue
+        if runs and runs[-1][1] == row - 1:
+            runs[-1] = (runs[-1][0], row)
+        else:
+            runs.append((row, row))
+    return runs
+
+
+def join_python_prose(text: str) -> str:
+    """Join a docstring or ``#`` comment into one line of prose.
+
+    Quotes, section headings, doctests and examples are left out.
+    """
+    if text.lstrip().startswith("#"):
+        return join_comment_prose(text, "#")
+    words = []
+    # Lines indented deeper than this belong to an example.
+    example_indent: int | None = None
+    for line in DOCSTRING_QUOTES.sub("", text).split("\n"):
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip())
+        if not stripped or (
+            example_indent is not None and indent > example_indent
+        ):
+            continue
+        example_indent = None
+        if stripped in ("Example:", "Examples:") or stripped.endswith("::"):
+            example_indent = indent
+        if not (
+            SECTION_HEADING.fullmatch(stripped)
+            or stripped.startswith((">>>", "..."))
+        ):
+            words.append(stripped)
+    return " ".join(words)
+
+
+# Each language the checker reads, by file suffix.
+LANGUAGES = {
+    ".go": Language(
+        read_comments=parse_go_comments,
+        join_prose=join_comment_prose,
+        generated_marker=GO_GENERATED_MARKER,
+    ),
+    ".py": Language(
+        read_comments=parse_python_comments,
+        join_prose=join_python_prose,
+        generated_marker=PYTHON_GENERATED_MARKER,
+    ),
+}
 
 
 def split_sentences(prose: str) -> list[str]:
@@ -359,7 +607,7 @@ def find_rename_candidates(
 
     A comment matches when its first sentence has the same words as the
     approved text's first sentence, except where both words look like
-    Go identifiers (``Total``, ``io.Reader``, ``max_size``, ``V2``) or
+    identifiers (``Total``, ``io.Reader``, ``max_size``, ``V2``) or
     are the two comments' names. A comment with approved text of its
     own is the owner's other comment, not this one, so it never matches.
 
@@ -369,9 +617,8 @@ def find_rename_candidates(
     Returns:
         The matching named comments in ``file``, in file order.
     """
-    approved_words = split_first_sentence(
-        join_comment_prose(text.splitlines(keepends=True))
-    )
+    join_prose = LANGUAGES[Path(file).suffix].join_prose
+    approved_words = split_first_sentence(join_prose(text))
     candidates = []
     for comment in comments:
         if comment.file != file or not comment.name or comment.name == name:
@@ -403,7 +650,7 @@ def split_first_sentence(prose: str) -> list[str]:
 
 
 def looks_like_identifier(word: str, names: set[str]) -> bool:
-    """Return whether a prose word looks like a Go identifier.
+    """Return whether a prose word looks like an identifier.
 
     Args:
         word: One word of a sentence, with any punctuation around it.
@@ -513,7 +760,7 @@ def find_rule_violations(
     comments: list[Comment],
     approved: dict[tuple[str, str], str],
     avoid: dict[str, str],
-    base_sentences: set[str] | None,
+    base_sentences: set[tuple[str, str]] | None,
 ) -> list[Finding]:
     """Check every comment against the ``RULES``.
 
@@ -522,8 +769,8 @@ def find_rule_violations(
         approved: Approved text by ``(file, name)``; ``""`` means the
             owner cut the comment.
         avoid: Words not to use, each with what to say instead.
-        base_sentences: The sentences of every Go comment under the
-            repository at ``--base``, or ``None`` without it.
+        base_sentences: ``(suffix, sentence)`` for each comment sentence
+            at ``--base`` in the checked languages, or ``None`` without it.
 
     Returns:
         Gone approved comments, then findings in file order.
@@ -550,7 +797,8 @@ def find_rule_violations(
             # A sentence present at --base may be a person's words, so it
             # never fails the run, and the agent is not asked to cut it.
             present_at_base = base_sentences is not None and all(
-                s in base_sentences for s in match.sentences
+                (Path(comment.file).suffix, s) in base_sentences
+                for s in match.sentences
             )
             if present_at_base and match.rule == "restated-name":
                 continue
@@ -611,18 +859,22 @@ def is_string_map(value: object) -> TypeGuard[dict[str, str]]:
     )
 
 
-def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
-    """Read every Go comment under ``repo`` at ``rev``.
+def read_comments_at_commit(
+    repo: Path, rev: str, suffixes: set[str]
+) -> list[Comment]:
+    """Read every comment under ``repo`` at ``rev`` in files of the suffixes.
 
-    Every Go file counts, not only the checked ones, so a person's
+    Every such file counts, not only the checked ones, so a person's
     sentence in a moved or renamed file is still theirs.
 
     Args:
         repo: The folder given as ``--repo``, inside a Git repository.
+        suffixes: The checked files' suffixes, such as ``.go``.
 
     Returns:
-        The comments in every Go file at ``rev``, with shared names
-        removed.
+        The comments in every such file at ``rev``, with shared names
+        removed. A file its parser cannot read is left out, since its
+        sentences only decide which wording is old.
 
     Raises:
         ValueError: ``rev`` is not a commit in ``repo``.
@@ -641,7 +893,8 @@ def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
     ).stdout.splitlines()
     found = []
     for file in listed:
-        if not file.endswith(".go"):
+        suffix = Path(file).suffix
+        if suffix not in suffixes:
             continue
         # "./" makes Git read the path from --repo, not the Git root.
         shown = subprocess.run(
@@ -649,34 +902,42 @@ def read_comments_at_commit(repo: Path, rev: str) -> list[Comment]:
         ).stdout
         # An old file need not be UTF-8; only its comments matter.
         source = shown.decode("utf-8", errors="replace")
-        found += parse_go_comments(source, file)
+        try:
+            found += LANGUAGES[suffix].read_comments(source, file)
+        except SourceError:
+            continue
     return unname_shared_names(found)[0]
 
 
 def unname_shared_names(
     comments: list[Comment],
-) -> tuple[list[Comment], dict[tuple[str, str], list[int]]]:
-    """Take the name off comments whose name another comment shares.
+) -> tuple[list[Comment], dict[tuple[str, str], tuple[str, list[int]]]]:
+    """Take the name off comments that cannot keep one.
 
     Two ``func init()`` or two ``var _`` lines in one file are ordinary
-    Go, but approved text could not tell their comments apart.
+    Go, but approved text could not tell their comments apart. A
+    comment with a ``refusal`` loses its name too.
 
     Returns:
-        The comments, with shared names set to ``""``, and the lines
-        of each shared name by ``(file, name)``.
+        The comments, with those names set to ``""``, and each such
+        name's reason and lines by ``(file, name)``.
     """
-    lines: dict[tuple[str, str], list[int]] = {}
+    by_key: dict[tuple[str, str], list[Comment]] = {}
     for comment in comments:
         if comment.name:
-            lines.setdefault((comment.file, comment.name), []).append(
-                comment.line
-            )
-    shared = {key: found for key, found in lines.items() if len(found) > 1}
+            by_key.setdefault((comment.file, comment.name), []).append(comment)
+    refused = {}
+    for key, found in by_key.items():
+        if len(found) > 1:
+            reason = f"{len(found)} comments in this file have this name"
+            refused[key] = (reason, [c.line for c in found])
+        elif found[0].refusal:
+            refused[key] = (found[0].refusal, [found[0].line])
     unnamed = [
-        replace(c, name="") if (c.file, c.name) in shared else c
+        replace(c, name="") if (c.file, c.name) in refused else c
         for c in comments
     ]
-    return unnamed, shared
+    return unnamed, refused
 
 
 def build_approved_entries(
@@ -772,10 +1033,10 @@ def apply_renames(
 ) -> tuple[dict[tuple[str, str], str], list[Comment], list[str]]:
     """Move entries and ``--base`` comments to their new names.
 
-    A pair of ``.go`` paths, relative to ``--repo``, moves a file; no Go
-    name ends in ``.go``, since ``go`` is a keyword. Other pairs rename a
-    comment. Files move first, and an entry already under the new name
-    wins.
+    A pair moves a file when its old side is a file of the entries, of
+    ``files`` or at ``--base``, relative to ``--repo``, since a name such
+    as ``Runner.go`` looks like a path. Other pairs rename a comment.
+    Files move first, and an entry already under the new name wins.
 
     Args:
         renames: New names or paths by old ones.
@@ -785,10 +1046,12 @@ def apply_renames(
         The renamed entries and ``--base`` comments, and each old name
         or path that renamed nothing.
     """
+    known_files = files | {file for file, _ in approved}
+    known_files |= {comment.file for comment in base_comments}
     rename_rules = RenameRules(
-        file_moves={o: n for o, n in renames.items() if o.endswith(".go")},
+        file_moves={o: n for o, n in renames.items() if o in known_files},
         name_changes={
-            o: n for o, n in renames.items() if not o.endswith(".go")
+            o: n for o, n in renames.items() if o not in known_files
         },
         checked_files=files,
         current_keys=current_keys,
@@ -878,7 +1141,7 @@ def approve_one_comment(
 
     Args:
         repo: The folder holding ``.code-comments.json``.
-        file: The Go file, relative to ``repo``.
+        file: The Go or Python file, relative to ``repo``.
         name: The comment's name; a comment gone from ``file`` is
             recorded as cut.
         renames: New names or paths by old ones, applied first. A name
@@ -895,20 +1158,24 @@ def approve_one_comment(
     except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2
-    if not file.endswith(".go") or not name:
+    language = LANGUAGES.get(Path(file).suffix)
+    if language is None or not name:
+        suffixes = " or ".join(LANGUAGES)
         print(
-            "--approve-comment needs a Go file and a comment name, "
+            f"--approve-comment needs a {suffixes} file and a comment name, "
             f"not {file!r} {name!r}",
             file=sys.stderr,
         )
         return 2
-    comments, shared = unname_shared_names(parse_go_comments(source, file))
-    if (file, name) in shared:
-        print(
-            f"{file} {name}: cannot be approved; "
-            f"{len(shared[file, name])} comments in this file have this name",
-            file=sys.stderr,
-        )
+    try:
+        found = language.read_comments(source, file)
+    except SourceError as error:
+        print(f"{file}: {error}", file=sys.stderr)
+        return 2
+    comments, refused = unname_shared_names(found)
+    if (file, name) in refused:
+        reason, _ = refused[file, name]
+        print(f"{file} {name}: cannot be approved; {reason}", file=sys.stderr)
         return 2
     approved, _, _ = apply_renames(
         renames,
@@ -936,8 +1203,8 @@ def approve_one_comment(
     return 0
 
 
-def list_changed_go_files(repo: Path, commit: str) -> set[str]:
-    """Return the Go files ``commit`` changed, deleted ones included.
+def list_changed_files(repo: Path, commit: str) -> set[str]:
+    """Return the Go and Python files ``commit`` changed, deleted ones too.
 
     Raises:
         subprocess.CalledProcessError: Git cannot compare ``commit``
@@ -950,19 +1217,26 @@ def list_changed_go_files(repo: Path, commit: str) -> set[str]:
         text=True,
         check=True,
     ).stdout.splitlines()
-    return {file for file in changed if file.endswith(".go")}
+    return {file for file in changed if Path(file).suffix in LANGUAGES}
 
 
 def read_named_comments(
     repo: Path, files: set[str]
 ) -> dict[tuple[str, str], str]:
     """Return each named comment's text in ``files`` by ``(file, name)``,
-    leaving out names two comments share.
+    leaving out names that cannot be approved, such as shared ones.
+
+    Raises:
+        SourceError: Python cannot read one of ``files``.
     """
     comments: list[Comment] = []
     for file in sorted(files):
         source = (repo / file).read_text(encoding="utf-8")
-        comments += parse_go_comments(source, file)
+        language = LANGUAGES[Path(file).suffix]
+        try:
+            comments += language.read_comments(source, file)
+        except SourceError as error:
+            raise SourceError(f"{file}: {error}") from error
     return {
         (c.file, c.name): c.text
         for c in unname_shared_names(comments)[0]
@@ -971,7 +1245,7 @@ def read_named_comments(
 
 
 def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
-    """Take ``folder``'s approvals for the Go files ``commit`` changed.
+    """Take ``folder``'s approvals for the files ``commit`` changed.
 
     An entry is taken when its text is the comment now, since another
     worktree may have approved a later change. In those files, entries
@@ -1003,12 +1277,14 @@ def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
     try:
         approved, avoid = load_settings(repo)
         incoming, _ = load_settings(folder)
-        changed_files = list_changed_go_files(repo, commit)
-    except (ValueError, subprocess.CalledProcessError) as error:
+        changed_files = list_changed_files(repo, commit)
+        present_files = {f for f in changed_files if (repo / f).exists()}
+        # Read only approved files, so another file cannot stop cleanup.
+        named_files = {file for file, _ in [*approved, *incoming]}
+        comments_now = read_named_comments(repo, present_files & named_files)
+    except (ValueError, SourceError, subprocess.CalledProcessError) as error:
         print(error, file=sys.stderr)
         return 2
-    present_files = {f for f in changed_files if (repo / f).exists()}
-    comments_now = read_named_comments(repo, present_files)
     merged = {
         (file, name): text
         for (file, name), text in approved.items()
@@ -1070,7 +1346,7 @@ def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Check the given Go files and print one line per finding.
+    """Check the given Go and Python files and print one line per finding.
 
     Args:
         argv: Command-line arguments; ``sys.argv`` when ``None``.
@@ -1098,7 +1374,7 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         type=parse_rename_pair,
         metavar="OLD=NEW",
-        help="a renamed comment or .go file; repeat for each",
+        help="a renamed comment or file; repeat for each",
     )
     parser.add_argument(
         "--approve-comment",
@@ -1110,7 +1386,7 @@ def main(argv: list[str] | None = None) -> int:
         "--merge-approvals",
         nargs=2,
         metavar=("FOLDER", "COMMIT"),
-        help="take FOLDER's approvals for the Go files COMMIT changed; run "
+        help="take FOLDER's approvals for the files COMMIT changed; run "
         "as the cleanup-plan skill says",
     )
     parser.add_argument("paths", nargs="*", type=Path)
@@ -1136,7 +1412,7 @@ def main(argv: list[str] | None = None) -> int:
             dict(args.rename),
         )
     if not args.paths:
-        parser.error("give the Go files to check")
+        parser.error("give the files to check")
     try:
         approved, avoid = load_settings(repo)
     except ValueError as error:
@@ -1150,11 +1426,13 @@ def main(argv: list[str] | None = None) -> int:
         paths += [path for path in approved_paths if path.exists()]
     checked_files: set[str] = set()
     comments: list[Comment] = []
+    unreadable: dict[str, str] = {}
     for path in paths:
         if path.is_dir():
-            print(f"{path}: a folder; pass its Go files", file=sys.stderr)
+            print(f"{path}: a folder; pass the files in it", file=sys.stderr)
             return 2
-        if path.suffix != ".go":
+        language = LANGUAGES.get(path.suffix)
+        if language is None:
             print(f"{path}: skipped; not a Go file", file=sys.stderr)
             continue
         try:
@@ -1166,28 +1444,37 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError) as error:
             print(f"{path}: {error}", file=sys.stderr)
             return 2
-        if GENERATED_FILE_MARKER.search(source):
+        if language.generated_marker.search(source):
             print(f"{path}: skipped; generated", file=sys.stderr)
             continue
-        comments += parse_go_comments(source, file)
+        try:
+            comments += language.read_comments(source, file)
+        except SourceError as error:
+            if path in args.paths:
+                print(f"{path}: {error}", file=sys.stderr)
+                return 2
+            # Its approvals cannot be checked, but they are not gone.
+            unreadable[file] = f"approved file {error}; fix the file"
+            continue
         checked_files.add(file)
     if not checked_files:
         print("no Go file to check", file=sys.stderr)
         return 2
-    comments, shared = unname_shared_names(comments)
+    comments, refused = unname_shared_names(comments)
     base_comments: list[Comment] = []
     if args.base:
         try:
-            base_comments = read_comments_at_commit(repo, args.base)
+            base_comments = read_comments_at_commit(
+                repo,
+                args.base,
+                {Path(file).suffix for file in checked_files},
+            )
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2
-    for (file, name), found in shared.items():
-        for line in found:
-            print(
-                f"{file}:{line} {name}: cannot be approved; "
-                f"{len(found)} comments in this file have this name"
-            )
+    for (file, name), (reason, lines) in refused.items():
+        for line in lines:
+            print(f"{file}:{line} {name}: cannot be approved; {reason}")
     if args.approve:
         # Rename first, so a renamed comment's entry moves instead of
         # being cut as gone or dropped with a deleted file.
@@ -1215,15 +1502,21 @@ def main(argv: list[str] | None = None) -> int:
     base_sentences = None
     if args.base:
         base_sentences = {
-            sentence
+            (Path(comment.file).suffix, sentence)
             for comment in base_comments
             for sentence in split_sentences(comment.prose)
         }
 
     findings = find_rule_violations(
-        checked_files, comments, approved, avoid, base_sentences
+        checked_files,
+        comments,
+        {k: t for k, t in approved.items() if k[0] not in unreadable},
+        avoid,
+        base_sentences,
     )
-    broken_rules: list[str] = []
+    broken_rules = ["approved"] if unreadable else []
+    for file, message in unreadable.items():
+        print(f"{file} -: approved: {message}")
     for finding in findings:
         comment = finding.comment
         # A gone comment has no line to point at.
@@ -1238,7 +1531,7 @@ def main(argv: list[str] | None = None) -> int:
     failing_rules = {"approved"}
     if base_sentences is not None:
         failing_rules |= {"avoided-word", "filler"}
-    failed = any(
+    failed = bool(unreadable) or any(
         finding.rule in failing_rules and not finding.note
         for finding in findings
     )

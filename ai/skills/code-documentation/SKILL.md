@@ -310,7 +310,7 @@ Only the owner runs the checker with `--approve`, or an agent the
 owner asked to. It rewrites `.code-comments.json` itself, so no one
 types entries by hand. Pass `--rename OLD=NEW` once for each renamed
 comment, so its approved or cut entry moves to the new name, and a
-pair of `.go` paths, relative to `--repo`, for a moved file. For many
+pair of paths, relative to `--repo`, for a moved file. For many
 renames, put one `--rename=OLD=NEW` per line in a file and pass
 `@<file>`.
 
