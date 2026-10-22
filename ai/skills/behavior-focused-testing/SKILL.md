@@ -109,3 +109,29 @@ Dan North: Introducing BDD: connect requirements, behavior, and examples.
 pytest: Good Integration Practices and parametrization: discovery, organization, and case IDs.
 
 Skill structure and trigger descriptions follow Anthropic's skill-building guide, OpenAI's skills overview, and Claude's authoring practices.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above.
+If the section is empty and `skill-lessons` is installed, run
+`skill-lessons render` once, since an install can reset this file, and
+read the section again.
+
+When the user corrects how you plan, write or review tests, still save
+it to memory as your instructions say. If `skill-lessons` is installed,
+also offer once to save it here as a lesson. When the user says
+"remember", save it at once and show the one line it prints:
+
+    jq -n --arg text '<rule>' \
+      '{skill: "behavior-focused-testing", text: $text}' |
+      skill-lessons add -
+
+Single quotes keep backticks and `$` in the rule as written. If the
+user corrects a lesson again, add `repeat_of: "L<n>"` inside the
+braces, with the ID from the end of that lesson. If `skill-lessons` is
+not installed, say so once and save no lesson. Lessons become rules in
+this text only through a pull request the user asks for.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
