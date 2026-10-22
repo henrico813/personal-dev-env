@@ -21,58 +21,55 @@ the chat instead.
 
 ## Steps
 
-1. Leave the comments in the code as they are now; your wording goes
-   in a proposals file. Write it outside the repository, such as in
-   a folder from `mktemp -d`.
+1. Never edit a comment the user approved, even when a plan says
+   to: propose your change in step 3. Optional: before `draft`, have
+   a fresh reviewer, such as a new agent session given only the
+   changed code, shorten or cut the comments you wrote the way the
+   user's earlier notes asked.
+2. On the task's branch, in the repository, run:
+
+   ```bash
+   pde-comment-review draft
+   ```
+
+   It finds every Go comment the user must answer: comments the
+   branch added or changed, approved comments that were edited or
+   renamed, and approved comments whose code was removed, which the
+   user can only drop. It saves them as round 1 of a new review
+   named after the branch, prints `saved round 1 of review NAME: REPO
+   · BRANCH`, then prints the round as JSON. If it says no comment
+   needs the user's answer, tell the user there is nothing to review.
+   When it refuses, it names each problem and saves nothing; fix them
+   and run it again. If a comment has the same wording as another
+   comment in its file, or as the approved text of one you edited,
+   change an unapproved copy's wording in the code. If a round waits
+   for the user, use step 3 or step 5 instead, taking the ids from
+   the latest `round-N.json` in
+   `~/.local/state/pde/comment-review/NAME/` (read it only), or wait
+   for the answers and run `draft` again. Tell the user when the
+   waiting review is for another checkout.
+3. Optional: to propose other wording, write a proposals file with
+   only the changed items, outside the repository, such as in a
+   folder from `mktemp -d`.
    [references/proposals-file.md](references/proposals-file.md) gives
-   the format. In each file you list, put in one item for every
-   comment that sits directly on a declaration, such as the package
-   clause, a function, method, type, field, const or var, unless the
-   user has approved it as it is now. The write approves only the
-   comments the user answers. If you are unsure whether a comment is
-   approved, list it as `keep`. Comments
-   inside function bodies, or with a blank line after them, are
-   never approved, so listing them is optional.
-   - `old` is the comment as it is in the file now. Never edit a
-     comment the user approved, even when a plan says to: leave it,
-     and propose your change as an item, so `old` is the approved
-     text.
-   - List every rename in `renames`.
-   - If your task deleted code whose comment the user approved, `add`
-     says the comment is gone. Ask the user one plain yes-or-no
-     question that names each comment and says its code was removed.
-     With their yes, run the comment checker's
-     `--approve-comment FILE NAME` for each; never record a cut
-     without it.
-   - Propose a change as `reword`, with the new lines in `new`, or
-     as `cut`.
-   - A comment with no change is `keep`.
-   - If a comment you must list has the same wording as another
-     comment in its file, `add` refuses it. Before `add`, change an
-     unapproved copy's wording in the code so they differ, or leave
-     both copies out of the review and show them in the pull request
-     or the chat. A doc comment followed by a Go directive, such as
-     `//go:noinline`, stays unapproved even when the user answers it.
-2. Optional: before `add`, have a fresh reviewer, such as a new
-   agent session given only the proposals file and the code, shorten
-   or cut proposals the way the user's earlier notes asked.
-3. Save it as the next round of a review. Pick a short name, such
-   as the branch or package; it may use only `a-z`, `0-9`, `.`, `_`
-   and `-`:
+   the format. Copy a drafted item from the printed JSON, keep its
+   `id` and `name`, and change `proposal` and `new`. To change an
+   approved comment the draft did not list, add an item with the
+   next unused `id` and the approved text as `old`. If `add` says an
+   approved comment is gone because you deleted its code, add an item
+   for it with its `name`, `cut`, `code_removed`, and as `old` the
+   approved text the error prints, also in `.code-comments.json`
+   (read it only). Save it under the review's name, such as shop:
 
    ```bash
    pde-comment-review add shop /tmp/tmp.X1/round-1.json
    ```
 
-   It prints `saved round 1 of review shop: REPO · BRANCH`. When it
-   refuses the file, it names each problem and saves nothing; the
-   reference lists them. The user's screen reads only reviews that
-   `add` saved.
 4. Tell the user the review is ready: "Review shop is ready: press
    Ctrl+b e in Herdr, or run `pde-comment-review open shop`." Do
    not run `open` yourself: it takes over the terminal it runs in.
-   Do not edit the listed files before the last answer: the write
-   finds each comment by its `old` text, and stops if one changed.
+   Do not edit the listed comments before the last answer: the write
+   refuses an edited one or puts the user's answer over your edit.
 5. When the user says there are notes, read them:
 
    ```bash
@@ -80,13 +77,15 @@ the chat instead.
    ```
 
    It prints JSON with each note and the item it is about. Write a
-   new proposals file with only those items, keeping their `id`,
-   and save it with `add` under the same name. Only those items
-   need a new answer; every other answer stays.
+   new proposals file with only those items, keeping their `id` and
+   `name`, and save it with `add` under the same name. Only those
+   items need a new answer; every other answer stays. If the user
+   asks for removed code back, put it back with its approved comment,
+   and send the item without `code_removed`, proposing `keep`.
 6. Never commit `.code-comments.json`, the tool's file at the repo root.
 7. Never edit a review's saved files in
    `~/.local/state/pde/comment-review/`: change a review only with
-   `add`, and leave the answers and notes to the user.
+   `draft` and `add`, and leave the answers and notes to the user.
 
 ## When the tool is missing
 

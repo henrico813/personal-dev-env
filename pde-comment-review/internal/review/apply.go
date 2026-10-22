@@ -12,7 +12,7 @@ import (
 
 // Returns each file's new text without writing it, so
 // writeAndApproveDecisions can refuse before changing any file.
-func (r *Review) BuildChangedFiles() (map[string]string, error) {
+func (r *Review) BuildChangedFiles(foundByName map[int]string) (map[string]string, error) {
 	entries := r.ListEntries()
 	if err := refuseUndecided(entries); err != nil {
 		return nil, err
@@ -21,6 +21,10 @@ func (r *Review) BuildChangedFiles() (map[string]string, error) {
 	changed := map[string]string{}
 	var problems []error
 	for _, e := range entries {
+		// Removed code left no comment to change.
+		if e.Item.CodeRemoved {
+			continue
+		}
 		file := e.Item.File
 		text, ok := texts[file]
 		if !ok {
@@ -33,7 +37,8 @@ func (r *Review) BuildChangedFiles() (map[string]string, error) {
 		}
 		// Each item is found in the text with earlier answers already in
 		// it, so two items in one file both land.
-		at, err := findOnce(text, e.Item.Old)
+		current := findCurrentComment(e.Item, foundByName)
+		at, err := findOnce(text, current)
 		if err != nil {
 			problems = append(
 				problems,
@@ -50,8 +55,8 @@ func (r *Review) BuildChangedFiles() (map[string]string, error) {
 			problems = append(problems, fmt.Errorf("item %d: %w", e.Item.ID, err))
 			continue
 		}
-		if replacement != e.Item.Old {
-			text = text[:at] + replacement + text[at+len(e.Item.Old):]
+		if replacement != current {
+			text = text[:at] + replacement + text[at+len(current):]
 			changed[file] = text
 		}
 		texts[file] = text

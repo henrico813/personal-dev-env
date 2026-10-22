@@ -13,8 +13,8 @@ pde-comment-review help
 
 ## 1. Save the proposals
 
-An AI usually does this step; its instructions are in the
-`comment-review` skill. To try a review by hand, make a small
+An AI usually does this step with `draft`; its instructions are in
+the `comment-review` skill. To try a review by hand, make a small
 repository with one Go file:
 
 ```bash
@@ -121,6 +121,10 @@ the AI for a different proposal, press `m`, type
 `say the limit is 1000 cents`, and press Enter. Then press `q`. Each
 answer and note is saved at once, so opening the review again starts
 at the next unanswered comment.
+
+When the AI removed the code under a comment you approved, the screen
+says `Code removed. Drop this comment?`: press `a` or `c` to drop it,
+or `m` to ask the AI for the code back.
 
 The other keys are `o` to keep a comment as it is, `c` to cut it, `e`
 to write your own wording in nvim, `v` to read the file in nvim (quit

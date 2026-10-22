@@ -36,7 +36,7 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 	}
 	var changed map[string]string
 	if err == nil {
-		changed, err = r.BuildChangedFiles()
+		changed, err = r.BuildChangedFiles(findCommentsByName(r, named))
 	}
 	if err != nil {
 		return "", fmt.Errorf("nothing was written: %w", err)
@@ -113,22 +113,32 @@ func refuseUnwritableReview(
 		answeredFiles,
 	)
 	problems := []error{
-		refuseRepeatedItems(r.ListEntries()),
+		refuseRepeatedItems(r.ListEntries(), named),
+		refuseUnwritableNamedItems(r, named),
 		refuseChangedApprovals(
 			r,
 			named,
 			moved,
 		),
 	}
+	removed := map[commentKey]bool{}
+	for _, e := range r.ListEntries() {
+		removed[commentKey{e.Item.File, e.Item.Name}] = e.Item.CodeRemoved
+	}
 	// Without its rename, an edited approved comment could pass as a new one.
 	for key, text := range moved {
-		if _, isComment := named[key]; text != "" && answeredFiles[key.file] && !isComment {
+		if _, isComment := named[key]; text != "" && answeredFiles[key.file] && !isComment && !removed[key] {
 			problems = append(
 				problems,
 				fmt.Errorf(
-					"%s %s: the owner's approved comment is gone. If you renamed it, add the rename to renames; if you deleted its code, ask the owner as the comment-review skill says",
+					"%s %s: the owner's approved comment is gone. If you renamed it, add the rename to renames; if you deleted its code, send it as an item with code_removed and this as old:\n    %s",
 					key.file,
 					key.name,
+					strings.ReplaceAll(
+						strings.TrimSuffix(text, "\n"),
+						"\n",
+						"\n    ",
+					),
 				),
 			)
 		}
@@ -180,6 +190,17 @@ func findItemName(item review.Item, named map[commentKey]string) string {
 	return ""
 }
 
+// Returns each named item's comment as its file has it now, by item ID.
+func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]string {
+	foundByName := map[int]string{}
+	for _, e := range r.ListEntries() {
+		if text, ok := named[commentKey{e.Item.File, e.Item.Name}]; ok {
+			foundByName[e.Item.ID] = text
+		}
+	}
+	return foundByName
+}
+
 // Returns the comment of each of r's items that the checker names.
 func listAnsweredComments(r *review.Review, named map[commentKey]string) []commentKey {
 	var answered []commentKey
@@ -205,11 +226,11 @@ func refuseChangedApprovals(
 		text, isApproved := approved[key]
 		var problem string
 		switch {
-		case key.name == "":
+		case key.name == "" || isApproved && text == e.Item.Old:
 			continue
 		case named[key] != e.Item.Old:
 			problem = "no comment by this name has the item's old. Fix or remove the item's name."
-		case !isApproved || text == e.Item.Old:
+		case !isApproved:
 			continue
 		case text == "":
 			problem = "the owner cut this comment. Delete it from the code."
@@ -273,9 +294,10 @@ func moveApprovals(
 // Apply finds each item's comment by its old text, in item order: if the
 // first answer changes the comment, apply refuses the second item, and if
 // it keeps it, the second answer silently wins.
-func refuseRepeatedItems(entries []review.Entry) error {
+func refuseRepeatedItems(entries []review.Entry, named map[commentKey]string) error {
 	type place struct {
 		file string
+		name string
 		old  string
 	}
 	firstID := map[place]int{}
@@ -283,7 +305,10 @@ func refuseRepeatedItems(entries []review.Entry) error {
 	for _, e := range entries {
 		at := place{
 			file: e.Item.File,
-			old:  e.Item.Old,
+			name: findItemName(e.Item, named),
+		}
+		if at.name == "" {
+			at.old = e.Item.Old
 		}
 		if id, ok := firstID[at]; ok {
 			problems = append(
@@ -298,6 +323,43 @@ func refuseRepeatedItems(entries []review.Entry) error {
 			continue
 		}
 		firstID[at] = e.Item.ID
+	}
+	return errors.Join(problems...)
+}
+
+// Returns an error naming each named item whose removed code is back, or
+// whose comment the write cannot find exactly once.
+func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
+	foundByName := findCommentsByName(r, named)
+	var problems []error
+	for _, e := range r.ListEntries() {
+		if _, found := foundByName[e.Item.ID]; !found {
+			continue
+		}
+		var err error
+		if e.Item.CodeRemoved {
+			err = fmt.Errorf(
+				"%s %s: its removed code is back. Send the item again without code_removed.",
+				e.Item.File,
+				e.Item.Name,
+			)
+		} else {
+			_, err = review.FindCommentLine(
+				r.Repo(),
+				e.Item,
+				foundByName,
+			)
+		}
+		if err != nil {
+			problems = append(
+				problems,
+				fmt.Errorf(
+					"item %d: %w",
+					e.Item.ID,
+					err,
+				),
+			)
+		}
 	}
 	return errors.Join(problems...)
 }

@@ -1,8 +1,12 @@
 package review
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -34,6 +38,33 @@ func ReviewNameForBranch(branch string) (string, error) {
 		)
 	}
 	return name, nil
+}
+
+// Moves the finished review called name aside, such as to name.1, since
+// a draft numbers its items from 1. Refuses while a round waits for the
+// owner.
+func MoveFinishedReviewAside(name string) error {
+	r, err := loadReview(name)
+	if err != nil || len(r.Rounds) == 0 {
+		return err
+	}
+	if r.AppliedRound != len(r.Rounds) {
+		return fmt.Errorf(
+			"review %s, for %s, has a round waiting for the owner; send changed items with add, as the comment-review skill says, or tell the owner if that is another checkout",
+			name,
+			r.Repo(),
+		)
+	}
+	for n := 1; ; n++ {
+		aside := r.Dir + "." + strconv.Itoa(n)
+		_, err := os.Stat(aside)
+		if errors.Is(err, fs.ErrNotExist) {
+			return os.Rename(r.Dir, aside)
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 // Saves d as the draft of the review called name, replacing any old one.
