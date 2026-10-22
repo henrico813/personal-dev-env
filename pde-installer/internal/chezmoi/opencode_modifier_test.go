@@ -107,6 +107,25 @@ func TestModifierPreservesSettings(t *testing.T) {
 	}
 }
 
+// An install must not replace a model chosen for one machine.
+func TestModifierKeepsMachineModel(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{"model": "example/model"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var config struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Model != "example/model" {
+		t.Fatalf("model = %q, want %q", config.Model, "example/model")
+	}
+}
+
 func TestMemoryModifierPreservesSettings(t *testing.T) {
 	t.Parallel()
 	output, err := runMemoryModifier(t, `{"custom":true,"chatMessage":{"injectOn":"always"}}`, true)
