@@ -12,8 +12,8 @@ description: Saves code comments as a review that the user answers one
 The user reviews comments one per screen, on a phone or in a
 terminal, with `pde-comment-review`. You save your proposals as a
 review; the user answers each one; after the last answer the tool
-writes the answers into the code and approves the comments, so the
-comment checker stops later agents from changing them.
+writes the answers into the code and approves the answered comments,
+so the comment checker stops later agents from changing them.
 
 The tool supports Go comments today. Until it supports a language,
 show that language's comments to the user in the pull request or
@@ -28,9 +28,9 @@ the chat instead.
    the format. In each file you list, put in one item for every
    comment that sits directly on a declaration, such as the package
    clause, a function, method, type, field, const or var, unless the
-   user has approved it as it is now. The write approves those
-   comments, so it refuses any the user has not seen. If you are
-   unsure whether a comment is approved, list it as `keep`. Comments
+   user has approved it as it is now. The write approves only the
+   comments the user answers. If you are unsure whether a comment is
+   approved, list it as `keep`. Comments
    inside function bodies, or with a blank line after them, are
    never approved, so listing them is optional.
    - `old` is the comment as it is in the file now. Never edit a
@@ -50,10 +50,9 @@ the chat instead.
    - If a comment you must list has the same wording as another
      comment in its file, `add` refuses it. Before `add`, change an
      unapproved copy's wording in the code so they differ, or leave
-     the whole file out of the review and show its comments in the
-     pull request or the chat. Do the same for a file where a doc
-     comment is followed by a Go directive, such as
-     `//go:noinline`: the tool can never approve that comment.
+     both copies out of the review and show them in the pull request
+     or the chat. A doc comment followed by a Go directive, such as
+     `//go:noinline`, stays unapproved even when the user answers it.
 2. Optional: before `add`, have a fresh reviewer, such as a new
    agent session given only the proposals file and the code, shorten
    or cut proposals the way the user's earlier notes asked.

@@ -117,10 +117,10 @@ func addRound(
 	if err != nil {
 		return err
 	}
-	err = refuseUnwritableReview(
-		next,
-		checker,
-	)
+	named, err := readReviewComments(next, checker)
+	if err == nil {
+		err = refuseUnwritableReview(next, named)
+	}
 	if err != nil {
 		return fmt.Errorf(
 			"nothing was saved: %w",

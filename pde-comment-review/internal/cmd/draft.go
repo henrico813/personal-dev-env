@@ -377,6 +377,11 @@ func readBaseComments(
 		}
 		sources[file] = text
 	}
+	return readCommentTexts(sources, checker)
+}
+
+// Returns the text of each comment the checker names in sources.
+func readCommentTexts(sources map[string]string, checker string) (map[commentKey]string, error) {
 	named, _, err := readNamedComments(
 		sources,
 		nil,
@@ -462,11 +467,10 @@ func readNamedComments(
 	if err != nil {
 		return nil, "", err
 	}
-	_, err = approveComments(
+	err = approveComments(
 		trial,
 		checker,
 		files,
-		nil,
 	)
 	if err != nil {
 		return nil, "", err

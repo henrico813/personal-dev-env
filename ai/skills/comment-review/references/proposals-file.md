@@ -63,10 +63,7 @@ one is wrong. It names each problem, for example:
 - two items are the same comment;
 - a rename would move no approved comment, because its file has no
   item. Add an item for that comment in its file;
-- the write would approve a comment in a listed file that the user
-  has not seen: a comment the user approved or cut was changed,
-  removed or brought back, a comment on a declaration is not an
-  item, or a comment has a line with no space after `//`, such as a
-  Go directive. The error says what to do for each.
+- an item is for a comment the user cut, or its `old` is not the
+  text the user approved. The error says what to do.
 
 Fix what it names and run `add` again.

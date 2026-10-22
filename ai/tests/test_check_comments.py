@@ -738,13 +738,20 @@ class TestApproveComment:
                 "needs a Go file and a comment name",
                 id="empty-name",
             ),
+            pytest.param(
+                "crt.go",
+                None,
+                "Total",
+                "crt.go: no such file",
+                id="missing-file",
+            ),
         ],
     )
     def test_refuses_comment_it_cannot_approve(
         self,
         tmp_path: Path,
         file: str,
-        source: str,
+        source: str | None,
         name: str,
         message: str,
     ) -> None:
@@ -754,9 +761,12 @@ class TestApproveComment:
         keyed by file and name, so without the refusal the answer was
         recorded as a cut. A code review found that a file that is not
         Go also recorded a cut, and that an empty name approved an
-        unnamed comment inside a function body.
+        unnamed comment inside a function body. A plan review found
+        that letting a deleted file record a cut would let a mistyped
+        one do so too.
         """
-        (tmp_path / file).write_text(source)
+        if source is not None:
+            (tmp_path / file).write_text(source)
         write_settings_file(tmp_path)
         before = (tmp_path / ".code-comments.json").read_text()
 
@@ -767,6 +777,56 @@ class TestApproveComment:
         assert result.returncode == 2
         assert message in result.stderr
         assert (tmp_path / ".code-comments.json").read_text() == before
+
+    def test_answers_after_renames_keep_checks_passing(
+        self, tmp_path: Path
+    ) -> None:
+        """Move approvals first, and cut the comments of a deleted file.
+
+        The review tool approves each answer on its own. Without this,
+        a moved file's and a renamed function's approvals stay under
+        their old names, and a deleted file's comments could not be
+        cut, so every later check fails.
+        """
+        (tmp_path / "new.go").write_text(
+            TOTAL + "func Sum() {}\n\n" + READS + "func Load() {}\n"
+        )
+        write_settings_file(
+            tmp_path,
+            [
+                ("old.go", "Total", TOTAL),
+                ("old.go", "Load", READS),
+                ("gone.go", "Open", "// Open opens the till.\n"),
+            ],
+        )
+
+        run_checker(
+            tmp_path,
+            "--approve-comment",
+            "new.go",
+            "Sum",
+            "--rename=old.go=new.go",
+            "--rename=Total=Sum",
+            paths=[],
+        )
+        run_checker(
+            tmp_path,
+            "--approve-comment",
+            "gone.go",
+            "Open",
+            paths=[],
+        )
+        result = run_checker(tmp_path)
+
+        assert read_settings_file(tmp_path) == {
+            "approved": [
+                {"file": "gone.go", "name": "Open", "text": ""},
+                {"file": "new.go", "name": "Load", "text": READS},
+                {"file": "new.go", "name": "Sum", "text": TOTAL},
+            ],
+            "avoid": {},
+        }
+        assert result.returncode == 0
 
 
 READS = "// Load reads the saved cart.\n"
