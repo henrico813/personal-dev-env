@@ -1,8 +1,9 @@
 # The Proposals File
 
-`pde-comment-review draft` saves a branch's first round itself. An
-agent writes a proposals file to change a round and saves it with
-`pde-comment-review add NAME FILE`.
+Agents prepare a branch's review with `draft`, `set` and `submit`.
+A proposals file is for a change those cannot make. Save it as the
+next round with `pde-comment-review add NAME FILE`, where `NAME` is
+the `review` the JSON shows.
 
 ## Format
 
@@ -36,7 +37,7 @@ agent writes a proposals file to change a round and saves it with
 | --- | --- |
 | `version` | Must be `1`. |
 | `repo` | The repository's absolute path. Every round of a review uses the same one. |
-| `items[].id` | A number unique in the file. A later round uses the same `id` to replace an item. |
+| `items[].id` | A number unique in the file. A later round uses an `id` again only to replace that item; `add` refuses an `id` an earlier round used for another comment. |
 | `items[].file` | A `.go` file, as a plain path inside `repo`, such as `internal/cart/cart.go`. |
 | `items[].old` | The whole comment exactly as it is in the file now: every `//` line, its indentation and its final newline. On an item with a `name`, it may be the approved text, which the file no longer has. |
 | `items[].proposal` | `keep`, `cut` or `reword`. |
@@ -59,7 +60,7 @@ one is wrong. It names each problem, for example:
   `//go:generate`;
 - `old`, or the comment of an item with a `name`, is not found
   exactly once in its file. For a repeated comment the error gives
-  the line of each copy; the skill's step 2 says what to do;
+  the line of each copy; the skill's step 4 says what to do;
 - an item with a `name` has no comment by that name in its file, or
   its removed code is back;
 - `new` is missing for `reword`, set for `keep` or `cut`, or the same
