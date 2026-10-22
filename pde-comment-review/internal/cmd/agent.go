@@ -79,7 +79,10 @@ func replyToSet(
 		answer,
 		text,
 	)
-	return replyAfter(dir, err)
+	reply := replyAfter(dir, err)
+	// The whole draft would fill a small model's context on every set.
+	reply.Items = slices.DeleteFunc(reply.Items, func(item review.Item) bool { return item.ID != id })
+	return reply
 }
 
 // Changes item id's proposal in the branch's draft, or starts the next
