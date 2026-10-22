@@ -95,28 +95,23 @@ Nothing is written, and the screen says why, when:
 - a comment has no answer, such as one a new round asked about again;
 - a comment's text in the file changed since the review was saved;
 - `gofmt` would change a file for reasons other than the comments;
-- an agent changed, removed or brought back a comment you approved or
-  cut;
-- the file has a comment on a declaration, such as the package
-  clause, a function or a type, that is not in the review and that
-  you have not approved as it is now;
+- an item is for a comment you cut, or its `old` is not the text you
+  approved;
 - a listed rename would move no approved comment: its file has no item.
 
-Two comments on declarations with the same exact wording in one file
-cannot be written while either copy is unapproved: `add` refuses
-them as items, and the write refuses an unapproved copy left out.
-Change an unapproved copy's wording before `add`, or leave the whole
-file out of the review and read its comments in the pull request. A
-doc comment followed by a Go directive, such as `//go:noinline`, can
-never be approved either; leave its file out of the review too.
+`add` refuses an item whose comment has the same wording as another
+in its file. Change an unapproved copy's wording before `add`, or
+leave both copies out and read them in the pull request. A doc
+comment followed by a Go directive, such as `//go:noinline`, stays
+unapproved even when you answer it.
 
 Approval goes through the comment checker of the `code-documentation`
 skill, `~/.agents/skills/code-documentation/scripts/check_comments.py`,
 which needs `python3`. The checker is the only program that writes
-`.code-comments.json`. Every comment in the review's files is
-approved, not only the review's items, except comments inside
-function bodies, comments with a blank line after them, and comments
-that share a name in their file.
+`.code-comments.json`. Only the comments you answered are approved,
+and one left out keeps its approval as it was. The checker never
+approves a comment inside a function body, one with a blank line
+after it, or one that shares a name in its file.
 
 ## Herdr pieces
 

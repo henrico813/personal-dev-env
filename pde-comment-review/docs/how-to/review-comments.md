@@ -40,8 +40,8 @@ git add cart.go && git commit -m start
 Write a proposals file with one item per comment. List every comment
 on the package clause, a function, a type or another declaration in
 the file that you have not approved as it is now, not only the ones to
-change: the write approves them, so it refuses one you have not
-seen. Comments inside function bodies are optional. Run this from the
+change, since the write approves only the comments you answer.
+Comments inside function bodies are optional. Run this from the
 `shop` folder; it fills in the folder's path:
 
 ```bash
@@ -163,7 +163,7 @@ other answer stays. Press `a`, the last answer: the tool writes them.
 ## 4. See what was written
 
 After the last answer, the tool writes your answers into the files,
-runs `gofmt`, and approves every comment in those files in
+runs `gofmt`, and approves each comment you answered in
 `.code-comments.json`, with no question first. Code the AI listed as
 renamed keeps your approvals under its new name:
 
@@ -175,10 +175,8 @@ all 2 answered                   done
 ```
 
 Press `d` to see the changes, in a new tab when you are in Herdr. If
-something is wrong, nothing is written and the screen says why. `add`
-already refuses a review that leaves out an unapproved comment or
-changes an approved one, so this happens when the code changed after
-`add`. For example, when an AI edited `TooHigh`'s comment after `add`:
+something is wrong, nothing is written and the screen says why. For
+example, when an AI edited `TooHigh`'s comment after `add`:
 
 ```text
 shop · main
