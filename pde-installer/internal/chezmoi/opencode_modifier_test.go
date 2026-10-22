@@ -107,6 +107,46 @@ func TestModifierPreservesSettings(t *testing.T) {
 	}
 }
 
+// Forcing the Claude Code model on every install broke a machine that has no
+// Claude login and uses GitHub Copilot.
+func TestModifierKeepsMachineModel(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "no model",
+			input: `{}`,
+			want:  "claude-code/claude-opus-5-5[1m]",
+		},
+		{
+			name:  "machine model",
+			input: `{"model": "github-copilot/claude-opus-5.5"}`,
+			want:  "github-copilot/claude-opus-5.5",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output, err := runModifier(t, tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var config struct {
+				Model string `json:"model"`
+			}
+			if err := json.Unmarshal(output, &config); err != nil {
+				t.Fatal(err)
+			}
+			if config.Model != tt.want {
+				t.Fatalf("model = %q, want %q", config.Model, tt.want)
+			}
+		})
+	}
+}
+
 func TestMemoryModifierPreservesSettings(t *testing.T) {
 	t.Parallel()
 	output, err := runMemoryModifier(t, `{"custom":true,"chatMessage":{"injectOn":"always"}}`, true)
