@@ -1395,3 +1395,105 @@ class TestMergeApprovals:
             "approved": [{"file": "till.py", "name": "<module>", "text": doc}],
             "avoid": {},
         }
+
+
+class TestListComments:
+    """Give ``pde-comment-review`` each named Python comment's lines."""
+
+    def test_list_prints_lines_and_warnings(self, tmp_path: Path) -> None:
+        """List each named comment's lines, code line and Python's warnings.
+
+        ``pde-comment-review`` will write the owner's answers over these
+        lines, and refuse a cut that empties a body or a write that adds
+        a warning. The comment holding the coding line is left out, so a
+        write cannot drop it, and so is ``short``, whose line holds code.
+        The last docstring has no line feed, and its end line must still
+        be right.
+        """
+        (tmp_path / "till.py").write_text(
+            "# Copyright.\n# -*- coding: utf-8 -*-\n"
+            'PRICE = "\\d+"\nCENTS = "\\d"\n'
+            "# Cents per coin.\n"
+            'RATES = {"dime": 10}\n'
+            'def short(): """Say hi."""\n\n'
+            "def total():\n"
+            '    """Count the till.\n\n'
+            '    Return cents.\n    """\n'
+            "    return 0\n\n\n"
+            "class TillError(Exception):\n"
+            '    """The till does not balance."""'
+        )
+
+        result = run_checker(
+            tmp_path,
+            "--list",
+            paths=[str(tmp_path / "till.py")],
+        )
+
+        assert json.loads(result.stdout) == {
+            "file": "till.py",
+            "comments": [
+                {
+                    "name": "# RATES",
+                    "line": 5,
+                    "end_line": 5,
+                    "code_line": 6,
+                    "only_body": False,
+                    "text": "# Cents per coin.\n",
+                },
+                {
+                    "name": "total",
+                    "line": 10,
+                    "end_line": 13,
+                    "code_line": 9,
+                    "only_body": False,
+                    "text": '    """Count the till.\n\n'
+                    '    Return cents.\n    """\n',
+                },
+                {
+                    "name": "TillError",
+                    "line": 18,
+                    "end_line": 18,
+                    "code_line": 17,
+                    "only_body": True,
+                    "text": '    """The till does not balance."""',
+                },
+            ],
+            "warnings": ["invalid escape sequence '\\d'"] * 2,
+        }
+
+    @pytest.mark.parametrize(
+        "source, message",
+        [
+            pytest.param(
+                'x = 1\rdef total():\n    """Count the till."""\n',
+                "cannot be read (it has a carriage return)",
+                id="carriage-return",
+            ),
+            pytest.param(
+                "return 0\n",
+                "SyntaxError at line 1",
+                id="cannot-compile",
+            ),
+        ],
+    )
+    def test_list_refuses_files_unsafe_to_write(
+        self, tmp_path: Path, source: str, message: str
+    ) -> None:
+        """Exit 2 for a file ``pde-comment-review`` must not write back.
+
+        The tool will list a file again after writing it, so a file that
+        parses but does not compile must fail. Python ends a line at a
+        lone carriage return and a split at line feeds does not, so the
+        tool could replace the wrong lines.
+        """
+        (tmp_path / "till.py").write_text(source)
+
+        result = run_checker(
+            tmp_path,
+            "--list",
+            paths=[str(tmp_path / "till.py")],
+        )
+
+        assert result.returncode == 2
+        assert message in result.stderr
