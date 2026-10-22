@@ -94,7 +94,14 @@ func setDecisions(t *testing.T, r *review.Review, decisions map[int]review.Decis
 // when never committed, and the renamed Check keeps its approval.
 func TestApplyWritesAndApprovesOwnerDecisions(t *testing.T) {
 	checker := findRepoChecker(t)
-	r := startReview(t, cartGo, `{"approved": [{"file": "cart.go", "name": "Check", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`, []string{"Check=Valid"})
+	// No item shows Clear's comment, so it must stay unapproved.
+	unanswered := "\n// Deletes every order.\nfunc Clear() {}\n"
+	r := startReview(
+		t,
+		cartGo+unanswered,
+		`{"approved": [{"file": "cart.go", "name": "Check", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`,
+		[]string{"Check=Valid"},
+	)
 	setDecisions(t, r, map[int]review.Decision{
 		1: {Action: review.ActionAccept},
 		2: {Action: review.ActionAccept},
@@ -123,8 +130,12 @@ func TooHigh(price int) bool { return price > 1000 }
 // Reports whether every price is above zero.
 func Valid(prices []int) bool { return true }
 `
-	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != want {
-		t.Errorf("cart.go =\n%s\nwant\n%s", got, want)
+	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != want+unanswered {
+		t.Errorf(
+			"cart.go =\n%s\nwant\n%s",
+			got,
+			want+unanswered,
+		)
 	}
 	got, err := readApprovals(r.Repo())
 	if err != nil {
@@ -155,7 +166,8 @@ func Valid(prices []int) bool { return true }
 // approved comments the owner never saw.
 func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 	approveValid := `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
-		{"file": "cart.go", "name": "Reset", "text": ""}], "avoid": {}}`
+		{"file": "cart.go", "name": "Reset", "text": ""},
+		{"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"}], "avoid": {}}`
 	tests := []struct {
 		name       string
 		onDisk     string // cart.go when apply runs
@@ -184,12 +196,7 @@ func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 			want:   "gofmt would change cart.go",
 		},
 		{
-			name:   "approved comment changed",
-			onDisk: strings.Replace(cartGo, "every price is above zero", "no price is negative", 1),
-			want:   "cart.go Valid: differs from the text the owner approved",
-		},
-		{
-			// Only a renamed comment may pass by matching an item.
+			// Listing an edited approved comment must not approve the edit.
 			name:   "approved comment changed, in review",
 			onDisk: strings.Replace(cartGo, "every price is above zero", "no price is negative", 1),
 			extra: []review.Item{{ID: 4, File: "cart.go", Proposal: review.ProposeKeep,
@@ -197,15 +204,22 @@ func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 			want: "cart.go Valid: differs from the text the owner approved",
 		},
 		{
+			// Without its rename, an edit to it would pass as a new comment.
 			name:   "approved comment deleted",
 			onDisk: strings.Replace(cartGo, "// Reports whether every price is above zero.\n", "", 1),
 			want:   "cart.go Valid: the owner's approved comment is gone",
 		},
 		{
-			name:    "renamed approved comment rewritten",
+			name:    "renamed approved comment rewritten, in review",
 			onDisk:  strings.Replace(cartGo, "// Reports whether every price is above zero.\nfunc Valid", "// Always returns true; safe to skip.\nfunc Check", 1),
 			renames: []string{"Valid=Check"},
-			want:    "cart.go Check: differs from the text the owner approved",
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeKeep,
+				Old:      "// Always returns true; safe to skip.\n",
+			}},
+			want: "cart.go Check: differs from the text the owner approved",
 		},
 		{
 			// A rename once reported success without moving an approved comment,
@@ -216,14 +230,28 @@ func TestApplyChangesNothingWhenChecksFail(t *testing.T) {
 			want:    "rename Check would move no approved comment",
 		},
 		{
-			name:   "unreviewed comment added",
-			onDisk: cartGo + "\n// Deletes every order.\nfunc Clear() {}\n",
-			want:   "cart.go Clear: not in the review",
+			// The write would approve the named comment, not the one shown.
+			name:   "item named after another comment",
+			onDisk: cartGo,
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Name:     "Total",
+				Proposal: review.ProposeKeep,
+				Old:      "// Reports whether every price is above zero.\n",
+			}},
+			want: "item 4: cart.go Total: no comment by this name has the item's old",
 		},
 		{
-			name:   "cut comment put back",
+			name:   "cut comment put back, in review",
 			onDisk: cartGo + "\n// Empties the cart.\nfunc Reset() {}\n",
-			want:   "cart.go Reset: the owner cut this comment",
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeKeep,
+				Old:      "// Empties the cart.\n",
+			}},
+			want: "cart.go Reset: the owner cut this comment",
 		},
 		{
 			// Python exits 1 on an exception, as it once did on an

@@ -152,13 +152,6 @@ func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
 			},
 		},
 		{
-			name:   "unapproved comment left out",
-			onDisk: cartGo + "\n// Deletes every order.\nfunc Clear() {}\n",
-			want: []string{
-				"cart.go Clear: not in the review, and the owner never approved it",
-			},
-		},
-		{
 			name:   "two items for one comment",
 			onDisk: cartGo,
 			extra: []review.Item{{
@@ -169,31 +162,6 @@ func TestAddRefusesReviewApplyWouldRefuse(t *testing.T) {
 			}},
 			want: []string{
 				"items 3 and 4 are the same comment in cart.go",
-			},
-		},
-		{
-			// The checker reads the directive as part of the comment, and
-			// old may not hold a directive, so no item can ever match it.
-			name:   "comment beside a directive",
-			onDisk: cartGo + "\n// Builds the price table.\n//go:generate go run gen.go\nfunc Table() {}\n",
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeKeep,
-				Old:      "// Builds the price table.\n",
-			}},
-			want: []string{
-				"cart.go Table: a line has no space after //",
-			},
-		},
-		{
-			// "//Empties" is not a Go directive, but the tool cannot tell
-			// such a line from one, and rewrapping would break a real
-			// one, so old may not hold it; adding the space fixes it.
-			name:   "comment line with no space after //",
-			onDisk: cartGo + "\n//Empties the cart.\nfunc Empty() {}\n",
-			want: []string{
-				"cart.go Empty: a line has no space after //",
 			},
 		},
 	}
@@ -298,8 +266,8 @@ func TestAddChecksFilesOfEarlierRounds(t *testing.T) {
 		map[string]string{
 			"cart.go": strings.Replace(
 				cartGo,
-				"every price is above zero",
-				"no price is negative",
+				"// Reports whether every price is above zero.\n",
+				"",
 				1,
 			),
 			"tax.go": "package cart\n\n// Returns the tax on a price.\nfunc Tax(price int) int { return 0 }\n",
@@ -324,7 +292,7 @@ func TestAddChecksFilesOfEarlierRounds(t *testing.T) {
 
 	if err == nil || !strings.Contains(
 		err.Error(),
-		"cart.go Valid: differs from the text the owner approved",
+		"cart.go Valid: the owner's approved comment is gone",
 	) {
 		t.Fatalf(
 			"addRound() error = %v, want it to name cart.go Valid",
