@@ -22,7 +22,11 @@ after ``--rename OLD=NEW`` moves the entries of each renamed comment or
      "avoid": {"client": "say customer"}}
 
 ``--approve-comment FILE NAME`` records only that comment's text, or
-``""`` when it is gone, and leaves every other entry as it was.
+``""`` when it is gone, after the renames, and leaves every other entry
+as it was. A ``--rename`` pair of ``.go`` paths moves that file's
+entries, and a name pair renames an entry only in FILE. FILE may be
+deleted only when, after the renames, it has an entry for NAME; that
+entry is then recorded as cut.
 
 ``--merge-approvals FOLDER COMMIT`` takes ``FOLDER``'s approvals, such
 as a worktree's before removal, for the Go files ``COMMIT`` changed,
@@ -54,8 +58,9 @@ Exit codes:
     2: A path is a folder or unreadable, no Go file was given,
         ``--base`` is not a commit, the settings file is not JSON of
         the shape above, ``--approve-comment`` names a FILE that is
-        not Go, an empty NAME, or a NAME that two comments in FILE
-        share, or ``--merge-approvals`` names a FOLDER without
+        not Go, an empty NAME, a NAME that two comments in FILE share,
+        or a deleted FILE with no entry for NAME, or
+        ``--merge-approvals`` names a FOLDER without
         ``.code-comments.json``, or a COMMIT that ``--repo``'s HEAD
         lacks or whose changes Git cannot list.
 """
@@ -863,18 +868,21 @@ def summarize_approval(
     return summary
 
 
-def approve_one_comment(repo: Path, file: str, name: str) -> int:
-    """Record one comment's text as approved, leaving every other entry.
+def approve_one_comment(
+    repo: Path, file: str, name: str, renames: dict[str, str]
+) -> int:
+    """Record one comment's text as approved, after the renames.
 
-    A comment review approves each answer as it is given; ``--approve``
-    would also approve the file's later comments before the owner
-    reached them.
+    ``--approve`` would approve every comment in the file, so a comment
+    review approves each answer with this instead.
 
     Args:
         repo: The folder holding ``.code-comments.json``.
         file: The Go file, relative to ``repo``.
         name: The comment's name; a comment gone from ``file`` is
             recorded as cut.
+        renames: New names or paths by old ones, applied first. A name
+            pair renames an entry only in ``file``.
 
     Returns:
         The exit code described in the module docstring.
@@ -882,7 +890,8 @@ def approve_one_comment(repo: Path, file: str, name: str) -> int:
     try:
         file = (repo / file).resolve().relative_to(repo).as_posix()
         approved, avoid = load_settings(repo)
-        source = (repo / file).read_text(encoding="utf-8")
+        path = repo / file
+        source = path.read_text(encoding="utf-8") if path.exists() else ""
     except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 2
@@ -898,6 +907,20 @@ def approve_one_comment(repo: Path, file: str, name: str) -> int:
         print(
             f"{file} {name}: cannot be approved; "
             f"{len(shared[file, name])} comments in this file have this name",
+            file=sys.stderr,
+        )
+        return 2
+    approved, _, _ = apply_renames(
+        renames,
+        {file},
+        {(c.file, c.name) for c in comments},
+        approved,
+        [],
+    )
+    # A mistyped or moved FILE must not record a cut.
+    if not path.exists() and (file, name) not in approved:
+        print(
+            f"{file}: no such file, and no approval of {name} in it",
             file=sys.stderr,
         )
         return 2
@@ -1075,7 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         type=parse_rename_pair,
         metavar="OLD=NEW",
-        help="with --approve: a renamed comment or .go file; repeat for each",
+        help="a renamed comment or .go file; repeat for each",
     )
     parser.add_argument(
         "--approve-comment",
@@ -1092,8 +1115,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("paths", nargs="*", type=Path)
     args = parser.parse_args(argv)
-    if args.rename and not args.approve:
-        parser.error("--rename needs --approve")
+    if args.rename and not (args.approve or args.approve_comment):
+        parser.error("--rename needs --approve or --approve-comment")
     repo = args.repo.resolve()
     if args.merge_approvals:
         if args.approve or args.approve_comment or args.base or args.paths:
@@ -1105,7 +1128,13 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(
                 "--approve-comment takes no --approve, --base or paths"
             )
-        return approve_one_comment(repo, *args.approve_comment)
+        file, name = args.approve_comment
+        return approve_one_comment(
+            repo,
+            file,
+            name,
+            dict(args.rename),
+        )
     if not args.paths:
         parser.error("give the Go files to check")
     try:
