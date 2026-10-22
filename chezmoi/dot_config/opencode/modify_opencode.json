@@ -161,8 +161,8 @@ printf '%s\n' "$input" | jq \
     end
     | .plugins = (((.plugins // .plugin // []) | map(select(is_managed_plugin | not))) + [$plugin])
     | del(.plugin)
-    # Replace any hand-set model so every machine starts on Claude Opus 5.5.
-    | .model = $model
+    # Start on Claude Opus 5.5 unless this machine already sets a model.
+    | .model //= $model
     | (if $writeGoog then
         (if (.provider? | type) == "object" then .provider |= del(.ollama) else . end)
         | (if .provider? == {} then del(.provider) else . end)
