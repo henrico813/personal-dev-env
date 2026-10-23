@@ -12,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = "ai/skills/code-documentation/SKILL.md"
 CHECKER = ROOT / "ai/skills/code-documentation/scripts/check_comments.py"
+PYTHON_CHECKER = CHECKER.with_name("check_python_rules.py")
 # The skill on main before checker support was added, with its function
 # naming rules. Later changes add text next to the rule they support and
 # keep every one of these lines.
@@ -60,12 +61,16 @@ class TestSkillText:
         """
         skill = (ROOT / SKILL).read_text()
         rules = runpy.run_path(str(CHECKER))["RULES"]
-        shown = subprocess.run(
-            [sys.executable, str(CHECKER), "--help"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
+        rules |= runpy.run_path(str(PYTHON_CHECKER))["RULES"]
+        shown = "".join(
+            subprocess.run(
+                [sys.executable, str(checker), "--help"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+            for checker in (CHECKER, PYTHON_CHECKER)
+        )
 
         flat = " ".join(skill.split())
         unquoted = [rule for rule, quote in rules.items() if quote not in flat]
