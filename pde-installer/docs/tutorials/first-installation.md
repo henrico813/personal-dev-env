@@ -6,6 +6,7 @@ This tutorial builds the installer and reconciles one user account.
 
 Use Ubuntu 22.04 or newer on Linux amd64. Sign in as a regular user
 that can run `sudo apt-get`. You need Go 1.21 or newer to build the installer.
+On Ubuntu 24.04, `sudo apt install golang-go` provides it.
 
 Clone the repository before starting. The installer does not clone it.
 
@@ -41,10 +42,11 @@ pde-installer install client
 pde-installer install full
 ```
 
-Use terminal for a headless homelab VM, client for a laptop that edits files
-and shows herdr sessions from other machines but builds nothing, and full for a
-development machine. Client and full need a global Git `user.email` first,
-because OpenCode memory reads it.
+Use terminal for a headless homelab VM, client for a laptop that edits files and
+shows herdr sessions from other machines, with nothing compiled by the
+installer, and full for a development machine. Client and full need a global Git
+`user.email` first, because OpenCode memory reads it. Client installs no Go
+itself.
 
 Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
 fd, fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, and Yazi/ya. It

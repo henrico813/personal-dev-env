@@ -15,10 +15,13 @@ export PATH="$HOME/.local/bin:$PATH"
 pde-installer install terminal
 ```
 
+Building the installer needs Go 1.21 or newer, for example from
+`sudo apt install golang-go` on Ubuntu 24.04.
+
 `terminal` is for headless homelab VMs, `client` for a laptop that edits files
-and shows Herdr sessions from other machines but builds nothing, and `full` for
-development machines. A fresh installation must choose `terminal`, `client`, or
-`full`; the installer saves that selection in
+and shows Herdr sessions from other machines, with nothing compiled by the
+installer, and `full` for development machines. A fresh installation must choose
+`terminal`, `client`, or `full`; the installer saves that selection in
 `~/.config/pde/config.json`. Later bare `install` runs reuse the saved
 selection, including the inferred full selection for legacy installer state.
 A successful explicit selection switches future installs. A pre-commit failure
