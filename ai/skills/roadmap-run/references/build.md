@@ -10,10 +10,9 @@ run the lines after a failed one by hand.
 ## Contents
 
 - Set up a PR's run folder
-- Make each step's patch
 - Write and lint the commit messages
-- Build with Vibe
-- Resume after a failed step
+- Build the commits
+- Make the PR's worktree
 - Apply a fix round
 - Plant a bug
 - Ship
@@ -24,9 +23,10 @@ run the lines after a failed one by hand.
 ## Set up a PR's run folder
 
 The folder is under `~/.local/state`, so it survives a reboot.
-`MODEL` is the model the user named for Vibe workers, or the one
-their notes give. `PARENT` is the branch this PR stacks on: the
-default branch, or `vibe/<parent key>`. `CHECK` is the plan's test
+`PARENT` is the branch this PR stacks on: the default branch, or the
+parent PR's branch. `BR` is this PR's branch, named
+`<type>/<words>`: a `git-messages` commit type, then lowercase words
+joined by hyphens, at most 48 characters. `CHECK` is the plan's test
 and lint command. Keep each value in single quotes, since vault paths
 have spaces; use double quotes for a value that holds a single quote.
 
@@ -88,32 +88,45 @@ FNS
 keep R '<repository root>'
 keep P '<plan file>'
 keep B '<full commit from the plan>'
-keep KEY '<new Vibe key, such as agent-commands>'
-keep MODEL '<provider/model for Vibe workers>'
 keep REMOTE '<remote, such as origin>'
 keep PARENT '<parent branch>'
+keep BR '<branch, such as feat/agent-commands>'
 keep CHECK '<test and lint command>'
 keep M "$HOME/.agents/skills/git-messages/scripts/msg"
-keep START "$B"
-keep NEW_KEY 1
 echo "run folder: $D"
 ```
 
 Write the run folder's path on the roadmap page next to the PR.
 
-## Make each step's patch
+## Write and lint the commit messages
+
+Write `$D/MSG<step>` for each `### <step>.` heading in the plan,
+following `git-messages`. Lint them before the build:
 
 ```sh
 . <run folder>/env
 planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
 rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
-prev=$(git -C "$R" rev-parse "$B^{tree}") || exit 1
+for s in $(cat "$D/steps"); do
+  [ -s "$D/MSG$s" ] || { echo "missing: $D/MSG$s"; exit 1; }
+  python3 "$M" fmt "$D/MSG$s" >/dev/null || exit 1
+  python3 "$M" lint "$D/MSG$s" || { echo "lint failed: step $s"; exit 1; }
+done
+```
+
+## Build the commits
+
+Each step's commit has the tree `planner export` makes through that
+step, on the commit of the step before, starting at `$B`:
+
+```sh
+. <run folder>/env
+prev=$B
 for s in $(cat "$D/steps"); do
   t=$(plan_tree "$P" "$R" "$B" "$s") || { echo "export failed: step $s"; exit 1; }
-  git -C "$R" diff --binary --no-ext-diff --no-color "$prev" "$t" \
-    > "$D/step$s.patch" || exit 1
   echo "$t" > "$D/tree$s"
-  prev=$t
+  prev=$(git -C "$R" commit-tree "$t" -p "$prev" -F "$D/MSG$s") || exit 1
+  echo "$prev" > "$D/commit$s"
 done
 git -C "$R" diff --shortstat "$B" "$prev"
 ```
@@ -121,118 +134,46 @@ git -C "$R" diff --shortstat "$B" "$prev"
 The last line is the PR's size. Over 700 changed lines, stop and
 split the plan.
 
-## Write and lint the commit messages
+## Make the PR's worktree
 
-Write `$D/MSG<step>` for each step, following `git-messages`, and
-the step prompts `$D/prompt<step>.md` from
-[prompts.md](prompts.md). Lint before any build, and check that every
-file the build reads exists:
+`wt` makes the branch `$BR` at `$B`; the merge then moves it to the
+last step's commit:
 
 ```sh
 . <run folder>/env
-for s in $(cat "$D/steps"); do
-  for f in "$D/MSG$s" "$D/prompt$s.md" "$D/step$s.patch" "$D/tree$s"; do
-    [ -s "$f" ] || { echo "missing: $f"; exit 1; }
-  done
-  python3 "$M" fmt "$D/MSG$s" >/dev/null || exit 1
-  python3 "$M" lint "$D/MSG$s" || { echo "lint failed: step $s"; exit 1; }
-done
-```
-
-## Build with Vibe
-
-Check the key first, as `implement-plan` says. Vibe makes the branch
-`vibe/$KEY` and its worktree; do not make them yourself. Only the
-first run of a new key takes `--base`:
-
-```sh
-. <run folder>/env
-cd "$R" || exit 1  # Vibe builds in the checkout it starts in.
-for s in $(cat "$D/steps"); do
-  [ "$s" -lt "${FROM:-0}" ] && continue
-  base=()
-  if [ "$NEW_KEY" = 1 ]; then base=(--base "$START"); fi
-  vibe run --key "$KEY" "${base[@]}" \
-    --prompt-file "$D/prompt$s.md" --input "$D/step$s.patch" \
-    --model "$MODEL" --commit-message "$(cat "$D/MSG$s")" \
-    --stderr-level warn > "$D/run$s.json"
-  st=$(jq -r '.status + " " + (.persistence_error // "none")' "$D/run$s.json")
-  if [ "$st" != "completed none" ]; then
-    echo "step $s: $st. Stop and park this PR; see $D/run$s.json"
-    exit 1
-  fi
-  if [ "$NEW_KEY" = 1 ] &&
-    [ "$(jq -r .pre_run_commit "$D/run$s.json")" != "$START" ]; then
-    echo "step $s: Vibe did not start from $START"
-    exit 1
-  fi
-  W=$(jq -r .worktree "$D/run$s.json")
-  keep W "$W"
-  keep NEW_KEY 0
-  if [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" != "$(cat "$D/tree$s")" ]; then
-    echo "step $s: branch tree differs from the plan"
-    exit 1
-  fi
-  git -C "$W" rev-parse HEAD > "$D/commit$s"
-done
+last=$(tail -n 1 "$D/steps")
+wt -C "$R" switch --create "$BR" --base "$B" --no-cd --format=json \
+  > "$D/wt.json" || exit 1
+W=$(jq -r .path "$D/wt.json")
+{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "no worktree in $D/wt.json"; exit 1; }
+keep W "$W"
+git -C "$W" merge -q --ff-only "$(cat "$D/commit$last")" || exit 1
+[ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$(cat "$D/tree$last")" ] ||
+  { echo "branch tree differs from the plan"; exit 1; }
 ```
 
 Then run the plan's checks in `$W`: `(cd "$W" && sh -c "$CHECK")`.
 
-When a step stops, follow `implement-plan`'s status rules. Where they
-need a recovery decision, do not reset, clean, retry or go on: park
-this PR and its children, put `$D/run<step>.json` and its status on
+A failed build command means a stale plan or a broken tool. Do not
+retry or edit files: stop this PR and its children, put the error on
 the roadmap page as a blocking question, and keep building other
 stacks.
 
-## Resume after a failed step
-
-Once the user decides how to recover step N, build the rest under a
-new key that starts at the last step whose tree matched. Use
-`commit<N-1>`, or `$B` when N is the first step:
-
-```sh
-. <run folder>/env
-keep KEY '<new Vibe key>'
-keep START "$(cat "$D/commit<N-1>")"
-keep FROM '<N>'
-keep NEW_KEY 1
-```
-
-Then run the build loop again. The PR's branch is now `vibe/<new key>`.
-
 ## Apply a fix round
 
-After the planner revises the plan, apply the whole difference as one
-commit. Read the step list again, since the revision may add steps:
-
-```sh
-. <run folder>/env
-planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
-rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
-t=$(plan_tree "$P" "$R" "$B" "$(tail -n 1 "$D/steps")") || exit 1
-echo "$t" > "$D/treefix"
-git -C "$W" diff --binary --no-ext-diff --no-color HEAD "$t" \
-  > "$D/fix.patch" || exit 1
-```
-
-Write `$D/MSGfix` and `$D/promptfix.md` naming `fix.patch`, then run
-it. The key exists, so there is no `--base`:
+After the planner revises the plan, commit its whole tree as one fix
+commit. Read the step list again, since the revision may add steps.
+Write `$D/MSGfix` first:
 
 ```sh
 . <run folder>/env
 python3 "$M" fmt "$D/MSGfix" >/dev/null || exit 1
 python3 "$M" lint "$D/MSGfix" || exit 1
-cd "$R" || exit 1
-vibe run --key "$KEY" --prompt-file "$D/promptfix.md" \
-  --input "$D/fix.patch" --model "$MODEL" \
-  --commit-message "$(cat "$D/MSGfix")" --stderr-level warn > "$D/runfix.json"
-st=$(jq -r '.status + " " + (.persistence_error // "none")' "$D/runfix.json")
-[ "$st" = "completed none" ] || { echo "fix: $st. Park this PR"; exit 1; }
-[ "$(jq -r .worktree "$D/runfix.json")" = "$W" ] ||
-  { echo "fix: Vibe ran outside $W"; exit 1; }
-[ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$(cat "$D/treefix")" ] ||
-  { echo "fix: branch tree differs from the plan"; exit 1; }
+planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
+rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
+t=$(plan_tree "$P" "$R" "$B" "$(tail -n 1 "$D/steps")") || exit 1
+c=$(git -C "$W" commit-tree "$t" -p HEAD -F "$D/MSGfix") || exit 1
+git -C "$W" merge -q --ff-only "$c" || exit 1
 ```
 
 ## Plant a bug
@@ -261,24 +202,24 @@ python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
 python3 "$M" lint --pr "$D/FILE" || exit 1
 { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
   { echo "no worktree: '$W'"; exit 1; }
-[ "$(git symbolic-ref -q --short HEAD)" = "vibe/$KEY" ] ||
-  { echo "not on vibe/$KEY"; exit 1; }
+[ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
+  { echo "not on $BR"; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
 sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
 git fetch -q "$REMOTE" || exit 1
 git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
   { echo "$PARENT moved; move this plan's base and rebuild"; exit 1; }
-git ls-remote --exit-code --heads "$REMOTE" "vibe/$KEY" >/dev/null
+git ls-remote --exit-code --heads "$REMOTE" "$BR" >/dev/null
 rc=$?
-[ "$rc" = 2 ] || { echo "vibe/$KEY is already pushed or ls-remote failed"; exit 1; }
+[ "$rc" = 2 ] || { echo "$BR is already pushed or ls-remote failed"; exit 1; }
 git reset -q --soft "$REMOTE/$PARENT" || exit 1
 git commit -q -F "$D/FILE" || exit 1
-git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/vibe/$KEY" || exit 1
+git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/$BR" || exit 1
 ```
 
 A later round, after the first push, adds a commit: use the same
 script, but replace everything from `git ls-remote` on with
-`git push -u "$REMOTE" "HEAD:refs/heads/vibe/$KEY"`, then update the
+`git push -u "$REMOTE" "HEAD:refs/heads/$BR"`, then update the
 PR text with `pde-gh-write pr edit NUMBER --body-file "$D/BODY"`.
 
 ## File the PR request
@@ -329,7 +270,6 @@ points at it, so `git gc` may delete it after two weeks.
 
 After the parent ships, set the child plan's `Base commit:` line to
 the parent's final commit and run `planner check`. If it passes, the
-child's diffs apply unchanged; save the commit with `keep B` and
-`keep START` in the child's run folder. If it fails, the parent
-changed after the child was written: send the errors to the child's
-planner.
+child's diffs apply unchanged; save the commit with `keep B` in the
+child's run folder. If it fails, the parent changed after the child
+was written: send the errors to the child's planner.
