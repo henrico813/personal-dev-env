@@ -27,7 +27,6 @@ func renderSkillLessons(home string, runner run.Runner) error {
 		return nil
 	}
 	command.Name = binary
-	command.Env = []string{"PATH=" + path}
 	if err := runner.Run("render skill lessons", command); err != nil {
 		fmt.Fprintf(runner.Err(), "warning: %v; run skill-lessons render to restore lessons\n", err)
 	}
