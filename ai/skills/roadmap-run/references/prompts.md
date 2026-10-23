@@ -93,6 +93,8 @@ change description and its own focus:
 - `behavior-focused-testing`: for each test, the bug it catches and
   whether that bug is likely or costly. Low-value tests are required
   corrections, and so is untested behavior that is likely and costly.
+  To delete a test, name it and the test that still covers its
+  behavior.
 
 ## Revision message
 

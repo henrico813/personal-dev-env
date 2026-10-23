@@ -9,6 +9,7 @@ run the lines after a failed one by hand.
 
 ## Contents
 
+- Check the comment-review file
 - Set up a PR's run folder
 - Write and lint the commit messages
 - Build the commits
@@ -17,8 +18,29 @@ run the lines after a failed one by hand.
 - Plant a bug
 - Ship
 - File the PR request
+- Print a PR's status line
 - Base a child on an unbuilt parent
 - Move a child's base
+- Carry a parent's commit to a child
+
+## Check the comment-review file
+
+Before the run, check each repository's main checkout. Never create
+the file; ask the user about every line this prints:
+
+```sh
+rc=0
+for r in '<repository root>'; do
+  m=$(git -C "$r" rev-parse --path-format=absolute --git-common-dir) || exit 1
+  m=$(dirname "$m")
+  if [ ! -f "$m/.code-comments.json" ]; then
+    echo "missing: $m/.code-comments.json"; rc=1
+  elif ! git -C "$m" check-ignore -q .code-comments.json; then
+    echo "not ignored: $m/.code-comments.json"; rc=1
+  fi
+done
+exit $rc
+```
 
 ## Set up a PR's run folder
 
@@ -83,6 +105,13 @@ EOF
   fi
   echo "plant: tests failed as expected, exit $rc"
 }
+
+# Print the lines added plus deleted in REPO between FROM and TO.
+changed() {
+  local out
+  out=$(git -C "$1" diff --numstat "$2" "$3") || return 1
+  printf '%s\n' "$out" | awk '{n += $1 + $2} END {print n + 0}'
+}
 FNS
 . "$D/env"
 keep R '<repository root>'
@@ -128,11 +157,12 @@ for s in $(cat "$D/steps"); do
   prev=$(git -C "$R" commit-tree "$t" -p "$prev" -F "$D/MSG$s") || exit 1
   echo "$prev" > "$D/commit$s"
 done
-git -C "$R" diff --shortstat "$B" "$prev"
+n=$(changed "$R" "$B" "$prev") || exit 1
+echo "changed lines: $n"
+[ "$n" -le 700 ] || { echo "over 700 lines; split the plan"; exit 1; }
 ```
 
-The last line is the PR's size. Over 700 changed lines, stop and
-split the plan.
+Over 700 changed lines, split the plan. There is no exception.
 
 ## Make the PR's worktree
 
@@ -174,7 +204,13 @@ rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
 t=$(plan_tree "$P" "$R" "$B" "$(tail -n 1 "$D/steps")") || exit 1
 c=$(git -C "$W" commit-tree "$t" -p HEAD -F "$D/MSGfix") || exit 1
 git -C "$W" merge -q --ff-only "$c" || exit 1
+n=$(changed "$W" "$B" HEAD) || exit 1
+echo "changed lines: $n"
+[ "$n" -le 700 ] || { echo "over 700 lines; drop or split"; exit 1; }
 ```
+
+After the first push, run Ship's later round right away. A fix that
+stays local is not done.
 
 ## Plant a bug
 
@@ -209,6 +245,8 @@ sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
 git fetch -q "$REMOTE" || exit 1
 git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
   { echo "$PARENT moved; move this plan's base and rebuild"; exit 1; }
+n=$(changed . "$REMOTE/$PARENT" HEAD) || exit 1
+[ "$n" -le 700 ] || { echo "$n changed lines; split the PR"; exit 1; }
 git ls-remote --exit-code --heads "$REMOTE" "$BR" >/dev/null
 rc=$?
 [ "$rc" = 2 ] || { echo "$BR is already pushed or ls-remote failed"; exit 1; }
@@ -220,12 +258,13 @@ git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/$BR" || exit 1
 A later round, after the first push, adds a commit: use the same
 script, but replace everything from `git ls-remote` on with
 `git push -u "$REMOTE" "HEAD:refs/heads/$BR"`, then update the
-PR text with `pde-gh-write pr edit NUMBER --body-file "$D/BODY"`.
+PR text with `pde-gh-write pr edit NUMBER --body-file "$D/BODY"`, and
+print the status line.
 
 ## File the PR request
 
 This saves the request as a script, so the identical command can run
-again later:
+again later. Each run writes its exit code to `$D/request.result`:
 
 ```sh
 . <run folder>/env
@@ -234,6 +273,8 @@ tail -n +3 "$D/FILE" > "$D/BODY" || exit 1
   printf 'cd %q || exit 1\n' "$W"
   printf 'pde-gh-write pr create --base %q --title %q --body-file %q\n' \
     "$PARENT" "$(head -n 1 "$D/FILE")" "$D/BODY"
+  printf 'rc=$?\necho "exit $rc at $(date -u +%%FT%%TZ)" > %q\nexit $rc\n' \
+    "$D/request.result"
 } > "$D/request.sh"
 bash "$D/request.sh"
 echo "exit $?"
@@ -251,6 +292,30 @@ reads the result:
 
 A request expires four hours after it is filed. Rerunning the script
 after that files a fresh request.
+
+## Print a PR's status line
+
+Write the roadmap's status line for a PR from this output, never by
+hand:
+
+```sh
+. <run folder>/env
+cd "$W" || exit 1
+git fetch -q "$REMOTE" || exit 1
+head=$(git rev-parse HEAD) || exit 1
+out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
+pushed=$(printf '%s' "$out" | cut -f 1)
+same=no
+[ "$head" = "$pushed" ] && same=yes
+mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
+n=$(changed . "$mb" HEAD) || exit 1
+req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
+echo "$BR: pushed ${pushed:-none}; local equals pushed: $same;" \
+  "$n changed lines against $PARENT; request: $req"
+```
+
+`local equals pushed: no` means a commit is not pushed: push it
+before anything else, and never deploy it.
 
 ## Base a child on an unbuilt parent
 
@@ -273,3 +338,29 @@ the parent's final commit and run `planner check`. If it passes, the
 child's diffs apply unchanged; save the commit with `keep B` in the
 child's run folder. If it fails, the parent changed after the child
 was written: send the errors to the child's planner.
+
+## Carry a parent's commit to a child
+
+After a parent pushes a new commit, run this in each child's run
+folder, in stack order, pushing each child before the next. It makes
+a merge commit whose tree `planner export` writes from the child's
+plan on the pushed parent:
+
+```sh
+. <child's run folder>/env
+cd "$W" || exit 1
+[ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
+git fetch -q "$REMOTE" || exit 1
+nb=$(git rev-parse "$REMOTE/$PARENT") || exit 1
+planner check "$P" --repo "$R" --base-commit "$nb" --json-errors >/dev/null ||
+  { echo "plan does not apply on $PARENT; park this PR"; exit 1; }
+t=$(plan_tree "$P" "$R" "$nb" "$(tail -n 1 "$D/steps")") || exit 1
+c=$(git commit-tree "$t" -p HEAD -p "$nb" -m "chore: merge the parent branch") ||
+  exit 1
+git merge -q --ff-only "$c" || exit 1
+keep B "$nb"
+```
+
+Then set the plan's `Base commit:` line to `$nb`, run the plan's
+checks, and run Ship's later round. A failed `planner check` is a
+conflict: never resolve it by hand.

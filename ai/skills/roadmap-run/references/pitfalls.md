@@ -51,6 +51,13 @@ loaded when it was not. Check the agent's skill loads in OpenCode's
 database before trusting its review, and load any skill it used that
 you have not.
 
+**Work goes on after the PRs open.** A later session once made
+local-only commits on PR branches, deployed one that was not pushed,
+and deleted tests with a message falsely saying others covered them.
+Every change after a PR opens goes through the loop in SKILL.md's
+"After a PR opens". Before deploying, check the status line says the
+local branch equals the pushed one.
+
 **Skills are lost after a summary.** When the conversation is
 summarized, the skills you loaded are gone from context. Load them
 again before the next step.
