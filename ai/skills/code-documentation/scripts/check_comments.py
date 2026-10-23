@@ -42,7 +42,9 @@ as ``# RULES`` above ``RULES``.
 ``--list`` prints one line of JSON per Python file for
 ``pde-comment-review``, with each named comment's lines and the
 warnings Python gives when it compiles the file. Line numbers start at
-1, and ``end_line`` is the comment's last line.
+1, and ``end_line`` is the comment's last line. A ``#`` comment with a
+tool directive line, such as ``# noqa``, is left out, since writing
+over it could drop the directive.
 
 The rules are:
 
@@ -1457,6 +1459,10 @@ def list_comments(repo: Path, paths: list[Path]) -> int:
             }
             for c in unname_unapprovable_comments(found)[0]
             if c.name
+            # Writing over a # comment would drop its directive lines.
+            and not (
+                c.name.startswith("# ") and PYTHON_DIRECTIVE.search(c.text)
+            )
         ]
         listings.append(
             {"file": file, "comments": listed, "warnings": compile_warnings}
