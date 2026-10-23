@@ -40,7 +40,10 @@ every file under `skills/` that Git tracks to `~/.agents/skills/`,
 including the shared workflow skills. Those copies replace any
 `## Lessons` section with the empty one from `skills/`, so the installer
 then runs `skill-lessons render` to restore saved lessons. A failed
-render prints a warning and leaves the install in place. The installer
+render prints a warning and leaves the install in place.
+`install client` installs the same skills and the OpenCode config, but
+not planner, vibe, or the shim, so planning workflows that call them do
+not run there. The installer
 also syncs `opencode/` and `pi/agent/` into their managed config homes.
 Pi extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Vibe relies on provider env vars or

@@ -3,7 +3,7 @@ package profile
 import "testing"
 
 func TestParseAcceptsSupportedProfiles(t *testing.T) {
-	for _, selected := range []Profile{Full, Terminal} {
+	for _, selected := range []Profile{Full, Client, Terminal} {
 		t.Run(string(selected), func(t *testing.T) {
 			got, err := Parse(string(selected))
 			if err != nil || got != selected {
@@ -18,7 +18,11 @@ func TestProfilesReportValidity(t *testing.T) {
 		profile Profile
 		want    bool
 	}{
-		"full":     {profile: Full, want: true},
+		"full": {profile: Full, want: true},
+		"client": {
+			profile: Client,
+			want:    true,
+		},
 		"terminal": {profile: Terminal, want: true},
 		"empty":    {},
 		"unknown":  {profile: Profile("desktop")},
@@ -36,7 +40,7 @@ func TestParseRejectsInvalidProfiles(t *testing.T) {
 	for name, value := range map[string]string{"empty": "", "unknown": "desktop"} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Parse(value)
-			want := `invalid profile "` + value + `"; use full or terminal`
+			want := `invalid profile "` + value + `"; use terminal, client, or full`
 			if err == nil || err.Error() != want {
 				t.Fatalf("Parse() error = %v, want %q", err, want)
 			}

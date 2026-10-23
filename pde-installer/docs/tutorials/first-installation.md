@@ -37,8 +37,14 @@ Choose one selection:
 
 ```bash
 pde-installer install terminal
+pde-installer install client
 pde-installer install full
 ```
+
+Use terminal for a headless homelab VM, client for a laptop that edits files
+and shows herdr sessions from other machines but builds nothing, and full for a
+development machine. Client and full need a global Git `user.email` first,
+because OpenCode memory reads it.
 
 Terminal installs the reduced Ubuntu prerequisites and terminal tools, including
 fd, fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, and Yazi/ya. It
@@ -50,7 +56,10 @@ fonts, or editor/AI configuration. The explicit selection is saved. Later bare
 managed home configuration. Use `pde-installer install full` to expand a
 terminal installation. Use `pde-installer install terminal` to switch future
 reconciliation from full to terminal; previously installed full-only artifacts
-are not removed. `doctor` and `list` use the saved or legacy selection.
+are not removed. Client installs everything full does except Go, Rust, LSPs,
+Keychain, Moshi Hook, local builds, and the PR approval tools, and refuses to
+install on a machine that still has full's Go. `doctor` and `list` use the
+saved or legacy selection.
 
 ## 5. Verify
 

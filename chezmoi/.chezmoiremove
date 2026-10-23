@@ -2,10 +2,13 @@
 .config/systemd/user/opencode-web.service
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
-{{ if eq (env "PDE_PROFILE") "terminal" }}
+{{ if ne (env "PDE_PROFILE") "full" }}
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
 .local/bin/pde-comment-checker
+{{ end }}
+{{ if ne (env "PDE_PROFILE") "terminal" }}
+.config/opencode/plugins/pde-approval-session.js
 {{ end }}
 {{ if eq (env "PDE_PROFILE") "full" }}
 Projects/CLAUDE.md
@@ -19,7 +22,6 @@ Projects/CLAUDE.md
 .codex/skills/rust-development
 .config/opencode/commands/document_codebase.md
 .codex/skills/document-codebase
-.config/opencode/plugins/pde-approval-session.js
 
 # Old Codex workflow skills (now in shared skills)
 .codex/skills/create-plan

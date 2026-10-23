@@ -17,9 +17,11 @@ The installer downloads and verifies tmux, the existing amd64-only direct
 binary, version 3.7b from its pinned release.
 
 The install selection determines which inventory and owners are reconciled.
-An explicit `install terminal` or `install full` saves its selection; a bare
-install reuses saved or legacy selection.
+An explicit `install terminal`, `install client`, or `install full` saves its
+selection; a bare install reuses saved or legacy selection.
 Terminal skips full-only direct releases, runtimes, npm tools, builds, fonts,
-and editor/AI configuration. Switching from full to terminal does not remove
+and editor/AI configuration. Client skips only Go, Rust, LSPs, Keychain, Moshi
+Hook, local builds, and the PR approval tools. Switching from full to terminal
+does not remove
 full-only artifacts. Every install also applies the selected managed home
 configuration.

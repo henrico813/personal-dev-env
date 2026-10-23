@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -50,6 +51,31 @@ func TestToolsMapSupportedArchitectures(t *testing.T) {
 				t.Errorf("%s metadata is incomplete", tool.Name)
 			}
 		}
+	}
+}
+
+// A machine that once had full keeps Go in the releases folder, even after
+// switching to terminal. Installing client replaces that folder without Go,
+// so it must refuse rather than delete a dev machine's tools.
+func TestClientRefusesToDeleteReleaseTools(t *testing.T) {
+	manager := New(t.TempDir(), run.Runner{})
+	state := filepath.Join(manager.ToolsRoot(), ".pde-state.json")
+	if err := os.MkdirAll(filepath.Dir(state), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installed := `{"platform":"linux/amd64","tools":{"go":{},"herdr":{},"neovim":{}}}`
+	if err := os.WriteFile(
+		state,
+		[]byte(installed),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	err := manager.RejectToolRemoval(profile.Client)
+
+	if err == nil || !strings.Contains(err.Error(), "would delete go from") {
+		t.Fatalf("RejectToolRemoval() error = %v", err)
 	}
 }
 
@@ -209,7 +235,7 @@ func TestOfficialToolsInstall(t *testing.T) {
 		t.Skip("set PDE_TEST_OFFICIAL_TOOLS=1 to download release archives")
 	}
 	manager := New(t.TempDir(), run.Runner{})
-	journal, err := manager.ReconcileTools()
+	journal, err := manager.ReconcileTools(profile.Full)
 	if err != nil {
 		t.Fatalf("ReconcileTools() error = %v", err)
 	}

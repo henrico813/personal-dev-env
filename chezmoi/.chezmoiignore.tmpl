@@ -1,6 +1,6 @@
 {{- $profile := env "PDE_PROFILE" -}}
-{{- if not (or (eq $profile "full") (eq $profile "terminal")) -}}
-{{ fail "PDE_PROFILE must be exactly full or terminal" }}
+{{- if not (or (eq $profile "full") (eq $profile "client") (eq $profile "terminal")) -}}
+{{ fail "PDE_PROFILE must be exactly terminal, client, or full" }}
 {{- end }}
 {{- $colorProfile := env "PDE_COLOR_PROFILE" -}}
 {{- if not (index .colorProfiles $colorProfile) -}}
@@ -12,9 +12,25 @@ README.md
 .config/nvim/pack/plugins/start/blink.cmp/**
 .config/nvim/pack/plugins/start/opencode-inline.nvim
 .config/nvim/pack/plugins/start/opencode-inline.nvim/**
-{{- if eq $profile "terminal" }}
+{{- if ne $profile "full" }}
 .config/aquaproj-aqua/aqua.yaml
 .config/aquaproj-aqua/aqua-checksums.json
+.claude
+.claude/**
+.codex
+.codex/**
+.pi
+.pi/**
+# The Herdr approval and comment review popups are full-profile only, like
+# pde-gh-write.
+.local/share/pde/herdr-plugins
+.local/share/pde/herdr-plugins/**
+# Scripts are ignored by name without their run_after_ prefix.
+link_herdr_plugins.sh
+# The planner link points at a build that only full installs.
+.config/opencode/bin/planner
+{{- if eq $profile "terminal" }}
+# Client machines edit files and show herdr sessions, so they keep these.
 .config/alacritty
 .config/alacritty/**
 .config/wezterm
@@ -24,22 +40,11 @@ README.md
 .config/opencode
 .config/opencode/**
 .local/bin/opencode
-.claude
-.claude/**
 .config/herdr
 .config/herdr/**
-.codex
-.codex/**
 .agents
 .agents/**
-.pi
-.pi/**
-# The Herdr approval and comment review popups are full-profile only, like
-# pde-gh-write.
-.local/share/pde/herdr-plugins
-.local/share/pde/herdr-plugins/**
-# Scripts are ignored by name without their run_after_ prefix.
-link_herdr_plugins.sh
+{{- end }}
 {{- else }}
 .config/aquaproj-aqua/aqua-terminal.yaml
 .config/aquaproj-aqua/aqua-terminal-checksums.json
