@@ -20,10 +20,6 @@ agent lost files.
 prints the failure and carries on, so a commit with a bad title gets
 built and pushed. Write `lint FILE || exit 1`.
 
-**A stopped script leaves files missing.** If the script stops before
-it writes the Vibe prompt files, the next run fails with "read prompt
-file". Check that every file the run reads exists before starting it.
-
 **A child's base is a commit that no longer exists.** Squashing a
 parent makes a new commit, and a child plan may name a scratch commit.
 Move the child's `Base commit:` line to the parent's final commit and
@@ -39,11 +35,6 @@ it.
 approved until the parent's comment review, which comes first. Do not
 edit it in the child's code. Add a reword to the child's comment
 review, with the text the parent's review approved as `old`.
-
-**A second worktree for the same PR.** Vibe makes each PR's branch
-and worktree from `--base`. Do not also make one with
-`wt switch --create`, which starts from the local default branch and
-may be behind the remote.
 
 **A reviewer writes outside its folder.** A failed `cd` once wrote a
 file into the worktrees folder. After reviews, run `git status` in the

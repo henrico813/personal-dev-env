@@ -11,11 +11,10 @@ their notes or memory, such as comment length or call layout.
 - Fresh plan review
 - Skill review
 - Revision message
-- Vibe step
 
 ## Rules every agent gets
 
-Paste these into every brief except the Vibe step:
+Paste these into every brief:
 
     The user is away; decide minor things yourself and say so.
     Never edit or commit a real `.code-comments.json`. Work only in
@@ -111,26 +110,3 @@ Send to the planner's session once every reviewer has reported:
 
     Report: new size, tests, mutations, `planner check` result, and
     anything not applied and why.
-
-## Vibe step
-
-Vibe workers only apply a patch. Their skill line names domain skills
-only, never a workflow skill:
-
-    Implement step <N> of an approved plan: <one line>.
-
-    Applicable skills: <domain skills>, code-documentation,
-    behavior-focused-testing. Load each before editing and report any
-    that are unavailable.
-
-    The approved diffs are in the read-only patch file <path>. Apply
-    them exactly, from the repository root:
-
-        git apply <path>
-
-    Do not edit the diffs by hand and change no other file. Never
-    create, edit or commit a .code-comments.json. If git apply fails,
-    stop and report the error.
-
-    Then run <the step's tests> if the tools exist here; if not, say
-    so. Report git diff --stat.

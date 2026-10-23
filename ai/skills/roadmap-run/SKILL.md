@@ -2,21 +2,23 @@
 name: roadmap-run
 description: Builds the remaining pull requests of an approved roadmap
   as a stack while the user is away. Each PR is planned, reviewed
-  fresh, built with Vibe, reviewed by one agent per skill, fixed,
-  checked and pushed, and its approval and comment review are queued
-  for the user. Use when the user asks to build several roadmap PRs
-  without reviewing each step, such as "build the rest of the roadmap
-  overnight". For one task an agent does and you review, use delegate.
+  fresh, built from the plan's exported trees, reviewed by one agent
+  per skill, fixed, checked and pushed, and its approval and comment
+  review are queued for the user. Use when the user asks to build
+  several roadmap PRs without reviewing each step, such as "build the
+  rest of the roadmap overnight". For one task an agent does and you
+  review, use delegate.
 metadata:
   pde-workflow: "true"
 ---
 
 # Roadmap Run
 
-You orchestrate. Agents write the plans, Vibe builds them, and fresh
-agents review them. You decide, check, ship and keep the roadmap page
-current. The user catches up later by reading that page, approving
-each PR request, and answering the comment reviews you queued.
+You orchestrate. Agents write the plans, you build them with
+`planner export` and `git commit-tree`, and fresh agents review them.
+You decide, check, ship and keep the roadmap page current. The user
+catches up later by reading that page, approving each PR request, and
+answering the comment reviews you queued.
 
 ## Before you start
 
@@ -27,13 +29,13 @@ each PR request, and answering the comment reviews you queued.
    `pull-request`, `git-messages` and `comment-review`, plus the
    domain skills of every PR, such as `go-development`. Load any skill
    you tell an agent to load.
-3. Check with `command -v` that `planner`, `vibe`, `pde-gh-write`,
+3. Check with `command -v` that `planner`, `wt`, `pde-gh-write`,
    `nobs`, `jq`, `rg` and `python3` are on `PATH`. If one is missing,
    say which and stop. Do not run `pde-gh-write pr ...` to test it:
    any `pr` command, even with `--help`, files an approval request.
-4. Check that the user allowed this run to start Vibe, push branches
-   and file PR requests. If not, ask once. Without an answer, plan
-   and review the plans, but stop each PR before Build.
+4. Check that the user allowed this run to push branches and file PR
+   requests. If not, ask once. Without an answer, plan and review the
+   plans, but stop each PR before Build.
 5. Group the PRs into stacks. A PR that needs another PR's code stacks
    on it; PRs that do not can run in parallel stacks.
 6. Add a status line for each PR to the roadmap page. Back up the page
@@ -53,19 +55,18 @@ commands in [references/build.md](references/build.md).
    `review-plan` and the domain skills. Send its findings, with your
    decision on each optional item, back to the planner's session in
    one message.
-3. **Build.** Export each plan step's tree, turn it into a patch, and
-   have Vibe apply it with `git apply`. After each step, the branch
-   tree must equal the exported tree. Stop on any mismatch. When a
-   Vibe step fails, follow `implement-plan`'s status rules; where
-   they need a recovery decision, park this PR and its children, put
-   the run's JSON on the roadmap page as a blocking question, and keep
-   building other stacks.
+3. **Build.** Export each plan step's tree and commit it with
+   `git commit-tree` on the step before, starting at the plan's base.
+   Make the PR's worktree with `wt` and move it to the last commit. A
+   failed build command means a stale plan or a broken tool: stop
+   this PR and its children, put the error on the roadmap page as a
+   blocking question, and keep building other stacks.
 4. **Skill reviews.** Start one new agent per skill at once:
    `review-plan`, each language skill, `code-documentation` and
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
-   optional items, and send one message to the planner. Vibe applies
-   the revised plan as one fix commit; the tree must match again.
+   optional items, and send one message to the planner. Commit the
+   revised plan's tree as one fix commit.
 6. **Final pass.** Run the tests, linters, comment checker and any
    comparison script the plan names. Put back two bugs the reviewers
    found, one at a time, and check that a test fails for each.
@@ -87,7 +88,7 @@ parent's final commit and run `planner check` again.
 ## Deciding things yourself
 
 - Decide minor things, say so in your message, and record them in the
-  plan's notes as `orchestrator-proposed`. A failed Vibe run, a
+  plan's notes as `orchestrator-proposed`. A failed build command, a
   failed check and a declined request are never minor.
 - When reviewers disagree, pick one, and tell the planner which and
   why.
@@ -110,10 +111,8 @@ parent's final commit and run `planner check` again.
   in that PR's comment review.
 - Amend or squash a branch after its first push; add a commit instead.
 - Let an agent review its own plan or code.
-- Hand-edit a plan's diffs, or give Vibe diffs in its prompt instead
-  of a patch file.
-- Reset, clean or retry in a Vibe worktree after a failed run, or go
-  on to the next step, without the user's decision.
+- Hand-edit a plan's diffs or the branch's files. Every build commit
+  comes from `planner export`.
 - Create, copy, edit or commit a `.code-comments.json`.
 - Remove a fixed `/tmp` path. Every agent works in its own folder from
   `mktemp -d`.
