@@ -48,8 +48,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: pde-comment-review/go.mod
-          # The cache is keyed on go.sum, which pde-comment-review lacks: it has no dependencies.
-          cache: false
+          cache-dependency-path: pde-comment-review/go.sum
       - run: go test -race -count=3 ./...
       - run: go vet ./...
       - run: test -z "$(gofmt -l .)"

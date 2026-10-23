@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,7 +80,10 @@ func replyToSet(
 		answer,
 		text,
 	)
-	return replyAfter(dir, err)
+	reply := replyAfter(dir, err)
+	// The whole draft would fill a small model's context on every set.
+	reply.Items = slices.DeleteFunc(reply.Items, func(item review.Item) bool { return item.ID != id })
+	return reply
 }
 
 // Changes item id's proposal in the branch's draft, or starts the next
@@ -230,8 +234,8 @@ func replyToSetArgs(args []string) agentReply {
 }
 
 // Prints reply with shell commands as its steps, and returns 1 on problems.
-func printReply(reply agentReply) int {
-	fmt.Print(nameShellCommands(encodeReply(reply)))
+func printReply(w io.Writer, reply agentReply) int {
+	fmt.Fprint(w, nameShellCommands(encodeReply(reply)))
 	if len(reply.Problems) > 0 {
 		return 1
 	}
