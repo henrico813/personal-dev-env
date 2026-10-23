@@ -53,7 +53,7 @@ this file, and read the section again.
 
 When the user corrects how you brief, check or review a subagent's
 work, still save it to memory as your instructions say. If
-`skill-lessons` is installed, also offer once, in your step 4 summary,
+`skill-lessons` is installed, also offer once, in your next summary,
 to save it here as a lesson. When the user says "remember", save it at
 once and show the one line it prints:
 
