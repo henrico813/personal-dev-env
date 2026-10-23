@@ -23,22 +23,32 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		return
 	}
 
+	// Both dry-run subtests check the output of this one dry run. A
+	// skill-lessons on PATH would hide a missing dry-run render step.
+	t.Setenv("PATH", "/usr/bin:/bin")
+	dryRunHome := t.TempDir()
+	dryRunBefore := treeState(t, dryRunHome)
+	dryRunStdout, _, dryRunErr := execute(t, dryRunHome, "install", "full", "--dry-run", "--repo-root", repo)
+
 	t.Run("dry run leaves home unchanged", func(t *testing.T) {
-		home := t.TempDir()
-		before := treeState(t, home)
-		stdout, _, err := execute(t, home, "install", "full", "--dry-run", "--repo-root", repo)
-		if err != nil {
-			t.Fatal(err)
+		if dryRunErr != nil {
+			t.Fatal(dryRunErr)
 		}
-		if after := treeState(t, home); after != before {
-			t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", before, after)
+		if after := treeState(t, dryRunHome); after != dryRunBefore {
+			t.Fatalf("HOME changed:\nbefore: %s\nafter:  %s", dryRunBefore, after)
 		}
-		ordered := []string{"atomically activate tmux", "direct release tools", "install Aqua packages", "materialize complete npm lock", "managed fonts", "activate planner", "preview chezmoi changes", "complete blink.cmp plugin tree"}
+	})
+
+	t.Run("dry run plans steps in order", func(t *testing.T) {
+		if dryRunErr != nil {
+			t.Fatal(dryRunErr)
+		}
+		ordered := []string{"atomically activate tmux", "direct release tools", "install Aqua packages", "materialize complete npm lock", "managed fonts", "activate planner", "preview chezmoi changes", "complete blink.cmp plugin tree", "render skill lessons", "refresh OpenCode server environment"}
 		position := -1
 		for _, text := range ordered {
-			next := strings.Index(stdout[position+1:], text)
+			next := strings.Index(dryRunStdout[position+1:], text)
 			if next < 0 {
-				t.Fatalf("missing ordered action %q in:\n%s", text, stdout)
+				t.Fatalf("missing ordered action %q in:\n%s", text, dryRunStdout)
 			}
 			position += next + 1
 		}

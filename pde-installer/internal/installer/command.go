@@ -228,6 +228,14 @@ func reconcile(config config, runner run.Runner) error {
 	if err := fsutil.CommitJournals(journals...); err != nil {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
+	// Render after the chezmoi apply, which copies the empty Lessons sections,
+	// and before the OpenCode refresh, whose errors return early.
+	// Only the full profile installs skills.
+	if config.Profile == profile.Full {
+		if err := renderSkillLessons(config.Home, runner); err != nil {
+			return fmt.Errorf("skill lessons: %w", err)
+		}
+	}
 	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
 		return fmt.Errorf("refresh OpenCode servers: %w", err)
 	}
