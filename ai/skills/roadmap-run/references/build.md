@@ -182,7 +182,14 @@ git -C "$W" merge -q --ff-only "$(cat "$D/commit$last")" || exit 1
   { echo "branch tree differs from the plan"; exit 1; }
 ```
 
-Then run the plan's checks in `$W`: `(cd "$W" && sh -c "$CHECK")`.
+Then run the plan's checks in `$W`, with Ship's worktree guard:
+
+```sh
+. <run folder>/env
+{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+  { echo "no worktree: '$W'"; exit 1; }
+sh -c "$CHECK" || exit 1
+```
 
 A failed build command means a stale plan or a broken tool. Do not
 retry or edit files: stop this PR and its children, put the error on
@@ -197,6 +204,8 @@ Write `$D/MSGfix` first:
 
 ```sh
 . <run folder>/env
+{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+  { echo "no worktree: '$W'"; exit 1; }
 python3 "$M" fmt "$D/MSGfix" >/dev/null || exit 1
 python3 "$M" lint "$D/MSGfix" || exit 1
 planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
@@ -219,7 +228,8 @@ worktree must be clean after:
 
 ```sh
 . <run folder>/env
-cd "$W" || exit 1
+{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+  { echo "no worktree: '$W'"; exit 1; }
 plant internal/x.go 'if a {' 'if false && a {' go test ./internal/... || exit 1
 [ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
 ```
@@ -268,6 +278,7 @@ again later. Each run writes its exit code to `$D/request.result`:
 
 ```sh
 . <run folder>/env
+{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "no worktree: '$W'"; exit 1; }
 tail -n +3 "$D/FILE" > "$D/BODY" || exit 1
 {
   printf 'cd %q || exit 1\n' "$W"
@@ -300,6 +311,7 @@ hand:
 
 ```sh
 . <run folder>/env
+{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "$BR: not built"; exit 0; }
 cd "$W" || exit 1
 git fetch -q "$REMOTE" || exit 1
 head=$(git rev-parse HEAD) || exit 1
@@ -348,7 +360,10 @@ plan on the pushed parent:
 
 ```sh
 . <child's run folder>/env
-cd "$W" || exit 1
+{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+  { echo "no worktree: '$W'"; exit 1; }
+[ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
+  { echo "not on $BR"; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
 git fetch -q "$REMOTE" || exit 1
 nb=$(git rev-parse "$REMOTE/$PARENT") || exit 1
