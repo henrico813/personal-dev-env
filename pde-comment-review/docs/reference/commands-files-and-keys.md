@@ -11,6 +11,7 @@
 | `pde-comment-review add NAME FILE` | Checks proposals `FILE` against its repository and saves it as the next round of review `NAME`. |
 | `pde-comment-review open NAME` | Shows review `NAME` one comment per screen in this terminal. |
 | `pde-comment-review notes NAME` | Prints the open notes as JSON, each with the item it is about. |
+| `pde-comment-review mcp` | Serves `status`, `draft`, `set` and `submit` as the MCP tools `review_status`, `review_draft`, `review_set` and `review_submit`, on stdin and stdout, for an agent harness to start. Each tool takes `dir`, the checkout's absolute path. |
 | `pde-comment-review help` | Prints the commands. |
 
 A review name may use only `a-z`, `0-9`, `.`, `_` and `-`. A command
@@ -26,6 +27,30 @@ anywhere else.
 
 The proposals file is described in the AI's skill:
 [The proposals file](../../../ai/skills/comment-review/references/proposals-file.md).
+
+## The MCP server
+
+No harness starts `pde-comment-review mcp` by default yet. To try it,
+register it as a local server in a harness's global settings, so
+sessions in every worktree see it. For OpenCode, add this to
+`~/.config/opencode/opencode.json`, or run
+`opencode mcp add --global pde-comment-review -- pde-comment-review mcp`:
+
+```json
+{"mcp": {"servers": {"pde-comment-review": {"type": "local", "command": ["pde-comment-review", "mcp"]}}}}
+```
+
+For Claude Code, run
+`claude mcp add -s user pde-comment-review -- pde-comment-review mcp`,
+and for Codex,
+`codex mcp add pde-comment-review -- pde-comment-review mcp`.
+
+The server writes only MCP messages to stdout and runs one tool call
+at a time. Two servers, or a server and the commands, working on one
+branch can still lose a change. `review_draft` from a second clone of
+the same branch replaces the first clone's unsent draft, though never
+your answers. A line on stdin that is not an MCP message ends the
+server, with the error on stderr, and the harness must start it again.
 
 ## Saved files
 
@@ -155,4 +180,4 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 | `internal/comment` | Everything that knows Go comment syntax. |
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
-| `internal/cmd` | The commands, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
+| `internal/cmd` | The commands, the MCP server, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
