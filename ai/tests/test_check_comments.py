@@ -166,15 +166,16 @@ class TestCommentNames:
             "avoid": {},
         }
 
-    def test_python_comments_take_their_code_names(
+    def test_python_comments_named_after_their_code(
         self, tmp_path: Path
     ) -> None:
-        """Approve Python comments under the names of their code.
+        """Name each Python comment after the code it describes.
 
-        Approvals are keyed by name, and the Go reader once named text in
-        test strings as code, so the owner approved names no code has.
-        The string, form feed and directive here check the same mistake
-        in Python.
+        Approvals are keyed by name, and the Go reader once named text
+        inside test strings as code, so the owner approved names no code
+        has. A comment inside a function, a tool line such as
+        ``# type: ignore`` and text in a string get no name, and a form
+        feed must not shift the lines after it.
         """
         (tmp_path / "till.py").write_text(
             '"""Count the till in cents."""\n\n'
@@ -197,20 +198,15 @@ class TestCommentNames:
             "def report():\n"
             '    """Print the total.\n\n    Once a day.\n    """\n\n'
             "    def line():\n"
-            '        """Return one line of the report."""\n\n\n'
-            'def short(): """Say hi."""\n'
+            '        """Return one line of the report."""\n'
         )
 
-        result = run_checker(
+        run_checker(
             tmp_path,
             "--approve",
             paths=[str(tmp_path / "till.py")],
         )
 
-        assert result.stdout.startswith(
-            "till.py:35 short: cannot be approved; its docstring shares a "
-            "line with other code\n"
-        )
         texts = {
             "<module>": '"""Count the till in cents."""\n',
             "# RATES": "# Cents per coin.\n",
@@ -312,30 +308,30 @@ class TestExistingSentences:
         )
         assert "restated-name" not in result.stdout
 
-    def test_sentences_count_only_in_their_language(
+    def test_old_docstrings_pass_despite_broken_files(
         self, tmp_path: Path
     ) -> None:
-        """Excuse an old sentence only in its own language.
+        """Pass old Python docstrings even when another file is broken.
 
-        Filler already in a Python docstring is a person's words, but
-        the same words new in a Go comment are the agent's and must
-        fail. A broken Python file at ``--base`` must not stop the run.
+        A sentence already present at ``--base`` may be a person's
+        words, and the agent must not rewrite them to pass. Every Python
+        file at that commit is read, so one that does not parse must not
+        stop the run.
         """
-        said = "This facilitates the queue."
-        (tmp_path / "queue.py").write_text(f'"""{said}"""\n')
+        (tmp_path / "queue.py").write_text(
+            '"""This facilitates the queue."""\n'
+        )
         (tmp_path / "broken.py").write_text("def broken(:\n")
         init_repo_and_commit_all(tmp_path)
-        (tmp_path / "post.go").write_text(f"// {said}\nfunc Post() {{}}\n")
 
         result = run_checker(
             tmp_path,
             "--base",
             "HEAD",
-            paths=[str(tmp_path / "post.go"), str(tmp_path / "queue.py")],
+            paths=[str(tmp_path / "queue.py")],
         )
 
-        assert result.returncode == 1
-        assert 'post.go:1 Post: filler: "facilitates"\n' in result.stdout
+        assert result.returncode == 0
         assert (
             'queue.py:1 <module>: filler: "facilitates" (existing: report '
             "only)\n"
@@ -535,14 +531,16 @@ class TestApprovedText:
             ),
         ],
     )
-    def test_go_runs_check_approved_python_files(
+    def test_changed_python_approval_fails_the_run(
         self, tmp_path: Path, source: str, expected: str
     ) -> None:
-        """Fail a Go check when an approved Python file changes.
+        """Fail the run when an agent changes approved Python text.
 
-        Agents check the Go files they changed, and the checker adds
-        every approved file, so a reworded docstring fails that run, as
-        does a file Python cannot read, whose approvals are not gone.
+        The checker once read only Go, so nothing stopped an agent from
+        rewording a Python docstring the owner approved. Agents pass
+        only the files they meant to change, so the Python file is left
+        off here. A file Python cannot parse fails with a message to fix
+        it, since its comments are not gone.
         """
         (tmp_path / "post.go").write_text("package shop\n")
         (tmp_path / "till.py").write_text(source)
@@ -554,6 +552,28 @@ class TestApprovedText:
         assert result.returncode == 1
         assert expected in result.stdout
         assert result.stdout.count(": approved: ") == 1
+
+    def test_directive_below_prose_reports_changed_text(
+        self, tmp_path: Path
+    ) -> None:
+        """Report approved prose as changed when a directive joins it.
+
+        A review found that adding ``# pylint: disable=...`` under an
+        approved ``#`` comment reported the comment as gone, and it
+        could not be approved again while the directive stayed.
+        """
+        retry = "# Retry three times before giving up.\n"
+        (tmp_path / "send.py").write_text(
+            retry + "# pylint: disable=too-many-branches\n"
+            "def send():\n    pass\n"
+        )
+        write_settings_file(tmp_path, [("send.py", "# send", retry)])
+
+        result = run_checker(tmp_path, paths=[str(tmp_path / "send.py")])
+
+        assert (
+            "send.py:1 # send: approved: approved text changed; restore it\n"
+        ) in result.stdout
 
     def test_shared_names_are_reported_not_failed(
         self, tmp_path: Path
@@ -858,7 +878,7 @@ class TestApproveComment:
                 "// Total sums the prices.\n",
                 "Total",
                 "needs a .go or .py file and a comment name",
-                id="not-go",
+                id="not-go-or-python",
             ),
             pytest.param(
                 "cart.go",
@@ -874,6 +894,14 @@ class TestApproveComment:
                 "crt.go: no such file",
                 id="missing-file",
             ),
+            pytest.param(
+                "till.py",
+                'def short(): """Say hi."""\n',
+                "short",
+                "till.py short: cannot be approved; its docstring shares "
+                "a line",
+                id="docstring-shares-line",
+            ),
         ],
     )
     def test_refuses_comment_it_cannot_approve(
@@ -886,9 +914,10 @@ class TestApproveComment:
     ) -> None:
         """Refuse a comment the checker cannot pin down, and change nothing.
 
-        A non-Go file, an empty name, a name two comments share and a
-        missing file each approved or cut the wrong entry, or would
-        have.
+        A file that is neither Go nor Python, an empty name, a name two
+        comments share and a missing file each approved or cut the wrong
+        entry, or would have. A docstring on a line with code would put
+        that code in the approved text.
         """
         if source is not None:
             (tmp_path / file).write_text(source)
@@ -1170,12 +1199,16 @@ class TestRenames:
             "sum at 2 (--approve --rename total=sum)\n"
         ) in result.stdout
 
-    def test_renames_move_python_entries(self, tmp_path: Path) -> None:
-        """Move approvals with a moved Python file and a method named go.
+    def test_python_answers_keep_approvals_through_renames(
+        self, tmp_path: Path
+    ) -> None:
+        """Keep approvals through renames when one Python answer is approved.
 
         The review tool approves one answer at a time, so
         ``--approve-comment`` must read Python, and a moved file's
-        approvals must not be left under the old path.
+        approvals must follow it. A method named ``go`` gives the name
+        ``Runner.go``, which looks like a Go file, so that pair must
+        still rename a comment, not move a file.
         """
         doc = '        """Start the job."""\n'
         (tmp_path / "new.py").write_text(
@@ -1331,13 +1364,15 @@ class TestMergeApprovals:
         assert message in result.stderr
         assert (main / ".code-comments.json").read_text() == before
 
-    def test_merge_takes_python_approvals(self, tmp_path: Path) -> None:
+    def test_python_approvals_merge_despite_broken_file(
+        self, tmp_path: Path
+    ) -> None:
         """Bring a worktree's Python approvals back at cleanup.
 
         Only Go files' approvals were taken, so removing a worktree
         would drop every Python docstring the owner approved in it. A
-        changed file that does not parse, with no approvals, must not
-        stop it.
+        changed Python file that does not parse and has no approvals
+        must not block cleanup.
         """
         worktree = tmp_path / "worktree"
         worktree.mkdir()
