@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -127,23 +128,52 @@ func TestParallelSetsKeepEveryProposal(t *testing.T) {
 	}
 }
 
-// Verifies that a dir that is not absolute is refused, since a harness may
-// start the server in another folder than the agent's checkout.
+// Verifies that tools refuse a dir that is not absolute, since a harness
+// may start the server outside the agent's checkout.
 func TestToolsRequireAbsoluteDir(t *testing.T) {
 	call := startMCPServer(t)
+	tests := []struct {
+		tool     string
+		giveArgs map[string]any
+	}{
+		{
+			tool:     "review_status",
+			giveArgs: map[string]any{},
+		},
+		{
+			tool:     "review_draft",
+			giveArgs: map[string]any{},
+		},
+		{
+			tool: "review_set",
+			giveArgs: map[string]any{
+				"id":     1,
+				"answer": review.ProposeKeep,
+			},
+		},
+		{
+			tool:     "review_submit",
+			giveArgs: map[string]any{},
+		},
+	}
 
-	for _, dir := range []string{".", ""} {
-		text := call("review_status", map[string]any{"dir": dir})
+	for _, tt := range tests {
+		for _, dir := range []string{".", ""} {
+			args := maps.Clone(tt.giveArgs)
+			args["dir"] = dir
+			text := call(tt.tool, args)
 
-		var reply agentReply
-		err := json.Unmarshal([]byte(text), &reply)
-		if err != nil || !slices.Contains(reply.Problems, "dir must be the checkout's absolute path") {
-			t.Errorf(
-				"review_status with dir %q = %+v, %v; want a refusal",
-				dir,
-				reply,
-				err,
-			)
+			var reply agentReply
+			err := json.Unmarshal([]byte(text), &reply)
+			if err != nil || !slices.Contains(reply.Problems, "dir must be the checkout's absolute path") {
+				t.Errorf(
+					"%s with dir %q = %+v, %v; want a refusal",
+					tt.tool,
+					dir,
+					reply,
+					err,
+				)
+			}
 		}
 	}
 }

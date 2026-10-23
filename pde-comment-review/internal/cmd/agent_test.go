@@ -196,6 +196,52 @@ func TestSetRefusesKeepForRemovedCode(t *testing.T) {
 	}
 }
 
+// Verifies that set refuses reword text starting with //, since the new
+// comment would otherwise start with // twice.
+func TestSetRefusesTextWrittenAsComment(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	if drafted := replyToDraft(repo, findRepoChecker(t)); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
+
+	reply := replyToSet(
+		repo,
+		1,
+		review.ProposeReword,
+		"// Removes every price.",
+	)
+
+	if !strings.Contains(strings.Join(reply.Problems, "\n"), "without //") {
+		t.Errorf("replyToSet() with // text problems = %q, want a refusal", reply.Problems)
+	}
+}
+
+// Verifies that draft's reply on the command line names shell commands,
+// since tool names such as review_set do not run in a shell.
+func TestCommandLineDraftNamesShellCommands(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(
+		t,
+		filepath.Join(repo, "clear.go"),
+		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
+	)
+	drafted := replyToDraft(repo, findRepoChecker(t))
+	if len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
+
+	printed := nameShellCommands(encodeReply(drafted))
+
+	if strings.Contains(printed, "review_") || !strings.Contains(printed, "pde-comment-review set") {
+		t.Errorf("draft reply for the command line = %s, want commands, not tools", printed)
+	}
+}
+
 // Verifies that a draft with nothing to answer reports done, so the agent
 // tells the user there is nothing to review.
 func TestDraftReportsNothingToReview(t *testing.T) {
