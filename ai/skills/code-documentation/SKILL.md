@@ -268,15 +268,15 @@ follow the `comment-review` skill. Use it also to change a comment
 the owner approved, even when a plan says to; never edit that
 comment in the code.
 
-## Go comment checker
+## Comment checker
 
-For Go files whose comments you write or review, run the checker in
-this skill's `scripts/` folder. It needs Python 3.10 or later:
+For Go or Python files whose comments you write or review, run the
+checker in this skill's `scripts/` folder, with Python 3.10 or later:
 
 ```bash
 python3 <this skill's folder>/scripts/check_comments.py \
   --repo <repository root> --base <commit your task started from> \
-  <Go files>
+  <Go or Python files>
 ```
 
 Each finding names the rule it checks, and the output ends by quoting
@@ -324,8 +324,8 @@ Before declaring source or test work complete, check:
 - stated reasons are supported
 - test explanations match what the assertions prove
 - the amount of documentation fits the code's complexity and risk
-- for Go files, the comment checker exits 0, or fails only on renamed,
-  moved or deleted approved comments that you reported
+- for Go or Python files, the comment checker exits 0, or fails only
+  on renamed, moved or deleted approved comments that you reported
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.

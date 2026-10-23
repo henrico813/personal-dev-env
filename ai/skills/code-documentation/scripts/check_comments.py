@@ -142,15 +142,18 @@ METHOD_DECLARATION = re.compile(
 CONST_OR_VAR_BLOCK = re.compile(r"(const|var)\s*\($")
 GO_GENERATED_MARKER = re.compile(r"^// Code generated .* DO NOT EDIT\.$", re.M)
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+DocstringOwner = (
+    ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+)
 PYTHON_GENERATED_MARKER = re.compile(
     r"^# (?:Code generated .* DO NOT EDIT\.$|@generated\b)", re.M
 )
-# A tool directive such as noqa, which is for a tool, so it gets no name.
+# A run of only tool directives, such as noqa, gets no name.
 PYTHON_DIRECTIVE = re.compile(
     r"#\s*(?:noqa\b|(?:type|pragma|fmt|ruff|pylint|mypy|pyright|isort):)"
 )
 # A shebang or an encoding line, which belongs to the file, not the code.
-PYTHON_FIRST_LINE = re.compile(r"\s*#(?:!|.*coding[:=])")
+PYTHON_SHEBANG_OR_ENCODING = re.compile(r"\s*#(?:!|.*coding[:=])")
 # The prefix and quotes that open a docstring, or the quotes that end it.
 DOCSTRING_QUOTES = re.compile(
     r"""^\s*[rRuU]?("{3}|'{3}|["'])|("{3}|'{3}|["'])\s*$"""
@@ -172,10 +175,12 @@ class Comment:
 
     Go names look like ``Send``, ``Cart.Total`` for a method, ``Cart.Items``
     for a struct field or map entry, and ``const Red`` for a comment above
-    a ``const (`` block. A Go comment has the name ``""`` inside a function
-    body, with a blank line after it, above an empty block, or, after
-    ``unname_shared_names``, when another comment in the file has the same
-    name, as does a refused docstring. Such comments cannot be approved.
+    a ``const (`` block. Python names look like ``Cart.total`` for a
+    docstring, ``# Cart.total`` for a ``#`` comment above it, and
+    ``<module>``. A comment has the name ``""`` when it cannot be
+    approved, such as inside a function body, with a blank line after it,
+    or, after ``unname_unapprovable_comments``, when its name is shared or
+    it has an ``unapprovable_reason``.
 
     ``text`` is the comment exactly as written, which approved text is
     compared with. ``header`` is true for a comment above ``package`` with
@@ -183,8 +188,8 @@ class Comment:
     touches ``package``, so it is named instead. In Python, it is true for
     an unnamed comment above the first statement.
 
-    ``refusal`` says why a named comment cannot be approved, such as a
-    docstring that shares a line with code.
+    ``unapprovable_reason`` says why a named comment cannot be approved,
+    such as a docstring that shares a line with code.
     """
 
     file: str
@@ -193,7 +198,7 @@ class Comment:
     text: str
     prose: str
     header: bool = False
-    refusal: str = ""
+    unapprovable_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -375,14 +380,14 @@ def name_code_below_comment(
     return f"{outer_name}.{declared[1]}"
 
 
-def join_comment_prose(comment: str, marker: str = "//") -> str:
+def join_comment_prose(comment_text: str, marker: str = "//") -> str:
     """Join comment lines into one line of prose, leaving out code and lists.
 
     Args:
-        comment: The comment's lines, each starting with ``marker``.
+        comment_text: The comment's lines, each starting with ``marker``.
     """
     words = []
-    for line in comment.splitlines():
+    for line in comment_text.splitlines():
         text = line.strip()[len(marker) :]
         # Go doc comments indent code blocks and lists.
         if text.strip() and not text.startswith(("\t", "  ")):
@@ -393,9 +398,9 @@ def join_comment_prose(comment: str, marker: str = "//") -> str:
 def parse_python_comments(source: str, file: str) -> list[Comment]:
     """Return each docstring and each run of whole-line ``#`` comments.
 
-    A ``#`` run takes the name of the code just below it, unless that
-    code is inside a function. Lines split only at line feeds, as
-    ``ast`` counts them, so a form feed cannot shift a name.
+    A ``#`` run takes the name of the code just below it, such as
+    ``# Cart.total``, unless that code is inside a function or the run
+    is only tool directives.
 
     Raises:
         SourceError: Python cannot parse ``source``.
@@ -414,22 +419,26 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
         version = f"{sys.version_info.major}.{sys.version_info.minor}"
         reason = f"Python {version}: {type(error).__name__}{where}"
         raise SourceError(f"cannot be read ({reason})") from error
+    # Lines split only at line feeds, as ast counts them, so a form feed
+    # cannot shift a name.
     lines = source.split("\n")
     # Each line with its line end, so a comment's text is exact.
-    kept = [line + "\n" for line in lines[:-1]] + lines[-1:]
-    owners: list[tuple[ast.AST, str]] = [(tree, "<module>")]
-    named_lines: dict[int, str] = {}
-    for node, name, in_function in list_python_definitions(tree.body):
-        owners.append((node, name))
+    lines_with_ends = [line + "\n" for line in lines[:-1]] + lines[-1:]
+    docstring_owners: list[tuple[DocstringOwner, str]] = [(tree, "<module>")]
+    name_by_first_line: dict[int, str] = {}
+    for node, name, in_function in list_python_named_statements(tree.body):
+        if isinstance(node, PYTHON_DEFINITIONS):
+            docstring_owners.append((node, name))
         if not in_function:
-            # The outer or first name on a line names the comment above.
-            named_lines.setdefault(find_first_line(node), name)
+            # When one line holds two statements, the first names the
+            # comment above.
+            name_by_first_line.setdefault(find_first_line(node), name)
     comments = []
-    for owner, name in owners:
+    for owner, name in docstring_owners:
         span = find_docstring_span(owner, tokens)
         if span:
-            first, last, refusal = span
-            text = "".join(kept[first - 1 : last])
+            first, last, unapprovable_reason = span
+            text = "".join(lines_with_ends[first - 1 : last])
             comments.append(
                 Comment(
                     file=file,
@@ -437,17 +446,20 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
                     name=name,
                     text=text,
                     prose=join_python_prose(text),
-                    refusal=refusal,
+                    unapprovable_reason=unapprovable_reason,
                 )
             )
-    first_statement = min(
+    first_statement_line = min(
         map(find_first_line, tree.body), default=len(lines) + 1
     )
     for first, last in find_comment_runs(tokens, lines):
-        text = "".join(kept[first - 1 : last])
-        name = named_lines.get(last + 1, "")
-        if PYTHON_DIRECTIVE.search(text) or (
-            first <= 2 and PYTHON_FIRST_LINE.match(text)
+        text = "".join(lines_with_ends[first - 1 : last])
+        name = name_by_first_line.get(last + 1, "")
+        holds_only_directives = all(
+            PYTHON_DIRECTIVE.search(line) for line in lines[first - 1 : last]
+        )
+        if holds_only_directives or (
+            first <= 2 and PYTHON_SHEBANG_OR_ENCODING.match(text)
         ):
             name = ""
         comments.append(
@@ -457,45 +469,48 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
                 name=f"# {name}" if name else "",
                 text=text,
                 prose=join_python_prose(text),
-                header=not name and last < first_statement,
+                header=not name and last < first_statement_line,
             )
         )
     return sorted(comments, key=lambda comment: comment.line)
 
 
-def list_python_definitions(
-    body: list[ast.stmt], outer: str = "", in_function: bool = False
+def list_python_named_statements(
+    body: list[ast.stmt], name_prefix: str = "", in_function: bool = False
 ) -> Iterator[tuple[ast.stmt, str, bool]]:
-    """Yield each definition and one-name assignment, its dotted name, and
-    whether it sits in a function.
+    """Yield each def, class and one-name assignment with its dotted name.
+
+    The third value says whether it sits in a function.
 
     Args:
-        outer: The dotted name of the code around ``body``, and a dot.
+        name_prefix: The dotted name of the code around ``body``, and a dot.
     """
     for node in body:
-        prefix, inside_function = outer, in_function
+        child_prefix, children_in_function = name_prefix, in_function
         target: ast.expr | None = None
         if isinstance(node, PYTHON_DEFINITIONS):
-            yield node, outer + node.name, in_function
-            prefix = f"{outer}{node.name}."
-            inside_function = in_function or not isinstance(node, ast.ClassDef)
+            yield node, name_prefix + node.name, in_function
+            child_prefix = f"{name_prefix}{node.name}."
+            children_in_function = in_function or not isinstance(
+                node, ast.ClassDef
+            )
         elif isinstance(node, ast.AnnAssign):
             target = node.target
         elif isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
         if isinstance(target, ast.Name):
-            yield node, outer + target.id, in_function
+            yield node, name_prefix + target.id, in_function
         # An if, try, with or loop block adds nothing to a name.
-        inner = []
+        child_statements = []
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.stmt):
-                inner.append(child)
+                child_statements.append(child)
             elif isinstance(child, (ast.ExceptHandler, ast.match_case)):
-                inner += child.body
-        yield from list_python_definitions(
-            inner,
-            prefix,
-            inside_function,
+                child_statements += child.body
+        yield from list_python_named_statements(
+            child_statements,
+            child_prefix,
+            children_in_function,
         )
 
 
@@ -507,27 +522,26 @@ def find_first_line(node: ast.stmt) -> int:
 
 
 def find_docstring_span(
-    owner: ast.AST, tokens: list[tokenize.TokenInfo]
+    owner: DocstringOwner, tokens: list[tokenize.TokenInfo]
 ) -> tuple[int, int, str] | None:
-    """Return a docstring's first and last line, and its refusal or ``""``.
+    """Return a docstring's first and last line, and why it is unapprovable.
 
-    A docstring sharing a line with code is refused, since its text is
-    its whole lines. Returns ``None`` when ``owner`` has no docstring.
+    A docstring sharing a line with code cannot be approved, since its
+    approved text would include that code. Other docstrings get ``""``.
+    Returns ``None`` when ``owner`` has no docstring.
     """
-    if not isinstance(owner, (ast.Module, *PYTHON_DEFINITIONS)):
-        return None
     if ast.get_docstring(owner, clean=False) is None:
         return None
     statement = owner.body[0]
     first, last = statement.lineno, statement.end_lineno or statement.lineno
     # Tokens that only lay out code, which a docstring line may hold.
     layout = {tokenize.INDENT, tokenize.DEDENT, tokenize.NEWLINE, tokenize.NL}
-    found = [
+    code_tokens = [
         token
         for token in tokens
         if first <= token.start[0] <= last and token.type not in layout
     ]
-    if [token.type for token in found] == [tokenize.STRING]:
+    if [token.type for token in code_tokens] == [tokenize.STRING]:
         return first, last, ""
     return first, last, "its docstring shares a line with other code"
 
@@ -862,10 +876,10 @@ def is_string_map(value: object) -> TypeGuard[dict[str, str]]:
 def read_comments_at_commit(
     repo: Path, rev: str, suffixes: set[str]
 ) -> list[Comment]:
-    """Read every comment under ``repo`` at ``rev`` in files of the suffixes.
+    """Read every comment at ``rev`` in files ending in one of ``suffixes``.
 
-    Every such file counts, not only the checked ones, so a person's
-    sentence in a moved or renamed file is still theirs.
+    Every such file under ``repo`` counts, not only the checked ones, so
+    a person's sentence in a moved or renamed file is still theirs.
 
     Args:
         repo: The folder given as ``--repo``, inside a Git repository.
@@ -906,17 +920,17 @@ def read_comments_at_commit(
             found += LANGUAGES[suffix].read_comments(source, file)
         except SourceError:
             continue
-    return unname_shared_names(found)[0]
+    return unname_unapprovable_comments(found)[0]
 
 
-def unname_shared_names(
+def unname_unapprovable_comments(
     comments: list[Comment],
 ) -> tuple[list[Comment], dict[tuple[str, str], tuple[str, list[int]]]]:
     """Take the name off comments that cannot keep one.
 
     Two ``func init()`` or two ``var _`` lines in one file are ordinary
     Go, but approved text could not tell their comments apart. A
-    comment with a ``refusal`` loses its name too.
+    comment with an ``unapprovable_reason`` loses its name too.
 
     Returns:
         The comments, with those names set to ``""``, and each such
@@ -926,18 +940,19 @@ def unname_shared_names(
     for comment in comments:
         if comment.name:
             by_key.setdefault((comment.file, comment.name), []).append(comment)
-    refused = {}
-    for key, found in by_key.items():
-        if len(found) > 1:
-            reason = f"{len(found)} comments in this file have this name"
-            refused[key] = (reason, [c.line for c in found])
-        elif found[0].refusal:
-            refused[key] = (found[0].refusal, [found[0].line])
+    unapprovable = {}
+    for key, same_name_comments in by_key.items():
+        lines = [c.line for c in same_name_comments]
+        reason = same_name_comments[0].unapprovable_reason
+        if len(lines) > 1:
+            reason = f"{len(lines)} comments in this file have this name"
+        if reason:
+            unapprovable[key] = (reason, lines)
     unnamed = [
-        replace(c, name="") if (c.file, c.name) in refused else c
+        replace(c, name="") if (c.file, c.name) in unapprovable else c
         for c in comments
     ]
-    return unnamed, refused
+    return unnamed, unapprovable
 
 
 def build_approved_entries(
@@ -1033,10 +1048,11 @@ def apply_renames(
 ) -> tuple[dict[tuple[str, str], str], list[Comment], list[str]]:
     """Move entries and ``--base`` comments to their new names.
 
-    A pair moves a file when its old side is a file of the entries, of
-    ``files`` or at ``--base``, relative to ``--repo``, since a name such
-    as ``Runner.go`` looks like a path. Other pairs rename a comment.
-    Files move first, and an entry already under the new name wins.
+    A pair whose old side is a file in the entries, in ``files`` or at
+    ``--base`` moves that file; other pairs rename a comment. A suffix
+    cannot tell a file from a name, since a Python name such as
+    ``Runner.go`` looks like a path. Files move first, and an entry
+    already under the new name wins.
 
     Args:
         renames: New names or paths by old ones.
@@ -1172,9 +1188,9 @@ def approve_one_comment(
     except SourceError as error:
         print(f"{file}: {error}", file=sys.stderr)
         return 2
-    comments, refused = unname_shared_names(found)
-    if (file, name) in refused:
-        reason, _ = refused[file, name]
+    comments, unapprovable = unname_unapprovable_comments(found)
+    if (file, name) in unapprovable:
+        reason, _ = unapprovable[file, name]
         print(f"{file} {name}: cannot be approved; {reason}", file=sys.stderr)
         return 2
     approved, _, _ = apply_renames(
@@ -1223,8 +1239,7 @@ def list_changed_files(repo: Path, commit: str) -> set[str]:
 def read_named_comments(
     repo: Path, files: set[str]
 ) -> dict[tuple[str, str], str]:
-    """Return each named comment's text in ``files`` by ``(file, name)``,
-    leaving out names that cannot be approved, such as shared ones.
+    """Return the text of each approvable comment in ``files``.
 
     Raises:
         SourceError: Python cannot read one of ``files``.
@@ -1239,7 +1254,7 @@ def read_named_comments(
             raise SourceError(f"{file}: {error}") from error
     return {
         (c.file, c.name): c.text
-        for c in unname_shared_names(comments)[0]
+        for c in unname_unapprovable_comments(comments)[0]
         if c.name
     }
 
@@ -1280,8 +1295,10 @@ def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
         changed_files = list_changed_files(repo, commit)
         present_files = {f for f in changed_files if (repo / f).exists()}
         # Read only approved files, so another file cannot stop cleanup.
-        named_files = {file for file, _ in [*approved, *incoming]}
-        comments_now = read_named_comments(repo, present_files & named_files)
+        approved_files = {file for file, _ in [*approved, *incoming]}
+        comments_now = read_named_comments(
+            repo, present_files & approved_files
+        )
     except (ValueError, SourceError, subprocess.CalledProcessError) as error:
         print(error, file=sys.stderr)
         return 2
@@ -1433,7 +1450,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         language = LANGUAGES.get(path.suffix)
         if language is None:
-            print(f"{path}: skipped; not a Go file", file=sys.stderr)
+            print(f"{path}: skipped; unknown language", file=sys.stderr)
             continue
         try:
             file = path.resolve().relative_to(repo).as_posix()
@@ -1458,9 +1475,9 @@ def main(argv: list[str] | None = None) -> int:
             continue
         checked_files.add(file)
     if not checked_files:
-        print("no Go file to check", file=sys.stderr)
+        print("no file to check", file=sys.stderr)
         return 2
-    comments, refused = unname_shared_names(comments)
+    comments, unapprovable = unname_unapprovable_comments(comments)
     base_comments: list[Comment] = []
     if args.base:
         try:
@@ -1472,7 +1489,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2
-    for (file, name), (reason, lines) in refused.items():
+    for (file, name), (reason, lines) in unapprovable.items():
         for line in lines:
             print(f"{file}:{line} {name}: cannot be approved; {reason}")
     if args.approve:
