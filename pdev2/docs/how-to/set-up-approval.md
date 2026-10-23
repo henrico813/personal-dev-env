@@ -16,16 +16,9 @@ so their requests reach you in Herdr and on your phone. Keep your normal
 2. Restart every OpenCode server and client. A server started before the
    install keeps its old `PATH`, so its agents can get past the guard; see
    [OpenCode server refresh](../../../pde-installer/docs/explanation/opencode-server-refresh.md).
-3. Reload Herdr's settings so `prefix+a` (Ctrl+b, then a) opens the
-   approval inbox:
-
-   ```bash
-   herdr server reload-config
-   ```
-
-4. Check that the Herdr plugin is linked, as in
+3. Check that the Herdr plugin is linked, as in
    [Debug a stuck or unanswered request](debug-a-stuck-request.md#5-if-no-popup-appeared).
-5. Pair your phone and start the `moshi-hook` background service, which
+4. Pair your phone and start the `moshi-hook` background service, which
    sends the phone question. `moshi-hook pair --help` says the token is
    in the Moshi iPhone app under Settings, then Integrations.
 
@@ -34,10 +27,10 @@ so their requests reach you in Herdr and on your phone. Keep your normal
    moshi-hook service install
    ```
 
-6. Check that `moshi-hook status` prints `status: paired` and
+5. Check that `moshi-hook status` prints `status: paired` and
    `moshi-hook service status` shows `active (running)`. To test, run
    `moshi-hook ask --require-remote --timeout 2m "Test"` and answer on
    the phone; it exits 0 or 1 when the phone works.
-7. Optional: ask an agent to post a test comment on one of your pull
+6. Optional: ask an agent to post a test comment on one of your pull
    requests, then approve it as in
    [Approve or decline a request](approve-a-request.md).
