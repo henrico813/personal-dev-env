@@ -1405,17 +1405,13 @@ class TestListComments:
 
         ``pde-comment-review`` will write the owner's answers over these
         lines, and refuse a cut that empties a body or a write that adds
-        a warning. The comment holding the coding line is left out, so a
-        write cannot drop it, and so is ``short``, whose line holds code.
-        The last docstring has no line feed, and its end line must still
-        be right.
+        a warning. The last docstring has no line feed, and its end line
+        must still be right.
         """
         (tmp_path / "till.py").write_text(
-            "# Copyright.\n# -*- coding: utf-8 -*-\n"
             'PRICE = "\\d+"\nCENTS = "\\d"\n'
             "# Cents per coin.\n"
-            'RATES = {"dime": 10}\n'
-            'def short(): """Say hi."""\n\n'
+            'RATES = {"dime": 10}\n\n'
             "def total():\n"
             '    """Count the till.\n\n'
             '    Return cents.\n    """\n'
@@ -1435,32 +1431,73 @@ class TestListComments:
             "comments": [
                 {
                     "name": "# RATES",
-                    "line": 5,
-                    "end_line": 5,
-                    "code_line": 6,
+                    "line": 3,
+                    "end_line": 3,
+                    "code_line": 4,
                     "only_body": False,
                     "text": "# Cents per coin.\n",
                 },
                 {
                     "name": "total",
-                    "line": 10,
-                    "end_line": 13,
-                    "code_line": 9,
+                    "line": 7,
+                    "end_line": 10,
+                    "code_line": 6,
                     "only_body": False,
                     "text": '    """Count the till.\n\n'
                     '    Return cents.\n    """\n',
                 },
                 {
                     "name": "TillError",
-                    "line": 18,
-                    "end_line": 18,
-                    "code_line": 17,
+                    "line": 15,
+                    "end_line": 15,
+                    "code_line": 14,
                     "only_body": True,
                     "text": '    """The till does not balance."""',
                 },
             ],
             "warnings": ["invalid escape sequence '\\d'"] * 2,
         }
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param(
+                "# Copyright.\n# -*- coding: utf-8 -*-\n"
+                'RATES = {"dime": 10}\n',
+                id="coding-line-header",
+            ),
+            pytest.param(
+                'def short(): """Say hi."""\n',
+                id="docstring-shares-line",
+            ),
+            pytest.param(
+                "# Retry three times before giving up.\n"
+                "# pylint: disable=too-many-branches\n"
+                "def send():\n    pass\n",
+                id="prose-above-directive",
+            ),
+        ],
+    )
+    def test_list_leaves_out_unsafe_comments(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        """Leave out comments whose lines a write could break.
+
+        ``pde-comment-review`` writes the owner's answer over a listed
+        comment's lines, so listing these would let a write drop or
+        corrupt lines the owner never chose to change, such as an
+        encoding line, code beside a docstring or a tool directive below
+        prose.
+        """
+        (tmp_path / "till.py").write_text(source)
+
+        result = run_checker(
+            tmp_path,
+            "--list",
+            paths=[str(tmp_path / "till.py")],
+        )
+
+        assert json.loads(result.stdout)["comments"] == []
 
     @pytest.mark.parametrize(
         "source, message",
