@@ -1,23 +1,30 @@
 #!/bin/sh
 set -u
 
-# Runs after every chezmoi apply and links PDE's Herdr plugins into Herdr. It
-# always exits 0, so a missing or stopped Herdr never fails an install, and it
-# prints how to link later.
+# Runs after every chezmoi apply, links PDE's Herdr plugins into Herdr, and
+# reloads Herdr's config. It always exits 0, so a missing or stopped Herdr
+# never fails an install, and it prints how to link later.
+
+# The installer installs Herdr here, and this directory may not be on PATH yet.
+PATH="{{ .chezmoi.destDir }}/.local/bin:$PATH"
 
 # With no arguments, runs again for each plugin, given its id and folder.
 # Each run's exit 0 below ends only that plugin's run.
 if [ $# -eq 0 ]; then
 	sh "$0" pde.approval pde-approval
 	sh "$0" pde.comment-review pde-comment-review
+	# A running server keeps the keys it started with, such as Ctrl+b e.
+	if herdr status server >/dev/null 2>&1; then
+		if ! error=$(herdr server reload-config 2>&1); then
+			printf 'Herdr config reload failed: %s\n' "$error"
+		fi
+	fi
 	exit 0
 fi
 
 plugin_id=$1
 plugin_dir="{{ .chezmoi.destDir }}/.local/share/pde/herdr-plugins/$2"
 manifest_path="$plugin_dir/herdr-plugin.toml"
-# The installer installs Herdr here, and this directory may not be on PATH yet.
-PATH="{{ .chezmoi.destDir }}/.local/bin:$PATH"
 
 link_later() {
 	printf '%s is unavailable; link later with: herdr plugin link %s\n' "$1" "$plugin_dir"

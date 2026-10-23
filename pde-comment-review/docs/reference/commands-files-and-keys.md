@@ -159,14 +159,15 @@ after it, or one that shares a name in its file.
 | Piece | Comes from |
 | --- | --- |
 | The plugin `pde.comment-review`: the popup, the edit and diff tabs, and the action Ctrl+b e runs | `chezmoi/dot_local/share/pde/herdr-plugins/pde-comment-review/herdr-plugin.toml.tmpl` |
-| Linking the plugin into Herdr after each `chezmoi apply` | `chezmoi/run_after_link_herdr_plugins.sh.tmpl` |
+| Linking the plugin into Herdr and reloading Herdr's config after each `chezmoi apply` | `chezmoi/run_after_link_herdr_plugins.sh.tmpl` |
 | Ctrl+b e, in place of Herdr's scrollback editor | `chezmoi/dot_config/herdr/config.toml` |
 | The program `~/.local/bin/pde-comment-review` | built by `pde-installer` from `pde-comment-review/` |
 
 Herdr shows one popup at a time; close another popup before pressing
 Ctrl+b e. When Ctrl+b e does nothing, `herdr plugin log list` shows
-why. If the popup has no edit or diff tab after an update, link the
-plugin again:
+why. When it opens the scrollback editor instead, run
+`herdr server reload-config`. If the popup has no edit or diff tab
+after an update, link the plugin again:
 
 ```bash
 herdr plugin unlink pde.comment-review
