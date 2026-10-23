@@ -9,6 +9,7 @@ Example:
         --rename Total=Sum --rename cart.go=basket.go shop/*.go
     python3 check_comments.py --repo . --approve-comment shop/cart.go Total
     python3 check_comments.py --repo . --merge-approvals ../wt 1a2b3c4
+    python3 check_comments.py --repo . --list scripts/check_comments.py
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
@@ -37,6 +38,13 @@ In Python, every docstring is named, such as ``RenameRules.move_key``
 or ``<module>`` for the module docstring, and so is a ``#`` comment
 above a ``def``, a ``class`` or an assignment outside functions, such
 as ``# RULES`` above ``RULES``.
+
+``--list`` prints one line of JSON per Python file for
+``pde-comment-review``, with each named comment's lines and the
+warnings Python gives when it compiles the file. Line numbers start at
+1, and ``end_line`` is the comment's last line. A ``#`` comment with a
+tool directive line, such as ``# noqa``, is left out, since writing
+over it could drop the directive.
 
 The rules are:
 
@@ -72,7 +80,8 @@ Exit codes:
         ``.code-comments.json``, or a COMMIT that ``--repo``'s HEAD
         lacks or whose changes Git cannot list. ``--approve-comment``
         and ``--merge-approvals`` also exit 2 on a file Python cannot
-        read.
+        read. ``--list`` also exits 2 on a file that is not Python, does
+        not compile or has a carriage return, and then prints nothing.
 """
 
 from __future__ import annotations
@@ -189,7 +198,11 @@ class Comment:
     an unnamed comment above the first statement.
 
     ``unapprovable_reason`` says why a named comment cannot be approved,
-    such as a docstring that shares a line with code.
+    such as a docstring that shares a line with code. In Python,
+    ``code_line`` is a docstring's ``def`` or ``class`` line, 0 for the
+    module docstring, or the line below a ``#`` comment. ``only_body`` is
+    true for a docstring that is its body's only statement, so cutting it
+    would break the code.
     """
 
     file: str
@@ -199,6 +212,8 @@ class Comment:
     prose: str
     header: bool = False
     unapprovable_reason: str = ""
+    code_line: int = 0
+    only_body: bool = False
 
 
 @dataclass(frozen=True)
@@ -244,11 +259,15 @@ class SourceError(Exception):
 
 @dataclass(frozen=True)
 class Language:
-    """How the checker reads the files of one suffix, such as ``.py``."""
+    """How the checker reads the files of one suffix, such as ``.py``.
+
+    ``list_warnings`` is ``None`` for a language ``--list`` does not take.
+    """
 
     read_comments: Callable[[str, str], list[Comment]]
     join_prose: Callable[[str], str]
     generated_marker: re.Pattern[str]
+    list_warnings: Callable[[str, str], list[str]] | None = None
 
 
 def parse_go_comments(source: str, file: str) -> list[Comment]:
@@ -414,11 +433,7 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
                 tokenize.generate_tokens(io.StringIO(source).readline)
             )
     except (SyntaxError, ValueError, tokenize.TokenError) as error:
-        line = error.lineno if isinstance(error, SyntaxError) else None
-        where = f" at line {line}" if line else ""
-        version = f"{sys.version_info.major}.{sys.version_info.minor}"
-        reason = f"Python {version}: {type(error).__name__}{where}"
-        raise SourceError(f"cannot be read ({reason})") from error
+        raise SourceError(describe_python_error(error)) from error
     # Lines split only at line feeds, as ast counts them, so a form feed
     # cannot shift a name.
     lines = source.split("\n")
@@ -439,6 +454,9 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
         if span:
             first, last, unapprovable_reason = span
             text = "".join(lines_with_ends[first - 1 : last])
+            code_line, only_body = 0, False
+            if isinstance(owner, PYTHON_DEFINITIONS):
+                code_line, only_body = owner.lineno, len(owner.body) == 1
             comments.append(
                 Comment(
                     file=file,
@@ -447,6 +465,8 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
                     text=text,
                     prose=join_python_prose(text),
                     unapprovable_reason=unapprovable_reason,
+                    code_line=code_line,
+                    only_body=only_body,
                 )
             )
     first_statement_line = min(
@@ -458,8 +478,10 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
         holds_only_directives = all(
             PYTHON_DIRECTIVE.search(line) for line in lines[first - 1 : last]
         )
-        if holds_only_directives or (
-            first <= 2 and PYTHON_SHEBANG_OR_ENCODING.match(text)
+        # Python reads a coding line only on line 1 or 2.
+        if holds_only_directives or any(
+            PYTHON_SHEBANG_OR_ENCODING.match(line)
+            for line in lines[first - 1 : 2]
         ):
             name = ""
         comments.append(
@@ -470,9 +492,18 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
                 text=text,
                 prose=join_python_prose(text),
                 header=not name and last < first_statement_line,
+                code_line=last + 1,
             )
         )
     return sorted(comments, key=lambda comment: comment.line)
+
+
+def describe_python_error(error: Exception) -> str:
+    """Return why Python cannot read a file, with Python's version."""
+    line = error.lineno if isinstance(error, SyntaxError) else None
+    where = f" at line {line}" if line else ""
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    return f"cannot be read (Python {version}: {type(error).__name__}{where})"
 
 
 def list_python_named_statements(
@@ -590,6 +621,29 @@ def join_python_prose(text: str) -> str:
     return " ".join(words)
 
 
+def list_python_warnings(source: str, file: str) -> list[str]:
+    """Return the warnings Python gives when it compiles ``source``.
+
+    Compiling also finds errors that parsing alone misses, such as
+    ``return`` outside a function.
+
+    Raises:
+        SourceError: Python cannot compile ``source``.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            compile(
+                source,
+                file,
+                "exec",
+                dont_inherit=True,
+            )
+        except (SyntaxError, ValueError) as error:
+            raise SourceError(describe_python_error(error)) from error
+    return [str(warning.message) for warning in caught]
+
+
 # Each language the checker reads, by file suffix.
 LANGUAGES = {
     ".go": Language(
@@ -601,6 +655,7 @@ LANGUAGES = {
         read_comments=parse_python_comments,
         join_prose=join_python_prose,
         generated_marker=PYTHON_GENERATED_MARKER,
+        list_warnings=list_python_warnings,
     ),
 }
 
@@ -1362,6 +1417,62 @@ def merge_approvals(repo: Path, folder: Path, commit: str) -> int:
     return 0
 
 
+def list_comments(repo: Path, paths: list[Path]) -> int:
+    """Print each Python file's named comments as one line of JSON.
+
+    The output lets ``pde-comment-review`` check, after writing the
+    owner's answers, that only those comments changed and Python gives
+    no new warning.
+
+    Returns:
+        The exit code described in the module docstring.
+    """
+    listings = []
+    for path in paths:
+        language = LANGUAGES.get(path.suffix)
+        if language is None or language.list_warnings is None:
+            print(f"{path}: --list takes only Python files", file=sys.stderr)
+            return 2
+        try:
+            file = path.resolve().relative_to(repo).as_posix()
+            # read_text would turn a carriage return into a line feed.
+            source = path.read_bytes().decode("utf-8")
+        except (OSError, ValueError) as error:
+            print(f"{path}: {error}", file=sys.stderr)
+            return 2
+        try:
+            if "\r" in source:
+                raise SourceError("cannot be read (it has a carriage return)")
+            found = language.read_comments(source, file)
+            compile_warnings = language.list_warnings(source, file)
+        except SourceError as error:
+            print(f"{path}: {error}", file=sys.stderr)
+            return 2
+        listed = [
+            {
+                "name": c.name,
+                "line": c.line,
+                "end_line": c.line + c.text.rstrip("\n").count("\n"),
+                "code_line": c.code_line,
+                "only_body": c.only_body,
+                "text": c.text,
+            }
+            for c in unname_unapprovable_comments(found)[0]
+            if c.name
+            # Writing over a # comment would drop its directive lines.
+            and not (
+                c.name.startswith("# ") and PYTHON_DIRECTIVE.search(c.text)
+            )
+        ]
+        listings.append(
+            {"file": file, "comments": listed, "warnings": compile_warnings}
+        )
+    # Print only once every file is listed, so no refusal follows output.
+    for listing in listings:
+        print(json.dumps(listing))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Check the given Go and Python files and print one line per finding.
 
@@ -1406,11 +1517,27 @@ def main(argv: list[str] | None = None) -> int:
         help="take FOLDER's approvals for the files COMMIT changed; run "
         "as the cleanup-plan skill says",
     )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="print each named comment of the given Python files as JSON",
+    )
     parser.add_argument("paths", nargs="*", type=Path)
     args = parser.parse_args(argv)
     if args.rename and not (args.approve or args.approve_comment):
         parser.error("--rename needs --approve or --approve-comment")
     repo = args.repo.resolve()
+    if args.list:
+        if (
+            args.approve
+            or args.approve_comment
+            or args.merge_approvals
+            or args.base
+        ):
+            parser.error("--list takes only --repo and paths")
+        if not args.paths:
+            parser.error("give the files to list")
+        return list_comments(repo, args.paths)
     if args.merge_approvals:
         if args.approve or args.approve_comment or args.base or args.paths:
             parser.error("--merge-approvals takes no other option or paths")
