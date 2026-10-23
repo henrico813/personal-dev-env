@@ -33,7 +33,11 @@ shared workflow skills. Run it locally with `cd ai && uv run pytest`.
 `pde-installer install full` installs planner, `codex`, `opencode`,
 `opencode-inline-shim`, `pi`, and `vibe`, then installs every file under
 `skills/` that Git tracks to `~/.agents/skills/`, including the
-shared workflow skills. It syncs `opencode/` and
+shared workflow skills. Those copies replace each skill's `## Lessons`
+section with the empty one from `skills/`, so when `skill-lessons` from
+private-agent-tools is on `PATH` or in `~/.local/bin`, the installer
+then runs `skill-lessons render` to restore saved lessons. A failed
+render prints a warning and leaves the install in place. It syncs `opencode/` and
 `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Vibe relies on provider env vars
