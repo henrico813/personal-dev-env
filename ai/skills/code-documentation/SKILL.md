@@ -306,6 +306,10 @@ Run the checker again until it exits 0. If it still fails only with
 task renamed, moved or deleted that code, keep the owner's text and
 list those findings in your final message for the owner.
 
+If Python cannot read a file, fix its syntax, or report it when the
+file needs a newer Python than the checker's `python3`. Never edit
+approved text to get past it.
+
 Only the owner runs the checker with `--approve`, or an agent the
 owner asked to. It rewrites `.code-comments.json` itself, so no one
 types entries by hand. Pass `--rename OLD=NEW` once for each renamed
