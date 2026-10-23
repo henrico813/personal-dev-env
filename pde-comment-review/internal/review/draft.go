@@ -16,6 +16,8 @@ type Draft struct {
 	// The commit the checkout was compared with.
 	Base      string    `json:"base"`
 	Proposals Proposals `json:"proposals"`
+	// The round submit saves it as, so a sent draft is never sent again.
+	Round int `json:"round"`
 }
 
 // Returns the review name for a branch, such as "vibe-add-tax" for
@@ -50,7 +52,7 @@ func MoveFinishedReviewAside(name string) error {
 	}
 	if r.AppliedRound != len(r.Rounds) {
 		return fmt.Errorf(
-			"review %s, for %s, has a round waiting for the owner; send changed items with add, as the comment-review skill says, or tell the owner if that is another checkout",
+			"review %s, for %s, has a round waiting for the owner; call review_status to see what to do, or tell the owner if that is another checkout",
 			name,
 			r.Repo(),
 		)
@@ -74,4 +76,22 @@ func SaveDraft(name string, d Draft) error {
 		return err
 	}
 	return replaceJSONFile(filepath.Join(dir, "draft.json"), d)
+}
+
+// Returns the review called name, which may have no round yet, and its
+// unsent draft or nil.
+func LoadReviewAndDraft(name string) (*Review, *Draft, error) {
+	r, err := loadReview(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	var d Draft
+	if err := readJSONFile(filepath.Join(r.Dir, "draft.json"), &d); err != nil {
+		return nil, nil, err
+	}
+	// A written review's draft can no longer be sent.
+	if d.Round != len(r.Rounds)+1 || len(r.Rounds) > 0 && r.AppliedRound == len(r.Rounds) {
+		return r, nil, nil
+	}
+	return r, &d, nil
 }

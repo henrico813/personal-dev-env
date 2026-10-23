@@ -158,7 +158,7 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n\n// Fills the cart.\n//go:noinline\nfunc Fill() {}\n",
 	)
 
-	_, d, err := saveBranchDraft(repo, findRepoChecker(t))
+	d, err := saveBranchDraft(repo, findRepoChecker(t))
 
 	if err != nil {
 		t.Fatalf("saveBranchDraft() error = %v", err)
@@ -169,6 +169,7 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 			repo,
 			"git rev-parse origin/main",
 		),
+		Round: 1,
 		Proposals: review.Proposals{
 			Version: review.Version,
 			Repo:    repo,
@@ -262,9 +263,12 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
 	checker := findRepoChecker(t)
-	// The agent drafts the review, and the owner answers it.
-	if _, err := draftReview(repo, checker); err != nil {
-		t.Fatalf("draftReview() error = %v", err)
+	// The agent drafts and sends the review, and the owner answers it.
+	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
+	if sent := replyToSubmit(repo, checker); len(sent.Problems) > 0 {
+		t.Fatalf("replyToSubmit() problems = %q", sent.Problems)
 	}
 	r, err := review.OpenReview("vibe-add-tax")
 	if err != nil {
@@ -336,8 +340,11 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
 	checker := findRepoChecker(t)
-	if _, err := draftReview(repo, checker); err != nil {
-		t.Fatalf("draftReview() error = %v", err)
+	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
+	if sent := replyToSubmit(repo, checker); len(sent.Problems) > 0 {
+		t.Fatalf("replyToSubmit() problems = %q", sent.Problems)
 	}
 	r, err := review.OpenReview("feat")
 	if err != nil {
@@ -354,10 +361,10 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 		t.Fatalf("writeAndApproveDecisions() error = %v", err)
 	}
 
-	_, err = draftReview(repo, checker)
+	again := replyToDraft(repo, checker)
 
-	if err != nil {
-		t.Fatalf("second draftReview() error = %v", err)
+	if len(again.Problems) > 0 {
+		t.Fatalf("second replyToDraft() problems = %q", again.Problems)
 	}
 	_, err = os.Stat(filepath.Join(
 		review.FindStateRoot(),
@@ -445,7 +452,7 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 					tt.script,
 				)
 
-				_, _, err := saveBranchDraft(repo, findRepoChecker(t))
+				_, err := saveBranchDraft(repo, findRepoChecker(t))
 
 				if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was saved") {
 					t.Fatalf(
@@ -484,7 +491,7 @@ func TestDraftRefusesWhileRoundAwaitsOwner(t *testing.T) {
 		`{"repo": "/x"}`,
 	)
 
-	_, _, err := saveBranchDraft(repo, findRepoChecker(t))
+	_, err := saveBranchDraft(repo, findRepoChecker(t))
 
 	want := "review feat, for /x, has a round waiting for the owner"
 	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "nothing was saved") {
