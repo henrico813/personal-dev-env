@@ -536,7 +536,14 @@ func (m Manager) environment(stage ...string) []string {
 	path := filepath.Join(m.Home, ".local", "bin") + string(os.PathListSeparator) + os.Getenv("PATH")
 	environment := []string{"PATH=" + path}
 	if len(stage) > 0 {
-		environment = append(environment, "GOCACHE="+filepath.Join(stage[0], "go-cache"), "GOMODCACHE="+filepath.Join(stage[0], "go-mod-cache"), "CARGO_HOME="+filepath.Join(stage[0], "cargo-home"))
+		environment = append(
+			environment,
+			"GOCACHE="+filepath.Join(stage[0], "go-cache"),
+			"GOMODCACHE="+filepath.Join(stage[0], "go-mod-cache"),
+			// Go makes module folders read-only, which stops the stage's removal.
+			"GOFLAGS=-modcacherw",
+			"CARGO_HOME="+filepath.Join(stage[0], "cargo-home"),
+		)
 	}
 	return environment
 }
