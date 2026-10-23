@@ -95,7 +95,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
-	if config.Profile == profile.Full {
+	if config.Profile.HasWorkstationTools() {
 		if err := npm.New(config.Home, config.RepoRoot, runner).ValidateLock(); err != nil {
 			failures = append(failures, "npm lock: "+err.Error())
 		}
@@ -104,7 +104,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 		}
 	}
 	paths := []string{config.LocalBin, config.AquaRoot, tmux.New(config.Home, runner).ReleaseRoot()}
-	if config.Profile == profile.Full {
+	if config.Profile.HasWorkstationTools() {
 		paths = append(paths, direct.New(config.Home, runner).ToolsRoot())
 	}
 	for _, path := range paths {
@@ -115,7 +115,7 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 			failures = append(failures, "unwritable destination: "+path+" (fix ownership or permissions on "+ancestor+")")
 		}
 	}
-	if mode == preflightReport && config.Profile == profile.Full {
+	if mode == preflightReport && config.Profile.HasWorkstationTools() {
 		if err := reportCopilotStatus(config.Home, runner.Out()); err != nil {
 			return fmt.Errorf("write GitHub Copilot status: %w", err)
 		}

@@ -15,8 +15,10 @@ export PATH="$HOME/.local/bin:$PATH"
 pde-installer install terminal
 ```
 
-`terminal` is the small terminal-focused selection. A fresh installation must
-choose `terminal` or `full`; the installer saves that selection in
+`terminal` is for headless homelab VMs, `client` for a laptop that edits files
+and shows Herdr sessions from other machines but builds nothing, and `full` for
+development machines. A fresh installation must choose `terminal`, `client`, or
+`full`; the installer saves that selection in
 `~/.config/pde/config.json`. Later bare `install` runs reuse the saved
 selection, including the inferred full selection for legacy installer state.
 A successful explicit selection switches future installs. A pre-commit failure
@@ -25,7 +27,7 @@ reconciling full-only artifacts but does not uninstall them.
 
 The independent `--color-profile` setting accepts `tokyo-night`,
 `everforest-dark`, or `gruvbox-dark`. It defaults to Tokyo Night, is saved per
-machine, and coordinates terminal, tmux, shell, and full-profile Neovim and
+machine, and coordinates terminal, tmux, shell, and client or full Neovim and
 OpenCode configuration included by the selected component profile.
 
 The installer does not clone or update the repository. Run it from anywhere
@@ -40,7 +42,8 @@ pde-installer doctor
 pde-installer list
 ```
 
-- `install [terminal|full]` reconciles tools and managed home configuration in
+- `install [terminal|client|full]` reconciles tools and managed home
+  configuration in
   dependency order. A fresh installation requires an explicit selection;
   later bare installs reuse saved or legacy selection.
 - `doctor` validates host prerequisites, pins, and managed paths for the saved
@@ -107,7 +110,7 @@ Vibe binaries plus repo-managed AI config.
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), and a Herdr pane that stays working while background subagents run |
-| Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
+| Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (client and full) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |

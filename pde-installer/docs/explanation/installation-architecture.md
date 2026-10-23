@@ -1,13 +1,16 @@
 # Installation Architecture
 
-The repository describes full and terminal PDE selections. `install terminal`
-and `install full` save an explicit selection. Bare `install` reconciles the
-saved selection or infers full from legacy installer state; it errors when
-neither exists. Terminal skips full-only components. Switching between
-selections changes future reconciliation, but switching from full to terminal
-does not uninstall full-only artifacts. The exception is PR write approval:
-chezmoi removes `pde-gh-write`, `pde-pr-approve`, and the `gh` guard on
-terminal machines. Every install reconciles tools and
+The repository describes terminal, client, and full PDE selections.
+`install terminal`, `install client`, and `install full` save an explicit
+selection. Bare `install` reconciles the saved selection or infers full from
+legacy installer state; it errors when neither exists. Terminal skips full-only
+components; client installs everything except what needs Go, Rust, or a local
+build. Switching between selections changes future reconciliation, but
+switching from full to terminal does not uninstall full-only artifacts. Client
+refuses to install over release tools it would delete, such as Go left by a
+past full install. The exception is PR write approval: chezmoi removes
+`pde-gh-write`, `pde-pr-approve`, and the `gh` guard on terminal and client
+machines. Every install reconciles tools and
 managed home configuration.
 
 Color selection is an independent per-machine value in the same config file.
@@ -34,6 +37,12 @@ The full order is:
 11. Apply the chezmoi source.
 12. Build and verify the `blink.cmp` native library.
 13. Commit journals and remove backups.
+
+Terminal skips steps 5 to 8, 10, and 12. Client skips step 8 and step 2's
+compiler checks, installs no Go, Rust, Keychain, or Moshi Hook in step 5, and
+installs blink.cmp without its native matcher in step 12, so it compiles
+nothing. Before step 1, client refuses to run if step 5 would delete installed
+release tools.
 
 This order gives each stage the tools and files it needs. A later failure rolls
 back completed journaled stages in reverse order.

@@ -309,9 +309,9 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	manager.blinkURL = server.URL
 	manager.blinkSHA256 = hex.EncodeToString(digest[:])
 
-	journal, err := manager.BuildBlink()
+	journal, err := manager.InstallBlink(true /* nativeMatcher */)
 	if err != nil {
-		t.Fatalf("BuildBlink() error = %v", err)
+		t.Fatalf("InstallBlink() error = %v", err)
 	}
 
 	assertBuildFile(t, filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"), "blink library\n")
@@ -321,6 +321,57 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	assertBuildFile(t, filepath.Join(destination, "old"), "old plugin\n")
+}
+
+// A client laptop has no Rust toolchain. blink.cmp must still install there
+// with its Lua matcher, instead of failing on the missing cargo.
+func TestLuaBlinkInstallsWithoutCargo(t *testing.T) {
+	home := t.TempDir()
+	destination := filepath.Join(
+		home,
+		".config",
+		"nvim",
+		"pack",
+		"plugins",
+		"start",
+		"blink.cmp",
+	)
+	archive := blinkArchiveFixture(t)
+	digest := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = response.Write(archive)
+	}))
+	defer server.Close()
+	manager := New(
+		home,
+		t.TempDir(),
+		run.Runner{},
+	)
+	manager.blinkURL = server.URL
+	manager.blinkSHA256 = hex.EncodeToString(digest[:])
+
+	journal, err := manager.InstallBlink(false /* nativeMatcher */)
+	if err != nil {
+		t.Fatalf("InstallBlink() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	assertBuildFile(
+		t,
+		filepath.Join(
+			destination,
+			"lua",
+			"blink",
+			"cmp",
+			"init.lua",
+		),
+		"return {}\n",
+	)
+	if _, err := os.Stat(filepath.Join(destination, "lib")); !os.IsNotExist(err) {
+		t.Fatalf("native library directory stat error = %v, want not exist", err)
+	}
 }
 
 func cargoFixture(logPath string) string {

@@ -64,7 +64,11 @@ func (m Manager) binary() string { return filepath.Join(m.root, "bin", "aqua") }
 // Reconcile installs the pinned Aqua release and managed tools.
 func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if !m.profile.Valid() {
-		return nil, fmt.Errorf("invalid profile %q; use full or terminal", m.profile)
+		return nil, fmt.Errorf(
+			"invalid profile %q; use %s",
+			m.profile,
+			profile.ValidValues,
+		)
 	}
 	aqua, ok := manifest.Find("aqua", manifest.Aqua)
 	if !ok {
@@ -123,7 +127,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			_ = os.RemoveAll(stage)
 		}
 	}()
-	if m.profile == profile.Terminal {
+	// Start from the current root so a smaller profile keeps Aqua tools a
+	// full install left behind.
+	if m.profile != profile.Full {
 		if _, err := os.Stat(m.root); err == nil {
 			if err := fsutil.CopyTree(m.root, stage); err != nil {
 				return nil, fmt.Errorf("seed Aqua staging root: %w", err)

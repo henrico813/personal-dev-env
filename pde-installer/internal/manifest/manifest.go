@@ -24,16 +24,17 @@ type Item struct {
 	Name, Version string
 	Owner         Backend
 	Terminal      bool
+	Client        bool
 }
 
 // ItemsFor returns items selected by the installation profile.
 func ItemsFor(selected profile.Profile) []Item {
-	if selected != profile.Terminal {
+	if selected != profile.Terminal && selected != profile.Client {
 		return Items()
 	}
 	var result []Item
 	for _, item := range Items() {
-		if item.Terminal {
+		if item.Terminal || (selected == profile.Client && item.Client) {
 			result = append(result, item)
 		}
 	}
@@ -66,7 +67,11 @@ func Items() []Item {
 	return []Item{
 		{Name: "zsh", Owner: Ubuntu, Terminal: true}, {Name: "git", Owner: Ubuntu, Terminal: true},
 		{Name: "xclip", Owner: Ubuntu, Terminal: true}, {Name: "unzip", Owner: Ubuntu, Terminal: true},
-		{Name: "fontconfig", Owner: Ubuntu},
+		{
+			Name:   "fontconfig",
+			Owner:  Ubuntu,
+			Client: true,
+		},
 		{Name: "tmux", Version: "3.7b", Owner: Direct, Terminal: true},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua, Terminal: true},
 		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Terminal: true}, {Name: "fzf", Version: "0.36.0", Owner: Aqua, Terminal: true},
@@ -81,36 +86,109 @@ func Items() []Item {
 		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Terminal: true}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Terminal: true},
 		{Name: "gopls", Version: "v0.23.0", Owner: Aqua},
 		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua},
-		{Name: "@opencode/cli", Version: "2.0.26", Owner: NPM},
-		{Name: "@openai/codex", Version: "0.157.0", Owner: NPM},
-		{Name: "@earendil-works/pi-coding-agent", Version: "0.85.1", Owner: NPM},
-		{Name: "obsidian-headless", Version: "0.0.14", Owner: NPM},
+		{
+			Name:    "@opencode/cli",
+			Version: "2.0.26",
+			Owner:   NPM,
+			Client:  true,
+		},
+		{
+			Name:    "@openai/codex",
+			Version: "0.157.0",
+			Owner:   NPM,
+			Client:  true,
+		},
+		{
+			Name:    "@earendil-works/pi-coding-agent",
+			Version: "0.85.1",
+			Owner:   NPM,
+			Client:  true,
+		},
+		{
+			Name:    "obsidian-headless",
+			Version: "0.0.14",
+			Owner:   NPM,
+			Client:  true,
+		},
 		{
 			Name:    "@anthropic-ai/claude-code",
 			Version: "2.1.283",
 			Owner:   NPM,
+			Client:  true,
 		},
 		{Name: "planner", Owner: Local}, {Name: "pde-gh-write", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
 		{Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
 		{Name: "pde-comment-review", Owner: Local},
-		{Name: "FiraCode", Version: "v3.2.1", Owner: Direct},
-		{Name: "JetBrainsMono", Version: "v3.2.1", Owner: Direct},
-		{Name: "neovim", Version: "0.12.3", Owner: Direct},
+		{
+			Name:    "FiraCode",
+			Version: "v3.2.1",
+			Owner:   Direct,
+			Client:  true,
+		},
+		{
+			Name:    "JetBrainsMono",
+			Version: "v3.2.1",
+			Owner:   Direct,
+			Client:  true,
+		},
+		{
+			Name:    "neovim",
+			Version: "0.12.3",
+			Owner:   Direct,
+			Client:  true,
+		},
 		{Name: "go", Version: "1.26.4", Owner: Direct},
 		{Name: "rust", Version: "1.96.0", Owner: Direct},
-		{Name: "node", Version: "24.16.0", Owner: Direct},
+		{
+			Name:    "node",
+			Version: "24.16.0",
+			Owner:   Direct,
+			Client:  true,
+		},
 		{Name: "keychain", Version: "2.9.8", Owner: Direct},
 		{Name: "moshi-hook", Version: "v0.4.20", Owner: Direct},
-		{Name: "herdr", Version: "v0.9.1", Owner: Direct},
-		{Name: "nobs", Version: "v0.3.3", Owner: Direct},
+		{
+			Name:    "herdr",
+			Version: "v0.9.1",
+			Owner:   Direct,
+			Client:  true,
+		},
+		{
+			Name:    "nobs",
+			Version: "v0.3.3",
+			Owner:   Direct,
+			Client:  true,
+		},
 		{Name: "repository-config", Owner: Chezmoi, Terminal: true}, {Name: "antidote", Owner: Chezmoi, Terminal: true},
-		{Name: "tpm", Owner: Chezmoi, Terminal: true}, {Name: "obsidian.nvim", Owner: Chezmoi},
-		{Name: "neovim-plugins", Owner: Chezmoi}, {Name: "ohmyzsh", Owner: Chezmoi, Terminal: true},
+		{
+			Name:     "tpm",
+			Owner:    Chezmoi,
+			Terminal: true,
+		},
+		{
+			Name:   "obsidian.nvim",
+			Owner:  Chezmoi,
+			Client: true,
+		},
+		{
+			Name:   "neovim-plugins",
+			Owner:  Chezmoi,
+			Client: true,
+		},
+		{
+			Name:     "ohmyzsh",
+			Owner:    Chezmoi,
+			Terminal: true,
+		},
 		{Name: "powerlevel10k", Owner: Chezmoi, Terminal: true}, {Name: "zsh-z", Owner: Chezmoi, Terminal: true},
 		{Name: "zsh-autosuggestions", Owner: Chezmoi, Terminal: true}, {Name: "zsh-completions", Owner: Chezmoi, Terminal: true},
 		{Name: "zsh-syntax-highlighting", Owner: Chezmoi, Terminal: true}, {Name: "zsh-history-substring-search", Owner: Chezmoi, Terminal: true},
 		{Name: "tmux-sensible", Owner: Chezmoi, Terminal: true}, {Name: "tmux-resurrect", Owner: Chezmoi, Terminal: true},
-		{Name: "ai-config", Owner: Chezmoi},
+		{
+			Name:   "ai-config",
+			Owner:  Chezmoi,
+			Client: true,
+		},
 	}
 }
 

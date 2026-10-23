@@ -43,6 +43,27 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
 			},
 		},
+		"client": {
+			profile: "client",
+			want: []string{
+				".config/aquaproj-aqua/aqua.yaml",
+				".claude",
+				".codex",
+				".pi",
+				".local/share/pde/herdr-plugins",
+				"link_herdr_plugins.sh",
+				".config/opencode/bin/planner",
+			},
+			omit: []string{
+				".config/alacritty",
+				".config/wezterm",
+				".config/nvim",
+				".config/opencode",
+				".local/bin/opencode",
+				".config/herdr",
+				".agents",
+			},
+		},
 		"full": {
 			profile: "full",
 			want: []string{
@@ -82,6 +103,20 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				".agents/skills/code-documentation/SKILL.md",
 			},
 		},
+		"client": {
+			profile: "client",
+			want: []string{
+				"obsidian.nvim",
+				"copilot.lua",
+				".config/opencode/AGENTS.md",
+				".agents/skills/code-documentation/SKILL.md",
+			},
+			omit: []string{
+				".codex/AGENTS.md",
+				".claude/CLAUDE.md",
+				".pi/agent",
+			},
+		},
 		"full": {
 			profile: "full",
 			want: []string{
@@ -89,6 +124,8 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"copilot.lua",
 				".config/opencode/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
+				".claude/CLAUDE.md",
+				".pi/agent/settings.json",
 			},
 		},
 	}
@@ -174,6 +211,18 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"$HOME/.config/pde/tw.yml",
 				"local -a roles=(herdr wallace shell)",
 				"@tw-root",
+			},
+		},
+		"client": {
+			profile: "client",
+			want: []string{
+				"aqua-terminal.yaml",
+				"alias vim='nvim'",
+				"EDITOR=$(which nvim)",
+			},
+			omit: []string{
+				"/aqua.yaml",
+				"keychain --eval",
 			},
 		},
 		"full": {
@@ -358,7 +407,11 @@ func TestTmuxTemplateProfiles(t *testing.T) {
 		omit    []string
 	}{
 		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'", "set -g base-index 1"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
-		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
+		"client": {
+			profile: "client",
+			want:    []string{"@resurrect-strategy-nvim"},
+		},
+		"full": {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
 	}
 	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
 }
