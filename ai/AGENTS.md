@@ -37,6 +37,9 @@
   load and follow the `delegate` skill. The subagent loads the skill for
   the task itself, such as `create-plan` or `implement-plan`; review its
   work with `review-plan` when it applies.
+- When asked to build several pull requests of an approved roadmap
+  without the user reviewing each step, load and follow the
+  `roadmap-run` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
