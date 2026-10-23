@@ -40,3 +40,30 @@ bring it to the user.
   for review last, after behavior and names are done.
 - Make minor decisions yourself and say so. Ask only about real ones.
 - Keep updates short; put detail in files, not chat.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above.
+If the section is empty and `skill-lessons` is installed, run
+`skill-lessons render` once, since an install can reset this file, and
+read the section again.
+
+When the user corrects how you brief, check or review a subagent's
+work, still save it to memory as your instructions say. If
+`skill-lessons` is installed, also offer once to save it here as a
+lesson. When the user says "remember", save it at once and show the
+one line it prints:
+
+    jq -n --arg text '<rule>' \
+      '{skill: "delegate", text: $text}' |
+      skill-lessons add -
+
+Single quotes keep backticks and `$` in the rule as written. If the
+user corrects a lesson again, add `repeat_of: "L<n>"` inside the
+braces, with the ID from the end of that lesson. If `skill-lessons` is
+not installed, say so once and save no lesson. Lessons become rules in
+this text only through a pull request the user asks for.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
