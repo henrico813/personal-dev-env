@@ -61,18 +61,18 @@ func Main(args []string) int {
 			)
 		}
 	case len(args) == 1 && args[0] == "status":
-		return printReply(replyToStatus("."))
+		return printReply(os.Stdout, replyToStatus("."))
 	case len(args) == 1 && args[0] == "draft":
 		var checker string
 		if checker, err = findCheckerPath(); err == nil {
-			return printReply(replyToDraft(".", checker))
+			return printReply(os.Stdout, replyToDraft(".", checker))
 		}
 	case len(args) >= 3 && args[0] == "set":
-		return printReply(replyToSetArgs(args[1:]))
+		return printReply(os.Stdout, replyToSetArgs(args[1:]))
 	case len(args) == 1 && args[0] == "submit":
 		var checker string
 		if checker, err = findCheckerPath(); err == nil {
-			return printReply(replyToSubmit(".", checker))
+			return printReply(os.Stdout, replyToSubmit(".", checker))
 		}
 	case len(args) == 1 && args[0] == "open":
 		err = openWaitingReview()

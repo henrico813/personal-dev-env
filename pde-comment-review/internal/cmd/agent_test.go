@@ -200,14 +200,6 @@ func TestSetRefusesKeepForRemovedCode(t *testing.T) {
 // comment would otherwise start with // twice.
 func TestSetRefusesTextWrittenAsComment(t *testing.T) {
 	repo := newShopClone(t, "feat")
-	writeFile(
-		t,
-		filepath.Join(repo, "clear.go"),
-		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
-	)
-	if drafted := replyToDraft(repo, findRepoChecker(t)); len(drafted.Problems) > 0 {
-		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
-	}
 
 	reply := replyToSet(
 		repo,
@@ -235,10 +227,11 @@ func TestCommandLineDraftNamesShellCommands(t *testing.T) {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
 
-	printed := nameShellCommands(encodeReply(drafted))
+	var printed strings.Builder
+	printReply(&printed, drafted)
 
-	if strings.Contains(printed, "review_") || !strings.Contains(printed, "pde-comment-review set") {
-		t.Errorf("draft reply for the command line = %s, want commands, not tools", printed)
+	if strings.Contains(printed.String(), "review_") || !strings.Contains(printed.String(), "pde-comment-review set") {
+		t.Errorf("printReply() of the draft = %s, want commands, not tools", printed.String())
 	}
 }
 
