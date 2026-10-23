@@ -13,7 +13,7 @@ import (
 // Installing skills resets their Lessons sections, so a skipped render hides
 // saved lessons, and a failed render must not fail the install.
 
-func TestSkillLessonsFoundInHomeBin(t *testing.T) {
+func TestRenderRunsSkillLessonsOffPath(t *testing.T) {
 	home := newHomeWithLocalBinOffPath(t, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$HOME/calls\"\n")
 	var stderr bytes.Buffer
 	runner := run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}
