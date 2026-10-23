@@ -147,6 +147,7 @@ first run of a new key takes `--base`:
 
 ```sh
 . <run folder>/env
+cd "$R" || exit 1  # Vibe builds in the checkout it starts in.
 for s in $(cat "$D/steps"); do
   [ "$s" -lt "${FROM:-0}" ] && continue
   base=()
@@ -211,7 +212,8 @@ planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
 rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
 t=$(plan_tree "$P" "$R" "$B" "$(tail -n 1 "$D/steps")") || exit 1
 echo "$t" > "$D/treefix"
-git -C "$W" diff --binary --no-ext-diff --no-color HEAD "$t" > "$D/fix.patch"
+git -C "$W" diff --binary --no-ext-diff --no-color HEAD "$t" \
+  > "$D/fix.patch" || exit 1
 ```
 
 Write `$D/MSGfix` and `$D/promptfix.md` naming `fix.patch`, then run
@@ -221,11 +223,14 @@ it. The key exists, so there is no `--base`:
 . <run folder>/env
 python3 "$M" fmt "$D/MSGfix" >/dev/null || exit 1
 python3 "$M" lint "$D/MSGfix" || exit 1
+cd "$R" || exit 1
 vibe run --key "$KEY" --prompt-file "$D/promptfix.md" \
   --input "$D/fix.patch" --model "$MODEL" \
   --commit-message "$(cat "$D/MSGfix")" --stderr-level warn > "$D/runfix.json"
 st=$(jq -r '.status + " " + (.persistence_error // "none")' "$D/runfix.json")
 [ "$st" = "completed none" ] || { echo "fix: $st. Park this PR"; exit 1; }
+[ "$(jq -r .worktree "$D/runfix.json")" = "$W" ] ||
+  { echo "fix: Vibe ran outside $W"; exit 1; }
 [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$(cat "$D/treefix")" ] ||
   { echo "fix: branch tree differs from the plan"; exit 1; }
 ```
@@ -274,7 +279,7 @@ git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/vibe/$KEY" || exit 1
 A later round, after the first push, adds a commit: use the same
 script, but replace everything from `git ls-remote` on with
 `git push -u "$REMOTE" "HEAD:refs/heads/vibe/$KEY"`, then update the
-PR text with `pde-gh-write pr edit`.
+PR text with `pde-gh-write pr edit NUMBER --body-file "$D/BODY"`.
 
 ## File the PR request
 
