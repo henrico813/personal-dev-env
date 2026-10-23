@@ -8,10 +8,10 @@ import (
 	"pde-installer/internal/run"
 )
 
-// Installing skills empties each installed Lessons section. When
-// private-agent-tools' skill-lessons is installed, its render fills them
-// again from its store. A failed render only prints a warning, since the
-// lessons stay in the store.
+// Installing skills replaces each SKILL.md's `## Lessons` section with the
+// empty one from the source. private-agent-tools' `skill-lessons render`
+// writes the saved lessons back. A failed render only warns, because the
+// saved lessons are still in skill-lessons' store.
 //
 // It runs after chezmoi's drift check, which would treat the rendered
 // SKILL.md files as drift and roll the install back.

@@ -37,8 +37,8 @@ shared workflow skills. Those copies replace each skill's `## Lessons`
 section with the empty one from `skills/`, so when `skill-lessons` from
 private-agent-tools is on `PATH` or in `~/.local/bin`, the installer
 then runs `skill-lessons render` to restore saved lessons. A failed
-render prints a warning and leaves the install in place. It syncs `opencode/` and
-`pi/agent/` into their managed config homes. Pi
+render prints a warning and leaves the install in place. It syncs
+`opencode/` and `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Vibe relies on provider env vars
 or `~/.pi/agent/auth.json` rather than managed config under `ai/`. The
