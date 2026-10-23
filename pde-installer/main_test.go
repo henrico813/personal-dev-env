@@ -23,7 +23,9 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		return
 	}
 
-	// Both dry-run subtests check the output of this one dry run.
+	// Both dry-run subtests check the output of this one dry run. A
+	// skill-lessons on PATH would hide a missing dry-run render step.
+	t.Setenv("PATH", "/usr/bin:/bin")
 	dryRunHome := t.TempDir()
 	dryRunBefore := treeState(t, dryRunHome)
 	dryRunStdout, _, dryRunErr := execute(t, dryRunHome, "install", "full", "--dry-run", "--repo-root", repo)
