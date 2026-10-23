@@ -31,12 +31,26 @@ pde-installer list
 The installer does not clone or update the checkout. It finds the checkout from
 the current directory, `--repo-root`, or `PDE_REPO_ROOT`.
 
-A fresh installation must run `install terminal` or `install full`. The
-selection is saved in `~/.config/pde/config.json`. Later bare `install` runs
-reuse the saved selection or infer full from `paths.env` or an `install_path`
-field. A successful explicit selection switches future reconciliation; a
-pre-commit failure preserves the prior selection. Switching from full to
-terminal does not uninstall full-only artifacts. Terminal contains the runtime Ubuntu prerequisites
+Pick the profile for the machine:
+
+- `terminal`: headless homelab VMs that run services. Shell, tmux, and
+  command-line tools.
+- `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
+  from other machines, with nothing compiled by the installer. Full without Go,
+  Rust, local builds, or the PR approval tools. Client installs no Go itself, so
+  the machine still needs Go 1.21 or newer to build the installer, for example
+  from `sudo apt install golang-go` on Ubuntu 24.04.
+- `full`: development machines. Everything.
+
+A fresh installation must run `install terminal`, `install client`, or
+`install full`. The selection is saved in `~/.config/pde/config.json`. Later
+bare `install` runs reuse the saved selection or infer full from `paths.env` or
+an `install_path` field. A successful explicit selection switches future
+reconciliation; a pre-commit failure preserves the prior selection. Switching
+from full to terminal does not uninstall full-only artifacts. Client refuses to
+install while `~/.local/share/pde/releases` holds release tools it leaves out,
+such as Go from a past full install, because client replaces that folder
+without them. Terminal contains the runtime Ubuntu prerequisites
 (`ca-certificates`, `curl`, `file`, `git`, `gzip`, `tar`, `unzip`, `xclip`,
 `xz-utils`, and `zsh`), the existing amd64-only direct tmux 3.7b binary, fd,
 fzf, ripgrep, bat, jq, chezmoi, eza, zoxide, bottom, yq, Yazi/ya, and
@@ -44,15 +58,21 @@ shell/tmux configuration, the retained bottom/Aqua configuration, common
 plugin externals, Git template configuration, and PDE Git configuration.
 
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
-builds, Alacritty, WezTerm, and editor/AI configuration. Full retains all of
-these components and everything else in the environment. Every install
+builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
+`fontconfig`, the managed fonts, Neovim and its plugins, Node, the npm tools,
+herdr, nobs, and the Alacritty, WezTerm, herdr, Neovim, and OpenCode
+configuration with the shared agent guidance and skills. It still excludes Go,
+Rust, LSPs, Keychain, Moshi Hook, local builds such as planner and vibe, the
+native blink.cmp matcher, the herdr plugins, the `gh` approval guard, and the
+Claude Code, Codex, and Pi configuration. Full retains all of these components
+and everything else in the environment. Every install
 reconciles both tools and managed home configuration. Fresh `doctor` and `list`
 inspect full.
 
 The independent color selection accepts `tokyo-night`, `everforest-dark`, or
 `gruvbox-dark`. Missing state defaults to Tokyo Night. All installs coordinate
-tmux, Powerlevel10k, fzf, and bat. Full installs also coordinate Alacritty,
-WezTerm, Neovim, and OpenCode; terminal installs retain those full-only files
+tmux, Powerlevel10k, fzf, and bat. Client and full installs also coordinate
+Alacritty, WezTerm, Neovim, and OpenCode; terminal installs retain those files
 unchanged. Static rendering never recolors the local terminal during SSH
 sessions. Restart OpenCode after changing profiles.
 
@@ -66,7 +86,7 @@ sessions. Restart OpenCode after changing profiles.
 
 ## OpenCode Memory Cap
 
-On a full-profile host with a running systemd user manager, PDE replaces the
+On a client or full host with a running systemd user manager, PDE replaces the
 npm `opencode` symlink with a launcher. Root OpenCode launches run in
 `opencode.slice` with `MemoryMax=50%` and `MemorySwapMax=512M`; nested OpenCode
 launches remain in that scope. Set `PDE_OPENCODE_MEMORY_MAX` or

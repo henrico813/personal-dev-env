@@ -72,7 +72,7 @@ set -g allow-passthrough on
 set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
 
-{{- if eq (env "PDE_PROFILE") "full" }}
+{{- if ne (env "PDE_PROFILE") "terminal" }}
 # Restore vim and neovim sessions, plus pane contents, across tmux restarts.
 set -g @resurrect-strategy-vim 'session'
 set -g @resurrect-strategy-nvim 'session'
