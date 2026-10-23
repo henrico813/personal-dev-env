@@ -116,6 +116,7 @@ Vibe binaries plus repo-managed AI config.
 | nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
 | PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
 | Comment review | `pde-comment-review/`, `chezmoi/` | `~/.local/bin/pde-comment-review`, `~/.local/share/pde/herdr-plugins/pde-comment-review/` (full only) | Decide on an AI's comments one per phone screen with Ctrl+b e; see the [comment review docs](pde-comment-review/docs/README.md) |
+| Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (full only) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
