@@ -8,8 +8,8 @@ import (
 	"pde-installer/internal/run"
 )
 
-// Installing skills replaces each SKILL.md's `## Lessons` section with the
-// empty one from skills/. When skill-lessons is on PATH or in ~/.local/bin,
+// Installing skills overwrites each installed SKILL.md, which empties any
+// `## Lessons` section. When skill-lessons is on PATH or in ~/.local/bin,
 // `skill-lessons render` writes saved lessons back. A failed render only
 // warns, because the lessons are still in skill-lessons' store.
 //
