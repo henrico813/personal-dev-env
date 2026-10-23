@@ -36,8 +36,10 @@ Pick the profile for the machine:
 - `terminal`: headless homelab VMs that run services. Shell, tmux, and
   command-line tools.
 - `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
-  from other machines, but builds nothing. Full without Go, Rust, local builds,
-  or the PR approval tools.
+  from other machines, with nothing compiled by the installer. Full without Go,
+  Rust, local builds, or the PR approval tools. Client installs no Go itself, so
+  the machine still needs Go 1.21 or newer to build the installer, for example
+  from `sudo apt install golang-go` on Ubuntu 24.04.
 - `full`: development machines. Everything.
 
 A fresh installation must run `install terminal`, `install client`, or

@@ -8,8 +8,8 @@ type Profile string
 const (
 	// Installs everything for dev machines, including Go, Rust and local builds.
 	Full Profile = "full"
-	// Installs Neovim, OpenCode, herdr and fonts for a laptop that builds
-	// nothing. It leaves out Go, Rust, local builds and the approval tools.
+	// Installs Neovim, OpenCode, herdr and fonts for a laptop without compiling
+	// anything. It leaves out Go, Rust, local builds and the approval tools.
 	Client Profile = "client"
 	// Installs the shell, tmux and command-line tools for headless homelab VMs.
 	Terminal    Profile = "terminal"
