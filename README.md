@@ -95,6 +95,7 @@ Vibe binaries plus repo-managed AI config.
 | Design doc | `ai/skills/design-doc/` | `~/.agents/skills/design-doc/` | Shared workflow skill for technical design documents |
 | Research codebase | `ai/skills/research-codebase/` | `~/.agents/skills/research-codebase/` | Shared workflow skill for as-is codebase research |
 | Delegate | `ai/skills/delegate/` | `~/.agents/skills/delegate/` | Shared workflow skill for handing a task to an agent and reviewing it |
+| Roadmap run | `ai/skills/roadmap-run/` | `~/.agents/skills/roadmap-run/` | Shared workflow skill for building a roadmap's pull requests as a stack while the user is away |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
@@ -163,6 +164,7 @@ loads `~/.agents/skills/`.
 | `cleanup-plan` | Clean completed plan, worktree, branch, PR evidence, and main state | "Use cleanup-plan for the merged auth refactor branch" |
 | `research-codebase` | Explain how existing code works | "Use research-codebase to explain how pde-installer install works" |
 | `delegate` | Have an agent do a task, review and iterate until it is ready | "Have an agent fix the flaky test, review it until it's ready for me" |
+| `roadmap-run` | Plan, build, review and file the remaining PRs of an approved roadmap as a stack | "Build the rest of the roadmap overnight" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
