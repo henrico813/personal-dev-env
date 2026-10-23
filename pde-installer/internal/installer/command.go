@@ -228,6 +228,7 @@ func reconcile(config config, runner run.Runner) error {
 	if err := fsutil.CommitJournals(journals...); err != nil {
 		return fmt.Errorf("clean successful backups: %w", err)
 	}
+	// Only the full profile installs skills.
 	if config.Profile == profile.Full {
 		if err := renderSkillLessons(config.Home, runner); err != nil {
 			return err
