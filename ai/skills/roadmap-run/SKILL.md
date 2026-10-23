@@ -32,8 +32,8 @@ each PR request, and answering the comment reviews you queued.
    say which and stop. Do not run `pde-gh-write pr ...` to test it:
    any `pr` command, even with `--help`, files an approval request.
 4. Check that the user allowed this run to start Vibe, push branches
-   and file PR requests. If not, ask once. Without an answer, plan,
-   build and review, but stop each PR before Ship.
+   and file PR requests. If not, ask once. Without an answer, plan
+   and review the plans, but stop each PR before Build.
 5. Group the PRs into stacks. A PR that needs another PR's code stacks
    on it; PRs that do not can run in parallel stacks.
 6. Add a status line for each PR to the roadmap page. Back up the page
