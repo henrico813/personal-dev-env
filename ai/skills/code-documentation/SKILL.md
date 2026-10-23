@@ -314,6 +314,44 @@ pair of paths, relative to `--repo`, for a moved file. For many
 renames, put one `--rename=OLD=NEW` per line in a file and pass
 `@<file>`.
 
+## Python rules
+
+In Python, these rules apply on top of the ones above. Where they
+differ, as for docstrings on private helpers and clear tests, these
+win:
+
+- Start every function and method name with a verb, except a test, a
+  fixture or a property.
+- Give every function, method and class a docstring, tests and
+  fixtures included.
+- Start each docstring with a one-line summary that fits on its first
+  line.
+- Follow a test's summary with a paragraph on why the test matters.
+- Never invent a docstring section, such as `Why it matters:`; write a
+  plain paragraph instead.
+- Keep each `#` comment to at most two sentences.
+- Use no colon in a `#` comment, except inside code or a URL.
+
+For Python files you add or change, run the rule checker in this
+skill's `scripts/` folder:
+
+```bash
+python3 <this skill's folder>/scripts/check_python_rules.py \
+  --repo <repository root> --base <commit your task started from> \
+  <Python files>
+```
+
+It needs Python 3.10 or later. It checks only code your task added
+or changed. Changing any line of an old function makes the checker
+ask for its docstring, so add one. Leave docstrings on old functions
+you did not touch for a separate change. Move files with `git mv`, so
+the checker compares a moved file with its old path. Each
+finding names the rule it checks, and the output ends by quoting that
+rule's sentence. Fix each finding and run the checker again until it
+exits 0. `verb-first` is reported, never failed: rename the function
+when the word is not a verb, and when it is, keep the name and list
+the finding in your final message.
+
 ## Completion check
 
 Before declaring source or test work complete, check:
@@ -326,6 +364,8 @@ Before declaring source or test work complete, check:
 - the amount of documentation fits the code's complexity and risk
 - for Go or Python files, the comment checker exits 0, or fails only
   on renamed, moved or deleted approved comments that you reported
+- for Python files, the rule checker exits 0, and each `verb-first`
+  finding is renamed or, for a real verb, listed in your final message
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
