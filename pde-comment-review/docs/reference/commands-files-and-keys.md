@@ -4,7 +4,10 @@
 
 | Command | What it does |
 | --- | --- |
-| `pde-comment-review draft` | Saves the comments on the current branch that you must answer as round 1 of a new review named after the branch, and prints it as JSON. Refuses while a round waits for your answers. |
+| `pde-comment-review status` | Prints the state of the current branch's review as JSON, with the items or notes to act on and what to do next. |
+| `pde-comment-review draft` | Saves the comments on the current branch that you must answer as the draft of a new review named after the branch, and prints it as JSON. Refuses while a round waits for your answers. |
+| `pde-comment-review set ID ANSWER [TEXT]` | Changes the draft's proposal for item `ID` to `keep`, `cut` or `reword`, with `TEXT` as the new wording in plain sentences. While your notes wait, it changes a noted item for the next round. |
+| `pde-comment-review submit` | Saves the draft as the next round of the branch's review, for you to answer. |
 | `pde-comment-review add NAME FILE` | Checks proposals `FILE` against its repository and saves it as the next round of review `NAME`. |
 | `pde-comment-review open NAME` | Shows review `NAME` one comment per screen in this terminal. |
 | `pde-comment-review notes NAME` | Prints the open notes as JSON, each with the item it is about. |
@@ -13,6 +16,8 @@
 A review name may use only `a-z`, `0-9`, `.`, `_` and `-`. A command
 exits 0 when it worked, 1 on a problem, with a message that starts
 with `pde-comment-review:`, and 2 for a command it does not know.
+`status`, `draft`, `set` and `submit` print their problems in the
+JSON instead, unless the home folder is unknown.
 
 Herdr runs three more commands itself: `popup`, the review screen in
 its popup, and `edit` and `diff`, its two tabs. Ctrl+b e runs `open`
@@ -30,8 +35,8 @@ Each review has its own folder:
 
 | File | Holds |
 | --- | --- |
-| `NAME/round-N.json` | Round `N`'s proposals, as `draft` or `add` saved them. |
-| `NAME/draft.json` | The comments `draft` found last, and the commit it compared the branch with. |
+| `NAME/round-N.json` | Round `N`'s proposals, as `submit` or `add` saved them. |
+| `NAME/draft.json` | The draft that `set` changes and `submit` saves, the round it becomes, and the commit `draft` compared the branch with, which a draft answering notes leaves empty. |
 | `NAME.N/` | A finished review that `draft` moved aside to start the branch's review again. |
 | `NAME/origin.json` | The repository and branch, and the agent session that added the review. |
 | `NAME/decisions.json` | Your answer to each item, and the round it answered. |
@@ -109,8 +114,10 @@ Nothing is written, and the screen says why, when:
   approved;
 - a listed rename would move no approved comment: its file has no item.
 
-`draft` and `add` refuse an item whose comment has the same wording
+`submit` and `add` refuse an item whose comment has the same wording
 as another in its file. Change an unapproved copy's wording first.
+After changing code to fix a refusal, run `draft` again and repeat
+the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
 `//go:noinline`, and it stays unapproved even when you answer it.
 
