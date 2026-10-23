@@ -28,12 +28,15 @@ each PR request, and answering the comment reviews you queued.
    domain skills of every PR, such as `go-development`. Load any skill
    you tell an agent to load.
 3. Check with `command -v` that `planner`, `vibe`, `pde-gh-write`,
-   `nobs` and `jq` are on `PATH`. If one is missing, say which and
-   stop. Do not run `pde-gh-write pr ...` to test it: any `pr`
-   command, even with `--help`, files an approval request.
-4. Group the PRs into stacks. A PR that needs another PR's code stacks
+   `nobs`, `jq`, `rg` and `python3` are on `PATH`. If one is missing,
+   say which and stop. Do not run `pde-gh-write pr ...` to test it:
+   any `pr` command, even with `--help`, files an approval request.
+4. Check that the user allowed this run to start Vibe, push branches
+   and file PR requests. If not, ask once. Without an answer, plan,
+   build and review, but stop each PR before Ship.
+5. Group the PRs into stacks. A PR that needs another PR's code stacks
    on it; PRs that do not can run in parallel stacks.
-5. Add a status line for each PR to the roadmap page. Back up the page
+6. Add a status line for each PR to the roadmap page. Back up the page
    before every edit.
 
 ## The loop for each PR
@@ -44,14 +47,19 @@ commands in [references/build.md](references/build.md).
 
 1. **Plan.** Delegate the plan with `create-plan`. A plan over 700
    changed lines splits into two PRs, each with its own plan. A child
-   of an unbuilt parent is written against the parent's planned tree.
+   of an unbuilt parent is written against a commit of the parent's
+   planned tree, made as build.md says.
 2. **Fresh plan review.** A new agent reviews the plan with
    `review-plan` and the domain skills. Send its findings, with your
    decision on each optional item, back to the planner's session in
    one message.
 3. **Build.** Export each plan step's tree, turn it into a patch, and
    have Vibe apply it with `git apply`. After each step, the branch
-   tree must equal the exported tree. Stop on any mismatch.
+   tree must equal the exported tree. Stop on any mismatch. When a
+   Vibe step fails, follow `implement-plan`'s status rules; where
+   they need a recovery decision, park this PR and its children, put
+   the run's JSON on the roadmap page as a blocking question, and keep
+   building other stacks.
 4. **Skill reviews.** Start one new agent per skill at once:
    `review-plan`, each language skill, `code-documentation` and
    `behavior-focused-testing`. Wait for all of them.
@@ -61,14 +69,17 @@ commands in [references/build.md](references/build.md).
 6. **Final pass.** Run the tests, linters, comment checker and any
    comparison script the plan names. Put back two bugs the reviewers
    found, one at a time, and check that a test fails for each.
-7. **Ship.** Squash the branch onto its parent, lint the message, push
-   with `--force-with-lease`, and file the PR request with
+7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
+   failed check, the wrong branch, a parent that moved or a branch
+   already pushed; it squashes onto the parent and pushes. Then save
+   and run the PR request script, which calls
    `pde-gh-write pr create --base <parent branch>`.
-8. **Queue the comment review.** In a notes file outside the
-   repository, write the PR's worktree and the `comment-review` steps
-   to run there: `pde-comment-review draft`, each `set` reword you
-   decided, and `submit`. Link it from the roadmap page. Run them
-   only after the user answers the parent's review.
+8. **Queue the comment review.** For the bottom PR of a stack, follow
+   `comment-review` in its worktree now: `draft`, your `set` rewords,
+   `submit`, and `add` for an approved comment the draft did not
+   list. For a child, run nothing yet: put its worktree and those
+   commands on the roadmap page, keep any proposals file in its run
+   folder, and run them after the user answers the parent's review.
 
 Before a child PR builds, set its plan's `Base commit:` line to the
 parent's final commit and run `planner check` again.
@@ -76,7 +87,8 @@ parent's final commit and run `planner check` again.
 ## Deciding things yourself
 
 - Decide minor things, say so in your message, and record them in the
-  plan's notes as `orchestrator-proposed`.
+  plan's notes as `orchestrator-proposed`. A failed Vibe run, a
+  failed check and a declined request are never minor.
 - When reviewers disagree, pick one, and tell the planner which and
   why.
 - When fixes push a PR over 700 lines, keep fixes that protect the
@@ -100,7 +112,9 @@ parent's final commit and run `planner check` again.
 - Let an agent review its own plan or code.
 - Hand-edit a plan's diffs, or give Vibe diffs in its prompt instead
   of a patch file.
-- Edit or commit a `.code-comments.json`.
+- Reset, clean or retry in a Vibe worktree after a failed run, or go
+  on to the next step, without the user's decision.
+- Create, copy, edit or commit a `.code-comments.json`.
 - Remove a fixed `/tmp` path. Every agent works in its own folder from
   `mktemp -d`.
 
@@ -120,13 +134,21 @@ stale approval that fails the comment checker.
 
 ## Finishing
 
+PR requests expire four hours after they are filed. Before the last
+message, rerun each PR's request script to read its result, and
+handle it as build.md says. List the scripts on the roadmap page in
+stack order, so the user, or an agent they ask, can rerun them in the
+morning to file fresh requests.
+
 End with one message:
 
 - a table of the PRs: what each does and its changed lines
 - the stacks, such as "A, B, C" and "A, D", each PR on the one before
 - the worst bugs the reviews caught
-- what the user must do, in order: approve PR requests, answer
-  blocking questions, then do the comment reviews
+- each PR request's state: open, waiting, declined or parked
+- what the user must do, in order: rerun expired PR requests and
+  approve them, answer blocking questions, then do the comment
+  reviews
 - your own slips, and work left for later
 
 ## Remembering corrections
