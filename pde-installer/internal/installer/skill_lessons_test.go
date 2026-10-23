@@ -13,8 +13,8 @@ import (
 // Installing skills resets their Lessons sections, so a skipped render hides
 // saved lessons, and a failed render must not fail the install.
 
-func TestRenderFindsSkillLessonsInHomeBin(t *testing.T) {
-	home := setupSkillLessonsHome(t, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$HOME/calls\"\n")
+func TestSkillLessonsFoundInHomeBin(t *testing.T) {
+	home := newHomeWithLocalBinOffPath(t, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$HOME/calls\"\n")
 	var stderr bytes.Buffer
 	runner := run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}
 
@@ -32,7 +32,7 @@ func TestRenderFindsSkillLessonsInHomeBin(t *testing.T) {
 }
 
 func TestFailedSkillLessonsRenderOnlyWarns(t *testing.T) {
-	home := setupSkillLessonsHome(t, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$HOME/calls\"\nexit 1\n")
+	home := newHomeWithLocalBinOffPath(t, "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$HOME/calls\"\nexit 1\n")
 	var stderr bytes.Buffer
 	runner := run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}
 
@@ -50,7 +50,7 @@ func TestFailedSkillLessonsRenderOnlyWarns(t *testing.T) {
 }
 
 func TestMissingSkillLessonsIsSkippedSilently(t *testing.T) {
-	home := setupSkillLessonsHome(t, "")
+	home := newHomeWithLocalBinOffPath(t, "")
 	var stderr bytes.Buffer
 	runner := run.Runner{Stdout: &bytes.Buffer{}, Stderr: &stderr}
 
@@ -69,7 +69,7 @@ func TestMissingSkillLessonsIsSkippedSilently(t *testing.T) {
 
 // Puts script, if any, at ~/.local/bin/skill-lessons in a new home whose
 // .local/bin is off PATH, as on a first install.
-func setupSkillLessonsHome(t *testing.T, script string) string {
+func newHomeWithLocalBinOffPath(t *testing.T, script string) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
