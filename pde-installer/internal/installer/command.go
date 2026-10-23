@@ -231,7 +231,7 @@ func reconcile(config config, runner run.Runner) error {
 	// Only the full profile installs skills.
 	if config.Profile == profile.Full {
 		if err := renderSkillLessons(config.Home, runner); err != nil {
-			return err
+			return fmt.Errorf("skill lessons: %w", err)
 		}
 	}
 	if err := refreshOpenCodeServers(config.Home, runner); err != nil {
