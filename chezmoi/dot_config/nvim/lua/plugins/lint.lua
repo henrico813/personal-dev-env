@@ -11,7 +11,7 @@ lint.linters.golangcilint.args = {
   "--show-stats=false",
 }
 
--- Client machines have no Go, so lint Go files only where go exists.
+-- Client installs no Go, so lint Go files only where go exists.
 if vim.fn.executable("go") == 1 then
   lint.linters_by_ft = {
     go = { "golangcilint" },
