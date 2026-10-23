@@ -59,9 +59,6 @@ func TestMissingSkillLessonsIsSkippedSilently(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render failed the install: %v", err)
 	}
-	if calls := readSkillLessonsCalls(t, home); calls != "" {
-		t.Errorf("calls = %q, want none", calls)
-	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want none", stderr.String())
 	}

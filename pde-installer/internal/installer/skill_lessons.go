@@ -9,11 +9,11 @@ import (
 )
 
 // Installing skills replaces each SKILL.md's `## Lessons` section with the
-// empty one from skills/. If private-agent-tools' skill-lessons is installed,
+// empty one from skills/. When skill-lessons is on PATH or in ~/.local/bin,
 // `skill-lessons render` writes saved lessons back. A failed render only
 // warns, because the lessons are still in skill-lessons' store.
 //
-// It runs after chezmoi's drift check, which would treat the rendered
+// The render runs after chezmoi's drift check, which would treat the rendered
 // SKILL.md files as drift and roll the install back.
 func renderSkillLessons(home string, runner run.Runner) error {
 	command := run.Command{Name: "skill-lessons", Args: []string{"render"}}
