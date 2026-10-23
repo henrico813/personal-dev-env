@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
@@ -22,6 +23,9 @@ type Manager struct {
 	Runner         run.Runner
 	blinkURL       string
 	blinkSHA256    string
+	// Build with /usr/bin/python3, which the packed file's #! line runs. PATH
+	// puts ~/.local/bin first, where a different python3 may sit.
+	python string
 }
 
 type buildSpec struct {
@@ -59,6 +63,7 @@ func New(home, repoRoot string, runner run.Runner) Manager {
 		Runner:      runner,
 		blinkURL:    defaultBlinkURL,
 		blinkSHA256: defaultBlinkSHA256,
+		python:      "/usr/bin/python3",
 	}
 }
 
@@ -74,7 +79,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	stageRoot := filepath.Join(m.Home, ".local", "state", "pde", "build-stage")
 	if m.Runner.DryRun {
 		for _, name := range []string{
-			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review",
+			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review", "skill-lessons",
 		} {
 			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
 				return nil, err
@@ -162,6 +167,16 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
 			},
 		},
+		{
+			name:   "skill-lessons",
+			source: filepath.Join(m.RepoRoot, "skill-lessons"),
+			output: filepath.Join(stageRoot, "skill-lessons"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "skill-lessons")},
+				Dir:  filepath.Join(m.RepoRoot, "skill-lessons"), Env: environment,
+			},
+		},
 	}
 	cargoTargets := map[string]string{
 		"vibe": filepath.Join(stageRoot, "vibe-target"),
@@ -223,6 +238,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	// pde-gh-write has no side-effect-free help mode, so it is not run here.
 	for _, check := range []struct{ name, arg string }{
 		{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}, {"pde-comment-review", "help"},
+		{"skill-lessons", "--version"},
 	} {
 		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
@@ -488,6 +504,11 @@ func (m Manager) inputs() (map[string]string, error) {
 		}
 		inputs[name] = hash
 	}
+	hash, err := hashSkillLessons(filepath.Join(m.RepoRoot, "skill-lessons"))
+	if err != nil {
+		return nil, err
+	}
+	inputs["skill-lessons"] = hash
 	return inputs, nil
 }
 
@@ -567,6 +588,32 @@ func hashTree(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return hashFiles(root, paths)
+}
+
+// Only build.py and the regular .py files that build.py packs count, so
+// __pycache__, .venv, tests and editor lock links do not rebuild every tool,
+// vibe's long release build included.
+func hashSkillLessons(root string) (string, error) {
+	source := filepath.Join(root, "src", "skill_lessons")
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return "", fmt.Errorf("hash skill-lessons sources: %w", err)
+	}
+	var paths []string
+	for _, entry := range entries {
+		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".py") {
+			paths = append(paths, filepath.Join(source, entry.Name()))
+		}
+	}
+	hash, err := hashFiles(root, append(paths, filepath.Join(root, "build.py")))
+	if err != nil {
+		return "", fmt.Errorf("hash skill-lessons sources: %w", err)
+	}
+	return hash, nil
+}
+
+func hashFiles(root string, paths []string) (string, error) {
 	sort.Strings(paths)
 	hash := sha256.New()
 	for _, path := range paths {
@@ -588,8 +635,10 @@ func hashTree(root string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// Lstat, so a link left by another installer, such as uv, counts as stale and
+// the next install replaces it with the built file.
 func regularExecutable(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	return err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 && info.Size() > 0
 }
 

@@ -13,6 +13,7 @@ __pycache__/
 .Python
 venv/
 ai/.venv/
+skill-lessons/.venv/
 ENV/
 
 # IDE / Editor
