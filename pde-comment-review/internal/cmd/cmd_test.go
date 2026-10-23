@@ -419,8 +419,8 @@ func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
 	}
 }
 
-// Another comment under an earlier item's id would replace that item and
-// the owner's answer to it.
+// Verifies that add refuses an earlier item's id for another comment,
+// which would drop the owner's answer.
 func TestAddRefusesIDOfAnotherComment(t *testing.T) {
 	repo := startSecondRound(
 		t,
@@ -432,7 +432,7 @@ func TestAddRefusesIDOfAnotherComment(t *testing.T) {
 		Proposal: review.ProposeKeep,
 		Old:      "// Reports whether every price is above zero.\n",
 	}
-	// A comment inside a function has no name to compare.
+	// A comment inside a function has no name, yet takes a named item's id.
 	unnamedAsItem3 := review.Item{
 		ID:       3,
 		File:     "cart.go",
