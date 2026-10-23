@@ -43,27 +43,32 @@ bring it to the user.
 
 ## Remembering corrections
 
-Follow every lesson in the Lessons section below. Each is a correction
-the user made, so a lesson wins when it disagrees with the text above.
-If the section is empty and `skill-lessons` is installed, run
-`skill-lessons render` once, since an install can reset this file, and
-read the section again.
+Here "the user" is the human who asked for the work, not a parent
+agent. Follow every lesson in the Lessons section below. Each is a
+correction the user made, so a lesson wins when it disagrees with the
+text above, except that you still stop for the user before anything
+public or hard to undo. If the section is empty and `skill-lessons` is
+installed, run `skill-lessons render` once, since an install can reset
+this file, and read the section again.
 
 When the user corrects how you brief, check or review a subagent's
 work, still save it to memory as your instructions say. If
-`skill-lessons` is installed, also offer once to save it here as a
-lesson. When the user says "remember", save it at once and show the
-one line it prints:
+`skill-lessons` is installed, also offer once, in your step 4 summary,
+to save it here as a lesson. When the user says "remember", save it at
+once and show the one line it prints:
 
-    jq -n --arg text '<rule>' \
-      '{skill: "delegate", text: $text}' |
-      skill-lessons add -
+    jq -n --rawfile text /dev/stdin \
+      '{skill: "delegate", text: ($text | rtrimstr("\n"))}' \
+      <<'EOF' | skill-lessons add -
+    <rule>
+    EOF
 
-Single quotes keep backticks and `$` in the rule as written. If the
-user corrects a lesson again, add `repeat_of: "L<n>"` inside the
-braces, with the ID from the end of that lesson. If `skill-lessons` is
-not installed, say so once and save no lesson. Lessons become rules in
-this text only through a pull request the user asks for.
+The rule goes on its own line, so apostrophes, quotes, backticks and
+`$` are saved as written. If the user corrects a lesson again, add
+`repeat_of: "L<n>"` inside the braces, with the ID from the end of that
+lesson. If `skill-lessons` is not installed, say so once and save no
+lesson. Lessons become rules in this text only through a pull request
+the user asks for.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
