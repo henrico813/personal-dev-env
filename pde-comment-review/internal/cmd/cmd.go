@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,9 +15,15 @@ import (
 )
 
 const usage = `usage:
+  pde-comment-review status
+      print this branch's review, what to act on and what to do next
   pde-comment-review draft
       save the comments on this branch that the owner must answer as
-      round 1 of a new review, and print it as JSON
+      the draft of a new review, and print it as JSON
+  pde-comment-review set ID keep|cut|reword [TEXT]
+      change a draft or noted item's proposal; TEXT is for reword only
+  pde-comment-review submit
+      send the draft to the owner as the next round
   pde-comment-review add NAME FILE
       save proposals FILE as the next round of review NAME
   pde-comment-review open NAME
@@ -50,14 +57,19 @@ func Main(args []string) int {
 				checker,
 			)
 		}
+	case len(args) == 1 && args[0] == "status":
+		return printReply(replyToStatus("."))
 	case len(args) == 1 && args[0] == "draft":
 		var checker string
-		var round review.Proposals
 		if checker, err = findCheckerPath(); err == nil {
-			round, err = draftReview(".", checker)
+			return printReply(replyToDraft(".", checker))
 		}
-		if err == nil {
-			err = printRound(round)
+	case len(args) >= 3 && args[0] == "set":
+		return printReply(replyToSetArgs(args[1:]))
+	case len(args) == 1 && args[0] == "submit":
+		var checker string
+		if checker, err = findCheckerPath(); err == nil {
+			return printReply(replyToSubmit(".", checker))
 		}
 	case len(args) == 1 && args[0] == "open":
 		err = openWaitingReview()
@@ -118,11 +130,15 @@ func addRound(
 	if err != nil {
 		return err
 	}
-	return saveRound(
+	saved, err := saveRound(
 		name,
 		data,
 		checker,
 	)
+	if err == nil {
+		fmt.Println(saved)
+	}
+	return err
 }
 
 // Saves proposals data as the next round of review name, unless the write
@@ -131,60 +147,92 @@ func saveRound(
 	name string,
 	data []byte,
 	checker string,
-) error {
+) (saved string, err error) {
 	p, err := review.ParseProposals(data)
 	if err != nil {
-		return err
+		return "", err
 	}
 	next, err := review.BuildReviewWithRound(
 		name,
 		p,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 	named, err := readReviewComments(next, checker)
 	if err == nil {
-		err = refuseUnwritableReview(next, named)
+		err = errors.Join(refuseReusedIDs(next, named), refuseUnwritableReview(next, named))
 	}
 	if err != nil {
-		return fmt.Errorf(
+		return "", fmt.Errorf(
 			"nothing was saved: %w",
 			err,
 		)
 	}
 	round, err := review.AddRound(name, p)
 	if err != nil {
-		return err
+		return "", err
 	}
 	r, err := review.OpenReview(name)
 	if err != nil {
-		return err
+		return "", err
 	}
 	origin := findReviewOrigin(p.Repo)
 	if err := r.SetOrigin(origin); err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("saved round %d of review %s: %s\n", round, name, origin.Label())
-	return nil
+	saved = fmt.Sprintf(
+		"saved round %d of review %s: %s",
+		round,
+		name,
+		origin.Label(),
+	)
+	return saved, nil
 }
 
-// Prints round as JSON, or says that no comment needs the owner's answer.
-func printRound(round review.Proposals) error {
-	if len(round.Items) == 0 {
-		_, err := fmt.Println("no comment on this branch needs the owner's answer")
-		return err
+// Returns an error for each new item that reuses another comment's id,
+// since it would replace that item and its answer.
+func refuseReusedIDs(r *review.Review, named map[commentKey]string) error {
+	newest := len(r.Rounds) - 1
+	earlier := map[int]review.Item{}
+	for _, p := range r.Rounds[:newest] {
+		for _, item := range p.Items {
+			earlier[item.ID] = item
+		}
 	}
-	out := json.NewEncoder(os.Stdout)
-	out.SetIndent("", "  ")
-	out.SetEscapeHTML(false)
-	return out.Encode(round)
+	var problems []error
+	for _, item := range r.Rounds[newest].Items {
+		before, isReused := earlier[item.ID]
+		// An earlier item with no name, such as one whose text changed, may
+		// come back under its id.
+		nameBefore := findItemName(before, named)
+		inOtherFile := isReused && before.File != item.File
+		isOtherComment := isReused && nameBefore != "" && findItemName(item, named) != nameBefore
+		if inOtherFile || isOtherComment {
+			problems = append(
+				problems,
+				fmt.Errorf("item %d: an earlier round used this id for another comment; use an unused id", item.ID),
+			)
+		}
+	}
+	return errors.Join(problems...)
 }
 
 type noteForAI struct {
 	ID   int         `json:"id"`
 	Note string      `json:"note"`
 	Item review.Item `json:"item"`
+}
+
+// Returns the owner's open notes on r, each with the item it is about.
+func listNotes(r *review.Review) []noteForAI {
+	notes := []noteForAI{}
+	for _, e := range r.ListEntries() {
+		if e.Note != "" {
+			notes = append(notes, noteForAI{ID: e.Item.ID, Note: e.Note, Item: e.Item})
+		}
+	}
+	return notes
 }
 
 func printNotes(name string) error {
@@ -196,12 +244,7 @@ func printNotes(name string) error {
 		Review string      `json:"review"`
 		Repo   string      `json:"repo"`
 		Notes  []noteForAI `json:"notes"`
-	}{Review: r.Name, Repo: r.Repo(), Notes: []noteForAI{}}
-	for _, e := range r.ListEntries() {
-		if e.Note != "" {
-			out.Notes = append(out.Notes, noteForAI{ID: e.Item.ID, Note: e.Note, Item: e.Item})
-		}
-	}
+	}{Review: r.Name, Repo: r.Repo(), Notes: listNotes(r)}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err

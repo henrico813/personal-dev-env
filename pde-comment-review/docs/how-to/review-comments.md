@@ -13,9 +13,9 @@ pde-comment-review help
 
 ## 1. Save the proposals
 
-An AI usually does this step with `draft`; its instructions are in
-the `comment-review` skill. To try a review by hand, make a small
-repository with one Go file:
+An AI usually does this step with `draft`, then `submit`; its
+instructions are in the `comment-review` skill. To try a review by
+hand, make a small repository with one Go file:
 
 ```bash
 mkdir shop && cd shop && git init -b main
@@ -137,9 +137,10 @@ each key does and why some wait a moment before they work.
 You can skip this step: answer `TooHigh` with `o` instead of a note,
 and go on to step 4.
 
-Tell the AI the review has notes. It reads them with
-`pde-comment-review notes shop`, writes a new proposals file with only
-the noted comments, keeping their `id`, and saves it as round 2:
+Tell the AI the review has notes; it answers them with `status`,
+`set` and `submit`. For this review made by hand, read them with
+`pde-comment-review notes shop`, write a new proposals file with only
+the noted comments, keeping their `id`, and save it as round 2:
 
 ```bash
 cat > ../round-2.json <<EOF

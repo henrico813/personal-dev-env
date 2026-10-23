@@ -418,3 +418,41 @@ func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
 		)
 	}
 }
+
+// Verifies that add refuses an earlier item's id for another comment,
+// which would drop the owner's answer.
+func TestAddRefusesIDOfAnotherComment(t *testing.T) {
+	repo := startSecondRound(
+		t,
+		map[string]string{"cart.go": cartGo + "\nfunc Clear() {\n\t// Empties nothing yet.\n}\n"},
+	)
+	validAsItem2 := review.Item{
+		ID:       2,
+		File:     "cart.go",
+		Proposal: review.ProposeKeep,
+		Old:      "// Reports whether every price is above zero.\n",
+	}
+	// A comment inside a function has no name, yet takes a named item's id.
+	unnamedAsItem3 := review.Item{
+		ID:       3,
+		File:     "cart.go",
+		Proposal: review.ProposeKeep,
+		Old:      "\t// Empties nothing yet.\n",
+	}
+
+	err := addRound(
+		"cart",
+		writeProposals(
+			t,
+			repo,
+			validAsItem2,
+			unnamedAsItem3,
+		),
+		findRepoChecker(t),
+	)
+
+	want := "nothing was saved: item 2: an earlier round used this id for another comment"
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "item 3: an earlier round used this id") {
+		t.Fatalf("addRound() error = %v, want items 2 and 3 refused", err)
+	}
+}
