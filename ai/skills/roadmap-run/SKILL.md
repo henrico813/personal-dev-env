@@ -33,12 +33,17 @@ answering the comment reviews you queued.
    `nobs`, `jq`, `rg` and `python3` are on `PATH`. If one is missing,
    say which and stop. Do not run `pde-gh-write pr ...` to test it:
    any `pr` command, even with `--help`, files an approval request.
-4. Check that the user allowed this run to push branches and file PR
-   requests. If not, ask once. Without an answer, plan and review the
-   plans, but stop each PR before Build.
-5. Group the PRs into stacks. A PR that needs another PR's code stacks
+4. Run build.md's comment-review file check for each repository. It
+   checks that `.code-comments.json` exists in the main checkout and
+   that git ignores it there.
+5. Check that the user allowed this run to push branches and file PR
+   requests. If not, or if step 4 failed, ask once, in one message.
+   Without permission, plan and review the plans, but stop each PR
+   before Build. Without the file, list each PR's comment review on the
+   roadmap page and run none.
+6. Group the PRs into stacks. A PR that needs another PR's code stacks
    on it; PRs that do not can run in parallel stacks.
-6. Add a status line for each PR to the roadmap page. Back up the page
+7. Add a status line for each PR to the roadmap page. Back up the page
    before every edit.
 
 ## The loop for each PR
@@ -57,6 +62,7 @@ commands in [references/build.md](references/build.md).
    one message.
 3. **Build.** Export each plan step's tree and commit it with
    `git commit-tree` on the step before, starting at the plan's base.
+   Over 700 changed lines, build.md's snippet stops; split the plan.
    Make the PR's worktree with `wt` and move it to the last commit. A
    failed build command means a stale plan or a broken tool: stop
    this PR and its children, put the error on the roadmap page as a
@@ -66,15 +72,20 @@ commands in [references/build.md](references/build.md).
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
    optional items, and send one message to the planner. Commit the
-   revised plan's tree as one fix commit.
+   revised plan's tree as one fix commit. Over 700 changed lines, the
+   snippet stops; drop as below, or split the PR. A test may be
+   deleted only when a reviewer's finding names it and names the test
+   that still covers its behavior.
 6. **Final pass.** Run the tests, linters, comment checker and any
    comparison script the plan names. Put back two bugs the reviewers
-   found, one at a time, and check that a test fails for each.
+   found, one at a time, and check that a test fails for each. For
+   each deleted test, plant the bug it caught and check that the
+   named test fails.
 7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
-   failed check, the wrong branch, a parent that moved or a branch
-   already pushed; it squashes onto the parent and pushes. Then save
-   and run the PR request script, which calls
-   `pde-gh-write pr create --base <parent branch>`.
+   failed check, the wrong branch, a parent that moved, over 700
+   changed lines or a branch already pushed; it squashes onto the
+   parent and pushes. Then save and run the PR request script, which
+   calls `pde-gh-write pr create --base <parent branch>`.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `draft`, your `set` rewords,
    `submit`, and `add` for an approved comment the draft did not
@@ -85,6 +96,20 @@ commands in [references/build.md](references/build.md).
 Before a child PR builds, set its plan's `Base commit:` line to the
 parent's final commit and run `planner check` again.
 
+## After a PR opens
+
+- Every later change, whether a fix, a quality pass or a parent's new
+  commit, goes through the same loop: the planner revises the plan, a
+  fresh agent reviews it, you commit the plan's tree from
+  `planner export` as a new commit, push it, and update the PR text.
+- A parent's new commit reaches its children in stack order, with
+  build.md's "Carry a parent's commit to a child". If the child's plan
+  does not apply on the new parent, park the child and its children
+  and put the error on the roadmap page as a blocking question. Never
+  resolve a conflict by hand.
+- A feature the roadmap does not list needs the user's approval and
+  its own PR.
+
 ## Deciding things yourself
 
 - Decide minor things, say so in your message, and record them in the
@@ -92,10 +117,11 @@ parent's final commit and run `planner check` again.
   failed check and a declined request are never minor.
 - When reviewers disagree, pick one, and tell the planner which and
   why.
-- When fixes push a PR over 700 lines, keep fixes that protect the
-  user's data, then tests for likely and costly bugs, then names and
-  comments. Drop or move optional features first. Never leave a doc or
-  skill false to save lines.
+- A PR has at most 700 changed lines, with no exception. When fixes
+  push it over, keep fixes that protect the user's data, then tests for
+  likely and costly bugs, then names and comments. Drop or move
+  optional features first. If it is still over, split the PR. Never
+  leave a doc or skill false to save lines.
 - Each test checks only what its name says, in the PR that owns the
   behavior. At the line cap, split the PR or drop a feature; never
   move a test into a child PR.
@@ -110,6 +136,11 @@ parent's final commit and run `planner check` again.
 - Edit a comment the user approved. Send the new wording as a reword
   in that PR's comment review.
 - Amend or squash a branch after its first push; add a commit instead.
+- Keep a PR over 700 changed lines.
+- Make a commit on a PR branch that you do not push, or deploy or hand
+  the user a commit that is not pushed.
+- Delete a test without a reviewer's finding that names the test still
+  covering its behavior.
 - Let an agent review its own plan or code.
 - Hand-edit a plan's diffs or the branch's files. Every build commit
   comes from `planner export`.
@@ -123,21 +154,25 @@ parent's final commit and run `planner check` again.
   Lead with what changed and anything the user must decide.
 - Keep one bullet per PR on the roadmap page current. Detail belongs
   in the plans, not in chat.
+- Write each PR's status line from the output of build.md's status
+  line snippet, never by hand. Rerun it after every push.
 
 ## When something goes wrong
 
 Read [references/pitfalls.md](references/pitfalls.md). It covers
 duplicate agents after a restart, agents sharing a scratch folder, a
-lint failure that did not stop a script, a moved base commit, and a
-stale approval that fails the comment checker.
+lint failure that did not stop a script, a moved base commit, a
+stale approval that fails the comment checker, and work done after the
+PRs opened.
 
 ## Finishing
 
 PR requests expire four hours after they are filed. Before the last
 message, rerun each PR's request script to read its result, and
-handle it as build.md says. List the scripts on the roadmap page in
-stack order, so the user, or an agent they ask, can rerun them in the
-morning to file fresh requests.
+handle it as build.md says. Then rerun the status line snippet for
+each PR and write its output to the roadmap page. List the scripts on
+the roadmap page in stack order, so the user, or an agent they ask,
+can rerun them in the morning to file fresh requests.
 
 End with one message:
 
