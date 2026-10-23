@@ -23,9 +23,7 @@ type Manager struct {
 	Runner         run.Runner
 	blinkURL       string
 	blinkSHA256    string
-	// Build with /usr/bin/python3, which the packed file's #! line runs. PATH
-	// puts ~/.local/bin first, where a different python3 may sit.
-	python string
+	python         string
 }
 
 type buildSpec struct {
