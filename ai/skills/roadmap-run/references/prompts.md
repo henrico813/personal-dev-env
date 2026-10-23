@@ -37,8 +37,14 @@ Reviewers also get:
     are a delegated agent" section. Read `Projects/AGENTS.md` in the
     vault before writing there.
 
-    Base: <branch> at <full commit>. Read: <design>, <roadmap>,
-    <parent plans>. Scope: <what this PR does and does not do>.
+    Base: <branch> at <full commit>; for a child of an unbuilt
+    parent, the commit of the parent's planned tree. Read: <design>,
+    <roadmap>, <parent plans>. Scope: <what this PR does and does
+    not do>.
+
+    Decisions, each labeled user-decided, orchestrator-proposed or
+    inferred from code: <list>.
+
     At most 700 changed lines; split into two plans if needed, each
     with its own `planner new`.
 

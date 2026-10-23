@@ -40,10 +40,10 @@ approved until the parent's comment review, which comes first. Do not
 edit it in the child's code. Add a reword to the child's comment
 review, with the text the parent's review approved as `old`.
 
-**A new branch starts behind the remote.** `wt switch --create`
-starts from the local default branch, which may be behind the remote.
-Before the first commit, reset the new branch to the remote's default
-branch.
+**A second worktree for the same PR.** Vibe makes each PR's branch
+and worktree from `--base`. Do not also make one with
+`wt switch --create`, which starts from the local default branch and
+may be behind the remote.
 
 **A reviewer writes outside its folder.** A failed `cd` once wrote a
 file into the worktrees folder. After reviews, run `git status` in the
