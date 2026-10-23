@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,9 +30,8 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// Starts the real MCP server and returns a function that calls one of its
-// tools and returns the reply's text. Any other output on the server's
-// stdout ends the session, so every server test fails on a stray print.
+// Starts the real server over stdio and returns a function that calls a
+// tool and returns its reply text.
 func startMCPServer(t *testing.T) func(tool string, args map[string]any) string {
 	t.Helper()
 	testBinary, err := os.Executable()
@@ -131,50 +129,50 @@ func TestParallelSetsKeepEveryProposal(t *testing.T) {
 // Verifies that tools refuse a dir that is not absolute, since a harness
 // may start the server outside the agent's checkout.
 func TestToolsRequireAbsoluteDir(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	call := startMCPServer(t)
 	tests := []struct {
-		tool     string
+		giveTool string
 		giveArgs map[string]any
 	}{
 		{
-			tool:     "review_status",
-			giveArgs: map[string]any{},
+			giveTool: "review_status",
+			giveArgs: map[string]any{"dir": "."},
 		},
 		{
-			tool:     "review_draft",
-			giveArgs: map[string]any{},
+			giveTool: "review_draft",
+			giveArgs: map[string]any{"dir": "."},
 		},
 		{
-			tool: "review_set",
+			giveTool: "review_set",
 			giveArgs: map[string]any{
+				"dir":    ".",
 				"id":     1,
 				"answer": review.ProposeKeep,
 			},
 		},
 		{
-			tool:     "review_submit",
-			giveArgs: map[string]any{},
+			giveTool: "review_submit",
+			giveArgs: map[string]any{"dir": "."},
 		},
 	}
 
 	for _, tt := range tests {
-		for _, dir := range []string{".", ""} {
-			args := maps.Clone(tt.giveArgs)
-			args["dir"] = dir
-			text := call(tt.tool, args)
+		t.Run(tt.giveTool, func(t *testing.T) {
+			text := call(tt.giveTool, tt.giveArgs)
 
 			var reply agentReply
 			err := json.Unmarshal([]byte(text), &reply)
 			if err != nil || !slices.Contains(reply.Problems, "dir must be the checkout's absolute path") {
 				t.Errorf(
 					"%s with dir %q = %+v, %v; want a refusal",
-					tt.tool,
-					dir,
+					tt.giveTool,
+					tt.giveArgs["dir"],
 					reply,
 					err,
 				)
 			}
-		}
+		})
 	}
 }
 

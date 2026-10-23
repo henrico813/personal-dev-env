@@ -39,7 +39,9 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 	}
 	// The SDK runs calls at the same time, and each set rewrites the draft.
 	var oneAtATime sync.Mutex
-	callAlone := func(dir string, command func() agentReply) (*mcp.CallToolResult, any, error) {
+	// Refuses a dir that is not absolute, or runs command alone, and returns
+	// the reply as the tool's result.
+	runInCheckoutOneAtATime := func(dir string, command func() agentReply) (*mcp.CallToolResult, any, error) {
 		reply := agentReply{
 			Problems: []string{"dir must be the checkout's absolute path"},
 			Next:     "Call the tool again with dir set to the checkout's absolute path.",
@@ -62,7 +64,7 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 			Description: "Shows the state of the comment review for the branch in dir, the items or the user's notes to act on, and what to do next.",
 		},
 		func(_ context.Context, _ *mcp.CallToolRequest, in checkoutInput) (*mcp.CallToolResult, any, error) {
-			return callAlone(in.Dir, func() agentReply { return replyToStatus(in.Dir) })
+			return runInCheckoutOneAtATime(in.Dir, func() agentReply { return replyToStatus(in.Dir) })
 		},
 	)
 	mcp.AddTool(
@@ -72,7 +74,7 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 			Description: "Finds every Go comment on the branch in dir that the user must answer and saves them as a draft. Change any item with review_set, then send the draft with review_submit.",
 		},
 		func(_ context.Context, _ *mcp.CallToolRequest, in checkoutInput) (*mcp.CallToolResult, any, error) {
-			return callAlone(in.Dir, func() agentReply { return replyToDraft(in.Dir, checker) })
+			return runInCheckoutOneAtATime(in.Dir, func() agentReply { return replyToDraft(in.Dir, checker) })
 		},
 	)
 	mcp.AddTool(
@@ -83,7 +85,7 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 			InputSchema: setSchema,
 		},
 		func(_ context.Context, _ *mcp.CallToolRequest, in setInput) (*mcp.CallToolResult, any, error) {
-			return callAlone(in.Dir, func() agentReply {
+			return runInCheckoutOneAtATime(in.Dir, func() agentReply {
 				return replyToSet(
 					in.Dir,
 					in.ID,
@@ -100,7 +102,7 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 			Description: "Sends the draft to the user as the next round of the review. It writes no code.",
 		},
 		func(_ context.Context, _ *mcp.CallToolRequest, in checkoutInput) (*mcp.CallToolResult, any, error) {
-			return callAlone(in.Dir, func() agentReply { return replyToSubmit(in.Dir, checker) })
+			return runInCheckoutOneAtATime(in.Dir, func() agentReply { return replyToSubmit(in.Dir, checker) })
 		},
 	)
 	return server, nil
