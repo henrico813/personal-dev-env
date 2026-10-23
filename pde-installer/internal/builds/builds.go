@@ -335,32 +335,46 @@ func (m Manager) InstallPlugin(name string) (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-// BuildBlink builds and activates the pinned blink.cmp native library.
-func (m Manager) BuildBlink() (*fsutil.Journal, error) {
+// InstallBlink builds and activates the pinned blink.cmp native library.
+func (m Manager) InstallBlink(nativeMatcher bool) (*fsutil.Journal, error) {
 	destination := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp")
 	blinkLib := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.lib")
 	if m.Runner.DryRun {
 		if err := m.Runner.Plan("download and verify "+m.blinkURL+" sha256="+m.blinkSHA256, nil); err != nil {
 			return nil, err
 		}
-		if err := m.Runner.Plan("build, verify, and atomically activate complete blink.cmp plugin tree", nil); err != nil {
+		activation := "atomically activate blink.cmp plugin tree with its Lua matcher"
+		if nativeMatcher {
+			activation = "build, verify, and atomically activate complete blink.cmp plugin tree"
+		}
+		if err := m.Runner.Plan(activation, nil); err != nil {
 			return nil, err
 		}
 		return &fsutil.Journal{}, nil
+	}
+	// A Lua-only install records no Rust version, so a Rust update does not reinstall it.
+	rustVersion := ""
+	if nativeMatcher {
+		rustVersion = managedVersion("rust")
 	}
 	statePath := filepath.Join(m.Home, ".local", "state", "pde", "blink.json")
 	if data, err := os.ReadFile(statePath); err == nil {
 		var state blinkState
 		installedHash, hashErr := hashTree(destination)
 		stateErr := json.Unmarshal(data, &state)
+		nativeLibrary := filepath.Join(
+			destination,
+			"lib",
+			"libblink_cmp_fuzzy.so",
+		)
 		// Reuse Blink only when its source, build inputs, and installed library match the recorded state.
 		isCurrent := stateErr == nil &&
 			hashErr == nil &&
 			state.ArchiveSHA256 == m.blinkSHA256 &&
 			state.TreeSHA256 == installedHash &&
-			state.RustVersion == managedVersion("rust") &&
+			state.RustVersion == rustVersion &&
 			state.NvimVersion == managedVersion("neovim") &&
-			regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"))
+			(!nativeMatcher || regularExecutable(nativeLibrary))
 		if isCurrent {
 			return &fsutil.Journal{}, nil
 		}
@@ -403,41 +417,48 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	if err := os.Remove(archive); err != nil {
 		return nil, fmt.Errorf("remove blink archive: %w", err)
 	}
-	target := filepath.Join(workspace, "target")
-	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
-	if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
-		return nil, err
-	}
-	if err := m.Runner.Run("build blink.cmp", command); err != nil {
-		return nil, err
-	}
-	if err := copyExecutable(filepath.Join(target, "release", "libblink_cmp_fuzzy.so"), filepath.Join(stage, "lib", "libblink_cmp_fuzzy.so")); err != nil {
-		return nil, err
-	}
-	nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
-	lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
-	verifyArgs := []string{
-		"--headless",
-		"-u", "NONE",
-		"--cmd", "set runtimepath+=" + blinkLib,
-		"--cmd", "set runtimepath+=" + stage,
-		"-c", "lua " + lua,
-		"-c", "qa",
-	}
-	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
-	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
-		return nil, err
-	}
-	for _, path := range []string{target, filepath.Join(workspace, "cargo-home")} {
-		if err := os.RemoveAll(path); err != nil {
-			return nil, fmt.Errorf("remove blink artifact %s: %w", path, err)
+	if nativeMatcher {
+		target := filepath.Join(workspace, "target")
+		command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
+		if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
+			return nil, err
+		}
+		if err := m.Runner.Run("build blink.cmp", command); err != nil {
+			return nil, err
+		}
+		if err := copyExecutable(filepath.Join(target, "release", "libblink_cmp_fuzzy.so"), filepath.Join(stage, "lib", "libblink_cmp_fuzzy.so")); err != nil {
+			return nil, err
+		}
+		nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
+		lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
+		verifyArgs := []string{
+			"--headless",
+			"-u", "NONE",
+			"--cmd", "set runtimepath+=" + blinkLib,
+			"--cmd", "set runtimepath+=" + stage,
+			"-c", "lua " + lua,
+			"-c", "qa",
+		}
+		verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
+		if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
+			return nil, err
+		}
+		for _, path := range []string{target, filepath.Join(workspace, "cargo-home")} {
+			if err := os.RemoveAll(path); err != nil {
+				return nil, fmt.Errorf("remove blink artifact %s: %w", path, err)
+			}
 		}
 	}
 	treeHash, err := hashTree(stage)
 	if err != nil {
 		return nil, err
 	}
-	stateData, err := json.Marshal(blinkState{ArchiveSHA256: m.blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
+	stateData, err := json.Marshal(blinkState{
+		ArchiveSHA256: m.blinkSHA256,
+		TreeSHA256:    treeHash,
+		RustVersion:   rustVersion,
+		NvimVersion:   managedVersion("neovim"),
+	})
 	if err != nil {
 		return nil, err
 	}

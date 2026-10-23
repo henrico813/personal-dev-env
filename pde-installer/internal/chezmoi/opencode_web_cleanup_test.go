@@ -42,9 +42,10 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 
 // chezmoi skips a removal target that .chezmoiignore matches, so every target
 // must stay out of the ignore list. Otherwise the retired web service, or the
-// old approval scripts on terminal machines, would never be cleaned up.
+// old approval scripts on terminal and client machines, would never be
+// cleaned up.
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
-	for _, selected := range []string{"full", "terminal"} {
+	for _, selected := range []string{"full", "client", "terminal"} {
 		t.Run(selected, func(t *testing.T) {
 			ignored := renderProfileTemplate(t, ".chezmoiignore.tmpl", selected)
 			removed := renderProfileTemplate(t, removeFileTemplate, selected)
@@ -58,12 +59,23 @@ func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	}
 }
 
-// chezmoi deletes a target whose template renders empty. The guard used to be
-// copied to every machine, but terminal machines have no pde-gh-write, so a
+// chezmoi deletes a target whose template renders empty, which is how the
+// guard leaves terminal and client machines. They have no pde-gh-write, so a
 // guard left there would block every PR write.
-func TestGuardRendersEmptyForTerminal(t *testing.T) {
-	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "terminal"); strings.TrimSpace(text) != "" {
-		t.Errorf("terminal guard is not empty:\n%s", text)
+func TestGuardRendersOnlyForFull(t *testing.T) {
+	for _, selected := range []string{"terminal", "client"} {
+		text := renderProfileTemplate(
+			t,
+			"dot_local/bin/executable_gh.tmpl",
+			selected,
+		)
+		if strings.TrimSpace(text) != "" {
+			t.Errorf(
+				"%s guard is not empty:\n%s",
+				selected,
+				text,
+			)
+		}
 	}
 	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "full"); !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
 		t.Errorf("full guard does not start with its shebang:\n%s", text)

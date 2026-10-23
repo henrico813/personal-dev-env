@@ -2,7 +2,8 @@
 
 This directory owns PDE home configuration and checksummed external content.
 Every `pde-installer install` applies it during reconciliation. The installer
-passes `PDE_PROFILE=full|terminal` and `PDE_COLOR_PROFILE` while rendering it;
+passes `PDE_PROFILE=terminal|client|full` and `PDE_COLOR_PROFILE` while
+rendering it;
 apply through the installer so component and visual selections match.
 
 Edit files here using chezmoi source names. Add remote archives to
@@ -24,7 +25,7 @@ comments when it emits the merged file.
 
 ## GitHub Pull Request Reviews
 
-The terminal and full profiles install `gh` and `delta`. Git uses delta as its
+Every profile installs `gh` and `delta`. Git uses delta as its
 pager with line numbers and file navigation. Press `n` or `N` to move between
 files, `/` to search, and `q` to quit.
 
@@ -85,7 +86,7 @@ use `gh pr diff 123 --web` when line-specific comments are needed.
 
 ## Worktrees and Branch Names
 
-Both profiles install Worktrunk (`wt`). It needs Git 2.43 or newer, so stock
+Every profile installs Worktrunk (`wt`). It needs Git 2.43 or newer, so stock
 Ubuntu 22.04, which ships Git 2.34, needs a newer Git first.
 
 A worktree's folder is its branch with `/` replaced by `-`, under the
@@ -130,7 +131,8 @@ or resume the environment for the current directory with one command:
 tm
 ```
 
-`tm` requires Herdr on `PATH`; the full profile installs it. The command creates
+`tm` requires Herdr on `PATH`; the client and full profiles install it. The
+command creates
 `hub` and `pocket` sessions containing Herdr and an empty shell, plus a `dash`
 session containing the four-pane `tw` layout. It attaches `pocket` at 100
 columns and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or
@@ -165,3 +167,6 @@ The full profile binds Ctrl+b e, in place of Herdr's scrollback editor,
 to a phone-sized Herdr popup for deciding on an AI's proposals for Go
 comments, and Ctrl+b E to the same screen in a Herdr tab; see the
 [comment review docs](../pde-comment-review/docs/README.md).
+Client machines share that Herdr config but not the popup. There Ctrl+b e
+opens the comment review of the machine Herdr shows, and fails on the
+laptop's own sessions.
