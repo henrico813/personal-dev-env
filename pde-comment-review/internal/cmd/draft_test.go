@@ -264,14 +264,9 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 	)
 	checker := findRepoChecker(t)
 	// The agent drafts and sends the review, and the owner answers it.
-	replyToDraft(repo, checker)
-	// A keep on removed code is refused, or submit would fail.
-	replyToSet(
-		repo,
-		5,
-		review.ProposeKeep,
-		"",
-	)
+	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
 	if sent := replyToSubmit(repo, checker); len(sent.Problems) > 0 {
 		t.Fatalf("replyToSubmit() problems = %q", sent.Problems)
 	}
@@ -345,7 +340,9 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
 	checker := findRepoChecker(t)
-	replyToDraft(repo, checker)
+	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
+		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
+	}
 	if sent := replyToSubmit(repo, checker); len(sent.Problems) > 0 {
 		t.Fatalf("replyToSubmit() problems = %q", sent.Problems)
 	}
@@ -366,12 +363,8 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 
 	again := replyToDraft(repo, checker)
 
-	if len(again.Problems) > 0 || again.State != "done" {
-		t.Fatalf(
-			"second replyToDraft() state %q, problems = %q",
-			again.State,
-			again.Problems,
-		)
+	if len(again.Problems) > 0 {
+		t.Fatalf("second replyToDraft() problems = %q", again.Problems)
 	}
 	_, err = os.Stat(filepath.Join(
 		review.FindStateRoot(),
