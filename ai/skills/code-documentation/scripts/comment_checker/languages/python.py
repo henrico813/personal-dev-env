@@ -124,6 +124,17 @@ def parse_python_comments(source: str, file: str) -> list[Comment]:
     return sorted(comments, key=lambda comment: comment.line)
 
 
+def is_python_comment_writable(comment: Comment) -> bool:
+    """Return whether rewriting ``comment`` keeps its code and directives.
+
+    A docstring that shares a line with code, or a ``#`` run with a tool
+    directive such as ``# noqa``, would lose part of the file.
+    """
+    is_hash_run = comment.text.lstrip().startswith("#")
+    has_directive = is_hash_run and PYTHON_DIRECTIVE.search(comment.text)
+    return not (comment.unapprovable_reason or has_directive)
+
+
 def describe_python_error(error: Exception) -> str:
     """Return why Python cannot read a file, with Python's version."""
     line = error.lineno if isinstance(error, SyntaxError) else None

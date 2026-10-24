@@ -25,9 +25,9 @@ class Comment:
     an unnamed comment above the first statement.
 
     ``unapprovable_reason`` says why a named comment cannot be approved,
-    such as a docstring that shares a line with code. In Python,
-    ``code_line`` is a docstring's ``def`` or ``class`` line, 0 for the
-    module docstring, or the line below a ``#`` comment. ``only_body`` is
+    such as a docstring that shares a line with code. ``code_line`` is
+    the line below a comment, or, for a Python docstring, its ``def`` or
+    ``class`` line, 0 for the module docstring. ``only_body`` is
     true for a docstring that is its body's only statement, so cutting it
     would break the code.
     """

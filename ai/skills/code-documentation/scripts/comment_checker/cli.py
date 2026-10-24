@@ -9,6 +9,7 @@ Example:
     python3 check_comments.py --repo . --approve-comment shop/cart.go Total
     python3 check_comments.py --repo . --merge-approvals ../wt 1a2b3c4
     python3 check_comments.py --repo . --list scripts/check_comments.py
+    python3 check_comments.py list --interface 1 --repo . shop/cart.go
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
@@ -44,6 +45,9 @@ warnings Python gives when it compiles the file. Line numbers start at
 1, and ``end_line`` is the comment's last line. A ``#`` comment with a
 tool directive line, such as ``# noqa``, is left out, since writing
 over it could drop the directive.
+
+The commands ``version`` and ``list`` answer ``pde-comment-review``
+with JSON, as ``interface.py`` describes.
 
 The rules are:
 
@@ -96,6 +100,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import interface
 from .approvals import (
     SETTINGS,
     apply_renames,
@@ -187,6 +192,9 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         The exit code described in the module docstring.
     """
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] and argv[0] in interface.COMMANDS:
+        return interface.main(argv)
     # "@renames.txt" reads one argument per line, such as
     # "--rename=const Red=const Crimson".
     parser = argparse.ArgumentParser(

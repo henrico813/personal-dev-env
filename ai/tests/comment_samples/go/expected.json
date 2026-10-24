@@ -1,0 +1,17 @@
+{
+ "unsafe_comment": [
+  {"name": "Setting", "line": 3, "end_line": 4, "code_line": 5, "text": "// Names one setting in the config file.\n//go:generate stringer -type=Setting\n", "writable": false, "can_cut": true},
+  {"name": "", "line": 7, "end_line": 7, "code_line": 8, "text": "// Ends the file with no line end.", "writable": false, "can_cut": true}
+ ],
+ "inside_string": [],
+ "names_after_code": [
+  {"name": "Total", "line": 3, "end_line": 3, "code_line": 4, "text": "// Returns the sum of prices, in cents.\n", "writable": true, "can_cut": true},
+  {"name": "Cart.Reset", "line": 6, "end_line": 6, "code_line": 7, "text": "// Empties the cart.\n", "writable": true, "can_cut": true}
+ ],
+ "unnamed_in_body": [
+  {"name": "", "line": 4, "end_line": 4, "code_line": 5, "text": "\t// Prices are whole cents.\n", "writable": true, "can_cut": true}
+ ],
+ "whole_comment": [
+  {"name": "DefaultPort", "line": 5, "end_line": 6, "code_line": 7, "text": "\t// Used when the config file sets no port. Ports below 1024 need root\n\t// on Linux, so the default is above them.\n", "writable": true, "can_cut": true}
+ ]
+}
