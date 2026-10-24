@@ -25,6 +25,15 @@ GO_TEST_NAME = re.compile(r"(?:Test|Benchmark|Fuzz|Example)(?![a-z])")
 # A line for the Go tools, such as `//go:embed`, which is not prose.
 GO_DIRECTIVE = re.compile(r"//(?:line |extern |export |[a-z0-9]+:[a-z0-9])")
 
+# A "//" line with no space after it, which Go may read as a directive.
+GO_UNSPACED_LINE = re.compile(r"[ \t]*//[^ \t\n]")
+
+# Behaviors of the shared sample suite that Go has no case for.
+GO_BEHAVIORS_NOT_APPLYING = {
+    "only_statement_docstring": "Go has no docstrings, so any comment can "
+    "be cut",
+}
+
 GO_GENERATED_MARKER = re.compile(r"^// Code generated .* DO NOT EDIT\.$", re.M)
 
 # Go comments and string literals, matched from left to right, so a
@@ -92,6 +101,7 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
                     text="".join(comment_lines),
                     prose=join_comment_prose("".join(comment_lines)),
                     header=not seen_package and not name,
+                    code_line=number,
                 )
             )
             start = None
@@ -220,3 +230,15 @@ def join_comment_prose(comment_text: str, marker: str = "//") -> str:
         if text.strip() and not text.startswith(("\t", "  ")):
             words.append(text.strip())
     return " ".join(words)
+
+
+def is_go_comment_writable(comment: Comment) -> bool:
+    """Return whether rewriting ``comment`` keeps how Go builds the code.
+
+    Rewrapping turns ``//go:generate`` into ``// go:generate``, which Go
+    reads as prose, and a comment on a file's last line may lack a line
+    end.
+    """
+    return comment.text.endswith("\n") and not any(
+        GO_UNSPACED_LINE.match(line) for line in comment.text.splitlines()
+    )

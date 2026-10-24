@@ -1,0 +1,11 @@
+{
+ "names_after_code": [
+  {"name": "count", "line": 1, "end_line": 1, "code_line": 2, "text": "; Counts the items.\n", "writable": true, "can_cut": true}
+ ],
+ "unnamed_in_body": [
+  {"name": "", "line": 2, "end_line": 2, "code_line": 3, "text": "  ; Skips blank lines.\n", "writable": true, "can_cut": true}
+ ],
+ "whole_comment": [
+  {"name": "count", "line": 1, "end_line": 2, "code_line": 3, "text": "; Counts the items,\n; blank lines left out.\n", "writable": true, "can_cut": true}
+ ]
+}
