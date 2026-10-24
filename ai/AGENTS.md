@@ -8,6 +8,10 @@
   `pull-request` skill.
 - Do not add AI attribution to commits or pull requests.
 - Keep code comments and docstrings concise; prefer examples and 1-2 sentences.
+- Never print secret values, as `sops -d` or `cat` of an `.env` or token file
+  would. Run `pde-sops-peek FILE [KEY.PATH]` for a sops file's keys or one
+  non-secret value. Tool output shows hidden values as `[redacted]`; never
+  write that marker into a file.
 
 ## Skill Routing
 

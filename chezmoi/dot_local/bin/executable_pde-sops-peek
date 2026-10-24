@@ -1,0 +1,60 @@
+#!/bin/sh
+# Show a sops file's key paths, or one value that does not look secret,
+# without printing the rest of the file the way `sops -d` does.
+#
+#   pde-sops-peek config.yml.sops                  # key paths and types
+#   pde-sops-peek config.yml.sops video.extensions # that value as JSON
+#   Refuses a secret-looking key with an error naming its path.
+set -eu
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    printf 'usage: pde-sops-peek FILE [KEY.PATH]\n' >&2
+    exit 2
+fi
+file=$1
+key_path=${2-}
+
+# sops reads an unknown extension, such as .sops, as binary, whose one
+# "data" value is the whole file, so the format comes from the name.
+case ${file%.sops} in
+    *.yaml|*.yml) format=yaml ;;
+    *.json) format=json ;;
+    *.env) format=dotenv ;;
+    *.ini) format=ini ;;
+    *)
+        printf 'pde-sops-peek: cannot tell the format of %s from its name\n' "$file" >&2
+        exit 2
+        ;;
+esac
+
+plain=$(sops --decrypt --input-type "$format" --output-type json "$file")
+
+printf '%s\n' "$plain" | jq -r --arg path "$key_path" '
+    def secret_name: ascii_downcase
+        | test("secret|key|token|pass|pwd|jwt|salt|api|auth|cred|private|cert|dsn|cookie|hook|topic");
+    # A URL with a password, or a PEM block.
+    def secret_text: test("://[^/@\\s]+:[^/@\\s]*@|-----BEGIN");
+    def outline($prefix):
+        if type == "object" and length > 0 then
+            to_entries[] | .key as $key | .value
+            | outline(if $prefix == "" then $key else "\($prefix).\($key)" end)
+        elif type == "array" and length > 0 and all(.[]; type == "object" or type == "array") then
+            to_entries[] | .key as $index | .value | outline("\($prefix).\($index)")
+        elif type == "array" then "\($prefix)  list of \(length)"
+        else "\($prefix)  \(type)"
+        end;
+    if $path == "" then outline("")
+    else
+        ($path | split(".")) as $parts
+        | (reduce $parts[] as $part (.;
+            if type == "object" and has($part) then .[$part]
+            elif type == "array" and ($part | test("^[0-9]+$")) and ($part | tonumber) < length then .[$part | tonumber]
+            else error("pde-sops-peek: no value at \($path)")
+            end)) as $value
+        | if any($parts[]; secret_name) then error("pde-sops-peek: refusing \($path), whose name looks secret")
+          elif any($value | .. | objects | keys[]; secret_name) then error("pde-sops-peek: refusing \($path), which holds a key whose name looks secret")
+          elif any($value | .. | strings; secret_text) then error("pde-sops-peek: refusing \($path), which holds a password or private key")
+          else $value
+          end
+    end
+'
