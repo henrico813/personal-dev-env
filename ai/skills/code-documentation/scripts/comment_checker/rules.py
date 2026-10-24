@@ -8,26 +8,70 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .languages import LANGUAGES
-from .records import Comment, Finding
+from .records import Comment, Finding, Function
+
+GO_AND_PYTHON = frozenset({".go", ".py"})
+# Python files get these rules from check_python_rules.py instead.
+GO_ONLY = frozenset({".go"})
+
+
+class Rule(NamedTuple):
+    """A rule, the code-documentation sentence it checks, and its reach.
+
+    ``suffixes`` are the files whose comments and names it checks. With
+    ``--base``, a ``changed_only`` rule skips function names present at
+    that commit and comments whose every sentence is.
+    """
+
+    sentence: str
+    suffixes: frozenset[str] = GO_AND_PYTHON
+    changed_only: bool = False
+
 
 # Each rule and the code-documentation sentence it checks, word for word.
 RULES = {
-    "approved": (
+    "approved": Rule(
         "On a later pass over unchanged behavior, edit existing prose only "
         "to fix a specific false or unsupported claim, an omission that "
         "makes it misleading for safe use, or an applicable convention "
         "violation; otherwise leave it byte-for-byte unchanged."
     ),
-    "restated-name": (
+    "restated-name": Rule(
         "Prose derived directly from a name, signature, single statement, "
         "or a test's name, inputs, and assertions is a restatement and "
         "must not be added."
     ),
-    "avoided-word": (
+    "avoided-word": Rule(
         "Explain project-specific terms when a new contributor would not "
         "know them."
     ),
-    "filler": "Avoid vague filler such as:",
+    "filler": Rule("Avoid vague filler such as:"),
+    "seven-words": Rule(
+        "Every function name must contain at most seven words.",
+        GO_ONLY,
+        changed_only=True,
+    ),
+    "verb-first": Rule(
+        "Start every function and method name with a verb, except a "
+        "test, a fixture or a property.",
+        GO_ONLY,
+        changed_only=True,
+    ),
+    "starts-with-name": Rule(
+        "Do not start a doc comment with the name it documents",
+        GO_ONLY,
+        changed_only=True,
+    ),
+    "comment-length": Rule(
+        "Keep each `//` or `#` comment to at most two sentences.",
+        GO_ONLY,
+        changed_only=True,
+    ),
+    "comment-colon": Rule(
+        "Use no colon in a `//` or `#` comment, except inside code or a URL.",
+        GO_ONLY,
+        changed_only=True,
+    ),
 }
 
 # The skill's filler examples and their other word forms. They count only
@@ -45,6 +89,50 @@ FILLER = (
     "seamless",
     "seamlessly",
 )
+# Verbs that start function names. A word with "re" or "un" in front of
+# one of these counts too, such as "rebuild".
+VERBS = frozenset(
+    """
+    accept add allow answer append apply approve archive arm ask assert
+    assign attach audit build bump calculate call cancel capture change
+    check choose clean clear clone close collect combine commit compare
+    compile complete compute configure confirm connect consume convert copy
+    count create cut decide decode delete deliver describe detect disable
+    discard dispatch download drop dump edit emit enable encode ensure
+    enter escape evaluate exit expand expect explain export extract fail
+    fetch fill filter find finish fix flush format freeze generate get give
+    group guard handle hash help hide import include increment index init
+    insert inspect install is iter join keep kill label launch list load lock
+    log look looks make map mark match measure merge migrate mount move name
+    normalize notify open order pack pad park parse pass patch pause pick pin
+    plan poll pop post prepare preview print process produce prompt prune
+    publish pull push put queue quote raise read receive record reduce
+    refresh refund refuse register reject release reload remove rename
+    render reorder repeat replace reply report request require reserve
+    reset resolve restore resume retry return reverse review rewrite round
+    run sanitize save scan schedule score scout search seed select send serve
+    set setup show shrink skip sleep sort split start stash stop store strip
+    submit subscribe summarize swap switch sync take teardown tell test
+    trace track transform transition translate trim truncate try undo
+    unlock unpack update upgrade upload use validate verify view visit wait
+    walk warn watch wrap write yield
+    """.split()
+)
+# Words a name starts with to ask a question or convert, such as
+# "is_empty" or "to_json".
+QUESTION_OR_CONVERSION_WORDS = frozenset(
+    {"as", "can", "from", "has", "into", "should", "to", "was"}
+)
+# Go function names the language requires, which need no verb.
+GO_REQUIRED_NAMES = frozenset({"init", "main"})
+CODE_OR_URL = re.compile(r"`[^`]*`|\w+://\S+")
+# Abbreviations whose period does not end a sentence.
+ABBREVIATIONS = re.compile(r"\b(?:e\.g|i\.e|etc)\.")
+# A colon, except one between digits as in a time.
+COLON = re.compile(r":(?!\d)")
+# A Go paragraph that Go tools read, whose colon must stay.
+GO_DOC_MARKER = re.compile(r"(?:Deprecated|BUG\([^)]*\)):")
+WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
 
 
 class RuleMatch(NamedTuple):
@@ -58,6 +146,28 @@ class RuleMatch(NamedTuple):
 def split_sentences(prose: str) -> list[str]:
     """Split prose after ``.``, ``!`` or ``?`` followed by a space."""
     return [s for s in re.split(r"(?<=[.!?])\s+", prose) if s]
+
+
+def split_name_words(name: str) -> list[str]:
+    """Split ``parse_HTTPConfig`` into ``["parse", "HTTP", "Config"]``."""
+    return [w for part in name.split("_") for w in WORD.findall(part)]
+
+
+def is_verb(word: str) -> bool:
+    """Return whether a name's first word is a known verb or question word."""
+    word = word.lower()
+    if word in VERBS or word in QUESTION_OR_CONVERSION_WORDS:
+        return True
+    return word[:2] in {"re", "un"} and word[2:] in VERBS
+
+
+def has_name_first(text: str, name: str) -> bool:
+    """Return whether ``text`` starts with ``name`` or ``name()``."""
+    first_word = text.split(maxsplit=1)[:1]
+    return bool(first_word) and first_word[0].strip("`'\"(),.:") in {
+        name,
+        f"{name}()",
+    }
 
 
 def find_rename_candidates(
@@ -174,6 +284,93 @@ def find_avoided_words(
     return matches
 
 
+def find_name_at_start(sentences: list[str], name: str) -> list[RuleMatch]:
+    """Match a doc comment whose first word is the name it documents."""
+    if name and sentences and has_name_first(sentences[0], name):
+        message = f'starts with "{name}"'
+        return [RuleMatch("starts-with-name", message, sentences[:1])]
+    return []
+
+
+def list_unmarked_sentences(comment: Comment) -> list[str]:
+    """Return a comment's sentences outside its Deprecated and BUG paragraphs.
+
+    Lines with no prose, such as blank comment lines, end a paragraph.
+    """
+    join_prose = LANGUAGES[Path(comment.file).suffix].join_prose
+    paragraphs: list[list[str]] = [[]]
+    for line in comment.text.splitlines():
+        words = join_prose(line)
+        if words:
+            paragraphs[-1].append(words)
+        elif paragraphs[-1]:
+            paragraphs.append([])
+    kept = [p for p in paragraphs if p and not GO_DOC_MARKER.match(p[0])]
+    return split_sentences(" ".join(" ".join(p) for p in kept))
+
+
+def find_long_comment(sentences: list[str]) -> list[RuleMatch]:
+    """Match a comment of more than two sentences, not counting "e.g."."""
+    prose = CODE_OR_URL.sub("code", " ".join(sentences))
+    count = len(split_sentences(ABBREVIATIONS.sub("abbreviation", prose)))
+    if count > 2:
+        return [RuleMatch("comment-length", f"{count} sentences", sentences)]
+    return []
+
+
+def find_colons(sentences: list[str]) -> list[RuleMatch]:
+    """Match the sentences with a colon outside code, a URL or a time."""
+    found = [s for s in sentences if COLON.search(CODE_OR_URL.sub("code", s))]
+    if found:
+        return [RuleMatch("comment-colon", "has a colon", found)]
+    return []
+
+
+def find_name_violations(
+    functions: list[Function], base_names: set[str] | None
+) -> list[Finding]:
+    """Return findings for names that break the seven-word or verb rule.
+
+    In Go, a test, ``main``, ``init``, a method that takes no arguments,
+    as a getter does, and a name that starts with ``New`` need no verb.
+
+    Args:
+        base_names: Function names at ``--base``, or ``None`` without it.
+    """
+    findings = []
+    for function in functions:
+        bare_name = function.name.split(".")[-1]
+        words = split_name_words(bare_name)
+        first_word = words[0] if words else ""
+        matches = []
+        if len(words) > 7:
+            matches.append(("seven-words", f"{len(words)} words", ""))
+        needs_verb = not (
+            function.is_test
+            or function.is_getter
+            or bare_name in GO_REQUIRED_NAMES
+            or first_word.lower() == "new"
+        )
+        if needs_verb and first_word and not is_verb(first_word):
+            message = f'"{first_word}" is not in the checker\'s verbs'
+            matches.append(("verb-first", message, "report only"))
+        code = Comment(
+            file=function.file,
+            line=function.line,
+            name=function.name,
+            text="",
+            prose="",
+        )
+        for rule, message, note in matches:
+            reach = RULES[rule]
+            if Path(function.file).suffix not in reach.suffixes:
+                continue
+            if reach.changed_only and function.name in (base_names or ()):
+                continue
+            findings.append(Finding(code, rule, message, note))
+    return findings
+
+
 def find_gone_approvals(
     files: set[str],
     comments: list[Comment],
@@ -257,12 +454,24 @@ def find_rule_violations(
         matches = [] if is_approved else find_restated_name(sentences, name)
         matches += find_avoided_words(sentences, avoid)
         matches += find_filler(sentences, name)
+        matches += find_name_at_start(sentences, name)
+        unmarked = list_unmarked_sentences(comment)
+        matches += find_long_comment(unmarked)
+        matches += find_colons(unmarked)
+        suffix = Path(comment.file).suffix
+        unchanged = base_sentences is not None and all(
+            (suffix, s) in base_sentences for s in sentences
+        )
         for match in matches:
+            reach = RULES[match.rule]
+            if suffix not in reach.suffixes or (
+                reach.changed_only and unchanged
+            ):
+                continue
             # A sentence present at --base may be a person's words, so it
             # never fails the run, and the agent is not asked to cut it.
             present_at_base = base_sentences is not None and all(
-                (Path(comment.file).suffix, s) in base_sentences
-                for s in match.sentences
+                (suffix, s) in base_sentences for s in match.sentences
             )
             if present_at_base and match.rule == "restated-name":
                 continue

@@ -60,7 +60,10 @@ class TestSkillText:
         an option the checker lacks stops them with a usage error.
         """
         skill = (ROOT / SKILL).read_text()
-        rules = runpy.run_path(str(CHECKER))["RULES"]
+        rules = {
+            name: rule.sentence
+            for name, rule in runpy.run_path(str(CHECKER))["RULES"].items()
+        }
         rules |= runpy.run_path(str(PYTHON_CHECKER))["RULES"]
         shown = "".join(
             subprocess.run(
