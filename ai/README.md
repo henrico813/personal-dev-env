@@ -20,8 +20,10 @@ Shared workflow skills include `create-plan` for implementation proposals,
 `review-plan` for reviewing plans, PRs, commits, and diffs,
 `implement-plan` for plan execution,
 `cleanup-plan` for plan teardown, `design-doc` for design documents,
-`research-codebase` for as-is codebase research, and `delegate` for
-handing a task to an agent and reviewing it; they install only to
+`research-codebase` for as-is codebase research, `delegate` for
+handing a task to an agent and reviewing it, and `roadmap-run` for
+building a roadmap's pull requests while the user is away; they
+install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions
 require skill selection after reading supplied context and before domain work.
 Run `evals/skill-routing.md` after changing routing
