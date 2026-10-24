@@ -12,6 +12,7 @@ from collections.abc import Iterator
 
 from ..records import Comment, SourceError
 from .go import join_comment_prose
+from .line_comments import show_line_comment, write_line_comment
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
@@ -128,11 +129,31 @@ def is_python_comment_writable(comment: Comment) -> bool:
     """Return whether rewriting ``comment`` keeps its code and directives.
 
     A docstring that shares a line with code, or a ``#`` run with a tool
-    directive such as ``# noqa``, would lose part of the file.
+    directive such as ``# noqa``, a shebang or a coding line, would lose
+    part of the file.
     """
     is_hash_run = comment.text.lstrip().startswith("#")
     has_directive = is_hash_run and PYTHON_DIRECTIVE.search(comment.text)
-    return not (comment.unapprovable_reason or has_directive)
+    # Python reads a shebang or coding line only on line 1 or 2.
+    file_lines = comment.text.splitlines()[: max(0, 3 - comment.line)]
+    has_file_line = is_hash_run and any(
+        PYTHON_SHEBANG_OR_ENCODING.match(line) for line in file_lines
+    )
+    return not (comment.unapprovable_reason or has_directive or has_file_line)
+
+
+def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
+    """Return a ``#`` comment's plain text and screen rows, as Go's are.
+
+    Raises:
+        SourceError: ``text`` is not whole ``#`` lines, such as a docstring.
+    """
+    return show_line_comment(text, "#")
+
+
+def write_python_comment(plain: str, old: str) -> str:
+    """Return ``plain`` as ``#`` lines, laid out as Go comments are."""
+    return write_line_comment(plain, old, "#")
 
 
 def describe_python_error(error: Exception) -> str:

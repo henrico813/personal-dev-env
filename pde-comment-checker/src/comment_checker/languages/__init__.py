@@ -15,12 +15,15 @@ from .go import (
     list_go_functions,
     parse_go_comments,
 )
+from .line_comments import show_line_comment, write_line_comment
 from .python import (
     PYTHON_GENERATED_MARKER,
     is_python_comment_writable,
     join_python_prose,
     list_python_warnings,
     parse_python_comments,
+    show_python_comment,
+    write_python_comment,
 )
 
 
@@ -30,6 +33,8 @@ class Language:
 
     ``list_warnings`` is ``None`` for a language ``--list`` does not take,
     and ``list_functions`` for one whose names another checker checks.
+    ``show_text`` and ``write_plain`` are ``None`` for a language ``show``
+    does not take.
     ``changes`` lists comments for the owner only while ``reviews_on`` is
     true.
     """
@@ -42,6 +47,8 @@ class Language:
     list_warnings: Callable[[str, str], list[str]] | None = None
     list_functions: Callable[[str, str], list[Function]] | None = None
     reviews_on: bool = False
+    show_text: Callable[[str], tuple[str, list[dict[str, str]]]] | None = None
+    write_plain: Callable[[str, str], str] | None = None
     # Each behavior of the shared sample suite it has no case for, and why.
     behaviors_not_applying: Mapping[str, str] = field(default_factory=dict)
 
@@ -56,6 +63,8 @@ LANGUAGES = {
         is_writable=is_go_comment_writable,
         list_functions=list_go_functions,
         reviews_on=True,
+        show_text=show_line_comment,
+        write_plain=write_line_comment,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
     ".py": Language(
@@ -65,6 +74,8 @@ LANGUAGES = {
         generated_marker=PYTHON_GENERATED_MARKER,
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
+        show_text=show_python_comment,
+        write_plain=write_python_comment,
     ),
 }
 
