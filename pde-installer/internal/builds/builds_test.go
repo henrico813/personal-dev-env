@@ -41,20 +41,14 @@ func TestBuildProbeReturnsFilesystemErrors(t *testing.T) {
 func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
-	} {
-		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
-	}
-	// Fake go and cargo scripts write placeholder binaries and log each build.
+	writeBuildSources(t, repoRoot)
+	// Fake go, cargo and python scripts write placeholder binaries and log each build.
 	logPath := filepath.Join(t.TempDir(), "build.log")
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
-	manager := New(home, repoRoot, run.Runner{})
+	manager := newFixtureManager(t, home, repoRoot, logPath)
 
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -78,7 +72,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	for _, name := range []string{
-		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review",
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -129,15 +123,9 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	home := t.TempDir()
 	repoRoot := t.TempDir()
-	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
-	} {
-		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
-	}
+	writeBuildSources(t, repoRoot)
 	logPath := filepath.Join(t.TempDir(), "build.log")
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
-	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
-	manager := New(home, repoRoot, run.Runner{})
+	manager := newFixtureManager(t, home, repoRoot, logPath)
 	// A finished install, then only the link is deleted.
 	journal, err := manager.Reconcile()
 	if err != nil {
@@ -166,6 +154,162 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	if target != filepath.Join(home, ".local", "bin", "pde-gh-write") {
 		t.Fatalf("pde-pr-approve -> %q, want pde-gh-write", target)
 	}
+}
+
+// A uv install leaves skill-lessons as a link into uv's tool folder. If the
+// installer accepted the link, that machine would keep the old tool until
+// some other build input changes.
+func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
+	manager, _, _ := newCommittedManager(t)
+	tool := filepath.Join(manager.Home, ".local", "bin", "skill-lessons")
+	uvCopy := filepath.Join(t.TempDir(), "skill-lessons")
+	writeBuildFixture(t, uvCopy, "#!/bin/sh\nexit 0\n# installed by uv\n")
+	if err := os.Remove(tool); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(uvCopy, tool); err != nil {
+		t.Fatal(err)
+	}
+
+	journal, err := manager.Reconcile()
+
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	info, err := os.Lstat(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("skill-lessons mode = %s, want a regular file", info.Mode())
+	}
+	assertBuildFile(t, tool, "#!/bin/sh\nexit 0\n# built by python\n")
+}
+
+// Any input change rebuilds every tool, vibe's long Rust build included, so
+// Python caches and test edits must not count. A missed source change would
+// not reach the machine until some other build input changes.
+func TestOnlySkillLessonsInputsTriggerRebuild(t *testing.T) {
+	tests := []struct {
+		name, path string
+		rebuild    bool
+	}{
+		{"source", "src/skill_lessons/cli.py", true},
+		{"build script", "build.py", true},
+		{"bytecode cache", "src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
+		{"test", "tests/test_cli.py", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager, repoRoot, logPath := newCommittedManager(t)
+			before := readBuildLog(t, logPath)
+			writeBuildFile(t, filepath.Join(repoRoot, "skill-lessons", tt.path), "changed\n", 0o644)
+
+			journal, err := manager.Reconcile()
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if err := journal.Commit(); err != nil {
+				t.Fatalf("Commit() error = %v", err)
+			}
+
+			if rebuilt := readBuildLog(t, logPath) != before; rebuilt != tt.rebuild {
+				t.Fatalf("rebuilt = %v, want %v", rebuilt, tt.rebuild)
+			}
+		})
+	}
+}
+
+// A build that succeeds but cannot run must not stay installed: the
+// --version check fails, and every tool from the previous install comes back.
+func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
+	home, repoRoot := t.TempDir(), t.TempDir()
+	writeBuildSources(t, repoRoot)
+	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
+	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
+	names := []string{
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
+	}
+	for _, name := range names {
+		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
+	}
+
+	_, err := manager.Reconcile()
+
+	if err == nil || !strings.Contains(err.Error(), "verify skill-lessons") {
+		t.Fatalf("Reconcile() error = %v, want the skill-lessons check to fail", err)
+	}
+	for _, name := range names {
+		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
+	}
+}
+
+// Returns a manager whose tools are built and committed, with its repository
+// root and the log that each fake build appends to.
+func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath string) {
+	t.Helper()
+	home := t.TempDir()
+	repoRoot = t.TempDir()
+	writeBuildSources(t, repoRoot)
+	logPath = filepath.Join(t.TempDir(), "build.log")
+	manager = newFixtureManager(t, home, repoRoot, logPath)
+	journal, err := manager.Reconcile()
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	return manager, repoRoot, logPath
+}
+
+func writeBuildSources(t *testing.T, repoRoot string) {
+	t.Helper()
+	for _, source := range []string{
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
+	} {
+		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
+	}
+	root := filepath.Join(repoRoot, "skill-lessons")
+	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
+	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
+	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
+}
+
+func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
+	t.Helper()
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "go"), goFixture(logPath))
+	writeBuildFixture(t, filepath.Join(home, ".local", "bin", "cargo"), cargoFixture(logPath))
+	python := filepath.Join(t.TempDir(), "python3")
+	writeBuildFixture(t, python, pythonFixture(logPath))
+	manager := New(home, repoRoot, run.Runner{})
+	manager.python = python
+	return manager
+}
+
+func readBuildLog(t *testing.T, logPath string) string {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// Called as "python3 -I build.py OUTPUT" from the skill-lessons folder; other
+// leading arguments or another folder fail the build.
+func pythonFixture(logPath string) string {
+	return fmt.Sprintf(`#!/bin/sh
+set -eu
+[ "$1 $2" = "-I build.py" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
+[ -f build.py ] || { echo "build.py is not in $PWD" >&2; exit 2; }
+printf '%%s\n' python >> %s
+printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by python' > "$3"
+chmod +x "$3"
+`, shellQuote(logPath))
 }
 
 func goFixture(logPath string) string {
@@ -373,7 +517,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
 		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
-		"pde-comment-review": "go",
+		"pde-comment-review": "go", "skill-lessons": "python",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

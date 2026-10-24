@@ -43,7 +43,7 @@ func TestCommandSecurityBoundaries(t *testing.T) {
 		if dryRunErr != nil {
 			t.Fatal(dryRunErr)
 		}
-		ordered := []string{"atomically activate tmux", "direct release tools", "install Aqua packages", "materialize complete npm lock", "managed fonts", "activate planner", "preview chezmoi changes", "complete blink.cmp plugin tree", "render skill lessons", "refresh OpenCode server environment"}
+		ordered := []string{"atomically activate tmux", "direct release tools", "install Aqua packages", "materialize complete npm lock", "managed fonts", "activate planner", "activate skill-lessons", "preview chezmoi changes", "complete blink.cmp plugin tree", "render skill lessons", "refresh OpenCode server environment"}
 		position := -1
 		for _, text := range ordered {
 			next := strings.Index(dryRunStdout[position+1:], text)

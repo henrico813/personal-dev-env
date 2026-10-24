@@ -1,0 +1,15 @@
+[project]
+name = "skill-lessons"
+# Keep in step with __version__ in src/skill_lessons/__init__.py.
+version = "0.2.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv]
+package = false
