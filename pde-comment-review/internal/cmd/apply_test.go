@@ -41,7 +41,7 @@ var (
 // Builds this checkout's comment checker and puts it first on PATH, so the
 // tests never run an installed copy. Returns the skill's script, which runs
 // that checker.
-func findRepoChecker(t *testing.T) string {
+func buildRepoCheckerOnPath(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 is not on PATH; the comment checker needs it")
@@ -84,6 +84,57 @@ func findRepoChecker(t *testing.T) string {
 	return checker
 }
 
+// Real reviews run the checker pde-installer put on PATH, not a copy in
+// the skills folder, so a fixed path would miss the installed checker.
+func TestCheckerFoundOnPath(t *testing.T) {
+	installed := t.TempDir()
+	checker := filepath.Join(
+		installed,
+		"pde-comment-checker",
+	)
+	err := os.WriteFile(
+		checker,
+		[]byte("#!/bin/sh\n"),
+		0o755,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(
+		"PATH",
+		installed,
+	)
+
+	got, err := findCheckerPath()
+
+	if err != nil || got != checker {
+		t.Fatalf(
+			"findCheckerPath() = %q, %v, want %q",
+			got,
+			err,
+			checker,
+		)
+	}
+}
+
+// The screen shows this error after the owner's last answer, so it must
+// say how to install the checker.
+func TestMissingCheckerNamesInstaller(t *testing.T) {
+	t.Setenv(
+		"PATH",
+		t.TempDir(),
+	)
+
+	_, err := findCheckerPath()
+
+	if err == nil || !strings.Contains(err.Error(), "run pde-installer") {
+		t.Fatalf(
+			"findCheckerPath() error = %v, want one naming pde-installer",
+			err,
+		)
+	}
+}
+
 func startReview(t *testing.T, code, settings string, renames []string, extra ...review.Item) *review.Review {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -121,7 +172,7 @@ func setDecisions(t *testing.T, r *review.Review, decisions map[int]review.Decis
 // Verifies that only answered comments are approved, so a comment the
 // owner never saw stays unlocked.
 func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	// No item shows Clear's comment, so it must stay unapproved.
 	unanswered := "\n// Deletes every order.\nfunc Clear() {}\n"
 	r := startReview(
@@ -157,7 +208,7 @@ func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
 // Verifies that the owner's answers reach the code and are approved, cuts
 // and renames included.
 func TestApplyWritesOwnerAnswers(t *testing.T) {
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	r := startReview(
 		t,
 		cartGo,
@@ -324,7 +375,7 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			checker := findRepoChecker(t)
+			checker := buildRepoCheckerOnPath(t)
 			if tt.crash {
 				checker = filepath.Join(t.TempDir(), "crash.py")
 				writeFile(t, checker, "raise RuntimeError('bug')\n")

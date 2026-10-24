@@ -19,11 +19,14 @@ const settingsFile = ".code-comments.json"
 // Returns the installed comment checker, the one program that writes
 // .code-comments.json.
 func findCheckerPath() (string, error) {
-	home, err := os.UserHomeDir()
+	checker, err := exec.LookPath("pde-comment-checker")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf(
+			"%w; run pde-installer to install the comment checker",
+			err,
+		)
 	}
-	return filepath.Join(home, ".agents", "skills", "code-documentation", "scripts", "check_comments.py"), nil
+	return checker, nil
 }
 
 // Writes the owner's decisions into the code and approves them, so the
