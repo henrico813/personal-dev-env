@@ -65,10 +65,10 @@ def is_string_map(value: object) -> TypeGuard[dict[str, str]]:
     )
 
 
-def read_comments_at_commit(
+def read_files_at_commit(
     repo: Path, rev: str, suffixes: set[str]
-) -> list[Comment]:
-    """Read every comment at ``rev`` in files ending in one of ``suffixes``.
+) -> dict[str, str]:
+    """Read every file at ``rev`` whose name ends in one of ``suffixes``.
 
     Every such file under ``repo`` counts, not only the checked ones, so
     a person's sentence in a moved or renamed file is still theirs.
@@ -78,9 +78,7 @@ def read_comments_at_commit(
         suffixes: The checked files' suffixes, such as ``.go``.
 
     Returns:
-        The comments in every such file at ``rev``, with shared names
-        removed. A file its parser cannot read is left out, since its
-        sentences only decide which wording is old.
+        Each file's source by its path relative to ``repo``.
 
     Raises:
         ValueError: ``rev`` is not a commit in ``repo``.
@@ -97,22 +95,44 @@ def read_comments_at_commit(
         capture_output=True,
         text=True,
     ).stdout.splitlines()
-    found = []
+    sources = {}
     for file in listed:
-        suffix = Path(file).suffix
-        if suffix not in suffixes:
+        if Path(file).suffix not in suffixes:
             continue
         # "./" makes Git read the path from --repo, not the Git root.
         shown = subprocess.run(
             [*git, "show", f"{rev}:./{file}"], capture_output=True
         ).stdout
         # An old file need not be UTF-8; only its comments matter.
-        source = shown.decode("utf-8", errors="replace")
+        sources[file] = shown.decode("utf-8", errors="replace")
+    return sources
+
+
+def read_comments_in_files(sources: dict[str, str]) -> list[Comment]:
+    """Read the comments in files read by ``read_files_at_commit``.
+
+    Returns:
+        The comments, with shared names removed. A file its parser
+        cannot read is left out, since its sentences only decide which
+        wording is old.
+    """
+    found = []
+    for file, source in sources.items():
         try:
-            found += LANGUAGES[suffix].read_comments(source, file)
+            found += LANGUAGES[Path(file).suffix].read_comments(source, file)
         except SourceError:
             continue
     return unname_unapprovable_comments(found)[0]
+
+
+def list_function_names(sources: dict[str, str]) -> set[str]:
+    """Return the name of each function in files whose names are checked."""
+    names = set()
+    for file, source in sources.items():
+        list_functions = LANGUAGES[Path(file).suffix].list_functions
+        if list_functions:
+            names |= {f.name for f in list_functions(source, file)}
+    return names
 
 
 def unname_unapprovable_comments(

@@ -58,5 +58,21 @@ class Finding:
     note: str = ""
 
 
+@dataclass(frozen=True)
+class Function:
+    """One function or method declared in a source file.
+
+    ``name`` is a function's name, or a method's type and name joined by
+    a dot. ``is_test`` is true for a function ``go test`` runs, and
+    ``is_getter`` for a method that takes no arguments, as a getter does.
+    """
+
+    file: str
+    line: int
+    name: str
+    is_test: bool = False
+    is_getter: bool = False
+
+
 class SourceError(Exception):
     """A file its parser cannot read, so its comments are unknown."""

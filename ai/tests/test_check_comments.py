@@ -234,7 +234,7 @@ class TestFiller:
         [
             pytest.param("// Post facilitates the outbox.\n", True, id="code"),
             pytest.param(
-                "// Post opens a queue. The caller is responsible for "
+                "// Opens a queue. The caller is responsible for "
                 "closing it.\n",
                 False,
                 id="caller",
@@ -292,9 +292,7 @@ class TestExistingSentences:
         """
         repo = tmp_path / folder
         repo.mkdir(exist_ok=True)
-        old = (
-            "package shop\n\n// Send facilitates the queue. It keeps order.\n"
-        )
+        old = "package shop\n\n// Send facilitates the queue.\n"
         (repo / before).write_text(old + "func Send() {}\n")
         init_repo_and_commit_all(tmp_path)
         (repo / before).unlink()
@@ -338,26 +336,174 @@ class TestExistingSentences:
         ) in result.stdout
 
 
+class TestGoRules:
+    """Hold new Go names and comments to the rules Python code follows."""
+
+    @pytest.mark.parametrize(
+        "source, expected",
+        [
+            pytest.param(
+                "func AddTheTaxAndFeeToTheTotal() {}\n",
+                "post.go:3 AddTheTaxAndFeeToTheTotal: seven-words: 8 words\n",
+                id="long-name",
+            ),
+            pytest.param(
+                "// Post sends the order.\nfunc Post() {}\n",
+                'post.go:3 Post: starts-with-name: starts with "Post"\n',
+                id="starts-with-name",
+            ),
+            pytest.param(
+                "// Sends the order. Retries once. Then gives up.\n"
+                "func Post() {}\n",
+                "post.go:3 Post: comment-length: 3 sentences\n",
+                id="three-sentences",
+            ),
+            pytest.param(
+                "// Sends the order: lines first.\nfunc Post() {}\n",
+                "post.go:3 Post: comment-colon: has a colon\n",
+                id="colon",
+            ),
+        ],
+    )
+    def test_new_breaks_fail_the_run(
+        self, tmp_path: Path, source: str, expected: str
+    ) -> None:
+        """Fail on each rule an agent's new Go name or comment breaks.
+
+        Reviewers kept asking for these fixes in Go by hand, because
+        only Python files were checked.
+        """
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "post.go").write_text("package shop\n\n" + source)
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 1
+        assert expected in result.stdout
+
+    def test_missing_verb_is_reported_not_failed(self, tmp_path: Path) -> None:
+        """Report a Go name that may lack a verb, without failing.
+
+        The checker's verb list cannot hold every verb, so a real verb
+        it does not know must not block an agent's run.
+        """
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "post.go").write_text(
+            "package shop\n\nfunc TotalPrice() {}\n"
+        )
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
+        assert (
+            'post.go:3 TotalPrice: verb-first: "Total" is not in the '
+            "checker's verbs (report only)\n"
+        ) in result.stdout
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param("func (c *Cart) Items() []Item {}\n", id="getter"),
+            pytest.param("func NewCart() *Cart {}\n", id="new"),
+            pytest.param("func BenchmarkSum(b *testing.B) {}\n", id="bench"),
+        ],
+    )
+    def test_go_conventions_need_no_verb(
+        self, tmp_path: Path, source: str
+    ) -> None:
+        """Keep Go getters, constructors and benchmarks out of the verb rule.
+
+        The skill says getters omit ``Get``, and Go names constructors
+        ``New...``, so reporting them would have agents rename them.
+        """
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "cart_test.go").write_text("package shop\n\n" + source)
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert "verb-first" not in result.stdout
+
+    @pytest.mark.parametrize(
+        "comment",
+        [
+            pytest.param("// Holds it.\n//go:embed x.tmpl\n", id="directive"),
+            pytest.param(
+                "// Holds the template.\n//\n// Deprecated: use Template. "
+                "It goes in May. Then it is gone.\n",
+                id="deprecated",
+            ),
+            pytest.param("// BUG(ann): it leaks: by design.\n", id="bug-note"),
+        ],
+    )
+    def test_go_tool_markers_pass_comment_rules(
+        self, tmp_path: Path, comment: str
+    ) -> None:
+        """Pass the colons and sentences that Go tools read.
+
+        Go tools read ``//go:embed`` lines and ``Deprecated:`` and
+        ``BUG(who):`` paragraphs, so failing them would fail idiomatic Go.
+        """
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "page.go").write_text(
+            "package shop\n\n" + comment + "var page string\n"
+        )
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
+        assert result.stdout == ""
+
+    def test_old_text_reported_only_where_touched(
+        self, tmp_path: Path
+    ) -> None:
+        """Report old Go text only in comments the agent touched.
+
+        The agent must not rewrite a person's words to pass, and a file
+        it left alone prints nothing, so old code adds no noise.
+        """
+        old = (
+            "package shop\n\n// Sends the order: lines first.\n"
+            "func SendTheOrderAndItsLinesToTheShop() {}\n"
+        )
+        (tmp_path / "post.go").write_text(old)
+        (tmp_path / "keep.go").write_text(old)
+        init_repo_and_commit_all(tmp_path)
+        (tmp_path / "post.go").write_text(
+            old.replace("first.\n", "first.\n// Retries once.\n")
+        )
+
+        result = run_checker(tmp_path, "--base", "HEAD")
+
+        assert result.returncode == 0
+        assert (
+            "post.go:3 SendTheOrderAndItsLinesToTheShop: comment-colon: "
+            "has a colon (existing: report only)\n"
+        ) in result.stdout
+        assert "keep.go" not in result.stdout
+
+
 class TestHeaders:
     """Keep license headers and generated files out of the agent's way."""
 
-    def test_license_header_filler_is_report_only(
+    def test_license_header_findings_are_report_only(
         self, tmp_path: Path
     ) -> None:
-        """Only report filler in a license header, even in a new file.
+        """Only report findings in a license header, even in a new file.
 
         A license header above "package" is text no agent should
         rewrite, so failing on it would push agents to edit legal text.
         """
         init_repo_and_commit_all(tmp_path)
         (tmp_path / "send.go").write_text(
-            "// Copyright Shop. This facilitates nothing.\n\npackage shop\n"
+            "// Copyright: Shop. This facilitates nothing.\n\npackage shop\n"
         )
 
         result = run_checker(tmp_path, "--base", "HEAD")
 
+        found = result.stdout
         assert result.returncode == 0
-        assert "(header: report only)" in result.stdout
+        assert 'filler: "facilitates" (header: report only)' in found
+        assert "comment-colon: has a colon (header: report only)" in found
 
     def test_package_doc_filler_fails(self, tmp_path: Path) -> None:
         """Fail on new filler in a package doc comment.
@@ -597,28 +743,50 @@ class TestApprovedText:
         assert "cart.go:1 _: cannot be approved" in result.stdout
         assert "cart.go:4 _: cannot be approved" in result.stdout
 
+    @pytest.mark.parametrize(
+        "comment, expected",
+        [
+            pytest.param(
+                "// This is responsible for the cart total.\n",
+                'Total: filler: "is responsible for" (approved: report only)',
+                id="filler",
+            ),
+            pytest.param(
+                "// Sums the cart: tax included.\n",
+                "Total: comment-colon: has a colon (approved: report only)",
+                id="go-colon",
+            ),
+            pytest.param(
+                "// Sums the cart. Adds the tax. Rounds down.\n",
+                "Total: comment-length: 3 sentences (approved: report only)",
+                id="go-three-sentences",
+            ),
+            pytest.param(
+                "// Total sums the cart.\n",
+                'Total: starts-with-name: starts with "Total" (approved: '
+                "report only)",
+                id="go-starts-with-name",
+            ),
+        ],
+    )
     def test_approved_text_is_reported_not_failed(
-        self, tmp_path: Path
+        self, tmp_path: Path, comment: str, expected: str
     ) -> None:
         """Never make an agent rewrite text the owner approved.
 
         Only the owner changes their own words. The owner may approve a
         comment an agent wrote, so it is new since ``--base``; if the
-        checker failed on its filler, the agent would have to rewrite
-        the owner's approved text to pass.
+        checker failed on any rule there, the agent would have to
+        rewrite the owner's approved text to pass.
         """
         init_repo_and_commit_all(tmp_path)
-        comment = "// This is responsible for the cart total.\n"
         (tmp_path / "cart.go").write_text(comment + "func Total() {}\n")
         write_settings_file(tmp_path, [("cart.go", "Total", comment)])
 
         result = run_checker(tmp_path, "--base", "HEAD")
 
         assert result.returncode == 0
-        assert (
-            'Total: filler: "is responsible for" (approved: report only)'
-            in result.stdout
-        )
+        assert expected in result.stdout
 
 
 class TestSettingsFile:

@@ -57,17 +57,23 @@ The rules are:
 - ``restated-name``: a comment's first sentence repeats the name of the
   code below it. This never fails the run.
 
+Go files also get ``seven-words``, ``verb-first``, which never fails
+the run, ``starts-with-name``, ``comment-length`` and ``comment-colon``,
+the rules ``check_python_rules.py`` describes and checks in Python files.
+
 With ``--base``, sentences present at that commit never fail the run,
-and ``restated-name`` findings on them are left out. Filler and
-avoided words in approved text, or in a license header above
+and ``restated-name`` findings on them are left out. The Go rules skip
+function names present at that commit and comments whose every sentence
+is. Findings in approved text, or in a license header above
 ``package`` or a Python file's first statement, are only reported.
 Generated files are skipped. A sentence is present only in a file of
 the same language.
 
 Exit codes:
     0: Nothing failed.
-    1: An ``approved`` finding, or, with ``--base``, filler or an
-        avoided word in a sentence not present at that commit, or
+    1: An ``approved`` finding, or, with ``--base``, a finding other
+        than ``restated-name`` or ``verb-first`` on a name or sentence
+        not present at that commit, or
         ``--merge-approvals`` found two approvals of a comment, neither
         of them the comment now.
     2: A path is a folder or unreadable, no Go or Python file was given,
@@ -95,18 +101,25 @@ from .approvals import (
     apply_renames,
     approve_one_comment,
     build_approved_entries,
+    list_function_names,
     load_settings,
     merge_approvals,
     parse_rename_pair,
-    read_comments_at_commit,
+    read_comments_in_files,
+    read_files_at_commit,
     replace_settings_file,
     summarize_approval,
     unname_unapprovable_comments,
 )
 from .languages import LANGUAGES
 from .languages.python import PYTHON_DIRECTIVE
-from .records import Comment, SourceError
-from .rules import RULES, find_rule_violations, split_sentences
+from .records import Comment, Function, SourceError
+from .rules import (
+    RULES,
+    find_name_violations,
+    find_rule_violations,
+    split_sentences,
+)
 
 
 def list_comments(repo: Path, paths: list[Path]) -> int:
@@ -262,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         paths += [path for path in approved_paths if path.exists()]
     checked_files: set[str] = set()
     comments: list[Comment] = []
+    functions: list[Function] = []
     unreadable: dict[str, str] = {}
     for path in paths:
         if path.is_dir():
@@ -292,15 +306,18 @@ def main(argv: list[str] | None = None) -> int:
             # Its approvals cannot be checked, but they are not gone.
             unreadable[file] = f"approved file {error}; fix the file"
             continue
+        if language.list_functions:
+            functions += language.list_functions(source, file)
         checked_files.add(file)
     if not checked_files:
         print("no file to check", file=sys.stderr)
         return 2
     comments, unapprovable = unname_unapprovable_comments(comments)
     base_comments: list[Comment] = []
+    base_names = None
     if args.base:
         try:
-            base_comments = read_comments_at_commit(
+            base_files = read_files_at_commit(
                 repo,
                 args.base,
                 {Path(file).suffix for file in checked_files},
@@ -308,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2
+        base_comments = read_comments_in_files(base_files)
+        base_names = list_function_names(base_files)
     for (file, name), (reason, lines) in unapprovable.items():
         for line in lines:
             print(f"{file}:{line} {name}: cannot be approved; {reason}")
@@ -350,6 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         avoid,
         base_sentences,
     )
+    findings += find_name_violations(functions, base_names)
     broken_rules = ["approved"] if unreadable else []
     for file, message in unreadable.items():
         print(f"{file} -: approved: {message}")
@@ -363,10 +383,17 @@ def main(argv: list[str] | None = None) -> int:
         if finding.rule not in broken_rules:
             broken_rules.append(finding.rule)
     for rule in broken_rules:
-        print(f'{rule} rule: "{RULES[rule]}"')
+        print(f'{rule} rule: "{RULES[rule].sentence}"')
     failing_rules = {"approved"}
     if base_sentences is not None:
-        failing_rules |= {"avoided-word", "filler"}
+        failing_rules |= {
+            "avoided-word",
+            "comment-colon",
+            "comment-length",
+            "filler",
+            "seven-words",
+            "starts-with-name",
+        }
     failed = bool(unreadable) or any(
         finding.rule in failing_rules and not finding.note
         for finding in findings
