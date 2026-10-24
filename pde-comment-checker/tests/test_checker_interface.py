@@ -467,3 +467,257 @@ class TestChanges:
 
         assert code == 0
         assert reply["unsupported"] == ["main.rs"]
+
+
+def show_entries(repo: Path, *entries: dict[str, str]) -> tuple[int, dict]:
+    """Run ``show`` in ``repo`` with ``entries`` on stdin."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("sys.stdin", io.StringIO(json.dumps(entries)))
+        return run_command("show", "--interface", "1", "--repo", str(repo))
+
+
+SHOP_GO = """package shop
+
+type Cart struct {
+\t// Items in the cart.
+\tItems []string
+}
+
+//go:generate stringer -type=Color
+// Color is a paint color.
+type Color int
+"""
+
+SHOP_PY = """class Cart:
+    # Items in the cart.
+    items = []
+"""
+
+# Its first Go line, after a tab and "// ", ends exactly at column 79.
+LONG_PLAIN = (
+    "Returns the sum of prices, in cents, so a total of many items never "
+    "gets rounded.\n\n\tTotal(prices)\n"
+)
+
+
+class TestShow:
+    """Turn comments into what the editor and the screen show, and back.
+
+    The review tool will draw these rows on the owner's phone and write
+    this text into the code, so it must match what it does for Go today.
+    """
+
+    @pytest.mark.parametrize(
+        ("file", "marker"),
+        [
+            pytest.param("shop.go", "//", id="go"),
+            pytest.param("shop.py", "#", id="python"),
+        ],
+    )
+    def test_comment_shows_as_plain_and_rows(
+        self, tmp_path: Path, file: str, marker: str
+    ) -> None:
+        """Show sentences as one row each, and example lines as written.
+
+        The owner edits the plain text, so an example line must keep its
+        indent there, or writing it back would join it to the sentences.
+        """
+        text = (
+            f"\t{marker} Sums the\n\t{marker} prices.\n\t{marker}\n"
+            f"\t{marker}\tTotal(prices)  \n\t{marker}  return 0\n"
+            f"\t{marker} In cents.\n"
+        )
+
+        code, reply = show_entries(tmp_path, {"file": file, "text": text})
+
+        assert code == 0
+        marks = {"first": f"{marker} ", "rest": f"{marker} "}
+        assert reply["shown"] == [
+            {
+                "file": file,
+                "name": "",
+                "text": text,
+                "plain": "Sums the prices.\n\n\tTotal(prices)\n  return 0\n\n"
+                "In cents.\n",
+                "screen": [
+                    {**marks, "words": "Sums the prices."},
+                    {"fixed": marker},
+                    {"fixed": f"{marker}\tTotal(prices)"},
+                    {"fixed": f"{marker}  return 0"},
+                    {"fixed": marker},
+                    {**marks, "words": "In cents."},
+                ],
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        ("entry", "expected"),
+        [
+            pytest.param(
+                {"file": "shop.go", "name": "Cart.Items", "plain": LONG_PLAIN},
+                "\t// Returns the sum of prices, in cents, so a total of many"
+                " items never gets\n\t// rounded.\n\t//\n"
+                "\t//\tTotal(prices)\n",
+                id="go-by-name",
+            ),
+            pytest.param(
+                {
+                    "file": "shop.go",
+                    "text": "\t// Old.\n",
+                    "plain": "Returns the sum of prices, in cents, so a total "
+                    "of many items never rounds.\n",
+                },
+                "\t// Returns the sum of prices, in cents, so a total of many"
+                " items never\n\t// rounds.\n",
+                id="go-by-text-tab",
+            ),
+            pytest.param(
+                {
+                    "file": "shop.py",
+                    "name": "# Cart.items",
+                    "plain": LONG_PLAIN,
+                },
+                "    # Returns the sum of prices, in cents, so a total of many"
+                " items never gets\n    # rounded.\n    #\n"
+                "    #\tTotal(prices)\n",
+                id="python-by-name",
+            ),
+            pytest.param(
+                {"file": "shop.go", "name": "Cart.Items", "plain": "\n"},
+                "",
+                id="no-words-cuts",
+            ),
+        ],
+    )
+    def test_plain_is_written_like_old_comment(
+        self, tmp_path: Path, entry: dict[str, str], expected: str
+    ) -> None:
+        """Write plain sentences with the old comment's indent, at 79 columns.
+
+        A wrong indent would put the comment out of line with its code,
+        a wrong width would leave lines past 79 columns, and plain text
+        with no words must cut the comment rather than leave an empty one.
+        """
+        (tmp_path / "shop.go").write_text(SHOP_GO)
+        (tmp_path / "shop.py").write_text(SHOP_PY)
+
+        code, reply = show_entries(tmp_path, entry)
+
+        assert code == 0
+        assert reply["shown"][0]["text"] == expected
+
+    @pytest.mark.parametrize(
+        ("entry", "problem"),
+        [
+            pytest.param(
+                {"file": "shop.go", "name": "Total", "plain": "New.\n"},
+                "shop.go Total: no comment has this name in the file",
+                id="missing-name",
+            ),
+            pytest.param(
+                {"file": "shop.go", "name": "Color", "plain": "New.\n"},
+                "shop.go Color: a rewrite could change how the code builds "
+                "or is checked",
+                id="directive",
+            ),
+            pytest.param(
+                {"file": "shop.go", "text": "x := 1\n"},
+                "shop.go: line 1 is not a // comment",
+                id="text-not-a-comment",
+            ),
+            pytest.param(
+                {"file": "shop.go", "text": "x := 1\n", "plain": "New.\n"},
+                "shop.go: line 1 is not a // comment",
+                id="layout-not-a-comment",
+            ),
+            pytest.param(
+                {"file": "crlf.go", "name": "Cart.Items", "plain": "New.\n"},
+                "crlf.go Cart.Items: cannot be read (it has a carriage "
+                "return)",
+                id="carriage-return",
+            ),
+            pytest.param(
+                {
+                    "file": "shop.py",
+                    "text": "#!/usr/bin/env python3\n",
+                    "plain": "New.\n",
+                },
+                "shop.py: a rewrite could change how the code builds or is "
+                "checked",
+                id="shebang",
+            ),
+        ],
+    )
+    def test_unsafe_entry_is_refused(
+        self, tmp_path: Path, entry: dict[str, str], problem: str
+    ) -> None:
+        """Refuse a comment the checker cannot show or safely lay out.
+
+        Rewording a directive or shebang would change how the code builds
+        or runs, a file with carriage returns would get mixed line ends,
+        and drawing code as a comment would show the owner the wrong text.
+        """
+        (tmp_path / "shop.go").write_text(SHOP_GO)
+        (tmp_path / "crlf.go").write_bytes(
+            SHOP_GO.replace("\n", "\r\n").encode()
+        )
+
+        code, reply = show_entries(tmp_path, entry)
+
+        assert code == 1
+        assert reply["shown"] == []
+        assert reply["problems"] == [problem]
+
+    def test_one_bad_entry_refuses_whole_request(self, tmp_path: Path) -> None:
+        """Refuse every entry when one fails, naming only the failing one.
+
+        The tool shows or writes a whole review at once, so a reply that
+        left out one comment would show the owner an incomplete review.
+        """
+        code, reply = show_entries(
+            tmp_path,
+            {"file": "shop.go", "text": "// Sums.\n"},
+            {"file": "shop.go", "text": "x := 1\n"},
+        )
+
+        assert code == 1
+        assert reply["shown"] == []
+        assert reply["problems"] == ["shop.go: line 1 is not a // comment"]
+
+    @pytest.mark.parametrize(
+        ("request_body", "error"),
+        [
+            pytest.param(
+                {"file": "shop.go", "text": "// Sums.\n"},
+                "show reads a JSON list",
+                id="not-a-list",
+            ),
+            pytest.param(
+                [{"file": "main.rs", "text": "// Sums.\n"}],
+                "main.rs: show does not take this language",
+                id="unsupported-suffix",
+            ),
+            pytest.param(
+                [{"file": "gone.go", "name": "Total", "plain": "Sums.\n"}],
+                "gone.go: [Errno 2]",
+                id="missing-file",
+            ),
+        ],
+    )
+    def test_bad_request_exits_two(
+        self, tmp_path: Path, capsys, request_body, error: str
+    ) -> None:
+        """Exit 2 with the reason on stderr for a request show cannot take.
+
+        The review tool tells a setup or usage error from a refusal by
+        the exit code, so these must not look like a reply.
+        """
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("sys.stdin", io.StringIO(json.dumps(request_body)))
+            code, reply = run_command(
+                "show", "--interface", "1", "--repo", str(tmp_path)
+            )
+
+        assert code == 2
+        assert reply == {}
+        assert error in capsys.readouterr().err

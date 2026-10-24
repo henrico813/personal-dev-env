@@ -17,7 +17,7 @@ at `~/.local/bin/pde-comment-checker`, as one file that runs with
 ```text
 pde-comment-checker --repo . [--base REF] FILE...   check comments
 pde-comment-checker --repo . --approve FILE...      record approvals
-pde-comment-checker version | list | changes        JSON for pde-comment-review
+pde-comment-checker version | list | changes | show JSON for pde-comment-review
 pde-comment-checker python-rules --repo . [--base REF] FILE...
 ```
 
