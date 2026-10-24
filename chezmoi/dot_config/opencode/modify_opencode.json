@@ -163,6 +163,12 @@ printf '%s\n' "$input" | jq \
     | del(.plugin)
     # Start on Claude Opus 5.5 unless this machine already sets a model.
     | .model //= $model
+    # A decrypted sops file printed by an agent lands in the session database and
+    # at the model provider, so refuse it; pde-sops-peek shows what agents need.
+    # OpenCode applies the last matching rule, so these go after every existing rule.
+    | (["*sops *-d *", "*sops *decrypt*", "*sops *exec-*"]
+        | map({action: "shell", resource: ., effect: "deny"})) as $sopsDeny
+    | .permissions = (((.permissions // []) - $sopsDeny) + $sopsDeny)
     | (if $writeGoog then
         (if (.provider? | type) == "object" then .provider |= del(.ollama) else . end)
         | (if .provider? == {} then del(.provider) else . end)
