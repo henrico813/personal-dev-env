@@ -118,8 +118,8 @@ func TestCheckerRowsMatchWrapForScreen(t *testing.T) {
 	}
 }
 
-// Runs a checker command in repo with stdin, and decodes its JSON reply
-// into reply.
+// Runs a checker command such as list or show in repo, feeding it stdin, and
+// fills reply with the JSON the checker prints.
 func runChecker(t *testing.T, checker, repo string, stdin []byte, reply any, command string, files ...string) {
 	t.Helper()
 	run := exec.Command(
