@@ -54,13 +54,20 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from .rules import (
+    ABBREVIATIONS,
+    CODE_OR_URL,
+    COLON,
+    has_name_first,
+    is_verb,
+    split_name_words,
+)
+from .rules import RULES as SHARED_RULES
+
 # Each rule and the code-documentation sentence it checks, word for word.
 RULES = {
-    "verb-first": (
-        "Start every function and method name with a verb, except a "
-        "test, a fixture or a property."
-    ),
-    "seven-words": "Every function name must contain at most seven words.",
+    "verb-first": SHARED_RULES["verb-first"].sentence,
+    "seven-words": SHARED_RULES["seven-words"].sentence,
     "docstring": (
         "Give every function, method and class a docstring, tests and "
         "fixtures included."
@@ -72,17 +79,13 @@ RULES = {
     "test-why": (
         "Follow a test's summary with a paragraph on why the test matters."
     ),
-    "starts-with-name": (
-        "Do not start a doc comment with the name it documents"
-    ),
+    "starts-with-name": SHARED_RULES["starts-with-name"].sentence,
     "section-heading": (
         "Never invent a docstring section, such as `Why it matters:`; "
         "write a plain paragraph instead."
     ),
-    "comment-length": "Keep each `#` comment to at most two sentences.",
-    "comment-colon": (
-        "Use no colon in a `#` comment, except inside code or a URL."
-    ),
+    "comment-length": SHARED_RULES["comment-length"].sentence,
+    "comment-colon": SHARED_RULES["comment-colon"].sentence,
 }
 # Headings that stand in for the plain paragraph a docstring should have.
 INVENTED_HEADINGS = frozenset(
@@ -95,40 +98,6 @@ INVENTED_HEADINGS = frozenset(
         "Why it matters",
         "Why this matters",
     }
-)
-# Verbs that start function names. A word with "re" or "un" in front of
-# one of these counts too, such as "rebuild".
-VERBS = frozenset(
-    """
-    accept add allow answer append apply approve archive arm ask assert
-    assign attach audit build bump calculate call cancel capture change
-    check choose clean clear clone close collect combine commit compare
-    compile complete compute configure confirm connect consume convert copy
-    count create cut decide decode delete deliver describe detect disable
-    discard dispatch download drop dump edit emit enable encode ensure
-    enter escape evaluate exit expand expect explain export extract fail
-    fetch fill filter find finish fix flush format freeze generate get give
-    group guard handle hash help hide import include increment index init
-    insert inspect install is iter join keep kill label launch list load lock
-    log look looks make map mark match measure merge migrate mount move name
-    normalize notify open order pack pad park parse pass patch pause pick pin
-    plan poll pop post prepare preview print process produce prompt prune
-    publish pull push put queue quote raise read receive record reduce
-    refresh refund refuse register reject release reload remove rename
-    render reorder repeat replace reply report request require reserve
-    reset resolve restore resume retry return reverse review rewrite round
-    run sanitize save scan schedule score scout search seed select send serve
-    set setup show shrink skip sleep sort split start stash stop store strip
-    submit subscribe summarize swap switch sync take teardown tell test
-    trace track transform transition translate trim truncate try undo
-    unlock unpack update upgrade upload use validate verify view visit wait
-    walk warn watch wrap write yield
-    """.split()
-)
-# Words a name starts with to ask a question or convert, such as
-# "is_empty" or "to_json".
-QUESTION_OR_CONVERSION_WORDS = frozenset(
-    {"as", "can", "from", "has", "into", "should", "to", "was"}
 )
 # Names that Python, unittest, http.server and pytest require, and main.
 FRAMEWORK_NAME = re.compile(
@@ -145,10 +114,6 @@ TOOL_DIRECTIVE = re.compile(
 )
 # A tool comment such as noqa that follows prose in the same comment.
 TRAILING_DIRECTIVE = re.compile(r"\s*#\s*(?:noqa\b|type:|pragma:).*")
-CODE_OR_URL = re.compile(r"`[^`]*`|\w+://\S+")
-# Abbreviations whose period does not end a sentence.
-ABBREVIATIONS = re.compile(r"\b(?:e\.g|i\.e|etc)\.")
-WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 Definition = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
 
@@ -162,19 +127,6 @@ class Finding:
     name: str
     rule: str
     message: str
-
-
-def split_name_words(name: str) -> list[str]:
-    """Split ``parse_HTTPConfig`` into ``["parse", "HTTP", "Config"]``."""
-    return [w for part in name.split("_") for w in WORD.findall(part)]
-
-
-def is_verb(word: str) -> bool:
-    """Return whether a name's first word is a known verb or question word."""
-    word = word.lower()
-    if word in VERBS or word in QUESTION_OR_CONVERSION_WORDS:
-        return True
-    return word[:2] in {"re", "un"} and word[2:] in VERBS
 
 
 def list_decorator_names(
@@ -237,11 +189,7 @@ def check_docstring(node: Definition) -> list[tuple[str, str]]:
     )
     if is_test and len(paragraphs) < 2:
         found.append(("test-why", "no paragraph after the summary"))
-    first_word = docstring.split(maxsplit=1)[:1]
-    if first_word and first_word[0].strip("`'\"(),.:") in {
-        node.name,
-        f"{node.name}()",
-    }:
+    if has_name_first(docstring, node.name):
         found.append(("starts-with-name", f'starts with "{node.name}"'))
     for line in lines[1:]:
         heading = line.strip().partition(":")
@@ -356,7 +304,7 @@ def check_comments(
                     f"{len(sentences)} sentences",
                 )
             )
-        if re.search(r":(?!\d)", prose):
+        if COLON.search(prose):
             findings.append(
                 Finding(file, lines[0], "-", "comment-colon", "has a colon")
             )

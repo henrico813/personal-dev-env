@@ -296,8 +296,15 @@ that rule's sentence from this skill. Act on each finding:
   fix the sentence. This fails the run. `avoid` in
   `.code-comments.json` gives the word to use instead.
 - `restated-name`: reported, never failed.
-- `filler` or `avoided-word` marked `report only`: the sentence is
-  approved text, a license header, or was there before your task.
+- `seven-words`, `starts-with-name`, `comment-length` or
+  `comment-colon` on a Go name or comment your task added or changed:
+  rename the function or fix the comment. This fails the run.
+- `verb-first`: reported, never failed. Rename the function when the
+  word is not a verb, and when it is, keep the name and list the
+  finding in your final message.
+- `filler`, `avoided-word` or a Go comment rule marked `report only`:
+  the sentence is approved text, a license header, or was there
+  before your task.
   List it in your final message, and edit it only as step 5 of Editing
   and review allows.
 
@@ -318,14 +325,27 @@ pair of paths, relative to `--repo`, for a moved file. For many
 renames, put one `--rename=OLD=NEW` per line in a file and pass
 `@<file>`.
 
+## Go and Python rules
+
+In Go and Python, these rules apply on top of the ones above:
+
+- Start every function and method name with a verb, except a test, a
+  fixture or a property.
+- Keep each `//` or `#` comment to at most two sentences.
+- Use no colon in a `//` or `#` comment, except inside code or a URL.
+
+In Go, `main`, `init`, getters with no arguments and names that
+start with `New` need no verb, and a `Deprecated:` or `BUG(who):`
+note may keep its colon and length. The comment checker checks Go
+files for these rules, the seven-word limit and doc comments that
+start with their name, and with `--base` only new names and comments.
+
 ## Python rules
 
 In Python, these rules apply on top of the ones above. Where they
 differ, as for docstrings on private helpers and clear tests, these
 win:
 
-- Start every function and method name with a verb, except a test, a
-  fixture or a property.
 - Give every function, method and class a docstring, tests and
   fixtures included.
 - Start each docstring with a one-line summary that fits on its first
@@ -333,8 +353,6 @@ win:
 - Follow a test's summary with a paragraph on why the test matters.
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
-- Keep each `#` comment to at most two sentences.
-- Use no colon in a `#` comment, except inside code or a URL.
 
 For Python files you add or change, run the rule checker in this
 skill's `scripts/` folder:
