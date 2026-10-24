@@ -46,8 +46,8 @@ warnings Python gives when it compiles the file. Line numbers start at
 tool directive line, such as ``# noqa``, is left out, since writing
 over it could drop the directive.
 
-The commands ``version`` and ``list`` answer ``pde-comment-review``
-with JSON, as ``interface.py`` describes.
+The commands ``version``, ``list`` and ``changes`` answer
+``pde-comment-review`` with JSON, as ``interface.py`` describes.
 
 The rules are:
 
