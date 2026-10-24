@@ -5,6 +5,7 @@
 {{ if eq (env "PDE_PROFILE") "terminal" }}
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
+.local/bin/pde-comment-checker
 {{ end }}
 {{ if eq (env "PDE_PROFILE") "full" }}
 Projects/CLAUDE.md
@@ -39,6 +40,7 @@ Projects/CLAUDE.md
 .claude/commands/README.md
 .agents/skills/git-messages/scripts/check-message
 .agents/skills/code-search
+.agents/skills/code-documentation/scripts/comment_checker
 {{ end }}
 
 .local/bin/surveil

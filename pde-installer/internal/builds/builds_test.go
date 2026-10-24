@@ -49,6 +49,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
+		"pde-comment-checker",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -73,6 +74,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
+		"pde-comment-checker",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -192,21 +194,26 @@ func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
 // Any input change rebuilds every tool, vibe's long Rust build included, so
 // Python caches and test edits must not count. A missed source change would
 // not reach the machine until some other build input changes.
-func TestOnlySkillLessonsInputsTriggerRebuild(t *testing.T) {
+func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 	tests := []struct {
 		name, path string
 		rebuild    bool
 	}{
-		{"source", "src/skill_lessons/cli.py", true},
-		{"build script", "build.py", true},
-		{"bytecode cache", "src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
-		{"test", "tests/test_cli.py", false},
+		{"source", "skill-lessons/src/skill_lessons/cli.py", true},
+		{"build script", "skill-lessons/build.py", true},
+		{"bytecode cache", "skill-lessons/src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
+		{"test", "skill-lessons/tests/test_cli.py", false},
+		{
+			name:    "checker source in a subfolder",
+			path:    "pde-comment-checker/src/comment_checker/languages/go.py",
+			rebuild: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			manager, repoRoot, logPath := newCommittedManager(t)
 			before := readBuildLog(t, logPath)
-			writeBuildFile(t, filepath.Join(repoRoot, "skill-lessons", tt.path), "changed\n", 0o644)
+			writeBuildFile(t, filepath.Join(repoRoot, tt.path), "changed\n", 0o644)
 
 			journal, err := manager.Reconcile()
 			if err != nil {
@@ -232,6 +239,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
+		"pde-comment-checker",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -277,6 +285,14 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
+	checker := filepath.Join(repoRoot, "pde-comment-checker")
+	writeBuildFile(t, filepath.Join(checker, "build.py"), "build\n", 0o644)
+	writeBuildFile(
+		t,
+		filepath.Join(checker, "src", "comment_checker", "languages", "go.py"),
+		"go\n",
+		0o644,
+	)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -299,8 +315,8 @@ func readBuildLog(t *testing.T, logPath string) string {
 	return string(data)
 }
 
-// Called as "python3 -I build.py OUTPUT" from the skill-lessons folder; other
-// leading arguments or another folder fail the build.
+// Called as "python3 -I build.py OUTPUT" from a Python tool's folder; other
+// leading arguments or a folder without build.py fail the build.
 func pythonFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
@@ -518,6 +534,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 	for name, tool := range map[string]string{
 		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
 		"pde-comment-review": "go", "skill-lessons": "python",
+		"pde-comment-checker": "python",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

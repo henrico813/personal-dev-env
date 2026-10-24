@@ -1,6 +1,7 @@
-"""Behavior tests for the comment checker in the code-documentation skill."""
+"""Behavior tests for the comment checker."""
 
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -8,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
-CHECKER = ROOT / "ai/skills/code-documentation/scripts/check_comments.py"
+# The conftest fixture puts the packed command first on PATH.
+CHECKER = "pde-comment-checker"
 
 
 def init_repo_and_commit_all(root: Path) -> None:
@@ -61,7 +62,14 @@ def run_checker(
     if paths is None:
         paths = sorted(str(p) for p in repo.iterdir() if p.suffix == ".go")
     return subprocess.run(
-        [sys.executable, str(CHECKER), "--repo", str(repo), *args, *paths],
+        [
+            sys.executable,
+            str(shutil.which(CHECKER)),
+            "--repo",
+            str(repo),
+            *args,
+            *paths,
+        ],
         capture_output=True,
         text=True,
     )
