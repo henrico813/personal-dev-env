@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import re
 
-from ..records import Comment
+from ..records import Comment, Function
 
 # "func Send", "type Cart", "const Red", or a bare name such as a field.
 DECLARED_NAME = re.compile(
@@ -18,6 +18,12 @@ METHOD_DECLARATION = re.compile(
 )
 
 CONST_OR_VAR_BLOCK = re.compile(r"(const|var)\s*\($")
+
+# Functions "go test" runs, such as "TestTotal" and "BenchmarkSort".
+GO_TEST_NAME = re.compile(r"(?:Test|Benchmark|Fuzz|Example)(?![a-z])")
+
+# A line for the Go tools, such as `//go:embed`, which is not prose.
+GO_DIRECTIVE = re.compile(r"//(?:line |extern |export |[a-z0-9]+:[a-z0-9])")
 
 GO_GENERATED_MARKER = re.compile(r"^// Code generated .* DO NOT EDIT\.$", re.M)
 
@@ -109,6 +115,30 @@ def parse_go_comments(source: str, file: str) -> list[Comment]:
     return comments
 
 
+def list_go_functions(source: str, file: str) -> list[Function]:
+    """Return each function and method declared in a Go file."""
+    inside_text = find_lines_inside_comment_or_string(source)
+    functions = []
+    for number, line in enumerate(source.splitlines(), 1):
+        if number in inside_text or not line.startswith("func "):
+            continue
+        text = line.strip()
+        name = parse_declared_name(text)
+        method = METHOD_DECLARATION.match(text)
+        functions.append(
+            Function(
+                file=file,
+                line=number,
+                name=name,
+                is_test=file.endswith("_test.go")
+                and bool(GO_TEST_NAME.match(name.split(".")[-1])),
+                is_getter=method is not None
+                and text[method.end() :].startswith("()"),
+            )
+        )
+    return functions
+
+
 def find_lines_inside_comment_or_string(source: str) -> set[int]:
     """Return the 1-based lines starting inside a raw string or ``/* */``."""
     inside: set[int] = set()
@@ -176,11 +206,15 @@ def name_code_below_comment(
 def join_comment_prose(comment_text: str, marker: str = "//") -> str:
     """Join comment lines into one line of prose, leaving out code and lists.
 
+    Go directive lines, such as ``//go:embed``, are left out too.
+
     Args:
         comment_text: The comment's lines, each starting with ``marker``.
     """
     words = []
     for line in comment_text.splitlines():
+        if GO_DIRECTIVE.match(line.strip()):
+            continue
         text = line.strip()[len(marker) :]
         # Go doc comments indent code blocks and lists.
         if text.strip() and not text.startswith(("\t", "  ")):
