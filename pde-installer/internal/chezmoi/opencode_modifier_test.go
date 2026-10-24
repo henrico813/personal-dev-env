@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -124,6 +125,74 @@ func TestModifierKeepsMachineModel(t *testing.T) {
 	if config.Model != "example/model" {
 		t.Fatalf("model = %q, want %q", config.Model, "example/model")
 	}
+}
+
+// A machine-wide allow comes earlier in the file, so the deny rules must
+// still win under OpenCode's last-match rule.
+func TestModifierDeniesSopsDecryption(t *testing.T) {
+	t.Parallel()
+	output, err := runModifier(t, `{"permissions": [{"action": "shell", "resource": "*", "effect": "allow"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Permissions []permissionRule `json:"permissions"`
+	}
+	if err := json.Unmarshal(output, &config); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "short flag", command: "sops -d runtime/public/stash/config.yml.sops", want: "deny"},
+		{name: "long flag after options", command: "sops --input-type dotenv --decrypt app.env.sops", want: "deny"},
+		{name: "subcommand", command: "sops decrypt config.yml.sops", want: "deny"},
+		{name: "inside another shell", command: "ssh host 'sops --decrypt /srv/app.env'", want: "deny"},
+		{name: "child environment", command: "/usr/local/bin/sops exec-env app.env.sops env", want: "deny"},
+		{name: "edit with a script", command: "EDITOR=/tmp/edit.sh sops config.yml.sops", want: "allow"},
+		{name: "encrypt in place", command: "sops --encrypt --in-place config.yml.sops", want: "allow"},
+		{name: "peek helper", command: "pde-sops-peek config.yml.sops", want: "allow"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := evaluateShellPermission(config.Permissions, tt.command); got != tt.want {
+				t.Fatalf("%q effect = %q, want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+type permissionRule struct {
+	Action   string `json:"action"`
+	Resource string `json:"resource"`
+	Effect   string `json:"effect"`
+}
+
+// Gives the effect OpenCode v2.0.26 applies to one shell command, where the
+// last matching rule wins and no match means ask.
+func evaluateShellPermission(rules []permissionRule, command string) string {
+	effect := "ask"
+	for _, rule := range rules {
+		if matchesWildcard("shell", rule.Action) && matchesWildcard(command, rule.Resource) {
+			effect = rule.Effect
+		}
+	}
+	return effect
+}
+
+// Mirrors OpenCode's Wildcard.match, where * is any text and ? is one
+// character, and a trailing " *" also matches the bare word.
+func matchesWildcard(input, pattern string) bool {
+	expr := regexp.QuoteMeta(pattern)
+	expr = strings.ReplaceAll(expr, `\*`, ".*")
+	expr = strings.ReplaceAll(expr, `\?`, ".")
+	if strings.HasSuffix(expr, " .*") {
+		expr = strings.TrimSuffix(expr, " .*") + "( .*)?"
+	}
+	return regexp.MustCompile("(?s)^" + expr + "$").MatchString(input)
 }
 
 func TestMemoryModifierPreservesSettings(t *testing.T) {
