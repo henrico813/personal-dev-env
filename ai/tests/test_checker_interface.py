@@ -3,6 +3,7 @@
 import io
 import json
 import re
+import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -239,3 +240,234 @@ class TestCommands:
 
         assert code == expected_code
         assert reply.get("files") == expected_files
+
+
+def commit_all(repo: Path) -> str:
+    """Commit everything in ``repo``, making it a Git repository first.
+
+    Returns:
+        The new commit.
+    """
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "c", "--allow-empty"], check=True)
+    return subprocess.run(
+        [*git, "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+
+
+def list_changes(
+    repo: Path, base: str, approved: dict[str, str] | None = None
+) -> tuple[int, dict]:
+    """Run ``changes`` on ``repo`` with ``approved`` as its approvals.
+
+    Args:
+        approved: Approved text by comment name, all in ``shop.go``.
+    """
+    entries = [
+        {"file": "shop.go", "name": name, "text": text}
+        for name, text in (approved or {}).items()
+    ]
+    settings = {"approved": entries, "avoid": {}}
+    (repo / ".code-comments.json").write_text(json.dumps(settings))
+    return run_command(
+        "changes", "--interface", "1", "--repo", str(repo), "--base", base
+    )
+
+
+TOTAL = "// Returns the sum.\nfunc Total() int { return 0 }\n"
+
+
+class TestChanges:
+    """List what the owner must answer since the branch's base."""
+
+    @pytest.mark.parametrize(
+        ("after", "approved", "expected"),
+        [
+            pytest.param(
+                TOTAL + "// Empties the cart.\nfunc Reset() {}\n",
+                {},
+                [("Reset", "new", "// Empties the cart.\n")],
+                id="new",
+            ),
+            pytest.param(
+                TOTAL.replace("sum", "total"),
+                {},
+                [("Total", "changed", "// Returns the total.\n")],
+                id="changed",
+            ),
+            pytest.param(
+                TOTAL.replace("sum", "total"),
+                {"Total": "// Returns the sum.\n"},
+                [("Total", "approved_edited", "// Returns the sum.\n")],
+                id="approved-edited",
+            ),
+            pytest.param(
+                TOTAL.replace("Total", "Sum"),
+                {"Total": "// Returns the sum.\n"},
+                [("Sum", "approved_renamed", "// Returns the sum.\n")],
+                id="approved-renamed",
+            ),
+            pytest.param(
+                "",
+                {"Total": "// Returns the sum.\n"},
+                [("Total", "code_removed", "// Returns the sum.\n")],
+                id="code-removed",
+            ),
+            pytest.param(
+                TOTAL + "func Reset() {}\n",
+                {"Total": "// Returns the sum.\n"},
+                [],
+                id="approved-unchanged",
+            ),
+        ],
+    )
+    def test_lists_each_comment_owner_must_answer(
+        self, tmp_path: Path, after, approved, expected
+    ) -> None:
+        """Give each comment the owner must answer, with its reason.
+
+        The review shows the owner the approved text as ``old``, so a
+        wrong reason or old text would ask them about the wrong words,
+        and a missed comment would never reach them.
+        """
+        (tmp_path / "shop.go").write_text("package shop\n\n" + TOTAL)
+        base = commit_all(tmp_path)
+        (tmp_path / "shop.go").write_text("package shop\n\n" + after)
+
+        code, reply = list_changes(tmp_path, base, approved)
+
+        assert code == 0
+        listed = [(i["name"], i["reason"], i["old"]) for i in reply["items"]]
+        assert listed == expected
+
+    def test_renamed_code_keeps_its_approval(self, tmp_path: Path) -> None:
+        """Return the rename that moves an approval to the code's new name.
+
+        Without it, the write would record the old name as cut and leave
+        the renamed comment unprotected.
+        """
+        (tmp_path / "shop.go").write_text("package shop\n\n" + TOTAL)
+        base = commit_all(tmp_path)
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "mv", "shop.go", "store.go"],
+            check=True,
+        )
+        store = tmp_path / "store.go"
+        store.write_text(store.read_text().replace("Total", "Sum"))
+
+        code, reply = list_changes(
+            tmp_path, base, {"Total": "// Returns the sum.\n"}
+        )
+
+        assert code == 0
+        assert reply["renames"] == ["Total=Sum", "shop.go=store.go"]
+
+    def test_cut_comment_back_is_refused(self, tmp_path: Path) -> None:
+        """Refuse when a comment the owner cut is back in the code.
+
+        The owner already answered it, so the agent must delete it again
+        before any review is drafted.
+        """
+        (tmp_path / "shop.go").write_text("package shop\n\n" + TOTAL)
+        base = commit_all(tmp_path)
+
+        code, reply = list_changes(tmp_path, base, {"Total": ""})
+
+        assert code == 1
+        assert reply["items"] == []
+        assert reply["problems"] == [
+            "shop.go Total: the owner cut this comment. Delete it from the "
+            "code."
+        ]
+
+    @pytest.mark.parametrize(
+        ("after", "approved", "problem"),
+        [
+            pytest.param(
+                TOTAL + "// Sets up the shop.\nfunc init() {}\n" * 2,
+                {"init": "// Sets up the shop.\n"},
+                "shop.go init: the owner approved this comment, and now more "
+                "than one comment in the file has its name, so none of them "
+                "can be told apart. Keep a comment on only one of them.",
+                id="shared-name",
+            ),
+            pytest.param(
+                TOTAL.replace("Total", "Sum") + TOTAL.replace("Total", "Add"),
+                {"Total": "// Returns the sum.\n"},
+                "shop.go Total: the owner approved this comment, and it is "
+                "gone. It may now be Sum or Add, but that is not certain, so "
+                "none is guessed. Reword the first sentence of each comment "
+                "that is not the renamed one.",
+                id="uncertain-rename",
+            ),
+        ],
+    )
+    def test_unsure_gone_approval_is_refused(
+        self, tmp_path: Path, after, approved, problem
+    ) -> None:
+        """Refuse when a gone approval has no sure new place.
+
+        Its name is now shared, or it may be under one of several new
+        names. Listing it as removed code instead would let the owner's
+        text lose its protection without anyone noticing.
+        """
+        (tmp_path / "shop.go").write_text("package shop\n\n" + TOTAL)
+        base = commit_all(tmp_path)
+        (tmp_path / "shop.go").write_text("package shop\n\n" + after)
+
+        code, reply = list_changes(tmp_path, base, approved)
+
+        assert code == 1
+        assert reply["items"] == []
+        assert reply["problems"] == [problem]
+
+    def test_directive_comment_is_left_out(self, tmp_path: Path) -> None:
+        """Leave a new comment holding a tool directive out of the items.
+
+        Rewording it could turn a line such as ``//go:generate`` into
+        prose, which changes how the code builds.
+        """
+        (tmp_path / "shop.go").write_text("package shop\n\n" + TOTAL)
+        base = commit_all(tmp_path)
+        (tmp_path / "shop.go").write_text(
+            "package shop\n\n"
+            + TOTAL
+            + "// Empties the cart.\nfunc Reset() {}\n"
+            + "// Names a cart state.\n//go:generate stringer -type=State\n"
+            + "type State int\n"
+        )
+
+        code, reply = list_changes(tmp_path, base)
+
+        assert code == 0
+        assert [i["name"] for i in reply["items"]] == ["Reset"]
+
+    def test_python_comments_wait_for_reviews(self, tmp_path: Path) -> None:
+        """List no Python comment while Python's owner reviews are off.
+
+        The review tool cannot write Python answers yet, so a Python item
+        would make the whole review fail when the owner sends it.
+        """
+        base = commit_all(tmp_path)
+        (tmp_path / "shop.py").write_text('"""Sells things."""\n')
+
+        code, reply = list_changes(tmp_path, base)
+
+        assert code == 0
+        assert reply["items"] == []
+
+    def test_unsupported_changed_file_is_named(self, tmp_path: Path) -> None:
+        """Name a changed code file the checker cannot read yet.
+
+        The agent then shows its comments to the owner another way, since
+        no item can be made for them.
+        """
+        base = commit_all(tmp_path)
+        (tmp_path / "main.rs").write_text("// Starts the program.\n")
+
+        code, reply = list_changes(tmp_path, base)
+
+        assert code == 0
+        assert reply["unsupported"] == ["main.rs"]
