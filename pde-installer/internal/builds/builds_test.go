@@ -315,8 +315,8 @@ func readBuildLog(t *testing.T, logPath string) string {
 	return string(data)
 }
 
-// Called as "python3 -I build.py OUTPUT" from the skill-lessons folder; other
-// leading arguments or another folder fail the build.
+// Called as "python3 -I build.py OUTPUT" from a Python tool's folder; other
+// leading arguments or a folder without build.py fail the build.
 func pythonFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu

@@ -38,8 +38,9 @@ var (
 		Old: "// Reports whether a price is too high.\n"}
 )
 
-// Returns the comment checker in this checkout, not the installed copy,
-// so the tests run against the checker from the same commit.
+// Builds this checkout's comment checker and puts it first on PATH, so the
+// tests never run an installed copy. Returns the skill's script, which runs
+// that checker.
 func findRepoChecker(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("python3"); err != nil {
