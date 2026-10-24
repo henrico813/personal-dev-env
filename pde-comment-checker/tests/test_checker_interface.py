@@ -4,19 +4,15 @@ import io
 import json
 import re
 import subprocess
-import sys
 from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "ai/skills/code-documentation/scripts"))
-
-from comment_checker import INTERFACE, VERSION  # noqa: E402
-from comment_checker.cli import main  # noqa: E402
-from comment_checker.languages import LANGUAGES, Language  # noqa: E402
-from comment_checker.records import Comment  # noqa: E402
+from comment_checker import INTERFACE, VERSION
+from comment_checker.cli import main
+from comment_checker.languages import LANGUAGES, Language
+from comment_checker.records import Comment
 
 SAMPLES = Path(__file__).parent / "comment_samples"
 

@@ -52,6 +52,34 @@ func findRepoChecker(t *testing.T) string {
 	if _, err := os.Stat(checker); err != nil {
 		t.Fatal(err)
 	}
+	// The skill's script runs the pde-comment-checker it finds on PATH.
+	bin := t.TempDir()
+	build := exec.Command(
+		"python3",
+		"-I",
+		"build.py",
+		filepath.Join(
+			bin,
+			"pde-comment-checker",
+		),
+	)
+	build.Dir = filepath.Join(
+		"..",
+		"..",
+		"..",
+		"pde-comment-checker",
+	)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf(
+			"build the comment checker: %v: %s",
+			err,
+			output,
+		)
+	}
+	t.Setenv(
+		"PATH",
+		bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
 	return checker
 }
 
