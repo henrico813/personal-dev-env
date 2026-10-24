@@ -1,12 +1,12 @@
 """Behavior tests for the Python rule checker."""
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "ai/skills/code-documentation/scripts"
-CHECKER = SCRIPTS / "check_python_rules.py"
+# The conftest fixture puts the packed command first on PATH.
+CHECKER = "pde-comment-checker"
 
 
 def run_checker(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -22,7 +22,15 @@ def run_checker(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """
     paths = sorted(str(p) for p in repo.iterdir() if p.suffix == ".py")
     return subprocess.run(
-        [sys.executable, str(CHECKER), "--repo", str(repo), *args, *paths],
+        [
+            sys.executable,
+            str(shutil.which(CHECKER)),
+            "python-rules",
+            "--repo",
+            str(repo),
+            *args,
+            *paths,
+        ],
         capture_output=True,
         text=True,
     )

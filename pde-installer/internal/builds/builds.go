@@ -78,6 +78,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	if m.Runner.DryRun {
 		for _, name := range []string{
 			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review", "skill-lessons",
+			"pde-comment-checker",
 		} {
 			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
 				return nil, err
@@ -175,6 +176,21 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 				Dir:  filepath.Join(m.RepoRoot, "skill-lessons"), Env: environment,
 			},
 		},
+		{
+			name:   "pde-comment-checker",
+			source: filepath.Join(m.RepoRoot, "pde-comment-checker"),
+			output: filepath.Join(stageRoot, "pde-comment-checker"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{
+					"-I",
+					"build.py",
+					filepath.Join(stageRoot, "pde-comment-checker"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "pde-comment-checker"),
+				Env: environment,
+			},
+		},
 	}
 	cargoTargets := map[string]string{
 		"vibe": filepath.Join(stageRoot, "vibe-target"),
@@ -236,7 +252,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	// pde-gh-write has no side-effect-free help mode, so it is not run here.
 	for _, check := range []struct{ name, arg string }{
 		{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}, {"pde-comment-review", "help"},
-		{"skill-lessons", "--version"},
+		{"skill-lessons", "--version"}, {"pde-comment-checker", "version"},
 	} {
 		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
@@ -502,11 +518,19 @@ func (m Manager) inputs() (map[string]string, error) {
 		}
 		inputs[name] = hash
 	}
-	hash, err := hashSkillLessons(filepath.Join(m.RepoRoot, "skill-lessons"))
-	if err != nil {
-		return nil, err
+	for name, pkg := range map[string]string{
+		"skill-lessons":       "skill_lessons",
+		"pde-comment-checker": "comment_checker",
+	} {
+		hash, err := hashPythonSources(
+			filepath.Join(m.RepoRoot, name),
+			pkg,
+		)
+		if err != nil {
+			return nil, err
+		}
+		inputs[name] = hash
 	}
-	inputs["skill-lessons"] = hash
 	return inputs, nil
 }
 
@@ -592,21 +616,30 @@ func hashTree(root string) (string, error) {
 // Only build.py and the regular .py files that build.py packs count, so
 // __pycache__, .venv, tests and editor lock links do not rebuild every tool,
 // vibe's long release build included.
-func hashSkillLessons(root string) (string, error) {
-	source := filepath.Join(root, "src", "skill_lessons")
-	entries, err := os.ReadDir(source)
-	if err != nil {
-		return "", fmt.Errorf("hash skill-lessons sources: %w", err)
-	}
+func hashPythonSources(root, pkg string) (string, error) {
 	var paths []string
-	for _, entry := range entries {
-		if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".py") {
-			paths = append(paths, filepath.Join(source, entry.Name()))
-		}
+	err := filepath.WalkDir(
+		filepath.Join(root, "src", pkg),
+		func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.Type().IsRegular() && strings.HasSuffix(entry.Name(), ".py") {
+				paths = append(paths, path)
+			}
+			return nil
+		},
+	)
+	hash := ""
+	if err == nil {
+		hash, err = hashFiles(root, append(paths, filepath.Join(root, "build.py")))
 	}
-	hash, err := hashFiles(root, append(paths, filepath.Join(root, "build.py")))
 	if err != nil {
-		return "", fmt.Errorf("hash skill-lessons sources: %w", err)
+		return "", fmt.Errorf(
+			"hash %s sources: %w",
+			filepath.Base(root),
+			err,
+		)
 	}
 	return hash, nil
 }

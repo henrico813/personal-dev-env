@@ -38,8 +38,9 @@ var (
 		Old: "// Reports whether a price is too high.\n"}
 )
 
-// Returns the comment checker in this checkout, not the installed copy,
-// so the tests run against the checker from the same commit.
+// Builds this checkout's comment checker and puts it first on PATH, so the
+// tests never run an installed copy. Returns the skill's script, which runs
+// that checker.
 func findRepoChecker(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("python3"); err != nil {
@@ -52,6 +53,34 @@ func findRepoChecker(t *testing.T) string {
 	if _, err := os.Stat(checker); err != nil {
 		t.Fatal(err)
 	}
+	// The skill's script runs the pde-comment-checker it finds on PATH.
+	bin := t.TempDir()
+	build := exec.Command(
+		"python3",
+		"-I",
+		"build.py",
+		filepath.Join(
+			bin,
+			"pde-comment-checker",
+		),
+	)
+	build.Dir = filepath.Join(
+		"..",
+		"..",
+		"..",
+		"pde-comment-checker",
+	)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf(
+			"build the comment checker: %v: %s",
+			err,
+			output,
+		)
+	}
+	t.Setenv(
+		"PATH",
+		bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
 	return checker
 }
 
