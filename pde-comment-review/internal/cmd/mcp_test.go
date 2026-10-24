@@ -41,7 +41,9 @@ func startMCPServer(t *testing.T) func(tool string, args map[string]any) string 
 	server := exec.Command(testBinary)
 	// Outside any checkout, so a relative dir can never reach a real one.
 	server.Dir = t.TempDir()
-	server.Env = append(os.Environ(), testMCPCheckerEnv+"="+findRepoChecker(t))
+	// Read the environment after findRepoChecker puts the checker on PATH.
+	checker := findRepoChecker(t)
+	server.Env = append(os.Environ(), testMCPCheckerEnv+"="+checker)
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	session, err := client.Connect(
 		t.Context(),

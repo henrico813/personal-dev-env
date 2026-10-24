@@ -1,8 +1,6 @@
 """Guard the rules of the code-documentation skill."""
 
 import os
-import re
-import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -11,8 +9,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL = "ai/skills/code-documentation/SKILL.md"
-CHECKER = ROOT / "ai/skills/code-documentation/scripts/check_comments.py"
-PYTHON_CHECKER = CHECKER.with_name("check_python_rules.py")
 # The skill on main before checker support was added, with its function
 # naming rules. Later changes add text next to the rule they support and
 # keep every one of these lines.
@@ -20,7 +16,7 @@ BASE = "71467ccac1e61a60fdf753cacbbdb5698361c70b"
 
 
 class TestSkillText:
-    """Keep the skill's original rules, and keep the checker in step."""
+    """Keep the skill's original rules."""
 
     def test_skill_keeps_every_original_line(self) -> None:
         """Fail when a change drops or rewords an original skill line.
@@ -51,35 +47,41 @@ class TestSkillText:
 
         assert missing == []
 
-    def test_skill_quotes_checker_rules_and_options(self) -> None:
-        """Fail when the skill and the checker drift apart.
 
-        Each rule may only enforce a sentence the skill states; an
-        earlier draft added checks with no rule behind them and was
-        rejected. Agents also run the skill's command word for word, so
-        an option the checker lacks stops them with a usage error.
+class TestWrappers:
+    """Keep the skill's old script names running the checker command."""
+
+    @pytest.mark.parametrize(
+        ("script", "passed"),
+        [
+            ("check_comments.py", "--repo ."),
+            ("check_python_rules.py", "python-rules --repo ."),
+        ],
+    )
+    def test_wrapper_passes_arguments_but_refuses_loops(
+        self, tmp_path: Path, script: str, passed: str
+    ) -> None:
+        """Pass the arguments on, and stop if the command runs it again.
+
+        The old pde-comment-checker script ran the skill's script, so a
+        machine with both looped forever and hung every review.
         """
-        skill = (ROOT / SKILL).read_text()
-        rules = {
-            name: rule.sentence
-            for name, rule in runpy.run_path(str(CHECKER))["RULES"].items()
-        }
-        rules |= runpy.run_path(str(PYTHON_CHECKER))["RULES"]
-        shown = "".join(
-            subprocess.run(
-                [sys.executable, str(checker), "--help"],
-                capture_output=True,
-                text=True,
-                check=True,
-            ).stdout
-            for checker in (CHECKER, PYTHON_CHECKER)
+        wrapper = ROOT / "ai/skills/code-documentation/scripts" / script
+        fake = tmp_path / "pde-comment-checker"
+        fake.write_text(
+            f'#!/bin/sh\necho "$*"\nexec "{sys.executable}" "{wrapper}" "$@"\n'
+        )
+        fake.chmod(0o755)
+        path = f"{tmp_path}{os.pathsep}{os.environ['PATH']}"
+
+        result = subprocess.run(
+            [sys.executable, str(wrapper), "--repo", "."],
+            env={**os.environ, "PATH": path},
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
 
-        flat = " ".join(skill.split())
-        unquoted = [rule for rule, quote in rules.items() if quote not in flat]
-        named = set(re.findall(r"--[a-z][a-z-]*", skill))
-        accepted = set(re.findall(r"--[a-z][a-z-]*", shown))
-
-        assert unquoted == []
-        assert named
-        assert named - accepted == set()
+        assert result.stdout == f"{passed}\n"
+        assert result.returncode == 2
+        assert "run pde-installer" in result.stderr

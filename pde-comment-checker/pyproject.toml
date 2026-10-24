@@ -1,0 +1,16 @@
+[project]
+name = "pde-comment-checker"
+# Keep in step with VERSION in src/comment_checker/__init__.py.
+version = "2.0.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.uv]
+package = false
