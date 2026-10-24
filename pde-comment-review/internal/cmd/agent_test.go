@@ -17,7 +17,7 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	// The agent drafts, rewords the new comment and sends the round.
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
@@ -73,7 +73,7 @@ func TestSecondSubmitRefusedWithNextStep(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
@@ -97,7 +97,7 @@ func TestSetRefusesItemWithoutOwnerNote(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
@@ -132,7 +132,7 @@ func TestStatusSetSubmitRefuseOtherCheckout(t *testing.T) {
 		"git clone -q origin other && git -C other switch -q -c feat",
 	)
 	other := filepath.Join(filepath.Dir(repo), "other")
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
@@ -180,7 +180,7 @@ func TestSetRefusesKeepForRemovedCode(t *testing.T) {
 			1,
 		),
 	)
-	if drafted := replyToDraft(repo, findRepoChecker(t)); len(drafted.Problems) > 0 {
+	if drafted := replyToDraft(repo, buildRepoCheckerOnPath(t)); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
 
@@ -222,7 +222,7 @@ func TestCommandLineDraftNamesShellCommands(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	drafted := replyToDraft(repo, findRepoChecker(t))
+	drafted := replyToDraft(repo, buildRepoCheckerOnPath(t))
 	if len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
@@ -240,7 +240,7 @@ func TestCommandLineDraftNamesShellCommands(t *testing.T) {
 func TestDraftReportsNothingToReview(t *testing.T) {
 	repo := newShopClone(t, "feat")
 
-	reply := replyToDraft(repo, findRepoChecker(t))
+	reply := replyToDraft(repo, buildRepoCheckerOnPath(t))
 
 	if len(reply.Problems) > 0 || reply.State != "done" {
 		t.Errorf("replyToDraft() = %+v, want state done", reply)
