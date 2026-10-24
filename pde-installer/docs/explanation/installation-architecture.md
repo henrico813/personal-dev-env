@@ -28,7 +28,8 @@ The full order is:
 5. Install direct-release tools, including Node.js, Go, and Rust.
 6. Install npm tools with the managed npm.
 7. Install direct-release fonts and run `fc-cache`.
-8. Build repository applications with the managed toolchains.
+8. Build repository applications with the managed toolchains, and pack
+   `skill-lessons` with `/usr/bin/python3`.
 9. Migrate legacy PDE and Neovim configuration.
 10. Install the inline plugin runtime.
 11. Apply the chezmoi source.
