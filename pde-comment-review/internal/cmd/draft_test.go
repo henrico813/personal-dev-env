@@ -158,7 +158,7 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n\n// Fills the cart.\n//go:noinline\nfunc Fill() {}\n",
 	)
 
-	d, err := saveBranchDraft(repo, findRepoChecker(t))
+	d, err := saveBranchDraft(repo, buildRepoCheckerOnPath(t))
 
 	if err != nil {
 		t.Fatalf("saveBranchDraft() error = %v", err)
@@ -262,7 +262,7 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	// The agent drafts and sends the review, and the owner answers it.
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
@@ -339,7 +339,7 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 		filepath.Join(repo, "clear.go"),
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
-	checker := findRepoChecker(t)
+	checker := buildRepoCheckerOnPath(t)
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
@@ -452,7 +452,7 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 					tt.script,
 				)
 
-				_, err := saveBranchDraft(repo, findRepoChecker(t))
+				_, err := saveBranchDraft(repo, buildRepoCheckerOnPath(t))
 
 				if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was saved") {
 					t.Fatalf(
@@ -491,7 +491,7 @@ func TestDraftRefusesWhileRoundAwaitsOwner(t *testing.T) {
 		`{"repo": "/x"}`,
 	)
 
-	_, err := saveBranchDraft(repo, findRepoChecker(t))
+	_, err := saveBranchDraft(repo, buildRepoCheckerOnPath(t))
 
 	want := "review feat, for /x, has a round waiting for the owner"
 	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "nothing was saved") {

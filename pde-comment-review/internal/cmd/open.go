@@ -254,10 +254,6 @@ func writeWhenAllAnswered(
 // Applies the review and returns it as read again, for the screen to use
 // from then on. A refusal stays on screen, so the owner can read why.
 func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
-	checker, err := findCheckerPath()
-	if err != nil {
-		return nil, err
-	}
 	// An AI may have added a round since the screen read the review.
 	r, err := review.OpenReview(name)
 	if err != nil {
@@ -269,10 +265,14 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 		v.ShowDone()
 		return r, nil
 	}
-	_, err = writeAndApproveDecisions(
-		r,
-		checker,
-	)
+	// A missing checker is a refusal too, so its message stays on screen.
+	checker, err := findCheckerPath()
+	if err == nil {
+		_, err = writeAndApproveDecisions(
+			r,
+			checker,
+		)
+	}
 	v.Entries = r.ListEntries()
 	switch {
 	case err != nil && !v.IsAllAnswered():
