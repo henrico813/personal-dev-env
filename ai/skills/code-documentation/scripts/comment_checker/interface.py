@@ -3,6 +3,7 @@
 Example:
     pde-comment-checker version
     pde-comment-checker list --interface 1 --repo . shop/cart.go
+    pde-comment-checker changes --interface 1 --repo . --base 1a2b3c4
 
 Every reply carries ``"interface": 1``. The exit code is 0 for a reply,
 1 for a refusal whose reasons are in the reply's ``problems``, and 2 for
@@ -18,10 +19,11 @@ from pathlib import Path
 
 from . import INTERFACE, VERSION
 from .approvals import unname_unapprovable_comments
+from .changes import find_owner_changes
 from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES
 from .records import Comment, SourceError
 
-COMMANDS = ("version", "list")
+COMMANDS = ("version", "list", "changes")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,6 +36,8 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("version", parents=[common])
     listing = commands.add_parser("list", parents=[common])
     listing.add_argument("files", nargs="+", type=Path)
+    changes = commands.add_parser("changes", parents=[common])
+    changes.add_argument("--base", required=True, metavar="REF")
     return parser
 
 
@@ -131,4 +135,12 @@ def main(argv: list[str]) -> int:
     if args.command == "version":
         print_reply({"version": VERSION, "languages": sorted(LANGUAGES)})
         return 0
-    return list_comments_in_files(repo, args.files)
+    if args.command == "list":
+        return list_comments_in_files(repo, args.files)
+    try:
+        reply, code = find_owner_changes(repo, args.base)
+    except (OSError, ValueError, SourceError) as error:
+        print(error, file=sys.stderr)
+        return 2
+    print_reply(reply)
+    return code

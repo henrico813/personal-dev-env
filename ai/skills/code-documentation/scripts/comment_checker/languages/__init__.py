@@ -30,6 +30,8 @@ class Language:
 
     ``list_warnings`` is ``None`` for a language ``--list`` does not take,
     and ``list_functions`` for one whose names another checker checks.
+    ``changes`` lists comments for the owner only while ``reviews_on`` is
+    true.
     """
 
     name: str
@@ -39,6 +41,7 @@ class Language:
     is_writable: Callable[[Comment], bool]
     list_warnings: Callable[[str, str], list[str]] | None = None
     list_functions: Callable[[str, str], list[Function]] | None = None
+    reviews_on: bool = False
     # Each behavior of the shared sample suite it has no case for, and why.
     behaviors_not_applying: Mapping[str, str] = field(default_factory=dict)
 
@@ -52,6 +55,7 @@ LANGUAGES = {
         generated_marker=GO_GENERATED_MARKER,
         is_writable=is_go_comment_writable,
         list_functions=list_go_functions,
+        reviews_on=True,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
     ".py": Language(
