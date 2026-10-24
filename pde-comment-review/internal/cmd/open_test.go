@@ -389,8 +389,8 @@ func openUntilDone(t *testing.T) {
 	}
 }
 
-// Points HOME at a folder whose installed comment checker is this
-// checkout's, since the screen runs the installed one.
+// Puts this checkout's comment checker first on PATH, since the screen runs
+// the installed one.
 func installRepoChecker(t *testing.T) {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
