@@ -1,0 +1,19 @@
+{
+ "unsafe_comment": [
+  {"name": "# TABLE", "line": 1, "end_line": 2, "code_line": 3, "text": "# Keep the table aligned.\n# fmt: off\n", "writable": false, "can_cut": true}
+ ],
+ "inside_string": [],
+ "names_after_code": [
+  {"name": "# TAX", "line": 1, "end_line": 1, "code_line": 2, "text": "# Prices are whole cents.\n", "writable": true, "can_cut": true},
+  {"name": "total", "line": 5, "end_line": 5, "code_line": 4, "text": "    \"\"\"Return the sum of prices.\"\"\"\n", "writable": true, "can_cut": true}
+ ],
+ "only_statement_docstring": [
+  {"name": "Missing", "line": 2, "end_line": 2, "code_line": 1, "text": "    \"\"\"No config file was found.\"\"\"\n", "writable": true, "can_cut": false}
+ ],
+ "unnamed_in_body": [
+  {"name": "", "line": 2, "end_line": 2, "code_line": 3, "text": "    # Prices are whole cents.\n", "writable": true, "can_cut": true}
+ ],
+ "whole_comment": [
+  {"name": "# DEFAULT_PORT", "line": 1, "end_line": 2, "code_line": 3, "text": "# Used when the config file sets no port. Ports below 1024 need root\n# on Linux, so the default is above them.\n", "writable": true, "can_cut": true}
+ ]
+}
