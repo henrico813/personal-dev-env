@@ -146,9 +146,9 @@ the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
 `//go:noinline`, and it stays unapproved even when you answer it.
 
-Approval goes through the comment checker of the `code-documentation`
-skill, `~/.agents/skills/code-documentation/scripts/check_comments.py`,
-which needs `python3`. The checker is the only program that writes
+Approval goes through the comment checker, `pde-comment-checker` on
+`PATH`, which `pde-installer` installs and which needs `python3`.
+The checker is the only program that writes
 `.code-comments.json`. Only the comments you answered are approved,
 and one left out keeps its approval as it was. The checker never
 approves a comment inside a function body, one with a blank line

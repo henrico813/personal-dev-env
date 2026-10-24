@@ -231,6 +231,91 @@ func Valid(prices []int) bool { return true }
 	}
 }
 
+// The Herdr popup closes when the screen exits, so a missing checker must
+// stay on screen with its pde-installer hint instead of closing it.
+func TestMissingCheckerKeepsScreenOpen(t *testing.T) {
+	t.Setenv(
+		"HERDR_ENV",
+		"",
+	)
+	r := startReview(
+		t,
+		cartGo,
+		validApproval,
+		nil,
+	)
+	setDecisions(
+		t,
+		r,
+		map[int]review.Decision{
+			1: {Action: review.ActionAccept},
+			2: {Action: review.ActionAccept},
+		},
+	)
+	t.Setenv(
+		"PATH",
+		t.TempDir(),
+	)
+	master, terminal := openFakeTerminal(t)
+	done := make(
+		chan error,
+		1,
+	)
+	go func() {
+		done <- answerReview(
+			"cart",
+			terminal,
+			terminal,
+			0,
+		)
+	}()
+	waitForScreen(
+		t,
+		master,
+		"3/3 keep? cart.go",
+	)
+
+	typeKeys(
+		t,
+		master,
+		"o",
+	)
+
+	waitForScreen(
+		t,
+		master,
+		"not written",
+	)
+	// Scrolling up at the top draws the same screen again, with the reason.
+	typeKeys(
+		t,
+		master,
+		"k",
+	)
+	waitForScreen(
+		t,
+		master,
+		"run pde-installer",
+	)
+	typeKeys(
+		t,
+		master,
+		"q",
+	)
+	if err := <-done; err != nil {
+		t.Fatalf(
+			"answerReview() error = %v",
+			err,
+		)
+	}
+	if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != cartGo {
+		t.Errorf(
+			"cart.go =\n%s\nwant it unchanged",
+			got,
+		)
+	}
+}
+
 // The owner switches between the review and their session, so reviews
 // must save state.
 func TestReopenWritesFullyAnsweredReview(t *testing.T) {
@@ -308,30 +393,5 @@ func openUntilDone(t *testing.T) {
 // checkout's, since the screen runs the installed one.
 func installRepoChecker(t *testing.T) {
 	t.Helper()
-	home := t.TempDir()
-	installed := filepath.Join(
-		home,
-		".agents",
-		"skills",
-		"code-documentation",
-		"scripts",
-		"check_comments.py",
-	)
-	err := os.MkdirAll(
-		filepath.Dir(installed),
-		0o755,
-	)
-	if err == nil {
-		err = os.Symlink(
-			findRepoChecker(t),
-			installed,
-		)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(
-		"HOME",
-		home,
-	)
+	buildRepoCheckerOnPath(t)
 }

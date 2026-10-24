@@ -57,7 +57,7 @@ func addScratchReview(
 			repo,
 			items...,
 		),
-		findRepoChecker(t),
+		buildRepoCheckerOnPath(t),
 	)
 }
 
@@ -355,7 +355,7 @@ func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
 			repo,
 			keepTax,
 		),
-		findRepoChecker(t),
+		buildRepoCheckerOnPath(t),
 	)
 
 	if err == nil || !strings.Contains(
@@ -408,7 +408,7 @@ func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
 			repo,
 			sumTax,
 		),
-		findRepoChecker(t),
+		buildRepoCheckerOnPath(t),
 	)
 
 	if err != nil {
@@ -448,7 +448,7 @@ func TestAddRefusesIDOfAnotherComment(t *testing.T) {
 			validAsItem2,
 			unnamedAsItem3,
 		),
-		findRepoChecker(t),
+		buildRepoCheckerOnPath(t),
 	)
 
 	want := "nothing was saved: item 2: an earlier round used this id for another comment"
