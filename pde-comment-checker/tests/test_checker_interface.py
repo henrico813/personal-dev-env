@@ -1,9 +1,11 @@
 """Behavior tests for the commands pde-comment-review runs on the checker."""
 
+import ast
 import io
 import json
 import re
 import subprocess
+import textwrap
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -646,6 +648,16 @@ class TestShow:
                 "checked",
                 id="shebang",
             ),
+            pytest.param(
+                {"file": "shop.py", "text": "total = 0\n"},
+                "shop.py: is neither # lines nor one whole docstring",
+                id="python-not-a-comment",
+            ),
+            pytest.param(
+                {"file": "shop.py", "text": '"a" "b"\n'},
+                "shop.py: is neither # lines nor one whole docstring",
+                id="joined-string-literals",
+            ),
         ],
     )
     def test_unsafe_entry_is_refused(
@@ -721,3 +733,232 @@ class TestShow:
         assert code == 2
         assert reply == {}
         assert error in capsys.readouterr().err
+
+
+DOCSTRING = '''    r"""Sum the prices.
+
+    Prices are in cents,
+    so totals never round.
+
+    Use total() \\
+    for sums.
+
+    For example::
+
+        total([])
+
+    Args:
+        prices: The prices, which may
+            be empty.
+        cart: The cart.
+
+    Example:
+        total([1, 2]) \\
+            + 3
+    """
+'''
+
+
+class TestShowDocstrings:
+    """Lay out Python docstrings for the editor, the screen and the file.
+
+    Docstrings hold sections and examples that Go comments do not, so a
+    wrong rule would join an example into a sentence or break the code.
+    """
+
+    def test_docstring_shows_sections_and_examples(
+        self, tmp_path: Path
+    ) -> None:
+        """Show each paragraph and entry as one row, and examples as written.
+
+        The owner reads these rows on the phone, and the quotes show where
+        the docstring starts and ends.
+        """
+        code, reply = show_entries(
+            tmp_path, {"file": "shop.py", "text": DOCSTRING}
+        )
+
+        assert code == 0
+        shown = reply["shown"][0]
+        assert shown["plain"] == (
+            "Sum the prices.\n\nPrices are in cents, so totals never round.\n"
+            "\nUse total() \\\nfor sums.\n\nFor example::\n\n    total([])\n"
+            "\nArgs:\nprices: The prices, which may be empty.\n"
+            "cart: The cart.\n\nExample:\n    total([1, 2]) \\\n        + 3\n"
+        )
+        paragraph = {"first": "", "rest": ""}
+        entry = {"first": "", "rest": "  "}
+        assert shown["screen"] == [
+            {"first": 'r"""', "rest": "", "words": "Sum the prices."},
+            {"fixed": ""},
+            {
+                **paragraph,
+                "words": "Prices are in cents, so totals never round.",
+            },
+            {"fixed": ""},
+            {"fixed": "Use total() \\"},
+            {**paragraph, "words": "for sums."},
+            {"fixed": ""},
+            {**paragraph, "words": "For example::"},
+            {"fixed": ""},
+            {"fixed": "    total([])"},
+            {"fixed": ""},
+            {"fixed": "Args:"},
+            {**entry, "words": "prices: The prices, which may be empty."},
+            {**entry, "words": "cart: The cart."},
+            {"fixed": ""},
+            {"fixed": "Example:"},
+            {"fixed": "    total([1, 2]) \\"},
+            {"fixed": "        + 3"},
+            {"fixed": '"""'},
+        ]
+
+    @pytest.mark.parametrize(
+        ("old", "plain", "expected"),
+        [
+            pytest.param(
+                DOCSTRING,
+                "Sum the prices.\n\nArgs:\nprices: The prices, in cents, of "
+                "every item in the cart, which may be empty.\n\nIn cents.\n",
+                '    r"""Sum the prices.\n\n    Args:\n        prices: The '
+                "prices, in cents, of every item in the cart, which may be\n"
+                '            empty.\n\n    In cents.\n    """\n',
+                id="sections",
+            ),
+            pytest.param(
+                "\t'Sum.'\n",
+                "Sum the prices.\n",
+                "\t'Sum the prices.'\n",
+                id="one-line",
+            ),
+            pytest.param(
+                "\t'Sum.'\n",
+                "Sum the prices.\n\nIn cents.\n",
+                "\t'''Sum the prices.\n\n\tIn cents.\n\t'''\n",
+                id="single-quotes-grow",
+            ),
+            pytest.param(
+                "\t'Sum.'\n",
+                "Sum the cart's prices.\n",
+                "\t'''Sum the cart's prices.'''\n",
+                id="holds-its-quote",
+            ),
+            pytest.param(
+                '"""Sum."""\n',
+                'Sum the "prices"\n',
+                '"""Sum the "prices"\n"""\n',
+                id="ends-in-quote",
+            ),
+            pytest.param(
+                '    """Sum."""\n',
+                "Sum the prices.\n\nReads the price list from the shared "
+                "folder on the north drive at C:\\ prices daily.\n",
+                '    """Sum the prices.\n\n    Reads the price list from the '
+                "shared folder on the north drive at\n"
+                '    C:\\ prices daily.\n    """\n',
+                id="backslash-keeps-next-word",
+            ),
+            pytest.param(
+                '    """Sum."""\n',
+                "Sum the prices.\n\nPrices are listed in euros, and the name "
+                "of the cafe is written caf\\N{LATIN SMALL LETTER E WITH "
+                "ACUTE} here.\n",
+                '    """Sum the prices.\n\n    Prices are listed in euros, '
+                "and the name of the cafe is written\n"
+                "    caf\\N{LATIN SMALL LETTER E WITH ACUTE} here.\n"
+                '    """\n',
+                id="named-escape-stays-whole",
+            ),
+            pytest.param('"""Sum."""\n', "\n", "", id="no-words-cuts"),
+        ],
+    )
+    def test_plain_is_written_as_docstring(
+        self, tmp_path: Path, old: str, plain: str, expected: str
+    ) -> None:
+        """Write plain text with the old docstring's indent, prefix and quotes.
+
+        A lost ``r`` prefix changes what a backslash means, and a quote
+        next to the closing quotes would end the string early.
+        """
+        code, reply = show_entries(
+            tmp_path, {"file": "shop.py", "text": old, "plain": plain}
+        )
+
+        assert code == 0
+        assert reply["shown"][0]["text"] == expected
+
+    @pytest.mark.parametrize(
+        ("plain", "problem"),
+        [
+            pytest.param(
+                'A """ B\n',
+                'shop.py: the text holds """, which ends the docstring',
+                id="closing-quotes",
+            ),
+            pytest.param(
+                "A\rB\n",
+                "shop.py: the text holds a carriage return or a NUL",
+                id="carriage-return",
+            ),
+            pytest.param(
+                "A\0B\n",
+                "shop.py: the text holds a carriage return or a NUL",
+                id="nul",
+            ),
+        ],
+    )
+    def test_unwritable_plain_text_is_refused(
+        self, tmp_path: Path, plain: str, problem: str
+    ) -> None:
+        """Refuse plain text that would break the file it is written into.
+
+        Closing quotes would turn the rest of the text into code, Python
+        reads a carriage return as a line end, which the checker refuses
+        in a file, and a file holding a NUL does not compile.
+        """
+        code, reply = show_entries(
+            tmp_path,
+            {"file": "shop.py", "text": '"""Sum."""\n', "plain": plain},
+        )
+
+        assert code == 1
+        assert reply["problems"] == [problem]
+
+    def test_repository_docstrings_keep_plain_text(self) -> None:
+        """Write every docstring here from its plain text without losing any.
+
+        Each rewrite must still be one string with the same plain text,
+        so an owner's edit of any real docstring keeps its examples and
+        sections and leaves the file parsing.
+        """
+        root = Path(__file__).resolve().parents[2]
+        files = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "*.py"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        code, listed = list_files(root, *(root / file for file in files))
+        docstrings = [
+            {"file": entry["file"], "text": comment["text"]}
+            for entry in listed["files"]
+            for comment in entry["comments"]
+            if comment["writable"] and not comment["text"].lstrip()[:1] == "#"
+        ]
+
+        shown = show_entries(root, *docstrings)[1]["shown"]
+        rewritten = show_entries(
+            root,
+            *(
+                {"file": s["file"], "text": s["text"], "plain": s["plain"]}
+                for s in shown
+            ),
+        )[1]["shown"]
+
+        assert code == 0
+        assert len(docstrings) > 400
+        for before, after in zip(shown, rewritten):
+            assert after["plain"] == before["plain"], before["text"]
+            module = ast.parse(textwrap.dedent(after["text"]))
+            assert isinstance(module.body[0], ast.Expr), after["text"]
+            assert len(module.body) == 1, after["text"]
