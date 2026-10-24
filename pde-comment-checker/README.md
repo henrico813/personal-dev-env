@@ -21,9 +21,6 @@ pde-comment-checker version | list | changes        JSON for pde-comment-review
 pde-comment-checker python-rules --repo . [--base REF] FILE...
 ```
 
-`--help` lists every option, and `python-rules --help` the Python
-rules' options.
-
 ## Development
 
 ```sh
@@ -31,6 +28,5 @@ uv sync --locked
 uv run pytest
 ```
 
-Most tests build the packed file with `build.py` and run it, so they
-check what pde-installer ships; `test_checker_interface.py` runs the
-package in process.
+Most tests run the file `build.py` packs, as pde-installer ships it;
+`test_checker_interface.py` runs the package in process.
