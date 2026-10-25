@@ -39,8 +39,7 @@ var (
 )
 
 // Builds this checkout's comment checker and puts it first on PATH, so the
-// tests never run an installed copy. Returns the skill's script, which runs
-// that checker.
+// tests never run an installed copy. Returns that checker.
 func buildRepoCheckerOnPath(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("python3"); err != nil {

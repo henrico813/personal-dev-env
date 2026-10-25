@@ -16,9 +16,7 @@ import (
 
 const settingsFile = ".code-comments.json"
 
-// The number of the checker's JSON interface this tool speaks. Each of the
-// checker's replies carries the number it speaks.
-const checkerInterface = 1
+const checkerJSONVersion = 1
 
 // Returns the installed comment checker, the one program that writes
 // .code-comments.json.
@@ -88,11 +86,11 @@ func runCheckerCommand(checker string, reply any, args ...string) error {
 			err,
 		)
 	}
-	if spoken.Interface != checkerInterface {
+	if spoken.Interface != checkerJSONVersion {
 		return fmt.Errorf(
 			"the comment checker speaks interface %d, not %d",
 			spoken.Interface,
-			checkerInterface,
+			checkerJSONVersion,
 		)
 	}
 	return json.Unmarshal(
