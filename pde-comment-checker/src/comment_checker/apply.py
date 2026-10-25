@@ -320,6 +320,11 @@ def find_answer_place(
             f"{where}: the new text could change how the code builds or is "
             "checked"
         )
+    if not answer.text and place.comment.only_body:
+        raise SourceError(
+            f"{where}: the docstring is its body's only statement, so "
+            "cutting it would break the code"
+        )
     return place
 
 
