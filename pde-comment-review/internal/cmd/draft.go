@@ -135,9 +135,8 @@ func findDraftBase(repo string) (string, error) {
 	return strings.TrimSpace(base), err
 }
 
-// One comment the checker's changes command says the owner must answer,
-// with a reason such as code_removed for an approved comment whose code
-// is gone.
+// A comment the checker says the owner must answer, and the reason it was
+// listed.
 type ownerChange struct {
 	File    string `json:"file"`
 	Name    string `json:"name"`
@@ -158,7 +157,7 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 		&changes,
 		"changes",
 		"--interface",
-		fmt.Sprint(checkerInterface),
+		fmt.Sprint(checkerJSONVersion),
 		"--repo",
 		repo,
 		"--base",
