@@ -6,7 +6,7 @@ Example:
     pde-comment-checker changes --interface 1 --repo . --base 1a2b3c4
     echo '[{"file": "a.go", "text": "// Sums.\\n"}]' |
         pde-comment-checker show --interface 1 --repo .
-    pde-comment-checker apply --check --interface 1 --repo . < answers.json
+    pde-comment-checker apply [--check] --interface 1 --repo . < answers.json
 
 Every reply carries ``"interface": 1``. The exit code is 0 for a reply,
 1 for a refusal whose reasons are in the reply's ``problems``, and 2 for
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TextIO
 
 from . import INTERFACE, VERSION
-from .apply import check_answers, read_apply_request
+from .apply import check_answers, read_apply_request, write_answers
 from .approvals import unname_unapprovable_comments
 from .changes import find_owner_changes
 from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES, Language
@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     changes.add_argument("--base", required=True, metavar="REF")
     commands.add_parser("show", parents=[common])
     applying = commands.add_parser("apply", parents=[common])
-    applying.add_argument("--check", action="store_true", required=True)
+    applying.add_argument("--check", action="store_true")
     return parser
 
 
@@ -260,11 +260,14 @@ def main(argv: list[str]) -> int:
         return show_comments(repo, entries)
     if args.command == "apply":
         try:
-            answers = read_apply_request(sys.stdin)
-            changed, problems = check_answers(answers, repo)
+            renames, answers = read_apply_request(sys.stdin)
+            write, problems = check_answers(answers, renames, repo)
+            if not (problems or args.check):
+                problems = write_answers(repo, write)
         except (OSError, ValueError) as error:
             print(error, file=sys.stderr)
             return 2
+        changed = [] if problems else sorted(write.changed)
         print_reply({"changed": changed, "problems": problems})
         return 1 if problems else 0
     try:
