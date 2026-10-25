@@ -1,8 +1,10 @@
 """Behavior tests for the commands pde-comment-review runs on the checker."""
 
 import ast
+import contextlib
 import io
 import json
+import os
 import re
 import subprocess
 import textwrap
@@ -12,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from comment_checker import INTERFACE, VERSION
+from comment_checker import INTERFACE, VERSION, interface
 from comment_checker.cli import main
 from comment_checker.languages import LANGUAGES, Language
 from comment_checker.records import Comment
@@ -1004,7 +1006,20 @@ var help = `
 """
 
 TOTAL_TEXT = "// Sums the prices.\n"
+VALID_TEXT = "// Reports whether every price is above zero.\n"
 ANSWER = "each answer needs an id, a plain relative file"
+DISK_FULL = OSError("No space left on device")
+SETTINGS = ".code-comments.json"
+# A removed-code answer, which has no current text; None drops a field.
+REMOVED = dict(code_removed=True, cut=True, current=None, text=None, name="S")
+APPROVED = {
+    "approved": [
+        {"file": "cart.go", "name": "Valid", "text": VALID_TEXT},
+        {"file": "cart.go", "name": "Reset", "text": ""},
+        {"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"},
+    ],
+    "avoid": {},
+}
 
 
 def make_answer(item: int, current: str, text: str | None = None, /, **fields):
@@ -1013,7 +1028,7 @@ def make_answer(item: int, current: str, text: str | None = None, /, **fields):
     ``text=""`` cuts the comment, and ``fields`` add or replace fields,
     such as ``name``.
     """
-    entry = {"id": item, "file": "cart.go", "current": current}
+    entry = {"id": item, "file": "cart.go", "old": current, "current": current}
     if text == "":
         entry["cut"] = True
     else:
@@ -1021,14 +1036,25 @@ def make_answer(item: int, current: str, text: str | None = None, /, **fields):
     return {**entry, **fields}
 
 
-def apply_answers(repo: Path, answers: list[dict]) -> tuple[int, dict]:
-    """Run ``apply --check`` on ``answers``."""
-    request = {"interface": 1, "answers": answers}
+def apply_answers(
+    repo: Path,
+    answers: list[dict],
+    renames: tuple[str, ...] = (),
+    flags: tuple[str, ...] = ("--check",),
+) -> tuple[int, dict]:
+    """Run ``apply`` on ``answers`` and ``renames``, by default to check."""
+    request = {"interface": 1, "renames": list(renames), "answers": answers}
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr("sys.stdin", io.StringIO(json.dumps(request)))
         return run_command(
-            "apply", "--check", "--interface", "1", "--repo", str(repo)
+            "apply", *flags, "--interface", "1", "--repo", str(repo)
         )
+
+
+def write_cart(repo: Path, source: str = CART_GO) -> None:
+    """Write ``cart.go`` and the owner's approvals into ``repo``."""
+    (repo / "cart.go").write_text(source)
+    (repo / ".code-comments.json").write_text(json.dumps(APPROVED))
 
 
 class TestApplyCheck:
@@ -1036,23 +1062,23 @@ class TestApplyCheck:
 
     The review tool will run this before the owner answers and again
     before the write, so a refusal missed here would write over code or
-    over a comment other than the one the owner answered.
+    approve text the owner never saw.
     """
 
     def test_safe_answers_pass(self, tmp_path: Path) -> None:
-        """Accept a cut, a reword and keeps, and name the file they change.
+        """Accept a cut, a reword, keeps and an approved comment kept.
 
         These are the answers of an ordinary review, including a comment
         above a lint directive, which the write leaves in place. A false
         refusal here would block a review the write should accept.
         """
-        (tmp_path / "cart.go").write_text(CART_GO)
+        write_cart(tmp_path)
         answers = [
             make_answer(
                 1, "\t// Prices are in cents, so sums never round.\n", ""
             ),
             make_answer(2, TOTAL_TEXT, "// Returns the sum.\n", name="Total"),
-            make_answer(4, "// Reports whether every price is above zero.\n"),
+            make_answer(4, VALID_TEXT),
             make_answer(5, "\t// Adds one item.\n"),
         ]
 
@@ -1188,8 +1214,91 @@ class TestApplyCheck:
         assert len(reply["problems"]) == 1
         assert problem in reply["problems"][0]
 
+    @pytest.mark.parametrize(
+        ("on_disk", "answers", "renames", "problem"),
+        [
+            pytest.param(
+                CART_GO.replace("above zero", "not negative"),
+                [
+                    make_answer(
+                        4, VALID_TEXT.replace("above zero", "not negative")
+                    )
+                ],
+                (),
+                "item 4: cart.go Valid: differs from the text the owner "
+                "approved",
+                id="approved-comment-edited",
+            ),
+            pytest.param(
+                CART_GO + "\n// Empties the cart.\nfunc Reset() {}\n",
+                [make_answer(4, "// Empties the cart.\n")],
+                (),
+                "item 4: cart.go Reset: the owner cut this comment",
+                id="cut-comment-back",
+            ),
+            pytest.param(
+                CART_GO.replace(VALID_TEXT, ""),
+                [make_answer(2, TOTAL_TEXT)],
+                (),
+                "cart.go Valid: the owner's approved comment is gone",
+                id="approved-comment-gone",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(2, TOTAL_TEXT)],
+                ("Check=Sum",),
+                "rename Check would move no approved comment",
+                id="rename-moves-nothing",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(4, TOTAL_TEXT, name="Total", old=VALID_TEXT)],
+                (),
+                "item 4: cart.go Total: no comment by this name has the "
+                "item's old",
+                id="named-after-another",
+            ),
+            pytest.param(
+                CART_GO,
+                [
+                    {
+                        "id": 4,
+                        "file": "cart.go",
+                        "name": "Valid",
+                        "old": VALID_TEXT,
+                        "code_removed": True,
+                        "cut": True,
+                    }
+                ],
+                (),
+                "item 4: cart.go Valid: its removed code is back",
+                id="removed-code-back",
+            ),
+        ],
+    )
+    def test_unseen_text_is_not_approved(
+        self, tmp_path: Path, on_disk: str, answers, renames, problem: str
+    ) -> None:
+        """Refuse an answer whose approval would cover text never shown.
+
+        Approving is the owner's lock on a comment, so an approval moved
+        to the wrong name, or of an agent's edit, would protect text the
+        owner never read. The review tool's messages are kept.
+        """
+        write_cart(tmp_path, on_disk)
+
+        code, reply = apply_answers(tmp_path, answers, renames)
+
+        assert (code, reply["changed"]) == (1, [])
+        assert len(reply["problems"]) == 1
+        assert problem in reply["problems"][0]
+
+    @pytest.mark.parametrize(
+        "flags",
+        [pytest.param(("--check",), id="check"), pytest.param((), id="write")],
+    )
     def test_reviews_off_language_is_refused(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch, flags: tuple[str, ...]
     ) -> None:
         """Refuse an answer in a language whose owner reviews are off.
 
@@ -1206,7 +1315,7 @@ class TestApplyCheck:
             make_answer(1, "; Milk.\n", "; Oat milk.\n", file="list.note")
         ]
 
-        code, reply = apply_answers(tmp_path, answers)
+        code, reply = apply_answers(tmp_path, answers, flags=flags)
 
         assert code == 1
         assert reply["problems"] == [
@@ -1225,6 +1334,11 @@ class TestApplyCheck:
             pytest.param(1, {"file": "/cart.go"}, ANSWER, id="absolute-path"),
             pytest.param(1, {"cut": True}, ANSWER, id="text-and-cut"),
             pytest.param(1, {"current": ""}, ANSWER, id="empty-current"),
+            pytest.param(1, {**REMOVED, "name": None}, ANSWER, id="no-name"),
+            pytest.param(1, {**REMOVED, "old": ""}, ANSWER, id="empty-old"),
+            pytest.param(
+                1, {**REMOVED, "cut": None, "text": "x"}, ANSWER, id="no-cut"
+            ),
         ],
     )
     def test_bad_request_exits_two(
@@ -1235,12 +1349,11 @@ class TestApplyCheck:
         ``./cart.go`` and ``cart.go`` would be written as two files, one
         losing the other's answers, a file outside the repository is not
         the review's to write, and an answer with both a text and a cut
-        has no single meaning.
+        has no single meaning. Removed code needs a name, an old and a cut.
         """
-        request = {
-            "interface": interface,
-            "answers": [make_answer(1, TOTAL_TEXT, **fields)],
-        }
+        answer = make_answer(1, TOTAL_TEXT, **fields)
+        answer = {key: v for key, v in answer.items() if v is not None}
+        request = {"interface": interface, "answers": [answer]}
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr("sys.stdin", io.StringIO(json.dumps(request)))
             code, reply = run_command(
@@ -1249,3 +1362,170 @@ class TestApplyCheck:
 
         assert (code, reply) == (2, {})
         assert capsys.readouterr().err.startswith(error)
+
+
+class TestApply:
+    """Write the owner's answers and approve them, all or nothing.
+
+    The owner sees nothing between answering and the write, so a wrong
+    byte or a missing approval would go unnoticed until a later review.
+    """
+
+    def test_answers_are_written_and_approved(self, tmp_path: Path) -> None:
+        """Write each answer, let gofmt lay it out, and approve the result.
+
+        An unanswered comment, such as Fill's, must stay unapproved, a
+        rename must move its approval, and removed code is recorded cut.
+        """
+        # gofmt indents a doc comment's example line with a tab.
+        sum_example = "// Sums.\n//\n//  Total(prices)\n"
+        settings = {
+            "approved": [
+                {"file": "cart.go", "name": "Check", "text": VALID_TEXT},
+                {"file": "cart.go", "name": "Clear", "text": "// Empties.\n"},
+                {"file": "tax.go", "name": "Check", "text": "// Taxes.\n"},
+            ],
+            "avoid": {"client": "say customer"},
+        }
+        (tmp_path / "cart.go").write_text(CART_GO)
+        (tmp_path / "cart.go").chmod(0o640)
+        (tmp_path / ".code-comments.json").write_text(json.dumps(settings))
+        answers = [
+            make_answer(
+                1, "\t// Prices are in cents, so sums never round.\n", ""
+            ),
+            make_answer(3, VALID_TEXT),
+            {
+                "id": 4,
+                "file": "cart.go",
+                "name": "Clear",
+                "old": "// Empties.\n",
+                "code_removed": True,
+                "cut": True,
+            },
+            make_answer(2, TOTAL_TEXT, sum_example, name="Total"),
+        ]
+
+        code, reply = apply_answers(
+            tmp_path, answers, ("Check=Valid",), flags=()
+        )
+
+        assert (code, reply["changed"]) == (0, ["cart.go"])
+        assert (tmp_path / "cart.go").read_text() == CART_GO.replace(
+            "\tMax = 50\n\t// Prices are in cents, so sums never round.\n",
+            "\tMax      = 50\n",
+        ).replace(TOTAL_TEXT, sum_example.replace("  ", "\t"))
+        assert (tmp_path / "cart.go").stat().st_mode & 0o777 == 0o640
+        written = json.loads((tmp_path / ".code-comments.json").read_text())
+        assert [(e["name"], e["text"]) for e in written["approved"]] == [
+            ("Clear", ""),
+            ("Currency", ""),
+            ("Valid", VALID_TEXT),
+            ("Total", sum_example.replace("  ", "\t")),
+            ("Check", "// Taxes.\n"),
+        ]
+        assert written["avoid"] == {"client": "say customer"}
+
+    @pytest.mark.parametrize(
+        ("error", "call", "after"),
+        [
+            pytest.param(DISK_FULL, 2, False, id="file-disk-full"),
+            pytest.param(KeyboardInterrupt(), 1, True, id="file-ctrl-c"),
+            pytest.param(DISK_FULL, 3, False, id="approvals-disk-full"),
+            pytest.param(KeyboardInterrupt(), 3, True, id="approvals-ctrl-c"),
+        ],
+    )
+    def test_failed_write_changes_nothing(
+        self, tmp_path: Path, monkeypatch, error, call: int, after: bool
+    ) -> None:
+        """Put every file back when one cannot be written, or on Ctrl-C.
+
+        A review cannot be written twice, so a half-written one would
+        leave some answers in the code with none of them approved, or
+        approvals of text the code does not hold. The renames go cart.go,
+        tax.go, then ``.code-comments.json``.
+        """
+        write_cart(tmp_path)
+        settings = (tmp_path / ".code-comments.json").read_text()
+        tax_go = "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
+        (tmp_path / "tax.go").write_text(tax_go)
+        old = "// Checks the tax.\n"
+        answers = [
+            make_answer(1, TOTAL_TEXT, "// Sums.\n"),
+            make_answer(2, old, "// Adds tax.\n", name="Check", file="tax.go"),
+        ]
+        replace_file, targets = os.replace, []
+
+        def fail_one_replace(source: str, target: Path) -> None:
+            """Raise ``error`` at rename ``call``, instead or ``after``."""
+            targets.append(target)
+            if len(targets) == call and not after:
+                raise error
+            replace_file(source, target)
+            if len(targets) == call:
+                raise error
+
+        monkeypatch.setattr(os, "replace", fail_one_replace)
+
+        # Ctrl-C reaches the caller; a disk error is printed, exit 2.
+        with contextlib.suppress(KeyboardInterrupt):
+            apply_answers(tmp_path, answers, flags=())
+
+        assert (tmp_path / "cart.go").read_text() == CART_GO
+        assert (tmp_path / "tax.go").read_text() == tax_go
+        assert (tmp_path / ".code-comments.json").read_text() == settings
+        assert len(list(tmp_path.iterdir())) == 3, "a temporary file is left"
+
+    def test_unnamed_answers_leave_approvals_alone(
+        self, tmp_path: Path
+    ) -> None:
+        """Leave ``.code-comments.json`` as it was when nothing is approved.
+
+        The owner edits its avoid list by hand, so rewriting the file for
+        an answer that approves nothing would reformat their edits.
+        """
+        settings = '{"approved": [], "avoid": {"client": "say customer"}}'
+        (tmp_path / "cart.go").write_text(CART_GO)
+        (tmp_path / ".code-comments.json").write_text(settings)
+        answers = [make_answer(1, "\t// Adds one item.\n", "")]
+
+        code, reply = apply_answers(tmp_path, answers, flags=())
+
+        assert (code, reply["changed"]) == (0, ["cart.go"])
+        assert (tmp_path / ".code-comments.json").read_text() == settings
+
+    @pytest.mark.parametrize(
+        ("edited", "problem"),
+        [
+            pytest.param("cart.go", "cart.go: item 1 changed", id="source"),
+            pytest.param(SETTINGS, SETTINGS + " changed", id="approvals"),
+        ],
+    )
+    def test_edit_after_check_is_kept(
+        self, tmp_path: Path, monkeypatch, edited: str, problem: str
+    ) -> None:
+        """Refuse the write when a file changed after the answers were checked.
+
+        An agent or another review may write a file in that moment, and
+        writing the checked source over it would silently drop its edit.
+        """
+        write_cart(tmp_path)
+        answers = [make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total")]
+        check = interface.check_answers
+
+        def check_then_edit(*args):
+            """Check the answers, then edit ``edited`` as another process."""
+            checked = check(*args)
+            with (tmp_path / edited).open("a") as out:
+                out.write("\n")
+            return checked
+
+        monkeypatch.setattr(interface, "check_answers", check_then_edit)
+        edit = (tmp_path / edited).read_text() + "\n"
+
+        code, reply = apply_answers(tmp_path, answers, flags=())
+
+        assert code == 1
+        assert reply["problems"][0].startswith(problem)
+        assert TOTAL_TEXT in (tmp_path / "cart.go").read_text()
+        assert (tmp_path / edited).read_text() == edit
