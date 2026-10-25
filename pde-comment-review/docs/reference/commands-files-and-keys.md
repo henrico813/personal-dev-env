@@ -148,6 +148,10 @@ the `set` changes.
 
 Approval goes through the comment checker, `pde-comment-checker` on
 `PATH`, which `pde-installer` installs and which needs `python3`.
+`draft` asks the checker which comments you must answer. Each command
+that runs the checker first checks that it speaks this tool's
+interface, and refuses one from another install with a hint to run
+`pde-installer`.
 The checker is the only program that writes
 `.code-comments.json`. Only the comments you answered are approved,
 and one left out keeps its approval as it was. The checker never
