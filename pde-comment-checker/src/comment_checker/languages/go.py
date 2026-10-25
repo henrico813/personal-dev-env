@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import enum
 import re
+import subprocess
 
-from ..records import Comment, Function
+from ..records import Comment, Function, SourceError
 
 # "func Send", "type Cart", "const Red", or a bare name such as a field.
 DECLARED_NAME = re.compile(
@@ -242,3 +243,33 @@ def is_go_comment_writable(comment: Comment) -> bool:
     return comment.text.endswith("\n") and not any(
         GO_UNSPACED_LINE.match(line) for line in comment.text.splitlines()
     )
+
+
+def finish_go_rewrite(old: str, new: str, file: str) -> str:
+    """Return ``new`` as ``gofmt`` lays it out, the way the write leaves it.
+
+    Raises:
+        SourceError: ``gofmt`` would change ``old``, so the write would
+            change more than comments, or cannot read either source.
+        OSError: ``gofmt`` is not on ``PATH``.
+    """
+    if run_gofmt(old, file) != old:
+        raise SourceError(
+            f"gofmt would change {file}, so the write would change more "
+            "than comments; run gofmt -w on it first"
+        )
+    return run_gofmt(new, file)
+
+
+def run_gofmt(source: str, file: str) -> str:
+    """Return ``source`` formatted by ``gofmt``.
+
+    Raises:
+        SourceError: ``gofmt`` cannot read ``source``.
+        OSError: ``gofmt`` is not on ``PATH``.
+    """
+    run = subprocess.run(["gofmt"], input=source.encode(), capture_output=True)
+    if run.returncode != 0:
+        message = run.stderr.decode(errors="replace").strip()
+        raise SourceError(message.replace("<standard input>", file))
+    return run.stdout.decode()
