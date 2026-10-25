@@ -19,6 +19,7 @@ from .go import (
 from .line_comments import show_line_comment, write_line_comment
 from .python import (
     PYTHON_GENERATED_MARKER,
+    finish_python_rewrite,
     is_python_comment_writable,
     join_python_prose,
     list_python_warnings,
@@ -81,6 +82,7 @@ LANGUAGES = {
         list_warnings=list_python_warnings,
         show_text=show_python_comment,
         write_plain=write_python_comment,
+        finish_rewrite=finish_python_rewrite,
     ),
 }
 
