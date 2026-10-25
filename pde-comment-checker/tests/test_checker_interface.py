@@ -7,6 +7,7 @@ import re
 import subprocess
 import textwrap
 from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -962,3 +963,289 @@ class TestShowDocstrings:
             module = ast.parse(textwrap.dedent(after["text"]))
             assert isinstance(module.body[0], ast.Expr), after["text"]
             assert len(module.body) == 1, after["text"]
+
+
+CART_GO = """package cart
+
+const (
+\tMax = 50
+\t// Prices are in cents, so sums never round.
+\tCurrency = "USD"
+)
+
+// Sums the prices.
+func Total(prices []int) int { return 0 }
+
+// Reports whether a price is too high,
+// over 1000 cents.
+func TooHigh(price int) bool { return price > 1000 }
+
+// Reports whether every price is above zero.
+func Valid(prices []int) bool { return true }
+
+// Fills the cart.
+//
+//go:noinline
+func Fill() {
+\t// Adds one item.
+\t//nolint:ineffassign
+\t_ = 1
+}
+
+// Deprecated: use Total.
+func Sum() {}
+
+// Deprecated: use Total.
+func Add() {}
+
+var help = `
+// Sample help text.
+`
+"""
+
+TOTAL_TEXT = "// Sums the prices.\n"
+ANSWER = "each answer needs an id, a plain relative file"
+
+
+def make_answer(item: int, current: str, text: str | None = None, /, **fields):
+    """Return an answer in ``cart.go`` keeping or rewriting ``current``.
+
+    ``text=""`` cuts the comment, and ``fields`` add or replace fields,
+    such as ``name``.
+    """
+    entry = {"id": item, "file": "cart.go", "current": current}
+    if text == "":
+        entry["cut"] = True
+    else:
+        entry["text"] = current if text is None else text
+    return {**entry, **fields}
+
+
+def apply_answers(repo: Path, answers: list[dict]) -> tuple[int, dict]:
+    """Run ``apply --check`` on ``answers``."""
+    request = {"interface": 1, "answers": answers}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("sys.stdin", io.StringIO(json.dumps(request)))
+        return run_command(
+            "apply", "--check", "--interface", "1", "--repo", str(repo)
+        )
+
+
+class TestApplyCheck:
+    """Refuse every answer the write could not make safely, before writing.
+
+    The review tool will run this before the owner answers and again
+    before the write, so a refusal missed here would write over code or
+    over a comment other than the one the owner answered.
+    """
+
+    def test_safe_answers_pass(self, tmp_path: Path) -> None:
+        """Accept a cut, a reword and keeps, and name the file they change.
+
+        These are the answers of an ordinary review, including a comment
+        above a lint directive, which the write leaves in place. A false
+        refusal here would block a review the write should accept.
+        """
+        (tmp_path / "cart.go").write_text(CART_GO)
+        answers = [
+            make_answer(
+                1, "\t// Prices are in cents, so sums never round.\n", ""
+            ),
+            make_answer(2, TOTAL_TEXT, "// Returns the sum.\n", name="Total"),
+            make_answer(4, "// Reports whether every price is above zero.\n"),
+            make_answer(5, "\t// Adds one item.\n"),
+        ]
+
+        code, reply = apply_answers(tmp_path, answers)
+
+        assert (code, reply["problems"]) == (0, [])
+        assert reply["changed"] == ["cart.go"]
+        assert (tmp_path / "cart.go").read_text() == CART_GO
+
+    @pytest.mark.parametrize(
+        ("on_disk", "answers", "problem"),
+        [
+            pytest.param(
+                CART_GO,
+                [
+                    make_answer(
+                        3, "// Reports whether a price is over the limit.\n"
+                    )
+                ],
+                "cart.go: item 3 changed in the file after it was added",
+                id="kept-comment-edited",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(2, "// Sums all prices.\n", name="Total")],
+                "cart.go: item 2 changed in the file after it was added",
+                id="named-comment-edited",
+            ),
+            pytest.param(
+                CART_GO,
+                [
+                    make_answer(1, TOTAL_TEXT, name="Total"),
+                    make_answer(2, TOTAL_TEXT),
+                ],
+                "items 1 and 2 are the same comment in cart.go",
+                id="same-comment-twice",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(1, "// Deprecated: use Total.\n", "")],
+                "item 1: cart.go: comment found 2 times, at lines 28, 31",
+                id="comment-repeated",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(1, "Sums the prices.\n", "Sums.\n")],
+                "item 1: cart.go: comment does not start a line",
+                id="mid-line",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(1, "// over 1000 cents.\n", "")],
+                "item 1: cart.go: is only part of a comment",
+                id="part-of-comment",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(1, "// Sample help text.\n", "")],
+                "item 1: cart.go: is not a comment when the checker reads the "
+                "file, such as text inside a string",
+                id="inside-string",
+            ),
+            pytest.param(
+                CART_GO,
+                [
+                    make_answer(
+                        1,
+                        "// Fills the cart.\n//\n//go:noinline\n",
+                        name="Fill",
+                    )
+                ],
+                "item 1: cart.go Fill: a rewrite could change how the code "
+                "builds or is checked",
+                id="directive",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(2, TOTAL_TEXT, "// Sums.\n//go:noinline\n")],
+                "item 2: cart.go Total: the new text could change how the "
+                "code builds or is checked",
+                id="text-adds-directive",
+            ),
+            pytest.param(
+                CART_GO.replace("Max = 50", "Max  =  50"),
+                [make_answer(2, TOTAL_TEXT, "// Returns the sum.\n")],
+                "gofmt would change cart.go, so the write would change more "
+                "than comments",
+                id="unformatted-file",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(2, TOTAL_TEXT, "// Sums.\nfunc Parse() {}\n")],
+                "cart.go: the answers would not read back as the same "
+                "comments",
+                id="text-holds-code",
+            ),
+            pytest.param(
+                CART_GO,
+                [
+                    make_answer(
+                        1,
+                        TOTAL_TEXT
+                        + "func Total(prices []int) int { return 0 }\n",
+                    )
+                ],
+                "item 1: cart.go: holds lines that are not part of the "
+                "comment",
+                id="trailing-code",
+            ),
+            pytest.param(
+                CART_GO,
+                [make_answer(1, "// Sums the prices.")],
+                "item 1: cart.go: must be whole comment lines ending in a "
+                "newline",
+                id="missing-newline",
+            ),
+        ],
+    )
+    def test_unsafe_answer_is_refused(
+        self, tmp_path: Path, on_disk: str, answers, problem: str
+    ) -> None:
+        """Refuse an answer that would write over code or the wrong comment.
+
+        The tool shows these problems to the agent, so each must name its
+        item and say what to fix. The review tool's messages are kept, as
+        its tests and the agents' skills read them.
+        """
+        (tmp_path / "cart.go").write_text(on_disk)
+
+        code, reply = apply_answers(tmp_path, answers)
+
+        assert (code, reply["changed"]) == (1, [])
+        assert len(reply["problems"]) == 1
+        assert problem in reply["problems"][0]
+
+    def test_reviews_off_language_is_refused(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Refuse an answer in a language whose owner reviews are off.
+
+        Python reviews stay off until the review tool can show them, and
+        the tool's own Go-only filter goes away before then, so the
+        checker alone keeps a hand-written answer out of such a file.
+        """
+        writable = replace(NOTE, finish_rewrite=lambda old, new, file: new)
+        monkeypatch.setitem(LANGUAGES, ".note", writable)
+        (tmp_path / "list.note").write_text("; Milk.\nitem milk\n")
+        settings = '{"approved": [], "avoid": {}}\n'
+        (tmp_path / ".code-comments.json").write_text(settings)
+        answers = [
+            make_answer(1, "; Milk.\n", "; Oat milk.\n", file="list.note")
+        ]
+
+        code, reply = apply_answers(tmp_path, answers)
+
+        assert code == 1
+        assert reply["problems"] == [
+            "item 1: list.note: owner reviews are off for this language, so "
+            "the checker writes no answer in it"
+        ]
+        assert (tmp_path / "list.note").read_text() == "; Milk.\nitem milk\n"
+        assert (tmp_path / ".code-comments.json").read_text() == settings
+
+    @pytest.mark.parametrize(
+        ("interface", "fields", "error"),
+        [
+            pytest.param(2, {}, "apply reads", id="other-interface"),
+            pytest.param(1, {"file": "./cart.go"}, ANSWER, id="dotted-path"),
+            pytest.param(1, {"file": "../cart.go"}, ANSWER, id="outside-repo"),
+            pytest.param(1, {"file": "/cart.go"}, ANSWER, id="absolute-path"),
+            pytest.param(1, {"cut": True}, ANSWER, id="text-and-cut"),
+            pytest.param(1, {"current": ""}, ANSWER, id="empty-current"),
+        ],
+    )
+    def test_bad_request_exits_two(
+        self, tmp_path: Path, capsys, interface: int, fields: dict, error: str
+    ) -> None:
+        """Exit 2 with the reason on stderr for a request apply cannot take.
+
+        ``./cart.go`` and ``cart.go`` would be written as two files, one
+        losing the other's answers, a file outside the repository is not
+        the review's to write, and an answer with both a text and a cut
+        has no single meaning.
+        """
+        request = {
+            "interface": interface,
+            "answers": [make_answer(1, TOTAL_TEXT, **fields)],
+        }
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr("sys.stdin", io.StringIO(json.dumps(request)))
+            code, reply = run_command(
+                "apply", "--check", "--interface", "1", "--repo", str(tmp_path)
+            )
+
+        assert (code, reply) == (2, {})
+        assert capsys.readouterr().err.startswith(error)
