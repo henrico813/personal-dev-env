@@ -9,6 +9,7 @@ import re
 import sys
 import tokenize
 import warnings
+from collections import Counter
 from collections.abc import Iterator
 from typing import NamedTuple
 
@@ -33,7 +34,8 @@ PYTHON_GENERATED_MARKER = re.compile(
 
 # A run of only tool directives, such as noqa, gets no name.
 PYTHON_DIRECTIVE = re.compile(
-    r"#\s*(?:noqa\b|(?:type|pragma|fmt|ruff|pylint|mypy|pyright|isort):)"
+    r"#\s*(?:noqa\b|nosec\b|pyre-ignore|(?:type|pragma|fmt|ruff|pylint|mypy"
+    r"|pyright|isort|flake8|ty|yapf):)"
 )
 
 # A shebang or an encoding line, which belongs to the file, not the code.
@@ -56,6 +58,14 @@ WHOLE_DOCSTRING = re.compile(
 
 # A named escape, such as \N{EM DASH}, whose spaces must not break a line.
 NAMED_ESCAPE = re.compile(r"\\N\{[^}]*\}")
+
+# A backslash pair, with group 1 set when Python reads it as another
+# character. A doubled backslash is how a backslash is kept, so it is
+# not counted.
+DOCSTRING_ESCAPE = re.compile(
+    r"\\(?:([\n'\"abfnrtv]|[0-7]{1,3}|x[0-9a-fA-F]{2}|N\{[^}]*\}"
+    r"|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})|[\s\S])"
+)
 
 # Headings whose lines are examples, kept as written.
 EXAMPLE_HEADINGS = ("Example:", "Examples:")
@@ -150,7 +160,8 @@ def is_python_comment_writable(comment: Comment) -> bool:
 
     A docstring that shares a line with code, or a ``#`` run with a tool
     directive such as ``# noqa``, a shebang or a coding line, would lose
-    part of the file.
+    part of the file. A docstring must be one string literal, so new text
+    cannot add code after it, such as ``; return 1``.
     """
     is_hash_run = comment.text.lstrip().startswith("#")
     has_directive = is_hash_run and PYTHON_DIRECTIVE.search(comment.text)
@@ -159,7 +170,10 @@ def is_python_comment_writable(comment: Comment) -> bool:
     has_file_line = is_hash_run and any(
         PYTHON_SHEBANG_OR_ENCODING.match(line) for line in file_lines
     )
-    return not (comment.unapprovable_reason or has_directive or has_file_line)
+    is_one_literal = is_hash_run or is_one_string_literal(comment.text)
+    return is_one_literal and not (
+        comment.unapprovable_reason or has_directive or has_file_line
+    )
 
 
 class PartKind(enum.Enum):
@@ -567,3 +581,85 @@ def list_python_warnings(source: str, file: str) -> list[str]:
         except (SyntaxError, ValueError) as error:
             raise SourceError(describe_python_error(error)) from error
     return [str(warning.message) for warning in caught]
+
+
+def finish_python_rewrite(old: str, new: str, file: str) -> str:
+    """Return ``new`` once it compiles with no new warning or escape.
+
+    Warnings are compared by message, not by line, since the write moves
+    lines, so a warning already in the code, such as an invalid escape in
+    a regular expression, is left alone. ``compile`` ignores a coding
+    line, so the encoding Python reads the file in is compared too.
+
+    Raises:
+        SourceError: ``new`` does not compile, gives a warning ``old``
+            does not, such as an invalid escape, has a docstring escape
+            ``old`` lacks, such as ``\\n``, or changes the encoding.
+    """
+    try:
+        warned = Counter(list_python_warnings(new, file))
+    except SourceError as error:
+        cause = error.__cause__
+        reason = str(error).replace("cannot be read", "would not compile")
+        detail = f": {cause.msg}" if isinstance(cause, SyntaxError) else ""
+        raise SourceError(f"{file}: the new text {reason}{detail}") from error
+    warned -= Counter(list_python_warnings(old, file))
+    escapes = count_docstring_escapes(new, file)
+    escapes -= count_docstring_escapes(old, file)
+    if read_encoding(new) != read_encoding(old):
+        raise SourceError(
+            f"{file}: the write changes the encoding Python reads it in, "
+            f"from {read_encoding(old)} to {read_encoding(new)}; keep a "
+            "comment naming an encoding off lines 1 and 2"
+        )
+    if warned:
+        raise SourceError(
+            f'{file}: the write adds Python\'s warning "{sorted(warned)[0]}"; '
+            "double the backslash to keep it"
+        )
+    if escapes:
+        name, _, escape = sorted(escapes)[0]
+        # A backslash at a line's end joins the next line.
+        shown = "a backslash at a line end" if escape == "\\\n" else escape
+        raise SourceError(
+            f"{file}: the write adds {shown} to the docstring of {name}, "
+            "which Python reads as another character; double the backslash "
+            "to keep it"
+        )
+    return new
+
+
+def read_encoding(source: str) -> str:
+    """Return the encoding Python reads ``source`` in, from its coding line.
+
+    An encoding Python does not know is returned as the error saying so.
+    """
+    try:
+        lines = io.BytesIO(source.encode()).readline
+        return tokenize.detect_encoding(lines)[0]
+    except SyntaxError as error:
+        return f"none ({error})"
+
+
+def count_docstring_escapes(
+    source: str, file: str
+) -> Counter[tuple[str, int, str]]:
+    """Count each escape that changes a docstring's value, by docstring.
+
+    A docstring is its name and which of the docstrings with that name
+    it is, such as the second ``f`` when an ``if`` and its ``else`` both
+    define one, so an escape cannot pass by moving from one docstring to
+    another. Raw docstrings have none, and ``#`` comments are not strings.
+    """
+    escapes: Counter[tuple[str, int, str]] = Counter()
+    seen: Counter[str] = Counter()
+    for comment in parse_python_comments(source, file):
+        docstring = WHOLE_DOCSTRING.fullmatch(comment.text)
+        seen[comment.name] += 1
+        if docstring and docstring["prefix"] not in ("r", "R"):
+            escapes.update(
+                (comment.name, seen[comment.name], pair[0])
+                for pair in DOCSTRING_ESCAPE.finditer(docstring["body"])
+                if pair[1] is not None
+            )
+    return escapes
