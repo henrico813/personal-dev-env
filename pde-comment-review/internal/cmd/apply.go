@@ -16,6 +16,10 @@ import (
 
 const settingsFile = ".code-comments.json"
 
+// The number of the checker's JSON interface this tool speaks. Each of the
+// checker's replies carries the number it speaks.
+const checkerInterface = 1
+
 // Returns the installed comment checker, the one program that writes
 // .code-comments.json.
 func findCheckerPath() (string, error) {
@@ -26,7 +30,75 @@ func findCheckerPath() (string, error) {
 			err,
 		)
 	}
+	// A checker from another install may read this tool's requests differently.
+	var version struct{}
+	err = runCheckerCommand(
+		checker,
+		&version,
+		"version",
+	)
+	if err != nil {
+		return "", fmt.Errorf(
+			"%w; run pde-installer so pde-comment-review and the checker come from one install",
+			err,
+		)
+	}
 	return checker, nil
+}
+
+// Runs one of the checker's JSON commands, such as changes, and fills reply
+// from what it prints. Exit 1 is a refusal whose reasons are in the reply.
+func runCheckerCommand(checker string, reply any, args ...string) error {
+	run := exec.Command(
+		checker,
+		args...,
+	)
+	var stderr strings.Builder
+	run.Stderr = &stderr
+	output, err := run.Output()
+	var exit *exec.ExitError
+	refused := errors.As(err, &exit) && exit.ExitCode() == 1 && len(output) > 0
+	if refused {
+		err = nil
+	}
+	var spoken struct {
+		Interface int      `json:"interface"`
+		Problems  []string `json:"problems"`
+	}
+	if err == nil {
+		err = json.Unmarshal(
+			output,
+			&spoken,
+		)
+	}
+	// A refusal with no reasons would read as nothing to review.
+	if err == nil && refused && len(spoken.Problems) == 0 {
+		err = errors.New("exit status 1 with no problems in its reply")
+	}
+	if err != nil {
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			err = fmt.Errorf(
+				"%w: %s",
+				err,
+				detail,
+			)
+		}
+		return fmt.Errorf(
+			"comment checker: %w",
+			err,
+		)
+	}
+	if spoken.Interface != checkerInterface {
+		return fmt.Errorf(
+			"the comment checker speaks interface %d, not %d",
+			spoken.Interface,
+			checkerInterface,
+		)
+	}
+	return json.Unmarshal(
+		output,
+		reply,
+	)
 }
 
 // Writes the owner's decisions into the code and approves them, so the
@@ -411,8 +483,16 @@ func readApprovalEntries(dir string) ([]namedComment, error) {
 // Approves through the checker's --approve, since only the checker
 // writes .code-comments.json.
 func approveComments(repo, checker string, files []string) error {
-	args := []string{checker, "--repo", repo, "--approve", "--"}
-	run := exec.Command("python3", append(args, files...)...)
+	args := []string{
+		"--repo",
+		repo,
+		"--approve",
+		"--",
+	}
+	run := exec.Command(
+		checker,
+		append(args, files...)...,
+	)
 	run.Dir = repo
 	output, err := run.CombinedOutput()
 	if err != nil {
@@ -433,11 +513,20 @@ func approveComment(
 	key commentKey,
 	renames []string,
 ) error {
-	args := []string{checker, "--repo", repo, "--approve-comment", key.file, key.name}
+	args := []string{
+		"--repo",
+		repo,
+		"--approve-comment",
+		key.file,
+		key.name,
+	}
 	for _, pair := range renames {
 		args = append(args, "--rename="+pair)
 	}
-	run := exec.Command("python3", args...)
+	run := exec.Command(
+		checker,
+		args...,
+	)
 	run.Dir = repo
 	output, err := run.CombinedOutput()
 	if err != nil {
