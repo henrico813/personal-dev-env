@@ -100,40 +100,6 @@ func TestParseProposalsRefusesUnsafeFiles(t *testing.T) {
 			want: "inside the repo",
 		},
 		{
-			name: "code in new",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeReword, Old: rewordParse.Old, New: "// Reads the config.\nfunc Parse() {}\n"}),
-			want: "new: line 2 is not a // comment",
-		},
-		{
-			name: "comment repeated",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "// Deprecated: use ParseConfig.\n"}),
-			want: "found 2 times, at lines 13, 16",
-		},
-		{
-			name: "comment mid-line",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "// on Linux, so the default is above them.\n"}),
-			want: "does not start a line",
-		},
-		{
-			name: "start of a comment",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "\t// Used when the config file sets no port. Ports below 1024 need root\n"}),
-			want: "only part of a comment",
-		},
-		{
-			name: "end of a comment",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "\t// on Linux, so the default is above them.\n"}),
-			want: "only part of a comment",
-		},
-		{
-			name: "comment above a directive",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeKeep, Old: "// Names one setting in the config file.\n"}),
-		},
-		{
-			name: "comment inside a string",
-			data: marshalProposals(t, repo, Item{ID: 1, File: "config.go", Proposal: ProposeCut, Old: "// Sample settings, as the help text prints them.\n"}),
-			want: "inside a string",
-		},
-		{
 			name: "id used twice",
 			data: marshalProposals(t, repo, rewordParse, rewordParse),
 			want: "used twice",

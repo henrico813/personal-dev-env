@@ -176,6 +176,7 @@ func TestCheckerFailureWithoutReasonsIsRefused(t *testing.T) {
 
 	err = runCheckerCommand(
 		checker,
+		nil,
 		&reply,
 		"changes",
 	)
