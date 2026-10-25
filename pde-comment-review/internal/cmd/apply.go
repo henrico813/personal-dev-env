@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +33,7 @@ func findCheckerPath() (string, error) {
 	var version struct{}
 	err = runCheckerCommand(
 		checker,
+		nil,
 		&version,
 		"version",
 	)
@@ -46,11 +48,18 @@ func findCheckerPath() (string, error) {
 
 // Runs one of the checker's JSON commands, such as changes, and fills reply
 // from what it prints. Exit 1 is a refusal whose reasons are in the reply.
-func runCheckerCommand(checker string, reply any, args ...string) error {
+func runCheckerCommand(checker string, request any, reply any, args ...string) error {
 	run := exec.Command(
 		checker,
 		args...,
 	)
+	if request != nil {
+		data, err := json.Marshal(request)
+		if err != nil {
+			return err
+		}
+		run.Stdin = bytes.NewReader(data)
+	}
 	var stderr strings.Builder
 	run.Stderr = &stderr
 	output, err := run.Output()
@@ -97,6 +106,98 @@ func runCheckerCommand(checker string, reply any, args ...string) error {
 		output,
 		reply,
 	)
+}
+
+// One answer of the checker's apply request. Text is left out for a cut.
+type checkerAnswer struct {
+	ID          int    `json:"id"`
+	File        string `json:"file"`
+	Name        string `json:"name,omitempty"`
+	Old         string `json:"old"`
+	Current     string `json:"current,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Cut         bool   `json:"cut,omitempty"`
+	CodeRemoved bool   `json:"code_removed,omitempty"`
+}
+
+// Returns an error naming each problem the checker's apply --check finds
+// in r, as if the owner accepted every proposal.
+func refuseUnwritableProposals(
+	r *review.Review,
+	named map[commentKey]string,
+	checker string,
+) error {
+	request := struct {
+		Interface int             `json:"interface"`
+		Renames   []string        `json:"renames,omitempty"`
+		Answers   []checkerAnswer `json:"answers"`
+	}{
+		Interface: checkerJSONVersion,
+		Renames:   r.ListRenames(),
+	}
+	for _, e := range r.ListEntries() {
+		request.Answers = append(
+			request.Answers,
+			buildAcceptedAnswer(
+				e.Item,
+				named,
+			),
+		)
+	}
+	var reply struct {
+		Problems []string `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		request,
+		&reply,
+		"apply",
+		"--check",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		r.Repo(),
+	)
+	if err != nil {
+		return err
+	}
+	var problems []error
+	for _, problem := range reply.Problems {
+		problems = append(
+			problems,
+			errors.New(problem),
+		)
+	}
+	return errors.Join(problems...)
+}
+
+// Returns the answer the owner gives by accepting item's proposal.
+func buildAcceptedAnswer(item review.Item, named map[commentKey]string) checkerAnswer {
+	answer := checkerAnswer{
+		ID:          item.ID,
+		File:        item.File,
+		Name:        item.Name,
+		Old:         item.Old,
+		CodeRemoved: item.CodeRemoved,
+	}
+	if !item.CodeRemoved {
+		answer.Current = item.Old
+		// A drafted item's old may be the approved text, which its file no
+		// longer holds.
+		if text, ok := named[commentKey{item.File, item.Name}]; ok {
+			answer.Current = text
+		}
+	}
+	switch item.Proposal {
+	case review.ProposeCut:
+		answer.Cut = true
+	case review.ProposeReword:
+		answer.Text = item.New
+	default:
+		// A keep puts old back over the file's text, as the write does.
+		answer.Text = item.Old
+	}
+	return answer
 }
 
 // Writes the owner's decisions into the code and approves them, so the

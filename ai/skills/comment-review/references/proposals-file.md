@@ -55,7 +55,8 @@ one is wrong. It names each problem, for example:
 
 - the name has a capital letter or a space;
 - `version` is not 1, or a field name is unknown;
-- `file` is not a `.go` file inside `repo`;
+- `file` is not a `.go` file inside `repo`. A Python item is refused
+  because Python reviews are off;
 - `old` or `new` is not whole `//` lines, or is a directive such as
   `//go:generate`;
 - `old`, or the comment of an item with a `name`, is not found
@@ -65,6 +66,8 @@ one is wrong. It names each problem, for example:
   its removed code is back;
 - `new` is missing for `reword`, set for `keep` or `cut`, or the same
   as `old`;
+- `gofmt` would change a file whose comment an item cuts or rewords.
+  Run `gofmt -w` on it first;
 - an `id` is used twice, or a rename is not `OLD=NEW`;
 - two items are the same comment;
 - a rename would move no approved comment, because its file has no

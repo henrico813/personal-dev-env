@@ -179,6 +179,20 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 			},
 		},
 		{
+			name:   "reword that adds a directive",
+			onDisk: cartGo,
+			extra: []review.Item{{
+				ID:       4,
+				File:     "cart.go",
+				Proposal: review.ProposeReword,
+				Old:      "// Reports whether every price is above zero.\n",
+				New:      "// Reports whether every price is above zero.\n//go:noinline\n",
+			}},
+			want: []string{
+				"item 4: cart.go Valid: the new text could change how the code builds",
+			},
+		},
+		{
 			name:   "removed code back",
 			onDisk: cartGo,
 			extra: []review.Item{{
@@ -365,6 +379,101 @@ func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
 		t.Fatalf(
 			"addRound() error = %v, want it to name cart.go Valid",
 			err,
+		)
+	}
+	roundTwo := filepath.Join(
+		review.FindStateRoot(),
+		"cart",
+		"round-2.json",
+	)
+	if _, err := os.Stat(roundTwo); !errors.Is(
+		err,
+		fs.ErrNotExist,
+	) {
+		t.Errorf(
+			"round file %s was left behind: %v",
+			roundTwo,
+			err,
+		)
+	}
+}
+
+// Keeping a drafted item puts the approved text back over an agent's edit,
+// so add must check that write too, or it fails after the owner answers.
+func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
+	editedAndUnformatted := strings.NewReplacer(
+		"every price is above zero",
+		"no price is negative",
+		"Max = 50",
+		"Max  =  50",
+	).Replace(cartGo)
+	keepValid := review.Item{
+		ID:       1,
+		File:     "cart.go",
+		Name:     "Valid",
+		Proposal: review.ProposeKeep,
+		Old:      "// Reports whether every price is above zero.\n",
+	}
+
+	roundFile, err := addScratchReview(
+		t,
+		editedAndUnformatted,
+		validApproval,
+		keepValid,
+	)
+
+	want := "nothing was saved: gofmt would change cart.go"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf(
+			"addRound() error = %v, want it to contain %q",
+			err,
+			want,
+		)
+	}
+	if _, err := os.Stat(roundFile); !errors.Is(
+		err,
+		fs.ErrNotExist,
+	) {
+		t.Errorf(
+			"round file %s was left behind: %v",
+			roundFile,
+			err,
+		)
+	}
+}
+
+// Python reviews stay off until the review screen can show them, so add
+// must refuse a hand-written Python item before the owner sees it.
+func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
+	repo := startSecondRound(
+		t,
+		map[string]string{
+			"tax.py": "# Returns the tax on a price.\ndef tax(price):\n    return 0\n",
+		},
+	)
+	keepTax := review.Item{
+		ID:       4,
+		File:     "tax.py",
+		Proposal: review.ProposeKeep,
+		Old:      "# Returns the tax on a price.\n",
+	}
+
+	err := addRound(
+		"cart",
+		writeProposals(
+			t,
+			repo,
+			keepTax,
+		),
+		buildRepoCheckerOnPath(t),
+	)
+
+	want := "nothing was saved: item 4: tax.py: owner reviews are off for this language"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf(
+			"addRound() error = %v, want it to contain %q",
+			err,
+			want,
 		)
 	}
 	roundTwo := filepath.Join(
