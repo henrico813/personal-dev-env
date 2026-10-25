@@ -39,30 +39,22 @@ var (
 )
 
 // Builds this checkout's comment checker and puts it first on PATH, so the
-// tests never run an installed copy. Returns the skill's script, which runs
-// that checker.
+// tests never run an installed copy. Returns that checker.
 func buildRepoCheckerOnPath(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 is not on PATH; the comment checker needs it")
 	}
-	checker, err := filepath.Abs(filepath.Join("..", "..", "..", "ai", "skills", "code-documentation", "scripts", "check_comments.py"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(checker); err != nil {
-		t.Fatal(err)
-	}
-	// The skill's script runs the pde-comment-checker it finds on PATH.
 	bin := t.TempDir()
+	checker := filepath.Join(
+		bin,
+		"pde-comment-checker",
+	)
 	build := exec.Command(
 		"python3",
 		"-I",
 		"build.py",
-		filepath.Join(
-			bin,
-			"pde-comment-checker",
-		),
+		checker,
 	)
 	build.Dir = filepath.Join(
 		"..",
@@ -94,7 +86,7 @@ func TestCheckerFoundOnPath(t *testing.T) {
 	)
 	err := os.WriteFile(
 		checker,
-		[]byte("#!/bin/sh\n"),
+		[]byte("#!/bin/sh\necho '{\"interface\": 1}'\n"),
 		0o755,
 	)
 	if err != nil {
@@ -130,6 +122,67 @@ func TestMissingCheckerNamesInstaller(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "run pde-installer") {
 		t.Fatalf(
 			"findCheckerPath() error = %v, want one naming pde-installer",
+			err,
+		)
+	}
+}
+
+// A checker from another install may read the tool's requests differently,
+// so the tool must stop before asking it anything and say how to fix it.
+func TestCheckerOfOtherInterfaceIsRefused(t *testing.T) {
+	installed := t.TempDir()
+	err := os.WriteFile(
+		filepath.Join(
+			installed,
+			"pde-comment-checker",
+		),
+		[]byte("#!/bin/sh\necho '{\"interface\": 2, \"version\": \"3.0.0\"}'\n"),
+		0o755,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(
+		"PATH",
+		installed,
+	)
+
+	_, err = findCheckerPath()
+
+	if err == nil || !strings.Contains(err.Error(), "speaks interface 2, not 1") || !strings.Contains(err.Error(), "run pde-installer") {
+		t.Fatalf(
+			"findCheckerPath() error = %v, want one naming both interfaces and pde-installer",
+			err,
+		)
+	}
+}
+
+// A broken checker that fails with an empty problems list must not pass as a
+// reply, or draft would save a review with nothing for the owner to answer.
+func TestCheckerFailureWithoutReasonsIsRefused(t *testing.T) {
+	checker := filepath.Join(
+		t.TempDir(),
+		"pde-comment-checker",
+	)
+	err := os.WriteFile(
+		checker,
+		[]byte("#!/bin/sh\necho '{\"interface\": 1, \"items\": [], \"problems\": []}'\nexit 1\n"),
+		0o755,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reply struct{}
+
+	err = runCheckerCommand(
+		checker,
+		&reply,
+		"changes",
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "no problems in its reply") {
+		t.Fatalf(
+			"runCheckerCommand() error = %v, want the empty refusal refused",
 			err,
 		)
 	}
@@ -378,7 +431,14 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			checker := buildRepoCheckerOnPath(t)
 			if tt.crash {
 				checker = filepath.Join(t.TempDir(), "crash.py")
-				writeFile(t, checker, "raise RuntimeError('bug')\n")
+				err := os.WriteFile(
+					checker,
+					[]byte("#!/usr/bin/env python3\nraise RuntimeError('bug')\n"),
+					0o755,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			r := startReview(t, tt.onDisk, approveValid, tt.renames, tt.extra...)
 			decisions := map[int]review.Decision{
