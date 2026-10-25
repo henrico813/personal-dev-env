@@ -10,6 +10,7 @@ from ..records import Comment, Function
 from .go import (
     GO_BEHAVIORS_NOT_APPLYING,
     GO_GENERATED_MARKER,
+    finish_go_rewrite,
     is_go_comment_writable,
     join_comment_prose,
     list_go_functions,
@@ -34,9 +35,11 @@ class Language:
     ``list_warnings`` is ``None`` for a language ``--list`` does not take,
     and ``list_functions`` for one whose names another checker checks.
     ``show_text`` and ``write_plain`` are ``None`` for a language ``show``
-    does not take.
-    ``changes`` lists comments for the owner only while ``reviews_on`` is
-    true.
+    does not take, and ``finish_rewrite`` for one ``apply`` does not.
+    ``finish_rewrite`` takes the old and new source and the file, and
+    returns the new source as the write leaves it, or raises
+    ``SourceError`` when the write would be unsafe. ``changes`` and
+    ``apply`` take comments only while ``reviews_on`` is true.
     """
 
     name: str
@@ -49,6 +52,7 @@ class Language:
     reviews_on: bool = False
     show_text: Callable[[str], tuple[str, list[dict[str, str]]]] | None = None
     write_plain: Callable[[str, str], str] | None = None
+    finish_rewrite: Callable[[str, str, str], str] | None = None
     # Each behavior of the shared sample suite it has no case for, and why.
     behaviors_not_applying: Mapping[str, str] = field(default_factory=dict)
 
@@ -65,6 +69,7 @@ LANGUAGES = {
         reviews_on=True,
         show_text=show_line_comment,
         write_plain=write_line_comment,
+        finish_rewrite=finish_go_rewrite,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
     ".py": Language(

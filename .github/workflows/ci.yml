@@ -174,5 +174,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      # apply checks every Go write with gofmt.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: pde-comment-review/go.mod
+          cache: false
       - name: test on Python 3.10
         run: uv sync --locked && uv run --locked pytest
