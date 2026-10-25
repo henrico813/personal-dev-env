@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from comment_checker import INTERFACE, VERSION, interface
+from comment_checker.approvals import unname_unapprovable_comments
 from comment_checker.cli import main
 from comment_checker.languages import LANGUAGES, Language
 from comment_checker.records import Comment
@@ -1008,6 +1009,7 @@ var help = `
 TOTAL_TEXT = "// Sums the prices.\n"
 VALID_TEXT = "// Reports whether every price is above zero.\n"
 ANSWER = "each answer needs an id, a plain relative file"
+NEW_TEXT = "the new text could change how the code builds or is checked"
 DISK_FULL = OSError("No space left on device")
 SETTINGS = ".code-comments.json"
 # A removed-code answer, which has no current text; None drops a field.
@@ -1326,6 +1328,137 @@ class TestApplyCheck:
         assert (tmp_path / ".code-comments.json").read_text() == settings
 
     @pytest.mark.parametrize(
+        ("edits", "problem"),
+        [
+            pytest.param(
+                {"total": '    """Sum in cents."""\n'},
+                "",
+                id="code-warning-kept",
+            ),
+            pytest.param(
+                {"total": '    """Sum \\d prices."""\n'},
+                "shop.py: the write adds Python's warning \"invalid escape "
+                "sequence '\\d'\"",
+                id="invalid-escape",
+            ),
+            pytest.param(
+                {"total": '    """Sum C:\\\\a or C:\\new."""\n'},
+                "shop.py: the write adds \\n to the docstring of total",
+                id="escape",
+            ),
+            pytest.param(
+                {"total": '    """Sum \\N{EM DASH} in cents."""\n'},
+                "the write adds \\N{EM DASH} to the docstring of total",
+                id="named-escape",
+            ),
+            pytest.param(
+                {"total": '    """Sum \\\n    prices."""\n'},
+                "the write adds a backslash at a line end to the docstring",
+                id="line-end-backslash",
+            ),
+            pytest.param(
+                {
+                    "fee": '    """Fee."""\n',
+                    "total": '    """Sum at C:\\new."""\n',
+                },
+                "the write adds \\n to the docstring of total",
+                id="swap-escape",
+            ),
+            pytest.param(
+                {
+                    "f@if": '        """F."""\n',
+                    "f@else": '        """F at C:\\new."""\n',
+                },
+                "the write adds \\n to the docstring of f",
+                id="swap-escape-same-name",
+            ),
+            pytest.param({"tax": ""}, "only statement", id="cut-whole-body"),
+            pytest.param(
+                {"f@else": ""}, "only statement", id="cut-shared-name-body"
+            ),
+            pytest.param(
+                {"total": '    """Sum."""; return 1\n'},
+                f"item 1: shop.py total: {NEW_TEXT}",
+                id="code-after-docstring",
+            ),
+            pytest.param(
+                {"<module>": '"""Shop."""; X = 2\n'},
+                f"item 1: shop.py <module>: {NEW_TEXT}",
+                id="code-after-module-docstring",
+            ),
+            pytest.param(
+                {"total": '    """Sum """""\n'},
+                f"item 1: shop.py total: {NEW_TEXT}",
+                id="two-string-literals",
+            ),
+            pytest.param(
+                {"#@top": "# nosec\n"},
+                f"item 1: shop.py: {NEW_TEXT}",
+                id="adds-directive",
+            ),
+            pytest.param(
+                {"<module>": ""},
+                "shop.py: the write changes the encoding Python reads it in",
+                id="comment-becomes-coding-line",
+            ),
+            pytest.param(
+                {"total": '"""Sum."""\n'},
+                "shop.py: the new text would not compile",
+                id="does-not-compile",
+            ),
+        ],
+    )
+    def test_python_write_keeps_code_meaning(
+        self, tmp_path: Path, monkeypatch, edits: dict, problem: str
+    ) -> None:
+        """Refuse a docstring answer that would change what the code does.
+
+        The owner types plain text on the phone, so ``C:\\new`` would
+        silently become a line break and ``\\d`` a warning, even when the
+        answer takes an escape out of another docstring. A doubled
+        backslash, or a warning already in the code, is fine. Code after
+        a docstring, a cut that leaves a body empty or turns a comment
+        into a coding line, or a new directive would change the code.
+        Keys with ``@`` are docstrings whose name is shared, so unnamed.
+        """
+        python = replace(LANGUAGES[".py"], reviews_on=True)
+        monkeypatch.setitem(LANGUAGES, ".py", python)
+        docstrings = {
+            "<module>": '"""Shop."""\n',
+            "#@top": "# Prices follow the decoding: latin-1 table.\n",
+            "total": '    """Sum the prices."""\n',
+            "fee": '    """Fee at C:\\new."""\n',
+            "tax": '    """Return the tax."""\n',
+            "f@if": '        """F at C:\\new."""\n',
+            "f@else": '        """F."""\n',
+        }
+        (tmp_path / "shop.py").write_text(
+            f"{docstrings['<module>']}\n{docstrings['#@top']}import re\n\n"
+            'DIGITS = re.compile("\\d+")\n\n\n'
+            f"def total():\n{docstrings['total']}    return 0\n\n\n"
+            f"def fee():\n{docstrings['fee']}    return 0\n\n\n"
+            f"def tax():\n{docstrings['tax']}\n\n"
+            f"if DIGITS:\n\n    def f():\n{docstrings['f@if']}\n"
+            f"else:\n\n    def f():\n{docstrings['f@else']}"
+        )
+        answers = [
+            make_answer(
+                item,
+                docstrings[key],
+                text,
+                file="shop.py",
+                name="" if "@" in key else key,
+            )
+            for item, (key, text) in enumerate(edits.items(), 1)
+        ]
+
+        code, reply = apply_answers(tmp_path, answers)
+
+        assert code == (1 if problem else 0)
+        assert len(reply["problems"]) == (1 if problem else 0)
+        assert all(problem in p for p in reply["problems"])
+
+    @pytest.mark.parametrize(
         ("interface", "fields", "error"),
         [
             pytest.param(2, {}, "apply reads", id="other-interface"),
@@ -1529,3 +1662,64 @@ class TestApply:
         assert reply["problems"][0].startswith(problem)
         assert TOTAL_TEXT in (tmp_path / "cart.go").read_text()
         assert (tmp_path / edited).read_text() == edit
+
+    def test_repository_comments_survive_rewrite(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Write back every comment here unchanged, then reword every other.
+
+        Writing a comment's own text must change no byte, and a reword
+        must keep the file parsing and change only that comment, under
+        its name, in every Go and Python file of this repository. A write
+        bug here would change a real file outside the one comment it was
+        asked to touch, which a small sample would never show.
+        """
+        python = replace(LANGUAGES[".py"], reviews_on=True)
+        monkeypatch.setitem(LANGUAGES, ".py", python)
+        root = Path(__file__).resolve().parents[2]
+        listed = ["git", "-C", str(root), "ls-files", "*.go", "*.py"]
+        files = subprocess.check_output(listed, text=True).split()
+        reworded = 0
+        for file in files:
+            copy = tmp_path / file
+            copy.parent.mkdir(parents=True, exist_ok=True)
+            copy.write_bytes((root / file).read_bytes())
+            language = LANGUAGES[copy.suffix]
+            before = language.read_comments(copy.read_text(), file)
+            named = unname_unapprovable_comments(before)[0]
+            answers = [
+                make_answer(index, c.text, file=file, name=c.name)
+                for index, c in enumerate(named)
+                if language.is_writable(c)
+                and copy.read_text().count(c.text) == 1
+            ]
+
+            kept = apply_answers(tmp_path, answers, flags=())
+            unchanged = copy.read_bytes() == (root / file).read_bytes()
+            rewords = {
+                answer["id"]: language.write_plain(
+                    language.show_text(answer["text"])[0].replace(
+                        "\n", " One more sentence.\n", 1
+                    ),
+                    answer["text"],
+                )
+                for answer in answers[::2]
+            }
+            changed = apply_answers(
+                tmp_path,
+                [{**a, "text": rewords[a["id"]]} for a in answers[::2]],
+                flags=(),
+            )
+
+            assert (kept[0], unchanged) == (0, True), (file, kept[1])
+            assert changed[0] == 0, (file, changed[1])
+            after = language.read_comments(copy.read_text(), file)
+            assert [c.name for c in after] == [c.name for c in before], file
+            unanswered = [i for i in range(len(before)) if i not in rewords]
+            assert [after[i].text for i in unanswered] == [
+                before[i].text for i in unanswered
+            ], file
+            assert all("One more sentence." in after[i].prose for i in rewords)
+            reworded += len(rewords)
+
+        assert reworded > 800
