@@ -70,72 +70,137 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 		},
 	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			pluginsDir := filepath.Join(home, ".local", "share", "pde", "herdr-plugins")
+
+			output, calls := runHerdrSetup(
+				t,
+				home,
+				tt.herdrState,
+				tt.herdrIn,
+			)
+
+			if tt.wantOutput == "" && len(output) != 0 {
+				t.Fatalf("output = %q, want none", output)
+			}
+			for _, plugin := range plugins {
+				pluginDir := filepath.Join(pluginsDir, plugin.dir)
+				wantOutput := strings.ReplaceAll(tt.wantOutput, "PLUGIN", pluginDir)
+				if !strings.Contains(output, wantOutput) {
+					t.Errorf("output = %q, want substring %q", output, wantOutput)
+				}
+				if unlinked := containsLine(calls, "plugin unlink "+plugin.id); unlinked != tt.wantUnlink {
+					t.Errorf("unlink %s ran = %v, want %v; calls:\n%s", plugin.id, unlinked, tt.wantUnlink, calls)
+				}
+				if linked := containsLine(calls, "plugin link "+pluginDir); linked != tt.wantLink {
+					t.Errorf("link %s ran = %v, want %v; calls:\n%s", plugin.id, linked, tt.wantLink, calls)
+				}
+			}
+		})
+	}
+}
+
+// A Herdr server started before an install kept running without the new
+// Ctrl+b e key, so the key opened Herdr's scrollback editor instead of the
+// comment review.
+func TestHerdrScriptReloadsRunningServerConfig(t *testing.T) {
+	home := t.TempDir()
+
+	_, calls := runHerdrSetup(
+		t,
+		home,
+		"already",
+		"home",
+	)
+
+	if !containsLine(calls, "server reload-config") {
+		t.Errorf("herdr server reload-config did not run; calls:\n%s", calls)
+	}
+}
+
+// Runs the script for home against a fake herdr in herdrState, found as
+// herdrIn says, and returns its output and the herdr calls it made. Fails
+// the test when the script exits nonzero, which would fail the install.
+func runHerdrSetup(
+	t *testing.T,
+	home string,
+	herdrState string,
+	herdrIn string,
+) (output, calls string) {
+	t.Helper()
 	// The installer runs the script with aqua's bin, where it installs jq,
 	// first on PATH, so take jq from the test's PATH the same way.
 	jq, err := exec.LookPath("jq")
 	if err != nil {
 		t.Skip("jq is not on PATH; the installer provides it through aqua, so install first")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
-			bin := t.TempDir()
-			pluginsDir := filepath.Join(home, ".local", "share", "pde", "herdr-plugins")
-			// The fake herdr logs each call here, so the test can see what ran.
-			logPath := filepath.Join(t.TempDir(), "herdr.log")
-			// Put the fake herdr on PATH or only in the home's .local/bin.
-			switch tt.herdrIn {
-			case "path":
-				writeExecutable(t, filepath.Join(bin, "herdr"), fakeHerdr)
-			case "home":
-				writeExecutable(t, filepath.Join(home, ".local", "bin", "herdr"), fakeHerdr)
-			}
-			// Render the template for this home, as chezmoi would.
-			script := filepath.Join(t.TempDir(), "link-herdr.sh")
-			if err := os.WriteFile(script, []byte(renderHerdrSetup(t, home)), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			// jq's folder supplies jq, and /usr/bin and /bin the shell tools.
-			path := strings.Join([]string{bin, filepath.Dir(jq), "/usr/bin", "/bin"}, string(os.PathListSeparator))
-			// HERDR_MODE picks the fake's answers; HERDR_PLUGINS is the folder
-			// whose manifests it reports as already linked.
-			command := exec.Command("sh", script)
-			command.Env = append(os.Environ(),
-				"HOME="+home,
-				"PATH="+path,
-				"HERDR_MODE="+tt.herdrState,
-				"HERDR_LOG="+logPath,
-				"HERDR_PLUGINS="+pluginsDir,
-			)
-
-			output, err := command.CombinedOutput()
-
-			if err != nil {
-				t.Fatalf("script failed the install: %v\n%s", err, output)
-			}
-			if tt.wantOutput == "" && len(output) != 0 {
-				t.Fatalf("output = %q, want none", output)
-			}
-			calls, err := os.ReadFile(logPath)
-			if err != nil && !errors.Is(err, fs.ErrNotExist) {
-				t.Fatal(err)
-			}
-			for _, plugin := range plugins {
-				pluginDir := filepath.Join(pluginsDir, plugin.dir)
-				wantOutput := strings.ReplaceAll(tt.wantOutput, "PLUGIN", pluginDir)
-				if !strings.Contains(string(output), wantOutput) {
-					t.Errorf("output = %q, want substring %q", output, wantOutput)
-				}
-				if unlinked := containsLine(string(calls), "plugin unlink "+plugin.id); unlinked != tt.wantUnlink {
-					t.Errorf("unlink %s ran = %v, want %v; calls:\n%s", plugin.id, unlinked, tt.wantUnlink, calls)
-				}
-				if linked := containsLine(string(calls), "plugin link "+pluginDir); linked != tt.wantLink {
-					t.Errorf("link %s ran = %v, want %v; calls:\n%s", plugin.id, linked, tt.wantLink, calls)
-				}
-			}
-		})
+	bin := t.TempDir()
+	pluginsDir := filepath.Join(
+		home,
+		".local",
+		"share",
+		"pde",
+		"herdr-plugins",
+	)
+	// The fake herdr logs each call here, so the test can see what ran.
+	logPath := filepath.Join(t.TempDir(), "herdr.log")
+	// Put the fake herdr on PATH or only in the home's .local/bin.
+	switch herdrIn {
+	case "path":
+		writeExecutable(
+			t,
+			filepath.Join(bin, "herdr"),
+			fakeHerdr,
+		)
+	case "home":
+		writeExecutable(
+			t,
+			filepath.Join(home, ".local", "bin", "herdr"),
+			fakeHerdr,
+		)
 	}
+	// Render the template for this home, as chezmoi would.
+	script := filepath.Join(t.TempDir(), "link-herdr.sh")
+	err = os.WriteFile(
+		script,
+		[]byte(renderHerdrSetup(t, home)),
+		0o700,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// jq's folder supplies jq, and /usr/bin and /bin the shell tools.
+	path := strings.Join(
+		[]string{
+			bin,
+			filepath.Dir(jq),
+			"/usr/bin",
+			"/bin",
+		},
+		string(os.PathListSeparator),
+	)
+	// HERDR_MODE picks the fake's answers; HERDR_PLUGINS is the folder
+	// whose manifests it reports as already linked.
+	command := exec.Command("sh", script)
+	command.Env = append(os.Environ(),
+		"HOME="+home,
+		"PATH="+path,
+		"HERDR_MODE="+herdrState,
+		"HERDR_LOG="+logPath,
+		"HERDR_PLUGINS="+pluginsDir,
+	)
+
+	out, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("script failed the install: %v\n%s", err, out)
+	}
+	logged, err := os.ReadFile(logPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return string(out), string(logged)
 }
 
 // The shared renderer supplies only .chezmoidata.json, and this script needs
