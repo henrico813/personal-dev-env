@@ -154,6 +154,7 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 	}
 	err := runCheckerCommand(
 		checker,
+		nil,
 		&changes,
 		"changes",
 		"--interface",

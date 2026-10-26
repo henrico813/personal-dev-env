@@ -169,7 +169,25 @@ func saveRound(
 	}
 	named, err := readReviewComments(next, checker)
 	if err == nil {
-		err = errors.Join(refuseReusedIDs(next, named), refuseUnwritableReview(next, named))
+		err = errors.Join(
+			refuseReusedIDs(
+				next,
+				named,
+			),
+			refuseUnwritableProposals(
+				next,
+				named,
+				checker,
+			),
+		)
+	}
+	// The checker finds a named comment by its name, but this tool's write
+	// finds it by its text.
+	if err == nil {
+		err = refuseUnwritableNamedItems(
+			next,
+			named,
+		)
 	}
 	if err != nil {
 		return "", fmt.Errorf(
