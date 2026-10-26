@@ -72,11 +72,8 @@ var (
 		Old: "// Reads the config file at path and returns its settings.\n", New: "// Reads the config file at path and fills in a default for each missing key.\n"}
 )
 
-// Later, the owner's answers are written over each "old" in its Go file,
-// with no AI to check the result. If "old" is not one whole comment found
-// once, that write could change code, change the wrong comment, or leave
-// half a comment behind. Bad files must be refused when added, before the
-// owner reviews them.
+// An agent writes the proposals file by hand, so a typo or a path outside the
+// repo must be refused before the owner sees the review.
 func TestParseProposalsRefusesUnsafeFiles(t *testing.T) {
 	repo := newRepo(t)
 	tests := []struct {
