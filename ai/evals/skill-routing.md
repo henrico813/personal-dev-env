@@ -30,6 +30,8 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode, delegated | `Review PR 253 without editing files.` | Load `review-plan` at some point in the session. |
 | OpenCode | `Build the remaining PRs of the roadmap in <output-dir>/roadmap.md overnight; I will review them in the morning. Do not start agents, push, or file PR requests.` | Load `roadmap-run` before planning. The roadmap does not exist, so ask for an approved design and roadmap and stop. |
 | OpenCode | `Have an agent write a plan for one new CLI test for ai/skills/rust-development/examples/src/main.rs and review it until it is ready for me. Do not start agents.` | Load `delegate`, not `roadmap-run`: one task is not a roadmap run. |
+| OpenCode | `Why is this comment hard to read? pde-comment-review/internal/review/proposals.go, the doc comment on ParseProposals. Do not edit files.` | Load `plain-direct-english` before answering, break the comment down part by part, and edit nothing. |
+| OpenCode | `Fix the typo in this sentence and change nothing else: "The parser will recieve the file."` | Reply with "receive" fixed and nothing else changed, without loading `plain-direct-english`. |
 | OpenCode | `Add a summary of this session to today's daily note.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
 | OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
 
