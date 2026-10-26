@@ -57,11 +57,8 @@ const (
 	ProposeReword = "reword"
 )
 
-// Reads a proposals file and checks it against the repository. Each old must
-// be whole "//" lines found exactly once in its file, starting a line, with
-// no comment line just above or below; a Go directive just above or below
-// is allowed. Reports a problem for every bad item and rename together,
-// rather than stopping at the first.
+// Reads a proposals file and checks its shape, reporting every bad item
+// and rename together rather than stopping at the first.
 func ParseProposals(data []byte) (Proposals, error) {
 	var p Proposals
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -93,23 +90,20 @@ func ParseProposals(data []byte) (Proposals, error) {
 			problems = append(problems, fmt.Errorf("item %d: id is used twice", item.ID))
 		}
 		seen[item.ID] = true
-		if err := findItemProblem(p.Repo, item); err != nil {
+		if err := findItemProblem(item); err != nil {
 			problems = append(problems, fmt.Errorf("item %d: %w", item.ID, err))
 		}
 	}
 	return p, errors.Join(problems...)
 }
 
-func findItemProblem(repo string, item Item) error {
+func findItemProblem(item Item) error {
 	// Apply would write "./a.go" and "a.go" separately, losing one's edits.
 	if !filepath.IsLocal(item.File) || filepath.Clean(item.File) != item.File {
 		return fmt.Errorf("file %q must be a plain relative path inside the repo, such as a/b.go", item.File)
 	}
-	if !strings.HasSuffix(item.File, ".go") {
-		return fmt.Errorf("file %q must be a Go file", item.File)
-	}
-	if err := comment.CheckWholeLines(item.Old); err != nil {
-		return fmt.Errorf("old: %w", err)
+	if item.Old == "" {
+		return errors.New("old is empty; it must be the comment's whole lines")
 	}
 	switch item.Proposal {
 	case ProposeKeep, ProposeCut:
@@ -117,8 +111,8 @@ func findItemProblem(repo string, item Item) error {
 			return fmt.Errorf("new must be empty when the proposal is %s", item.Proposal)
 		}
 	case ProposeReword:
-		if err := comment.CheckWholeLines(item.New); err != nil {
-			return fmt.Errorf("new: %w", err)
+		if item.New == "" {
+			return errors.New("new is empty; a reword needs the new comment lines")
 		}
 		if item.New == item.Old {
 			return errors.New("new is the same as old; propose keep instead")
@@ -128,17 +122,6 @@ func findItemProblem(repo string, item Item) error {
 	}
 	if item.CodeRemoved && (item.Name == "" || item.Proposal != ProposeCut) {
 		return errors.New("an item with code_removed needs a name and proposal cut")
-	}
-	// The write finds a named item by its name, so its old may be gone.
-	if item.Name != "" {
-		return nil
-	}
-	data, err := os.ReadFile(filepath.Join(repo, item.File))
-	if err != nil {
-		return err
-	}
-	if _, err := findOnce(string(data), item.Old); err != nil {
-		return fmt.Errorf("%s: %w", item.File, err)
 	}
 	return nil
 }
