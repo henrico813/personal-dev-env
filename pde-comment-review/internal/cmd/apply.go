@@ -108,7 +108,8 @@ func runCheckerCommand(checker string, request any, reply any, args ...string) e
 	)
 }
 
-// One answer of the checker's apply request. Text is left out for a cut.
+// One answer sent to the checker, as if the owner accepted every proposal.
+// Text is left out for a cut.
 type checkerAnswer struct {
 	ID          int    `json:"id"`
 	File        string `json:"file"`
@@ -120,8 +121,8 @@ type checkerAnswer struct {
 	CodeRemoved bool   `json:"code_removed,omitempty"`
 }
 
-// Returns an error naming each problem the checker's apply --check finds
-// in r, as if the owner accepted every proposal.
+// Returns an error naming each problem the checker finds in r, as if the owner
+// accepted every proposal.
 func refuseUnwritableProposals(
 	r *review.Review,
 	named map[commentKey]string,
@@ -264,10 +265,9 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 
 type commentKey struct{ file, name string }
 
-// Returns an error naming each problem in r that no answer can fix: items
-// apply could not write, and comments it would approve unseen. Add runs it
-// so the owner never answers a review that apply must refuse; apply runs it
-// again, since the code can change after add.
+// Returns an error for each problem that would make the write fail. The write
+// calls this function first, because the code can change after add saves the
+// review.
 func refuseUnwritableReview(
 	r *review.Review,
 	named map[commentKey]string,

@@ -57,11 +57,8 @@ const (
 	ProposeReword = "reword"
 )
 
-// Reads a proposals file and checks it against the repository. Each old must
-// be whole "//" lines found exactly once in its file, starting a line, with
-// no comment line just above or below; a Go directive just above or below
-// is allowed. Reports a problem for every bad item and rename together,
-// rather than stopping at the first.
+// Reads a proposals file and checks its shape, reporting every bad item
+// and rename together rather than stopping at the first.
 func ParseProposals(data []byte) (Proposals, error) {
 	var p Proposals
 	decoder := json.NewDecoder(bytes.NewReader(data))
