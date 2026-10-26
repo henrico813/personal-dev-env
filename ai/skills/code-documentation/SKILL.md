@@ -58,6 +58,9 @@ Do not turn a large function into a wall of prose.
 
 ## Write plain, direct English
 
+Load and follow the `plain-direct-english` skill whenever you write or
+review a comment, docstring or doc.
+
 Prefer short sentences and concrete words. Write for comprehension, not for
 sounding formal.
 
