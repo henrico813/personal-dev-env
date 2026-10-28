@@ -401,11 +401,11 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			extra: []review.Item{{
 				ID:       4,
 				File:     "cart.go",
-				Name:     "Total",
+				Name:     "Valid",
 				Proposal: review.ProposeKeep,
-				Old:      "// Reports whether every price is above zero.\n",
+				Old:      "// Sums the prices.\n",
 			}},
-			want: "item 4: cart.go Total: no comment by this name has the item's old",
+			want: "item 4: cart.go Valid: no comment by this name has the item's old",
 		},
 		{
 			name:   "cut comment put back, in review",
@@ -474,6 +474,47 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			if got, _ := os.ReadFile(filepath.Join(r.Repo(), ".code-comments.json")); string(got) != approveValid {
 				t.Errorf(".code-comments.json changed:\n%s", got)
 			}
+			// Marking a failed check as written would prevent the owner
+			// from trying again.
+			if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedRound != 0 {
+				t.Errorf("review reopened as %+v, %v; want it still waiting", reopened, err)
+			}
 		})
+	}
+}
+
+// Leaves the review open when writing fails so the owner can try again.
+// Directs the owner to check the files with git status before retrying.
+func TestFailedWritePreservesFilesAndReview(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to a read-only folder")
+	}
+	checker := buildRepoCheckerOnPath(t)
+	const approvals = `{"approved": [], "avoid": {}}`
+	r := startReview(t, cartGo, approvals, nil)
+	setDecisions(t, r, map[int]review.Decision{
+		1: {Action: review.ActionAccept},
+		2: {Action: review.ActionAccept},
+		3: {Action: review.ActionKeep},
+	})
+	if err := os.Chmod(r.Repo(), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(r.Repo(), 0o755) })
+
+	_, err := writeAndApproveDecisions(r, checker)
+
+	if err == nil || !strings.Contains(err.Error(), "Permission denied") ||
+		!strings.Contains(err.Error(), "files may have changed") ||
+		!strings.Contains(err.Error(), "Run git -C "+r.Repo()+" status to check the files.") {
+		t.Fatalf("error = %v, want failed write and git status hint", err)
+	}
+	for file, want := range map[string]string{"cart.go": cartGo, ".code-comments.json": approvals} {
+		if got, err := os.ReadFile(filepath.Join(r.Repo(), file)); err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v; want unchanged", file, got, err)
+		}
+	}
+	if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedRound != 0 {
+		t.Errorf("review reopened as %+v, %v; want it still waiting", reopened, err)
 	}
 }
