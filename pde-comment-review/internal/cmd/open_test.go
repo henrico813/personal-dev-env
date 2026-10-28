@@ -189,7 +189,7 @@ func TestScreenAppliesNewRoundAfterRefusal(t *testing.T) {
 		"o",
 	)
 	waitForScreen(t, master, "4/4 cut? cart.go")
-	// The screen draws the new item's comment from the checker's rows.
+	// The screen asks the checker again to wrap the AI's new comment.
 	waitForScreen(t, master, "-// above zero.")
 	typeKeys(t, master, "o")
 	waitForScreen(
@@ -400,14 +400,14 @@ func installRepoChecker(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 }
 
-// A wrong match shows another function's code. A stale match must report
-// an error instead of panicking.
+// Checks that duplicate comments show their own code and shrunken files
+// show errors, not panics.
 func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	const code = "package cart\n\n// Same.\nfunc First() {\n\t// Inside.\n}\n" +
 		"\n\n\n\n\n\n// Same.\nfunc Second() {\n\t// Inside.\n}\n"
-	const missing = "the checker finds no comment for this item in cart.go"
+	const missing = "the checker cannot find this comment exactly once in cart.go"
 	const stale = "cart.go changed after the screen read it"
 	tests := []struct {
 		name         string
@@ -422,12 +422,12 @@ func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 			want:  [2]string{"func First() {", "func Second() {"},
 		},
 		{
-			name: "unnamed duplicates stay unplaced",
+			name: "unnamed duplicates show an error",
 			old:  "\t// Inside.\n",
 			want: [2]string{missing, missing},
 		},
 		{
-			name:    "file shortened after list",
+			name:    "file shortened after the screen read it",
 			names:   [2]string{"First", "Second"},
 			old:     "// Same.\n",
 			changed: "package cart\n",
@@ -464,7 +464,7 @@ func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 					Cols:    100,
 					Rows:    40,
 				}
-				prepareScreen(r, v)
+				askCheckerForCommentLayout(r, v)
 				if tt.changed != "" {
 					writeFile(t, filepath.Join(repo, "cart.go"), tt.changed)
 				}

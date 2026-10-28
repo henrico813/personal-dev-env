@@ -28,7 +28,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	}{
 		{
 			name: "new wording",
-			// The page starts from the AI's reword as plain text.
+			// The page opens with the AI's proposal, without comment marks.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
 				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
 			want: &review.Decision{
@@ -36,7 +36,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
 				Round:  1,
 			},
-			// The phone screen rewraps the two lines above the code.
+			// A different wrap at 37 columns proves the checker's layout.
 			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{
@@ -84,7 +84,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 					Cols:    37,
 					Rows:    40,
 				}
-				prepareScreen(saved, v)
+				askCheckerForCommentLayout(saved, v)
 				v.Show(1, time.Now())
 				screen := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(strings.Join(v.BuildScreen(), "\n"), "")
 				if !strings.Contains(screen, tt.wantShown) {

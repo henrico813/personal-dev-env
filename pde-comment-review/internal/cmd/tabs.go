@@ -80,7 +80,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	places, err := findCommentPlaces(r, checker)
+	places, err := findCommentLineRanges(r, checker)
 	if err != nil {
 		return err
 	}
