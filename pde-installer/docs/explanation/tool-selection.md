@@ -22,7 +22,7 @@ selection; a bare install reuses saved or legacy selection.
 Terminal skips full-only direct releases, runtimes, npm tools, builds, fonts,
 and editor/AI configuration. Client skips only Go, Rust, LSPs, Keychain, Moshi
 Hook, local builds other than `skill-lessons`, the PR approval tools, and all
-but six shared skills. Switching from full to terminal
+but five shared skills. Switching from full to terminal
 does not remove
 full-only artifacts. Every install also applies the selected managed home
 configuration.

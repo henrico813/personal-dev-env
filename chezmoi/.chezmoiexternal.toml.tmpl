@@ -300,12 +300,10 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/cleanup_plan.md'
 [".config/opencode/commands/create_plan.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/create_plan.md'
-{{- end }}
 
 [".config/opencode/commands/design_doc.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/design_doc.md'
-{{- if eq (env "PDE_PROFILE") "full" }}
 
 [".config/opencode/commands/implement_plan.md"]
 type = "file"
@@ -337,7 +335,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
 {{- if . }}
 {{- $skill := index (splitList "/" .) 1 }}
 {{- /* Client gets only these skills, so a new skill reaches it only when added here. */}}
-{{- if or (eq $profile "full") (eq $skill "behavior-focused-testing" "delegate" "design-doc" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english") }}
+{{- if or (eq $profile "full") (eq $skill "behavior-focused-testing" "delegate" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english") }}
 
 [".agents/{{ . }}"]
 type = "file"

@@ -110,13 +110,13 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"obsidian.nvim",
 				"copilot.lua",
 				".config/opencode/AGENTS.md",
-				".config/opencode/commands/design_doc.md",
 			},
 			omit: []string{
 				".codex/AGENTS.md",
 				".claude/CLAUDE.md",
 				".pi/agent",
 				".config/opencode/commands/create_plan.md",
+				".config/opencode/commands/design_doc.md",
 				".config/opencode/agents/plan-bug-reviewer.md",
 			},
 		},
@@ -156,7 +156,6 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 	want := []string{
 		"behavior-focused-testing",
 		"delegate",
-		"design-doc",
 		"obsidian-daily-note",
 		"obsidian-zettel",
 		"plain-direct-english",
