@@ -180,7 +180,7 @@ loads `~/.agents/skills/`.
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
-`obsidian-zettel`, `obsidian-daily-note`, `design-doc`, `plain-direct-english`,
+`obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
 `behavior-focused-testing`, and `delegate`; every other skill is full-only.
 
 ## Requirements

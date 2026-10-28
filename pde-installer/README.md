@@ -63,9 +63,9 @@ builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
 `fontconfig`, `python3`, the managed fonts, Neovim and its plugins, Node, the
 npm tools, herdr, nobs, `skill-lessons`, and the Alacritty, WezTerm, herdr,
 Neovim, and OpenCode configuration with the shared agent guidance. Its skills
-are only `obsidian-zettel`, `obsidian-daily-note`, `design-doc`,
-`plain-direct-english`, `behavior-focused-testing`, and `delegate`, and its
-OpenCode config leaves out the plan commands and plan reviewer agents. It still
+are only `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
+`behavior-focused-testing`, and `delegate`, and its OpenCode config leaves out
+the plan and design commands and the plan reviewer agents. It still
 excludes Go, Rust, LSPs, Keychain, Moshi Hook, the other local builds such as
 planner and vibe, the native blink.cmp matcher, the herdr plugins, the `gh`
 approval guard, and the Claude Code, Codex, and Pi configuration. Full retains

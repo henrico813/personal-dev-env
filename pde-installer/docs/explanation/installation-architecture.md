@@ -5,7 +5,7 @@ The repository describes terminal, client, and full PDE selections.
 selection. Bare `install` reconciles the saved selection or infers full from
 legacy installer state; it errors when neither exists. Terminal skips full-only
 components; client installs everything except what needs Go, Rust, or a
-compiled local build, and only six of the shared skills. Switching between
+compiled local build, and only five of the shared skills. Switching between
 selections changes future reconciliation, but
 switching from full to terminal does not uninstall full-only artifacts. Client
 refuses to install over release tools it would delete, such as Go left by a

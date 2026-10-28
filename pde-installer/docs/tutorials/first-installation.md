@@ -60,7 +60,7 @@ terminal installation. Use `pde-installer install terminal` to switch future
 reconciliation from full to terminal; previously installed full-only artifacts
 are not removed. Client installs everything full does except Go, Rust, LSPs,
 Keychain, Moshi Hook, local builds other than `skill-lessons`, the PR approval
-tools, and all but six shared skills, and refuses to install on a machine that
+tools, and all but five shared skills, and refuses to install on a machine that
 still has full's Go. `doctor` and `list` use the
 saved or legacy selection.
 
