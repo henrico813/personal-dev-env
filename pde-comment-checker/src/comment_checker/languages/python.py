@@ -16,13 +16,15 @@ from typing import NamedTuple
 from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
-    LINE_WIDTH,
     show_line_comment,
     wrap_words,
     write_line_comment,
 )
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+# PEP 8 limits docstrings and comments to 72 columns with indentation.
+PYTHON_LINE_WIDTH = 72
 
 DocstringOwner = (
     ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
@@ -243,11 +245,11 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
 def write_python_comment(plain: str, old: str) -> str:
     """Return plain text laid out like the comment it replaces.
 
-    The owner and agents write a comment's new wording as plain sentences,
-    without ``#`` marks or quotes. This adds them back, so the new comment
-    keeps the old one's indentation and, for a docstring, its quote
-    character and any ``r`` prefix. A docstring's first sentence goes on
-    the line of its opening quotes.
+    The owner and agents write a comment's new wording as plain
+    sentences, without ``#`` marks or quotes. This adds them back, so
+    the new comment keeps the old one's indentation and, for a
+    docstring, its quote character and any ``r`` prefix. A docstring's
+    first sentence goes on the line of its opening quotes.
 
     Args:
         plain: The new wording as plain text. Text with no words deletes
@@ -260,15 +262,15 @@ def write_python_comment(plain: str, old: str) -> str:
         string when the new wording has no words.
 
     Raises:
-        SourceError: The new wording holds the docstring's closing quotes,
-            a carriage return, a NUL, or a backslash escape the old
-            docstring does not hold.
+        SourceError: The new wording holds the docstring's closing
+            quotes, a carriage return, a NUL, or a backslash escape the
+            old docstring does not hold.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in plain or "\0" in plain:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return write_line_comment(plain, old, "#")
+        return write_line_comment(plain, old, "#", PYTHON_LINE_WIDTH)
     docstring = read_docstring_parts(old)[0]
     text = write_docstring(read_plain_parts(plain), docstring)
     refuse_new_escape(text, old)
@@ -278,11 +280,11 @@ def write_python_comment(plain: str, old: str) -> str:
 def refuse_new_escape(text: str, old: str) -> None:
     """Refuse a new docstring with a backslash escape the old one lacks.
 
-    Python reads ``\\n`` in a docstring as a line break and warns about an
-    escape it does not know, such as ``\\d``. The owner types plain text
-    on a phone and cannot see either happen. Refusing here tells the owner
-    at once, instead of when the tool writes the files after the owner
-    has decided on every comment.
+    Python reads ``\\n`` in a docstring as a line break and warns about
+    an escape it does not know, such as ``\\d``. The owner types plain
+    text on a phone and cannot see either happen. Refusing here tells
+    the owner at once, instead of when the tool writes the files after
+    the owner has decided on every comment.
 
     Args:
         text: The new docstring, as it would appear in the file.
@@ -306,7 +308,7 @@ def refuse_new_escape(text: str, old: str) -> None:
         if escape == "\\\n":
             found = "a backslash at a line end, which joins the next line"
         elif DOCSTRING_ESCAPE.fullmatch(escape)[1] is None:
-            # Python keeps both characters of an escape it does not know.
+            # Python keeps both characters of an unknown escape.
             found = f"{escape}, which Python warns about"
         else:
             found = f"{escape}, which Python reads as another character"
@@ -438,13 +440,23 @@ def write_plain_parts(parts: list[Part]) -> str:
 
 
 def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
-    """Return ``parts`` as a docstring with the quotes of ``docstring``.
+    """Return docstring parts laid out with the old docstring's quotes.
 
-    Paragraphs wrap at ``LINE_WIDTH``, and section entries are indented
-    four spaces, with their later lines four more. A docstring with one
-    short paragraph stays on one line. A docstring in single quotes
-    becomes triple quoted when it needs a second line or holds its quote
-    character.
+    Paragraphs wrap at 72 columns, counting indentation, as PEP 8 asks
+    of docstrings. Section entries are indented four spaces, with their
+    later lines four more. A docstring with one short paragraph stays on
+    one line. A docstring in single quotes becomes triple quoted when it
+    needs a second line or holds its quote character.
+
+    Args:
+        parts: The new wording, split into paragraphs, headings, section
+            entries and lines kept as written.
+        docstring: The old docstring's match, which gives the
+            indentation, prefix and quotes.
+
+    Returns:
+        The new docstring as it would appear in the file, or an empty
+        string when there are no parts.
 
     Raises:
         SourceError: The text holds the triple quotes it would be in.
@@ -454,7 +466,7 @@ def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
     indent, prefix = docstring["indent"], docstring["prefix"]
     quote = docstring["quotes"][0]
     text = write_plain_parts(parts)
-    width = LINE_WIDTH - len(indent.replace("\t", "    "))
+    width = PYTHON_LINE_WIDTH - len(indent.replace("\t", "    "))
     summary = parts[0].text
     # The closing quotes would join a last quote or be escaped by a "\".
     if (
