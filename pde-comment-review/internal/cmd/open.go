@@ -64,7 +64,7 @@ func runReviewScreen(
 		Origin:  origin,
 		Settle:  opts.settle,
 	}
-	prepareScreen(r, v)
+	askCheckerForCommentLayout(r, v)
 	term, err := popup.Start(in, out)
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func runReviewScreen(
 					return viewFile(
 						r.Repo(),
 						item,
-						v.Places,
+						v.CommentLinesByID,
 						in,
 						out,
 					)
@@ -154,12 +154,11 @@ func runReviewScreen(
 	}
 }
 
-// Asks the checker where each of r's comments is and how the screen draws
-// it. A failure shows as a notice.
-func prepareScreen(r *review.Review, v *popup.View) {
+// Loads locations and wrapping from the checker. Errors become notices.
+func askCheckerForCommentLayout(r *review.Review, v *popup.View) {
 	checker, err := findCheckerPath()
 	if err == nil {
-		v.Places, err = findCommentPlaces(r, checker)
+		v.CommentLinesByID, err = findCommentLineRanges(r, checker)
 	}
 	if err == nil {
 		v.CommentRows, err = readCommentRows(r, checker)
@@ -169,9 +168,8 @@ func prepareScreen(r *review.Review, v *popup.View) {
 	}
 }
 
-// Returns where each of r's comments is in its file, by item ID, from the
-// checker's list. An item whose comment is not found exactly once is left out.
-func findCommentPlaces(r *review.Review, checker string) (map[int]review.CommentLines, error) {
+// Returns line ranges by comment ID, omitting missing or repeated matches.
+func findCommentLineRanges(r *review.Review, checker string) (map[int]review.CommentLines, error) {
 	args := []string{
 		"list",
 		"--interface",
@@ -185,7 +183,7 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 			r.Repo(),
 			file,
 		)
-		// A deleted file's comments are all gone.
+		// A deleted file has no comments left to locate.
 		if _, err := os.Stat(path); err == nil {
 			args = append(
 				args,
@@ -245,8 +243,8 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 							NoCut: !c.CanCut,
 						},
 					)
-				// An item without a name may be only part of a longer comment,
-				// such as the prose before or after a directive line.
+				// Comments with no code name may be part of a longer
+				// comment, such as prose before or after a Go directive.
 				case e.Item.Name == "" && (at == 0 || at > 0 && c.Text[at-1] == '\n'):
 					first := c.Line + strings.Count(
 						c.Text[:at],
@@ -273,23 +271,21 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 	return places, nil
 }
 
-// One comment for the checker's show. Plain, when set, is sentences to
-// write laid out like Text.
+// Requests comment layout, styling optional sentences like the old lines.
 type showEntry struct {
 	File  string `json:"file"`
 	Text  string `json:"text"`
 	Plain string `json:"plain,omitempty"`
 }
 
-// How the checker shows one comment, with the plain text the owner edits
-// and the rows the screen draws.
+// Holds comment lines, editable sentences and the checker's screen layout.
 type shownComment struct {
 	Text   string            `json:"text"`
 	Plain  string            `json:"plain"`
 	Screen []popup.ScreenRow `json:"screen"`
 }
 
-// Returns how the checker shows each of entries, in order.
+// Runs the checker's show command and returns replies in comment order.
 func showComments(checker, repo string, entries []showEntry) ([]shownComment, error) {
 	var reply struct {
 		Shown    []shownComment `json:"shown"`
@@ -311,8 +307,7 @@ func showComments(checker, repo string, entries []showEntry) ([]shownComment, er
 	return reply.Shown, err
 }
 
-// Returns the checker's screen rows for each text r's items show, such as
-// an AI's reword or the owner's own wording.
+// Returns layouts keyed by original, proposed or owner-edited wording.
 func readCommentRows(r *review.Review, checker string) (map[string][]popup.ScreenRow, error) {
 	var entries []showEntry
 	seen := map[string]bool{}
@@ -364,7 +359,7 @@ func editInPlace(
 	id := v.Entry().Item.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
 	v.Entries = r.ListEntries()
-	prepareScreen(r, v)
+	askCheckerForCommentLayout(r, v)
 	// Moves on even when nothing was saved, as the popup does when the edit
 	// tab reopens it at the next unanswered item.
 	v.ShowNextUndecided(v.Index+1, time.Now())
@@ -451,9 +446,10 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	v.Entries = r.ListEntries()
 	switch {
 	case err != nil && !v.IsAllAnswered():
-		// A refusal for an item the new round added opens that item; the
-		// answers are written once the owner answers it.
-		prepareScreen(r, v)
+		// New comments arrived, so the screen opens the first undecided
+		// one. The owner's choices reach the code once every comment is
+		// decided.
+		askCheckerForCommentLayout(r, v)
 		v.ShowNextUndecided(
 			0,
 			time.Now(),

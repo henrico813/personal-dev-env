@@ -248,9 +248,9 @@ func TestDraftReportsNothingToReview(t *testing.T) {
 	}
 }
 
-// A Rust-only branch has nothing the tool can review, but its comments
-// still need the owner. The agent must show them in the pull request
-// rather than say there is nothing to review.
+// A branch that changes only Rust has nothing the tool can review, but the
+// owner still has to see its comments. The reply names the Rust file and
+// tells the agent to show its comments in the pull request.
 func TestDraftNamesFilesToolCannotReview(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	writeFile(t, filepath.Join(repo, "main.rs"), "// Starts the shop.\nfn main() {}\n")

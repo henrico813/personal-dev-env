@@ -85,9 +85,9 @@ type View struct {
 	screen     screen
 	result     string // what writing the answers did, or why it did not
 	written    bool   // whether the answers reached the code
-	// Where each item's comment is in its file, by item ID.
-	Places map[int]review.CommentLines
-	// The checker's screen rows for each comment text.
+	// Each comment's first and last line, keyed by its proposals file ID.
+	CommentLinesByID map[int]review.CommentLines
+	// The checker's screen layout for each comment, keyed by its wording.
 	CommentRows map[string][]ScreenRow
 }
 
@@ -100,9 +100,8 @@ type ScreenRow struct {
 	Fixed string `json:"fixed"`
 }
 
-// Returns rows as the screen draws them at width, wrapping each sentence
-// row to width less its widest mark.
-func DrawScreenRows(rows []ScreenRow, width int) []string {
+// Wraps comment sentences with their marks, preserving code examples.
+func WrapScreenRows(rows []ScreenRow, width int) []string {
 	var lines []string
 	for _, row := range rows {
 		if row.Words == "" {
@@ -216,8 +215,8 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		v.notice = "The code is gone. c or a drops the comment, and m asks the AI for the code back."
 		return None
 	}
-	if key == "c" && v.Places[v.Entry().Item.ID].NoCut {
-		v.notice = "This docstring is its body's only statement, so it cannot be cut. o keeps it, and e edits it."
+	if key == "c" && v.CommentLinesByID[v.Entry().Item.ID].NoCut {
+		v.notice = "This docstring is the only statement in its block, so deleting it would break the code. Press o to keep it or e to edit it."
 		return None
 	}
 	switch key {
@@ -385,11 +384,11 @@ func (v *View) body() ([]string, int) {
 	}
 	addComment := func(color, mark, text string) {
 		rows, ok := v.CommentRows[text]
-		lines := DrawScreenRows(
+		lines := WrapScreenRows(
 			rows,
 			width,
 		)
-		// Without the checker's rows, the comment shows as written.
+		// Without a checker layout, wraps the original lines separately.
 		if !ok {
 			lines = strings.Split(
 				strings.TrimSuffix(text, "\n"),
@@ -410,7 +409,7 @@ func (v *View) body() ([]string, int) {
 		before, after, err = review.ReadCodeAround(
 			v.Repo,
 			e.Item,
-			v.Places,
+			v.CommentLinesByID,
 			codeLinesAround,
 		)
 	}

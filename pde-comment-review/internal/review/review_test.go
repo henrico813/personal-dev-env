@@ -157,10 +157,10 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// A refused edit keeps the owner's typing for the next edit. Once the item
-// gets an answer or a new round, that typing is stale, and opening it would
-// put old words over the AI's new wording.
-func TestAnswersAndRoundsDropKeptPages(t *testing.T) {
+// A refused edit leaves the owner's text in a file for the next edit. Once
+// the owner decides on the comment or the AI sends new wording, that text
+// is out of date and would hide the new wording.
+func TestAnswersAndRoundsDeleteEditFiles(t *testing.T) {
 	repo := newRepo(t)
 	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
 	r, err := OpenReview("config")
@@ -168,7 +168,7 @@ func TestAnswersAndRoundsDropKeptPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []int{1, 2} {
-		if err := os.WriteFile(r.EditPagePath(id), []byte("typed\n"), 0o600); err != nil {
+		if err := os.WriteFile(r.BuildEditFilePath(id), []byte("typed\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -180,8 +180,8 @@ func TestAnswersAndRoundsDropKeptPages(t *testing.T) {
 		t.Fatal(answerErr)
 	}
 	for _, id := range []int{1, 2} {
-		if _, err := os.Stat(r.EditPagePath(id)); err == nil {
-			t.Errorf("item %d's kept page is still there", id)
+		if _, err := os.Stat(r.BuildEditFilePath(id)); err == nil {
+			t.Errorf("comment %d's edit file is still there", id)
 		}
 	}
 }

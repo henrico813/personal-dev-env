@@ -79,7 +79,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	places, err := findCommentPlaces(r, checker)
+	places, err := findCommentLineRanges(r, checker)
 	if err != nil {
 		return err
 	}
@@ -105,8 +105,9 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		return err
 	}
 	text := shown[0].Plain
-	page := r.EditPagePath(id)
-	// A page the checker refused holds the owner's typing, so it opens again.
+	page := r.BuildEditFilePath(id)
+	// A file left by a refused edit holds what the owner typed, so nvim opens
+	// it as it is.
 	if _, err := os.Stat(page); err != nil {
 		content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
 		if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
@@ -135,17 +136,19 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
-	// The page is not kept, so the next edit starts from the docstring.
+	// Deleting this docstring would break the code. The file is removed, so
+	// the next edit starts from the docstring again.
 	if len(strings.Fields(edited)) == 0 && places[id].NoCut {
 		return fmt.Errorf(
-			"the docstring is its body's only statement, so it cannot be cut; go back to item %d with h and press e to reword it",
+			"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d with h and press e to change its wording",
 			id,
 		)
 	}
 	if len(strings.Fields(edited)) == 0 {
 		return r.SetDecision(id, review.ActionCut, "")
 	}
-	// The edit keeps the layout of the wording it started from, such as an r prefix.
+	// The new text keeps the quotes and indentation of the wording the owner
+	// started from, such as an r prefix.
 	shown, err = showComments(
 		checker,
 		r.Repo(),

@@ -28,7 +28,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	}{
 		{
 			name: "new wording",
-			// The page starts from the AI's reword as plain text.
+			// The page opens with the AI's proposal, without comment marks.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
 				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
 			want: &review.Decision{
@@ -36,7 +36,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
 				Round:  1,
 			},
-			// The phone screen rewraps the two lines above the code.
+			// A different wrap at 37 columns proves the checker's layout.
 			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{
@@ -84,7 +84,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 					Cols:    37,
 					Rows:    40,
 				}
-				prepareScreen(saved, v)
+				askCheckerForCommentLayout(saved, v)
 				v.Show(1, time.Now())
 				screen := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(strings.Join(v.BuildScreen(), "\n"), "")
 				if !strings.Contains(screen, tt.wantShown) {
@@ -95,10 +95,10 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	}
 }
 
-// Retyping on a phone is slow, so text the checker refuses, such as closing
-// quotes in a docstring, must open again. The edit must keep the r prefix of
-// the wording shown, or the final write would refuse the owner's backslash.
-func TestEditKeepsTypingAndShownQuotes(t *testing.T) {
+// Retyping on a phone is slow, so text the checker refuses opens again on the
+// next edit. The saved wording keeps the r prefix of the AI's wording, or the
+// tool would refuse the owner's backslash when it writes the files.
+func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	repo := t.TempDir()
@@ -124,8 +124,8 @@ func TestEditKeepsTypingAndShownQuotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := t.TempDir()
-	// The first edit types closing quotes, and the second finds them on its
-	// page and fixes them.
+	// The fake nvim types closing quotes the first time. The second time it
+	// finds them in the file and fixes them.
 	script := `if head -n 1 "$1" | grep -qF '"""tax"""'; then ` +
 		`printf 'Return the tax at C:\\rates, rounded down.\n\n' > "$1.new"; ` +
 		`else printf 'Return the """tax""".\n\n' > "$1.new"; fi; ` +
@@ -159,13 +159,13 @@ func TestEditKeepsTypingAndShownQuotes(t *testing.T) {
 	}
 }
 
-// A docstring that is its function's whole body cannot be cut, or the file
-// stops parsing. The write refuses that cut only after the last answer, when
-// the owner can no longer change it, so the screen and the edit page refuse it.
+// Deleting a docstring that is its function's only statement breaks the file.
+// The tool would find this only when it writes the files after the last
+// comment, so c and an empty edit refuse it at once.
 func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	tests := []struct {
 		name     string
-		itemName string // empty for a hand-written item found by its text
+		itemName string // empty for a hand-written comment found by its text
 	}{
 		{
 			name:     "drafted item",
@@ -207,10 +207,10 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				Cols:    37,
 				Rows:    40,
 			}
-			prepareScreen(r, v)
+			askCheckerForCommentLayout(r, v)
 			bin := t.TempDir()
-			// The first edit deletes every word, and the second must open on
-			// the docstring's wording again and close unchanged.
+			// The fake nvim deletes every word the first time. The second time
+			// it fails unless the file starts with the docstring's text again.
 			script := `if [ -e "$0.ran" ]; then head -n 1 "$1" | grep -qx 'Return the tax.' || exit 1; ` +
 				`else touch "$0.ran"; printf '\n' > "$1.new"; sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"; fi`
 			writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+script+"\n")

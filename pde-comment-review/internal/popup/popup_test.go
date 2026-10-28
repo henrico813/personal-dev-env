@@ -21,18 +21,19 @@ func newView(t *testing.T, code string, items ...review.Item) *View {
 		t.Fatal(err)
 	}
 	v := &View{
-		Repo:   repo,
-		Cols:   popupCols,
-		Rows:   popupRows,
-		Settle: Settle,
-		Places: map[int]review.CommentLines{},
+		Repo:             repo,
+		Cols:             popupCols,
+		Rows:             popupRows,
+		Settle:           Settle,
+		CommentLinesByID: map[int]review.CommentLines{},
 	}
 	for _, item := range items {
 		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
-		// The tool gets these lines from the checker's list.
+		// The test finds lines that the checker supplies to the real
+		// screen.
 		if at := strings.Index(code, item.Old); at >= 0 {
 			first := strings.Count(code[:at], "\n") + 1
-			v.Places[item.ID] = review.CommentLines{
+			v.CommentLinesByID[item.ID] = review.CommentLines{
 				First: first,
 				Last:  first + strings.Count(item.Old, "\n") - 1,
 			}

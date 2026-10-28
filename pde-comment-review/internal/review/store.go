@@ -86,9 +86,10 @@ func AddRound(name string, p Proposals) (int, error) {
 		p,
 	)
 	if err == nil {
-		// Typing kept for an item this round replaces is for its old text.
+		// This round brings new wording for these comments, so text the owner
+		// typed for the old wording is deleted.
 		for _, item := range p.Items {
-			os.Remove(r.EditPagePath(item.ID))
+			os.Remove(r.BuildEditFilePath(item.ID))
 		}
 	}
 	return round, err
@@ -219,15 +220,17 @@ func (r *Review) SetNote(id int, text string) error {
 // covers only that round's text: if the AI proposes the item again, it
 // needs a new answer.
 func (r *Review) SetDecision(id int, action, text string) error {
-	// Typing kept from a refused edit is stale once the item has an answer.
-	os.Remove(r.EditPagePath(id))
+	// Text the owner typed in a refused edit is no longer needed once the
+	// owner decides on the comment.
+	os.Remove(r.BuildEditFilePath(id))
 	r.Decisions[id] = Decision{Action: action, Text: text, Round: r.findLatestRound(id)}
 	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Decisions)
 }
 
-// Returns the page the owner edits item id on. A page the checker refused
-// stays until the item gets an answer or a new round.
-func (r *Review) EditPagePath(id int) string {
+// Returns the path of the file nvim opens to edit a comment's wording. The
+// file stays after the checker refuses its text, until the owner decides
+// on the comment or the AI sends new wording.
+func (r *Review) BuildEditFilePath(id int) string {
 	return filepath.Join(r.Dir, fmt.Sprintf("edit-%d.txt", id))
 }
 
