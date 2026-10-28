@@ -590,7 +590,7 @@ def write_reviewed_comments(repo: Path, write: Write) -> list[str]:
     interrupted = None
 
     def record_interruption(signum, frame) -> None:
-        """Record the first signal so the write can finish or roll back."""
+        """Record the first signal without stopping the write."""
         nonlocal interrupted
         if interrupted is None:
             interrupted = signum
