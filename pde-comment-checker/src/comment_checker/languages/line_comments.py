@@ -45,16 +45,30 @@ def show_line_comment(
     return plain, rows
 
 
-def write_line_comment(plain: str, old: str, marker: str = "//") -> str:
-    """Return ``plain`` as comment lines, indented like ``old``.
+def write_line_comment(
+    plain: str, old: str, marker: str = "//", width: int = LINE_WIDTH
+) -> str:
+    """Return plain text as comment lines indented like the old one.
 
-    Sentences are rewrapped to ``LINE_WIDTH``, and lines that start with
-    a tab or two spaces are kept as example lines. Plain text with no
-    words returns ``""``, so writing it deletes the comment.
+    Sentences are rewrapped so that each line, indentation included,
+    fits in the width. Lines that start with a tab or two spaces are
+    kept as example lines.
+
+    Args:
+        plain: The new wording as plain text. Text with no words deletes
+            the comment.
+        old: The comment's current lines in the file, whose indentation
+            the new lines copy.
+        marker: The mark that starts each line, such as ``//`` or ``#``.
+        width: The last column a line may reach, counting indentation.
+
+    Returns:
+        The new comment's lines, or an empty string when the new wording
+        has no words.
     """
     first_line = old.split("\n", 1)[0]
     indent = first_line[: len(first_line) - len(first_line.lstrip(" \t"))]
-    width = LINE_WIDTH - len(indent.replace("\t", "    ")) - len(marker) - 1
+    width -= len(indent.replace("\t", "    ")) + len(marker) + 1
     lines: list[str] = []
     for block in group_comment_blocks(plain.split("\n")):
         if lines:

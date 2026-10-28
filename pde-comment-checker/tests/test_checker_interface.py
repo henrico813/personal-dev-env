@@ -450,7 +450,7 @@ class TestChanges:
         assert [i["name"] for i in reply["items"]] == ["Reset"]
 
     def test_new_python_docstring_is_listed(self, tmp_path: Path) -> None:
-        """List a new Python docstring for the owner, as a Go comment is.
+        """List a new Python docstring for the owner like a Go comment.
 
         A docstring left out of this list would stay in the code without
         the owner ever seeing it, and no later step would notice.
@@ -591,7 +591,7 @@ class TestShow:
                     "plain": LONG_PLAIN,
                 },
                 "    # Returns the sum of prices, in cents, so a total of many"
-                " items never gets\n    # rounded.\n    #\n"
+                " items\n    # never gets rounded.\n    #\n"
                 "    #\tTotal(prices)\n",
                 id="python-by-name",
             ),
@@ -605,11 +605,20 @@ class TestShow:
     def test_plain_is_written_like_old_comment(
         self, tmp_path: Path, entry: dict[str, str], expected: str
     ) -> None:
-        """Write plain sentences with the old comment's indent, at 79 columns.
+        """Write plain text with the old comment's indent and width.
 
-        A wrong indent would put the comment out of line with its code,
-        a wrong width would leave lines past 79 columns, and plain text
-        with no words must cut the comment rather than leave an empty one.
+        Go comments wrap at 79 columns, and Python comments at the 72
+        that PEP 8 asks for. A wrong indent would put the comment out of
+        line with its code, and a wrong width would leave lines too
+        long. Plain text with no words deletes the comment instead of
+        leaving an empty one.
+
+        Args:
+            tmp_path: An empty folder that receives the Go and Python
+                files.
+            entry: The comment to write, found by name or by its text,
+                with its new wording.
+            expected: The comment the checker should write.
         """
         (tmp_path / "shop.go").write_text(SHOP_GO)
         (tmp_path / "shop.py").write_text(SHOP_PY)
@@ -825,7 +834,7 @@ class TestShowDocstrings:
         ]
 
     def test_one_line_docstring_draws_one_row(self, tmp_path: Path) -> None:
-        """Draw a docstring that is one line in the code on one screen row.
+        """Draw a one-line docstring on one screen row, as in the code.
 
         The owner compares the screen with the code. Closing quotes on a
         row of their own made a one-line docstring look like two lines.
@@ -850,8 +859,8 @@ class TestShowDocstrings:
                 "Sum the prices.\n\nArgs:\nprices: The prices, in cents, of "
                 "every item in the cart, which may be empty.\n\nIn cents.\n",
                 '    r"""Sum the prices.\n\n    Args:\n        prices: The '
-                "prices, in cents, of every item in the cart, which may be\n"
-                '            empty.\n\n    In cents.\n    """\n',
+                "prices, in cents, of every item in the cart, which\n"
+                '            may be empty.\n\n    In cents.\n    """\n',
                 id="sections",
             ),
             pytest.param(
@@ -916,7 +925,7 @@ class TestShowDocstrings:
     def test_plain_is_written_as_docstring(
         self, tmp_path: Path, old: str, plain: str, expected: str
     ) -> None:
-        """Write plain text with the old docstring's indent, prefix and quotes.
+        """Write plain text keeping the old indent, prefix and quotes.
 
         A lost ``r`` prefix changes what a backslash means, and a quote
         next to the closing quotes would end the string early.
@@ -975,7 +984,7 @@ class TestShowDocstrings:
     def test_unwritable_plain_text_is_refused(
         self, tmp_path: Path, plain: str, problem: str
     ) -> None:
-        """Refuse plain text that would break the file it is written into.
+        """Refuse plain text that would break the file it goes into.
 
         Closing quotes would turn the rest of the text into code. Python
         reads a carriage return as a line end, and a file holding a NUL
@@ -1373,16 +1382,18 @@ class TestApplyCheck:
         monkeypatch: pytest.MonkeyPatch,
         flags: tuple[str, ...],
     ) -> None:
-        """Refuse to write a comment in a language whose reviews are off.
+        """Write no comment in a language whose reviews are off.
 
-        A new language starts with reviews off, because the owner has not
-        yet checked how the review screen shows its comments. The review
-        tool knows no language, so only the checker stops an agent's
-        hand-written change from reaching a file in that language.
+        A new language starts with reviews off, because the owner has
+        not yet checked how the review screen shows its comments. The
+        review tool knows no language, so only the checker stops an
+        agent's hand-written change from reaching a file in that
+        language.
 
         Args:
             tmp_path: An empty folder the checker writes in.
-            monkeypatch: Adds the made-up ``.note`` language for this test.
+            monkeypatch: Adds the made-up ``.note`` language for this
+                test.
             flags: Extra arguments, so the run that only checks and the
                 run that writes are both tested.
         """
@@ -1492,18 +1503,19 @@ class TestApplyCheck:
         """Refuse a new docstring that would change what the code does.
 
         The owner types plain text on a phone, so ``C:\\new`` would
-        silently become a line break and ``\\d`` a warning, even when the
-        backslash was moved from another docstring. A doubled backslash,
-        or a warning already in the code, is fine. These would also change
-        the code: code after a docstring, deleting a docstring its body
-        needs, a comment that becomes the line naming the file's
-        encoding, and a new comment that tells a tool to skip a check.
+        silently become a line break and ``\\d`` a warning, even when
+        the backslash was moved from another docstring. A doubled
+        backslash, or a warning already in the code, is fine. These
+        would also change the code: code after a docstring, deleting a
+        docstring its body needs, a comment that becomes the line naming
+        the file's encoding, and a new comment that tells a tool to skip
+        a check.
 
         Args:
             tmp_path: An empty folder the checker writes in.
-            edits: The new text for each docstring or comment. A key with
-                ``@`` marks a docstring whose function name is used twice,
-                which the checker leaves unnamed.
+            edits: The new text for each docstring or comment. A key
+                with ``@`` marks a docstring whose function name is used
+                twice, which the checker leaves unnamed.
             problem: Part of the refusal the checker should give, or an
                 empty string when the change is allowed.
         """
@@ -2286,13 +2298,13 @@ class TestApply:
         assert (tmp_path / edited).read_text() == edit
 
     def test_repository_comments_survive_rewrite(self, tmp_path: Path) -> None:
-        """Write back every comment here unchanged, then reword every other.
+        """Write back each comment here, then reword every other one.
 
-        In every Go and Python file of this repository, writing a comment's
-        own text changes no byte. A reword leaves the file parsing and
-        changes only that comment, under the same name. A bug in the write
-        would change a real file outside the one comment it was given,
-        which a small sample would never show.
+        In every Go and Python file of this repository, writing a
+        comment's own text changes no byte. A reword leaves the file
+        parsing and changes only that comment, under the same name. A
+        bug in the write would change a real file outside the one
+        comment it was given, which a small sample would never show.
 
         Args:
             tmp_path: An empty folder that receives a copy of each file.
