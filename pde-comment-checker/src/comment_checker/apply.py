@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
 import stat
 import tempfile
 from dataclasses import dataclass, field, replace
@@ -541,22 +542,28 @@ def approve_answers(
     return sorted(entries, key=lambda entry: entry["file"])
 
 
-def write_answers(repo: Path, write: Write) -> list[str]:
-    """Write the changed files, then ``.code-comments.json``, or neither.
+def write_reviewed_comments(repo: Path, write: Write) -> list[str]:
+    """Write the owner's new comments into the files and approve them.
 
-    A file whose bytes differ from what the check read is refused before
-    anything is written, so an edit made since is not lost. Each file
-    goes first to a temporary file beside it. Any failure in the renames,
-    Ctrl-C included, puts back every file already renamed, the approvals
-    file too. A process killed between renames leaves some files
-    answered, none approved, and temporary files.
+    If anything goes wrong partway, the checker puts every file back.
+    That includes Ctrl-C and other stop signals. Once the last file is
+    saved, the change stays even if a signal arrives. A forced kill, or
+    a disk error while putting files back, can still leave some files
+    changed.
+
+    Args:
+        repo: The repository folder.
+        write: The new file contents and approvals, from the earlier
+            check.
 
     Returns:
-        The problems that refused the write, or none once it is done.
+        Reasons the files cannot be written, or an empty list on
+        success.
 
     Raises:
-        OSError: A file could not be written; every file is as it was,
-            unless putting one back failed too, which the message names.
+        KeyboardInterrupt: A signal arrived before the last file was
+            saved.
+        OSError: A file could not be saved or put back.
     """
     problems = []
     for name, original in write.originals.items():
@@ -578,17 +585,38 @@ def write_answers(repo: Path, write: Write) -> list[str]:
     avoid = load_settings(repo)[1]
     temps: list[Path] = []
     replaced: list[str] = []
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    handlers = {}
+    interrupted = None
+
+    def record_interruption(signum, frame) -> None:
+        """Record the first signal without stopping the write."""
+        nonlocal interrupted
+        if interrupted is None:
+            interrupted = signum
+
+    def stop_if_interrupted() -> None:
+        if interrupted is not None:
+            raise KeyboardInterrupt(f"signal {interrupted}")
+
     try:
+        for sig in signals:
+            handlers[sig] = signal.signal(sig, record_interruption)
         for file, source in write.changed.items():
             temps.append(write_beside(repo / file, source.encode()))
+            stop_if_interrupted()
         try:
             for file, temp in zip(write.changed, temps):
                 # Listed first, so Ctrl-C just after the rename puts it back.
                 replaced.append(file)
                 os.replace(temp, repo / file)
+                stop_if_interrupted()
             if write.entries is not None:
                 replaced.append(SETTINGS)
                 replace_settings_file(repo, write.entries, avoid)
+            # This check commits the write; later signals cannot abort
+            # cleanup.
+            stop_if_interrupted()
         except BaseException as error:
             failed = put_back_files(repo, replaced, write.originals)
             if failed:
@@ -598,8 +626,20 @@ def write_answers(repo: Path, write: Write) -> list[str]:
                 ) from error
             raise
     finally:
-        for temp in temps:
-            temp.unlink(missing_ok=True)
+        try:
+            for temp in temps:
+                temp.unlink(missing_ok=True)
+        finally:
+            mask = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+            try:
+                for sig, handler in handlers.items():
+                    signal.signal(sig, handler)
+                # This snapshot hands later signals back to the caller.
+                pending = signal.sigpending() & (set(signals) - mask)
+                for sig in pending:
+                    signal.sigwait({sig})
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, mask)
     return []
 
 
