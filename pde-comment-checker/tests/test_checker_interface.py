@@ -1500,40 +1500,62 @@ class TestApplyCheck:
 
 
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-# An edit to Total's comment, and what cart.go and the approvals hold after it.
+# One comment edit in the sample Go file, and the file and approvals
+# after it.
 SUMS_EDIT = make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total")
 SUMS_GO = CART_GO.replace(TOTAL_TEXT, "// Sums.\n")
 SUMS_APPROVED = {
     "approved": [
-        {"file": "cart.go", "name": "Reset", "text": ""},
-        {"file": "cart.go", "name": "Valid", "text": VALID_TEXT},
-        {"file": "cart.go", "name": "Total", "text": "// Sums.\n"},
-        {"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"},
+        {
+            "file": "cart.go",
+            "name": "Reset",
+            "text": "",
+        },
+        {
+            "file": "cart.go",
+            "name": "Valid",
+            "text": VALID_TEXT,
+        },
+        {
+            "file": "cart.go",
+            "name": "Total",
+            "text": "// Sums.\n",
+        },
+        {
+            "file": "tax.go",
+            "name": "Check",
+            "text": "// Checks the tax.\n",
+        },
     ],
     "avoid": {},
 }
 
 
 def write_cart_and_tax(repo: Path) -> list[dict]:
-    """Write two Go files and their approvals, and return edits to both.
+    """Write two sample Go files and their approvals, and edit both.
 
-    Writing these edits saves cart.go, then tax.go, then the approvals
-    file, so a test can stop the write at any of those three saves.
+    The files are cart.go and tax.go. The write saves them in order,
+    then the approvals file, so a test can stop it at any save.
 
     Args:
         repo: The folder to write the files into.
 
     Returns:
-        A new comment for cart.go and one for tax.go.
+        A new comment for each of the two files.
     """
     write_cart(repo)
     (repo / "tax.go").write_text(
-        "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
+        "package cart\n\n// Checks the tax.\nfunc Check() {}\n",
     )
-    old = "// Checks the tax.\n"
     return [
         make_answer(1, TOTAL_TEXT, "// Sums.\n"),
-        make_answer(2, old, "// Adds tax.\n", name="Check", file="tax.go"),
+        make_answer(
+            2,
+            "// Checks the tax.\n",
+            "// Adds tax.\n",
+            name="Check",
+            file="tax.go",
+        ),
     ]
 
 
@@ -1567,9 +1589,9 @@ def read_stop_handlers() -> dict:
 def read_blocked_signals() -> set[signal.Signals]:
     """Return the signals this thread blocks now.
 
-    The checker blocks stop signals while it puts handlers back, so tests
-    check that it leaves this set as it found it. Blocking an empty set is
-    how Python reads the set without changing it.
+    The checker blocks stop signals while it puts handlers back, so
+    tests check that it leaves this set as it found it. Blocking an
+    empty set is how Python reads the set without changing it.
 
     Returns:
         The blocked signals.
@@ -1578,7 +1600,7 @@ def read_blocked_signals() -> set[signal.Signals]:
 
 
 def fail_file_save(monkeypatch: pytest.MonkeyPatch, number: int) -> None:
-    """Make one file save fail with a disk error, leaving that file as it was.
+    """Make one file save fail with a disk error, leaving the file.
 
     The count starts at 1 and also counts the saves that put old files
     back after a failure.
@@ -1609,7 +1631,7 @@ def fail_file_save(monkeypatch: pytest.MonkeyPatch, number: int) -> None:
 def interrupt_after_file_save(
     monkeypatch: pytest.MonkeyPatch, number: int
 ) -> None:
-    """Make one file save raise KeyboardInterrupt once the file is saved.
+    """Make one file save raise KeyboardInterrupt after saving the file.
 
     The file has already changed at that point, so the checker has to
     put it back as well.
@@ -1656,7 +1678,7 @@ def send_signal_before_save(
     save_file, count, sent = os.replace, itertools.count(1), []
 
     def send_then_save(source: str, target: Path) -> None:
-        """Send the signal if this is the chosen save, then save the file.
+        """Send the signal at the chosen save, then save the file.
 
         Args:
             source: The new copy of the file.
@@ -1676,8 +1698,8 @@ def send_signal_on_first_file_delete(
 ) -> list[signal.Signals]:
     """Send a real signal the first time the checker deletes a file.
 
-    In a write with no errors, the checker deletes files only as it tidies
-    up after the last save.
+    In a write with no errors, the checker deletes files only as it
+    tidies up after the last save.
 
     Args:
         monkeypatch: Undoes the change after the test.
@@ -1707,14 +1729,17 @@ def send_signal_on_first_file_delete(
 def fail_file_delete(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make every file delete fail with a disk error.
 
-    In a write with no errors, the checker deletes files only as it tidies
-    up after the last save. The new comments are in place by then.
+    In a write with no errors, the checker deletes files only as it
+    tidies up after the last save. The new comments are in place by
+    then.
 
     Args:
         monkeypatch: Undoes the change after the test.
     """
     monkeypatch.setattr(
-        Path, "unlink", Mock(side_effect=OSError("cannot delete the file"))
+        Path,
+        "unlink",
+        Mock(side_effect=OSError("cannot delete the file")),
     )
 
 
@@ -1728,7 +1753,7 @@ def program_handler() -> Iterator[Mock]:
     Yields:
         Mock: The handler set on SIGINT, SIGTERM and SIGHUP.
     """
-    # Tests replace signal.signal, so keep the real one to undo the setup.
+    # Keep the real signal.signal, since tests replace it.
     set_handler, handlers = signal.signal, read_stop_handlers()
     blocked = read_blocked_signals()
     handler = Mock()
@@ -1793,7 +1818,7 @@ def send_signal_when_first_handler_is_back(
     set_handler, sent = signal.signal, []
 
     def set_then_signal(signum: int, new: object) -> object:
-        """Set the handler, then send the signal if the program's is back.
+        """Set the handler, then send the signal if it is the program's.
 
         Args:
             signum: The signal's number.
@@ -1874,20 +1899,20 @@ class TestApply:
         ]
         assert written["avoid"] == {"client": "say customer"}
 
-    @pytest.mark.parametrize("save", [2, 3], ids=["tax.go", "approvals"])
+    @pytest.mark.parametrize("save", [2, 3], ids=["tax", "approvals"])
     def test_disk_error_puts_every_file_back(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, save: int
     ) -> None:
-        """Put every file back when a disk error stops the write partway.
+        """Put every file back when a disk error stops the write.
 
-        A half-done write would leave new comments in the code that nobody
-        approved.
+        A half-done write would leave new comments in the code that
+        nobody approved.
 
         Args:
             tmp_path: The repository folder.
             monkeypatch: Makes one file save fail.
-            save: The save that fails, counting cart.go, tax.go, then the
-                approvals file.
+            save: Which save fails. The write saves cart.go, then
+                tax.go, then the approvals file.
         """
         edits = write_cart_and_tax(tmp_path)
         before, handlers = read_files(tmp_path), read_stop_handlers()
@@ -1899,15 +1924,15 @@ class TestApply:
         assert read_files(tmp_path) == before
         assert read_stop_handlers() == handlers
 
-    @pytest.mark.parametrize("save", [1, 3], ids=["cart.go", "approvals"])
+    @pytest.mark.parametrize("save", [1, 3], ids=["cart", "approvals"])
     def test_file_saved_before_error_goes_back(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, save: int
     ) -> None:
         """Put a file back when an error comes just after it is saved.
 
-        The file has already changed then, so undoing only the files saved
-        before it would leave it new. KeyboardInterrupt gets past code that
-        catches only ordinary errors.
+        The file has already changed then, so undoing only the files
+        saved before it would leave it new. KeyboardInterrupt gets past
+        code that catches only ordinary errors.
 
         Args:
             tmp_path: The repository folder.
@@ -1924,8 +1949,8 @@ class TestApply:
         assert read_files(tmp_path) == before
         assert read_stop_handlers() == handlers
 
-    @pytest.mark.parametrize("save", [2, 3], ids=["tax.go", "approvals"])
-    @pytest.mark.parametrize("sig", STOP_SIGNALS, ids=lambda sig: sig.name)
+    @pytest.mark.parametrize("save", [2, 3], ids=["tax", "approvals"])
+    @pytest.mark.parametrize("sig", STOP_SIGNALS, ids=lambda s: s.name)
     def test_stop_signal_puts_every_file_back(
         self,
         tmp_path: Path,
@@ -1933,11 +1958,11 @@ class TestApply:
         sig: signal.Signals,
         save: int,
     ) -> None:
-        """Put every file back when a stop signal comes before the last save.
+        """Put every file back when a signal comes before the last save.
 
-        Ctrl-C, a closed terminal or a request to stop would otherwise end
-        the checker with some files new and some old. The checker still
-        stops after putting the files back.
+        Ctrl-C, a closed terminal or a request to stop would otherwise
+        end the checker with some files new and some old. The checker
+        still stops after putting the files back.
 
         Args:
             tmp_path: The repository folder.
@@ -1959,7 +1984,7 @@ class TestApply:
     def test_signal_cannot_stop_putting_files_back(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Finish putting files back when a signal comes partway through.
+        """Finish putting files back even when a signal comes.
 
         Stopping there would leave some files new and some old after a
         write that already failed.
@@ -1984,10 +2009,10 @@ class TestApply:
     def test_signal_after_last_save_keeps_write(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Report success when a signal comes after the last file is saved.
+        """Report success when a signal comes after the last save.
 
-        The new comments and approvals are in place by then, so a failure
-        would tell the owner that a finished write did not happen.
+        The new comments and approvals are in place by then. A failure
+        would say that a finished write did not happen.
 
         Args:
             tmp_path: The repository folder.
@@ -1995,7 +2020,10 @@ class TestApply:
         """
         write_cart(tmp_path)
         handlers = read_stop_handlers()
-        sent = send_signal_on_first_file_delete(monkeypatch, signal.SIGTERM)
+        sent = send_signal_on_first_file_delete(
+            monkeypatch,
+            signal.SIGTERM,
+        )
 
         code, reply = apply_answers(tmp_path, [SUMS_EDIT], flags=())
 
@@ -2012,22 +2040,24 @@ class TestApply:
         monkeypatch: pytest.MonkeyPatch,
         program_handler: Mock,
     ) -> None:
-        """Ignore a signal that comes while the checker puts handlers back.
+        """Ignore a signal while the checker puts handlers back.
 
-        The checker puts back the program's handlers one at a time. A signal
-        that reached the program in between could stop it with some of the
-        checker's handlers still in place. The checker blocks the signal
-        instead, and drops it once every handler is back.
+        The checker puts back the program's handlers one at a time. A
+        signal that reached the program in between could stop it with
+        some of the checker's handlers still in place. The checker
+        blocks the signal instead, and drops it once every handler is
+        back.
 
         Args:
             tmp_path: The repository folder.
-            monkeypatch: Sends the signal after the first handler is back.
+            monkeypatch: Sends a signal once the first handler is back.
             program_handler: The program's handler on every stop signal.
         """
         write_cart(tmp_path)
         blocked = read_blocked_signals()
         sent = send_signal_when_first_handler_is_back(
-            monkeypatch, program_handler
+            monkeypatch,
+            program_handler,
         )
 
         code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
@@ -2036,7 +2066,8 @@ class TestApply:
         assert len(sent) == 1
         program_handler.assert_not_called()
         assert read_stop_handlers() == dict.fromkeys(
-            STOP_SIGNALS, program_handler
+            STOP_SIGNALS,
+            program_handler,
         )
         assert read_blocked_signals() == blocked
         assert sorted(os.listdir(tmp_path)) == [SETTINGS, "cart.go"]
@@ -2049,11 +2080,11 @@ class TestApply:
         monkeypatch: pytest.MonkeyPatch,
         program_handler: Mock,
     ) -> None:
-        """Ignore a signal that comes while the checker undoes a failed setup.
+        """Ignore a signal while the checker undoes a failed setup.
 
-        The checker has already changed some handlers when it fails to set
-        another. It puts them all back with the signal blocked, as it does
-        after a write that works.
+        The checker has already changed some handlers when it fails to
+        set another. It puts them all back with the signal blocked, as
+        it does after a write that works.
 
         Args:
             tmp_path: The repository folder.
@@ -2064,7 +2095,8 @@ class TestApply:
         before, blocked = read_files(tmp_path), read_blocked_signals()
         fail_handler_setup(monkeypatch, signal.SIGHUP)
         sent = send_signal_when_first_handler_is_back(
-            monkeypatch, program_handler
+            monkeypatch,
+            program_handler,
         )
 
         code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
@@ -2073,7 +2105,8 @@ class TestApply:
         assert len(sent) == 1
         program_handler.assert_not_called()
         assert read_stop_handlers() == dict.fromkeys(
-            STOP_SIGNALS, program_handler
+            STOP_SIGNALS,
+            program_handler,
         )
         assert read_blocked_signals() == blocked
         assert read_files(tmp_path) == before
@@ -2086,8 +2119,8 @@ class TestApply:
     ) -> None:
         """Ignore a signal that comes after the tidy-up fails.
 
-        The files are already saved when the tidy-up fails. The checker still
-        puts every handler back with the signal blocked.
+        The files are already saved when the tidy-up fails. The checker
+        still puts every handler back with the signal blocked.
 
         Args:
             tmp_path: The repository folder.
@@ -2098,7 +2131,8 @@ class TestApply:
         blocked = read_blocked_signals()
         fail_file_delete(monkeypatch)
         sent = send_signal_when_first_handler_is_back(
-            monkeypatch, program_handler
+            monkeypatch,
+            program_handler,
         )
 
         code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
@@ -2107,7 +2141,8 @@ class TestApply:
         assert len(sent) == 1
         program_handler.assert_not_called()
         assert read_stop_handlers() == dict.fromkeys(
-            STOP_SIGNALS, program_handler
+            STOP_SIGNALS,
+            program_handler,
         )
         assert read_blocked_signals() == blocked
         assert sorted(os.listdir(tmp_path)) == [SETTINGS, "cart.go"]
