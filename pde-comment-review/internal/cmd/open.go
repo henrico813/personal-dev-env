@@ -154,7 +154,8 @@ func runReviewScreen(
 	}
 }
 
-// Loads locations and wrapping from the checker. Errors become notices.
+// Asks the checker where each comment sits in its file and how to wrap it on
+// screen. A failure shows as a message on the screen instead of closing it.
 func askCheckerForCommentLayout(r *review.Review, v *popup.View) {
 	checker, err := findCheckerPath()
 	if err == nil {
@@ -168,7 +169,7 @@ func askCheckerForCommentLayout(r *review.Review, v *popup.View) {
 	}
 }
 
-// Returns line ranges by comment ID, omitting missing or repeated matches.
+// Returns where each item's comment sits in its file, by item ID.
 func findCommentLineRanges(r *review.Review, checker string) (map[int]review.CommentLines, error) {
 	args := []string{
 		"list",
@@ -228,10 +229,6 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 				continue
 			}
 			for _, c := range file.Comments {
-				at := strings.Index(
-					c.Text,
-					e.Item.Old,
-				)
 				switch {
 				case e.Item.Name != "" && c.Name == e.Item.Name:
 					found = append(
@@ -241,23 +238,10 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 							Last:  c.EndLine,
 						},
 					)
-				// Comments with no code name may be part of a longer
-				// comment, such as prose before or after a Go directive.
-				case e.Item.Name == "" && (at == 0 || at > 0 && c.Text[at-1] == '\n'):
-					first := c.Line + strings.Count(
-						c.Text[:at],
-						"\n",
-					)
-					found = append(
-						found,
-						review.CommentLines{
-							First: first,
-							Last: first + strings.Count(
-								e.Item.Old,
-								"\n",
-							) - 1,
-						},
-					)
+				case e.Item.Name == "":
+					if lines, ok := findUnnamedCommentLines(c.Text, e.Item.Old, c.Line); ok {
+						found = append(found, lines)
+					}
 				}
 			}
 		}
@@ -266,6 +250,21 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 		}
 	}
 	return places, nil
+}
+
+// Returns where text without a function or type name sits in a comment.
+func findUnnamedCommentLines(text, old string, line int) (review.CommentLines, bool) {
+	at := strings.Index(text, old)
+	// Comments with no code name may be part of a longer
+	// comment, such as prose before or after a Go directive.
+	if at < 0 || at > 0 && text[at-1] != '\n' {
+		return review.CommentLines{}, false
+	}
+	first := line + strings.Count(text[:at], "\n")
+	return review.CommentLines{
+		First: first,
+		Last:  first + strings.Count(old, "\n") - 1,
+	}, true
 }
 
 // Requests comment layout, styling optional sentences like the old lines.
