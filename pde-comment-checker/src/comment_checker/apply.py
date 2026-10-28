@@ -542,23 +542,27 @@ def approve_answers(
     return sorted(entries, key=lambda entry: entry["file"])
 
 
-def write_answers(repo: Path, write: Write) -> list[str]:
+def write_reviewed_comments(repo: Path, write: Write) -> list[str]:
     """Write the owner's new comments into the files and approve them.
 
-    If anything goes wrong partway, the checker puts every file back. That
-    includes Ctrl-C and other stop signals. Once the last file is saved, the
-    change stays even if a signal arrives. A forced kill, or a disk error while
-    putting files back, can still leave some files changed.
+    If anything goes wrong partway, the checker puts every file back.
+    That includes Ctrl-C and other stop signals. Once the last file is
+    saved, the change stays even if a signal arrives. A forced kill, or
+    a disk error while putting files back, can still leave some files
+    changed.
 
     Args:
         repo: The repository folder.
-        write: The new file contents and approvals, from the earlier check.
+        write: The new file contents and approvals, from the earlier
+            check.
 
     Returns:
-        Reasons the files cannot be written, or an empty list on success.
+        Reasons the files cannot be written, or an empty list on
+        success.
 
     Raises:
-        KeyboardInterrupt: A signal arrived before the last file was saved.
+        KeyboardInterrupt: A signal arrived before the last file was
+            saved.
         OSError: A file could not be saved or put back.
     """
     problems = []
@@ -610,7 +614,8 @@ def write_answers(repo: Path, write: Write) -> list[str]:
             if write.entries is not None:
                 replaced.append(SETTINGS)
                 replace_settings_file(repo, write.entries, avoid)
-            # This check commits the write; later signals cannot abort cleanup.
+            # This check commits the write; later signals cannot abort
+            # cleanup.
             stop_if_interrupted()
         except BaseException as error:
             failed = put_back_files(repo, replaced, write.originals)

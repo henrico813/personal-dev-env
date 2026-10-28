@@ -99,10 +99,6 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 // next edit. The saved wording keeps the r prefix of the AI's wording, or the
 // tool would refuse the owner's backslash when it writes the files.
 func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
-	buildRepoCheckerOnPath(t)
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	repo := t.TempDir()
-	writeFile(t, filepath.Join(repo, "tax.py"), "def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n")
 	rewordTax := review.Item{
 		ID:       1,
 		File:     "tax.py",
@@ -111,30 +107,18 @@ func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 		Old:      "    \"\"\"Return the tax.\"\"\"\n",
 		New:      "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
 	}
-	proposals := review.Proposals{
-		Version: review.Version,
-		Repo:    repo,
-		Items:   []review.Item{rewordTax},
-	}
-	if _, err := review.AddRound("tax", proposals); err != nil {
-		t.Fatal(err)
-	}
-	r, err := review.OpenReview("tax")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin := t.TempDir()
 	// The fake nvim types closing quotes the first time. The second time it
 	// finds them in the file and fixes them.
 	script := `if head -n 1 "$1" | grep -qF '"""tax"""'; then ` +
 		`printf 'Return the tax at C:\\rates, rounded down.\n\n' > "$1.new"; ` +
 		`else printf 'Return the """tax""".\n\n' > "$1.new"; fi; ` +
 		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
-	writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+script+"\n")
-	if err := os.Chmod(filepath.Join(bin, "nvim"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	r := startTaxReview(
+		t,
+		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
+		rewordTax,
+		script,
+	)
 
 	refused := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
 	fixed := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
@@ -178,10 +162,6 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buildRepoCheckerOnPath(t)
-			t.Setenv("XDG_STATE_HOME", t.TempDir())
-			repo := t.TempDir()
-			writeFile(t, filepath.Join(repo, "tax.py"), "def tax(price):\n    \"\"\"Return the tax.\"\"\"\n")
 			keepTax := review.Item{
 				ID:       1,
 				File:     "tax.py",
@@ -189,18 +169,16 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				Proposal: review.ProposeKeep,
 				Old:      "    \"\"\"Return the tax.\"\"\"\n",
 			}
-			proposals := review.Proposals{
-				Version: review.Version,
-				Repo:    repo,
-				Items:   []review.Item{keepTax},
-			}
-			if _, err := review.AddRound("tax", proposals); err != nil {
-				t.Fatal(err)
-			}
-			r, err := review.OpenReview("tax")
-			if err != nil {
-				t.Fatal(err)
-			}
+			// The fake nvim deletes every word the first time. The second time
+			// it fails unless the file starts with the docstring's text again.
+			script := `if [ -e "$0.ran" ]; then head -n 1 "$1" | grep -qx 'Return the tax.' || exit 1; ` +
+				`else touch "$0.ran"; printf '\n' > "$1.new"; sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"; fi`
+			r := startTaxReview(
+				t,
+				"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n",
+				keepTax,
+				script,
+			)
 			v := &popup.View{
 				Entries: r.ListEntries(),
 				Repo:    r.Repo(),
@@ -208,16 +186,6 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				Rows:    40,
 			}
 			askCheckerForCommentLayout(r, v)
-			bin := t.TempDir()
-			// The fake nvim deletes every word the first time. The second time
-			// it fails unless the file starts with the docstring's text again.
-			script := `if [ -e "$0.ran" ]; then head -n 1 "$1" | grep -qx 'Return the tax.' || exit 1; ` +
-				`else touch "$0.ran"; printf '\n' > "$1.new"; sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"; fi`
-			writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+script+"\n")
-			if err := os.Chmod(filepath.Join(bin, "nvim"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 			pressed := v.PressKey("c", time.Now())
 			emptied := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
@@ -241,4 +209,33 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Saves a review of item in a new repository whose tax.py holds code, and
+// puts a fake nvim first on PATH that runs script on the file it opens.
+func startTaxReview(t *testing.T, code string, item review.Item, script string) *review.Review {
+	t.Helper()
+	buildRepoCheckerOnPath(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "tax.py"), code)
+	proposals := review.Proposals{
+		Version: review.Version,
+		Repo:    repo,
+		Items:   []review.Item{item},
+	}
+	if _, err := review.AddRound("tax", proposals); err != nil {
+		t.Fatal(err)
+	}
+	r, err := review.OpenReview("tax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+script+"\n")
+	if err := os.Chmod(filepath.Join(bin, "nvim"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return r
 }

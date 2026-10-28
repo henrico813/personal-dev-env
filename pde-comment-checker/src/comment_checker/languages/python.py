@@ -197,19 +197,34 @@ class Part(NamedTuple):
 
 
 def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
-    """Return a comment's plain text and screen rows.
+    """Return a comment's plain text and the rows a screen draws for it.
 
-    A ``#`` comment is shown as a Go comment is, with ``#`` marks. A
-    docstring's first row starts with its opening quotes, a section
-    entry's later rows are indented two spaces, and the closing quotes
-    are a row of their own.
+    A ``#`` comment is drawn as a Go comment is, with ``#`` marks. A
+    docstring's first row starts with its opening quotes, and a section
+    entry's later rows are indented two spaces. The closing quotes get a
+    row of their own, except on a docstring that is one line in the
+    code, which is drawn on one row as it reads there.
+
+    Args:
+        text: The comment exactly as it is in the file.
+
+    Returns:
+        The plain text the owner edits, and the rows the screen draws.
 
     Raises:
-        SourceError: ``text`` is neither ``#`` lines nor a whole docstring.
+        SourceError: The text is neither ``#`` lines nor one whole
+            docstring.
     """
     if text.lstrip().startswith("#"):
         return show_line_comment(text, "#")
     docstring, parts = read_docstring_parts(text)
+    opening = docstring["prefix"] + docstring["quotes"]
+    # A docstring on one line in the code is drawn on one row, with its
+    # closing quotes after the words.
+    if len(parts) == 1 and "\n" not in docstring["body"]:
+        words = parts[0].text + docstring["quotes"]
+        row = {"first": opening, "rest": "", "words": words}
+        return write_plain_parts(parts), [row]
     rows: list[dict[str, str]] = []
     for part in parts:
         if part.kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
@@ -217,7 +232,6 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
             rows.append({"first": "", "rest": rest, "words": part.text})
         else:
             rows.append({"fixed": part.text})
-    opening = docstring["prefix"] + docstring["quotes"]
     if rows and rows[0].get("first") == "":
         rows[0]["first"] = opening
     else:
