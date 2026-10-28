@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -244,5 +245,19 @@ func TestDraftReportsNothingToReview(t *testing.T) {
 
 	if len(reply.Problems) > 0 || reply.State != "done" {
 		t.Errorf("replyToDraft() = %+v, want state done", reply)
+	}
+}
+
+// A Rust-only branch has nothing the tool can review, but its comments
+// still need the owner. The agent must show them in the pull request
+// rather than say there is nothing to review.
+func TestDraftNamesFilesToolCannotReview(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(t, filepath.Join(repo, "main.rs"), "// Starts the shop.\nfn main() {}\n")
+
+	reply := replyToDraft(repo, buildRepoCheckerOnPath(t))
+
+	if !slices.Equal(reply.Unsupported, []string{"main.rs"}) || !strings.Contains(reply.Next, "nothing for the tool to review") || !strings.Contains(reply.Next, "pull request") {
+		t.Errorf("replyToDraft() = %+v, want main.rs named for the pull request", reply)
 	}
 }

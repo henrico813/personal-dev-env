@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -93,24 +92,33 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
+	start := chooseStartingWording(e)
 	shown, err := showComments(
 		checker,
 		r.Repo(),
 		[]showEntry{{
 			File: e.Item.File,
-			Text: chooseStartingWording(e),
+			Text: start,
 		}},
 	)
 	if err != nil {
 		return err
 	}
 	text := shown[0].Plain
-	page := filepath.Join(r.Dir, fmt.Sprintf("edit-%d.txt", id))
-	content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
-	if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
-		return err
+	page := r.EditPagePath(id)
+	// A page the checker refused holds the owner's typing, so it opens again.
+	if _, err := os.Stat(page); err != nil {
+		content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
+		if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
+			return err
+		}
 	}
-	defer os.Remove(page)
+	keepPage := false
+	defer func() {
+		if !keepPage {
+			os.Remove(page)
+		}
+	}()
 	nvim := exec.Command("nvim", "-c", "setlocal wrap linebreak nolist spell", page)
 	if err := runOnTerminal(nvim, in, out); err != nil {
 		return fmt.Errorf("nvim quit with an error, so nothing was saved: %w", err)
@@ -127,20 +135,33 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
+	// The page is not kept, so the next edit starts from the docstring.
+	if len(strings.Fields(edited)) == 0 && places[id].NoCut {
+		return fmt.Errorf(
+			"the docstring is its body's only statement, so it cannot be cut; go back to item %d with h and press e to reword it",
+			id,
+		)
+	}
 	if len(strings.Fields(edited)) == 0 {
 		return r.SetDecision(id, review.ActionCut, "")
 	}
+	// The edit keeps the layout of the wording it started from, such as an r prefix.
 	shown, err = showComments(
 		checker,
 		r.Repo(),
 		[]showEntry{{
 			File:  e.Item.File,
-			Text:  e.Item.Old,
+			Text:  start,
 			Plain: edited,
 		}},
 	)
 	if err != nil {
-		return err
+		keepPage = true
+		return fmt.Errorf(
+			"%w; your text is kept, so go back to item %d with h and press e to fix it",
+			err,
+			id,
+		)
 	}
 	return r.SetDecision(
 		id,

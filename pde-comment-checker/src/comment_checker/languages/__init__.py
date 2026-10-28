@@ -80,6 +80,7 @@ LANGUAGES = {
         generated_marker=PYTHON_GENERATED_MARKER,
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
+        reviews_on=True,
         show_text=show_python_comment,
         write_plain=write_python_comment,
         finish_rewrite=finish_python_rewrite,

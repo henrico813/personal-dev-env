@@ -447,11 +447,11 @@ class TestChanges:
         assert code == 0
         assert [i["name"] for i in reply["items"]] == ["Reset"]
 
-    def test_python_comments_wait_for_reviews(self, tmp_path: Path) -> None:
-        """List no Python comment while Python's owner reviews are off.
+    def test_new_python_docstring_is_listed(self, tmp_path: Path) -> None:
+        """List a new Python docstring for the owner, as a Go comment is.
 
-        The review tool cannot write Python answers yet, so a Python item
-        would make the whole review fail when the owner sends it.
+        Python reviews are on, so a docstring left out here would never
+        reach the owner, and no later step would notice.
         """
         base = commit_all(tmp_path)
         (tmp_path / "shop.py").write_text('"""Sells things."""\n')
@@ -459,7 +459,8 @@ class TestChanges:
         code, reply = list_changes(tmp_path, base)
 
         assert code == 0
-        assert reply["items"] == []
+        listed = [(i["name"], i["reason"]) for i in reply["items"]]
+        assert listed == [("<module>", "new")]
 
     def test_unsupported_changed_file_is_named(self, tmp_path: Path) -> None:
         """Name a changed code file the checker cannot read yet.
@@ -855,7 +856,7 @@ class TestShowDocstrings:
                 id="ends-in-quote",
             ),
             pytest.param(
-                '    """Sum."""\n',
+                '    """Sum at C:\\ prices."""\n',
                 "Sum the prices.\n\nReads the price list from the shared "
                 "folder on the north drive at C:\\ prices daily.\n",
                 '    """Sum the prices.\n\n    Reads the price list from the '
@@ -864,7 +865,7 @@ class TestShowDocstrings:
                 id="backslash-keeps-next-word",
             ),
             pytest.param(
-                '    """Sum."""\n',
+                '    """Sum at caf\\N{LATIN SMALL LETTER E WITH ACUTE}."""\n',
                 "Sum the prices.\n\nPrices are listed in euros, and the name "
                 "of the cafe is written caf\\N{LATIN SMALL LETTER E WITH "
                 "ACUTE} here.\n",
@@ -873,6 +874,18 @@ class TestShowDocstrings:
                 "    caf\\N{LATIN SMALL LETTER E WITH ACUTE} here.\n"
                 '    """\n',
                 id="named-escape-stays-whole",
+            ),
+            pytest.param(
+                '"""Sum."""\n',
+                "Match \\\\d.\n",
+                '"""Match \\\\d."""\n',
+                id="doubled-backslash",
+            ),
+            pytest.param(
+                '    r"""Sum."""\n',
+                "Match \\d.\n",
+                '    r"""Match \\d."""\n',
+                id="raw-keeps-backslash",
             ),
             pytest.param('"""Sum."""\n', "\n", "", id="no-words-cuts"),
         ],
@@ -910,6 +923,24 @@ class TestShowDocstrings:
                 "shop.py: the text holds a carriage return or a NUL",
                 id="nul",
             ),
+            pytest.param(
+                "Match \\d.\n",
+                "shop.py: the text holds \\d, which Python warns about; "
+                "double the backslash to keep it",
+                id="unknown-escape",
+            ),
+            pytest.param(
+                "Save to C:\\new.\n",
+                "shop.py: the text holds \\n, which Python reads as another "
+                "character; double the backslash to keep it",
+                id="known-escape",
+            ),
+            pytest.param(
+                "Sum the prices \\\nand the tax.\n",
+                "shop.py: the text holds a backslash at a line end, which "
+                "joins the next line; double the backslash to keep it",
+                id="line-end-backslash",
+            ),
         ],
     )
     def test_unwritable_plain_text_is_refused(
@@ -919,7 +950,9 @@ class TestShowDocstrings:
 
         Closing quotes would turn the rest of the text into code, Python
         reads a carriage return as a line end, which the checker refuses
-        in a file, and a file holding a NUL does not compile.
+        in a file, and a file holding a NUL does not compile. A new escape
+        would change the docstring or make Python warn, and the final write
+        would refuse it only after the owner answered every comment.
         """
         code, reply = show_entries(
             tmp_path,
@@ -1305,9 +1338,9 @@ class TestApplyCheck:
     ) -> None:
         """Refuse an answer in a language whose owner reviews are off.
 
-        Python reviews stay off until the review tool can show them, and
-        the tool's own Go-only filter goes away before then, so the
-        checker alone keeps a hand-written answer out of such a file.
+        A language still being added has its reviews off until the review
+        tool can show its comments, and the tool has no filter of its
+        own, so the checker alone keeps a hand-written answer out of it.
         """
         writable = replace(NOTE, finish_rewrite=lambda old, new, file: new)
         monkeypatch.setitem(LANGUAGES, ".note", writable)
@@ -1422,8 +1455,6 @@ class TestApplyCheck:
         into a coding line, or a new directive would change the code.
         Keys with ``@`` are docstrings whose name is shared, so unnamed.
         """
-        python = replace(LANGUAGES[".py"], reviews_on=True)
-        monkeypatch.setitem(LANGUAGES, ".py", python)
         docstrings = {
             "<module>": '"""Shop."""\n',
             "#@top": "# Prices follow the decoding: latin-1 table.\n",
@@ -1929,8 +1960,6 @@ class TestApply:
         bug here would change a real file outside the one comment it was
         asked to touch, which a small sample would never show.
         """
-        python = replace(LANGUAGES[".py"], reviews_on=True)
-        monkeypatch.setitem(LANGUAGES, ".py", python)
         root = Path(__file__).resolve().parents[2]
         listed = ["git", "-C", str(root), "ls-files", "*.go", "*.py"]
         files = subprocess.check_output(listed, text=True).split()

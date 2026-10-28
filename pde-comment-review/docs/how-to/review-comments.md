@@ -1,7 +1,8 @@
 # Review Comments
 
 Use this page to decide on each comment an AI wrote or changed in Go
-code before it stays. You answer one comment per screen; after the
+or Python code before it stays. You answer one comment per screen;
+after the
 last answer, the tool writes your answers into the code, with no AI
 involved, and approves the comments, so agents keep your wording.
 
@@ -168,7 +169,7 @@ other answer stays. Press `a`, the last answer: the tool writes them.
 ## 4. See what was written
 
 After the last answer, the tool writes your answers into the files,
-runs `gofmt`, and approves each comment you answered in
+runs `gofmt` on Go files, and approves each comment you answered in
 `.code-comments.json`, with no question first. Code the AI listed as
 renamed keeps your approvals under its new name:
 
@@ -198,7 +199,7 @@ Opening the review again also tries the write again.
 ## 5. Commit
 
 The tool does not commit. Review the changes with `git diff` and commit
-the Go files. Do not commit `.code-comments.json`: it stays on your
+the changed files. Do not commit `.code-comments.json`: it stays on your
 computer. To keep it out of `git status`, run:
 
 ```bash

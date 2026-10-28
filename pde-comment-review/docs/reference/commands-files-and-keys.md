@@ -113,16 +113,24 @@ are above the screen, and on the right the answer: `?`, `kept`,
 
 ## The edit page
 
-`e` shows the comment as plain text: no `//`, one line per paragraph,
+`e` shows the comment as plain text: no `//`, `#` or docstring
+quotes, one line per paragraph,
 and code examples starting with a tab or two spaces. It starts from
 your own wording if you have one, then from the AI's reword, then
 from the comment. Below the `# ---- edits below are ignored ----` line
 is the code after the comment, to read.
 
-When nvim closes, the text is saved as `//` lines, indented like the
-old comment and rewrapped. Text with no words cuts the comment.
+When nvim closes, the text is saved as `//` or `#` lines or a
+docstring, laid out like the wording you started from and
+rewrapped. Text with no words cuts the comment.
 Unchanged text saves nothing. Nothing is saved, and the screen says
 why, when the `# ----` line was deleted or nvim quit with an error.
+When the checker refuses your text, such as a docstring holding `"""`
+or a new backslash escape, the screen says why and keeps your text.
+Go back to that comment with `h` and press `e` to fix it, or quit
+nvim with `:cq` to drop it. A docstring that is its function's or
+class's whole body cannot be cut, so `c` and an empty page are refused
+for it.
 
 ## What the write checks
 
@@ -134,7 +142,9 @@ Nothing is written, and the screen says why, when:
   approved, where your answer replaces the change;
 - an item from `draft` has no comment by its name in its file, or
   its removed code is back;
-- `gofmt` would change a file for reasons other than the comments;
+- `gofmt` would change a Go file for reasons other than the comments;
+- a Python answer would change what the code does, such as a new
+  backslash escape in a docstring;
 - an item is for a comment you cut, or its `old` is not the text you
   approved;
 - a listed rename would move no approved comment: its file has no item.

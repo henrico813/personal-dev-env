@@ -127,6 +127,9 @@ func findItemProblem(item Item) error {
 type CommentLines struct {
 	First int
 	Last  int
+	// Set for a docstring that is its body's only statement, which the
+	// write refuses to cut.
+	NoCut bool
 }
 
 // Returns the lines of item's comment, or an error when the checker found

@@ -428,9 +428,9 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// Python reviews stay off until the review screen can show them, so add
-// must refuse a hand-written Python item before the owner sees it.
-func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
+// Python reviews are on, so add must save an agent's hand-written Python
+// item for the owner to answer.
+func TestAddSavesHandWrittenPythonItem(t *testing.T) {
 	repo := startSecondRound(
 		t,
 		map[string]string{
@@ -454,28 +454,16 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 		buildRepoCheckerOnPath(t),
 	)
 
-	want := "nothing was saved: item 4: tax.py: owner reviews are off for this language"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf(
-			"addRound() error = %v, want it to contain %q",
-			err,
-			want,
-		)
+	if err != nil {
+		t.Fatalf("addRound() error = %v, want the Python item saved", err)
 	}
 	roundTwo := filepath.Join(
 		review.FindStateRoot(),
 		"cart",
 		"round-2.json",
 	)
-	if _, err := os.Stat(roundTwo); !errors.Is(
-		err,
-		fs.ErrNotExist,
-	) {
-		t.Errorf(
-			"round file %s was left behind: %v",
-			roundTwo,
-			err,
-		)
+	if _, err := os.Stat(roundTwo); err != nil {
+		t.Errorf("round two was not saved: %v", err)
 	}
 }
 

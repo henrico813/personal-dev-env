@@ -157,6 +157,35 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
+// A refused edit keeps the owner's typing for the next edit. Once the item
+// gets an answer or a new round, that typing is stale, and opening it would
+// put old words over the AI's new wording.
+func TestAnswersAndRoundsDropKeptPages(t *testing.T) {
+	repo := newRepo(t)
+	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
+	r, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2} {
+		if err := os.WriteFile(r.EditPagePath(id), []byte("typed\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	answerErr := r.SetDecision(1, ActionKeep, "")
+	addTestRound(t, "config", marshalProposals(t, repo, rewordParse))
+
+	if answerErr != nil {
+		t.Fatal(answerErr)
+	}
+	for _, id := range []int{1, 2} {
+		if _, err := os.Stat(r.EditPagePath(id)); err == nil {
+			t.Errorf("item %d's kept page is still there", id)
+		}
+	}
+}
+
 // Ctrl+b e opens the only waiting review, or lists them newest first within
 // each session. The owner once left ten notes on another session's review,
 // so the wrong order, an applied or removed review still listed, or a new

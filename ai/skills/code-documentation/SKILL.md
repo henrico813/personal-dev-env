@@ -273,11 +273,12 @@ comment in the code.
 
 ## Comment checker
 
-For Go or Python files whose comments you write or review, run the
-checker in this skill's `scripts/` folder, with Python 3.10 or later:
+For Go or Python files whose comments you write or review, run
+`pde-comment-checker`, which `pde-installer` installs. If it is not on
+`PATH`, tell the user to run `pde-installer`:
 
 ```bash
-python3 <this skill's folder>/scripts/check_comments.py \
+pde-comment-checker \
   --repo <repository root> --base <commit your task started from> \
   <Go or Python files>
 ```
@@ -357,11 +358,10 @@ win:
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
 
-For Python files you add or change, run the rule checker in this
-skill's `scripts/` folder:
+For Python files you add or change, run the rule checker:
 
 ```bash
-python3 <this skill's folder>/scripts/check_python_rules.py \
+pde-comment-checker python-rules \
   --repo <repository root> --base <commit your task started from> \
   <Python files>
 ```

@@ -216,6 +216,10 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		v.notice = "The code is gone. c or a drops the comment, and m asks the AI for the code back."
 		return None
 	}
+	if key == "c" && v.Places[v.Entry().Item.ID].NoCut {
+		v.notice = "This docstring is its body's only statement, so it cannot be cut. o keeps it, and e edits it."
+		return None
+	}
 	switch key {
 	case "l":
 		v.Show((v.Index+1)%len(v.Entries), now)

@@ -191,11 +191,12 @@ target worktree has one, after main synchronization:
 2. Read the pull request with
    `gh pr view <pr> --json state,mergeCommit`. If there is no merged
    pull request, skip the merge; the backup keeps the approvals.
-3. Otherwise load the `code-documentation` skill to learn its folder,
-   and bring the approvals in with the comment checker there:
+3. Otherwise bring the approvals in with the comment checker. If
+   `pde-comment-checker` is not on `PATH`, stop and tell the user to
+   run `pde-installer`:
 
    ```bash
-   python3 <that skill's folder>/scripts/check_comments.py \
+   pde-comment-checker \
      --repo . --merge-approvals <worktree path> <merge commit>
    ```
 
