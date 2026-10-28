@@ -11,10 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-
-	"pde-comment-review/internal/comment"
 )
 
 // The version of the proposals file layout this program reads; files with
@@ -126,26 +123,21 @@ func findItemProblem(item Item) error {
 	return nil
 }
 
-// Returns where old starts in text. Refuses old unless it appears exactly
-// once, starts a line, is not inside a string or /* */ comment, and has
-// no comment line just above or below it, not counting a Go directive.
-func findOnce(text, old string) (int, error) {
-	switch n := strings.Count(text, old); n {
-	case 0:
-		return 0, errors.New("comment found 0 times, want once")
-	case 1:
-	default:
-		return 0, fmt.Errorf("comment found %d times, at lines %s; pde-comment-review cannot tell the copies apart", n, listCopyLines(text, old))
-	}
-	at := strings.Index(text, old)
-	if at > 0 && text[at-1] != '\n' {
-		return 0, errors.New("comment does not start a line")
-	}
-	if err := comment.RefusePartialComment(text, at, at+len(old)); err != nil {
-		return 0, fmt.Errorf("old %w", err)
-	}
-	if err := comment.RefuseTextOutsideComments(text, at, at+len(old)); err != nil {
-		return 0, fmt.Errorf("old %w", err)
+// The lines a comment spans in its file, First to Last, counting from 1.
+type CommentLines struct {
+	First int
+	Last  int
+}
+
+// Returns the lines of item's comment, or an error when the checker found
+// no such comment.
+func FindCommentLines(item Item, places map[int]CommentLines) (CommentLines, error) {
+	at, ok := places[item.ID]
+	if !ok {
+		return at, fmt.Errorf(
+			"the checker finds no comment for this item in %s",
+			item.File,
+		)
 	}
 	return at, nil
 }
@@ -155,63 +147,32 @@ func findOnce(text, old string) (int, error) {
 func ReadCodeAround(
 	repo string,
 	item Item,
-	foundByName map[int]string,
+	places map[int]CommentLines,
 	codeLinesAround int,
 ) (before, after []string, err error) {
+	at, err := FindCommentLines(
+		item,
+		places,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
 	data, err := os.ReadFile(filepath.Join(repo, item.File))
 	if err != nil {
 		return nil, nil, err
 	}
-	text, current := string(data), findCurrentComment(item, foundByName)
-	at, err := findOnce(text, current)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s: %w", item.File, err)
+	lines := strings.Split(
+		strings.TrimSuffix(string(data), "\n"),
+		"\n",
+	)
+	// The file may have changed since the screen read it.
+	if at.First < 1 || at.First > at.Last || at.Last > len(lines) {
+		return nil, nil, fmt.Errorf(
+			"%s changed after the screen read it",
+			item.File,
+		)
 	}
-	// A comment at the start or end of the file has no code on that side.
-	if at > 0 {
-		before = strings.Split(strings.TrimSuffix(text[:at], "\n"), "\n")
-	}
-	if rest := text[at+len(current):]; rest != "" {
-		after = strings.Split(strings.TrimSuffix(rest, "\n"), "\n")
-	}
-	return before[max(0, len(before)-codeLinesAround):], after[:min(codeLinesAround, len(after))], nil
-}
-
-// Returns the line the item's comment starts on in repo, counting from 1.
-func FindCommentLine(
-	repo string,
-	item Item,
-	foundByName map[int]string,
-) (int, error) {
-	data, err := os.ReadFile(filepath.Join(repo, item.File))
-	if err != nil {
-		return 0, err
-	}
-	at, err := findOnce(string(data), findCurrentComment(item, foundByName))
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", item.File, err)
-	}
-	return strings.Count(string(data[:at]), "\n") + 1, nil
-}
-
-// Returns the item's comment as its file has it now.
-func findCurrentComment(item Item, foundByName map[int]string) string {
-	if text, ok := foundByName[item.ID]; ok {
-		return text
-	}
-	return item.Old
-}
-
-// Returns the line where each copy of old starts in text, such as "3, 9".
-func listCopyLines(text, old string) string {
-	var found []string
-	for at := strings.Index(text, old); at >= 0; {
-		found = append(found, strconv.Itoa(strings.Count(text[:at], "\n")+1))
-		next := strings.Index(text[at+len(old):], old)
-		if next < 0 {
-			break
-		}
-		at += len(old) + next
-	}
-	return strings.Join(found, ", ")
+	before = lines[max(0, at.First-1-codeLinesAround) : at.First-1]
+	after = lines[at.Last:min(len(lines), at.Last+codeLinesAround)]
+	return before, after, nil
 }

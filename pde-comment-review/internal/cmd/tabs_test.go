@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,12 +27,17 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 		wantRefuse bool
 	}{
 		{
-			name:   "new wording",
-			script: `printf 'Returns the total, in cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
+			name: "new wording",
+			// The page starts from the AI's reword as plain text.
+			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
+				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
 			want: &review.Decision{
-				Action: review.ActionEdited, Text: "// Returns the total, in cents.\n", Round: 1,
+				Action: review.ActionEdited,
+				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
+				Round:  1,
 			},
-			wantShown: "+// Returns the total, in cents.",
+			// The phone screen rewraps the two lines above the code.
+			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{
 			name:   "every word deleted",
@@ -43,6 +49,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			buildRepoCheckerOnPath(t)
 			r := startReview(t, cartGo, `{"approved": [], "avoid": {}}`, nil)
 			bin := t.TempDir()
 			// nvim is run as: nvim -c COMMANDS PAGE.
@@ -71,9 +78,15 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			// The owner checks an edit on the item screen, which must show
 			// the owner's wording in place of the AI's.
 			if tt.wantShown != "" {
-				v := &popup.View{Entries: saved.ListEntries(), Repo: r.Repo(), Cols: 80, Rows: 40}
+				v := &popup.View{
+					Entries: saved.ListEntries(),
+					Repo:    r.Repo(),
+					Cols:    37,
+					Rows:    40,
+				}
+				prepareScreen(saved, v)
 				v.Show(1, time.Now())
-				screen := strings.Join(v.BuildScreen(), "\n")
+				screen := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(strings.Join(v.BuildScreen(), "\n"), "")
 				if !strings.Contains(screen, tt.wantShown) {
 					t.Errorf("item screen does not show %q:\n%s", tt.wantShown, screen)
 				}

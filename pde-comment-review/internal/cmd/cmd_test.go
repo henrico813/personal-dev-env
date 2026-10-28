@@ -165,20 +165,6 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 			},
 		},
 		{
-			name:   "drafted comment worded like another",
-			onDisk: cartGo + "\n// Reports whether every price is above zero.\nfunc Positive() bool { return true }\n",
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Name:     "Positive",
-				Proposal: review.ProposeKeep,
-				Old:      "// Reports whether every price is above zero.\n",
-			}},
-			want: []string{
-				"item 4: cart.go: comment found 2 times",
-			},
-		},
-		{
 			name:   "reword that adds a directive",
 			onDisk: cartGo,
 			extra: []review.Item{{

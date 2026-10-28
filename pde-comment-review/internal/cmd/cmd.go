@@ -181,14 +181,6 @@ func saveRound(
 			),
 		)
 	}
-	// The checker finds a named comment by its name, but the review
-	// screen still finds it by its text.
-	if err == nil {
-		err = refuseUnwritableNamedItems(
-			next,
-			named,
-		)
-	}
 	if err != nil {
 		return "", fmt.Errorf(
 			"nothing was saved: %w",

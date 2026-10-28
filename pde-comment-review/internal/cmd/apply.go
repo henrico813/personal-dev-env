@@ -328,54 +328,6 @@ func findItemName(item review.Item, named map[commentKey]string) string {
 	return ""
 }
 
-// Returns each named item's comment as its file has it now, by item ID.
-func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]string {
-	foundByName := map[int]string{}
-	for _, e := range r.ListEntries() {
-		if text, ok := named[commentKey{e.Item.File, e.Item.Name}]; ok {
-			foundByName[e.Item.ID] = text
-		}
-	}
-	return foundByName
-}
-
-// Returns an error naming each named item whose removed code is back, or
-// whose comment the review screen cannot find exactly once by its text.
-func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
-	foundByName := findCommentsByName(r, named)
-	var problems []error
-	for _, e := range r.ListEntries() {
-		if _, found := foundByName[e.Item.ID]; !found {
-			continue
-		}
-		var err error
-		if e.Item.CodeRemoved {
-			err = fmt.Errorf(
-				"%s %s: its removed code is back. Send the item again without code_removed.",
-				e.Item.File,
-				e.Item.Name,
-			)
-		} else {
-			_, err = review.FindCommentLine(
-				r.Repo(),
-				e.Item,
-				foundByName,
-			)
-		}
-		if err != nil {
-			problems = append(
-				problems,
-				fmt.Errorf(
-					"item %d: %w",
-					e.Item.ID,
-					err,
-				),
-			)
-		}
-	}
-	return errors.Join(problems...)
-}
-
 // Returns the approved text per comment in dir's .code-comments.json, ""
 // for a cut one, to compare what approving would change.
 func readApprovals(dir string) (map[commentKey]string, error) {

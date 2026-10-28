@@ -10,16 +10,8 @@ import (
 	"testing"
 
 	"pde-comment-review/internal/comment"
+	"pde-comment-review/internal/popup"
 )
-
-// One row of the checker's show reply. A row with Words is wrapped after
-// its marks; any other row is drawn as Fixed.
-type screenRow struct {
-	First string `json:"first"`
-	Rest  string `json:"rest"`
-	Words string `json:"words"`
-	Fixed string `json:"fixed"`
-}
 
 // The screen will draw Go comments from the checker's rows instead of
 // WrapForScreen, so the owner must see the same rows at every width.
@@ -92,8 +84,8 @@ func TestCheckerRowsMatchWrapForScreen(t *testing.T) {
 	}
 	var shown struct {
 		Shown []struct {
-			Text   string      `json:"text"`
-			Screen []screenRow `json:"screen"`
+			Text   string            `json:"text"`
+			Screen []popup.ScreenRow `json:"screen"`
 		} `json:"shown"`
 	}
 	runChecker(
@@ -111,7 +103,7 @@ func TestCheckerRowsMatchWrapForScreen(t *testing.T) {
 	for _, s := range shown.Shown {
 		for width := 20; width <= 80; width++ {
 			want := comment.WrapForScreen(s.Text, width)
-			if got := drawScreenRows(s.Screen, width); !reflect.DeepEqual(got, want) {
+			if got := popup.DrawScreenRows(s.Screen, width); !reflect.DeepEqual(got, want) {
 				t.Fatalf("at width %d, %q draws\n%q\nwant\n%q", width, s.Text, got, want)
 			}
 		}
@@ -137,23 +129,4 @@ func runChecker(t *testing.T, checker, repo string, stdin []byte, reply any, com
 	if err := json.Unmarshal(output, reply); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// Draws rows as the screen will, wrapping each sentence row to width less
-// its widest mark.
-func drawScreenRows(screen []screenRow, width int) []string {
-	var rows []string
-	for _, row := range screen {
-		if row.Words == "" {
-			rows = append(rows, row.Fixed)
-			continue
-		}
-		marks := max(len(row.First), len(row.Rest))
-		mark := row.First
-		for _, line := range comment.WrapWords(strings.Fields(row.Words), width-marks) {
-			rows = append(rows, mark+line)
-			mark = row.Rest
-		}
-	}
-	return rows
 }

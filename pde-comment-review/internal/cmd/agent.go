@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/review"
 )
 
@@ -135,7 +134,23 @@ func changeDraftItem(
 	}
 	item.Proposal, item.New = answer, ""
 	if answer == review.ProposeReword {
-		item.New = comment.ToCommentLines(text, item.Old)
+		checker, err := findCheckerPath()
+		if err != nil {
+			return err
+		}
+		shown, err := showComments(
+			checker,
+			d.Proposals.Repo,
+			[]showEntry{{
+				File:  item.File,
+				Text:  item.Old,
+				Plain: text,
+			}},
+		)
+		if err != nil {
+			return err
+		}
+		item.New = shown[0].Text
 	}
 	return review.SaveDraft(name, *d)
 }
