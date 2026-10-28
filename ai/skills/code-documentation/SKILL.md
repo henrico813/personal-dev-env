@@ -56,6 +56,11 @@ Use the smallest explanation that lets the reader work safely.
 
 Do not turn a large function into a wall of prose.
 
+When a comment spends most of its words on how the code works, rather
+than why it exists or what can go wrong, simplify the code instead.
+Split it, name its steps, or move setup into named helpers. Tests are
+the usual case. In review-only work, report it.
+
 ## Write plain, direct English
 
 Load and follow the `plain-direct-english` skill whenever you write or
@@ -90,6 +95,11 @@ def save_config(path, data):
 Technical terms are fine when they are the clearest words. Explain
 project-specific terms when a new contributor would not know them. Do not repeat
 type information that is already obvious from the signature.
+
+When writing or reviewing comments, check each one against
+[references/comments-readers-reject.md](
+references/comments-readers-reject.md),
+which lists what readers reject, each with a bad and a better example.
 
 ## Keep claims true
 
