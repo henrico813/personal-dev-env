@@ -146,8 +146,14 @@ the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
 `//go:noinline`, and it stays unapproved even when you answer it.
 
-Approval goes through the comment checker, `pde-comment-checker` on
-`PATH`, which `pde-installer` installs and which needs `python3`.
+The write and the approval go through the comment checker,
+`pde-comment-checker` on `PATH`, which `pde-installer` installs
+and which needs `python3`. If the write fails, or the checker gets
+Ctrl-C, SIGTERM or SIGHUP before it finishes, the checker tries to
+put the files and approvals back. A signal that arrives after the
+write finishes does not undo it. The checker cannot put files back
+after SIGKILL, or when the file system fails. After a failed run,
+check the files with `git -C <repo> status`.
 `draft` asks the checker which comments you must answer. Each command
 that runs the checker first checks that it speaks this tool's
 interface, and refuses one from another install with a hint to run
