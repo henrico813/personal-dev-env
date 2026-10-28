@@ -22,7 +22,11 @@ from pathlib import Path
 from typing import TextIO
 
 from . import INTERFACE, VERSION
-from .apply import check_answers, read_apply_request, write_answers
+from .apply import (
+    check_answers,
+    read_apply_request,
+    write_reviewed_comments,
+)
 from .approvals import unname_unapprovable_comments
 from .changes import find_owner_changes
 from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES, Language
@@ -263,7 +267,7 @@ def main(argv: list[str]) -> int:
             renames, answers = read_apply_request(sys.stdin)
             write, problems = check_answers(answers, renames, repo)
             if not (problems or args.check):
-                problems = write_answers(repo, write)
+                problems = write_reviewed_comments(repo, write)
         except (OSError, ValueError) as error:
             print(error, file=sys.stderr)
             return 2
