@@ -1,8 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
-	"slices"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -57,17 +58,13 @@ func readReviewOrigin(r *review.Review) (review.Origin, error) {
 func runReviewScreen(
 	r *review.Review, origin review.Origin, in, out *os.File, opts screenOptions,
 ) error {
-	foundByName, err := readCommentsByName(r)
 	v := &popup.View{
-		Entries:     r.ListEntries(),
-		Repo:        r.Repo(),
-		Origin:      origin,
-		Settle:      opts.settle,
-		FoundByName: foundByName,
+		Entries: r.ListEntries(),
+		Repo:    r.Repo(),
+		Origin:  origin,
+		Settle:  opts.settle,
 	}
-	if err != nil {
-		v.ShowNotice(err.Error())
-	}
+	prepareScreen(r, v)
 	term, err := popup.Start(in, out)
 	if err != nil {
 		return err
@@ -141,7 +138,7 @@ func runReviewScreen(
 					return viewFile(
 						r.Repo(),
 						item,
-						v.FoundByName,
+						v.Places,
 						in,
 						out,
 					)
@@ -157,22 +154,196 @@ func runReviewScreen(
 	}
 }
 
-// Returns each named item's comment as its file has it now, running the
-// checker only when r has a named item.
-func readCommentsByName(r *review.Review) (map[int]string, error) {
-	isNamed := func(e review.Entry) bool { return e.Item.Name != "" }
-	if !slices.ContainsFunc(r.ListEntries(), isNamed) {
+// Asks the checker where each of r's comments is and how the screen draws
+// it. A failure shows as a notice.
+func prepareScreen(r *review.Review, v *popup.View) {
+	checker, err := findCheckerPath()
+	if err == nil {
+		v.Places, err = findCommentPlaces(r, checker)
+	}
+	if err == nil {
+		v.CommentRows, err = readCommentRows(r, checker)
+	}
+	if err != nil {
+		v.ShowNotice(err.Error())
+	}
+}
+
+// Returns where each of r's comments is in its file, by item ID, from the
+// checker's list. An item whose comment is not found exactly once is left out.
+func findCommentPlaces(r *review.Review, checker string) (map[int]review.CommentLines, error) {
+	args := []string{
+		"list",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		r.Repo(),
+	}
+	files := 0
+	for _, file := range r.ListFiles() {
+		path := filepath.Join(
+			r.Repo(),
+			file,
+		)
+		// A deleted file's comments are all gone.
+		if _, err := os.Stat(path); err == nil {
+			args = append(
+				args,
+				path,
+			)
+			files++
+		}
+	}
+	// The checker's list needs at least one file.
+	if files == 0 {
 		return nil, nil
 	}
-	checker, err := findCheckerPath()
+	var listed struct {
+		Files []struct {
+			File     string `json:"file"`
+			Comments []struct {
+				Name    string `json:"name"`
+				Line    int    `json:"line"`
+				EndLine int    `json:"end_line"`
+				Text    string `json:"text"`
+			} `json:"comments"`
+		} `json:"files"`
+		Problems []string `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		nil,
+		&listed,
+		args...,
+	)
+	if err == nil {
+		err = joinProblems(listed.Problems)
+	}
 	if err != nil {
 		return nil, err
 	}
-	named, err := readReviewComments(r, checker)
+	places := map[int]review.CommentLines{}
+	for _, e := range r.ListEntries() {
+		var found []review.CommentLines
+		for _, file := range listed.Files {
+			if file.File != e.Item.File || e.Item.CodeRemoved {
+				continue
+			}
+			for _, c := range file.Comments {
+				at := strings.Index(
+					c.Text,
+					e.Item.Old,
+				)
+				switch {
+				case e.Item.Name != "" && c.Name == e.Item.Name:
+					found = append(
+						found,
+						review.CommentLines{
+							First: c.Line,
+							Last:  c.EndLine,
+						},
+					)
+				// An item without a name may be only part of a longer comment,
+				// such as the prose before or after a directive line.
+				case e.Item.Name == "" && (at == 0 || at > 0 && c.Text[at-1] == '\n'):
+					first := c.Line + strings.Count(
+						c.Text[:at],
+						"\n",
+					)
+					found = append(
+						found,
+						review.CommentLines{
+							First: first,
+							Last: first + strings.Count(
+								e.Item.Old,
+								"\n",
+							) - 1,
+						},
+					)
+				}
+			}
+		}
+		if len(found) == 1 {
+			places[e.Item.ID] = found[0]
+		}
+	}
+	return places, nil
+}
+
+// One comment for the checker's show. Plain, when set, is sentences to
+// write laid out like Text.
+type showEntry struct {
+	File  string `json:"file"`
+	Text  string `json:"text"`
+	Plain string `json:"plain,omitempty"`
+}
+
+// How the checker shows one comment, with the plain text the owner edits
+// and the rows the screen draws.
+type shownComment struct {
+	Text   string            `json:"text"`
+	Plain  string            `json:"plain"`
+	Screen []popup.ScreenRow `json:"screen"`
+}
+
+// Returns how the checker shows each of entries, in order.
+func showComments(checker, repo string, entries []showEntry) ([]shownComment, error) {
+	var reply struct {
+		Shown    []shownComment `json:"shown"`
+		Problems []string       `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		entries,
+		&reply,
+		"show",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		repo,
+	)
+	if err == nil {
+		err = joinProblems(reply.Problems)
+	}
+	return reply.Shown, err
+}
+
+// Returns the checker's screen rows for each text r's items show, such as
+// an AI's reword or the owner's own wording.
+func readCommentRows(r *review.Review, checker string) (map[string][]popup.ScreenRow, error) {
+	var entries []showEntry
+	seen := map[string]bool{}
+	for _, e := range r.ListEntries() {
+		texts := []string{e.Item.Old, e.Item.New}
+		if e.Decision != nil {
+			texts = append(texts, e.Decision.Text)
+		}
+		for _, text := range texts {
+			if text != "" && !seen[text] {
+				seen[text] = true
+				entries = append(
+					entries,
+					showEntry{
+						File: e.Item.File,
+						Text: text,
+					},
+				)
+			}
+		}
+	}
+	shown, err := showComments(
+		checker,
+		r.Repo(),
+		entries,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return findCommentsByName(r, named), nil
+	rows := map[string][]popup.ScreenRow{}
+	for i, s := range shown {
+		rows[entries[i].Text] = s.Screen
+	}
+	return rows, nil
 }
 
 func openEditTab(r *review.Review, v *popup.View) bool {
@@ -190,6 +361,7 @@ func editInPlace(
 	id := v.Entry().Item.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
 	v.Entries = r.ListEntries()
+	prepareScreen(r, v)
 	// Moves on even when nothing was saved, as the popup does when the edit
 	// tab reopens it at the next unanswered item.
 	v.ShowNextUndecided(v.Index+1, time.Now())
@@ -278,6 +450,7 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	case err != nil && !v.IsAllAnswered():
 		// A refusal for an item the new round added opens that item; the
 		// answers are written once the owner answers it.
+		prepareScreen(r, v)
 		v.ShowNextUndecided(
 			0,
 			time.Now(),

@@ -85,8 +85,51 @@ type View struct {
 	screen     screen
 	result     string // what writing the answers did, or why it did not
 	written    bool   // whether the answers reached the code
-	// Each named item's comment as it is in its file now, by item ID.
-	FoundByName map[int]string
+	// Where each item's comment is in its file, by item ID.
+	Places map[int]review.CommentLines
+	// The checker's screen rows for each comment text.
+	CommentRows map[string][]ScreenRow
+}
+
+// One row of the checker's show reply. A row with Words is wrapped after
+// its marks; any other row is drawn as Fixed.
+type ScreenRow struct {
+	First string `json:"first"`
+	Rest  string `json:"rest"`
+	Words string `json:"words"`
+	Fixed string `json:"fixed"`
+}
+
+// Returns rows as the screen draws them at width, wrapping each sentence
+// row to width less its widest mark.
+func DrawScreenRows(rows []ScreenRow, width int) []string {
+	var lines []string
+	for _, row := range rows {
+		if row.Words == "" {
+			lines = append(
+				lines,
+				row.Fixed,
+			)
+			continue
+		}
+		marks := max(
+			len(row.First),
+			len(row.Rest),
+		)
+		mark := row.First
+		words := comment.WrapWords(
+			strings.Fields(row.Words),
+			width-marks,
+		)
+		for _, line := range words {
+			lines = append(
+				lines,
+				mark+line,
+			)
+			mark = row.Rest
+		}
+	}
+	return lines
 }
 
 func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
@@ -337,8 +380,24 @@ func (v *View) body() ([]string, int) {
 		}
 	}
 	addComment := func(color, mark, text string) {
-		for _, row := range comment.WrapForScreen(text, width) {
-			add(color, mark, row)
+		rows, ok := v.CommentRows[text]
+		lines := DrawScreenRows(
+			rows,
+			width,
+		)
+		// Without the checker's rows, the comment shows as written.
+		if !ok {
+			lines = strings.Split(
+				strings.TrimSuffix(text, "\n"),
+				"\n",
+			)
+		}
+		for _, row := range lines {
+			add(
+				color,
+				mark,
+				row,
+			)
 		}
 	}
 	var before, after []string
@@ -347,7 +406,7 @@ func (v *View) body() ([]string, int) {
 		before, after, err = review.ReadCodeAround(
 			v.Repo,
 			e.Item,
-			v.FoundByName,
+			v.Places,
 			codeLinesAround,
 		)
 	}

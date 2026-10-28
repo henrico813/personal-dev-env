@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 
-	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/popup"
 	"pde-comment-review/internal/review"
 )
@@ -77,20 +76,35 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	foundByName, err := readCommentsByName(r)
+	checker, err := findCheckerPath()
+	if err != nil {
+		return err
+	}
+	places, err := findCommentPlaces(r, checker)
 	if err != nil {
 		return err
 	}
 	_, after, err := review.ReadCodeAround(
 		r.Repo(),
 		e.Item,
-		foundByName,
+		places,
 		30,
 	)
 	if err != nil {
 		return err
 	}
-	text := comment.ToPlainText(chooseStartingWording(e))
+	shown, err := showComments(
+		checker,
+		r.Repo(),
+		[]showEntry{{
+			File: e.Item.File,
+			Text: chooseStartingWording(e),
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	text := shown[0].Plain
 	page := filepath.Join(r.Dir, fmt.Sprintf("edit-%d.txt", id))
 	content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
 	if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
@@ -113,11 +127,26 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
-	wording := comment.ToCommentLines(edited, e.Item.Old)
-	if wording == "" {
+	if len(strings.Fields(edited)) == 0 {
 		return r.SetDecision(id, review.ActionCut, "")
 	}
-	return r.SetDecision(id, review.ActionEdited, wording)
+	shown, err = showComments(
+		checker,
+		r.Repo(),
+		[]showEntry{{
+			File:  e.Item.File,
+			Text:  e.Item.Old,
+			Plain: edited,
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	return r.SetDecision(
+		id,
+		review.ActionEdited,
+		shown[0].Text,
+	)
 }
 
 func findEntry(r *review.Review, id int) (review.Entry, error) {
@@ -165,19 +194,18 @@ func showDiff(r *review.Review, out *os.File) error {
 func viewFile(
 	repo string,
 	item review.Item,
-	foundByName map[int]string,
+	places map[int]review.CommentLines,
 	in *os.File,
 	out *os.File,
 ) error {
-	line, err := review.FindCommentLine(
-		repo,
+	at, err := review.FindCommentLines(
 		item,
-		foundByName,
+		places,
 	)
 	if err != nil {
 		return err
 	}
-	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", line), item.File)
+	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", at.First), item.File)
 	nvim.Dir = repo
 	return runOnTerminal(nvim, in, out)
 }
