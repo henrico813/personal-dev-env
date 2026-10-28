@@ -107,8 +107,8 @@ func runCheckerCommand(checker string, request any, reply any, args ...string) e
 	)
 }
 
-// One answer sent to the checker, as if the owner accepted every proposal.
-// Text is left out for a cut.
+// Holds the new text of one comment for the checker to write. Text is
+// empty when the comment should be deleted.
 type checkerAnswer struct {
 	ID          int    `json:"id"`
 	File        string `json:"file"`
@@ -343,9 +343,8 @@ func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]s
 	return foundByName
 }
 
-// Returns an error for each comment, found by its function or type name,
-// whose deleted code is back or whose text is not in its file exactly once.
-// The screen opens nvim at that text when the owner views the file.
+// Refuses a round the screen could not show, such as a comment whose text
+// appears twice in its file.
 func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
 	foundByName := findCommentsByName(r, named)
 	var problems []error
@@ -381,8 +380,8 @@ func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) e
 	return errors.Join(problems...)
 }
 
-// Returns the approved text per comment in dir's .code-comments.json, ""
-// for a cut one, to compare what approving would change.
+// Returns each comment's approved text from the folder's
+// .code-comments.json, or an empty string for a comment the owner cut.
 func readApprovals(dir string) (map[commentKey]string, error) {
 	entries, err := readApprovalEntries(dir)
 	if err != nil {
