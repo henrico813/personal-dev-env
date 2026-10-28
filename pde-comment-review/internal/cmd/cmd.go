@@ -181,8 +181,8 @@ func saveRound(
 			),
 		)
 	}
-	// The checker finds a named comment by its name, but this tool's write
-	// finds it by its text.
+	// The checker finds a named comment by its name, but the review
+	// screen still finds it by its text.
 	if err == nil {
 		err = refuseUnwritableNamedItems(
 			next,
