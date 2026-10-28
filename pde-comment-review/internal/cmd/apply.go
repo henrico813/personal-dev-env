@@ -131,22 +131,24 @@ func refuseUnwritableProposals(
 	for _, e := range r.ListEntries() {
 		answers = append(answers, buildAcceptedAnswer(e.Item, named))
 	}
-	reply, err := runCheckerApply(r, answers, checker, true /* check */)
+	reply, err := sendCommentsToChecker(r, answers, checker, true /* check */)
 	if err != nil {
 		return err
 	}
 	return joinProblems(reply.Problems)
 }
 
-// The checker's apply reply, with the files it changed or why it refused.
+// Holds the checker's report of changed files or reasons for refusing to
+// write.
 type applyReply struct {
 	Changed  []string `json:"changed"`
 	Problems []string `json:"problems"`
 }
 
-// Sends answers and r's renames to the checker's apply. When check is
-// false, the checker writes and attempts rollback on caught failures.
-func runCheckerApply(
+// Asks the checker to write and approve comments, moving approvals for
+// renamed code. In check-only mode, reports what would prevent writing
+// without changing files.
+func sendCommentsToChecker(
 	r *review.Review,
 	answers []checkerAnswer,
 	checker string,
@@ -213,19 +215,20 @@ func buildAcceptedAnswer(item review.Item, named map[commentKey]string) checkerA
 	case review.ProposeReword:
 		answer.Text = item.New
 	default:
-		// A keep puts old back over the file's text, as the write does.
+		// Keeping a comment restores the text the owner was shown.
 		answer.Text = item.Old
 	}
 	return answer
 }
 
-// Returns the answer the owner gave to e.
-func buildOwnerAnswer(e review.Entry, named map[commentKey]string) (checkerAnswer, error) {
+// Converts the owner's decision about a comment into a request for the
+// checker.
+func convertDecisionForChecker(e review.Entry, named map[commentKey]string) (checkerAnswer, error) {
 	answer := buildAcceptedAnswer(e.Item, named)
 	switch action := e.Decision.Action; action {
 	case review.ActionAccept:
 	case review.ActionKeep:
-		// A keep puts back the text the owner saw.
+		// Keeping a comment restores the text the owner was shown.
 		answer.Text, answer.Cut = e.Item.Old, false
 	case review.ActionCut:
 		answer.Text, answer.Cut = "", true
@@ -263,14 +266,15 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 	}
 	var answers []checkerAnswer
 	for _, e := range r.ListEntries() {
-		answer, err := buildOwnerAnswer(e, named)
+		answer, err := convertDecisionForChecker(e, named)
 		if err != nil {
 			return "", fmt.Errorf("nothing was written: %w", err)
 		}
 		answers = append(answers, answer)
 	}
-	reply, err := runCheckerApply(r, answers, checker, false /* check */)
-	// An uncatchable kill or a failed rollback can leave files changed.
+	reply, err := sendCommentsToChecker(r, answers, checker, false /* check */)
+	// The checker may have started writing before this error, so some files
+	// may have changed.
 	if err != nil {
 		return "", fmt.Errorf(
 			"write did not finish; files may have changed: %w\nRun git -C %s status to check the files.",
@@ -339,8 +343,9 @@ func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]s
 	return foundByName
 }
 
-// Returns an error naming each named item whose removed code is back, or
-// whose comment the review screen cannot find exactly once by its text.
+// Returns an error for each comment, found by its function or type name,
+// whose deleted code is back or whose text is not in its file exactly once.
+// The screen opens nvim at that text when the owner views the file.
 func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
 	foundByName := findCommentsByName(r, named)
 	var problems []error

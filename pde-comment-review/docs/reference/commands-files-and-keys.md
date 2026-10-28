@@ -146,7 +146,8 @@ the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
 `//go:noinline`, and it stays unapproved even when you answer it.
 
-The write and the approval go through the comment checker,
+Writing your decisions into the files and approving them both go
+through the comment checker,
 `pde-comment-checker` on `PATH`, which `pde-installer` installs
 and which needs `python3`. If the write fails, or the checker gets
 Ctrl-C, SIGTERM or SIGHUP before it finishes, the checker tries to
