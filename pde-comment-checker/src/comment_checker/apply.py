@@ -543,27 +543,23 @@ def approve_answers(
 
 
 def write_answers(repo: Path, write: Write) -> list[str]:
-    """Write sources and approvals, rolling back caught failures.
+    """Write the owner's new comments into the files and approve them.
 
-    Files changed since the check are refused before staging. SIGINT,
-    SIGTERM and SIGHUP are recorded and checked before commit. Handlers
-    remain installed through rollback and cleanup. The final check commits
-    the write; later write-owned signals leave it successful. SIGKILL
-    cannot be caught. Filesystem errors can prevent rollback or interrupt
-    cleanup; failed rollback names the affected files.
+    If anything goes wrong partway, the checker puts every file back. That
+    includes Ctrl-C and other stop signals. Once the last file is saved, the
+    change stays even if a signal arrives. A forced kill, or a disk error while
+    putting files back, can still leave some files changed.
 
-    On the single-threaded Unix CLI, block these signals while restoring
-    the caller's handlers. Consume pending signals not already blocked by
-    the caller. The pending-set snapshot ends write ownership; signals
-    arriving after it belong to the caller and may interrupt unmasking
-    or code after return. Restore the caller's original mask.
+    Args:
+        repo: The repository folder.
+        write: The new file contents and approvals, from the earlier check.
 
     Returns:
-        Refusal messages, or an empty list after writing successfully.
+        Reasons the files cannot be written, or an empty list on success.
 
     Raises:
-        KeyboardInterrupt: A signal is checked before commit.
-        OSError: Writing, rollback or cleanup fails.
+        KeyboardInterrupt: A signal arrived before the last file was saved.
+        OSError: A file could not be saved or put back.
     """
     problems = []
     for name, original in write.originals.items():
@@ -590,13 +586,12 @@ def write_answers(repo: Path, write: Write) -> list[str]:
     interrupted = None
 
     def record_interruption(signum, frame) -> None:
-        """Record a signal without interrupting filesystem cleanup."""
+        """Record the first signal so the write can finish or roll back."""
         nonlocal interrupted
         if interrupted is None:
             interrupted = signum
 
     def stop_if_interrupted() -> None:
-        """Unwind only where staging or rollback protects the write."""
         if interrupted is not None:
             raise KeyboardInterrupt(f"signal {interrupted}")
 
