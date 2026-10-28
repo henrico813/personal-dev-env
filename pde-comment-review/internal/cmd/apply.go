@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"pde-comment-review/internal/review"
@@ -108,8 +107,8 @@ func runCheckerCommand(checker string, request any, reply any, args ...string) e
 	)
 }
 
-// One answer sent to the checker, as if the owner accepted every proposal.
-// Text is left out for a cut.
+// Holds the new text of one comment for the checker to write. Text is
+// empty when the comment should be deleted.
 type checkerAnswer struct {
 	ID          int    `json:"id"`
 	File        string `json:"file"`
@@ -128,6 +127,33 @@ func refuseUnwritableProposals(
 	named map[commentKey]string,
 	checker string,
 ) error {
+	var answers []checkerAnswer
+	for _, e := range r.ListEntries() {
+		answers = append(answers, buildAcceptedAnswer(e.Item, named))
+	}
+	reply, err := sendCommentsToChecker(r, answers, checker, true /* check */)
+	if err != nil {
+		return err
+	}
+	return joinProblems(reply.Problems)
+}
+
+// Holds the checker's report of changed files or reasons for refusing to
+// write.
+type applyReply struct {
+	Changed  []string `json:"changed"`
+	Problems []string `json:"problems"`
+}
+
+// Asks the checker to write and approve comments, moving approvals for
+// renamed code. In check-only mode, reports what would prevent writing
+// without changing files.
+func sendCommentsToChecker(
+	r *review.Review,
+	answers []checkerAnswer,
+	checker string,
+	check bool,
+) (applyReply, error) {
 	request := struct {
 		Interface int             `json:"interface"`
 		Renames   []string        `json:"renames,omitempty"`
@@ -135,41 +161,35 @@ func refuseUnwritableProposals(
 	}{
 		Interface: checkerJSONVersion,
 		Renames:   r.ListRenames(),
+		Answers:   answers,
 	}
-	for _, e := range r.ListEntries() {
-		request.Answers = append(
-			request.Answers,
-			buildAcceptedAnswer(
-				e.Item,
-				named,
-			),
-		)
+	args := []string{"apply"}
+	if check {
+		args = append(args, "--check")
 	}
-	var reply struct {
-		Problems []string `json:"problems"`
-	}
+	var reply applyReply
 	err := runCheckerCommand(
 		checker,
 		request,
 		&reply,
-		"apply",
-		"--check",
-		"--interface",
-		fmt.Sprint(checkerJSONVersion),
-		"--repo",
-		r.Repo(),
+		append(
+			args,
+			"--interface",
+			fmt.Sprint(checkerJSONVersion),
+			"--repo",
+			r.Repo(),
+		)...,
 	)
-	if err != nil {
-		return err
+	return reply, err
+}
+
+// Returns one error holding each of the checker's problems, or nil.
+func joinProblems(problems []string) error {
+	var errs []error
+	for _, problem := range problems {
+		errs = append(errs, errors.New(problem))
 	}
-	var problems []error
-	for _, problem := range reply.Problems {
-		problems = append(
-			problems,
-			errors.New(problem),
-		)
-	}
-	return errors.Join(problems...)
+	return errors.Join(errs...)
 }
 
 // Returns the answer the owner gives by accepting item's proposal.
@@ -195,143 +215,91 @@ func buildAcceptedAnswer(item review.Item, named map[commentKey]string) checkerA
 	case review.ProposeReword:
 		answer.Text = item.New
 	default:
-		// A keep puts old back over the file's text, as the write does.
+		// Keeping a comment restores the text the owner was shown.
 		answer.Text = item.Old
 	}
 	return answer
+}
+
+// Converts the owner's decision about a comment into a request for the
+// checker.
+func convertDecisionForChecker(e review.Entry, named map[commentKey]string) (checkerAnswer, error) {
+	answer := buildAcceptedAnswer(e.Item, named)
+	switch action := e.Decision.Action; action {
+	case review.ActionAccept:
+	case review.ActionKeep:
+		// Keeping a comment restores the text the owner was shown.
+		answer.Text, answer.Cut = e.Item.Old, false
+	case review.ActionCut:
+		answer.Text, answer.Cut = "", true
+	case review.ActionEdited:
+		answer.Text, answer.Cut = e.Decision.Text, false
+	default:
+		return answer, fmt.Errorf(
+			"item %d: decision %q must be keep, cut, accept or edited",
+			e.Item.ID,
+			action,
+		)
+	}
+	return answer, nil
 }
 
 // Writes the owner's decisions into the code and approves them, so the
 // comment checker fails if an agent changes them later. Writes nothing if
 // any check fails first.
 func writeAndApproveDecisions(r *review.Review, checker string) (string, error) {
-	named, err := readReviewComments(r, checker)
-	if err == nil {
-		err = refuseUnwritableReview(r, named)
-	}
-	var changed map[string]string
-	if err == nil {
-		changed, err = r.BuildChangedFiles(findCommentsByName(r, named))
-	}
-	if err != nil {
-		return "", fmt.Errorf("nothing was written: %w", err)
-	}
-	repo, renames, answered := r.Repo(), r.ListRenames(), listAnsweredComments(r, named)
-	var written []string
-	for file := range changed {
-		written = append(written, file)
-	}
-	sort.Strings(written)
-	listed, err := runGofmt(repo, "-l", written)
-	if err == nil && listed != "" {
-		err = fmt.Errorf("gofmt would change %s, so the write would change more than comments; run gofmt -w on it first",
-			strings.ReplaceAll(listed, "\n", ", "))
-	}
-	if err != nil {
-		return "", fmt.Errorf("nothing was written: %w", err)
-	}
-	for i, file := range written {
-		if err := os.WriteFile(filepath.Join(repo, file), []byte(changed[file]), 0o644); err != nil {
-			return "", explainAfterWrite(err, written[:i])
+	var undecided []string
+	for _, e := range r.ListEntries() {
+		if e.Decision == nil {
+			undecided = append(undecided, fmt.Sprint(e.Item.ID))
 		}
 	}
-	// Run gofmt again after a write in case of misalignment.
-	if _, err := runGofmt(repo, "-w", written); err != nil {
-		return "", explainAfterWrite(err, written)
-	}
-	for _, key := range answered {
-		err := approveComment(
-			repo,
-			checker,
-			key,
-			renames,
+	if len(undecided) > 0 {
+		return "", fmt.Errorf(
+			"nothing was written: not decided: items %s",
+			strings.Join(undecided, ", "),
 		)
+	}
+	named, err := readReviewComments(r, checker)
+	if err != nil {
+		return "", fmt.Errorf("nothing was written: %w", err)
+	}
+	var answers []checkerAnswer
+	for _, e := range r.ListEntries() {
+		answer, err := convertDecisionForChecker(e, named)
 		if err != nil {
-			return "", explainAfterWrite(err, written)
+			return "", fmt.Errorf("nothing was written: %w", err)
 		}
+		answers = append(answers, answer)
+	}
+	reply, err := sendCommentsToChecker(r, answers, checker, false /* check */)
+	// The checker may have started writing before this error, so some files
+	// may have changed.
+	if err != nil {
+		return "", fmt.Errorf(
+			"write did not finish; files may have changed: %w\nRun git -C %s status to check the files.",
+			err,
+			r.Repo(),
+		)
+	}
+	if err := joinProblems(reply.Problems); err != nil {
+		return "", fmt.Errorf("nothing was written: %w", err)
 	}
 	if err := r.SetApplied(); err != nil {
 		return "", fmt.Errorf("applied, but the review still shows as waiting: %w", err)
 	}
+	renames := r.ListRenames()
 	report := ""
 	if len(renames) > 0 {
 		report += "moved approvals to renamed code: " + strings.Join(renames, ", ") + "\n"
 	}
-	if len(written) == 0 {
+	if len(reply.Changed) == 0 {
 		return report + "no file changed: every comment was kept\n", nil
 	}
-	return report + "wrote " + strings.Join(written, ", ") + "\nsee the changes with git -C " + repo + " diff\n", nil
+	return report + "wrote " + strings.Join(reply.Changed, ", ") + "\nsee the changes with git -C " + r.Repo() + " diff\n", nil
 }
 
 type commentKey struct{ file, name string }
-
-// Returns an error for each problem that would make the write fail. The write
-// calls this function first, because the code can change after add saves the
-// review.
-func refuseUnwritableReview(
-	r *review.Review,
-	named map[commentKey]string,
-) error {
-	approved, err := readApprovals(r.Repo())
-	if err != nil {
-		return err
-	}
-	answeredFiles := map[string]bool{}
-	for _, key := range listAnsweredComments(r, named) {
-		answeredFiles[key.file] = true
-	}
-	moved, used := moveApprovals(
-		approved,
-		named,
-		r.ListRenames(),
-		answeredFiles,
-	)
-	problems := []error{
-		refuseRepeatedItems(r.ListEntries(), named),
-		refuseUnwritableNamedItems(r, named),
-		refuseChangedApprovals(
-			r,
-			named,
-			moved,
-		),
-	}
-	removed := map[commentKey]bool{}
-	for _, e := range r.ListEntries() {
-		removed[commentKey{e.Item.File, e.Item.Name}] = e.Item.CodeRemoved
-	}
-	// Without its rename, an edited approved comment could pass as a new one.
-	for key, text := range moved {
-		if _, isComment := named[key]; text != "" && answeredFiles[key.file] && !isComment && !removed[key] {
-			problems = append(
-				problems,
-				fmt.Errorf(
-					"%s %s: the owner's approved comment is gone. If you renamed it, add the rename to renames; if you deleted its code, send it as an item with code_removed and this as old:\n    %s",
-					key.file,
-					key.name,
-					strings.ReplaceAll(
-						strings.TrimSuffix(text, "\n"),
-						"\n",
-						"\n    ",
-					),
-				),
-			)
-		}
-	}
-	for _, pair := range r.ListRenames() {
-		if used[pair] {
-			continue
-		}
-		before, _, _ := strings.Cut(pair, "=")
-		problems = append(
-			problems,
-			fmt.Errorf(
-				"rename %s would move no approved comment, because its file has no item. Add an item for that comment in its file, or remove the rename if the comment was never approved",
-				before,
-			),
-		)
-	}
-	return errors.Join(problems...)
-}
 
 // Returns the text of each comment the checker names in r's files.
 func readReviewComments(r *review.Review, checker string) (map[commentKey]string, error) {
@@ -375,134 +343,8 @@ func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]s
 	return foundByName
 }
 
-// Returns the comment of each of r's items that the checker names.
-func listAnsweredComments(r *review.Review, named map[commentKey]string) []commentKey {
-	var answered []commentKey
-	for _, e := range r.ListEntries() {
-		if name := findItemName(e.Item, named); name != "" {
-			answered = append(answered, commentKey{e.Item.File, name})
-		}
-	}
-	return answered
-}
-
-// Returns an error naming each item whose old is not its named comment's
-// text, or not the text the owner approved, since approving it would
-// approve another comment or an agent's edit.
-func refuseChangedApprovals(
-	r *review.Review,
-	named map[commentKey]string,
-	approved map[commentKey]string,
-) error {
-	var problems []error
-	for _, e := range r.ListEntries() {
-		key := commentKey{e.Item.File, findItemName(e.Item, named)}
-		text, isApproved := approved[key]
-		var problem string
-		switch {
-		case key.name == "" || isApproved && text == e.Item.Old:
-			continue
-		case named[key] != e.Item.Old:
-			problem = "no comment by this name has the item's old. Fix or remove the item's name."
-		case !isApproved:
-			continue
-		case text == "":
-			problem = "the owner cut this comment. Delete it from the code."
-		default:
-			problem = "differs from the text the owner approved. To change it, list it as an item with this as old:\n    " + strings.ReplaceAll(
-				strings.TrimSuffix(text, "\n"),
-				"\n",
-				"\n    ",
-			)
-		}
-		problems = append(
-			problems,
-			fmt.Errorf(
-				"item %d: %s %s: %s",
-				e.Item.ID,
-				key.file,
-				key.name,
-				problem,
-			),
-		)
-	}
-	return errors.Join(problems...)
-}
-
-// Returns the owner's approvals after the renames, as apply's approvals
-// will move them, and each rename that moved one.
-func moveApprovals(
-	approved map[commentKey]string,
-	named map[commentKey]string,
-	renames []string,
-	answeredFiles map[string]bool,
-) (map[commentKey]string, map[string]bool) {
-	moved, used := map[commentKey]string{}, map[string]bool{}
-	for key, text := range approved {
-		to := key
-		// Each answer's approval moves every renamed file first.
-		for _, pair := range renames {
-			if before, after, _ := strings.Cut(pair, "="); to.file == before && len(answeredFiles) > 0 {
-				to.file = after
-				used[pair] = true
-			}
-		}
-		// A name moves only in an answered file where it is no longer a comment.
-		for _, pair := range renames {
-			before, after, _ := strings.Cut(pair, "=")
-			_, isStillComment := named[commentKey{to.file, before}]
-			if to.name == before && answeredFiles[to.file] && !isStillComment {
-				to.name = after
-				used[pair] = true
-			}
-		}
-		// An approval already under the new name wins.
-		if _, taken := approved[to]; !taken || to == key {
-			moved[to] = text
-		}
-	}
-	return moved, used
-}
-
-// Returns an error naming each pair of items that are the same comment.
-// Apply finds each item's comment by its old text, in item order: if the
-// first answer changes the comment, apply refuses the second item, and if
-// it keeps it, the second answer silently wins.
-func refuseRepeatedItems(entries []review.Entry, named map[commentKey]string) error {
-	type place struct {
-		file string
-		name string
-		old  string
-	}
-	firstID := map[place]int{}
-	var problems []error
-	for _, e := range entries {
-		at := place{
-			file: e.Item.File,
-			name: findItemName(e.Item, named),
-		}
-		if at.name == "" {
-			at.old = e.Item.Old
-		}
-		if id, ok := firstID[at]; ok {
-			problems = append(
-				problems,
-				fmt.Errorf(
-					"items %d and %d are the same comment in %s; keep only one of them",
-					id,
-					e.Item.ID,
-					e.Item.File,
-				),
-			)
-			continue
-		}
-		firstID[at] = e.Item.ID
-	}
-	return errors.Join(problems...)
-}
-
-// Returns an error naming each named item whose removed code is back, or
-// whose comment the write cannot find exactly once.
+// Refuses a round the screen could not show, such as a comment whose text
+// appears twice in its file.
 func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
 	foundByName := findCommentsByName(r, named)
 	var problems []error
@@ -538,8 +380,8 @@ func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) e
 	return errors.Join(problems...)
 }
 
-// Returns the approved text per comment in dir's .code-comments.json, ""
-// for a cut one, to compare what approving would change.
+// Returns each comment's approved text from the folder's
+// .code-comments.json, or an empty string for a comment the owner cut.
 func readApprovals(dir string) (map[commentKey]string, error) {
 	entries, err := readApprovalEntries(dir)
 	if err != nil {
@@ -602,70 +444,4 @@ func approveComments(repo, checker string, files []string) error {
 		)
 	}
 	return nil
-}
-
-// Approves one answered comment through the checker's --approve-comment,
-// after renames move the owner's earlier approvals.
-func approveComment(
-	repo string,
-	checker string,
-	key commentKey,
-	renames []string,
-) error {
-	args := []string{
-		"--repo",
-		repo,
-		"--approve-comment",
-		key.file,
-		key.name,
-	}
-	for _, pair := range renames {
-		args = append(args, "--rename="+pair)
-	}
-	run := exec.Command(
-		checker,
-		args...,
-	)
-	run.Dir = repo
-	output, err := run.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf(
-			"comment checker: %w: %s",
-			err,
-			strings.TrimSpace(string(output)),
-		)
-	}
-	return nil
-}
-
-// Runs gofmt for the check before the write and the reformat after it.
-// Returns what gofmt printed, such as the files -l lists.
-func runGofmt(repo, flag string, files []string) (string, error) {
-	// Skip gofmt when no file changes: with no files, gofmt -w fails.
-	if len(files) == 0 {
-		return "", nil
-	}
-	gofmt := exec.Command("gofmt", append([]string{flag, "--"}, files...)...)
-	gofmt.Dir = repo
-	output, err := gofmt.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("gofmt: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
-// Adds to err how to finish by hand, since once a file is written the
-// review cannot write it again.
-func explainAfterWrite(err error, written []string) error {
-	if len(written) == 0 {
-		return fmt.Errorf(
-			"no Go file was written; fix this and open the review again: %w",
-			err,
-		)
-	}
-	return fmt.Errorf(
-		"%w\nThe owner's decisions are written into %s, but some may not be approved yet, and the review cannot write them again.\nRun gofmt -w on them, check the change with git diff, and have an agent approve each answered comment with the comment checker's --approve-comment",
-		err,
-		strings.Join(written, ", "),
-	)
 }

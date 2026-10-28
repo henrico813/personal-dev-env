@@ -181,8 +181,8 @@ func saveRound(
 			),
 		)
 	}
-	// The checker finds a named comment by its name, but this tool's write
-	// finds it by its text.
+	// The checker locates a comment by its function or type name. The
+	// screen locates it by its text when opening the file.
 	if err == nil {
 		err = refuseUnwritableNamedItems(
 			next,

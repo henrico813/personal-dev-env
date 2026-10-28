@@ -38,32 +38,6 @@ func TestEditedTextBecomesGoComment(t *testing.T) {
 	}
 }
 
-// The tool changes only comments, never code. A review replaces a comment's
-// text in a Go file, so text that is not whole comment lines would change code
-// or join a comment to the next line.
-func TestCheckWholeLinesRefusesNonComments(t *testing.T) {
-	tests := []struct {
-		name    string
-		text    string
-		wantErr bool
-	}{
-		{name: "indented comment", text: "\t// One.\n\t//\n\t// Two.\n"},
-		{name: "no final newline", text: "// One.", wantErr: true},
-		{name: "code between comments", text: "// One.\nx := 1\n// Two.\n", wantErr: true},
-		{name: "code example", text: "// One:\n//\tx := 1\n"},
-		{name: "go directive", text: "// One.\n//go:generate stringer -type=Code\n", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := CheckWholeLines(tt.text)
-
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("CheckWholeLines(%q) = %v, want error %v", tt.text, err, tt.wantErr)
-			}
-		})
-	}
-}
-
 // The owner reads comments on a phone in a 40x16 Herdr popup. Live testing of
 // the PR approval popup found 37 columns inside its border. A wider row wraps
 // in the terminal and pushes the header and the key hint off the phone screen.

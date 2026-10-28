@@ -4,7 +4,6 @@ package comment
 
 import (
 	"errors"
-	"fmt"
 	"go/scanner"
 	"go/token"
 	"strings"
@@ -12,26 +11,6 @@ import (
 )
 
 const lineWidth = 79
-
-// Returns an error unless text is whole "//" comment lines ending in a
-// newline. Go directives such as //go:generate are refused too, because
-// changing one changes how the code builds.
-func CheckWholeLines(text string) error {
-	if !strings.HasSuffix(text, "\n") {
-		return errors.New("must be whole comment lines ending in a newline")
-	}
-	for i, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		if !isCommentLine(line) {
-			return fmt.Errorf("line %d is not a // comment: %q", i+1, line)
-		}
-		// Rewrapping turns //go:generate into "// go:generate", which Go
-		// reads as a plain comment, and cutting one changes the build.
-		if isDirectiveLine(line) {
-			return fmt.Errorf("line %d has no space after //, so Go may read it as a directive: %q", i+1, line)
-		}
-	}
-	return nil
-}
 
 // Returns an error if src[start:end] is only some lines of a longer
 // comment: a "//" line sits just above or just below it. A Go directive
