@@ -474,7 +474,8 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			if got, _ := os.ReadFile(filepath.Join(r.Repo(), ".code-comments.json")); string(got) != approveValid {
 				t.Errorf(".code-comments.json changed:\n%s", got)
 			}
-			// A review marked written would never be written again.
+			// Marking a failed check as written would prevent the owner
+			// from trying again.
 			if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedRound != 0 {
 				t.Errorf("review reopened as %+v, %v; want it still waiting", reopened, err)
 			}
@@ -482,8 +483,9 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 	}
 }
 
-// A write failure must leave the review retryable, not mark it written.
-func TestFailurePreservesFilesAndWaitingReview(t *testing.T) {
+// Leaves the review open when writing fails so the owner can try again.
+// Directs the owner to check the files with git status before retrying.
+func TestFailedWritePreservesFilesAndReview(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can write to a read-only folder")
 	}

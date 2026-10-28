@@ -428,9 +428,10 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// Python reviews are on, so add must save an agent's hand-written Python
-// item for the owner to answer.
-func TestAddSavesHandWrittenPythonItem(t *testing.T) {
+// Agents use pde-comment-review add to put a comment before the owner by
+// hand. Now that the tool reviews Python, add saves a Python comment
+// instead of refusing it.
+func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	repo := startSecondRound(
 		t,
 		map[string]string{
@@ -455,7 +456,10 @@ func TestAddSavesHandWrittenPythonItem(t *testing.T) {
 	)
 
 	if err != nil {
-		t.Fatalf("addRound() error = %v, want the Python item saved", err)
+		t.Fatalf(
+			"addRound() error = %v, want the Python comment saved",
+			err,
+		)
 	}
 	roundTwo := filepath.Join(
 		review.FindStateRoot(),
@@ -463,7 +467,11 @@ func TestAddSavesHandWrittenPythonItem(t *testing.T) {
 		"round-2.json",
 	)
 	if _, err := os.Stat(roundTwo); err != nil {
-		t.Errorf("round two was not saved: %v", err)
+		t.Errorf(
+			"round file %s was not saved: %v",
+			roundTwo,
+			err,
+		)
 	}
 }
 

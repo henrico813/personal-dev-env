@@ -64,7 +64,7 @@ func replyToStatus(dir string) agentReply {
 		if reply.State == "done" {
 			reply.Next = "There is nothing for the tool to review."
 		}
-		reply.Next += " The tool cannot review the comments in the unsupported files, so show those to the user in the pull request."
+		reply.Next += " The tool cannot review comments in the files listed in unsupported, so show the user those comments in the pull request."
 	}
 	return reply
 }

@@ -227,15 +227,28 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
 
 
 def write_python_comment(plain: str, old: str) -> str:
-    """Return ``plain`` laid out as ``old``, a ``#`` comment or docstring.
+    """Return plain text laid out like the comment it replaces.
 
-    A docstring keeps the indentation, prefix and quote character of
-    ``old``, and puts its summary on the opening quotes' line. Plain text
-    with no words returns ``""``, so writing it deletes the comment.
+    The owner and agents write a comment's new wording as plain sentences,
+    without ``#`` marks or quotes. This adds them back, so the new comment
+    keeps the old one's indentation and, for a docstring, its quote
+    character and any ``r`` prefix. A docstring's first sentence goes on
+    the line of its opening quotes.
+
+    Args:
+        plain: The new wording as plain text. Text with no words deletes
+            the comment.
+        old: The comment's current text in the file, either ``#`` lines
+            or one whole docstring.
+
+    Returns:
+        The new comment as it would appear in the file, or an empty
+        string when the new wording has no words.
 
     Raises:
-        SourceError: ``plain`` holds the docstring's closing quotes, a
-            carriage return, a NUL, or an escape ``old`` lacks.
+        SourceError: The new wording holds the docstring's closing quotes,
+            a carriage return, a NUL, or a backslash escape the old
+            docstring does not hold.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in plain or "\0" in plain:
@@ -249,14 +262,22 @@ def write_python_comment(plain: str, old: str) -> str:
 
 
 def refuse_new_escape(text: str, old: str) -> None:
-    """Refuse a backslash escape in docstring ``text`` that ``old`` lacks.
+    """Refuse a new docstring with a backslash escape the old one lacks.
 
-    The owner types plain text on the phone, so ``\\d`` there must not
-    wait for the final write, which refuses it only after every answer.
+    Python reads ``\\n`` in a docstring as a line break and warns about an
+    escape it does not know, such as ``\\d``. The owner types plain text
+    on a phone and cannot see either happen. Refusing here tells the owner
+    at once, instead of when the tool writes the files after the owner
+    has decided on every comment.
+
+    Args:
+        text: The new docstring, as it would appear in the file.
+        old: The docstring it replaces. An escape it already holds is
+            allowed.
 
     Raises:
-        SourceError: ``text`` is not raw and holds an escape, other than a
-            doubled backslash, more often than ``old`` does.
+        SourceError: The new docstring is not raw and holds an escape,
+            other than a doubled backslash, more often than the old one.
     """
     docstring = WHOLE_DOCSTRING.fullmatch(text)
     if not docstring or docstring["prefix"] in ("r", "R"):

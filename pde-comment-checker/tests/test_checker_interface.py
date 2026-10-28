@@ -450,8 +450,11 @@ class TestChanges:
     def test_new_python_docstring_is_listed(self, tmp_path: Path) -> None:
         """List a new Python docstring for the owner, as a Go comment is.
 
-        Python reviews are on, so a docstring left out here would never
-        reach the owner, and no later step would notice.
+        A docstring left out of this list would stay in the code without
+        the owner ever seeing it, and no later step would notice.
+
+        Args:
+            tmp_path: A folder the test turns into a Git repository.
         """
         base = commit_all(tmp_path)
         (tmp_path / "shop.py").write_text('"""Sells things."""\n')
@@ -897,6 +900,12 @@ class TestShowDocstrings:
 
         A lost ``r`` prefix changes what a backslash means, and a quote
         next to the closing quotes would end the string early.
+
+        Args:
+            tmp_path: An empty folder the checker runs in.
+            old: The docstring in the file now.
+            plain: The new wording, as the owner types it.
+            expected: The docstring the checker should return.
         """
         code, reply = show_entries(
             tmp_path, {"file": "shop.py", "text": old, "plain": plain}
@@ -948,11 +957,17 @@ class TestShowDocstrings:
     ) -> None:
         """Refuse plain text that would break the file it is written into.
 
-        Closing quotes would turn the rest of the text into code, Python
-        reads a carriage return as a line end, which the checker refuses
-        in a file, and a file holding a NUL does not compile. A new escape
-        would change the docstring or make Python warn, and the final write
-        would refuse it only after the owner answered every comment.
+        Closing quotes would turn the rest of the text into code. Python
+        reads a carriage return as a line end, and a file holding a NUL
+        does not compile. A new backslash escape would change the
+        docstring or make Python warn. Without this refusal, the tool
+        would find the problem only when it writes the files, after the
+        owner has decided on every comment.
+
+        Args:
+            tmp_path: An empty folder the checker runs in.
+            plain: The new wording, as the owner types it.
+            problem: The refusal the checker should give.
         """
         code, reply = show_entries(
             tmp_path,
@@ -1334,13 +1349,23 @@ class TestApplyCheck:
         [pytest.param(("--check",), id="check"), pytest.param((), id="write")],
     )
     def test_reviews_off_language_is_refused(
-        self, tmp_path: Path, monkeypatch, flags: tuple[str, ...]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        flags: tuple[str, ...],
     ) -> None:
-        """Refuse an answer in a language whose owner reviews are off.
+        """Refuse to write a comment in a language whose reviews are off.
 
-        A language still being added has its reviews off until the review
-        tool can show its comments, and the tool has no filter of its
-        own, so the checker alone keeps a hand-written answer out of it.
+        A new language starts with reviews off, because the owner has not
+        yet checked how the review screen shows its comments. The review
+        tool knows no language, so only the checker stops an agent's
+        hand-written change from reaching a file in that language.
+
+        Args:
+            tmp_path: An empty folder the checker writes in.
+            monkeypatch: Adds the made-up ``.note`` language for this test.
+            flags: Extra arguments, so the run that only checks and the
+                run that writes are both tested.
         """
         writable = replace(NOTE, finish_rewrite=lambda old, new, file: new)
         monkeypatch.setitem(LANGUAGES, ".note", writable)
@@ -1443,17 +1468,25 @@ class TestApplyCheck:
         ],
     )
     def test_python_write_keeps_code_meaning(
-        self, tmp_path: Path, monkeypatch, edits: dict, problem: str
+        self, tmp_path: Path, edits: dict, problem: str
     ) -> None:
-        """Refuse a docstring answer that would change what the code does.
+        """Refuse a new docstring that would change what the code does.
 
-        The owner types plain text on the phone, so ``C:\\new`` would
+        The owner types plain text on a phone, so ``C:\\new`` would
         silently become a line break and ``\\d`` a warning, even when the
-        answer takes an escape out of another docstring. A doubled
-        backslash, or a warning already in the code, is fine. Code after
-        a docstring, a cut that leaves a body empty or turns a comment
-        into a coding line, or a new directive would change the code.
-        Keys with ``@`` are docstrings whose name is shared, so unnamed.
+        backslash was moved from another docstring. A doubled backslash,
+        or a warning already in the code, is fine. These would also change
+        the code: code after a docstring, deleting a docstring its body
+        needs, a comment that becomes the line naming the file's
+        encoding, and a new comment that tells a tool to skip a check.
+
+        Args:
+            tmp_path: An empty folder the checker writes in.
+            edits: The new text for each docstring or comment. A key with
+                ``@`` marks a docstring whose function name is used twice,
+                which the checker leaves unnamed.
+            problem: Part of the refusal the checker should give, or an
+                empty string when the change is allowed.
         """
         docstrings = {
             "<module>": '"""Shop."""\n',
@@ -1949,16 +1982,17 @@ class TestApply:
         assert TOTAL_TEXT in (tmp_path / "cart.go").read_text()
         assert (tmp_path / edited).read_text() == edit
 
-    def test_repository_comments_survive_rewrite(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_repository_comments_survive_rewrite(self, tmp_path: Path) -> None:
         """Write back every comment here unchanged, then reword every other.
 
-        Writing a comment's own text must change no byte, and a reword
-        must keep the file parsing and change only that comment, under
-        its name, in every Go and Python file of this repository. A write
-        bug here would change a real file outside the one comment it was
-        asked to touch, which a small sample would never show.
+        In every Go and Python file of this repository, writing a comment's
+        own text changes no byte. A reword leaves the file parsing and
+        changes only that comment, under the same name. A bug in the write
+        would change a real file outside the one comment it was given,
+        which a small sample would never show.
+
+        Args:
+            tmp_path: An empty folder that receives a copy of each file.
         """
         root = Path(__file__).resolve().parents[2]
         listed = ["git", "-C", str(root), "ls-files", "*.go", "*.py"]

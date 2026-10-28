@@ -128,9 +128,9 @@ why, when the `# ----` line was deleted or nvim quit with an error.
 When the checker refuses your text, such as a docstring holding `"""`
 or a new backslash escape, the screen says why and keeps your text.
 Go back to that comment with `h` and press `e` to fix it, or quit
-nvim with `:cq` to drop it. A docstring that is its function's or
-class's whole body cannot be cut, so `c` and an empty page are refused
-for it.
+nvim with `:cq` to drop it. You cannot cut a docstring that is the
+only statement in its function, class or block, because the code would
+break; `c` and an empty page are refused for it.
 
 ## What the write checks
 
@@ -157,7 +157,8 @@ the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
 `//go:noinline`, and it stays unapproved even when you answer it.
 
-The write and the approval go through the comment checker,
+Writing your decisions into the files and approving them both go
+through the comment checker,
 `pde-comment-checker` on `PATH`, which `pde-installer` installs
 and which needs `python3`. If the write fails, or the checker gets
 Ctrl-C, SIGTERM or SIGHUP before it finishes, the checker tries to

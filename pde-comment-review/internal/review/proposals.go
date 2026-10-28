@@ -123,22 +123,21 @@ func findItemProblem(item Item) error {
 	return nil
 }
 
-// The lines a comment spans in its file, First to Last, counting from 1.
+// Holds the first and last line of a comment in its file, counting from 1.
 type CommentLines struct {
 	First int
 	Last  int
-	// Set for a docstring that is its body's only statement, which the
-	// write refuses to cut.
+	// True for a docstring that is the only statement in its block, so
+	// deleting it would break the code.
 	NoCut bool
 }
 
-// Returns the lines of item's comment, or an error when the checker found
-// no such comment.
+// Returns line numbers or an error if the checker found no unique match.
 func FindCommentLines(item Item, places map[int]CommentLines) (CommentLines, error) {
 	at, ok := places[item.ID]
 	if !ok {
 		return at, fmt.Errorf(
-			"the checker finds no comment for this item in %s",
+			"the checker cannot find this comment exactly once in %s",
 			item.File,
 		)
 	}

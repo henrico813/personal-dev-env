@@ -103,7 +103,7 @@ func TestCheckerRowsMatchWrapForScreen(t *testing.T) {
 	for _, s := range shown.Shown {
 		for width := 20; width <= 80; width++ {
 			want := comment.WrapForScreen(s.Text, width)
-			if got := popup.DrawScreenRows(s.Screen, width); !reflect.DeepEqual(got, want) {
+			if got := popup.WrapScreenRows(s.Screen, width); !reflect.DeepEqual(got, want) {
 				t.Fatalf("at width %d, %q draws\n%q\nwant\n%q", width, s.Text, got, want)
 			}
 		}
