@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import signal
 import subprocess
 import textwrap
 from contextlib import redirect_stdout
@@ -1563,6 +1564,12 @@ class TestApply:
         ("error", "call", "after"),
         [
             pytest.param(DISK_FULL, 2, False, id="file-disk-full"),
+            pytest.param(signal.SIGINT, 2, False, id="file-sigint"),
+            pytest.param(signal.SIGINT, 3, True, id="approvals-sigint"),
+            pytest.param(signal.SIGTERM, 3, True, id="approvals-sigterm"),
+            pytest.param(signal.SIGHUP, 3, True, id="approvals-sighup"),
+            pytest.param(signal.SIGTERM, 2, False, id="file-sigterm"),
+            pytest.param(signal.SIGHUP, 2, False, id="file-sighup"),
             pytest.param(KeyboardInterrupt(), 1, True, id="file-ctrl-c"),
             pytest.param(DISK_FULL, 3, False, id="approvals-disk-full"),
             pytest.param(KeyboardInterrupt(), 3, True, id="approvals-ctrl-c"),
@@ -1571,7 +1578,7 @@ class TestApply:
     def test_failed_write_changes_nothing(
         self, tmp_path: Path, monkeypatch, error, call: int, after: bool
     ) -> None:
-        """Put every file back when one cannot be written, or on Ctrl-C.
+        """Restore files after write errors or catchable termination.
 
         A review cannot be written twice, so a half-written one would
         leave some answers in the code with none of them approved, or
@@ -1588,26 +1595,274 @@ class TestApply:
             make_answer(2, old, "// Adds tax.\n", name="Check", file="tax.go"),
         ]
         replace_file, targets = os.replace, []
+        handlers = {
+            sig: signal.getsignal(sig)
+            for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        }
+
+        def interrupt_write() -> None:
+            """Deliver a real signal or the requested write error."""
+            if isinstance(error, signal.Signals):
+                os.kill(os.getpid(), error)
+            else:
+                raise error
 
         def fail_one_replace(source: str, target: Path) -> None:
-            """Raise ``error`` at rename ``call``, instead or ``after``."""
+            """Inject the requested failure or signal around rename ``call``."""
             targets.append(target)
             if len(targets) == call and not after:
-                raise error
+                interrupt_write()
             replace_file(source, target)
             if len(targets) == call:
-                raise error
+                interrupt_write()
 
         monkeypatch.setattr(os, "replace", fail_one_replace)
 
         # Ctrl-C reaches the caller; a disk error is printed, exit 2.
-        with contextlib.suppress(KeyboardInterrupt):
-            apply_answers(tmp_path, answers, flags=())
+        if isinstance(error, (KeyboardInterrupt, signal.Signals)):
+            with pytest.raises(KeyboardInterrupt):
+                apply_answers(tmp_path, answers, flags=())
+        else:
+            code, _ = apply_answers(tmp_path, answers, flags=())
+            assert code == 2
 
         assert (tmp_path / "cart.go").read_text() == CART_GO
         assert (tmp_path / "tax.go").read_text() == tax_go
         assert (tmp_path / ".code-comments.json").read_text() == settings
         assert len(list(tmp_path.iterdir())) == 3, "a temporary file is left"
+        assert {sig: signal.getsignal(sig) for sig in handlers} == handlers
+
+    @pytest.mark.parametrize(
+        "sig",
+        [
+            pytest.param(signal.SIGINT, id="sigint"),
+            pytest.param(signal.SIGTERM, id="sigterm"),
+            pytest.param(signal.SIGHUP, id="sighup"),
+        ],
+    )
+    def test_signals_cannot_interrupt_rollback(
+        self, tmp_path: Path, monkeypatch, sig
+    ) -> None:
+        """Finish restoring files when termination arrives during rollback.
+
+        A signal during rollback could otherwise stop restoration
+        and leave only some files restored.
+        """
+        write_cart(tmp_path)
+        tax = "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
+        (tmp_path / "tax.go").write_text(tax)
+        settings = (tmp_path / ".code-comments.json").read_bytes()
+        handlers = {
+            s: signal.getsignal(s)
+            for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        }
+        replace_file, targets = os.replace, []
+
+        def fail_then_signal(source, target) -> None:
+            """Fail the second write and signal during the first restore."""
+            targets.append(target)
+            if len(targets) == 2:
+                raise OSError("injected write error")
+            if len(targets) == 3:
+                os.kill(os.getpid(), sig)
+            replace_file(source, target)
+
+        monkeypatch.setattr(os, "replace", fail_then_signal)
+
+        code, _ = apply_answers(
+            tmp_path,
+            [
+                make_answer(1, TOTAL_TEXT, "// Sums.\n"),
+                make_answer(
+                    2,
+                    "// Checks the tax.\n",
+                    "// Adds tax.\n",
+                    name="Check",
+                    file="tax.go",
+                ),
+            ],
+            flags=(),
+        )
+
+        assert code == 2
+        assert len(targets) >= 3, "the signal was never sent"
+        assert (tmp_path / "cart.go").read_text() == CART_GO
+        assert (tmp_path / "tax.go").read_text() == tax
+        assert (tmp_path / ".code-comments.json").read_bytes() == settings
+        assert {p.name for p in tmp_path.iterdir()} == {
+            "cart.go",
+            "tax.go",
+            ".code-comments.json",
+        }
+        assert {s: signal.getsignal(s) for s in handlers} == handlers
+
+    @pytest.mark.parametrize(
+        "sig",
+        [
+            pytest.param(signal.SIGINT, id="sigint"),
+            pytest.param(signal.SIGTERM, id="sigterm"),
+            pytest.param(signal.SIGHUP, id="sighup"),
+        ],
+    )
+    def test_committed_cleanup_survives_signals(
+        self, tmp_path: Path, monkeypatch, sig
+    ) -> None:
+        """Keep a committed write successful when cleanup receives a signal.
+
+        Reporting cancellation after both source and approvals landed
+        would leave the review waiting for an answer already written.
+        """
+        write_cart(tmp_path)
+        settings = json.loads((tmp_path / ".code-comments.json").read_text())
+        handlers = {
+            s: signal.getsignal(s)
+            for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        }
+        unlink_file, fired = Path.unlink, []
+
+        def signal_during_cleanup(path, *args, **kwargs):
+            """Signal on the final unlink of a renamed source temporary."""
+            if (
+                path.parent == tmp_path
+                and path.name.startswith(".cart.go.")
+                and not fired
+            ):
+                fired.append(True)
+                os.kill(os.getpid(), sig)
+            return unlink_file(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", signal_during_cleanup)
+
+        code, reply = apply_answers(
+            tmp_path,
+            [
+                make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total"),
+            ],
+            flags=(),
+        )
+
+        assert (code, reply["changed"]) == (0, ["cart.go"])
+        assert fired == [True]
+        assert (tmp_path / "cart.go").read_text() == CART_GO.replace(
+            TOTAL_TEXT, "// Sums.\n"
+        )
+        written = json.loads((tmp_path / ".code-comments.json").read_text())
+        assert {
+            (e["file"], e["name"]): e["text"] for e in written["approved"]
+        } == {
+            ("cart.go", "Reset"): "",
+            ("cart.go", "Total"): "// Sums.\n",
+            ("cart.go", "Valid"): VALID_TEXT,
+            ("tax.go", "Check"): "// Checks the tax.\n",
+        }
+        assert written["avoid"] == settings["avoid"]
+        assert {p.name for p in tmp_path.iterdir()} == {
+            "cart.go",
+            ".code-comments.json",
+        }
+        assert {s: signal.getsignal(s) for s in handlers} == handlers
+
+    @pytest.mark.parametrize(
+        "sig", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]
+    )
+    @pytest.mark.parametrize("failure", [None, "install", "cleanup"])
+    def test_restore_handlers_before_signal_handoff(
+        self, tmp_path: Path, monkeypatch, sig, failure
+    ) -> None:
+        """Finish handler restoration before giving signals to the caller.
+
+        A signal between restorations could otherwise cancel a committed
+        write and leave some of the writer's handlers installed.
+        """
+        write_cart(tmp_path)
+        settings = (tmp_path / ".code-comments.json").read_bytes()
+        signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        originals = {s: signal.getsignal(s) for s in signals}
+        mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+        install, unlink = signal.signal, Path.unlink
+        called, fired = [], []
+
+        def interrupt_caller(signum, frame):
+            """Expose any early delivery to a caller-owned handler."""
+            called.append(signum)
+            raise KeyboardInterrupt("caller owns this signal")
+
+        def restore_then_signal(signum, handler):
+            """Send a real signal just after restoring the first handler."""
+            if (
+                failure == "install"
+                and signum == signal.SIGHUP
+                and handler is not interrupt_caller
+            ):
+                raise OSError("injected install failure")
+            previous = install(signum, handler)
+            if handler is interrupt_caller and not fired:
+                fired.append(signum)
+                os.kill(os.getpid(), sig)
+            return previous
+
+        def fail_cleanup(path, *args, **kwargs):
+            """Fail after unlinking the final source temporary."""
+            result = unlink(path, *args, **kwargs)
+            if path.parent == tmp_path and path.name.startswith(".cart.go."):
+                raise OSError("injected cleanup failure")
+            return result
+
+        try:
+            for s in signals:
+                install(s, interrupt_caller)
+            monkeypatch.setattr(signal, "signal", restore_then_signal)
+            if failure == "cleanup":
+                monkeypatch.setattr(Path, "unlink", fail_cleanup)
+            try:
+                code, _ = apply_answers(
+                    tmp_path,
+                    [
+                        make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total"),
+                    ],
+                    flags=(),
+                )
+            except KeyboardInterrupt:
+                code = "interrupted"
+
+            assert code == (0 if failure is None else 2)
+            assert fired == [signal.SIGINT]
+            assert called == []
+            assert {s: signal.getsignal(s) for s in signals} == {
+                s: interrupt_caller for s in signals
+            }
+            assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) == mask
+            expected = (
+                CART_GO
+                if failure == "install"
+                else CART_GO.replace(TOTAL_TEXT, "// Sums.\n")
+            )
+            assert (tmp_path / "cart.go").read_text() == expected
+            written = (tmp_path / ".code-comments.json").read_bytes()
+            if failure == "install":
+                assert written == settings
+            else:
+                approved = json.loads(written)["approved"]
+                assert {
+                    (e["file"], e["name"]): e["text"] for e in approved
+                } == {
+                    ("cart.go", "Reset"): "",
+                    ("cart.go", "Total"): "// Sums.\n",
+                    ("cart.go", "Valid"): VALID_TEXT,
+                    ("tax.go", "Check"): "// Checks the tax.\n",
+                }
+                assert (
+                    json.loads(written)["avoid"]
+                    == json.loads(settings)["avoid"]
+                )
+            assert {p.name for p in tmp_path.iterdir()} == {
+                "cart.go",
+                ".code-comments.json",
+            }
+        finally:
+            for s, handler in originals.items():
+                install(s, handler)
+            signal.pthread_sigmask(signal.SIG_SETMASK, mask)
 
     def test_unnamed_answers_leave_approvals_alone(
         self, tmp_path: Path
