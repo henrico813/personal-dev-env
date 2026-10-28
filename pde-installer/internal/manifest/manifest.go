@@ -118,7 +118,12 @@ func Items() []Item {
 		},
 		{Name: "planner", Owner: Local}, {Name: "pde-gh-write", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
 		{Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
-		{Name: "pde-comment-review", Owner: Local}, {Name: "skill-lessons", Owner: Local},
+		{Name: "pde-comment-review", Owner: Local},
+		{
+			Name:   "skill-lessons",
+			Owner:  Local,
+			Client: true,
+		},
 		{Name: "pde-comment-checker", Owner: Local},
 		{
 			Name:    "FiraCode",

@@ -269,6 +269,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-writer.md'
 [".config/opencode/agents/inline.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/nvim-plugins/opencode-inline.nvim/agents/inline.md'
+{{- if eq (env "PDE_PROFILE") "full" }}
 
 [".config/opencode/agents/plan-architecture-reviewer.md"]
 type = "file"
@@ -281,6 +282,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/plan-bug-reviewer.md'
 [".config/opencode/agents/plan-completeness-reviewer.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/plan-completeness-reviewer.md'
+{{- end }}
 
 [".config/opencode/agents/README.md"]
 type = "file"
@@ -289,6 +291,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/README.md'
 [".config/opencode/agents/web-search-researcher.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/web-search-researcher.md'
+{{- if eq (env "PDE_PROFILE") "full" }}
 
 [".config/opencode/commands/cleanup_plan.md"]
 type = "file"
@@ -297,10 +300,12 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/cleanup_plan.md'
 [".config/opencode/commands/create_plan.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/create_plan.md'
+{{- end }}
 
 [".config/opencode/commands/design_doc.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/design_doc.md'
+{{- if eq (env "PDE_PROFILE") "full" }}
 
 [".config/opencode/commands/implement_plan.md"]
 type = "file"
@@ -313,7 +318,6 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/research_codebase.m
 [".config/opencode/commands/review_plan.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/commands/review_plan.md'
-{{- if eq (env "PDE_PROFILE") "full" }}
 
 [".codex/AGENTS.md"]
 type = "file"
@@ -328,12 +332,17 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
 # installs once it is added to Git, with no entry here. Untracked and
 # ignored files, such as Rust build output, are skipped.
 {{- $repoRoot := env "PDE_REPO_ROOT" }}
+{{- $profile := env "PDE_PROFILE" }}
 {{- range splitList "\x00" (output "git" "-C" (print $repoRoot "/ai") "ls-files" "-z" "--" "skills") }}
 {{- if . }}
+{{- $skill := index (splitList "/" .) 1 }}
+{{- /* Client gets only these skills, so a new skill reaches it only when added here. */}}
+{{- if or (eq $profile "full") (eq $skill "behavior-focused-testing" "delegate" "design-doc" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english") }}
 
 [".agents/{{ . }}"]
 type = "file"
 url = 'file://{{ $repoRoot }}/ai/{{ . }}'
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if eq (env "PDE_PROFILE") "full" }}

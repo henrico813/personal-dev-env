@@ -4,7 +4,8 @@ The local backend builds repository applications: `planner`,
 `opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
 `pde-pr-approve`), `pde-comment-review`, `skill-lessons` and
 `pde-comment-checker`. Each of the last two has a `build.py` that packs
-it into one file run by `/usr/bin/python3`.
+it into one file run by `/usr/bin/python3`. Client builds only
+`skill-lessons`, and terminal builds no local applications.
 
 1. Change the application source in its repository directory.
 2. If an application is added or removed, update the build specifications in

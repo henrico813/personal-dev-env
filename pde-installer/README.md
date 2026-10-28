@@ -37,7 +37,8 @@ Pick the profile for the machine:
   command-line tools.
 - `client`: a laptop that edits files, runs OpenCode, and shows herdr sessions
   from other machines, with nothing compiled by the installer. Full without Go,
-  Rust, local builds, or the PR approval tools. Client installs no Go itself, so
+  Rust, local builds other than `skill-lessons`, the PR approval tools, or most
+  skills. Client installs no Go itself, so
   the machine still needs Go 1.21 or newer to build the installer, for example
   from `sudo apt install golang-go` on Ubuntu 24.04.
 - `full`: development machines. Everything.
@@ -59,12 +60,16 @@ plugin externals, Git template configuration, and PDE Git configuration.
 
 Terminal excludes runtimes, Neovim, LSPs, npm/AI tools, fonts, Keychain, local
 builds, Alacritty, WezTerm, and editor/AI configuration. Client adds
-`fontconfig`, the managed fonts, Neovim and its plugins, Node, the npm tools,
-herdr, nobs, and the Alacritty, WezTerm, herdr, Neovim, and OpenCode
-configuration with the shared agent guidance and skills. It still excludes Go,
-Rust, LSPs, Keychain, Moshi Hook, local builds such as planner and vibe, the
-native blink.cmp matcher, the herdr plugins, the `gh` approval guard, and the
-Claude Code, Codex, and Pi configuration. Full retains all of these components
+`fontconfig`, `python3`, the managed fonts, Neovim and its plugins, Node, the
+npm tools, herdr, nobs, `skill-lessons`, and the Alacritty, WezTerm, herdr,
+Neovim, and OpenCode configuration with the shared agent guidance. Its skills
+are only `obsidian-zettel`, `obsidian-daily-note`, `design-doc`,
+`plain-direct-english`, `behavior-focused-testing`, and `delegate`, and its
+OpenCode config leaves out the plan commands and plan reviewer agents. It still
+excludes Go, Rust, LSPs, Keychain, Moshi Hook, the other local builds such as
+planner and vibe, the native blink.cmp matcher, the herdr plugins, the `gh`
+approval guard, and the Claude Code, Codex, and Pi configuration. Full retains
+all of these components
 and everything else in the environment. Every install
 reconciles both tools and managed home configuration. Fresh `doctor` and `list`
 inspect full.

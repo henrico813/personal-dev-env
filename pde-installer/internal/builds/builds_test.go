@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -55,7 +56,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
 
-	journal, err := manager.Reconcile()
+	journal, err := manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -81,7 +82,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	assertBuildFile(t, manager.statePath(), "old state\n")
 
 	// Build and commit, then run again with nothing changed.
-	journal, err = manager.Reconcile()
+	journal, err = manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
@@ -92,7 +93,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, err = manager.Reconcile()
+	journal, err = manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("unchanged Reconcile() error = %v", err)
 	}
@@ -109,7 +110,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 
 	// A tool left out of the source hashes would never rebuild after a change.
 	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review", "input.txt"), "changed\n", 0o644)
-	journal, err = manager.Reconcile()
+	journal, err = manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("changed Reconcile() error = %v", err)
 	}
@@ -129,7 +130,7 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 	// A finished install, then only the link is deleted.
-	journal, err := manager.Reconcile()
+	journal, err := manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -141,7 +142,7 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err = manager.Reconcile()
+	journal, err = manager.Reconcile(profile.Full)
 
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
@@ -173,7 +174,7 @@ func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := manager.Reconcile()
+	journal, err := manager.Reconcile(profile.Full)
 
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -215,7 +216,7 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 			before := readBuildLog(t, logPath)
 			writeBuildFile(t, filepath.Join(repoRoot, tt.path), "changed\n", 0o644)
 
-			journal, err := manager.Reconcile()
+			journal, err := manager.Reconcile(profile.Full)
 			if err != nil {
 				t.Fatalf("Reconcile() error = %v", err)
 			}
@@ -245,7 +246,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
 
-	_, err := manager.Reconcile()
+	_, err := manager.Reconcile(profile.Full)
 
 	if err == nil || !strings.Contains(err.Error(), "verify skill-lessons") {
 		t.Fatalf("Reconcile() error = %v, want the skill-lessons check to fail", err)
@@ -253,6 +254,32 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	for _, name := range names {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
+}
+
+// A client laptop has no Go or Rust, so starting any build but the packed
+// skill-lessons would fail every client install.
+func TestClientBuildsOnlySkillLessons(t *testing.T) {
+	home, repoRoot := t.TempDir(), t.TempDir()
+	writeBuildSources(t, repoRoot)
+	logPath := filepath.Join(t.TempDir(), "build.log")
+	manager := newFixtureManager(t, home, repoRoot, logPath)
+
+	journal, err := manager.Reconcile(profile.Client)
+
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readBuildLog(t, logPath); got != "python\n" {
+		t.Fatalf("build log = %q, want one python build", got)
+	}
+	assertBuildFile(
+		t,
+		filepath.Join(home, ".local", "bin", "skill-lessons"),
+		"#!/bin/sh\nexit 0\n# built by python\n",
+	)
 }
 
 // Returns a manager whose tools are built and committed, with its repository
@@ -264,7 +291,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 	writeBuildSources(t, repoRoot)
 	logPath = filepath.Join(t.TempDir(), "build.log")
 	manager = newFixtureManager(t, home, repoRoot, logPath)
-	journal, err := manager.Reconcile()
+	journal, err := manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}

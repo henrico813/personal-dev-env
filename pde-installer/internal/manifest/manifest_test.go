@@ -84,8 +84,8 @@ func TestTerminalInventory(t *testing.T) {
 }
 
 // Client is terminal plus what a laptop needs to edit files, run OpenCode
-// and show other machines' herdr sessions. Marking Go, Rust or a local
-// build as client would make that weak laptop compile.
+// and show other machines' herdr sessions. Marking Go, Rust or a compiled
+// local build as client would make that weak laptop compile.
 func TestClientAddsOnlyClientItems(t *testing.T) {
 	terminal := map[string]bool{}
 	for _, item := range ItemsFor(profile.Terminal) {
@@ -106,6 +106,7 @@ func TestClientAddsOnlyClientItems(t *testing.T) {
 		"@earendil-works/pi-coding-agent",
 		"obsidian-headless",
 		"@anthropic-ai/claude-code",
+		"skill-lessons",
 		"FiraCode",
 		"JetBrainsMono",
 		"neovim",
