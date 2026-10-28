@@ -107,8 +107,8 @@ func runCheckerCommand(checker string, request any, reply any, args ...string) e
 	)
 }
 
-// One answer sent to the checker, as if the owner accepted every proposal.
-// Text is left out for a cut.
+// Holds the new text of one comment for the checker to write. Text is
+// empty when the comment should be deleted.
 type checkerAnswer struct {
 	ID          int    `json:"id"`
 	File        string `json:"file"`
@@ -332,8 +332,8 @@ func findItemName(item review.Item, named map[commentKey]string) string {
 	return ""
 }
 
-// Returns the approved text per comment in dir's .code-comments.json, ""
-// for a cut one, to compare what approving would change.
+// Returns each comment's approved text from the folder's
+// .code-comments.json, or an empty string for a comment the owner cut.
 func readApprovals(dir string) (map[commentKey]string, error) {
 	entries, err := readApprovalEntries(dir)
 	if err != nil {
