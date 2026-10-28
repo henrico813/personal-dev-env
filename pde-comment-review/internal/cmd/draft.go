@@ -148,9 +148,10 @@ type ownerChange struct {
 // Returns an item for each comment the owner must answer.
 func buildDraft(repo, base, checker string) (review.Draft, error) {
 	var changes struct {
-		Items    []ownerChange `json:"items"`
-		Renames  []string      `json:"renames"`
-		Problems []string      `json:"problems"`
+		Items       []ownerChange `json:"items"`
+		Renames     []string      `json:"renames"`
+		Problems    []string      `json:"problems"`
+		Unsupported []string      `json:"unsupported"`
 	}
 	err := runCheckerCommand(
 		checker,
@@ -201,13 +202,15 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 			Items:   items,
 			Renames: changes.Renames,
 		},
+		// Nil when empty, so draft.json leaves it out and reads back the same.
+		Unsupported: append([]string(nil), changes.Unsupported...),
 	}, nil
 }
 
 // Returns the text of each comment the checker names in sources. It
 // approves them in a scratch copy, so the checkout's approvals never change.
 func readCommentTexts(sources map[string]string, checker string) (map[commentKey]string, error) {
-	// The checker exits 2 when given no Go file.
+	// The checker exits 2 when given no file it reads.
 	if len(sources) == 0 {
 		return nil, nil
 	}

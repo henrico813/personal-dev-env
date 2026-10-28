@@ -18,6 +18,9 @@ type Draft struct {
 	Proposals Proposals `json:"proposals"`
 	// The round submit saves it as, so a sent draft is never sent again.
 	Round int `json:"round"`
+	// Changed code files the checker cannot read, such as Rust, whose
+	// comments the agent shows the owner in the pull request.
+	Unsupported []string `json:"unsupported,omitempty"`
 }
 
 // Returns the review name for a branch, such as "vibe-add-tax" for

@@ -22,7 +22,9 @@ type agentReply struct {
 	Items    []review.Item `json:"items,omitempty"`
 	Notes    []noteForAI   `json:"notes,omitempty"`
 	Problems []string      `json:"problems,omitempty"`
-	Next     string        `json:"next"`
+	// Changed files whose comments the tool cannot review.
+	Unsupported []string `json:"unsupported,omitempty"`
+	Next        string   `json:"next"`
 }
 
 // Returns the state of the branch's review at dir, with the items or
@@ -56,6 +58,13 @@ func replyToStatus(dir string) agentReply {
 	default:
 		reply.State = "waiting_for_user"
 		reply.Next = fmt.Sprintf("Tell the user: Review %[1]s is ready; press Ctrl+b e in Herdr, or run pde-comment-review open %[1]s. Do not answer its items yourself.", name)
+	}
+	if d != nil && len(d.Unsupported) > 0 {
+		reply.Unsupported = d.Unsupported
+		if reply.State == "done" {
+			reply.Next = "There is nothing for the tool to review."
+		}
+		reply.Next += " The tool cannot review the comments in the unsupported files, so show those to the user in the pull request."
 	}
 	return reply
 }

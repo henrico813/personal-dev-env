@@ -1,7 +1,7 @@
 # pde-comment-review Documentation
 
 pde-comment-review lets you decide, one screen at a time, on the
-comments an AI wrote in Go code.
+comments an AI wrote in Go or Python code.
 
 Pick the page for what you need to do:
 

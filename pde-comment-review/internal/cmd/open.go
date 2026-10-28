@@ -206,6 +206,7 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 				Line    int    `json:"line"`
 				EndLine int    `json:"end_line"`
 				Text    string `json:"text"`
+				CanCut  bool   `json:"can_cut"`
 			} `json:"comments"`
 		} `json:"files"`
 		Problems []string `json:"problems"`
@@ -241,6 +242,7 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 						review.CommentLines{
 							First: c.Line,
 							Last:  c.EndLine,
+							NoCut: !c.CanCut,
 						},
 					)
 				// An item without a name may be only part of a longer comment,
@@ -258,6 +260,7 @@ func findCommentPlaces(r *review.Review, checker string) (map[int]review.Comment
 								e.Item.Old,
 								"\n",
 							) - 1,
+							NoCut: !c.CanCut && e.Item.Old == c.Text,
 						},
 					)
 				}

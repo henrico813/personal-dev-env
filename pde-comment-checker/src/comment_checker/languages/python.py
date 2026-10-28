@@ -235,7 +235,7 @@ def write_python_comment(plain: str, old: str) -> str:
 
     Raises:
         SourceError: ``plain`` holds the docstring's closing quotes, a
-            carriage return or a NUL.
+            carriage return, a NUL, or an escape ``old`` lacks.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in plain or "\0" in plain:
@@ -243,7 +243,41 @@ def write_python_comment(plain: str, old: str) -> str:
     if old.lstrip().startswith("#"):
         return write_line_comment(plain, old, "#")
     docstring = read_docstring_parts(old)[0]
-    return write_docstring(read_plain_parts(plain), docstring)
+    text = write_docstring(read_plain_parts(plain), docstring)
+    refuse_new_escape(text, old)
+    return text
+
+
+def refuse_new_escape(text: str, old: str) -> None:
+    """Refuse a backslash escape in docstring ``text`` that ``old`` lacks.
+
+    The owner types plain text on the phone, so ``\\d`` there must not
+    wait for the final write, which refuses it only after every answer.
+
+    Raises:
+        SourceError: ``text`` is not raw and holds an escape, other than a
+            doubled backslash, more often than ``old`` does.
+    """
+    docstring = WHOLE_DOCSTRING.fullmatch(text)
+    if not docstring or docstring["prefix"] in ("r", "R"):
+        return
+    escapes = Counter(
+        pair[0] for pair in DOCSTRING_ESCAPE.finditer(docstring["body"])
+    )
+    escapes -= Counter(pair[0] for pair in DOCSTRING_ESCAPE.finditer(old))
+    del escapes["\\\\"]
+    if escapes:
+        escape = sorted(escapes)[0]
+        if escape == "\\\n":
+            found = "a backslash at a line end, which joins the next line"
+        elif DOCSTRING_ESCAPE.fullmatch(escape)[1] is None:
+            # Python keeps both characters of an escape it does not know.
+            found = f"{escape}, which Python warns about"
+        else:
+            found = f"{escape}, which Python reads as another character"
+        raise SourceError(
+            f"the text holds {found}; double the backslash to keep it"
+        )
 
 
 def read_docstring_parts(text: str) -> tuple[re.Match[str], list[Part]]:
