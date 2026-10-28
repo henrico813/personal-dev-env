@@ -202,9 +202,7 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, directJournal)
 		buildManager = builds.New(config.Home, config.RepoRoot, runner)
-	}
-	if config.Profile == profile.Full {
-		buildJournal, err := buildManager.Reconcile()
+		buildJournal, err := buildManager.Reconcile(config.Profile)
 		if err != nil {
 			return fail("local builds", err)
 		}
@@ -241,8 +239,8 @@ func reconcile(config config, runner run.Runner) error {
 	}
 	// Render after the chezmoi apply, which copies the empty Lessons sections,
 	// and before the OpenCode refresh, whose errors return early.
-	// Only the full profile installs skills.
-	if config.Profile == profile.Full {
+	// Terminal installs no skills.
+	if config.Profile.HasWorkstationTools() {
 		if err := renderSkillLessons(config.Home, runner); err != nil {
 			return fmt.Errorf("skill lessons: %w", err)
 		}

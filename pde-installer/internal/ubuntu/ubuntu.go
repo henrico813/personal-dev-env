@@ -17,8 +17,13 @@ func packages(selected profile.Profile) []string {
 	case profile.Terminal:
 		return []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}
 	case profile.Client:
-		// fontconfig provides fc-cache, which makes the client's fonts usable.
-		return append(packages(profile.Terminal), "fontconfig")
+		// fontconfig provides fc-cache for the fonts, and python3 runs the packed
+		// skill-lessons.
+		return append(
+			packages(profile.Terminal),
+			"fontconfig",
+			"python3",
+		)
 	}
 	return []string{
 		"build-essential", "bzip2", "ca-certificates", "curl", "file",

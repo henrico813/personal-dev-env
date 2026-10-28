@@ -21,7 +21,8 @@ An explicit `install terminal`, `install client`, or `install full` saves its
 selection; a bare install reuses saved or legacy selection.
 Terminal skips full-only direct releases, runtimes, npm tools, builds, fonts,
 and editor/AI configuration. Client skips only Go, Rust, LSPs, Keychain, Moshi
-Hook, local builds, and the PR approval tools. Switching from full to terminal
+Hook, local builds other than `skill-lessons`, the PR approval tools, and all
+but six shared skills. Switching from full to terminal
 does not remove
 full-only artifacts. Every install also applies the selected managed home
 configuration.

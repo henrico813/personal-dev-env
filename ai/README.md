@@ -41,9 +41,10 @@ including the shared workflow skills. Those copies replace any
 `## Lessons` section with the empty one from `skills/`, so the installer
 then runs `skill-lessons render` to restore saved lessons. A failed
 render prints a warning and leaves the install in place.
-`install client` installs the same skills and the OpenCode config, but
-not planner, vibe, or the shim, so planning workflows that call them do
-not run there. The installer
+`install client` installs only the `obsidian-zettel`, `obsidian-daily-note`,
+`design-doc`, `plain-direct-english`, `behavior-focused-testing`, and
+`delegate` skills, `skill-lessons` and its render step, and the OpenCode
+config without the plan commands and plan reviewer agents. The installer
 also syncs `opencode/` and `pi/agent/` into their managed config homes.
 Pi extension packages referenced from `pi/agent/settings.json` remain
 unmanaged by the installer. Vibe relies on provider env vars or

@@ -53,6 +53,7 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".local/share/pde/herdr-plugins",
 				"link_herdr_plugins.sh",
 				".config/opencode/bin/planner",
+				".agents/skills/rust-development",
 			},
 			omit: []string{
 				".config/alacritty",
@@ -109,12 +110,14 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"obsidian.nvim",
 				"copilot.lua",
 				".config/opencode/AGENTS.md",
-				".agents/skills/code-documentation/SKILL.md",
+				".config/opencode/commands/design_doc.md",
 			},
 			omit: []string{
 				".codex/AGENTS.md",
 				".claude/CLAUDE.md",
 				".pi/agent",
+				".config/opencode/commands/create_plan.md",
+				".config/opencode/agents/plan-bug-reviewer.md",
 			},
 		},
 		"full": {
@@ -126,10 +129,41 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				".agents/skills/code-documentation/SKILL.md",
 				".claude/CLAUDE.md",
 				".pi/agent/settings.json",
+				".config/opencode/commands/create_plan.md",
 			},
 		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
+}
+
+// The laptop is not a development machine, and most skills call planner,
+// vibe or Go tools it does not have. An allow list keeps a new skill off it
+// until someone adds that skill on purpose.
+func TestClientGetsOnlyAllowedSkills(t *testing.T) {
+	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
+
+	var skills []string
+	for _, target := range renderedExternalTargets(text) {
+		if name, found := strings.CutPrefix(target, ".agents/skills/"); found {
+			skill, _, _ := strings.Cut(name, "/")
+			if !slices.Contains(skills, skill) {
+				skills = append(skills, skill)
+			}
+		}
+	}
+
+	slices.Sort(skills)
+	want := []string{
+		"behavior-focused-testing",
+		"delegate",
+		"design-doc",
+		"obsidian-daily-note",
+		"obsidian-zettel",
+		"plain-direct-english",
+	}
+	if !slices.Equal(skills, want) {
+		t.Fatalf("client skills = %q, want %q", skills, want)
+	}
 }
 
 // TestSharedWorkflowMappings catches rules and skills diverging between tools,

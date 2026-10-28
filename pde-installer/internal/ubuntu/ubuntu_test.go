@@ -31,6 +31,7 @@ func TestPackageSet(t *testing.T) {
 				"xz-utils",
 				"zsh",
 				"fontconfig",
+				"python3",
 			},
 		},
 	}

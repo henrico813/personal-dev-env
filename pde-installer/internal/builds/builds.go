@@ -9,11 +9,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -66,8 +68,12 @@ func New(home, repoRoot string, runner run.Runner) Manager {
 }
 
 // Reconcile rebuilds binaries when their source inputs change.
-func (m Manager) Reconcile() (*fsutil.Journal, error) {
-	inputs, err := m.inputs()
+func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
+	wanted := map[string]bool{}
+	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {
+		wanted[item.Name] = true
+	}
+	inputs, err := m.inputs(wanted)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +86,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review", "skill-lessons",
 			"pde-comment-checker",
 		} {
+			if !wanted[name] {
+				continue
+			}
 			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
 				return nil, err
 			}
@@ -192,6 +201,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 			},
 		},
 	}
+	specs = slices.DeleteFunc(specs, func(spec buildSpec) bool {
+		return !wanted[spec.name]
+	})
 	cargoTargets := map[string]string{
 		"vibe": filepath.Join(stageRoot, "vibe-target"),
 	}
@@ -254,6 +266,9 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 		{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}, {"pde-comment-review", "help"},
 		{"skill-lessons", "--version"}, {"pde-comment-checker", "version"},
 	} {
+		if !wanted[check.name] {
+			continue
+		}
 		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
@@ -524,7 +539,7 @@ func (m Manager) BlinkStatus() (string, error) {
 	return "invalid", nil
 }
 
-func (m Manager) inputs() (map[string]string, error) {
+func (m Manager) inputs(wanted map[string]bool) (map[string]string, error) {
 	inputs := map[string]string{}
 	for name, source := range map[string]string{
 		"planner":              filepath.Join(m.RepoRoot, "planner"),
@@ -533,6 +548,9 @@ func (m Manager) inputs() (map[string]string, error) {
 		"pde-gh-write":         filepath.Join(m.RepoRoot, "pdev2"),
 		"pde-comment-review":   filepath.Join(m.RepoRoot, "pde-comment-review"),
 	} {
+		if !wanted[name] {
+			continue
+		}
 		hash, err := hashTree(source)
 		if err != nil {
 			return nil, err
@@ -543,6 +561,9 @@ func (m Manager) inputs() (map[string]string, error) {
 		"skill-lessons":       "skill_lessons",
 		"pde-comment-checker": "comment_checker",
 	} {
+		if !wanted[name] {
+			continue
+		}
 		hash, err := hashPythonSources(
 			filepath.Join(m.RepoRoot, name),
 			pkg,
@@ -582,6 +603,10 @@ func (m Manager) current(inputs map[string]string) bool {
 		if state.Inputs[name] != input || !regularExecutable(filepath.Join(m.Home, ".local", "bin", name)) {
 			return false
 		}
+	}
+	// Client builds no pde-gh-write, so it has no alias to check.
+	if _, built := inputs["pde-gh-write"]; !built {
+		return true
 	}
 	// A missing alias must trigger a rebuild even when sources are unchanged.
 	alias := filepath.Join(m.Home, ".local", "bin", approveAlias)
