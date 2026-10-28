@@ -1,17 +1,19 @@
 """Behavior tests for the commands pde-comment-review runs on the checker."""
 
 import ast
-import contextlib
 import io
+import itertools
 import json
 import os
 import re
 import signal
 import subprocess
 import textwrap
+from collections.abc import Iterator
 from contextlib import redirect_stdout
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -1011,7 +1013,6 @@ TOTAL_TEXT = "// Sums the prices.\n"
 VALID_TEXT = "// Reports whether every price is above zero.\n"
 ANSWER = "each answer needs an id, a plain relative file"
 NEW_TEXT = "the new text could change how the code builds or is checked"
-DISK_FULL = OSError("No space left on device")
 SETTINGS = ".code-comments.json"
 # A removed-code answer, which has no current text; None drops a field.
 REMOVED = dict(code_removed=True, cut=True, current=None, text=None, name="S")
@@ -1498,6 +1499,319 @@ class TestApplyCheck:
         assert capsys.readouterr().err.startswith(error)
 
 
+STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+# An edit to Total's comment, and what cart.go and the approvals hold after it.
+SUMS_EDIT = make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total")
+SUMS_GO = CART_GO.replace(TOTAL_TEXT, "// Sums.\n")
+SUMS_APPROVED = {
+    "approved": [
+        {"file": "cart.go", "name": "Reset", "text": ""},
+        {"file": "cart.go", "name": "Valid", "text": VALID_TEXT},
+        {"file": "cart.go", "name": "Total", "text": "// Sums.\n"},
+        {"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"},
+    ],
+    "avoid": {},
+}
+
+
+def write_cart_and_tax(repo: Path) -> list[dict]:
+    """Write two Go files and their approvals, and return edits to both.
+
+    Writing these edits saves cart.go, then tax.go, then the approvals
+    file, so a test can stop the write at any of those three saves.
+
+    Args:
+        repo: The folder to write the files into.
+
+    Returns:
+        A new comment for cart.go and one for tax.go.
+    """
+    write_cart(repo)
+    (repo / "tax.go").write_text(
+        "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
+    )
+    old = "// Checks the tax.\n"
+    return [
+        make_answer(1, TOTAL_TEXT, "// Sums.\n"),
+        make_answer(2, old, "// Adds tax.\n", name="Check", file="tax.go"),
+    ]
+
+
+def read_files(repo: Path) -> dict[str, bytes]:
+    """Return the bytes of every file in a folder, by file name.
+
+    Comparing this before and after a write shows a changed file and a
+    leftover file in one check.
+
+    Args:
+        repo: The folder to read.
+
+    Returns:
+        Each file name with the file's bytes.
+    """
+    return {path.name: path.read_bytes() for path in repo.iterdir()}
+
+
+def read_stop_handlers() -> dict:
+    """Return the handler that SIGINT, SIGTERM and SIGHUP each have now.
+
+    The checker swaps these handlers while it writes, so tests compare
+    them before and after.
+
+    Returns:
+        Each of the three signals with its handler.
+    """
+    return {sig: signal.getsignal(sig) for sig in STOP_SIGNALS}
+
+
+def read_blocked_signals() -> set[signal.Signals]:
+    """Return the signals this thread blocks now.
+
+    The checker blocks stop signals while it puts handlers back, so tests
+    check that it leaves this set as it found it. Blocking an empty set is
+    how Python reads the set without changing it.
+
+    Returns:
+        The blocked signals.
+    """
+    return signal.pthread_sigmask(signal.SIG_BLOCK, set())
+
+
+def fail_file_save(monkeypatch: pytest.MonkeyPatch, number: int) -> None:
+    """Make one file save fail with a disk error, leaving that file as it was.
+
+    The count starts at 1 and also counts the saves that put old files
+    back after a failure.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        number: Which save fails.
+    """
+    save_file, count = os.replace, itertools.count(1)
+
+    def save_or_fail(source: str, target: Path) -> None:
+        """Save the file, unless this is the save that has to fail.
+
+        Args:
+            source: The new copy of the file.
+            target: The file the copy replaces.
+
+        Raises:
+            OSError: This is the save that has to fail.
+        """
+        if next(count) == number:
+            raise OSError("No space left on device")
+        save_file(source, target)
+
+    monkeypatch.setattr(os, "replace", save_or_fail)
+
+
+def interrupt_after_file_save(
+    monkeypatch: pytest.MonkeyPatch, number: int
+) -> None:
+    """Make one file save raise KeyboardInterrupt once the file is saved.
+
+    The file has already changed at that point, so the checker has to
+    put it back as well.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        number: The save that raises, starting at 1.
+    """
+    save_file, count = os.replace, itertools.count(1)
+
+    def save_then_interrupt(source: str, target: Path) -> None:
+        """Save the file, then stop if this is the chosen save.
+
+        Args:
+            source: The new copy of the file.
+            target: The file the copy replaces.
+
+        Raises:
+            KeyboardInterrupt: This is the chosen save.
+        """
+        save_file(source, target)
+        if next(count) == number:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(os, "replace", save_then_interrupt)
+
+
+def send_signal_before_save(
+    monkeypatch: pytest.MonkeyPatch, number: int, sig: signal.Signals
+) -> list[signal.Signals]:
+    """Send a real signal to this process just before one file is saved.
+
+    The count starts at 1 and also counts the saves that put old files
+    back after a failure.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        number: The save that the signal comes before.
+        sig: The signal to send.
+
+    Returns:
+        A list that gets the signal when it is sent.
+    """
+    save_file, count, sent = os.replace, itertools.count(1), []
+
+    def send_then_save(source: str, target: Path) -> None:
+        """Send the signal if this is the chosen save, then save the file.
+
+        Args:
+            source: The new copy of the file.
+            target: The file the copy replaces.
+        """
+        if next(count) == number:
+            sent.append(sig)
+            os.kill(os.getpid(), sig)
+        save_file(source, target)
+
+    monkeypatch.setattr(os, "replace", send_then_save)
+    return sent
+
+
+def send_signal_on_first_file_delete(
+    monkeypatch: pytest.MonkeyPatch, sig: signal.Signals
+) -> list[signal.Signals]:
+    """Send a real signal the first time the checker deletes a file.
+
+    In a write with no errors, the checker deletes files only as it tidies
+    up after the last save.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        sig: The signal to send.
+
+    Returns:
+        A list that gets the signal when it is sent.
+    """
+    delete_file, sent = Path.unlink, []
+
+    def send_then_delete(path: Path, missing_ok: bool = False) -> None:
+        """Send the signal the first time, then delete the file.
+
+        Args:
+            path: The file to delete.
+            missing_ok: Whether a missing file is fine.
+        """
+        if not sent:
+            sent.append(sig)
+            os.kill(os.getpid(), sig)
+        delete_file(path, missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", send_then_delete)
+    return sent
+
+
+def fail_file_delete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every file delete fail with a disk error.
+
+    In a write with no errors, the checker deletes files only as it tidies
+    up after the last save. The new comments are in place by then.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+    """
+    monkeypatch.setattr(
+        Path, "unlink", Mock(side_effect=OSError("cannot delete the file"))
+    )
+
+
+@pytest.fixture
+def program_handler() -> Iterator[Mock]:
+    """Set one stand-in handler on each stop signal, as a program would.
+
+    It only notes each call, so a test can see a signal that reached the
+    program too early. pytest's own handlers come back afterwards.
+
+    Yields:
+        Mock: The handler set on SIGINT, SIGTERM and SIGHUP.
+    """
+    # Tests replace signal.signal, so keep the real one to undo the setup.
+    set_handler, handlers = signal.signal, read_stop_handlers()
+    blocked = read_blocked_signals()
+    handler = Mock()
+    for sig in STOP_SIGNALS:
+        set_handler(sig, handler)
+    yield handler
+    for sig, old in handlers.items():
+        set_handler(sig, old)
+    signal.pthread_sigmask(signal.SIG_SETMASK, blocked)
+
+
+def fail_handler_setup(
+    monkeypatch: pytest.MonkeyPatch, sig: signal.Signals
+) -> None:
+    """Make the checker's first change to one signal's handler fail.
+
+    The checker sets its own handlers before it saves anything, so this
+    stops it partway through that setup.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        sig: The signal whose handler cannot be set.
+    """
+    set_handler, failed = signal.signal, []
+
+    def set_or_fail(signum: int, handler: object) -> object:
+        """Set the handler, unless this is the first try for the signal.
+
+        Args:
+            signum: The signal's number.
+            handler: The new handler.
+
+        Returns:
+            The handler the signal had before.
+
+        Raises:
+            OSError: This is the first try for the signal.
+        """
+        if signum == sig and not failed:
+            failed.append(signum)
+            raise OSError("cannot set the handler")
+        return set_handler(signum, handler)
+
+    monkeypatch.setattr(signal, "signal", set_or_fail)
+
+
+def send_signal_when_first_handler_is_back(
+    monkeypatch: pytest.MonkeyPatch, handler: Mock
+) -> list[int]:
+    """Send a signal just after the checker puts back the first handler.
+
+    That signal goes to the program's handler again, while the other two
+    still go to the checker's.
+
+    Args:
+        monkeypatch: Undoes the change after the test.
+        handler: The program's handler, which the checker puts back.
+
+    Returns:
+        A list that gets the signal when it is sent.
+    """
+    set_handler, sent = signal.signal, []
+
+    def set_then_signal(signum: int, new: object) -> object:
+        """Set the handler, then send the signal if the program's is back.
+
+        Args:
+            signum: The signal's number.
+            new: The new handler.
+
+        Returns:
+            The handler the signal had before.
+        """
+        old = set_handler(signum, new)
+        if new is handler and not sent:
+            sent.append(signum)
+            os.kill(os.getpid(), signum)
+        return old
+
+    monkeypatch.setattr(signal, "signal", set_then_signal)
+    return sent
+
+
 class TestApply:
     """Write the owner's answers and approve them, all or nothing.
 
@@ -1560,309 +1874,245 @@ class TestApply:
         ]
         assert written["avoid"] == {"client": "say customer"}
 
-    @pytest.mark.parametrize(
-        ("error", "call", "after"),
-        [
-            pytest.param(DISK_FULL, 2, False, id="file-disk-full"),
-            pytest.param(signal.SIGINT, 2, False, id="file-sigint"),
-            pytest.param(signal.SIGINT, 3, True, id="approvals-sigint"),
-            pytest.param(signal.SIGTERM, 3, True, id="approvals-sigterm"),
-            pytest.param(signal.SIGHUP, 3, True, id="approvals-sighup"),
-            pytest.param(signal.SIGTERM, 2, False, id="file-sigterm"),
-            pytest.param(signal.SIGHUP, 2, False, id="file-sighup"),
-            pytest.param(KeyboardInterrupt(), 1, True, id="file-ctrl-c"),
-            pytest.param(DISK_FULL, 3, False, id="approvals-disk-full"),
-            pytest.param(KeyboardInterrupt(), 3, True, id="approvals-ctrl-c"),
-        ],
-    )
-    def test_failed_write_changes_nothing(
-        self, tmp_path: Path, monkeypatch, error, call: int, after: bool
+    @pytest.mark.parametrize("save", [2, 3], ids=["tax.go", "approvals"])
+    def test_disk_error_puts_every_file_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, save: int
     ) -> None:
-        """Restore files after write errors or catchable termination.
+        """Put every file back when a disk error stops the write partway.
 
-        A review cannot be written twice, so a half-written one would
-        leave some answers in the code with none of them approved, or
-        approvals of text the code does not hold. The renames go cart.go,
-        tax.go, then ``.code-comments.json``.
+        A half-done write would leave new comments in the code that nobody
+        approved.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Makes one file save fail.
+            save: The save that fails, counting cart.go, tax.go, then the
+                approvals file.
         """
-        write_cart(tmp_path)
-        settings = (tmp_path / ".code-comments.json").read_text()
-        tax_go = "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
-        (tmp_path / "tax.go").write_text(tax_go)
-        old = "// Checks the tax.\n"
-        answers = [
-            make_answer(1, TOTAL_TEXT, "// Sums.\n"),
-            make_answer(2, old, "// Adds tax.\n", name="Check", file="tax.go"),
-        ]
-        replace_file, targets = os.replace, []
-        handlers = {
-            sig: signal.getsignal(sig)
-            for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-        }
+        edits = write_cart_and_tax(tmp_path)
+        before, handlers = read_files(tmp_path), read_stop_handlers()
+        fail_file_save(monkeypatch, save)
 
-        def interrupt_write() -> None:
-            """Deliver a real signal or the requested write error."""
-            if isinstance(error, signal.Signals):
-                os.kill(os.getpid(), error)
-            else:
-                raise error
-
-        def fail_one_replace(source: str, target: Path) -> None:
-            """Inject the requested failure or signal around rename ``call``."""
-            targets.append(target)
-            if len(targets) == call and not after:
-                interrupt_write()
-            replace_file(source, target)
-            if len(targets) == call:
-                interrupt_write()
-
-        monkeypatch.setattr(os, "replace", fail_one_replace)
-
-        # Ctrl-C reaches the caller; a disk error is printed, exit 2.
-        if isinstance(error, (KeyboardInterrupt, signal.Signals)):
-            with pytest.raises(KeyboardInterrupt):
-                apply_answers(tmp_path, answers, flags=())
-        else:
-            code, _ = apply_answers(tmp_path, answers, flags=())
-            assert code == 2
-
-        assert (tmp_path / "cart.go").read_text() == CART_GO
-        assert (tmp_path / "tax.go").read_text() == tax_go
-        assert (tmp_path / ".code-comments.json").read_text() == settings
-        assert len(list(tmp_path.iterdir())) == 3, "a temporary file is left"
-        assert {sig: signal.getsignal(sig) for sig in handlers} == handlers
-
-    @pytest.mark.parametrize(
-        "sig",
-        [
-            pytest.param(signal.SIGINT, id="sigint"),
-            pytest.param(signal.SIGTERM, id="sigterm"),
-            pytest.param(signal.SIGHUP, id="sighup"),
-        ],
-    )
-    def test_signals_cannot_interrupt_rollback(
-        self, tmp_path: Path, monkeypatch, sig
-    ) -> None:
-        """Finish restoring files when termination arrives during rollback.
-
-        A signal during rollback could otherwise stop restoration
-        and leave only some files restored.
-        """
-        write_cart(tmp_path)
-        tax = "package cart\n\n// Checks the tax.\nfunc Check() {}\n"
-        (tmp_path / "tax.go").write_text(tax)
-        settings = (tmp_path / ".code-comments.json").read_bytes()
-        handlers = {
-            s: signal.getsignal(s)
-            for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-        }
-        replace_file, targets = os.replace, []
-
-        def fail_then_signal(source, target) -> None:
-            """Fail the second write and signal during the first restore."""
-            targets.append(target)
-            if len(targets) == 2:
-                raise OSError("injected write error")
-            if len(targets) == 3:
-                os.kill(os.getpid(), sig)
-            replace_file(source, target)
-
-        monkeypatch.setattr(os, "replace", fail_then_signal)
-
-        code, _ = apply_answers(
-            tmp_path,
-            [
-                make_answer(1, TOTAL_TEXT, "// Sums.\n"),
-                make_answer(
-                    2,
-                    "// Checks the tax.\n",
-                    "// Adds tax.\n",
-                    name="Check",
-                    file="tax.go",
-                ),
-            ],
-            flags=(),
-        )
+        code, _ = apply_answers(tmp_path, edits, flags=())
 
         assert code == 2
-        assert len(targets) >= 3, "the signal was never sent"
-        assert (tmp_path / "cart.go").read_text() == CART_GO
-        assert (tmp_path / "tax.go").read_text() == tax
-        assert (tmp_path / ".code-comments.json").read_bytes() == settings
-        assert {p.name for p in tmp_path.iterdir()} == {
-            "cart.go",
-            "tax.go",
-            ".code-comments.json",
-        }
-        assert {s: signal.getsignal(s) for s in handlers} == handlers
+        assert read_files(tmp_path) == before
+        assert read_stop_handlers() == handlers
 
-    @pytest.mark.parametrize(
-        "sig",
-        [
-            pytest.param(signal.SIGINT, id="sigint"),
-            pytest.param(signal.SIGTERM, id="sigterm"),
-            pytest.param(signal.SIGHUP, id="sighup"),
-        ],
-    )
-    def test_committed_cleanup_survives_signals(
-        self, tmp_path: Path, monkeypatch, sig
+    @pytest.mark.parametrize("save", [1, 3], ids=["cart.go", "approvals"])
+    def test_file_saved_before_error_goes_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, save: int
     ) -> None:
-        """Keep a committed write successful when cleanup receives a signal.
+        """Put a file back when an error comes just after it is saved.
 
-        Reporting cancellation after both source and approvals landed
-        would leave the review waiting for an answer already written.
+        The file has already changed then, so undoing only the files saved
+        before it would leave it new. KeyboardInterrupt gets past code that
+        catches only ordinary errors.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Raises the error after one file save.
+            save: The save after which the error comes.
+        """
+        edits = write_cart_and_tax(tmp_path)
+        before, handlers = read_files(tmp_path), read_stop_handlers()
+        interrupt_after_file_save(monkeypatch, save)
+
+        with pytest.raises(KeyboardInterrupt):
+            apply_answers(tmp_path, edits, flags=())
+
+        assert read_files(tmp_path) == before
+        assert read_stop_handlers() == handlers
+
+    @pytest.mark.parametrize("save", [2, 3], ids=["tax.go", "approvals"])
+    @pytest.mark.parametrize("sig", STOP_SIGNALS, ids=lambda sig: sig.name)
+    def test_stop_signal_puts_every_file_back(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        sig: signal.Signals,
+        save: int,
+    ) -> None:
+        """Put every file back when a stop signal comes before the last save.
+
+        Ctrl-C, a closed terminal or a request to stop would otherwise end
+        the checker with some files new and some old. The checker still
+        stops after putting the files back.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Sends the signal before one file save.
+            sig: The signal to send.
+            save: The save that the signal comes before.
+        """
+        edits = write_cart_and_tax(tmp_path)
+        before, handlers = read_files(tmp_path), read_stop_handlers()
+        sent = send_signal_before_save(monkeypatch, save, sig)
+
+        with pytest.raises(KeyboardInterrupt):
+            apply_answers(tmp_path, edits, flags=())
+
+        assert sent == [sig]
+        assert read_files(tmp_path) == before
+        assert read_stop_handlers() == handlers
+
+    def test_signal_cannot_stop_putting_files_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Finish putting files back when a signal comes partway through.
+
+        Stopping there would leave some files new and some old after a
+        write that already failed.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Fails a file save and sends the signal.
+        """
+        edits = write_cart_and_tax(tmp_path)
+        before, handlers = read_files(tmp_path), read_stop_handlers()
+        fail_file_save(monkeypatch, 2)
+        # Save 3 is the first one that puts an old file back.
+        sent = send_signal_before_save(monkeypatch, 3, signal.SIGTERM)
+
+        code, _ = apply_answers(tmp_path, edits, flags=())
+
+        assert code == 2
+        assert sent == [signal.SIGTERM]
+        assert read_files(tmp_path) == before
+        assert read_stop_handlers() == handlers
+
+    def test_signal_after_last_save_keeps_write(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Report success when a signal comes after the last file is saved.
+
+        The new comments and approvals are in place by then, so a failure
+        would tell the owner that a finished write did not happen.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Sends the signal after the last save.
         """
         write_cart(tmp_path)
-        settings = json.loads((tmp_path / ".code-comments.json").read_text())
-        handlers = {
-            s: signal.getsignal(s)
-            for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-        }
-        unlink_file, fired = Path.unlink, []
+        handlers = read_stop_handlers()
+        sent = send_signal_on_first_file_delete(monkeypatch, signal.SIGTERM)
 
-        def signal_during_cleanup(path, *args, **kwargs):
-            """Signal on the final unlink of a renamed source temporary."""
-            if (
-                path.parent == tmp_path
-                and path.name.startswith(".cart.go.")
-                and not fired
-            ):
-                fired.append(True)
-                os.kill(os.getpid(), sig)
-            return unlink_file(path, *args, **kwargs)
-
-        monkeypatch.setattr(Path, "unlink", signal_during_cleanup)
-
-        code, reply = apply_answers(
-            tmp_path,
-            [
-                make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total"),
-            ],
-            flags=(),
-        )
+        code, reply = apply_answers(tmp_path, [SUMS_EDIT], flags=())
 
         assert (code, reply["changed"]) == (0, ["cart.go"])
-        assert fired == [True]
-        assert (tmp_path / "cart.go").read_text() == CART_GO.replace(
-            TOTAL_TEXT, "// Sums.\n"
-        )
-        written = json.loads((tmp_path / ".code-comments.json").read_text())
-        assert {
-            (e["file"], e["name"]): e["text"] for e in written["approved"]
-        } == {
-            ("cart.go", "Reset"): "",
-            ("cart.go", "Total"): "// Sums.\n",
-            ("cart.go", "Valid"): VALID_TEXT,
-            ("tax.go", "Check"): "// Checks the tax.\n",
-        }
-        assert written["avoid"] == settings["avoid"]
-        assert {p.name for p in tmp_path.iterdir()} == {
-            "cart.go",
-            ".code-comments.json",
-        }
-        assert {s: signal.getsignal(s) for s in handlers} == handlers
+        assert sent == [signal.SIGTERM]
+        assert sorted(os.listdir(tmp_path)) == [SETTINGS, "cart.go"]
+        assert (tmp_path / "cart.go").read_text() == SUMS_GO
+        assert json.loads((tmp_path / SETTINGS).read_text()) == SUMS_APPROVED
+        assert read_stop_handlers() == handlers
 
-    @pytest.mark.parametrize(
-        "sig", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]
-    )
-    @pytest.mark.parametrize("failure", [None, "install", "cleanup"])
-    def test_restore_handlers_before_signal_handoff(
-        self, tmp_path: Path, monkeypatch, sig, failure
+    def test_signal_while_restoring_handlers_is_ignored(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        program_handler: Mock,
     ) -> None:
-        """Finish handler restoration before giving signals to the caller.
+        """Ignore a signal that comes while the checker puts handlers back.
 
-        A signal between restorations could otherwise cancel a committed
-        write and leave some of the writer's handlers installed.
+        The checker puts back the program's handlers one at a time. A signal
+        that reached the program in between could stop it with some of the
+        checker's handlers still in place. The checker blocks the signal
+        instead, and drops it once every handler is back.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Sends the signal after the first handler is back.
+            program_handler: The program's handler on every stop signal.
         """
         write_cart(tmp_path)
-        settings = (tmp_path / ".code-comments.json").read_bytes()
-        signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-        originals = {s: signal.getsignal(s) for s in signals}
-        mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
-        install, unlink = signal.signal, Path.unlink
-        called, fired = [], []
+        blocked = read_blocked_signals()
+        sent = send_signal_when_first_handler_is_back(
+            monkeypatch, program_handler
+        )
 
-        def interrupt_caller(signum, frame):
-            """Expose any early delivery to a caller-owned handler."""
-            called.append(signum)
-            raise KeyboardInterrupt("caller owns this signal")
+        code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
 
-        def restore_then_signal(signum, handler):
-            """Send a real signal just after restoring the first handler."""
-            if (
-                failure == "install"
-                and signum == signal.SIGHUP
-                and handler is not interrupt_caller
-            ):
-                raise OSError("injected install failure")
-            previous = install(signum, handler)
-            if handler is interrupt_caller and not fired:
-                fired.append(signum)
-                os.kill(os.getpid(), sig)
-            return previous
+        assert code == 0
+        assert len(sent) == 1
+        program_handler.assert_not_called()
+        assert read_stop_handlers() == dict.fromkeys(
+            STOP_SIGNALS, program_handler
+        )
+        assert read_blocked_signals() == blocked
+        assert sorted(os.listdir(tmp_path)) == [SETTINGS, "cart.go"]
+        assert (tmp_path / "cart.go").read_text() == SUMS_GO
+        assert json.loads((tmp_path / SETTINGS).read_text()) == SUMS_APPROVED
 
-        def fail_cleanup(path, *args, **kwargs):
-            """Fail after unlinking the final source temporary."""
-            result = unlink(path, *args, **kwargs)
-            if path.parent == tmp_path and path.name.startswith(".cart.go."):
-                raise OSError("injected cleanup failure")
-            return result
+    def test_signal_ignored_when_handler_setup_fails(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        program_handler: Mock,
+    ) -> None:
+        """Ignore a signal that comes while the checker undoes a failed setup.
 
-        try:
-            for s in signals:
-                install(s, interrupt_caller)
-            monkeypatch.setattr(signal, "signal", restore_then_signal)
-            if failure == "cleanup":
-                monkeypatch.setattr(Path, "unlink", fail_cleanup)
-            try:
-                code, _ = apply_answers(
-                    tmp_path,
-                    [
-                        make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total"),
-                    ],
-                    flags=(),
-                )
-            except KeyboardInterrupt:
-                code = "interrupted"
+        The checker has already changed some handlers when it fails to set
+        another. It puts them all back with the signal blocked, as it does
+        after a write that works.
 
-            assert code == (0 if failure is None else 2)
-            assert fired == [signal.SIGINT]
-            assert called == []
-            assert {s: signal.getsignal(s) for s in signals} == {
-                s: interrupt_caller for s in signals
-            }
-            assert signal.pthread_sigmask(signal.SIG_BLOCK, set()) == mask
-            expected = (
-                CART_GO
-                if failure == "install"
-                else CART_GO.replace(TOTAL_TEXT, "// Sums.\n")
-            )
-            assert (tmp_path / "cart.go").read_text() == expected
-            written = (tmp_path / ".code-comments.json").read_bytes()
-            if failure == "install":
-                assert written == settings
-            else:
-                approved = json.loads(written)["approved"]
-                assert {
-                    (e["file"], e["name"]): e["text"] for e in approved
-                } == {
-                    ("cart.go", "Reset"): "",
-                    ("cart.go", "Total"): "// Sums.\n",
-                    ("cart.go", "Valid"): VALID_TEXT,
-                    ("tax.go", "Check"): "// Checks the tax.\n",
-                }
-                assert (
-                    json.loads(written)["avoid"]
-                    == json.loads(settings)["avoid"]
-                )
-            assert {p.name for p in tmp_path.iterdir()} == {
-                "cart.go",
-                ".code-comments.json",
-            }
-        finally:
-            for s, handler in originals.items():
-                install(s, handler)
-            signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Fails the SIGHUP setup and sends the signal.
+            program_handler: The program's handler on every stop signal.
+        """
+        write_cart(tmp_path)
+        before, blocked = read_files(tmp_path), read_blocked_signals()
+        fail_handler_setup(monkeypatch, signal.SIGHUP)
+        sent = send_signal_when_first_handler_is_back(
+            monkeypatch, program_handler
+        )
+
+        code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
+
+        assert code == 2
+        assert len(sent) == 1
+        program_handler.assert_not_called()
+        assert read_stop_handlers() == dict.fromkeys(
+            STOP_SIGNALS, program_handler
+        )
+        assert read_blocked_signals() == blocked
+        assert read_files(tmp_path) == before
+
+    def test_signal_ignored_when_cleanup_fails(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        program_handler: Mock,
+    ) -> None:
+        """Ignore a signal that comes after the tidy-up fails.
+
+        The files are already saved when the tidy-up fails. The checker still
+        puts every handler back with the signal blocked.
+
+        Args:
+            tmp_path: The repository folder.
+            monkeypatch: Fails the tidy-up and sends the signal.
+            program_handler: The program's handler on every stop signal.
+        """
+        write_cart(tmp_path)
+        blocked = read_blocked_signals()
+        fail_file_delete(monkeypatch)
+        sent = send_signal_when_first_handler_is_back(
+            monkeypatch, program_handler
+        )
+
+        code, _ = apply_answers(tmp_path, [SUMS_EDIT], flags=())
+
+        assert code == 2
+        assert len(sent) == 1
+        program_handler.assert_not_called()
+        assert read_stop_handlers() == dict.fromkeys(
+            STOP_SIGNALS, program_handler
+        )
+        assert read_blocked_signals() == blocked
+        assert sorted(os.listdir(tmp_path)) == [SETTINGS, "cart.go"]
+        assert (tmp_path / "cart.go").read_text() == SUMS_GO
+        assert json.loads((tmp_path / SETTINGS).read_text()) == SUMS_APPROVED
 
     def test_unnamed_answers_leave_approvals_alone(
         self, tmp_path: Path
