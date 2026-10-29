@@ -1,7 +1,7 @@
 # Update Direct Releases
 
-Direct releases contain runtimes, Neovim, Keychain, Moshi Hook, Herdr, nobs,
-and fonts. Client installs Neovim, Node, Herdr, nobs, and the fonts; terminal
+Direct releases contain runtimes, Neovim, Keychain, Moshi Hook, Herdr, nobs, and
+fonts. Client installs Neovim, Node, Herdr, nobs, and the fonts; terminal
 installs skip them all.
 
 ## Tools and Runtimes

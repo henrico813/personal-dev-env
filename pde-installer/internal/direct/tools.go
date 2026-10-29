@@ -133,17 +133,6 @@ func ToolsFor(selected profile.Profile) ([]Tool, error) {
 // Returns an error naming installed release tools the profile leaves out,
 // because installing the profile would delete them.
 func (m Manager) RejectToolRemoval(selected profile.Profile) error {
-	data, err := os.ReadFile(filepath.Join(m.ToolsRoot(), ".pde-state.json"))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read direct tool state: %w", err)
-	}
-	var state toolsState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return fmt.Errorf("parse direct tool state: %w", err)
-	}
 	known, err := Tools()
 	if err != nil {
 		return err
@@ -156,10 +145,32 @@ func (m Manager) RejectToolRemoval(selected profile.Profile) error {
 	for _, tool := range profileTools {
 		inProfile[tool.Name] = true
 	}
-	var removed []string
+	var leftOut []string
 	for _, tool := range known {
-		if _, installed := state.Tools[tool.Name]; installed && !inProfile[tool.Name] {
-			removed = append(removed, tool.Name)
+		if !inProfile[tool.Name] {
+			leftOut = append(leftOut, tool.Name)
+		}
+	}
+	// Full leaves out no tool, so it skips the state file, and reconcileTools
+	// still repairs a corrupt one.
+	if len(leftOut) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(m.ToolsRoot(), ".pde-state.json"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read direct tool state: %w", err)
+	}
+	var state toolsState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("parse direct tool state: %w", err)
+	}
+	var removed []string
+	for _, name := range leftOut {
+		if _, installed := state.Tools[name]; installed {
+			removed = append(removed, name)
 		}
 	}
 	if len(removed) == 0 {

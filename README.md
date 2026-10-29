@@ -23,10 +23,10 @@ and shows Herdr sessions from other machines, with nothing compiled by the
 installer, and `full` for development machines. A fresh installation must choose
 `terminal`, `client`, or `full`; the installer saves that selection in
 `~/.config/pde/config.json`. Later bare `install` runs reuse the saved
-selection, including the inferred full selection for legacy installer state.
-A successful explicit selection switches future installs. A pre-commit failure
-preserves the prior selection. Switching from full to terminal stops
-reconciling full-only artifacts but does not uninstall them.
+selection, including the inferred full selection for legacy installer state. A
+successful explicit selection switches future installs. A pre-commit failure
+preserves the prior selection. Switching from full to terminal stops reconciling
+full-only artifacts but does not uninstall them.
 
 The independent `--color-profile` setting accepts `tokyo-night`,
 `everforest-dark`, or `gruvbox-dark`. It defaults to Tokyo Night, is saved per
@@ -46,9 +46,8 @@ pde-installer list
 ```
 
 - `install [terminal|client|full]` reconciles tools and managed home
-  configuration in
-  dependency order. A fresh installation requires an explicit selection;
-  later bare installs reuse saved or legacy selection.
+  configuration in dependency order. A fresh installation requires an explicit
+  selection; later bare installs reuse saved or legacy selection.
 - `doctor` validates host prerequisites, pins, and managed paths for the saved
   profile (or full on a fresh `HOME`).
 - `list` reports ownership and installed status for the saved profile (or full

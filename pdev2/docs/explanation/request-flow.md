@@ -44,20 +44,19 @@ One request goes like this:
 
 ## How It Gets Installed
 
-`pde-installer install full` puts the pieces in place in two ways. It
-builds the Go program from `pdev2/` as `~/.local/bin/pde-gh-write` and
-links `pde-pr-approve` to it; the program picks its mode from the name it
-was started under, so one build serves both. It also installs
-`moshi-hook`. chezmoi, which the installer also runs, places the files
-that tie the program into your tools: the guard as `~/.local/bin/gh`, the
-Herdr plugin, and the `prefix+a` inbox key. Herdr loads plugins only into a
-running server, so a separate script links the plugin after each install
-and, when Herdr is not running, prints how to link it later. The
-terminal and client profiles install none of this, and remove the
-guard, `pde-gh-write`, and `pde-pr-approve` if a full install left
-them. Client keeps the `prefix+a` key in its Herdr config, which runs
-the inbox of the machine Herdr shows.
-[Set up approval](../how-to/set-up-approval.md) lists the steps.
+`pde-installer install full` puts the pieces in place in two ways. It builds the
+Go program from `pdev2/` as `~/.local/bin/pde-gh-write` and links
+`pde-pr-approve` to it; the program picks its mode from the name it was started
+under, so one build serves both. It also installs `moshi-hook`. chezmoi, which
+the installer also runs, places the files that tie the program into your tools:
+the guard as `~/.local/bin/gh`, the Herdr plugin, and the `prefix+a` inbox key.
+Herdr loads plugins only into a running server, so a separate script links the
+plugin after each install and, when Herdr is not running, prints how to link it
+later. The terminal and client profiles install none of this, and remove the
+guard, `pde-gh-write`, and `pde-pr-approve` if a full install left them. Client
+keeps the `prefix+a` key in its Herdr config, which runs the inbox of the
+machine Herdr shows. [Set up approval](../how-to/set-up-approval.md) lists the
+steps.
 
 The sections below explain why each step works the way it does.
 

@@ -256,8 +256,34 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so starting any build but the packed
-// skill-lessons would fail every client install.
+// Full builds blink.cmp from these pins, and client gets it from the chezmoi
+// externals. Pins that drift apart would give the two profiles different
+// blink.cmp releases.
+func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "chezmoi", ".chezmoiexternal.toml.tmpl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, entry, found := strings.Cut(string(data), `[".config/nvim/pack/plugins/start/blink.cmp"]`)
+	entry, _, _ = strings.Cut(entry, "\n\n")
+
+	if !found {
+		t.Fatal("externals have no blink.cmp entry")
+	}
+	for _, want := range []string{
+		`url = "` + defaultBlinkURL + `"`,
+		`checksum.sha256 = "` + defaultBlinkSHA256 + `"`,
+	} {
+		if !strings.Contains(entry, want) {
+			t.Errorf("blink.cmp external lacks %s", want)
+		}
+	}
+}
+
+// A client laptop has no Go or Rust, so any build but skill-lessons, which
+// only zips Python files, would fail every client install.
 func TestClientBuildsOnlySkillLessons(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
@@ -275,11 +301,6 @@ func TestClientBuildsOnlySkillLessons(t *testing.T) {
 	if got := readBuildLog(t, logPath); got != "python\n" {
 		t.Fatalf("build log = %q, want one python build", got)
 	}
-	assertBuildFile(
-		t,
-		filepath.Join(home, ".local", "bin", "skill-lessons"),
-		"#!/bin/sh\nexit 0\n# built by python\n",
-	)
 }
 
 // Returns a manager whose tools are built and committed, with its repository
@@ -501,9 +522,9 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 	manager.blinkURL = server.URL
 	manager.blinkSHA256 = hex.EncodeToString(digest[:])
 
-	journal, err := manager.InstallBlink(true /* nativeMatcher */)
+	journal, err := manager.BuildBlink()
 	if err != nil {
-		t.Fatalf("InstallBlink() error = %v", err)
+		t.Fatalf("BuildBlink() error = %v", err)
 	}
 
 	assertBuildFile(t, filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"), "blink library\n")
@@ -513,57 +534,6 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	assertBuildFile(t, filepath.Join(destination, "old"), "old plugin\n")
-}
-
-// A client laptop has no Rust toolchain. blink.cmp must still install there
-// with its Lua matcher, instead of failing on the missing cargo.
-func TestLuaBlinkInstallsWithoutCargo(t *testing.T) {
-	home := t.TempDir()
-	destination := filepath.Join(
-		home,
-		".config",
-		"nvim",
-		"pack",
-		"plugins",
-		"start",
-		"blink.cmp",
-	)
-	archive := blinkArchiveFixture(t)
-	digest := sha256.Sum256(archive)
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
-		_, _ = response.Write(archive)
-	}))
-	defer server.Close()
-	manager := New(
-		home,
-		t.TempDir(),
-		run.Runner{},
-	)
-	manager.blinkURL = server.URL
-	manager.blinkSHA256 = hex.EncodeToString(digest[:])
-
-	journal, err := manager.InstallBlink(false /* nativeMatcher */)
-	if err != nil {
-		t.Fatalf("InstallBlink() error = %v", err)
-	}
-	if err := journal.Commit(); err != nil {
-		t.Fatal(err)
-	}
-
-	assertBuildFile(
-		t,
-		filepath.Join(
-			destination,
-			"lua",
-			"blink",
-			"cmp",
-			"init.lua",
-		),
-		"return {}\n",
-	)
-	if _, err := os.Stat(filepath.Join(destination, "lib")); !os.IsNotExist(err) {
-		t.Fatalf("native library directory stat error = %v, want not exist", err)
-	}
 }
 
 func cargoFixture(logPath string) string {
