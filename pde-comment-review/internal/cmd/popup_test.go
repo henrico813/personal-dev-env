@@ -99,13 +99,19 @@ func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
 			var request struct {
 				Method string `json:"method"`
 				Params struct {
-					Env map[string]string `json:"env"`
+					Entrypoint string            `json:"entrypoint"`
+					Placement  string            `json:"placement"`
+					Env        map[string]string `json:"env"`
 				} `json:"params"`
 			}
 			line, _ := bufio.NewReader(conn).ReadBytes('\n')
 			if json.Unmarshal(line, &request) == nil {
+				asked := request.Method
+				if request.Params.Entrypoint != "" {
+					asked += " " + request.Params.Entrypoint + " as " + request.Params.Placement
+				}
 				mu.Lock()
-				requests = append(requests, fmt.Sprintf("%s %q", request.Method, request.Params.Env[reviewNameEnv]))
+				requests = append(requests, fmt.Sprintf("%s %q", asked, request.Params.Env[reviewNameEnv]))
 				mu.Unlock()
 			}
 			fmt.Fprintln(conn, `{"id":"comment-review","result":{}}`)
@@ -124,18 +130,48 @@ func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
 // sat side by side and the owner answered the wrong one. Only Herdr's action
 // may open it, since a popup an agent opens is drawn out of sight and blocks
 // every PR approval.
-func TestHerdrActionOpensRightReview(t *testing.T) {
+func TestActionOpensReviewInAskedPane(t *testing.T) {
 	tests := []struct {
 		name        string
 		actionID    string
+		args        []string
 		reviews     []string // oldest first
 		want        []string
 		wantRefused bool
 	}{
-		{name: "outside the action", reviews: []string{"cart"}, wantRefused: true},
-		{name: "none waiting", actionID: "open", want: []string{`notification.show ""`}},
-		{name: "one waiting", actionID: "open", reviews: []string{"cart"}, want: []string{`plugin.pane.open "cart"`}},
-		{name: "several waiting", actionID: "open", reviews: []string{"older", "newer"}, want: []string{`plugin.pane.open ""`}},
+		{
+			name:        "outside the action",
+			args:        []string{"open"},
+			reviews:     []string{"cart"},
+			wantRefused: true,
+		},
+		{
+			name:     "none waiting",
+			actionID: "open",
+			args:     []string{"open"},
+			want:     []string{`notification.show ""`},
+		},
+		{
+			name:     "one waiting",
+			actionID: "open",
+			args:     []string{"open"},
+			reviews:  []string{"cart"},
+			want:     []string{`plugin.pane.open popup as popup "cart"`},
+		},
+		{
+			name:     "several waiting",
+			actionID: "open",
+			args:     []string{"open"},
+			reviews:  []string{"older", "newer"},
+			want:     []string{`plugin.pane.open popup as popup ""`},
+		},
+		{
+			name:     "Ctrl+b E opens the tab",
+			actionID: "open-tab",
+			args:     []string{"open", "--tab"},
+			reviews:  []string{"cart"},
+			want:     []string{`plugin.pane.open tab as tab "cart"`},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,10 +195,20 @@ func TestHerdrActionOpensRightReview(t *testing.T) {
 				}
 			}
 
-			err := openWaitingReview()
+			// The command changes these for the tools it runs, so put them back after.
+			for _, name := range []string{
+				"PATH",
+				"AQUA_ROOT_DIR",
+				"AQUA_GLOBAL_CONFIG",
+				"AQUA_CHECKSUMS_PATH",
+			} {
+				t.Setenv(name, os.Getenv(name))
+			}
 
-			if (err != nil) != tt.wantRefused {
-				t.Errorf("open with no name = %v, want refused %v", err, tt.wantRefused)
+			exit := Main(tt.args)
+
+			if (exit != 0) != tt.wantRefused {
+				t.Errorf("Main(%q) = %d, want refused %v", tt.args, exit, tt.wantRefused)
 			}
 			if got := received(); !slices.Equal(got, tt.want) {
 				t.Errorf("requests = %q, want %q", got, tt.want)

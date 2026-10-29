@@ -17,6 +17,7 @@ import (
 const (
 	pluginID    = "pde.comment-review"
 	popupPaneID = "popup"
+	tabPaneID   = "tab"
 	editPaneID  = "edit"
 	diffPaneID  = "diff"
 )
@@ -41,11 +42,11 @@ func (e *herdrError) Error() string {
 // Opens the one waiting review in Herdr's popup, or the list when several
 // wait. Only the owner's Ctrl+b e may run it, since a popup an agent opens
 // is drawn out of sight and blocks every PR approval.
-func openWaitingReview() error {
+func openWaitingReview(placement string) error {
 	if os.Getenv("HERDR_PLUGIN_ACTION_ID") == "" {
-		return errors.New("only Herdr's Ctrl+b e opens the review popup; in a terminal, run open NAME")
+		return errors.New("only Herdr's Ctrl+b e or E opens the review; in a terminal, run open NAME")
 	}
-	err := openWaitingPopup()
+	err := openWaitingPane(placement)
 	// Herdr keeps the action's error in its plugin log, out of sight, so
 	// the owner also gets a notification.
 	if err != nil {
@@ -54,7 +55,7 @@ func openWaitingReview() error {
 	return err
 }
 
-func openWaitingPopup() error {
+func openWaitingPane(placement string) error {
 	waiting, err := review.ListWaitingReviews()
 	if err != nil {
 		return err
@@ -66,7 +67,11 @@ func openWaitingPopup() error {
 	if len(waiting) == 1 {
 		name = waiting[0].Name
 	}
-	return openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name})
+	pane := popupPaneID
+	if placement == "tab" {
+		pane = tabPaneID
+	}
+	return openPluginPane(pane, placement, map[string]string{reviewNameEnv: name})
 }
 
 // Opens the popup, or the edit or diff tab, with env for its program.
