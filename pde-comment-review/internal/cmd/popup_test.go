@@ -80,7 +80,7 @@ func TestPopupRecordNamesItsReview(t *testing.T) {
 
 // Starts a fake Herdr socket that answers every request and returns the
 // requests it got, each as its method and the review name it carried.
-func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
+func startFakeHerdr(t *testing.T, tabLabels map[string]string) (socket string, received func() []string) {
 	t.Helper()
 	socket = filepath.Join(t.TempDir(), "herdr.sock")
 	listener, err := net.Listen("unix", socket)
@@ -101,6 +101,8 @@ func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
 				Params struct {
 					Entrypoint string            `json:"entrypoint"`
 					Placement  string            `json:"placement"`
+					TabID      string            `json:"tab_id"`
+					Label      string            `json:"label"`
 					Env        map[string]string `json:"env"`
 				} `json:"params"`
 			}
@@ -110,11 +112,29 @@ func startFakeHerdr(t *testing.T) (socket string, received func() []string) {
 				if request.Params.Entrypoint != "" {
 					asked += " " + request.Params.Entrypoint + " as " + request.Params.Placement
 				}
+				if request.Params.TabID != "" {
+					asked += " " + request.Params.TabID
+				}
+				if request.Params.Label != "" {
+					asked += " to " + request.Params.Label
+				}
 				mu.Lock()
 				requests = append(requests, fmt.Sprintf("%s %q", asked, request.Params.Env[reviewNameEnv]))
 				mu.Unlock()
 			}
-			fmt.Fprintln(conn, `{"id":"comment-review","result":{}}`)
+			result := map[string]any{}
+			switch request.Method {
+			case "plugin.pane.open":
+				result["plugin_pane"] = map[string]any{"pane": map[string]any{"tab_id": "w1:t9"}}
+			case "tab.list":
+				tabs := []map[string]string{}
+				for id, label := range tabLabels {
+					tabs = append(tabs, map[string]string{"tab_id": id, "label": label})
+				}
+				result["tabs"] = tabs
+			}
+			reply, _ := json.Marshal(map[string]any{"id": "comment-review", "result": result})
+			fmt.Fprintf(conn, "%s\n", reply)
 			conn.Close()
 		}
 	}()
@@ -135,7 +155,8 @@ func TestActionOpensReviewInAskedPane(t *testing.T) {
 		name        string
 		actionID    string
 		args        []string
-		reviews     []string // oldest first
+		reviews     []string          // oldest first
+		tabs        map[string]string // Herdr's open tabs by ID, with their labels
 		want        []string
 		wantRefused bool
 	}{
@@ -170,14 +191,31 @@ func TestActionOpensReviewInAskedPane(t *testing.T) {
 			actionID: "open-tab",
 			args:     []string{"open", "--tab"},
 			reviews:  []string{"cart"},
-			want:     []string{`plugin.pane.open tab as tab "cart"`},
+			tabs:     map[string]string{"w1:t1": "1"},
+			want: []string{
+				`tab.list ""`,
+				`plugin.pane.open tab as tab "cart"`,
+				`tab.focus w1:t9 ""`,
+				`tab.rename w1:t9 to comment review ""`,
+			},
+		},
+		{
+			name:     "Ctrl+b E again moves to the open tab",
+			actionID: "open-tab",
+			args:     []string{"open", "--tab"},
+			reviews:  []string{"cart"},
+			tabs:     map[string]string{"w1:t1": "1", "w2:t3": "comment review"},
+			want: []string{
+				`tab.list ""`,
+				`tab.focus w2:t3 ""`,
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("HERDR_PLUGIN_ACTION_ID", tt.actionID)
-			socket, received := startFakeHerdr(t)
+			socket, received := startFakeHerdr(t, tt.tabs)
 			t.Setenv("HERDR_SOCKET_PATH", socket)
 			repo := t.TempDir()
 			writeFile(t, filepath.Join(repo, "cart.go"), cartGo)

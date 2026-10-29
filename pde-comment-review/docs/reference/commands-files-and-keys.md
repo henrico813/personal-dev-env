@@ -79,7 +79,8 @@ A review waits until its newest round is written. A review whose
 repository is gone does not wait. With one review waiting, Ctrl+b e
 opens it; with several, it lists them under the agent session that
 added them, newest first; with none, Herdr shows "No comment reviews
-are waiting". Ctrl+b E opens the same in a tab.
+are waiting". Ctrl+b E opens the same in a tab named "comment
+review". While that tab is open, Ctrl+b E moves to it instead.
 
 ## Keys
 

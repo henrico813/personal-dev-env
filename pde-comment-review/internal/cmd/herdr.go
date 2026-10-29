@@ -25,6 +25,9 @@ const (
 // An empty review name makes the popup list the waiting reviews.
 const reviewNameEnv = "PDE_COMMENT_REVIEW"
 
+// The label the review tab gets, and the one a second Ctrl+b E looks for.
+const reviewTabLabel = "comment review"
+
 // The ID of the item the edit tab edits.
 const itemIDEnv = "PDE_COMMENT_REVIEW_ITEM"
 
@@ -67,29 +70,76 @@ func openWaitingPane(placement string) error {
 	if len(waiting) == 1 {
 		name = waiting[0].Name
 	}
-	pane := popupPaneID
+	env := map[string]string{reviewNameEnv: name}
 	if placement == "tab" {
-		pane = tabPaneID
+		return openReviewTab(env)
 	}
-	return openPluginPane(pane, placement, map[string]string{reviewNameEnv: name})
+	_, err = openPluginPane(popupPaneID, placement, env)
+	return err
+}
+
+// Opens the review tab, or moves to the one already open, so a second
+// Ctrl+b E does not start a second screen on the same review.
+func openReviewTab(env map[string]string) error {
+	var listed struct {
+		Tabs []struct {
+			TabID string `json:"tab_id"`
+			Label string `json:"label"`
+		} `json:"tabs"`
+	}
+	if err := sendHerdrRequest("tab.list", map[string]any{}, &listed); err != nil {
+		return err
+	}
+	for _, tab := range listed.Tabs {
+		if tab.Label == reviewTabLabel {
+			return focusTab(tab.TabID)
+		}
+	}
+	tabID, err := openPluginPane(tabPaneID, "tab", env)
+	if err != nil {
+		return err
+	}
+	return sendHerdrRequest(
+		"tab.rename",
+		map[string]any{"tab_id": tabID, "label": reviewTabLabel},
+		nil,
+	)
 }
 
 // Opens the popup, or the edit or diff tab, with env for its program.
-func openPluginPane(pane, placement string, env map[string]string) error {
-	return sendHerdrRequest("plugin.pane.open", map[string]any{
+func openPluginPane(pane, placement string, env map[string]string) (tabID string, err error) {
+	var opened struct {
+		PluginPane struct {
+			Pane struct {
+				TabID string `json:"tab_id"`
+			} `json:"pane"`
+		} `json:"plugin_pane"`
+	}
+	err = sendHerdrRequest("plugin.pane.open", map[string]any{
 		"plugin_id":  pluginID,
 		"entrypoint": pane,
 		"placement":  placement,
 		"focus":      true,
 		"env":        env,
-	})
+	}, &opened)
+	if err != nil || placement != "tab" {
+		return "", err
+	}
+	tabID = opened.PluginPane.Pane.TabID
+	return tabID, focusTab(tabID)
+}
+
+// Moves every screen attached to Herdr to the tab. Opening a pane with focus
+// moves only Herdr's own view, which left the owner's screen where it was.
+func focusTab(tabID string) error {
+	return sendHerdrRequest("tab.focus", map[string]any{"tab_id": tabID}, nil)
 }
 
 // Closes the tab this program runs in, so none is left behind on the
 // phone. Herdr keeps a tab open after its program exits, and ends the
 // program when the tab closes, so call this last.
 func closeOwnTab() error {
-	return sendHerdrRequest("pane.close", map[string]any{"pane_id": os.Getenv("HERDR_PANE_ID")})
+	return sendHerdrRequest("pane.close", map[string]any{"pane_id": os.Getenv("HERDR_PANE_ID")}, nil)
 }
 
 func explainOpenFailure(err error) string {
@@ -101,12 +151,12 @@ func explainOpenFailure(err error) string {
 }
 
 func showNotification(title string) error {
-	return sendHerdrRequest("notification.show", map[string]any{"title": title})
+	return sendHerdrRequest("notification.show", map[string]any{"title": title}, nil)
 }
 
 // Sends one request to the Herdr server that runs this command, since the
 // herdr command cannot open a popup.
-func sendHerdrRequest(method string, params any) error {
+func sendHerdrRequest(method string, params, result any) error {
 	socket := os.Getenv("HERDR_SOCKET_PATH")
 	if socket == "" {
 		return errors.New("not running inside Herdr")
@@ -137,7 +187,8 @@ func sendHerdrRequest(method string, params any) error {
 	}
 	// Herdr refuses with an error object, so a reply alone is not success.
 	var answer struct {
-		Error *herdrError `json:"error"`
+		Error  *herdrError     `json:"error"`
+		Result json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(reply, &answer); err != nil {
 		return err
@@ -145,5 +196,8 @@ func sendHerdrRequest(method string, params any) error {
 	if answer.Error != nil {
 		return answer.Error
 	}
-	return nil
+	if result == nil {
+		return nil
+	}
+	return json.Unmarshal(answer.Result, result)
 }

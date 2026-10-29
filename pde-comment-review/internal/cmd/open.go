@@ -205,7 +205,7 @@ func editInPlace(
 // Returns true once Herdr opens the tab, so the popup can close and leave
 // the screen to it.
 func openTabOrShowWhy(v *popup.View, pane string, env map[string]string) bool {
-	if err := openPluginPane(pane, "tab", env); err != nil {
+	if _, err := openPluginPane(pane, "tab", env); err != nil {
 		v.ShowNotice("cannot open the " + pane + " tab: " + err.Error())
 		return false
 	}
