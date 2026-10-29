@@ -101,7 +101,10 @@ func openReviewTab(env map[string]string) error {
 	}
 	return sendHerdrRequest(
 		"tab.rename",
-		map[string]any{"tab_id": tabID, "label": reviewTabLabel},
+		map[string]any{
+			"tab_id": tabID,
+			"label":  reviewTabLabel,
+		},
 		nil,
 	)
 }
@@ -115,13 +118,17 @@ func openPluginPane(pane, placement string, env map[string]string) (tabID string
 			} `json:"pane"`
 		} `json:"plugin_pane"`
 	}
-	err = sendHerdrRequest("plugin.pane.open", map[string]any{
-		"plugin_id":  pluginID,
-		"entrypoint": pane,
-		"placement":  placement,
-		"focus":      true,
-		"env":        env,
-	}, &opened)
+	err = sendHerdrRequest(
+		"plugin.pane.open",
+		map[string]any{
+			"plugin_id":  pluginID,
+			"entrypoint": pane,
+			"placement":  placement,
+			"focus":      true,
+			"env":        env,
+		},
+		&opened,
+	)
 	if err != nil || placement != "tab" {
 		return "", err
 	}
