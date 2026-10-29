@@ -80,7 +80,10 @@ func TestPopupRecordNamesItsReview(t *testing.T) {
 
 // Starts a fake Herdr socket that answers every request and returns the
 // requests it got, each as its method and the review name it carried.
-func startFakeHerdr(t *testing.T, tabLabels map[string]string) (socket string, received func() []string) {
+func startFakeHerdr(
+	t *testing.T,
+	tabLabels map[string]string,
+) (socket string, received func() []string) {
 	t.Helper()
 	socket = filepath.Join(t.TempDir(), "herdr.sock")
 	listener, err := net.Listen("unix", socket)
