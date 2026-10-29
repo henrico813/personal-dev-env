@@ -40,6 +40,26 @@ func runReviewPopup(in, out *os.File) error {
 	return runReviewScreen(r, origin, in, out, screenOptions{settle: popup.Settle, inPopup: true})
 }
 
+// Runs in Herdr's review tab, where e and d run nvim and less in place. It
+// closes the tab when the owner quits.
+func runReviewTab(in, out *os.File) error {
+	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") != tabPaneID {
+		return errors.New("only Herdr's review tab runs tab; press Ctrl+b E")
+	}
+	name := os.Getenv(reviewNameEnv)
+	var err error
+	if name == "" {
+		name, err = pickWaitingReview(in, out)
+	}
+	if err == nil && name != "" {
+		err = answerReview(name, in, out, popup.Settle)
+	}
+	if err != nil {
+		waitForEnter(err)
+	}
+	return closeOwnTab()
+}
+
 // Returns the review the owner picks, or "" if they quit or none wait.
 func pickWaitingReview(in, out *os.File) (string, error) {
 	choices, err := listWaitingChoices()
