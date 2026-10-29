@@ -1,6 +1,4 @@
-// Package comment reads and writes Go line comments. It is the only code in
-// pde-comment-review that knows comment syntax.
-package comment
+package popup
 
 import "unicode/utf8"
 

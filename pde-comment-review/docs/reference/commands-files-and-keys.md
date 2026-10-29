@@ -190,7 +190,6 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 
 | Package | Holds |
 | --- | --- |
-| `internal/comment` | Everything that knows Go comment syntax. |
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
 | `internal/cmd` | The commands, the MCP server, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |

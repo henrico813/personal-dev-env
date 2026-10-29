@@ -36,7 +36,8 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
 				Round:  1,
 			},
-			// A different wrap at 37 columns proves the checker's layout.
+			// The screen breaks these lines at 37 columns, not where the saved
+			// comment breaks, so it used the checker's split.
 			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{

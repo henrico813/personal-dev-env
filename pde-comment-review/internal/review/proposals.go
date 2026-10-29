@@ -129,7 +129,8 @@ type CommentLines struct {
 	Last  int
 }
 
-// Returns line numbers or an error if the checker found no unique match.
+// Returns the lines of a comment under review in its file, or an error when
+// the checker did not find that comment exactly once.
 func FindCommentLines(item Item, places map[int]CommentLines) (CommentLines, error) {
 	at, ok := places[item.ID]
 	if !ok {

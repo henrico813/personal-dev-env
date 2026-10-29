@@ -169,7 +169,7 @@ func askCheckerForCommentLayout(r *review.Review, v *popup.View) {
 	}
 }
 
-// Returns where each item's comment sits in its file, by item ID.
+// Returns where each comment under review sits in its file, by its ID.
 func findCommentLineRanges(r *review.Review, checker string) (map[int]review.CommentLines, error) {
 	args := []string{
 		"list",
@@ -239,7 +239,7 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 						},
 					)
 				case e.Item.Name == "":
-					if lines, ok := findUnnamedCommentLines(c.Text, e.Item.Old, c.Line); ok {
+					if lines, ok := findTextInComment(c.Text, e.Item.Old, c.Line); ok {
 						found = append(found, lines)
 					}
 				}
@@ -252,11 +252,13 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 	return places, nil
 }
 
-// Returns where text without a function or type name sits in a comment.
-func findUnnamedCommentLines(text, old string, line int) (review.CommentLines, bool) {
+// Returns the file lines where a comment without a function or type name sits
+// inside a comment the checker listed. The checker cannot name some comments,
+// such as one inside a function body, so the screen finds them by their text.
+func findTextInComment(text, old string, line int) (review.CommentLines, bool) {
 	at := strings.Index(text, old)
-	// Comments with no code name may be part of a longer
-	// comment, such as prose before or after a Go directive.
+	// The text may be only part of the checker's comment, such as the prose
+	// above a Go directive, but it must start a line.
 	if at < 0 || at > 0 && text[at-1] != '\n' {
 		return review.CommentLines{}, false
 	}
@@ -267,22 +269,23 @@ func findUnnamedCommentLines(text, old string, line int) (review.CommentLines, b
 	}, true
 }
 
-// Requests comment layout, styling optional sentences like the old lines.
+// Holds a comment for the checker to return ready to show and edit.
 type showEntry struct {
-	File  string `json:"file"`
-	Text  string `json:"text"`
-	Plain string `json:"plain,omitempty"`
+	File string `json:"file"`
+	Text string `json:"text"`
 }
 
-// Holds comment lines, editable sentences and the checker's screen layout.
+// Holds a comment's file text, editable sentences and parts for the screen to
+// wrap.
 type shownComment struct {
 	Text   string            `json:"text"`
 	Plain  string            `json:"plain"`
 	Screen []popup.ScreenRow `json:"screen"`
 }
 
-// Runs the checker's show command and returns replies in comment order.
-func showComments(checker, repo string, entries []showEntry) ([]shownComment, error) {
+// Asks the checker to turn comments into editable sentences and parts the
+// screen can wrap.
+func prepareCommentsForScreen(checker, repo string, entries []showEntry) ([]shownComment, error) {
 	var reply struct {
 		Shown    []shownComment `json:"shown"`
 		Problems []string       `json:"problems"`
@@ -303,7 +306,46 @@ func showComments(checker, repo string, entries []showEntry) ([]shownComment, er
 	return reply.Shown, err
 }
 
-// Returns layouts keyed by original, proposed or owner-edited wording.
+// Asks the checker to turn new sentences into comment lines with the old
+// comment's marks and indentation.
+func convertSentencesToComment(checker, repo, file, old, plain string) (string, error) {
+	entries := []struct {
+		File  string `json:"file"`
+		Text  string `json:"text"`
+		Plain string `json:"plain"`
+	}{{
+		File:  file,
+		Text:  old,
+		Plain: plain,
+	}}
+	var reply struct {
+		Shown []struct {
+			Text string `json:"text"`
+		} `json:"shown"`
+		Problems []string `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		entries,
+		&reply,
+		"show",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		repo,
+	)
+	if err == nil {
+		err = joinProblems(reply.Problems)
+	}
+	if err != nil {
+		return "", err
+	}
+	return reply.Shown[0].Text, nil
+}
+
+// Returns each version of every comment, by its text, split into parts the
+// screen can wrap. The versions are the original, the AI's proposal and the
+// owner's edit.
 func readCommentRows(r *review.Review, checker string) (map[string][]popup.ScreenRow, error) {
 	var entries []showEntry
 	seen := map[string]bool{}
@@ -325,7 +367,7 @@ func readCommentRows(r *review.Review, checker string) (map[string][]popup.Scree
 			}
 		}
 	}
-	shown, err := showComments(
+	shown, err := prepareCommentsForScreen(
 		checker,
 		r.Repo(),
 		entries,
@@ -442,9 +484,9 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	v.Entries = r.ListEntries()
 	switch {
 	case err != nil && !v.IsAllAnswered():
-		// New comments arrived, so the screen opens the first undecided
-		// one. The owner's choices reach the code once every comment is
-		// decided.
+		// The AI sent more comments while the screen was open, so the screen
+		// opens the first one without an answer. The answers reach the code
+		// once every comment has one.
 		askCheckerForCommentLayout(r, v)
 		v.ShowNextUndecided(
 			0,

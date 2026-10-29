@@ -93,7 +93,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	shown, err := showComments(
+	shown, err := prepareCommentsForScreen(
 		checker,
 		r.Repo(),
 		[]showEntry{{
@@ -130,14 +130,12 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if len(strings.Fields(edited)) == 0 {
 		return r.SetDecision(id, review.ActionCut, "")
 	}
-	shown, err = showComments(
+	comment, err := convertSentencesToComment(
 		checker,
 		r.Repo(),
-		[]showEntry{{
-			File:  e.Item.File,
-			Text:  e.Item.Old,
-			Plain: edited,
-		}},
+		e.Item.File,
+		e.Item.Old,
+		edited,
 	)
 	if err != nil {
 		return err
@@ -145,7 +143,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	return r.SetDecision(
 		id,
 		review.ActionEdited,
-		shown[0].Text,
+		comment,
 	)
 }
 

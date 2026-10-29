@@ -400,8 +400,9 @@ func installRepoChecker(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 }
 
-// Checks that duplicate comments show their own code and shrunken files
-// show errors, not panics.
+// Two functions may have comments with the same words, and the screen once
+// showed an error for both. A file that changed after the screen read it must
+// show a message instead of crashing the screen.
 func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

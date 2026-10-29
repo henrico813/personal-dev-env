@@ -29,8 +29,8 @@ func newView(t *testing.T, code string, items ...review.Item) *View {
 	}
 	for _, item := range items {
 		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
-		// The test finds lines that the checker supplies to the real
-		// screen.
+		// The real screen gets these lines from the checker, which this test
+		// does not run.
 		if at := strings.Index(code, item.Old); at >= 0 {
 			first := strings.Count(code[:at], "\n") + 1
 			v.CommentLinesByID[item.ID] = review.CommentLines{

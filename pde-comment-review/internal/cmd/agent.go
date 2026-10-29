@@ -138,19 +138,17 @@ func changeDraftItem(
 		if err != nil {
 			return err
 		}
-		shown, err := showComments(
+		comment, err := convertSentencesToComment(
 			checker,
 			d.Proposals.Repo,
-			[]showEntry{{
-				File:  item.File,
-				Text:  item.Old,
-				Plain: text,
-			}},
+			item.File,
+			item.Old,
+			text,
 		)
 		if err != nil {
 			return err
 		}
-		item.New = shown[0].Text
+		item.New = comment
 	}
 	return review.SaveDraft(name, *d)
 }
