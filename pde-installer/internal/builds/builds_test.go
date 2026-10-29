@@ -256,9 +256,9 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	}
 }
 
-// Full builds blink.cmp from these pins, and client gets it from the chezmoi
-// externals. Pins that drift apart would give the two profiles different
-// blink.cmp releases.
+// Full builds blink.cmp from the installer's pinned URL and checksum, and
+// client downloads the same archive through chezmoi. Different pins would give
+// the two profiles different blink.cmp releases.
 func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 	path := filepath.Join("..", "..", "..", "chezmoi", ".chezmoiexternal.toml.tmpl")
 	data, err := os.ReadFile(path)

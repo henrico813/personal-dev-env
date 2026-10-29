@@ -19,7 +19,9 @@ const (
 	Chezmoi Backend = "chezmoi"
 )
 
-// Item describes ownership and the requested version of a managed item.
+// Holds a managed item's owner and requested version. Every profile installs
+// Terminal items, client also installs Client items, and full installs
+// everything.
 type Item struct {
 	Name, Version string
 	Owner         Backend
