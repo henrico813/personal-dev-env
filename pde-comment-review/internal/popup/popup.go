@@ -117,7 +117,7 @@ func wrapScreenRows(rows []ScreenRow, width int) []string {
 			len(row.Rest),
 		)
 		mark := row.First
-		words := WrapWords(
+		words := wrapWords(
 			strings.Fields(row.Words),
 			width-marks,
 		)
@@ -520,6 +520,29 @@ func escapeControlCharacters(text string) string {
 	return out.String()
 }
 
+// Joins words with single spaces into lines of at most width characters.
+// A word longer than width goes on a line of its own, so that line is
+// wider than width.
+func wrapWords(words []string, width int) []string {
+	var lines []string
+	line := ""
+	for _, word := range words {
+		if line != "" && utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line == "" {
+			line = word
+		} else {
+			line += " " + word
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // Breaks one line into rows of at most width columns; rows after the first
 // start with two spaces.
 func fold(line string, width int) []string {
@@ -527,7 +550,7 @@ func fold(line string, width int) []string {
 		return []string{line}
 	}
 	var rows []string
-	for _, row := range WrapWords(strings.Fields(line), width-2) {
+	for _, row := range wrapWords(strings.Fields(line), width-2) {
 		// A row still too wide, such as a URL, is cut into pieces.
 		for row != "" {
 			piece := clip(row, width-2)
