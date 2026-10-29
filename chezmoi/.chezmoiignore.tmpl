@@ -8,8 +8,6 @@
 {{- end }}
 
 README.md
-.config/nvim/pack/plugins/start/blink.cmp
-.config/nvim/pack/plugins/start/blink.cmp/**
 .config/nvim/pack/plugins/start/opencode-inline.nvim
 .config/nvim/pack/plugins/start/opencode-inline.nvim/**
 {{- if ne $profile "full" }}
@@ -33,7 +31,7 @@ link_herdr_plugins.sh
 .agents/skills/rust-development
 .agents/skills/rust-development/**
 {{- if eq $profile "terminal" }}
-# Client machines edit files and show herdr sessions, so they keep these.
+# Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty
 .config/alacritty/**
 .config/wezterm
@@ -51,4 +49,7 @@ link_herdr_plugins.sh
 {{- else }}
 .config/aquaproj-aqua/aqua-terminal.yaml
 .config/aquaproj-aqua/aqua-terminal-checksums.json
+# The installer builds blink.cmp with its Rust matcher on full.
+.config/nvim/pack/plugins/start/blink.cmp
+.config/nvim/pack/plugins/start/blink.cmp/**
 {{- end }}

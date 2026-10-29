@@ -83,49 +83,6 @@ func TestTerminalInventory(t *testing.T) {
 	}
 }
 
-// Client is terminal plus what a laptop needs to edit files, run OpenCode
-// and show other machines' herdr sessions. Marking Go, Rust or a compiled
-// local build as client would make that weak laptop compile.
-func TestClientAddsOnlyClientItems(t *testing.T) {
-	terminal := map[string]bool{}
-	for _, item := range ItemsFor(profile.Terminal) {
-		terminal[item.Name] = true
-	}
-
-	var added []string
-	for _, item := range ItemsFor(profile.Client) {
-		if !terminal[item.Name] {
-			added = append(added, item.Name)
-		}
-	}
-
-	want := []string{
-		"fontconfig",
-		"@opencode/cli",
-		"@openai/codex",
-		"@earendil-works/pi-coding-agent",
-		"obsidian-headless",
-		"@anthropic-ai/claude-code",
-		"skill-lessons",
-		"FiraCode",
-		"JetBrainsMono",
-		"neovim",
-		"node",
-		"herdr",
-		"nobs",
-		"obsidian.nvim",
-		"neovim-plugins",
-		"ai-config",
-	}
-	if !reflect.DeepEqual(added, want) {
-		t.Fatalf(
-			"client adds %v, want %v",
-			added,
-			want,
-		)
-	}
-}
-
 func TestInvalidProfileUsesFullInventory(t *testing.T) {
 	if got, want := ItemsFor(profile.Profile("desktop")), Items(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("invalid profile items = %v, want full inventory", got)

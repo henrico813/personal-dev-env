@@ -32,6 +32,8 @@ type buildSpec struct {
 	name, source, output string
 	command              run.Command
 	alias                string // Second name in ~/.local/bin, linked to name.
+	verifyArg            string // Argument that checks the built tool after activation, or empty for no check.
+	pythonPackage        string // Package that hashPythonSources reads for a packed Python tool, or empty.
 }
 
 // pdev2 runs approve mode only when started under the name pde-pr-approve. A
@@ -69,27 +71,18 @@ func New(home, repoRoot string, runner run.Runner) Manager {
 
 // Reconcile rebuilds binaries when their source inputs change.
 func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
-	wanted := map[string]bool{}
-	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {
-		wanted[item.Name] = true
-	}
-	inputs, err := m.inputs(wanted)
+	stageRoot := filepath.Join(m.Home, ".local", "state", "pde", "build-stage")
+	specs := m.listBuildSpecs(selected, stageRoot)
+	inputs, err := hashInputs(specs)
 	if err != nil {
 		return nil, err
 	}
-	if m.current(inputs) {
+	if m.current(specs, inputs) {
 		return &fsutil.Journal{}, nil
 	}
-	stageRoot := filepath.Join(m.Home, ".local", "state", "pde", "build-stage")
 	if m.Runner.DryRun {
-		for _, name := range []string{
-			"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-comment-review", "skill-lessons",
-			"pde-comment-checker",
-		} {
-			if !wanted[name] {
-				continue
-			}
-			if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
+		for _, spec := range specs {
+			if err := m.Runner.Plan("build and atomically activate "+spec.name, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -110,100 +103,6 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 			_ = os.RemoveAll(stageRoot)
 		}
 	}()
-	goBinary := filepath.Join(m.Home, ".local", "bin", "go")
-	cargo := filepath.Join(m.Home, ".local", "bin", "cargo")
-	environment := m.environment(stageRoot)
-	specs := []buildSpec{
-		{
-			name:   "planner",
-			source: filepath.Join(m.RepoRoot, "planner"),
-			output: filepath.Join(stageRoot, "planner"),
-			command: run.Command{
-				Name: goBinary,
-				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "planner"), "./main",
-				},
-				Dir: filepath.Join(m.RepoRoot, "planner"), Env: environment,
-			},
-		},
-		{
-			name:   "opencode-inline-shim",
-			source: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
-			output: filepath.Join(stageRoot, "opencode-inline-shim"),
-			command: run.Command{
-				Name: goBinary,
-				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "opencode-inline-shim"), "./cmd/opencode-inline-shim",
-				},
-				Dir: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), Env: environment,
-			},
-		},
-		{
-			name:   "vibe",
-			source: filepath.Join(m.RepoRoot, "vibe"),
-			output: filepath.Join(stageRoot, "vibe-target", "release", "vibe"),
-			command: run.Command{
-				Name: cargo,
-				Args: []string{
-					"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "vibe-target"),
-				},
-				Dir: filepath.Join(m.RepoRoot, "vibe"), Env: environment,
-			},
-		},
-		{
-			name:   "pde-gh-write",
-			source: filepath.Join(m.RepoRoot, "pdev2"),
-			output: filepath.Join(stageRoot, "pde-gh-write"),
-			command: run.Command{
-				Name: goBinary,
-				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh-write"), ".",
-				},
-				Dir: filepath.Join(m.RepoRoot, "pdev2"), Env: environment,
-			},
-			alias: approveAlias,
-		},
-		{
-			name:   "pde-comment-review",
-			source: filepath.Join(m.RepoRoot, "pde-comment-review"),
-			output: filepath.Join(stageRoot, "pde-comment-review"),
-			command: run.Command{
-				Name: goBinary,
-				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-comment-review"), ".",
-				},
-				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
-			},
-		},
-		{
-			name:   "skill-lessons",
-			source: filepath.Join(m.RepoRoot, "skill-lessons"),
-			output: filepath.Join(stageRoot, "skill-lessons"),
-			command: run.Command{
-				Name: m.python,
-				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "skill-lessons")},
-				Dir:  filepath.Join(m.RepoRoot, "skill-lessons"), Env: environment,
-			},
-		},
-		{
-			name:   "pde-comment-checker",
-			source: filepath.Join(m.RepoRoot, "pde-comment-checker"),
-			output: filepath.Join(stageRoot, "pde-comment-checker"),
-			command: run.Command{
-				Name: m.python,
-				Args: []string{
-					"-I",
-					"build.py",
-					filepath.Join(stageRoot, "pde-comment-checker"),
-				},
-				Dir: filepath.Join(m.RepoRoot, "pde-comment-checker"),
-				Env: environment,
-			},
-		},
-	}
-	specs = slices.DeleteFunc(specs, func(spec buildSpec) bool {
-		return !wanted[spec.name]
-	})
 	cargoTargets := map[string]string{
 		"vibe": filepath.Join(stageRoot, "vibe-target"),
 	}
@@ -261,15 +160,11 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 			tracked = true
 		}
 	}
-	// pde-gh-write has no side-effect-free help mode, so it is not run here.
-	for _, check := range []struct{ name, arg string }{
-		{"planner", "help"}, {"opencode-inline-shim", "--help"}, {"vibe", "--help"}, {"pde-comment-review", "help"},
-		{"skill-lessons", "--version"}, {"pde-comment-checker", "version"},
-	} {
-		if !wanted[check.name] {
+	for _, spec := range specs {
+		if spec.verifyArg == "" {
 			continue
 		}
-		if err := m.Runner.Run("verify "+check.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", check.name), Args: []string{check.arg}, Env: m.environment()}); err != nil {
+		if err := m.Runner.Run("verify "+spec.name, run.Command{Name: filepath.Join(m.Home, ".local", "bin", spec.name), Args: []string{spec.verifyArg}, Env: m.environment()}); err != nil {
 			return nil, journal.Revert(err)
 		}
 	}
@@ -350,46 +245,32 @@ func (m Manager) InstallPlugin(name string) (*fsutil.Journal, error) {
 	return journal, nil
 }
 
-// InstallBlink builds and activates the pinned blink.cmp native library.
-func (m Manager) InstallBlink(nativeMatcher bool) (*fsutil.Journal, error) {
+// BuildBlink builds and activates the pinned blink.cmp native library.
+func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 	destination := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.cmp")
 	blinkLib := filepath.Join(m.Home, ".config", "nvim", "pack", "plugins", "start", "blink.lib")
 	if m.Runner.DryRun {
 		if err := m.Runner.Plan("download and verify "+m.blinkURL+" sha256="+m.blinkSHA256, nil); err != nil {
 			return nil, err
 		}
-		activation := "atomically activate blink.cmp plugin tree with its Lua matcher"
-		if nativeMatcher {
-			activation = "build, verify, and atomically activate complete blink.cmp plugin tree"
-		}
-		if err := m.Runner.Plan(activation, nil); err != nil {
+		if err := m.Runner.Plan("build, verify, and atomically activate complete blink.cmp plugin tree", nil); err != nil {
 			return nil, err
 		}
 		return &fsutil.Journal{}, nil
-	}
-	// A Lua-only install records no Rust version, so a Rust update does not reinstall it.
-	rustVersion := ""
-	if nativeMatcher {
-		rustVersion = managedVersion("rust")
 	}
 	statePath := filepath.Join(m.Home, ".local", "state", "pde", "blink.json")
 	if data, err := os.ReadFile(statePath); err == nil {
 		var state blinkState
 		installedHash, hashErr := hashTree(destination)
 		stateErr := json.Unmarshal(data, &state)
-		nativeLibrary := filepath.Join(
-			destination,
-			"lib",
-			"libblink_cmp_fuzzy.so",
-		)
 		// Reuse Blink only when its source, build inputs, and installed library match the recorded state.
 		isCurrent := stateErr == nil &&
 			hashErr == nil &&
 			state.ArchiveSHA256 == m.blinkSHA256 &&
 			state.TreeSHA256 == installedHash &&
-			state.RustVersion == rustVersion &&
+			state.RustVersion == managedVersion("rust") &&
 			state.NvimVersion == managedVersion("neovim") &&
-			(!nativeMatcher || regularExecutable(nativeLibrary))
+			regularExecutable(filepath.Join(destination, "lib", "libblink_cmp_fuzzy.so"))
 		if isCurrent {
 			return &fsutil.Journal{}, nil
 		}
@@ -432,48 +313,41 @@ func (m Manager) InstallBlink(nativeMatcher bool) (*fsutil.Journal, error) {
 	if err := os.Remove(archive); err != nil {
 		return nil, fmt.Errorf("remove blink archive: %w", err)
 	}
-	if nativeMatcher {
-		target := filepath.Join(workspace, "target")
-		command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
-		if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
-			return nil, err
-		}
-		if err := m.Runner.Run("build blink.cmp", command); err != nil {
-			return nil, err
-		}
-		if err := copyExecutable(filepath.Join(target, "release", "libblink_cmp_fuzzy.so"), filepath.Join(stage, "lib", "libblink_cmp_fuzzy.so")); err != nil {
-			return nil, err
-		}
-		nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
-		lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
-		verifyArgs := []string{
-			"--headless",
-			"-u", "NONE",
-			"--cmd", "set runtimepath+=" + blinkLib,
-			"--cmd", "set runtimepath+=" + stage,
-			"-c", "lua " + lua,
-			"-c", "qa",
-		}
-		verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
-		if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
-			return nil, err
-		}
-		for _, path := range []string{target, filepath.Join(workspace, "cargo-home")} {
-			if err := os.RemoveAll(path); err != nil {
-				return nil, fmt.Errorf("remove blink artifact %s: %w", path, err)
-			}
+	target := filepath.Join(workspace, "target")
+	command := run.Command{Name: filepath.Join(m.Home, ".local", "bin", "cargo"), Args: []string{"build", "--locked", "--release", "--target-dir", target}, Dir: stage, Env: m.environment(workspace)}
+	if err := fsutil.GuardHome(m.Home, workspace, stage, target); err != nil {
+		return nil, err
+	}
+	if err := m.Runner.Run("build blink.cmp", command); err != nil {
+		return nil, err
+	}
+	if err := copyExecutable(filepath.Join(target, "release", "libblink_cmp_fuzzy.so"), filepath.Join(stage, "lib", "libblink_cmp_fuzzy.so")); err != nil {
+		return nil, err
+	}
+	nvim := filepath.Join(m.Home, ".local", "bin", "nvim")
+	lua := "assert(require('blink.cmp').library_available(), 'blink native library unavailable')"
+	verifyArgs := []string{
+		"--headless",
+		"-u", "NONE",
+		"--cmd", "set runtimepath+=" + blinkLib,
+		"--cmd", "set runtimepath+=" + stage,
+		"-c", "lua " + lua,
+		"-c", "qa",
+	}
+	verify := run.Command{Name: nvim, Args: verifyArgs, Env: m.environment()}
+	if err := m.Runner.Run("verify blink.cmp native library", verify); err != nil {
+		return nil, err
+	}
+	for _, path := range []string{target, filepath.Join(workspace, "cargo-home")} {
+		if err := os.RemoveAll(path); err != nil {
+			return nil, fmt.Errorf("remove blink artifact %s: %w", path, err)
 		}
 	}
 	treeHash, err := hashTree(stage)
 	if err != nil {
 		return nil, err
 	}
-	stateData, err := json.Marshal(blinkState{
-		ArchiveSHA256: m.blinkSHA256,
-		TreeSHA256:    treeHash,
-		RustVersion:   rustVersion,
-		NvimVersion:   managedVersion("neovim"),
-	})
+	stateData, err := json.Marshal(blinkState{ArchiveSHA256: m.blinkSHA256, TreeSHA256: treeHash, RustVersion: managedVersion("rust"), NvimVersion: managedVersion("neovim")})
 	if err != nil {
 		return nil, err
 	}
@@ -539,41 +413,134 @@ func (m Manager) BlinkStatus() (string, error) {
 	return "invalid", nil
 }
 
-func (m Manager) inputs(wanted map[string]bool) (map[string]string, error) {
-	inputs := map[string]string{}
-	for name, source := range map[string]string{
-		"planner":              filepath.Join(m.RepoRoot, "planner"),
-		"opencode-inline-shim": filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
-		"vibe":                 filepath.Join(m.RepoRoot, "vibe"),
-		"pde-gh-write":         filepath.Join(m.RepoRoot, "pdev2"),
-		"pde-comment-review":   filepath.Join(m.RepoRoot, "pde-comment-review"),
-	} {
-		if !wanted[name] {
-			continue
-		}
-		hash, err := hashTree(source)
-		if err != nil {
-			return nil, err
-		}
-		inputs[name] = hash
+// Returns the profile's local builds in build order, staged under stageRoot.
+func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []buildSpec {
+	goBinary := filepath.Join(m.Home, ".local", "bin", "go")
+	cargo := filepath.Join(m.Home, ".local", "bin", "cargo")
+	environment := m.environment(stageRoot)
+	specs := []buildSpec{
+		{
+			name:   "planner",
+			source: filepath.Join(m.RepoRoot, "planner"),
+			output: filepath.Join(stageRoot, "planner"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "planner"), "./main",
+				},
+				Dir: filepath.Join(m.RepoRoot, "planner"), Env: environment,
+			},
+			verifyArg: "help",
+		},
+		{
+			name:   "opencode-inline-shim",
+			source: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"),
+			output: filepath.Join(stageRoot, "opencode-inline-shim"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "opencode-inline-shim"), "./cmd/opencode-inline-shim",
+				},
+				Dir: filepath.Join(m.RepoRoot, "nvim-plugins", "opencode-inline.nvim"), Env: environment,
+			},
+			verifyArg: "--help",
+		},
+		{
+			name:   "vibe",
+			source: filepath.Join(m.RepoRoot, "vibe"),
+			output: filepath.Join(stageRoot, "vibe-target", "release", "vibe"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--target-dir", filepath.Join(stageRoot, "vibe-target"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "vibe"), Env: environment,
+			},
+			verifyArg: "--help",
+		},
+		{
+			name:   "pde-gh-write",
+			source: filepath.Join(m.RepoRoot, "pdev2"),
+			output: filepath.Join(stageRoot, "pde-gh-write"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-gh-write"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pdev2"), Env: environment,
+			},
+			alias: approveAlias,
+			// pde-gh-write has no side-effect-free help mode, so it has no verifyArg.
+		},
+		{
+			name:   "pde-comment-review",
+			source: filepath.Join(m.RepoRoot, "pde-comment-review"),
+			output: filepath.Join(stageRoot, "pde-comment-review"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-comment-review"), ".",
+				},
+				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
+			},
+			verifyArg: "help",
+		},
+		{
+			name:   "skill-lessons",
+			source: filepath.Join(m.RepoRoot, "skill-lessons"),
+			output: filepath.Join(stageRoot, "skill-lessons"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "skill-lessons")},
+				Dir:  filepath.Join(m.RepoRoot, "skill-lessons"), Env: environment,
+			},
+			verifyArg:     "--version",
+			pythonPackage: "skill_lessons",
+		},
+		{
+			name:   "pde-comment-checker",
+			source: filepath.Join(m.RepoRoot, "pde-comment-checker"),
+			output: filepath.Join(stageRoot, "pde-comment-checker"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{
+					"-I",
+					"build.py",
+					filepath.Join(stageRoot, "pde-comment-checker"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "pde-comment-checker"),
+				Env: environment,
+			},
+			verifyArg:     "version",
+			pythonPackage: "comment_checker",
+		},
 	}
-	for name, pkg := range map[string]string{
-		"skill-lessons":       "skill_lessons",
-		"pde-comment-checker": "comment_checker",
-	} {
-		if !wanted[name] {
-			continue
-		}
-		hash, err := hashPythonSources(
-			filepath.Join(m.RepoRoot, name),
-			pkg,
-		)
+	wanted := map[string]bool{}
+	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {
+		wanted[item.Name] = true
+	}
+	return slices.DeleteFunc(specs, func(spec buildSpec) bool {
+		return !wanted[spec.name]
+	})
+}
+
+func hashInputs(specs []buildSpec) (map[string]string, error) {
+	inputs := map[string]string{}
+	for _, spec := range specs {
+		hash, err := spec.hashSource()
 		if err != nil {
 			return nil, err
 		}
-		inputs[name] = hash
+		inputs[spec.name] = hash
 	}
 	return inputs, nil
+}
+
+func (spec buildSpec) hashSource() (string, error) {
+	if spec.pythonPackage != "" {
+		return hashPythonSources(spec.source, spec.pythonPackage)
+	}
+	return hashTree(spec.source)
 }
 
 func managedVersion(name string) string {
@@ -585,7 +552,7 @@ func toolchainVersions() map[string]string {
 	return map[string]string{"go": managedVersion("go"), "rust": managedVersion("rust")}
 }
 
-func (m Manager) current(inputs map[string]string) bool {
+func (m Manager) current(specs []buildSpec, inputs map[string]string) bool {
 	data, err := os.ReadFile(m.statePath())
 	if err != nil {
 		return false
@@ -604,15 +571,15 @@ func (m Manager) current(inputs map[string]string) bool {
 			return false
 		}
 	}
-	// Client builds no pde-gh-write, so it has no alias to check.
-	if _, built := inputs["pde-gh-write"]; !built {
-		return true
-	}
-	// A missing alias must trigger a rebuild even when sources are unchanged.
-	alias := filepath.Join(m.Home, ".local", "bin", approveAlias)
-	target, err := os.Readlink(alias)
-	if err != nil || target != filepath.Join(m.Home, ".local", "bin", "pde-gh-write") {
-		return false
+	for _, spec := range specs {
+		if spec.alias == "" {
+			continue
+		}
+		// A missing alias must trigger a rebuild even when sources are unchanged.
+		target, err := os.Readlink(filepath.Join(m.Home, ".local", "bin", spec.alias))
+		if err != nil || target != filepath.Join(m.Home, ".local", "bin", spec.name) {
+			return false
+		}
 	}
 	return true
 }

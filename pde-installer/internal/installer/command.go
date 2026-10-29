@@ -142,9 +142,8 @@ func reconcile(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
-	// Client installs fewer release tools than full, so only client can delete some.
-	// Check before apt runs so a refused install changes nothing.
-	if config.Profile == profile.Client {
+	// Check before apt runs, so a refused install changes nothing.
+	if config.Profile.HasWorkstationTools() {
 		if err := direct.New(config.Home, runner).RejectToolRemoval(config.Profile); err != nil {
 			return err
 		}
@@ -225,10 +224,8 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("chezmoi", err)
 	}
 	journals = append(journals, chezmoiJournal)
-	if config.Profile.HasWorkstationTools() {
-		// Only full has the Rust toolchain that builds blink.cmp's native matcher.
-		nativeMatcher := config.Profile == profile.Full
-		blinkJournal, err := buildManager.InstallBlink(nativeMatcher)
+	if config.Profile == profile.Full {
+		blinkJournal, err := buildManager.BuildBlink()
 		if err != nil {
 			return fail("blink.cmp", err)
 		}

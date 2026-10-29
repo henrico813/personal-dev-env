@@ -4,9 +4,9 @@ This tutorial builds the installer and reconciles one user account.
 
 ## 1. Check the Host
 
-Use Ubuntu 22.04 or newer on Linux amd64. Sign in as a regular user
-that can run `sudo apt-get`. You need Go 1.21 or newer to build the installer.
-On Ubuntu 24.04, `sudo apt install golang-go` provides it.
+Use Ubuntu 22.04 or newer on Linux amd64. Sign in as a regular user that can run
+`sudo apt-get`. You need Go 1.21 or newer to build the installer. On Ubuntu
+24.04, `sudo apt install golang-go` provides it.
 
 Clone the repository before starting. The installer does not clone it.
 
@@ -61,8 +61,7 @@ reconciliation from full to terminal; previously installed full-only artifacts
 are not removed. Client installs everything full does except Go, Rust, LSPs,
 Keychain, Moshi Hook, local builds other than `skill-lessons`, the PR approval
 tools, and all but five shared skills, and refuses to install on a machine that
-still has full's Go. `doctor` and `list` use the
-saved or legacy selection.
+still has full's Go. `doctor` and `list` use the saved or legacy selection.
 
 ## 5. Verify
 

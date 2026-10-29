@@ -38,7 +38,6 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".codex",
 				".agents",
 				".pi",
-				".config/nvim/pack/plugins/start/blink.cmp",
 				".config/nvim/pack/plugins/start/opencode-inline.nvim",
 				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
 			},
@@ -48,20 +47,12 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 			want: []string{
 				".config/aquaproj-aqua/aqua.yaml",
 				".claude",
-				".codex",
-				".pi",
-				".local/share/pde/herdr-plugins",
-				"link_herdr_plugins.sh",
 				".config/opencode/bin/planner",
 				".agents/skills/rust-development",
+				"link_herdr_plugins.sh",
 			},
 			omit: []string{
-				".config/alacritty",
-				".config/wezterm",
 				".config/nvim",
-				".config/opencode",
-				".local/bin/opencode",
-				".config/herdr",
 				".agents",
 			},
 		},
@@ -110,13 +101,11 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"obsidian.nvim",
 				"copilot.lua",
 				".config/opencode/AGENTS.md",
+				".config/nvim/pack/plugins/start/blink.cmp",
 			},
 			omit: []string{
-				".codex/AGENTS.md",
 				".claude/CLAUDE.md",
 				".pi/agent",
-				".config/opencode/commands/create_plan.md",
-				".config/opencode/commands/design_doc.md",
 				".config/opencode/agents/plan-bug-reviewer.md",
 			},
 		},
@@ -127,18 +116,18 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				"copilot.lua",
 				".config/opencode/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
-				".claude/CLAUDE.md",
-				".pi/agent/settings.json",
-				".config/opencode/commands/create_plan.md",
+			},
+			omit: []string{
+				".config/nvim/pack/plugins/start/blink.cmp",
 			},
 		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
 }
 
-// The laptop is not a development machine, and most skills call planner,
-// vibe or Go tools it does not have. An allow list keeps a new skill off it
-// until someone adds that skill on purpose.
+// A client laptop is not a development machine, and most skills call planner,
+// vibe or Go tools it lacks. The allow list keeps a new skill off it until
+// someone adds that skill on purpose.
 func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
 
@@ -254,7 +243,6 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"EDITOR=$(which nvim)",
 			},
 			omit: []string{
-				"/aqua.yaml",
 				"keychain --eval",
 			},
 		},

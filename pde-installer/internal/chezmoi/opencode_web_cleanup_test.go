@@ -40,10 +40,8 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 	}
 }
 
-// chezmoi skips a removal target that .chezmoiignore matches, so every target
-// must stay out of the ignore list. Otherwise the retired web service, or the
-// old approval scripts on terminal and client machines, would never be
-// cleaned up.
+// chezmoi skips a removal target that .chezmoiignore matches. An ignored target
+// would leave the retired web service or the old approval scripts in place.
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	for _, selected := range []string{"full", "client", "terminal"} {
 		t.Run(selected, func(t *testing.T) {
@@ -59,26 +57,62 @@ func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	}
 }
 
-// chezmoi deletes a target whose template renders empty, which is how the
-// guard leaves terminal and client machines. They have no pde-gh-write, so a
-// guard left there would block every PR write.
+// chezmoi deletes a file whose template renders empty, which removes the gh
+// guard from terminal and client machines. Those machines have no
+// pde-gh-write, so a guard left there would block every PR write.
 func TestGuardRendersOnlyForFull(t *testing.T) {
-	for _, selected := range []string{"terminal", "client"} {
-		text := renderProfileTemplate(
-			t,
-			"dot_local/bin/executable_gh.tmpl",
-			selected,
-		)
-		if strings.TrimSpace(text) != "" {
-			t.Errorf(
-				"%s guard is not empty:\n%s",
-				selected,
-				text,
-			)
-		}
+	tests := []struct {
+		profile   string
+		wantEmpty bool
+	}{
+		{
+			profile:   "terminal",
+			wantEmpty: true,
+		},
+		{
+			profile:   "client",
+			wantEmpty: true,
+		},
+		{
+			profile:   "full",
+			wantEmpty: false,
+		},
 	}
-	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "full"); !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
-		t.Errorf("full guard does not start with its shebang:\n%s", text)
+	for _, tt := range tests {
+		t.Run(tt.profile, func(t *testing.T) {
+			text := renderProfileTemplate(
+				t,
+				"dot_local/bin/executable_gh.tmpl",
+				tt.profile,
+			)
+
+			if empty := strings.TrimSpace(text) == ""; empty != tt.wantEmpty {
+				t.Fatalf(
+					"guard empty = %v, want %v:\n%s",
+					empty,
+					tt.wantEmpty,
+					text,
+				)
+			}
+			if !tt.wantEmpty && !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
+				t.Errorf("guard does not start with its shebang:\n%s", text)
+			}
+		})
+	}
+}
+
+// A machine that moves from full to client keeps full's approval tools until
+// chezmoi removes them, and client has no pde-gh-write for them to run.
+func TestClientRemovesFullApprovalTools(t *testing.T) {
+	text := renderProfileTemplate(t, removeFileTemplate, "client")
+
+	for _, target := range []string{
+		".local/bin/pde-gh-write",
+		".local/bin/pde-pr-approve",
+	} {
+		if !containsLine(text, target) {
+			t.Errorf("%s omits removal target %q", removeFileTemplate, target)
+		}
 	}
 }
 

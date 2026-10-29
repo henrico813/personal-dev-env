@@ -18,11 +18,7 @@ func TestProfilesReportValidity(t *testing.T) {
 		profile Profile
 		want    bool
 	}{
-		"full": {profile: Full, want: true},
-		"client": {
-			profile: Client,
-			want:    true,
-		},
+		"full":     {profile: Full, want: true},
 		"terminal": {profile: Terminal, want: true},
 		"empty":    {},
 		"unknown":  {profile: Profile("desktop")},

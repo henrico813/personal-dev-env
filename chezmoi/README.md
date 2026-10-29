@@ -3,8 +3,8 @@
 This directory owns PDE home configuration and checksummed external content.
 Every `pde-installer install` applies it during reconciliation. The installer
 passes `PDE_PROFILE=terminal|client|full` and `PDE_COLOR_PROFILE` while
-rendering it;
-apply through the installer so component and visual selections match.
+rendering it; apply through the installer so component and visual selections
+match.
 
 Edit files here using chezmoi source names. Add remote archives to
 `.chezmoiexternal.toml.tmpl` with a SHA-256 checksum.
@@ -25,9 +25,9 @@ comments when it emits the merged file.
 
 ## GitHub Pull Request Reviews
 
-Every profile installs `gh` and `delta`. Git uses delta as its
-pager with line numbers and file navigation. Press `n` or `N` to move between
-files, `/` to search, and `q` to quit.
+Every profile installs `gh` and `delta`. Git uses delta as its pager with line
+numbers and file navigation. Press `n` or `N` to move between files, `/` to
+search, and `q` to quit.
 
 Inspect the pull request context before reading its patch:
 
@@ -132,11 +132,10 @@ tm
 ```
 
 `tm` requires Herdr on `PATH`; the client and full profiles install it. The
-command creates
-`hub` and `pocket` sessions containing Herdr and an empty shell, plus a `dash`
-session containing the four-pane `tw` layout. It attaches `pocket` at 100
-columns and below and `hub` at larger widths. Use `tm hub`, `tm pocket`, or
-`tm dash` to select a view explicitly. All three sessions record the project
+command creates `hub` and `pocket` sessions containing Herdr and an empty shell,
+plus a `dash` session containing the four-pane `tw` layout. It attaches `pocket`
+at 100 columns and below and `hub` at larger widths. Use `tm hub`, `tm pocket`,
+or `tm dash` to select a view explicitly. All three sessions record the project
 root and use names derived from its absolute path, so environments for multiple
 directories can coexist. Hub and Pocket both attach Herdr's `default` session,
 so they expose the same agents. Herdr owns those shared agent panes and their
@@ -163,10 +162,9 @@ the [approval docs](../pdev2/docs/README.md).
 
 ## Comment review
 
-The full profile binds Ctrl+b e, in place of Herdr's scrollback editor,
-to a phone-sized Herdr popup for deciding on an AI's proposals for Go
-comments, and Ctrl+b E to the same screen in a Herdr tab; see the
-[comment review docs](../pde-comment-review/docs/README.md).
-Client machines share that Herdr config but not the popup. There Ctrl+b e
-opens the comment review of the machine Herdr shows, and fails on the
-laptop's own sessions.
+The full profile binds Ctrl+b e, in place of Herdr's scrollback editor, to a
+phone-sized Herdr popup for deciding on an AI's proposals for Go comments, and
+Ctrl+b E to the same screen in a Herdr tab; see the
+[comment review docs](../pde-comment-review/docs/README.md). Client machines
+share that Herdr config but not the popup. There Ctrl+b e opens the comment
+review of the machine Herdr shows, and fails on the laptop's own sessions.

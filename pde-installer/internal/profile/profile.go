@@ -8,13 +8,16 @@ type Profile string
 const (
 	// Installs everything for dev machines, including Go, Rust and local builds.
 	Full Profile = "full"
-	// Installs Neovim, OpenCode, herdr and fonts for a laptop without compiling
-	// anything. It leaves out Go, Rust, local builds and the approval tools.
+	// Installs Neovim, OpenCode, herdr and fonts for a laptop that compiles
+	// nothing. It leaves out Go, Rust, the approval tools and every local build
+	// but skill-lessons.
 	Client Profile = "client"
 	// Installs the shell, tmux and command-line tools for headless homelab VMs.
-	Terminal    Profile = "terminal"
-	ValidValues         = "terminal, client, or full"
+	Terminal Profile = "terminal"
 )
+
+// Lists the profiles for error and setup messages.
+const ValidValues = "terminal, client, or full"
 
 func Parse(value string) (Profile, error) {
 	selected := Profile(value)
