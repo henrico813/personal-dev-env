@@ -92,9 +92,14 @@ func runReviewScreen(
 		}
 		// Reads the review again, since the popup, a Herdr tab or the AI may
 		// have changed it.
+		batches := len(r.Batches)
 		r, err = review.OpenReview(r.Name)
 		if err != nil {
 			return err
+		}
+		// Comments from a new batch need the checker to find and wrap them.
+		if len(r.Batches) != batches {
+			askCheckerForCommentLayout(r, v)
 		}
 		v.ReplaceRequests(r.ListFeedbackRequests(), time.Now())
 		switch v.PressKey(key, time.Now()) {
