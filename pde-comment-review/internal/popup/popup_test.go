@@ -184,7 +184,8 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	}
 }
 
-// New text from the AI must not erase a note the owner is typing.
+// The AI can send new suggestions while the owner reviews. A new suggestion
+// must not erase a note the owner is typing.
 func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	v := newView(
 		t,
@@ -198,24 +199,51 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	)
 	start := time.Now()
 	v.ShowNextUnanswered(0, start)
+	// The owner starts a note and types "a".
 	v.PressKey("m", start.Add(Settle))
 	v.PressKey("a", start.Add(Settle))
 
-	v.Refresh(withNewText(v.Requests), start.Add(2*Settle))
-	v.PressKey("q", start.Add(2*Settle))
+	// The AI sends a new suggestion while the owner types.
+	v.ReloadRequests(addNewSuggestion(v.Requests), start.Add(2*Settle))
+	v.PressKey("b", start.Add(2*Settle))
 	saved := v.PressKey("\r", start.Add(2*Settle))
 
-	if saved != SaveNote || v.Typed != "aq" {
+	if saved != SaveNote || v.Typed != "ab" {
 		t.Errorf(
 			"Enter = %v with %q, want SaveNote with %q",
 			saved,
 			v.Typed,
-			"aq",
+			"ab",
 		)
 	}
 }
 
-// A key pressed as new text appears must not answer unread text.
+// The screen reads the review again before every key. If that alone made
+// answer keys wait, the owner could never answer.
+func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+
+	v.ReloadRequests(slices.Clone(v.Requests), start.Add(Settle))
+	keep := v.PressKey("o", start.Add(Settle))
+
+	if keep != Keep {
+		t.Errorf("o after reading the same suggestion again = %v, want Keep", keep)
+	}
+}
+
+// The AI can send a new suggestion while the owner reviews. A key pressed
+// just as it appears must not answer text the owner has not read.
 func TestNewTextDelaysAnswers(t *testing.T) {
 	v := newView(
 		t,
@@ -230,7 +258,7 @@ func TestNewTextDelaysAnswers(t *testing.T) {
 	start := time.Now()
 	v.ShowNextUnanswered(0, start)
 
-	v.Refresh(withNewText(v.Requests), start.Add(Settle))
+	v.ReloadRequests(addNewSuggestion(v.Requests), start.Add(Settle))
 	quick := v.PressKey("o", start.Add(Settle))
 
 	if quick != None {
@@ -238,7 +266,8 @@ func TestNewTextDelaysAnswers(t *testing.T) {
 	}
 }
 
-func withNewText(requests []review.RequestWithFeedback) []review.RequestWithFeedback {
+// Acts as if the AI sent a new suggestion for the first request.
+func addNewSuggestion(requests []review.RequestWithFeedback) []review.RequestWithFeedback {
 	requests = slices.Clone(requests)
 	requests[0].Batch++
 	return requests

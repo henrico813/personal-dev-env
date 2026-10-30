@@ -115,9 +115,9 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	}
 	wording := comment.ToCommentLines(edited, e.Request.Old)
 	if wording == "" {
-		return r.SaveAnswer(id, review.ActionCut, "")
+		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
 	}
-	return r.SaveAnswer(id, review.ActionEdited, wording)
+	return r.SaveAnswer(id, e.Batch, review.ActionEdited, wording)
 }
 
 func findFeedbackRequest(r *review.Review, id int) (review.RequestWithFeedback, error) {

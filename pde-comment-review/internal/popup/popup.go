@@ -5,6 +5,7 @@ package popup
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -96,27 +97,29 @@ func (v *View) Current() review.RequestWithFeedback { return v.Requests[v.Index]
 func (v *View) Show(index int, now time.Time) {
 	v.Index = index
 	v.typingFor = None
-	v.showProposal(now)
+	v.showRequest(now)
 }
 
-// Takes the reloaded review but stays on the same item.
-func (v *View) Refresh(requests []review.RequestWithFeedback, now time.Time) {
+// Shows the requests as read again from disk and keeps the same request on
+// screen. When the AI has sent a new suggestion for it, answer keys wait
+// again so the owner reads it first.
+func (v *View) ReloadRequests(requests []review.RequestWithFeedback, now time.Time) {
 	shown := v.Current()
 	v.Requests = requests
-	for i, e := range v.Requests {
-		if e.Request.ID != shown.Request.ID {
-			continue
-		}
-		v.Index = i
-		// New text from the AI must be read before an answer counts.
-		if e.Batch != shown.Batch {
-			v.showProposal(now)
-		}
+	i := slices.IndexFunc(v.Requests, func(e review.RequestWithFeedback) bool {
+		return e.Request.ID == shown.Request.ID
+	})
+	if i < 0 {
+		return
+	}
+	v.Index = i
+	if v.Requests[i].Batch != shown.Batch {
+		v.showRequest(now)
 	}
 }
 
-// Shows the item's proposal and makes answer keys wait.
-func (v *View) showProposal(now time.Time) {
+// Shows the current request's suggestion and makes answer keys wait again.
+func (v *View) showRequest(now time.Time) {
 	v.screen = requestScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
@@ -162,10 +165,16 @@ func (v *View) ShowNotWritten(reason string) {
 	v.scroll = 0
 }
 
+// Reports whether a key press closes the screen. Ctrl-c always does, and q
+// does unless the owner is typing.
+func (v *View) IsQuitKey(key string) bool {
+	return key == "\x03" || key == "q" && v.typingFor == None
+}
+
 // Handles one key press; l and h wrap around at the last and first item.
 func (v *View) PressKey(key string, now time.Time) Action {
 	v.notice = ""
-	if key == "\x03" { // Ctrl-c
+	if v.IsQuitKey(key) {
 		return Quit
 	}
 	if v.typingFor != None {
@@ -173,8 +182,6 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	}
 	// q, j and k work on every screen; the other keys depend on the screen.
 	switch key {
-	case "q":
-		return Quit
 	case "j":
 		rows, _ := v.body()
 		if v.scroll < len(rows)-v.room() {

@@ -90,12 +90,18 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		if r, err = reloadReview(r, v); err != nil {
+		// Quitting reads nothing, so it works even when the review is gone.
+		if v.IsQuitKey(key) {
+			return nil
+		}
+		// A Herdr tab and the popup can be open on the same review, and the
+		// AI can send new suggestions while the owner reviews.
+		r, err = review.OpenReview(r.Name)
+		if err != nil {
 			return err
 		}
+		v.ReloadRequests(r.ListFeedbackRequests(), time.Now())
 		switch v.PressKey(key, time.Now()) {
-		case popup.Quit:
-			return nil
 		case popup.Keep:
 			r, err = saveAnswerAndShowNext(
 				r,
@@ -158,19 +164,6 @@ func runReviewScreen(
 			return err
 		}
 	}
-}
-
-// Reads the review again to show changes saved elsewhere.
-func reloadReview(
-	r *review.Review,
-	v *popup.View,
-) (*review.Review, error) {
-	saved, err := review.OpenReview(r.Name)
-	if err != nil {
-		return r, err
-	}
-	v.Refresh(saved.ListFeedbackRequests(), time.Now())
-	return saved, nil
 }
 
 // Returns each named request's comment as its file has it now. Runs the
@@ -243,7 +236,8 @@ func saveAnswerAndShowNext(
 	v *popup.View,
 	action string,
 ) (*review.Review, error) {
-	if err := r.SaveAnswer(v.Current().Request.ID, action, ""); err != nil {
+	shown := v.Current()
+	if err := r.SaveAnswer(shown.Request.ID, shown.Batch, action, ""); err != nil {
 		return r, err
 	}
 	v.Requests = r.ListFeedbackRequests()

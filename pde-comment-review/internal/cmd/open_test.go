@@ -162,23 +162,24 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	}
 }
 
-// A tab once erased the notes the popup saved while it was open.
-func TestConsistentTabAndPopupStateOnOpen(t *testing.T) {
+// The popup and a Herdr tab can be open on the same review. The tab once
+// erased the notes the owner saved in the popup while the tab was open.
+func TestConsistentTabPopupStateOnOpen(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
-	popupCopy := startReview(t, cartGo, validApproval, nil)
+	inPopup := startReview(t, cartGo, validApproval, nil)
 	master, terminal := openFakeTerminal(t)
 	done := make(chan error, 1)
 	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
 	waitForScreen(t, master, "1/3 cut? cart.go")
 
-	// The popup saves two notes while the screen waits.
-	if err := popupCopy.SaveNote(1, "keep Currency"); err != nil {
+	// The owner saves notes on two requests in the popup.
+	if err := inPopup.SaveNote(1, "keep Currency"); err != nil {
 		t.Fatal(err)
 	}
-	if err := popupCopy.SaveNote(2, "shorter"); err != nil {
+	if err := inPopup.SaveNote(2, "shorter"); err != nil {
 		t.Fatal(err)
 	}
-	// The screen adds to the first note and saves it.
+	// In the tab, the owner adds " for now" to the first note.
 	typeKeys(t, master, "m")
 	waitForScreen(t, master, "note for AI: keep Currency")
 	typeKeys(t, master, " for now\r")
@@ -199,6 +200,31 @@ func TestConsistentTabAndPopupStateOnOpen(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("saved notes = %q, want %q", got, want)
+	}
+}
+
+// The screen reads the review from disk before each key. The owner must
+// still be able to close it after the review folder is moved away.
+func TestQuitWorksAfterReviewIsMoved(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	r := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	if err := os.Rename(r.Dir, r.Dir+".old"); err != nil {
+		t.Fatal(err)
+	}
+	typeKeys(t, master, "q")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("answerReview() error = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q")
 	}
 }
 
