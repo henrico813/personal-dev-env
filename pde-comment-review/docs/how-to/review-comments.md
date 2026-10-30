@@ -90,9 +90,10 @@ item is wrong, `add` names it and saves nothing.
 
 ## 2. Answer each comment
 
-In Herdr, press Ctrl+b e; it replaces Herdr's scrollback editor. When
-several reviews wait, a list opens first: move with `j` and `k`, and
-press Enter. In a terminal, run:
+In Herdr, press Ctrl+b e; it replaces Herdr's scrollback editor. For
+more room than the popup, press Ctrl+b E to open the screen in a tab.
+When several reviews wait, a list opens first: move with `j` and `k`,
+and press Enter. In a terminal, run:
 
 ```bash
 pde-comment-review open shop

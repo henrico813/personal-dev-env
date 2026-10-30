@@ -11,7 +11,7 @@ import (
 
 // Verifies that an agent can answer the owner's note without writing
 // JSON, which a small model gets wrong.
-func TestAgentAnswersNoteInSecondRound(t *testing.T) {
+func TestAgentAnswersNoteInSecondBatch(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	writeFile(
 		t,
@@ -19,14 +19,14 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 		"package shop\n\n// Empties the cart.\nfunc Clear() {}\n",
 	)
 	checker := buildRepoCheckerOnPath(t)
-	// The agent drafts, rewords the new comment and sends the round.
+	// The agent drafts, rewords the new comment and sends the batch.
 	if drafted := replyToDraft(repo, checker); len(drafted.Problems) > 0 {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
 	replyToSet(
 		repo,
 		1,
-		review.ProposeReword,
+		review.SuggestReword,
 		"Removes every price from the cart.",
 	)
 	sent := replyToSubmit(repo, checker)
@@ -39,7 +39,7 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 			sent.Problems,
 		)
 	}
-	if err := r.SetNote(1, "say the cart stays"); err != nil {
+	if err := r.SaveNote(1, "say the cart stays"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +47,7 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 	replyToSet(
 		repo,
 		1,
-		review.ProposeReword,
+		review.SuggestReword,
 		"Removes every price, and keeps the cart.",
 	)
 	replyToSubmit(repo, checker)
@@ -59,14 +59,14 @@ func TestAgentAnswersNoteInSecondRound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Round 2 holds only the noted item, in its new wording.
-	if len(r.Rounds) != 2 || len(r.Rounds[1].Items) != 1 || r.Rounds[1].Items[0].New != "// Removes every price, and keeps the cart.\n" {
-		t.Errorf("rounds = %+v, want round 2 to hold only item 1's new wording", r.Rounds)
+	// Batch 2 holds only the noted request, in its new wording.
+	if len(r.Batches) != 2 || len(r.Batches[1].Requests) != 1 || r.Batches[1].Requests[0].New != "// Removes every price, and keeps the cart.\n" {
+		t.Errorf("rounds = %+v, want round 2 to hold only item 1's new wording", r.Batches)
 	}
 }
 
 // Verifies that a second submit sends nothing but still says to tell the
-// user the round is ready.
+// user the batch is ready.
 func TestSecondSubmitRefusedWithNextStep(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	writeFile(
@@ -89,9 +89,9 @@ func TestSecondSubmitRefusedWithNextStep(t *testing.T) {
 	}
 }
 
-// Verifies that set refuses an item with no note while a round waits, so
+// Verifies that set refuses a request with no note while a batch waits, so
 // the owner answers it once.
-func TestSetRefusesItemWithoutOwnerNote(t *testing.T) {
+func TestSetRefusesRequestWithoutOwnerNote(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	writeFile(
 		t,
@@ -109,7 +109,7 @@ func TestSetRefusesItemWithoutOwnerNote(t *testing.T) {
 	reply := replyToSet(
 		repo,
 		1,
-		review.ProposeKeep,
+		review.SuggestKeep,
 		"",
 	)
 
@@ -138,13 +138,13 @@ func TestStatusSetSubmitRefuseOtherCheckout(t *testing.T) {
 		t.Fatalf("replyToDraft() problems = %q", drafted.Problems)
 	}
 
-	// The other clone tries the first clone's draft, then its waiting round.
+	// The other clone tries the first clone's draft, then its waiting batch.
 	refused := []agentReply{
 		replyToStatus(other),
 		replyToSet(
 			other,
 			1,
-			review.ProposeCut,
+			review.SuggestCut,
 			"",
 		),
 		replyToSubmit(other, checker),
@@ -161,8 +161,8 @@ func TestStatusSetSubmitRefuseOtherCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Rounds) != 1 || len(r.Rounds[0].Items) != 1 || r.Rounds[0].Items[0].Proposal != review.ProposeKeep {
-		t.Errorf("rounds = %+v, want one round keeping item 1, as the first clone drafted it", r.Rounds)
+	if len(r.Batches) != 1 || len(r.Batches[0].Requests) != 1 || r.Batches[0].Requests[0].Suggestion != review.SuggestKeep {
+		t.Errorf("rounds = %+v, want one round keeping item 1, as the first clone drafted it", r.Batches)
 	}
 }
 
@@ -170,7 +170,7 @@ func TestStatusSetSubmitRefuseOtherCheckout(t *testing.T) {
 // since submit would then fail.
 func TestSetRefusesKeepForRemovedCode(t *testing.T) {
 	repo := newShopClone(t, "feat")
-	// Removing a function makes item 1 a cut of its approved comment.
+	// Removing a function makes request 1 a cut of its approved comment.
 	writeFile(
 		t,
 		filepath.Join(repo, "shop.go"),
@@ -188,7 +188,7 @@ func TestSetRefusesKeepForRemovedCode(t *testing.T) {
 	reply := replyToSet(
 		repo,
 		1,
-		review.ProposeKeep,
+		review.SuggestKeep,
 		"",
 	)
 
@@ -205,7 +205,7 @@ func TestSetRefusesTextWrittenAsComment(t *testing.T) {
 	reply := replyToSet(
 		repo,
 		1,
-		review.ProposeReword,
+		review.SuggestReword,
 		"// Removes every price.",
 	)
 

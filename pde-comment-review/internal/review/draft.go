@@ -14,10 +14,10 @@ import (
 // review's folder.
 type Draft struct {
 	// The commit the checkout was compared with.
-	Base      string    `json:"base"`
-	Proposals Proposals `json:"proposals"`
-	// The round submit saves it as, so a sent draft is never sent again.
-	Round int `json:"round"`
+	Base  string `json:"base"`
+	Batch Batch  `json:"proposals"`
+	// The batch number submit saves it as, so a sent draft is never sent again.
+	BatchNumber int `json:"round"`
 	// Changed code files the checker cannot read, such as Rust, whose
 	// comments the agent shows the owner in the pull request.
 	Unsupported []string `json:"unsupported,omitempty"`
@@ -46,14 +46,14 @@ func ReviewNameForBranch(branch string) (string, error) {
 }
 
 // Moves the finished review called name aside, such as to name.1, since
-// a draft numbers its items from 1. Refuses while a round waits for the
-// owner.
+// a draft numbers its requests from 1. Refuses while a batch waits for
+// the owner.
 func MoveFinishedReviewAside(name string) error {
 	r, err := loadReview(name)
-	if err != nil || len(r.Rounds) == 0 {
+	if err != nil || len(r.Batches) == 0 {
 		return err
 	}
-	if r.AppliedRound != len(r.Rounds) {
+	if r.AppliedBatch != len(r.Batches) {
 		return fmt.Errorf(
 			"review %s, for %s, has a round waiting for the owner; call review_status to see what to do, or tell the owner if that is another checkout",
 			name,
@@ -81,7 +81,7 @@ func SaveDraft(name string, d Draft) error {
 	return replaceJSONFile(filepath.Join(dir, "draft.json"), d)
 }
 
-// Returns the review called name, which may have no round yet, and its
+// Returns the review called name, which may have no batch yet, and its
 // unsent draft or nil.
 func LoadReviewAndDraft(name string) (*Review, *Draft, error) {
 	r, err := loadReview(name)
@@ -93,7 +93,7 @@ func LoadReviewAndDraft(name string) (*Review, *Draft, error) {
 		return nil, nil, err
 	}
 	// A written review's draft can no longer be sent.
-	if d.Round != len(r.Rounds)+1 || len(r.Rounds) > 0 && r.AppliedRound == len(r.Rounds) {
+	if d.BatchNumber != len(r.Batches)+1 || len(r.Batches) > 0 && r.AppliedBatch == len(r.Batches) {
 		return r, nil, nil
 	}
 	return r, &d, nil
