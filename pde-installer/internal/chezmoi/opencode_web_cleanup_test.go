@@ -116,9 +116,8 @@ func TestClientRemovesFullApprovalTools(t *testing.T) {
 	}
 }
 
-// A machine that moves from full to client keeps full's skills, plan commands
-// and reviewer agents, which call tools client lacks. Client must remove every
-// skill and OpenCode file that only full installs.
+// Switching a laptop from full to client must delete full's extra skills and
+// agents.
 func TestClientRemovesWhatOnlyFullInstalls(t *testing.T) {
 	clientInstalls := map[string]bool{}
 	clientExternals := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
@@ -151,8 +150,7 @@ func TestClientRemovesWhatOnlyFullInstalls(t *testing.T) {
 	}
 }
 
-// Returns the removal target that covers an installed file, which for a skill
-// is its whole folder.
+// Returns the skill folder for a skill file, such as .agents/skills/delegate.
 func toRemovalTarget(target string) string {
 	if name, found := strings.CutPrefix(target, ".agents/skills/"); found {
 		skill, _, _ := strings.Cut(name, "/")
