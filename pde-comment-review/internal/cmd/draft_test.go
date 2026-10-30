@@ -90,7 +90,7 @@ func newShopClone(t *testing.T, branch string) string {
 		"package shop\n\n// Prices are in cents, so sums never round.\ntype Price int\n\n// Formats a price.\nfunc (Price) String() string { return \"\" }\n",
 	)
 	// The branch never changes cart.go, so its unapproved Cart.Add must not
-	// become an item.
+	// become a feedback request.
 	writeFile(
 		t,
 		filepath.Join(origin, "cart.go"),
@@ -169,46 +169,46 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 			repo,
 			"git rev-parse origin/main",
 		),
-		Round: 1,
-		Proposals: review.Proposals{
+		BatchNumber: 1,
+		Batch: review.Batch{
 			Version: review.Version,
 			Repo:    repo,
-			Items: []review.Item{
+			Requests: []review.FeedbackRequest{
 				{
-					ID:       1,
-					File:     "clear.go",
-					Name:     "Clear",
-					Old:      "// Empties the cart.\n",
-					Proposal: review.ProposeKeep,
+					ID:         1,
+					File:       "clear.go",
+					Name:       "Clear",
+					Old:        "// Empties the cart.\n",
+					Suggestion: review.SuggestKeep,
 				},
 				{
-					ID:       2,
-					File:     "shop.go",
-					Name:     "Total",
-					Old:      "// Sums the prices.\n",
-					Proposal: review.ProposeReword,
-					New:      "// Returns the sum of prices, in cents.\n",
+					ID:         2,
+					File:       "shop.go",
+					Name:       "Total",
+					Old:        "// Sums the prices.\n",
+					Suggestion: review.SuggestReword,
+					New:        "// Returns the sum of prices, in cents.\n",
 				},
 				{
-					ID:       3,
-					File:     "shop.go",
-					Name:     "SalesTax",
-					Old:      "// Returns the tax on a price.\n",
-					Proposal: review.ProposeKeep,
+					ID:         3,
+					File:       "shop.go",
+					Name:       "SalesTax",
+					Old:        "// Returns the tax on a price.\n",
+					Suggestion: review.SuggestKeep,
 				},
 				{
-					ID:       4,
-					File:     "shop.go",
-					Name:     "Discount",
-					Old:      "// Returns the discount on a price, in cents.\n",
-					Proposal: review.ProposeKeep,
+					ID:         4,
+					File:       "shop.go",
+					Name:       "Discount",
+					Old:        "// Returns the discount on a price, in cents.\n",
+					Suggestion: review.SuggestKeep,
 				},
 				{
 					ID:          5,
 					File:        "shop.go",
 					Name:        "Valid",
 					Old:         "// Reports whether every price is above zero.\n",
-					Proposal:    review.ProposeCut,
+					Suggestion:  review.SuggestCut,
 					CodeRemoved: true,
 				},
 			},
@@ -274,10 +274,10 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionAccept}, // Clear, a new comment
 			2: {Action: review.ActionKeep},   // Total, back to its approved text
 			3: {Action: review.ActionAccept}, // SalesTax, renamed from Tax
@@ -286,7 +286,7 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 		},
 	)
 
-	_, err = writeAndApproveDecisions(r, checker)
+	_, err = writeAndApproveAnswers(r, checker)
 
 	if err != nil {
 		t.Fatalf("writeAndApproveDecisions() error = %v", err)
@@ -350,14 +350,14 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionAccept},
 		},
 	)
-	if _, err := writeAndApproveDecisions(r, checker); err != nil {
+	if _, err := writeAndApproveAnswers(r, checker); err != nil {
 		t.Fatalf("writeAndApproveDecisions() error = %v", err)
 	}
 
@@ -476,7 +476,7 @@ func TestUnsureDraftIsRefused(t *testing.T) {
 
 // Verifies that drafting refuses while a round waits for the owner, since
 // a new draft would replace the owner's answers.
-func TestDraftRefusesWhileRoundAwaitsOwner(t *testing.T) {
+func TestDraftRefusesWhileBatchAwaitsOwner(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	waiting := filepath.Join(
 		review.FindStateRoot(),

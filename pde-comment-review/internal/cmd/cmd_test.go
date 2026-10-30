@@ -21,7 +21,7 @@ func addScratchReview(
 	t *testing.T,
 	code string,
 	approvals string,
-	items ...review.Item,
+	requests ...review.FeedbackRequest,
 ) (string, error) {
 	t.Helper()
 	t.Setenv(
@@ -45,33 +45,33 @@ func addScratchReview(
 		),
 		approvals,
 	)
-	roundFile := filepath.Join(
+	batchFile := filepath.Join(
 		review.FindStateRoot(),
 		"cart",
 		"round-1.json",
 	)
-	return roundFile, addRound(
+	return batchFile, addBatchFile(
 		"cart",
-		writeProposals(
+		writeBatchFile(
 			t,
 			repo,
-			items...,
+			requests...,
 		),
 		buildRepoCheckerOnPath(t),
 	)
 }
 
 // Writes items as a proposals file for repo and returns its path.
-func writeProposals(
+func writeBatchFile(
 	t *testing.T,
 	repo string,
-	items ...review.Item,
+	requests ...review.FeedbackRequest,
 ) string {
 	t.Helper()
-	data, err := json.Marshal(review.Proposals{
-		Version: review.Version,
-		Repo:    repo,
-		Items:   items,
+	data, err := json.Marshal(review.Batch{
+		Version:  review.Version,
+		Repo:     repo,
+		Requests: requests,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func writeProposals(
 
 // Saves round 1 of a scratch review of cartGo, then writes files, by name,
 // into its repository, ready for round 2. Returns the repository.
-func startSecondRound(
+func startSecondBatch(
 	t *testing.T,
 	files map[string]string,
 ) string {
@@ -129,7 +129,7 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 	tests := []struct {
 		name   string
 		onDisk string
-		extra  []review.Item // items after the three every row has
+		extra  []review.FeedbackRequest // requests after the three every row has
 		want   []string
 	}{
 		{
@@ -140,11 +140,11 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 				"no price is negative",
 				1,
 			),
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeKeep,
-				Old:      "// Reports whether no price is negative.\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Suggestion: review.SuggestKeep,
+				Old:        "// Reports whether no price is negative.\n",
 			}},
 			want: []string{
 				"cart.go Valid: differs from the text the owner approved",
@@ -154,11 +154,11 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 		{
 			name:   "two items for one comment",
 			onDisk: cartGo,
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeKeep,
-				Old:      keepTooHigh.Old,
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Suggestion: review.SuggestKeep,
+				Old:        keepTooHigh.Old,
 			}},
 			want: []string{
 				"items 3 and 4 are the same comment in cart.go",
@@ -167,12 +167,12 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 		{
 			name:   "drafted comment worded like another",
 			onDisk: cartGo + "\n// Reports whether every price is above zero.\nfunc Positive() bool { return true }\n",
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Name:     "Positive",
-				Proposal: review.ProposeKeep,
-				Old:      "// Reports whether every price is above zero.\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Name:       "Positive",
+				Suggestion: review.SuggestKeep,
+				Old:        "// Reports whether every price is above zero.\n",
 			}},
 			want: []string{
 				"item 4: cart.go: comment found 2 times",
@@ -181,12 +181,12 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 		{
 			name:   "reword that adds a directive",
 			onDisk: cartGo,
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeReword,
-				Old:      "// Reports whether every price is above zero.\n",
-				New:      "// Reports whether every price is above zero.\n//go:noinline\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Suggestion: review.SuggestReword,
+				Old:        "// Reports whether every price is above zero.\n",
+				New:        "// Reports whether every price is above zero.\n//go:noinline\n",
 			}},
 			want: []string{
 				"item 4: cart.go Valid: the new text could change how the code builds",
@@ -195,11 +195,11 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 		{
 			name:   "removed code back",
 			onDisk: cartGo,
-			extra: []review.Item{{
+			extra: []review.FeedbackRequest{{
 				ID:          4,
 				File:        "cart.go",
 				Name:        "Valid",
-				Proposal:    review.ProposeCut,
+				Suggestion:  review.SuggestCut,
 				Old:         "// Reports whether every price is above zero.\n",
 				CodeRemoved: true,
 			}},
@@ -212,8 +212,8 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 		t.Run(
 			tt.name,
 			func(t *testing.T) {
-				items := append(
-					[]review.Item{
+				requests := append(
+					[]review.FeedbackRequest{
 						cutCurrency,
 						rewordTotal,
 						keepTooHigh,
@@ -221,11 +221,11 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 					tt.extra...,
 				)
 
-				roundFile, err := addScratchReview(
+				batchFile, err := addScratchReview(
 					t,
 					tt.onDisk,
 					validApproval,
-					items...,
+					requests...,
 				)
 
 				if err == nil {
@@ -247,14 +247,14 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 						)
 					}
 				}
-				_, err = os.Stat(roundFile)
+				_, err = os.Stat(batchFile)
 				if !errors.Is(
 					err,
 					fs.ErrNotExist,
 				) {
 					t.Errorf(
 						"round file %s was left behind: %v",
-						roundFile,
+						batchFile,
 						err,
 					)
 				}
@@ -265,16 +265,16 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 
 // Verifies that an item may quote the approved wording, which is how
 // agents propose rewording an approved comment.
-func TestAddSavesItemQuotingApprovedText(t *testing.T) {
-	rewordValid := review.Item{
-		ID:       4,
-		File:     "cart.go",
-		Proposal: review.ProposeReword,
-		Old:      "// Reports whether every price is above zero.\n",
-		New:      "// Reports whether no price is negative.\n",
+func TestAddSavesRequestQuotingApprovedText(t *testing.T) {
+	rewordValid := review.FeedbackRequest{
+		ID:         4,
+		File:       "cart.go",
+		Suggestion: review.SuggestReword,
+		Old:        "// Reports whether every price is above zero.\n",
+		New:        "// Reports whether no price is negative.\n",
 	}
 
-	roundFile, err := addScratchReview(
+	batchFile, err := addScratchReview(
 		t,
 		cartGo,
 		validApproval,
@@ -290,7 +290,7 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 			err,
 		)
 	}
-	if _, err := os.Stat(roundFile); err != nil {
+	if _, err := os.Stat(batchFile); err != nil {
 		t.Errorf(
 			"round 1 was not saved: %v",
 			err,
@@ -301,23 +301,23 @@ func TestAddSavesItemQuotingApprovedText(t *testing.T) {
 // Verifies that two approved comments with the same words are told apart
 // by name, so an agent can propose rewording both.
 func TestAddKeepsSameWordedCommentsApart(t *testing.T) {
-	rewordValid := review.Item{
-		ID:       1,
-		File:     "cart.go",
-		Proposal: review.ProposeReword,
-		Old:      "// Reports whether every price is above zero.\n",
-		New:      "// Reports whether no price is negative.\n",
+	rewordValid := review.FeedbackRequest{
+		ID:         1,
+		File:       "cart.go",
+		Suggestion: review.SuggestReword,
+		Old:        "// Reports whether every price is above zero.\n",
+		New:        "// Reports whether no price is negative.\n",
 	}
-	rewordPositive := review.Item{
-		ID:       2,
-		File:     "cart.go",
-		Name:     "Positive",
-		Proposal: review.ProposeReword,
-		Old:      "// Reports whether every price is above zero.\n",
-		New:      "// Reports whether no price is below zero.\n",
+	rewordPositive := review.FeedbackRequest{
+		ID:         2,
+		File:       "cart.go",
+		Name:       "Positive",
+		Suggestion: review.SuggestReword,
+		Old:        "// Reports whether every price is above zero.\n",
+		New:        "// Reports whether no price is below zero.\n",
 	}
 
-	roundFile, err := addScratchReview(
+	batchFile, err := addScratchReview(
 		t,
 		cartGo+"\n// Reports whether no price is below zero.\nfunc Positive() bool { return true }\n",
 		`{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"},
@@ -332,7 +332,7 @@ func TestAddKeepsSameWordedCommentsApart(t *testing.T) {
 			err,
 		)
 	}
-	if _, err := os.Stat(roundFile); err != nil {
+	if _, err := os.Stat(batchFile); err != nil {
 		t.Errorf(
 			"round 1 was not saved: %v",
 			err,
@@ -342,8 +342,8 @@ func TestAddKeepsSameWordedCommentsApart(t *testing.T) {
 
 // Verifies that saving a later round rechecks earlier rounds' files, so a
 // problem there is caught before the owner answers.
-func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
-	repo := startSecondRound(
+func TestAddRechecksFilesFromEarlierBatches(t *testing.T) {
+	repo := startSecondBatch(
 		t,
 		map[string]string{
 			"cart.go": strings.Replace(
@@ -355,16 +355,16 @@ func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
 			"tax.go": "package cart\n\n// Returns the tax on a price.\nfunc Tax(price int) int { return 0 }\n",
 		},
 	)
-	keepTax := review.Item{
-		ID:       4,
-		File:     "tax.go",
-		Proposal: review.ProposeKeep,
-		Old:      "// Returns the tax on a price.\n",
+	keepTax := review.FeedbackRequest{
+		ID:         4,
+		File:       "tax.go",
+		Suggestion: review.SuggestKeep,
+		Old:        "// Returns the tax on a price.\n",
 	}
 
-	err := addRound(
+	err := addBatchFile(
 		"cart",
-		writeProposals(
+		writeBatchFile(
 			t,
 			repo,
 			keepTax,
@@ -381,18 +381,18 @@ func TestAddRechecksFilesFromEarlierRounds(t *testing.T) {
 			err,
 		)
 	}
-	roundTwo := filepath.Join(
+	batchTwo := filepath.Join(
 		review.FindStateRoot(),
 		"cart",
 		"round-2.json",
 	)
-	if _, err := os.Stat(roundTwo); !errors.Is(
+	if _, err := os.Stat(batchTwo); !errors.Is(
 		err,
 		fs.ErrNotExist,
 	) {
 		t.Errorf(
 			"round file %s was left behind: %v",
-			roundTwo,
+			batchTwo,
 			err,
 		)
 	}
@@ -407,15 +407,15 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 		"Max = 50",
 		"Max  =  50",
 	).Replace(cartGo)
-	keepValid := review.Item{
-		ID:       1,
-		File:     "cart.go",
-		Name:     "Valid",
-		Proposal: review.ProposeKeep,
-		Old:      "// Reports whether every price is above zero.\n",
+	keepValid := review.FeedbackRequest{
+		ID:         1,
+		File:       "cart.go",
+		Name:       "Valid",
+		Suggestion: review.SuggestKeep,
+		Old:        "// Reports whether every price is above zero.\n",
 	}
 
-	roundFile, err := addScratchReview(
+	batchFile, err := addScratchReview(
 		t,
 		editedAndUnformatted,
 		validApproval,
@@ -430,13 +430,13 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 			want,
 		)
 	}
-	if _, err := os.Stat(roundFile); !errors.Is(
+	if _, err := os.Stat(batchFile); !errors.Is(
 		err,
 		fs.ErrNotExist,
 	) {
 		t.Errorf(
 			"round file %s was left behind: %v",
-			roundFile,
+			batchFile,
 			err,
 		)
 	}
@@ -445,22 +445,22 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 // Python reviews stay off until the review screen can show them, so add
 // must refuse a hand-written Python item before the owner sees it.
 func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
-	repo := startSecondRound(
+	repo := startSecondBatch(
 		t,
 		map[string]string{
 			"tax.py": "# Returns the tax on a price.\ndef tax(price):\n    return 0\n",
 		},
 	)
-	keepTax := review.Item{
-		ID:       4,
-		File:     "tax.py",
-		Proposal: review.ProposeKeep,
-		Old:      "# Returns the tax on a price.\n",
+	keepTax := review.FeedbackRequest{
+		ID:         4,
+		File:       "tax.py",
+		Suggestion: review.SuggestKeep,
+		Old:        "# Returns the tax on a price.\n",
 	}
 
-	err := addRound(
+	err := addBatchFile(
 		"cart",
-		writeProposals(
+		writeBatchFile(
 			t,
 			repo,
 			keepTax,
@@ -476,18 +476,18 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 			want,
 		)
 	}
-	roundTwo := filepath.Join(
+	batchTwo := filepath.Join(
 		review.FindStateRoot(),
 		"cart",
 		"round-2.json",
 	)
-	if _, err := os.Stat(roundTwo); !errors.Is(
+	if _, err := os.Stat(batchTwo); !errors.Is(
 		err,
 		fs.ErrNotExist,
 	) {
 		t.Errorf(
 			"round file %s was left behind: %v",
-			roundTwo,
+			batchTwo,
 			err,
 		)
 	}
@@ -497,22 +497,22 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 // items are the same comment only when both their file and old match, so
 // equal wording in two files must not be refused as a repeated item.
 func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
-	repo := startSecondRound(
+	repo := startSecondBatch(
 		t,
 		map[string]string{
 			"tax.go": "package cart\n\n// Sums the prices.\nfunc SumTax() {}\n",
 		},
 	)
-	sumTax := review.Item{
-		ID:       4,
-		File:     "tax.go",
-		Proposal: review.ProposeKeep,
-		Old:      rewordTotal.Old,
+	sumTax := review.FeedbackRequest{
+		ID:         4,
+		File:       "tax.go",
+		Suggestion: review.SuggestKeep,
+		Old:        rewordTotal.Old,
 	}
 
-	err := addRound(
+	err := addBatchFile(
 		"cart",
-		writeProposals(
+		writeBatchFile(
 			t,
 			repo,
 			sumTax,
@@ -528,34 +528,34 @@ func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
 	}
 }
 
-// Verifies that add refuses an earlier item's id for another comment,
+// Verifies that add refuses an earlier request's id for another comment,
 // which would drop the owner's answer.
 func TestAddRefusesIDOfAnotherComment(t *testing.T) {
-	repo := startSecondRound(
+	repo := startSecondBatch(
 		t,
 		map[string]string{"cart.go": cartGo + "\nfunc Clear() {\n\t// Empties nothing yet.\n}\n"},
 	)
-	validAsItem2 := review.Item{
-		ID:       2,
-		File:     "cart.go",
-		Proposal: review.ProposeKeep,
-		Old:      "// Reports whether every price is above zero.\n",
+	validAsRequest2 := review.FeedbackRequest{
+		ID:         2,
+		File:       "cart.go",
+		Suggestion: review.SuggestKeep,
+		Old:        "// Reports whether every price is above zero.\n",
 	}
-	// A comment inside a function has no name, yet takes a named item's id.
-	unnamedAsItem3 := review.Item{
-		ID:       3,
-		File:     "cart.go",
-		Proposal: review.ProposeKeep,
-		Old:      "\t// Empties nothing yet.\n",
+	// A comment inside a function has no name, yet takes a named request's id.
+	unnamedAsRequest3 := review.FeedbackRequest{
+		ID:         3,
+		File:       "cart.go",
+		Suggestion: review.SuggestKeep,
+		Old:        "\t// Empties nothing yet.\n",
 	}
 
-	err := addRound(
+	err := addBatchFile(
 		"cart",
-		writeProposals(
+		writeBatchFile(
 			t,
 			repo,
-			validAsItem2,
-			unnamedAsItem3,
+			validAsRequest2,
+			unnamedAsRequest3,
 		),
 		buildRepoCheckerOnPath(t),
 	)

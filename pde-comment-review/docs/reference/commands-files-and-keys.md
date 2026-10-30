@@ -195,3 +195,8 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
 | `internal/cmd` | The commands, the MCP server, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
+
+The code names things differently from the files and messages. An
+item is a `FeedbackRequest`, its proposal is its `Suggestion`, and a
+round is a `Batch`. Your answer and note on an item are its
+`UserFeedback`.
