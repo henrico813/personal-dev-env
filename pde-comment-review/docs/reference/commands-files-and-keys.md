@@ -115,24 +115,23 @@ are above the screen, and on the right the answer: `?`, `kept`,
 
 ## The edit page
 
-`e` shows the comment as plain text: no `//`, `#` or docstring
-quotes, one line per paragraph,
-and code examples starting with a tab or two spaces. It starts from
-your own wording if you have one, then from the AI's reword, then
-from the comment. Below the `# ---- edits below are ignored ----` line
-is the code after the comment, to read.
+`e` shows the comment as plain text: no `//`, `#` or docstring quotes,
+one line per paragraph, and code examples starting with a tab or two
+spaces. It starts from your own wording if you have one, then from the
+AI's reword, then from the comment. Below the
+`# ---- edits below are ignored ----` line is the code after the
+comment, to read.
 
-When nvim closes, the text is saved as `//` or `#` lines or a
-docstring, laid out like the wording you started from and
-rewrapped. Text with no words cuts the comment.
-Unchanged text saves nothing. Nothing is saved, and the screen says
-why, when the `# ----` line was deleted or nvim quit with an error.
-When the checker refuses your text, such as a docstring holding `"""`
-or a new backslash escape, the screen says why and keeps your text.
-Go back to that comment with `h` and press `e` to fix it, or quit
-nvim with `:cq` to drop it. You cannot cut a docstring that is the
-only statement in its function, class or block, because the code would
-break; `c` and an empty page are refused for it.
+When nvim closes, the text is saved as `//` or `#` lines or a docstring,
+laid out like the wording you started from and rewrapped. Text with no
+words cuts the comment. Unchanged text saves nothing. Nothing is saved,
+and the screen says why, when the `# ----` line was deleted or nvim quit
+with an error. When the checker refuses your text, such as a docstring
+holding `"""` or a new backslash escape, the screen says why and keeps
+your text. Go back to that item and press `e` to fix it, or quit nvim
+with `:cq` to drop it. You cannot cut a docstring that is the only
+statement in its function, class or block, because the code would break;
+`c` and an empty page cannot cut it.
 
 ## What the write checks
 

@@ -605,7 +605,7 @@ class TestShow:
     def test_plain_is_written_like_old_comment(
         self, tmp_path: Path, entry: dict[str, str], expected: str
     ) -> None:
-        """Write plain text with the old comment's indent and width.
+        """Write plain text with the old indent and the language's width.
 
         Go comments wrap at 79 columns, and Python comments at the 72
         that PEP 8 asks for. A wrong indent would put the comment out of
@@ -989,9 +989,8 @@ class TestShowDocstrings:
         Closing quotes would turn the rest of the text into code. Python
         reads a carriage return as a line end, and a file holding a NUL
         does not compile. A new backslash escape would change the
-        docstring or make Python warn. Without this refusal, the tool
-        would find the problem only when it writes the files, after the
-        owner has decided on every comment.
+        docstring or make Python warn. Refusing here tells the owner at
+        once, not after every comment is answered.
 
         Args:
             tmp_path: An empty folder the checker runs in.
@@ -1386,9 +1385,8 @@ class TestApplyCheck:
 
         A new language starts with reviews off, because the owner has
         not yet checked how the review screen shows its comments. The
-        review tool knows no language, so only the checker stops an
-        agent's hand-written change from reaching a file in that
-        language.
+        review tool has no list of languages, so only the checker keeps
+        an agent's hand-written change out of a file in that language.
 
         Args:
             tmp_path: An empty folder the checker writes in.
@@ -1500,16 +1498,15 @@ class TestApplyCheck:
     def test_python_write_keeps_code_meaning(
         self, tmp_path: Path, edits: dict, problem: str
     ) -> None:
-        """Refuse a new docstring that would change what the code does.
+        """Refuse a write that would change what the code does.
 
         The owner types plain text on a phone, so ``C:\\new`` would
         silently become a line break and ``\\d`` a warning, even when
         the backslash was moved from another docstring. A doubled
-        backslash, or a warning already in the code, is fine. These
-        would also change the code: code after a docstring, deleting a
-        docstring its body needs, a comment that becomes the line naming
-        the file's encoding, and a new comment that tells a tool to skip
-        a check.
+        backslash, or a warning already in the code, is fine. The test
+        also refuses code after a docstring, cutting a docstring its
+        body needs, a comment that becomes the encoding line and a new
+        comment such as ``# nosec``.
 
         Args:
             tmp_path: An empty folder the checker writes in.

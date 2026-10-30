@@ -107,7 +107,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	text := shown[0].Plain
 	page := r.BuildEditFilePath(id)
 	// A file left by a refused edit holds what the owner typed, so nvim opens
-	// it as it is.
+	// that text again.
 	if _, err := os.Stat(page); err != nil {
 		content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
 		if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
@@ -136,19 +136,19 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
-	// Deleting this docstring would break the code. The file is removed, so
-	// the next edit starts from the docstring again.
+	// A docstring that is its block's only statement cannot be deleted. Its
+	// edit file is removed, so the next edit starts from the docstring again.
 	if len(strings.Fields(edited)) == 0 && places[id].NoCut {
 		return fmt.Errorf(
-			"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d with h and press e to change its wording",
+			"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d and press e to change its wording",
 			id,
 		)
 	}
 	if len(strings.Fields(edited)) == 0 {
 		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
 	}
-	// The new text keeps the quotes and indentation of the wording the owner
-	// started from, such as an r prefix.
+	// The owner's text takes the quotes and prefix of the wording shown in
+	// nvim, such as the r prefix of the AI's reword.
 	comment, err := convertSentencesToComment(
 		checker,
 		r.Repo(),
@@ -159,7 +159,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		keepPage = true
 		return fmt.Errorf(
-			"%w; your text is kept, so go back to item %d with h and press e to fix it",
+			"%w; your text is kept, so go back to item %d and press e to fix it",
 			err,
 			id,
 		)

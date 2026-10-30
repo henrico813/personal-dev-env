@@ -327,10 +327,9 @@ Run the checker again until it exits 0. If it still fails only with
 task renamed, moved or deleted that code, keep the owner's text and
 list those findings in your final message for the owner.
 
-If Python cannot read a file, fix its syntax, or report it when the
-file needs a newer Python than `/usr/bin/python3`, which runs
-`pde-comment-checker`. Never edit
-approved text to get past it.
+If Python cannot read a file, fix its syntax, or report it when the file
+needs a newer Python than `/usr/bin/python3`, which runs
+`pde-comment-checker`. Never edit approved text to get past it.
 
 Only the owner runs the checker with `--approve`, or an agent the
 owner asked to. It rewrites `.code-comments.json` itself, so no one
@@ -377,17 +376,16 @@ pde-comment-checker python-rules \
   <Python files>
 ```
 
-It runs with `/usr/bin/python3`, which must be 3.10 or later. It
-checks only code your task added
-or changed. Changing any line of an old function makes the checker
-ask for its docstring, so add one. Leave docstrings on old functions
-you did not touch for a separate change. Move files with `git mv`, so
-the checker compares a moved file with its old path. Each
-finding names the rule it checks, and the output ends by quoting that
-rule's sentence. Fix each finding and run the checker again until it
-exits 0. `verb-first` is reported, never failed: rename the function
-when the word is not a verb, and when it is, keep the name and list
-the finding in your final message.
+It runs with `/usr/bin/python3`, which must be 3.10 or later. It checks
+only code your task added or changed. Changing any line of an old
+function makes the checker ask for its docstring, so add one. Leave
+docstrings on old functions you did not touch for a separate change.
+Move files with `git mv`, so the checker compares a moved file with its
+old path. Each finding names the rule it checks, and the output ends by
+quoting that rule's sentence. Fix each finding and run the checker again
+until it exits 0. `verb-first` is reported, never failed: rename the
+function when the word is not a verb, and when it is, keep the name and
+list the finding in your final message.
 
 ## Completion check
 

@@ -23,7 +23,8 @@ from .line_comments import (
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
-# PEP 8 limits docstrings and comments to 72 columns with indentation.
+# PEP 8 limits docstring and comment lines to 72 columns, counting
+# indentation.
 PYTHON_LINE_WIDTH = 72
 
 DocstringOwner = (
@@ -202,10 +203,10 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
     """Return a comment's plain text and the rows a screen draws for it.
 
     A ``#`` comment is drawn as a Go comment is, with ``#`` marks. A
-    docstring's first row starts with its opening quotes, and a section
-    entry's later rows are indented two spaces. The closing quotes get a
-    row of their own, except on a docstring that is one line in the
-    code, which is drawn on one row as it reads there.
+    docstring's first row starts with its opening quotes. Each line
+    under a heading such as ``Args:`` indents its wrapped rows two
+    spaces. The closing quotes get a row of their own, unless the
+    docstring is one line in the code.
 
     Args:
         text: The comment exactly as it is in the file.
@@ -245,10 +246,9 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
 def write_python_comment(plain: str, old: str) -> str:
     """Return plain text laid out like the comment it replaces.
 
-    The owner and agents write a comment's new wording as plain
-    sentences, without ``#`` marks or quotes. This adds them back, so
-    the new comment keeps the old one's indentation and, for a
-    docstring, its quote character and any ``r`` prefix. A docstring's
+    The owner and agents write new wording without ``#`` marks or
+    quotes. The new comment takes the old one's indentation, and a
+    docstring keeps its quotes and any ``r`` prefix. A docstring's
     first sentence goes on the line of its opening quotes.
 
     Args:
@@ -281,10 +281,9 @@ def refuse_new_escape(text: str, old: str) -> None:
     """Refuse a new docstring with a backslash escape the old one lacks.
 
     Python reads ``\\n`` in a docstring as a line break and warns about
-    an escape it does not know, such as ``\\d``. The owner types plain
-    text on a phone and cannot see either happen. Refusing here tells
-    the owner at once, instead of when the tool writes the files after
-    the owner has decided on every comment.
+    an unknown escape such as ``\\d``. The owner types plain text on a
+    phone and sees neither. Refusing here tells the owner at once, not
+    after every comment is answered.
 
     Args:
         text: The new docstring, as it would appear in the file.
@@ -292,8 +291,8 @@ def refuse_new_escape(text: str, old: str) -> None:
             allowed.
 
     Raises:
-        SourceError: The new docstring is not raw and holds an escape,
-            other than a doubled backslash, more often than the old one.
+        SourceError: The new docstring holds more of one escape than
+            the old one. Raw docstrings and doubled backslashes pass.
     """
     docstring = WHOLE_DOCSTRING.fullmatch(text)
     if not docstring or docstring["prefix"] in ("r", "R"):
@@ -443,14 +442,15 @@ def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
     """Return docstring parts laid out with the old docstring's quotes.
 
     Paragraphs wrap at 72 columns, counting indentation, as PEP 8 asks
-    of docstrings. Section entries are indented four spaces, with their
-    later lines four more. A docstring with one short paragraph stays on
-    one line. A docstring in single quotes becomes triple quoted when it
-    needs a second line or holds its quote character.
+    of docstrings. Each line under a heading is indented four spaces,
+    and its wrapped lines four more. A docstring with one short
+    paragraph stays on one line. A docstring in single quotes becomes
+    triple quoted when it needs a second line or holds its quote
+    character.
 
     Args:
-        parts: The new wording, split into paragraphs, headings, section
-            entries and lines kept as written.
+        parts: The new wording, split into paragraphs, headings, the
+            lines under them and lines kept as written.
         docstring: The old docstring's match, which gives the
             indentation, prefix and quotes.
 
