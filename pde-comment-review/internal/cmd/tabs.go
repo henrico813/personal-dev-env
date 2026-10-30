@@ -114,9 +114,9 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 			return err
 		}
 	}
-	keepPage := false
+	keepTypedText := false
 	defer func() {
-		if !keepPage {
+		if !keepTypedText {
 			os.Remove(page)
 		}
 	}()
@@ -136,15 +136,15 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
-	// A docstring that is its block's only statement cannot be deleted. Its
-	// edit file is removed, so the next edit starts from the docstring again.
-	if len(strings.Fields(edited)) == 0 && places[id].NoCut {
-		return fmt.Errorf(
-			"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d and press e to change its wording",
-			id,
-		)
-	}
 	if len(strings.Fields(edited)) == 0 {
+		// Deleting a docstring that is its block's only statement would
+		// break the code.
+		if places[id].NoCut {
+			return fmt.Errorf(
+				"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d and press e to change its wording",
+				id,
+			)
+		}
 		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
 	}
 	// The owner's text takes the quotes and prefix of the wording shown in
@@ -157,7 +157,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		edited,
 	)
 	if err != nil {
-		keepPage = true
+		keepTypedText = true
 		return fmt.Errorf(
 			"%w; your text is kept, so go back to item %d and press e to fix it",
 			err,

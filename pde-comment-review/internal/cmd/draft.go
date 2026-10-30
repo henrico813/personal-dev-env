@@ -202,7 +202,8 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 			Requests: requests,
 			Renames:  changes.Renames,
 		},
-		// An empty list is kept as nil, which is how draft.json reads it back.
+		// The checker sends [] when every file is supported. draft.json leaves
+		// an empty list out, so nil makes this draft match the one read back.
 		Unsupported: append([]string(nil), changes.Unsupported...),
 	}, nil
 }

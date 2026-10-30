@@ -428,9 +428,8 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// An agent can send the owner a Python comment by hand with
-// pde-comment-review add. Add refused Python comments until the review
-// screen could show them.
+// Agents send Python comments to the owner by hand with add. A refusal
+// would leave those comments unreviewed.
 func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	repo := startSecondBatch(
 		t,

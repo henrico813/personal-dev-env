@@ -46,6 +46,9 @@ func replyToStatus(dir string) agentReply {
 	case d != nil:
 		reply.State = "done"
 		reply.Next = "No comment on this branch needs the user's answer. Tell the user there is nothing to review."
+		if len(d.Unsupported) > 0 {
+			reply.Next = "There is nothing for the tool to review."
+		}
 	case len(r.Batches) == 0:
 		reply.State = "no_review"
 		reply.Next = "Call review_draft to find the comments the user must answer."
@@ -61,9 +64,6 @@ func replyToStatus(dir string) agentReply {
 	}
 	if d != nil && len(d.Unsupported) > 0 {
 		reply.Unsupported = d.Unsupported
-		if reply.State == "done" {
-			reply.Next = "There is nothing for the tool to review."
-		}
 		reply.Next += " The tool cannot review comments in the files listed in unsupported, so show the user those comments in the pull request."
 	}
 	return reply
