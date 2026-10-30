@@ -230,6 +230,10 @@ def prepare_python_comment_for_screen(
     Returns:
         The comment's words without ``#`` marks or quotes, and the rows
         that draw it.
+
+    Raises:
+        SourceError: The text is neither ``#`` lines nor one whole
+            docstring.
     """
     if text.lstrip().startswith("#"):
         return prepare_line_comment_for_screen(text, "#")
@@ -242,17 +246,18 @@ def draw_docstring_rows(
 ) -> list[ScreenRow]:
     """Return the rows the review screen draws for a docstring.
 
-    The opening quotes start the first row. The closing quotes get a row
-    of their own, unless the docstring is one line in the code.
+    The opening quotes start the first row, or get a row of their own
+    above a heading or a line kept as written. The closing quotes get a
+    row of their own, unless the docstring is one line in the code.
 
     Args:
         docstring: The docstring's match, which gives its prefix, quotes
             and body.
-        parts: The docstring's lines, as ``read_docstring_parts`` returns
-            them.
+        parts: The docstring's lines, as ``read_docstring_parts``
+            returns them.
 
     Returns:
-        One row for each part, plus rows for the quotes.
+        The rows, one for each line of the docstring.
     """
     opening = docstring["prefix"] + docstring["quotes"]
     quotes = docstring["quotes"]
@@ -309,7 +314,10 @@ def lay_out_python_comment(new_wording: str, old: str) -> str:
         string when the new wording has no words.
 
     Raises:
-        SourceError: The new wording holds a carriage return or a NUL.
+        SourceError: The new wording holds a carriage return or a
+            NUL. For a docstring, it also raises when the old text is
+            not one whole docstring, or the new wording holds the
+            closing quotes or adds a backslash escape.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in new_wording or "\0" in new_wording:
@@ -322,8 +330,10 @@ def lay_out_python_comment(new_wording: str, old: str) -> str:
 def lay_out_docstring(new_wording: str, old: str) -> str:
     """Return new wording laid out as a docstring like the old one.
 
-    The new docstring keeps the old one's indentation, quotes and any
-    ``r`` prefix. Its first paragraph starts on the line of the opening
+    The new docstring keeps the old one's indentation, quote character
+    and any ``r`` prefix. A docstring in single quotes becomes triple
+    quoted when it needs more than one line or holds its quote
+    character. Its first paragraph starts on the line of the opening
     quotes. Paragraphs wrap at 72 columns, counting indentation, as
     PEP 8 asks of docstrings.
 
@@ -351,7 +361,7 @@ def lay_out_docstring(new_wording: str, old: str) -> str:
             f"the text holds {closing}, which ends the docstring"
         )
     text = fit_docstring_on_one_line(parts, old_docstring)
-    if not text:
+    if text is None:
         text = wrap_docstring_lines(parts, old_docstring)
     new_docstring = WHOLE_DOCSTRING.fullmatch(text)
     assert new_docstring is not None
@@ -363,7 +373,9 @@ def count_backslash_escapes(body: str) -> Counter[str]:
     """Count each backslash escape in a docstring body, such as ``\\n``.
 
     A doubled backslash is how a backslash is typed on purpose, so it is
-    not counted.
+    not counted. Unlike ``count_docstring_escapes``, which the final
+    write uses, it also counts unknown escapes such as ``\\d``, because
+    no compiler warning checks the wording at edit time.
 
     Args:
         body: The docstring's text between its quotes.
