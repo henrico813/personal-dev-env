@@ -253,7 +253,11 @@ func TestDraftReportsNothingToReview(t *testing.T) {
 // tells the agent to show its comments in the pull request.
 func TestDraftNamesFilesToolCannotReview(t *testing.T) {
 	repo := newShopClone(t, "feat")
-	writeFile(t, filepath.Join(repo, "main.rs"), "// Starts the shop.\nfn main() {}\n")
+	writeFile(
+		t,
+		filepath.Join(repo, "main.rs"),
+		"// Starts the shop.\nfn main() {}\n",
+	)
 
 	reply := replyToDraft(repo, buildRepoCheckerOnPath(t))
 

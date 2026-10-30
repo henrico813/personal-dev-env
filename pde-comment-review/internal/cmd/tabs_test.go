@@ -108,7 +108,12 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 		keepTax,
 		buildNvimTypingScript(`Return the """tax""".\n\n`),
 	)
-	refused := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+	refused := editComment(
+		r,
+		keepTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
 	if refused == nil || !strings.Contains(refused.Error(), "your text is kept") {
 		t.Fatalf("first editComment() error = %v, want the text kept", refused)
 	}
@@ -119,7 +124,12 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 			buildNvimTypingScript(`Return the whole tax.\n\n`),
 	)
 
-	fixed := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+	fixed := editComment(
+		r,
+		keepTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
 
 	if fixed != nil {
 		t.Errorf(
@@ -147,7 +157,12 @@ func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 		buildNvimTypingScript(`Return the tax at C:\\rates, rounded down.\n\n`),
 	)
 
-	err := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
+	err := editComment(
+		r,
+		rewordTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
 
 	if err != nil {
 		t.Fatalf("editComment() error = %v, want the text saved", err)
@@ -204,10 +219,18 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				Cols:     37,
 				Rows:     40,
 			}
-			askCheckerForCommentLayout(r, v)
+			askCheckerForCommentLayout(
+				r,
+				v,
+			)
 
 			pressed := v.PressKey("c", time.Now())
-			emptied := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+			emptied := editComment(
+				r,
+				keepTax.ID,
+				os.Stdin,
+				os.Stdout,
+			)
 
 			if pressed != popup.None {
 				t.Errorf("c gave action %v, want none", pressed)
@@ -251,7 +274,7 @@ func TestRefusedCutReopensDocstringWording(t *testing.T) {
 	if emptied == nil {
 		t.Fatal("first editComment() saved the empty docstring, want it refused")
 	}
-	// The second nvim fails unless the page opens with the docstring's wording.
+	// The second nvim fails unless the page opens with the wording.
 	installFakeNvim(
 		t,
 		`head -n 1 "$1" | grep -qx 'Return the tax.'`,
@@ -303,18 +326,31 @@ func installFakeNvim(t *testing.T, script string) {
 
 // Saves a one-comment review of tax.py in a new repository, with a fake nvim
 // that runs script.
-func startTaxReview(t *testing.T, code string, request review.FeedbackRequest, script string) *review.Review {
+func startTaxReview(
+	t *testing.T,
+	code string,
+	request review.FeedbackRequest,
+	script string,
+) *review.Review {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	repo := t.TempDir()
-	writeFile(t, filepath.Join(repo, "tax.py"), code)
+	writeFile(
+		t,
+		filepath.Join(repo, "tax.py"),
+		code,
+	)
 	batch := review.Batch{
 		Version:  review.Version,
 		Repo:     repo,
 		Requests: []review.FeedbackRequest{request},
 	}
-	if _, err := review.AddBatch("tax", batch); err != nil {
+	_, err := review.AddBatch(
+		"tax",
+		batch,
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
 	r, err := review.OpenReview("tax")

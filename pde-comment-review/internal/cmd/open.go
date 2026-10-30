@@ -255,8 +255,8 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 					)
 				case e.Request.Name == "":
 					if lines, ok := findTextInComment(c.Text, e.Request.Old, c.Line); ok {
-						// Cutting part of a docstring leaves the rest in place,
-						// so only cutting a whole docstring is refused.
+						// Cutting part of a docstring leaves the rest in
+						// place, so only cutting a whole docstring is refused.
 						lines.NoCut = !c.CanCut && e.Request.Old == c.Text
 						found = append(found, lines)
 					}
