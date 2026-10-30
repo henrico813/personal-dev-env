@@ -36,7 +36,7 @@ func resolveProfile(home, requested string, mode profileMode) (profile.Profile, 
 	case readProfile:
 		return profile.Full, nil
 	case installProfile:
-		return "", fmt.Errorf("no saved profile; run pde-installer install terminal or pde-installer install full")
+		return "", fmt.Errorf("no saved profile; run pde-installer install terminal, pde-installer install client, or pde-installer install full")
 	}
 	return "", fmt.Errorf("invalid profile resolution mode")
 }
@@ -79,5 +79,9 @@ func loadProfile(home string) (profile.Profile, bool, error) {
 }
 
 func repairProfileError(path string) error {
-	return fmt.Errorf("%s has no profile; add \"profile\": \"full\" or \"profile\": \"terminal\"", path)
+	return fmt.Errorf(
+		"%s has no profile; add \"profile\" set to %s",
+		path,
+		profile.ValidValues,
+	)
 }

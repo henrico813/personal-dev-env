@@ -1,8 +1,8 @@
 # Update Direct Releases
 
-Direct releases contain full-only runtimes, Neovim, Keychain, Moshi Hook,
-Herdr, nobs, and fonts.
-Terminal installs skip these components.
+Direct releases contain runtimes, Neovim, Keychain, Moshi Hook, Herdr, nobs, and
+fonts. Client installs Neovim, Node, Herdr, nobs, and the fonts; terminal
+installs skip them all.
 
 ## Tools and Runtimes
 
@@ -35,4 +35,4 @@ broker is next started.
 The backend verifies SHA-256 values before activation. It uses direct releases
 for exact runtimes and layouts that other supported managers do not provide.
 There is no direct-release-only command; bare `install` reconciles the saved
-selection and skips these full-only components when terminal is selected.
+selection and skips the components that selection leaves out.

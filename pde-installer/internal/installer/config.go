@@ -19,7 +19,11 @@ type config struct {
 
 func (c config) validate() error {
 	if !c.Profile.Valid() {
-		return fmt.Errorf("invalid profile %q; use full or terminal", c.Profile)
+		return fmt.Errorf(
+			"invalid profile %q; use %s",
+			c.Profile,
+			profile.ValidValues,
+		)
 	}
 	if !c.ColorProfile.Valid() {
 		return fmt.Errorf("invalid color profile %q; use %s", c.ColorProfile, colorprofile.ValidValues)

@@ -149,7 +149,6 @@ func startFakeHerdr(
 	return socket, received
 }
 
-// Ctrl+b e and Ctrl+b E must open the review tool.
 func TestActionOpensReviewInAskedPane(t *testing.T) {
 	tests := []struct {
 		name        string

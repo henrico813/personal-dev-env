@@ -227,7 +227,11 @@ func (m Manager) environment() []string {
 // Validate checks that the chezmoi source is complete and pinned.
 func (m Manager) Validate() error {
 	if !m.Profile.Valid() {
-		return fmt.Errorf("invalid profile %q; use full or terminal", m.Profile)
+		return fmt.Errorf(
+			"invalid profile %q; use %s",
+			m.Profile,
+			profile.ValidValues,
+		)
 	}
 	if !m.ColorProfile.Valid() {
 		return fmt.Errorf("invalid color profile %q; use %s", m.ColorProfile, colorprofile.ValidValues)
@@ -244,7 +248,7 @@ func (m Manager) Validate() error {
 		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", configName),
 		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", checksumsName),
 	}
-	if m.Profile == profile.Full {
+	if m.Profile.HasWorkstationTools() {
 		required = append(required,
 			filepath.Join(m.Source(), "dot_config", "alacritty", "alacritty.toml.tmpl"),
 			filepath.Join(m.Source(), "dot_config", "wezterm", "wezterm.lua.tmpl"),

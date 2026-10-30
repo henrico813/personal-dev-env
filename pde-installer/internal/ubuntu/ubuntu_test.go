@@ -17,6 +17,23 @@ func TestPackageSet(t *testing.T) {
 	}{
 		"full":     {profile: profile.Full, want: []string{"build-essential", "bzip2", "ca-certificates", "curl", "file", "fontconfig", "gawk", "git", "gzip", "make", "patch", "python3", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
 		"terminal": {profile: profile.Terminal, want: []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
+		"client": {
+			profile: profile.Client,
+			want: []string{
+				"ca-certificates",
+				"curl",
+				"file",
+				"git",
+				"gzip",
+				"tar",
+				"unzip",
+				"xclip",
+				"xz-utils",
+				"zsh",
+				"fontconfig",
+				"python3",
+			},
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
