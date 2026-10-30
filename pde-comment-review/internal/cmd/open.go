@@ -90,17 +90,17 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		// Quitting reads nothing, so it works even when the review is gone.
+		// Quits before reading the review, because the AI may have moved it aside.
 		if v.IsQuitKey(key) {
 			return nil
 		}
-		// A Herdr tab and the popup can be open on the same review, and the
-		// AI can send new suggestions while the owner reviews.
+		// Reads the review again, since the popup, a Herdr tab or the AI may
+		// have changed it.
 		r, err = review.OpenReview(r.Name)
 		if err != nil {
 			return err
 		}
-		v.ReloadRequests(r.ListFeedbackRequests(), time.Now())
+		v.ReplaceRequests(r.ListFeedbackRequests(), time.Now())
 		switch v.PressKey(key, time.Now()) {
 		case popup.Keep:
 			r, err = saveAnswerAndShowNext(

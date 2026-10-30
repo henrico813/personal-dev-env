@@ -100,25 +100,25 @@ func (v *View) Show(index int, now time.Time) {
 	v.showRequest(now)
 }
 
-// Shows the requests as read again from disk and keeps the same request on
-// screen. When the AI has sent a new suggestion for it, answer keys wait
-// again so the owner reads it first.
-func (v *View) ReloadRequests(requests []review.RequestWithFeedback, now time.Time) {
+// Replaces the requests and keeps the same request on screen. A new
+// suggestion for that request makes the answer keys wait again.
+func (v *View) ReplaceRequests(requests []review.RequestWithFeedback, now time.Time) {
 	shown := v.Current()
-	v.Requests = requests
-	i := slices.IndexFunc(v.Requests, func(e review.RequestWithFeedback) bool {
+	i := slices.IndexFunc(requests, func(e review.RequestWithFeedback) bool {
 		return e.Request.ID == shown.Request.ID
 	})
+	// Keeps the old list when a new review has taken this review's name.
 	if i < 0 {
 		return
 	}
+	v.Requests = requests
 	v.Index = i
 	if v.Requests[i].Batch != shown.Batch {
 		v.showRequest(now)
 	}
 }
 
-// Shows the current request's suggestion and makes answer keys wait again.
+// Scrolls to the current request's suggestion and makes the answer keys wait.
 func (v *View) showRequest(now time.Time) {
 	v.screen = requestScreen
 	rows, focus := v.body()
@@ -180,7 +180,7 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	if v.typingFor != None {
 		return v.typeText(key)
 	}
-	// q, j and k work on every screen; the other keys depend on the screen.
+	// j and k work on every screen; the other keys depend on the screen.
 	switch key {
 	case "j":
 		rows, _ := v.body()

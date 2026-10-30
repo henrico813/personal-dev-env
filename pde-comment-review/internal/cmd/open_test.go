@@ -162,8 +162,8 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	}
 }
 
-// The popup and a Herdr tab can be open on the same review. The tab once
-// erased the notes the owner saved in the popup while the tab was open.
+// A note saved in the popup must show and stay in a Herdr tab open on the
+// same review.
 func TestConsistentTabPopupStateOnOpen(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	inPopup := startReview(t, cartGo, validApproval, nil)
@@ -203,8 +203,8 @@ func TestConsistentTabPopupStateOnOpen(t *testing.T) {
 	}
 }
 
-// The screen reads the review from disk before each key. The owner must
-// still be able to close it after the review folder is moved away.
+// The AI moves a finished review's folder aside to start the next one.
+// Pressing q must still close the old screen without an error.
 func TestQuitWorksAfterReviewIsMoved(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	r := startReview(t, cartGo, validApproval, nil)

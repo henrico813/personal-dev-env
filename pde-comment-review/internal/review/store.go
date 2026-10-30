@@ -203,9 +203,7 @@ func (r *Review) ListFeedbackRequests() []RequestWithFeedback {
 	return requests
 }
 
-// Saves the owner's note on the newest suggestion for a request, or removes
-// it when the text is empty. Reads the review from disk first, so saves from
-// another screen stay.
+// Saves a note on the latest round of item id; empty text removes it.
 func (r *Review) SaveNote(id int, text string) error {
 	// The popup and a Herdr tab can both save this review, so read it first.
 	saved, err := loadReview(r.Name)
@@ -221,9 +219,9 @@ func (r *Review) SaveNote(id int, text string) error {
 	return replaceJSONFile(filepath.Join(r.Dir, "notes.json"), r.Notes)
 }
 
-// Saves the owner's answer to the suggestion they saw in the given batch, so
-// a newer suggestion still needs an answer. Reads the review from disk first,
-// so saves from another screen stay.
+// Saves the owner's answer to the latest round of item id. The answer
+// covers only that round's text: if the AI proposes the item again, it
+// needs a new answer.
 func (r *Review) SaveAnswer(id, batch int, action, text string) error {
 	// The popup and a Herdr tab can both save this review, so read it first.
 	saved, err := loadReview(r.Name)
