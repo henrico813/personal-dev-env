@@ -78,8 +78,8 @@ func TestPopupRecordNamesItsReview(t *testing.T) {
 	}
 }
 
-// Starts a fake Herdr socket that answers every request and returns the
-// requests it got, each as its method and the review name it carried.
+// Starts a fake Herdr socket with the given tabs open. It returns the
+// requests it got, each as what the request asked for and its review name.
 func startFakeHerdr(
 	t *testing.T,
 	tabLabels map[string]string,
@@ -149,10 +149,7 @@ func startFakeHerdr(
 	return socket, received
 }
 
-// Ctrl+b e must open the review the owner means: two sessions' reviews once
-// sat side by side and the owner answered the wrong one. Only Herdr's action
-// may open it, since a popup an agent opens is drawn out of sight and blocks
-// every PR approval.
+// Ctrl+b e and Ctrl+b E must open the review tool.
 func TestActionOpensReviewInAskedPane(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -236,7 +233,8 @@ func TestActionOpensReviewInAskedPane(t *testing.T) {
 				}
 			}
 
-			// The command changes these for the tools it runs, so put them back after.
+			// The command adds its tools' folders and settings to these, so
+			// put them back when the test ends.
 			for _, name := range []string{
 				"PATH",
 				"AQUA_ROOT_DIR",
