@@ -235,11 +235,15 @@ func (r *Review) SaveAnswer(id, batch int, action, text string) error {
 		return err
 	}
 	*r = *saved
-	// Text the owner typed in a refused edit is no longer needed once the
-	// owner answers the comment.
-	os.Remove(r.BuildEditFilePath(id))
 	r.Answers[id] = Answer{Action: action, Text: text, Batch: batch}
-	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Answers)
+	err = replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Answers)
+	if err != nil {
+		return err
+	}
+	// Text the owner typed in a refused edit is no longer needed once the
+	// owner's answer is saved.
+	os.Remove(r.BuildEditFilePath(id))
+	return nil
 }
 
 // Returns the path of the file nvim opens to edit a comment's wording. The

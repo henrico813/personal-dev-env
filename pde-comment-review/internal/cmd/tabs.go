@@ -164,12 +164,21 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 			id,
 		)
 	}
-	return r.SaveAnswer(
+	err = r.SaveAnswer(
 		id,
 		e.Batch,
 		review.ActionEdited,
 		comment,
 	)
+	if err != nil {
+		keepTypedText = true
+		return fmt.Errorf(
+			"%w; your text is kept, so go back to item %d and press e to save it again",
+			err,
+			id,
+		)
+	}
+	return nil
 }
 
 func findFeedbackRequest(r *review.Review, id int) (review.RequestWithFeedback, error) {
