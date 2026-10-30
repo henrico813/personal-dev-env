@@ -50,21 +50,18 @@ if ! plugins=$(herdr plugin list --json 2>&1); then
 	exit 0
 fi
 
-if ! linked=$(printf '%s\n' "$plugins" | jq -r --arg id "$plugin_id" '.result.plugins[]? | select(.plugin_id == $id) | "\(.version) \(.manifest_path)"' 2>&1); then
-	printf 'Cannot parse the Herdr plugin list: %s\n' "$linked"
+if ! plugin_path=$(printf '%s\n' "$plugins" | jq -r --arg id "$plugin_id" '.result.plugins[]? | select(.plugin_id == $id) | .manifest_path' 2>&1); then
+	printf 'Cannot parse the Herdr plugin list: %s\n' "$plugin_path"
 	exit 0
 fi
 
-# Herdr keeps a linked manifest as it was when linked, so a new version
-# needs a new link.
-version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$manifest_path" 2>/dev/null)
-if [ "$linked" = "$version $manifest_path" ]; then
+if [ "$plugin_path" = "$manifest_path" ]; then
 	exit 0
 fi
 
 # Herdr identifies a linked plugin by id alone (unlink takes only the id), so
 # remove a link to an older manifest before linking this one.
-if [ -n "$linked" ]; then
+if [ -n "$plugin_path" ]; then
 	if ! error=$(herdr plugin unlink "$plugin_id" 2>&1); then
 		printf 'Herdr plugin unlink failed: %s\n' "$error"
 		exit 0

@@ -22,10 +22,9 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		// The fake herdr's state is "already" (linked to this manifest), "older"
-		// (linked to it at an older version), "elsewhere" (linked to another
-		// manifest), "missing" (not linked), "unavailable" (server stopped),
-		// or "link-fail" (link refused).
+		// The fake herdr's state is "already" (linked to this manifest),
+		// "elsewhere" (linked to another manifest), "missing" (not linked),
+		// "unavailable" (server stopped), or "link-fail" (link refused).
 		herdrState string
 		herdrIn    string // "path", or "home" for only the destination's .local/bin.
 		wantOutput string
@@ -36,13 +35,6 @@ func TestHerdrLinkScriptNeverFailsInstall(t *testing.T) {
 			name:       "already linked",
 			herdrState: "already",
 			herdrIn:    "path",
-		},
-		{
-			name:       "linked at an older version",
-			herdrState: "older",
-			herdrIn:    "path",
-			wantUnlink: true,
-			wantLink:   true,
 		},
 		{
 			name:       "linked elsewhere",
@@ -152,20 +144,6 @@ func runHerdrSetup(
 		"pde",
 		"herdr-plugins",
 	)
-	// The fake herdr's already state reports 1.0.0, the version written here.
-	for _, dir := range []string{"pde-approval", "pde-comment-review"} {
-		manifest := filepath.Join(pluginsDir, dir, "herdr-plugin.toml")
-		if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(
-			manifest,
-			[]byte("version = \"1.0.0\"\n"),
-			0o644,
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
 	// The fake herdr logs each call here, so the test can see what ran.
 	logPath := filepath.Join(t.TempDir(), "herdr.log")
 	// Put the fake herdr on PATH or only in the home's .local/bin.
@@ -256,9 +234,7 @@ case "$1 ${2:-}" in
     ;;
   plugin\ list)
     case "$HERDR_MODE" in
-      already) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"1.0.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"1.0.0","manifest_path":"%s"}]}}\n' \
-        "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/pde-comment-review/herdr-plugin.toml" ;;
-      older) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","version":"0.9.0","manifest_path":"%s"},{"plugin_id":"pde.comment-review","version":"0.9.0","manifest_path":"%s"}]}}\n' \
+      already) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","manifest_path":"%s"},{"plugin_id":"pde.comment-review","manifest_path":"%s"}]}}\n' \
         "$HERDR_PLUGINS/pde-approval/herdr-plugin.toml" "$HERDR_PLUGINS/pde-comment-review/herdr-plugin.toml" ;;
       elsewhere) printf '{"result":{"plugins":[{"plugin_id":"pde.approval","manifest_path":"/a/herdr-plugin.toml"},{"plugin_id":"pde.comment-review","manifest_path":"/b/herdr-plugin.toml"}]}}\n' ;;
       *) printf '{"result":{"plugins":[]}}\n' ;;
