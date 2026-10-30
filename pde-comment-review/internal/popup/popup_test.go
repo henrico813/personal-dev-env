@@ -21,9 +21,25 @@ func newView(t *testing.T, code string, requests ...review.FeedbackRequest) *Vie
 	if err := os.WriteFile(filepath.Join(repo, "wire.go"), []byte(code), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	v := &View{Repo: repo, Cols: popupCols, Rows: popupRows, Settle: Settle}
+	v := &View{
+		Repo:             repo,
+		Cols:             popupCols,
+		Rows:             popupRows,
+		Settle:           Settle,
+		CommentLinesByID: map[int]review.CommentLines{},
+	}
 	for _, request := range requests {
 		v.Requests = append(v.Requests, review.RequestWithFeedback{Request: request, Batch: 1})
+		// The real screen asks the checker where each comment sits. These
+		// tests do not run the checker, so this helper finds each comment
+		// itself.
+		if at := strings.Index(code, request.Old); at >= 0 {
+			first := strings.Count(code[:at], "\n") + 1
+			v.CommentLinesByID[request.ID] = review.CommentLines{
+				First: first,
+				Last:  first + strings.Count(request.Old, "\n") - 1,
+			}
+		}
 	}
 	return v
 }
@@ -43,9 +59,22 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 	v := newView(t, code, review.FeedbackRequest{
 		ID: 11, File: "wire.go", Suggestion: review.SuggestReword,
 		Old: "// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n",
-		New: "// Reports whether no tool may declare code.\n",
+		New: "// Reports whether no tool may declare code.\n//\n//\tsave(answer)\n",
 		Why: "Restates the name\x1b[2J\u202e. 判定:✅名前と同じことを言っているだけなので、読み手には何も伝わりません。",
 	})
+	// Code examples must stay visible so the owner can review the whole
+	// comment.
+	v.CommentRows = map[string][]ScreenRow{
+		v.Current().Request.New: {
+			{
+				First: "// ",
+				Rest:  "// ",
+				Words: "Reports whether no tool may declare code.",
+			},
+			{Fixed: "//"},
+			{Fixed: "//\tsave(answer)"},
+		},
+	}
 	v.Origin = review.Origin{
 		RepoName: "personal-dev-env-sandbox-copy",
 		Branch:   "feat/review-apply-screen-画面表示",
@@ -86,6 +115,16 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 	}
 	if lines[popupRows-2] == "" {
 		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
+	}
+
+	for range 3 {
+		v.PressKey("j", time.Now())
+	}
+	exampleLines := v.BuildScreen()
+	checkFits(exampleLines)
+	exampleScreen := colorCodes.ReplaceAllString(strings.Join(exampleLines, "\n"), "")
+	if !strings.Contains(exampleScreen, "\n+//\n+//  save(answer)\n") {
+		t.Errorf("screen does not show the code example and its separator:\n%s", exampleScreen)
 	}
 
 	v.ShowNotWritten("nothing was written: wire.go: item 11 changed in the file after it was added\x1b[2J")

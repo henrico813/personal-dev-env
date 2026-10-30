@@ -59,8 +59,8 @@ one is wrong. It names each problem, for example:
   because Python reviews are off;
 - `old` or `new` is not whole `//` lines, or is a directive such as
   `//go:generate`;
-- `old`, or the comment of an item with a `name`, is not found
-  exactly once in its file. For a repeated comment the error gives
+- `old` of an item without a `name` is not found exactly once in its
+  file. For a repeated comment the error gives
   the line of each copy; the skill's step 4 says what to do;
 - an item with a `name` has no comment by that name in its file, or
   its removed code is back;
