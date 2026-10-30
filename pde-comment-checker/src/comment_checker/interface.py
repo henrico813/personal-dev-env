@@ -125,7 +125,7 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
     one, or else like the comment now under ``name`` in ``file``.
 
     Args:
-        repo: The repository that holds each entry's file.
+        repo: The repository that holds each comment's file.
         entries: The comments to show, as the review tool sends them.
 
     Returns:
@@ -147,7 +147,9 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
         try:
             if "plain" in entry:
                 old = find_layout_comment(repo, entry, language)
-                # Text that is not a comment of this language has no layout.
+                # Raises SourceError when the old text is not a
+                # comment of this language, which leaves the new
+                # wording no layout.
                 language.prepare_for_screen(old.text)
                 text = language.lay_out_wording(entry["plain"], old.text)
             # Plain text with no words gives no text, which cuts the comment.

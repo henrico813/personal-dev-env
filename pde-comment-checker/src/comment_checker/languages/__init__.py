@@ -46,7 +46,8 @@ class Language:
         is_writable: Returns whether a comment can be rewritten without
             changing the code around it.
         list_warnings: Returns the warnings the compiler gives for a
-            file. It is ``None`` for a language ``--list`` does not take.
+            file. It is ``None`` for a language ``--list`` does not
+            take.
         list_functions: Returns each function in a file, for the
             function name rules. It is ``None`` for a language whose
             names another checker checks.

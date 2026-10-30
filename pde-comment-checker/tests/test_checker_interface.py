@@ -1503,10 +1503,10 @@ class TestApplyCheck:
         The owner types plain text on a phone, so ``C:\\new`` would
         silently become a line break and ``\\d`` a warning, even when
         the backslash was moved from another docstring. A doubled
-        backslash, or a warning already in the code, is fine. The test
-        also refuses code after a docstring, cutting a docstring its
-        body needs, a comment that becomes the encoding line and a new
-        comment such as ``# nosec``.
+        backslash, or a warning already in the code, is fine. The
+        checker also refuses code after a docstring, cutting a docstring
+        its body needs, a comment that becomes the encoding line and a
+        new comment such as ``# nosec``.
 
         Args:
             tmp_path: An empty folder the checker writes in.

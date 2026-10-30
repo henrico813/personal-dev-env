@@ -52,10 +52,10 @@ def prepare_line_comment_for_screen(
 ) -> tuple[str, list[ScreenRow]]:
     """Return a comment's words for editing and its rows for the screen.
 
-    The owner edits the words in nvim. Each paragraph becomes one row the
-    screen wraps, and each example line a row drawn as written. A row
-    holding only the mark separates each paragraph or example from the
-    next.
+    The owner edits the words in nvim. Each paragraph becomes one row
+    the screen wraps, and each example line a row drawn as written. A
+    row holding only the mark separates each paragraph or example from
+    the next.
 
     Args:
         text: The comment exactly as it is in the file, with the mark
@@ -65,6 +65,9 @@ def prepare_line_comment_for_screen(
     Returns:
         The comment's words without its marks, with each paragraph on
         one line, and the rows that draw it.
+
+    Raises:
+        SourceError: A line of the text does not start with the mark.
     """
     blocks = read_comment_blocks(text, marker)
     rows: list[ScreenRow] = []
@@ -86,7 +89,7 @@ def prepare_line_comment_for_screen(
 def lay_out_line_comment(
     new_wording: str, old: str, marker: str = "//", width: int = LINE_WIDTH
 ) -> str:
-    """Return new wording as comment lines indented like the old comment.
+    """Return new wording as comment lines indented like the old one.
 
     Sentences are rewrapped so that each line, indentation included,
     fits in the width. Lines that start with a tab or two spaces are
