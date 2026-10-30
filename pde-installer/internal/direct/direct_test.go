@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -209,7 +210,7 @@ func TestOfficialToolsInstall(t *testing.T) {
 		t.Skip("set PDE_TEST_OFFICIAL_TOOLS=1 to download release archives")
 	}
 	manager := New(t.TempDir(), run.Runner{})
-	journal, err := manager.ReconcileTools()
+	journal, err := manager.ReconcileTools(profile.Full)
 	if err != nil {
 		t.Fatalf("ReconcileTools() error = %v", err)
 	}

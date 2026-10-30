@@ -17,21 +17,23 @@ Mutating commands reject UID 0. `doctor` also reports UID 0 as a problem.
 |---|---|
 | `~/.local/bin/` | Launchers and locally built applications |
 | `~/.local/share/aquaproj-aqua/` | Aqua and Aqua packages |
-| `~/.local/share/pde/releases/` | Direct-release tools and runtimes (full only) |
-| `~/.local/share/pde/npm/` | npm package prefix (full only) |
+| `~/.local/share/pde/releases/` | Direct-release tools and runtimes (client: Neovim, Node, Herdr, and nobs) |
+| `~/.local/share/pde/npm/` | npm package prefix (client and full) |
 | `~/.local/share/pde/tmux/<version>/` | Existing amd64-only direct tmux 3.7b binary |
-| `~/.local/share/fonts/pde/` | Managed fonts (full only) |
+| `~/.local/share/fonts/pde/` | Managed fonts (client and full) |
 | `~/.local/state/pde/` | Installer lock, journals, and build state |
 | `~/.config/pde/config.json` | Install path, component/color profiles, and migrated vault settings |
-| `~/.config/herdr/config.toml` | Full-profile Herdr workspace UI configuration |
+| `~/.config/herdr/config.toml` | Client and full Herdr workspace UI configuration |
 | `~/.config/` and other home paths | Chezmoi-managed configuration |
 
-Direct releases, the npm prefix, and managed fonts are full-only. The terminal profile uses only the listed paths needed for its Ubuntu packages,
-the existing amd64-only direct tmux 3.7b binary, terminal Aqua tools and
-configuration, shell/tmux configuration, state, and config. The full profile manages all paths
-in this table. The installer checks that managed destinations
-stay under `HOME`. Journal files also stay under `HOME`; `XDG_STATE_HOME` does
-not move them.
+Terminal installs no direct releases, npm prefix, or managed fonts. Client
+installs Neovim, Node, Herdr, and nobs as direct releases, plus the npm prefix
+and managed fonts. The terminal profile uses only the listed paths needed for
+its Ubuntu packages, the existing amd64-only direct tmux 3.7b binary, terminal
+Aqua tools and configuration, shell/tmux configuration, state, and config. The
+full profile manages all paths in this table. The installer checks that managed
+destinations stay under `HOME`. Journal files also stay under `HOME`;
+`XDG_STATE_HOME` does not move them.
 
 The exception to user-local writes is apt. `sudo apt-get update` and
 `sudo apt-get install` change system package state, and journals do not roll

@@ -10,6 +10,7 @@ import (
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -110,9 +111,83 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	}, nil
 }
 
-// ReconcileTools installs and activates all pinned release tools.
-func (m Manager) ReconcileTools() (*fsutil.Journal, error) {
+// Returns the release tools that the manifest marks for the profile.
+func ToolsFor(selected profile.Profile) ([]Tool, error) {
 	tools, err := Tools()
+	if err != nil {
+		return nil, err
+	}
+	wanted := map[string]bool{}
+	for _, item := range manifest.ByOwnerFor(selected, manifest.Direct) {
+		wanted[item.Name] = true
+	}
+	var result []Tool
+	for _, tool := range tools {
+		if wanted[tool.Name] {
+			result = append(result, tool)
+		}
+	}
+	return result, nil
+}
+
+// Returns an error naming installed release tools the profile leaves out,
+// because installing the profile would delete them.
+func (m Manager) RejectToolRemoval(selected profile.Profile) error {
+	known, err := Tools()
+	if err != nil {
+		return err
+	}
+	profileTools, err := ToolsFor(selected)
+	if err != nil {
+		return err
+	}
+	inProfile := map[string]bool{}
+	for _, tool := range profileTools {
+		inProfile[tool.Name] = true
+	}
+	var leftOut []string
+	for _, tool := range known {
+		if !inProfile[tool.Name] {
+			leftOut = append(leftOut, tool.Name)
+		}
+	}
+	// Full leaves out no tool, so it skips the state file, and reconcileTools
+	// still repairs a corrupt one.
+	if len(leftOut) == 0 {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(m.ToolsRoot(), ".pde-state.json"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read direct tool state: %w", err)
+	}
+	var state toolsState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("parse direct tool state: %w", err)
+	}
+	var removed []string
+	for _, name := range leftOut {
+		if _, installed := state.Tools[name]; installed {
+			removed = append(removed, name)
+		}
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"installing %s would delete %s from %s; run pde-installer install full, or delete that folder first to give them up",
+		selected,
+		strings.Join(removed, ", "),
+		m.ToolsRoot(),
+	)
+}
+
+// Installs and activates the profile's release tools. Activation replaces
+// the whole releases folder, so it deletes tools the profile leaves out.
+func (m Manager) ReconcileTools(selected profile.Profile) (*fsutil.Journal, error) {
+	tools, err := ToolsFor(selected)
 	if err != nil {
 		return nil, err
 	}

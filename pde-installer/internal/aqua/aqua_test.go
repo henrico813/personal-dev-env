@@ -76,7 +76,7 @@ func TestAquaRejectsInvalidProfile(t *testing.T) {
 }
 
 func TestProfileAquaPackages(t *testing.T) {
-	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
+	for _, selected := range []profile.Profile{profile.Full, profile.Client, profile.Terminal} {
 		t.Run(string(selected), func(t *testing.T) {
 			configName, _ := selected.AquaFiles()
 			configPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", configName)

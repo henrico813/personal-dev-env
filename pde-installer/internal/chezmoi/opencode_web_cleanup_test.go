@@ -40,11 +40,10 @@ func TestRemoveFileTargetsWebUnits(t *testing.T) {
 	}
 }
 
-// chezmoi skips a removal target that .chezmoiignore matches, so every target
-// must stay out of the ignore list. Otherwise the retired web service, or the
-// old approval scripts on terminal machines, would never be cleaned up.
+// chezmoi skips a removal target that .chezmoiignore matches. An ignored target
+// would leave the retired web service or the old approval scripts in place.
 func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
-	for _, selected := range []string{"full", "terminal"} {
+	for _, selected := range []string{"full", "client", "terminal"} {
 		t.Run(selected, func(t *testing.T) {
 			ignored := renderProfileTemplate(t, ".chezmoiignore.tmpl", selected)
 			removed := renderProfileTemplate(t, removeFileTemplate, selected)
@@ -58,16 +57,106 @@ func TestIgnoreTemplateKeepsRemoveTargets(t *testing.T) {
 	}
 }
 
-// chezmoi deletes a target whose template renders empty. The guard used to be
-// copied to every machine, but terminal machines have no pde-gh-write, so a
-// guard left there would block every PR write.
-func TestGuardRendersEmptyForTerminal(t *testing.T) {
-	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "terminal"); strings.TrimSpace(text) != "" {
-		t.Errorf("terminal guard is not empty:\n%s", text)
+// chezmoi deletes a file whose template renders empty, which removes the gh
+// guard from terminal and client machines. Those machines have no
+// pde-gh-write, so a guard left there would block every PR write.
+func TestGuardRendersOnlyForFull(t *testing.T) {
+	tests := []struct {
+		profile   string
+		wantEmpty bool
+	}{
+		{
+			profile:   "terminal",
+			wantEmpty: true,
+		},
+		{
+			profile:   "client",
+			wantEmpty: true,
+		},
+		{
+			profile:   "full",
+			wantEmpty: false,
+		},
 	}
-	if text := renderProfileTemplate(t, "dot_local/bin/executable_gh.tmpl", "full"); !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
-		t.Errorf("full guard does not start with its shebang:\n%s", text)
+	for _, tt := range tests {
+		t.Run(tt.profile, func(t *testing.T) {
+			text := renderProfileTemplate(
+				t,
+				"dot_local/bin/executable_gh.tmpl",
+				tt.profile,
+			)
+
+			if empty := strings.TrimSpace(text) == ""; empty != tt.wantEmpty {
+				t.Fatalf(
+					"guard empty = %v, want %v:\n%s",
+					empty,
+					tt.wantEmpty,
+					text,
+				)
+			}
+			if !tt.wantEmpty && !strings.HasPrefix(text, "#!/usr/bin/env bash\n") {
+				t.Errorf("guard does not start with its shebang:\n%s", text)
+			}
+		})
 	}
+}
+
+// A machine that moves from full to client keeps full's approval tools until
+// chezmoi removes them, and client has no pde-gh-write for them to run.
+func TestClientRemovesFullApprovalTools(t *testing.T) {
+	text := renderProfileTemplate(t, removeFileTemplate, "client")
+
+	for _, target := range []string{
+		".local/bin/pde-gh-write",
+		".local/bin/pde-pr-approve",
+	} {
+		if !containsLine(text, target) {
+			t.Errorf("%s omits removal target %q", removeFileTemplate, target)
+		}
+	}
+}
+
+// Switching a laptop from full to client must delete full's extra skills and
+// agents.
+func TestClientRemovesWhatOnlyFullInstalls(t *testing.T) {
+	clientInstalls := map[string]bool{}
+	clientExternals := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
+	for _, target := range renderedExternalTargets(clientExternals) {
+		clientInstalls[toRemovalTarget(target)] = true
+	}
+	fullOnly := map[string]bool{}
+	fullExternals := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
+	for _, target := range renderedExternalTargets(fullExternals) {
+		target = toRemovalTarget(target)
+		removable := strings.HasPrefix(target, ".agents/skills/") || strings.HasPrefix(target, ".config/opencode/")
+		if removable && !clientInstalls[target] {
+			fullOnly[target] = true
+		}
+	}
+	clientRemoves := renderProfileTemplate(t, removeFileTemplate, "client")
+
+	if len(fullOnly) == 0 {
+		t.Fatal("full installs no skills or OpenCode files that client lacks")
+	}
+	for target := range fullOnly {
+		if !containsLine(clientRemoves, target) {
+			t.Errorf("client keeps full-only %s", target)
+		}
+	}
+	for target := range clientInstalls {
+		if containsLine(clientRemoves, target) {
+			t.Errorf("client removes %s, which it installs", target)
+		}
+	}
+}
+
+// Returns the skill folder for a skill file, such as .agents/skills/delegate.
+func toRemovalTarget(target string) string {
+	if name, found := strings.CutPrefix(target, ".agents/skills/"); found {
+		skill, _, _ := strings.Cut(name, "/")
+		return ".agents/skills/" + skill
+	}
+	return target
 }
 
 // The one-time script must disable and stop the live units while their files
