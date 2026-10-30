@@ -83,18 +83,18 @@ def prepare_line_comment_for_screen(
     return words, rows
 
 
-def write_line_comment(
-    plain: str, old: str, marker: str = "//", width: int = LINE_WIDTH
+def lay_out_line_comment(
+    new_wording: str, old: str, marker: str = "//", width: int = LINE_WIDTH
 ) -> str:
-    """Return plain text as comment lines indented like the old comment.
+    """Return new wording as comment lines indented like the old comment.
 
     Sentences are rewrapped so that each line, indentation included,
     fits in the width. Lines that start with a tab or two spaces are
     kept as example lines.
 
     Args:
-        plain: The new wording as plain text. Text with no words deletes
-            the comment.
+        new_wording: The comment's new words, without marks. Text with
+            no words deletes the comment.
         old: The comment's current lines in the file, whose indentation
             the new lines copy.
         marker: The mark that starts each line, such as ``//`` or ``#``.
@@ -108,7 +108,7 @@ def write_line_comment(
     indent = first_line[: len(first_line) - len(first_line.lstrip(" \t"))]
     width -= len(indent.replace("\t", "    ")) + len(marker) + 1
     lines: list[str] = []
-    for block in group_comment_blocks(plain.split("\n")):
+    for block in group_comment_blocks(new_wording.split("\n")):
         if lines:
             lines.append(indent + marker)
         if block.example:

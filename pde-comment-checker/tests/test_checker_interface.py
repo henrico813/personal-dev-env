@@ -928,7 +928,9 @@ class TestShowDocstrings:
         """Write plain text keeping the old indent, prefix and quotes.
 
         A lost ``r`` prefix changes what a backslash means, and a quote
-        next to the closing quotes would end the string early.
+        next to the closing quotes would end the string early. Escapes
+        already in the old docstring are allowed, so two cases put theirs
+        there.
 
         Args:
             tmp_path: An empty folder the checker runs in.
@@ -984,13 +986,11 @@ class TestShowDocstrings:
     def test_unwritable_plain_text_is_refused(
         self, tmp_path: Path, plain: str, problem: str
     ) -> None:
-        """Refuse plain text that would break the file it goes into.
+        """Refuse new wording that would break or change the docstring.
 
-        Closing quotes would turn the rest of the text into code. Python
-        reads a carriage return as a line end, and a file holding a NUL
-        does not compile. A new backslash escape would change the
-        docstring or make Python warn. Refusing here tells the owner at
-        once, not after every comment is answered.
+        The owner types on a phone and cannot see that ``C:\\new``
+        becomes a line break. Refusing at edit time lets the owner fix
+        the text before answering more comments.
 
         Args:
             tmp_path: An empty folder the checker runs in.
@@ -1430,17 +1430,17 @@ class TestApplyCheck:
             ),
             pytest.param(
                 {"total": '    """Sum C:\\\\a or C:\\new."""\n'},
-                "shop.py: the write adds \\n to the docstring of total",
+                "shop.py: the docstring of total would hold \\n",
                 id="escape",
             ),
             pytest.param(
                 {"total": '    """Sum \\N{EM DASH} in cents."""\n'},
-                "the write adds \\N{EM DASH} to the docstring of total",
+                "the docstring of total would hold \\N{EM DASH}",
                 id="named-escape",
             ),
             pytest.param(
                 {"total": '    """Sum \\\n    prices."""\n'},
-                "the write adds a backslash at a line end to the docstring",
+                "the docstring of total would hold a backslash at a line end",
                 id="line-end-backslash",
             ),
             pytest.param(
@@ -1448,7 +1448,7 @@ class TestApplyCheck:
                     "fee": '    """Fee."""\n',
                     "total": '    """Sum at C:\\new."""\n',
                 },
-                "the write adds \\n to the docstring of total",
+                "the docstring of total would hold \\n",
                 id="swap-escape",
             ),
             pytest.param(
@@ -1456,7 +1456,7 @@ class TestApplyCheck:
                     "f@if": '        """F."""\n',
                     "f@else": '        """F at C:\\new."""\n',
                 },
-                "the write adds \\n to the docstring of f",
+                "the docstring of f would hold \\n",
                 id="swap-escape-same-name",
             ),
             pytest.param({"tax": ""}, "only statement", id="cut-whole-body"),

@@ -19,7 +19,7 @@ from .go import (
 from .line_comments import (
     ScreenRow,
     prepare_line_comment_for_screen,
-    write_line_comment,
+    lay_out_line_comment,
 )
 from .python import (
     PYTHON_GENERATED_MARKER,
@@ -29,7 +29,7 @@ from .python import (
     list_python_warnings,
     parse_python_comments,
     prepare_python_comment_for_screen,
-    write_python_comment,
+    lay_out_python_comment,
 )
 
 
@@ -93,7 +93,7 @@ LANGUAGES = {
         list_functions=list_go_functions,
         reviews_on=True,
         prepare_for_screen=prepare_line_comment_for_screen,
-        lay_out_wording=write_line_comment,
+        lay_out_wording=lay_out_line_comment,
         finish_rewrite=finish_go_rewrite,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
@@ -106,7 +106,7 @@ LANGUAGES = {
         list_warnings=list_python_warnings,
         reviews_on=True,
         prepare_for_screen=prepare_python_comment_for_screen,
-        lay_out_wording=write_python_comment,
+        lay_out_wording=lay_out_python_comment,
         finish_rewrite=finish_python_rewrite,
     ),
 }
