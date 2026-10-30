@@ -103,6 +103,7 @@ Vibe binaries plus repo-managed AI config.
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
+| TypeScript development | `ai/skills/typescript-development/` | `~/.agents/skills/typescript-development/` | Shared JavaScript and TypeScript development guidance |
 | Pull request | `ai/skills/pull-request/` | `~/.agents/skills/pull-request/` | Pull-request procedure |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
