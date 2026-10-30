@@ -236,7 +236,10 @@ func (r *Review) SaveAnswer(id, batch int, action, text string) error {
 	}
 	*r = *saved
 	r.Answers[id] = Answer{Action: action, Text: text, Batch: batch}
-	err = replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Answers)
+	err = replaceJSONFile(
+		filepath.Join(r.Dir, "decisions.json"),
+		r.Answers,
+	)
 	if err != nil {
 		return err
 	}

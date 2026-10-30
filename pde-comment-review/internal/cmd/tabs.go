@@ -145,7 +145,12 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 				id,
 			)
 		}
-		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
+		return r.SaveAnswer(
+			id,
+			e.Batch,
+			review.ActionCut,
+			"",
+		)
 	}
 	// The owner's text takes the quotes and prefix of the wording shown in
 	// nvim, such as the r prefix of the AI's reword.
