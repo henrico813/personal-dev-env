@@ -141,8 +141,9 @@ Nothing is written, and the screen says why, when:
   approved;
 - a listed rename would move no approved comment: its file has no item.
 
-`submit` and `add` refuse an item whose comment has the same wording
-as another in its file. Change an unapproved copy's wording first.
+`submit` and `add` refuse an item without a `name` whose comment has
+the same wording as another in its file. Change an unapproved copy's
+wording first.
 After changing code to fix a refusal, run `draft` again and repeat
 the `set` changes.
 `draft` leaves out a doc comment followed by a Go directive, such as
@@ -191,7 +192,6 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 
 | Package | Holds |
 | --- | --- |
-| `internal/comment` | Everything that knows Go comment syntax. |
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
 | `internal/cmd` | The commands, the MCP server, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |

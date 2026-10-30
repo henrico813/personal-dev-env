@@ -1,8 +1,9 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
-	"slices"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -57,17 +58,13 @@ func readReviewOrigin(r *review.Review) (review.Origin, error) {
 func runReviewScreen(
 	r *review.Review, origin review.Origin, in, out *os.File, opts screenOptions,
 ) error {
-	foundByName, err := readCommentsByName(r)
 	v := &popup.View{
-		Requests:    r.ListFeedbackRequests(),
-		Repo:        r.Repo(),
-		Origin:      origin,
-		Settle:      opts.settle,
-		FoundByName: foundByName,
+		Requests: r.ListFeedbackRequests(),
+		Repo:     r.Repo(),
+		Origin:   origin,
+		Settle:   opts.settle,
 	}
-	if err != nil {
-		v.ShowNotice(err.Error())
-	}
+	askCheckerForCommentLayout(r, v)
 	term, err := popup.Start(in, out)
 	if err != nil {
 		return err
@@ -95,9 +92,14 @@ func runReviewScreen(
 		}
 		// Reads the review again, since the popup, a Herdr tab or the AI may
 		// have changed it.
+		batches := len(r.Batches)
 		r, err = review.OpenReview(r.Name)
 		if err != nil {
 			return err
+		}
+		// Comments from a new batch need the checker to find and wrap them.
+		if len(r.Batches) != batches {
+			askCheckerForCommentLayout(r, v)
 		}
 		v.ReplaceRequests(r.ListFeedbackRequests(), time.Now())
 		switch v.PressKey(key, time.Now()) {
@@ -149,7 +151,7 @@ func runReviewScreen(
 					return viewFile(
 						r.Repo(),
 						request,
-						v.FoundByName,
+						v.CommentLinesByID,
 						in,
 						out,
 					)
@@ -165,22 +167,229 @@ func runReviewScreen(
 	}
 }
 
-// Returns each named request's comment as its file has it now. Runs the
-// checker only when the review has a named request.
-func readCommentsByName(r *review.Review) (map[int]string, error) {
-	isNamed := func(e review.RequestWithFeedback) bool { return e.Request.Name != "" }
-	if !slices.ContainsFunc(r.ListFeedbackRequests(), isNamed) {
+// Asks the checker where each comment sits in its file and how to wrap it on
+// screen. A failure shows as a message on the screen instead of closing it.
+func askCheckerForCommentLayout(r *review.Review, v *popup.View) {
+	checker, err := findCheckerPath()
+	if err == nil {
+		v.CommentLinesByID, err = findCommentLineRanges(r, checker)
+	}
+	if err == nil {
+		v.CommentRows, err = readCommentRows(r, checker)
+	}
+	if err != nil {
+		v.ShowNotice(err.Error())
+	}
+}
+
+// Returns the lines of each comment under review.
+func findCommentLineRanges(r *review.Review, checker string) (map[int]review.CommentLines, error) {
+	args := []string{
+		"list",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		r.Repo(),
+	}
+	files := 0
+	for _, file := range r.ListFiles() {
+		path := filepath.Join(
+			r.Repo(),
+			file,
+		)
+		// The checker fails on a file that is gone, such as one the branch
+		// deleted.
+		if _, err := os.Stat(path); err == nil {
+			args = append(
+				args,
+				path,
+			)
+			files++
+		}
+	}
+	if files == 0 {
 		return nil, nil
 	}
-	checker, err := findCheckerPath()
+	var listed struct {
+		Files []struct {
+			File     string `json:"file"`
+			Comments []struct {
+				Name    string `json:"name"`
+				Line    int    `json:"line"`
+				EndLine int    `json:"end_line"`
+				Text    string `json:"text"`
+			} `json:"comments"`
+		} `json:"files"`
+		Problems []string `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		nil,
+		&listed,
+		args...,
+	)
+	if err == nil {
+		err = joinProblems(listed.Problems)
+	}
 	if err != nil {
 		return nil, err
 	}
-	named, err := readReviewComments(r, checker)
+	places := map[int]review.CommentLines{}
+	for _, e := range r.ListFeedbackRequests() {
+		var found []review.CommentLines
+		for _, file := range listed.Files {
+			if file.File != e.Request.File || e.Request.CodeRemoved {
+				continue
+			}
+			for _, c := range file.Comments {
+				switch {
+				case e.Request.Name != "" && c.Name == e.Request.Name:
+					found = append(
+						found,
+						review.CommentLines{
+							First: c.Line,
+							Last:  c.EndLine,
+						},
+					)
+				case e.Request.Name == "":
+					if lines, ok := findTextInComment(c.Text, e.Request.Old, c.Line); ok {
+						found = append(found, lines)
+					}
+				}
+			}
+		}
+		if len(found) == 1 {
+			places[e.Request.ID] = found[0]
+		}
+	}
+	return places, nil
+}
+
+// Returns the lines of a comment the checker could not name.
+func findTextInComment(text, old string, line int) (review.CommentLines, bool) {
+	at := strings.Index(text, old)
+	// The comment under review may be only part of the checker's comment, such
+	// as the prose above a Go directive. It counts only when it starts a line.
+	if at < 0 || at > 0 && text[at-1] != '\n' {
+		return review.CommentLines{}, false
+	}
+	first := line + strings.Count(text[:at], "\n")
+	return review.CommentLines{
+		First: first,
+		Last:  first + strings.Count(old, "\n") - 1,
+	}, true
+}
+
+// Holds one comment to send to the checker, with its file so the checker can
+// tell the language.
+type showEntry struct {
+	File string `json:"file"`
+	Text string `json:"text"`
+}
+
+// Holds what the checker returns for one comment. It gives the comment as file
+// lines, as plain sentences to edit, and as paragraphs the screen can wrap.
+type shownComment struct {
+	Text   string            `json:"text"`
+	Plain  string            `json:"plain"`
+	Screen []popup.ScreenRow `json:"screen"`
+}
+
+// Asks the checker to turn each comment into plain sentences the owner edits
+// and into paragraphs the screen can wrap to its width.
+func prepareCommentsForScreen(checker, repo string, entries []showEntry) ([]shownComment, error) {
+	var reply struct {
+		Shown    []shownComment `json:"shown"`
+		Problems []string       `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		entries,
+		&reply,
+		"show",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		repo,
+	)
+	if err == nil {
+		err = joinProblems(reply.Problems)
+	}
+	return reply.Shown, err
+}
+
+// Asks the checker to turn plain sentences back into comment lines. The new
+// lines keep the old comment's markers, such as //, and its indentation.
+func convertSentencesToComment(checker, repo, file, old, plain string) (string, error) {
+	entries := []struct {
+		File  string `json:"file"`
+		Text  string `json:"text"`
+		Plain string `json:"plain"`
+	}{{
+		File:  file,
+		Text:  old,
+		Plain: plain,
+	}}
+	var reply struct {
+		Shown []struct {
+			Text string `json:"text"`
+		} `json:"shown"`
+		Problems []string `json:"problems"`
+	}
+	err := runCheckerCommand(
+		checker,
+		entries,
+		&reply,
+		"show",
+		"--interface",
+		fmt.Sprint(checkerJSONVersion),
+		"--repo",
+		repo,
+	)
+	if err == nil {
+		err = joinProblems(reply.Problems)
+	}
+	if err != nil {
+		return "", err
+	}
+	return reply.Shown[0].Text, nil
+}
+
+// Asks the checker to wrap every version of each comment for the screen.
+func readCommentRows(r *review.Review, checker string) (map[string][]popup.ScreenRow, error) {
+	var entries []showEntry
+	seen := map[string]bool{}
+	for _, e := range r.ListFeedbackRequests() {
+		texts := []string{e.Request.Old, e.Request.New}
+		if e.Feedback.Answer != nil {
+			texts = append(texts, e.Feedback.Answer.Text)
+		}
+		for _, text := range texts {
+			if text != "" && !seen[text] {
+				seen[text] = true
+				entries = append(
+					entries,
+					showEntry{
+						File: e.Request.File,
+						Text: text,
+					},
+				)
+			}
+		}
+	}
+	shown, err := prepareCommentsForScreen(
+		checker,
+		r.Repo(),
+		entries,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return findCommentsByName(r, named), nil
+	rows := map[string][]popup.ScreenRow{}
+	for i, s := range shown {
+		rows[entries[i].Text] = s.Screen
+	}
+	return rows, nil
 }
 
 func openEditTab(r *review.Review, v *popup.View) bool {
@@ -198,6 +407,7 @@ func editInPlace(
 	id := v.Current().Request.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
 	v.Requests = r.ListFeedbackRequests()
+	askCheckerForCommentLayout(r, v)
 	// Moves on even when nothing was saved, as the popup does when the edit
 	// tab reopens it at the next unanswered request.
 	v.ShowNextUnanswered(v.Index+1, time.Now())
@@ -285,8 +495,7 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	v.Requests = r.ListFeedbackRequests()
 	switch {
 	case err != nil && !v.IsAllAnswered():
-		// A refused request from the new batch opens on screen. The answers are
-		// written once the owner answers it.
+		askCheckerForCommentLayout(r, v)
 		v.ShowNextUnanswered(
 			0,
 			time.Now(),
