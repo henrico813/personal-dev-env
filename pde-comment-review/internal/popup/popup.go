@@ -165,8 +165,6 @@ func (v *View) ShowNotWritten(reason string) {
 	v.scroll = 0
 }
 
-// Reports whether a key press closes the screen. Ctrl-c always does, and q
-// does unless the owner is typing.
 func (v *View) IsQuitKey(key string) bool {
 	return key == "\x03" || key == "q" && v.typingFor == None
 }
