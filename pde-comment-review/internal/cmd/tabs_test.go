@@ -28,7 +28,8 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	}{
 		{
 			name: "new wording",
-			// The page opens with the AI's proposal, without comment marks.
+			// The edit page starts with the AI's proposal as plain sentences,
+			// without the // markers.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
 				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
 			want: &review.Answer{
@@ -36,8 +37,8 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
 				Batch:  1,
 			},
-			// The screen breaks these lines at 37 columns, not where the saved
-			// comment breaks, so it used the checker's split.
+			// The screen wraps these lines at 37 columns, not where the saved
+			// comment wraps, so it used the checker's paragraphs.
 			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{

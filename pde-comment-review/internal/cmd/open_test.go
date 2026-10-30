@@ -255,7 +255,8 @@ func TestScreenAppliesNewBatchAfterRefusal(t *testing.T) {
 		"o",
 	)
 	waitForScreen(t, master, "4/4 cut? cart.go")
-	// The screen asks the checker again to wrap the AI's new comment.
+	// The screen shows the comment the AI just sent wrapped like this only
+	// after it asks the checker again.
 	waitForScreen(t, master, "-// above zero.")
 	typeKeys(t, master, "o")
 	waitForScreen(
@@ -466,9 +467,7 @@ func installRepoChecker(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 }
 
-// Two functions may have comments with the same words, and the screen once
-// showed an error for both. A file that changed after the screen read it must
-// show a message instead of crashing the screen.
+// Two functions with the same comment must each show their own code.
 func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())

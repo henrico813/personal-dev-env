@@ -30,8 +30,9 @@ func newView(t *testing.T, code string, requests ...review.FeedbackRequest) *Vie
 	}
 	for _, request := range requests {
 		v.Requests = append(v.Requests, review.RequestWithFeedback{Request: request, Batch: 1})
-		// The real screen gets these lines from the checker, which this test
-		// does not run.
+		// The real screen asks the checker where each comment sits. These
+		// tests do not run the checker, so this helper finds each comment
+		// itself.
 		if at := strings.Index(code, request.Old); at >= 0 {
 			first := strings.Count(code[:at], "\n") + 1
 			v.CommentLinesByID[request.ID] = review.CommentLines{

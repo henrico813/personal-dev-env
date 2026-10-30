@@ -71,30 +71,25 @@ const (
 
 // What the screen shows: one entry, scrolled down scroll rows.
 type View struct {
-	Requests   []review.RequestWithFeedback
-	Repo       string
-	Origin     review.Origin
-	Index      int
-	scroll     int
-	Cols, Rows int
-	Settle     time.Duration
-	notice     string // shown above the key hint until the next key
-	typingFor  Action // SaveNote or Search while the owner types into Typed
-	Typed      string
-	shownAt    time.Time
-	screen     screen
-	result     string // what writing the answers did, or why it did not
-	written    bool   // whether the answers reached the code
-	// The first and last file line of each comment under review, by its ID. A
-	// comment the checker did not find exactly once has no entry.
+	Requests         []review.RequestWithFeedback
+	Repo             string
+	Origin           review.Origin
+	Index            int
+	scroll           int
+	Cols, Rows       int
+	Settle           time.Duration
+	notice           string // shown above the key hint until the next key
+	typingFor        Action // SaveNote or Search while the owner types into Typed
+	Typed            string
+	shownAt          time.Time
+	screen           screen
+	result           string // what writing the answers did, or why it did not
+	written          bool   // whether the answers reached the code
 	CommentLinesByID map[int]review.CommentLines
-	// Each comment's text split by the checker into parts the screen wraps,
-	// keyed by that text. Text with no entry shows as its own lines.
-	CommentRows map[string][]ScreenRow
+	CommentRows      map[string][]ScreenRow
 }
 
-// One row of the checker's show reply. A row with Words is wrapped after
-// its marks; any other row is drawn as Fixed.
+// One line or paragraph of a comment.
 type ScreenRow struct {
 	First string `json:"first"`
 	Rest  string `json:"rest"`
@@ -102,7 +97,7 @@ type ScreenRow struct {
 	Fixed string `json:"fixed"`
 }
 
-// Wraps comment sentences with their marks, preserving code examples.
+// Wraps a comment's paragraphs to the screen width.
 func wrapScreenRows(rows []ScreenRow, width int) []string {
 	var lines []string
 	for _, row := range rows {
@@ -411,8 +406,8 @@ func (v *View) body() ([]string, int) {
 		if ok {
 			lines = wrapScreenRows(rows, width)
 		} else {
-			// Without the checker's split, the screen shows the comment's own
-			// lines and folds any that are too wide.
+			// When the checker could not split this wording, the screen shows
+			// the comment's lines as written and folds any that are too wide.
 			lines = strings.Split(
 				strings.TrimSuffix(text, "\n"),
 				"\n",
@@ -546,9 +541,7 @@ func escapeControlCharacters(text string) string {
 	return out.String()
 }
 
-// Joins words with single spaces into lines of at most width characters.
-// A word longer than width goes on a line of its own, so that line is
-// wider than width.
+// Joins words into lines that fit the given width.
 func wrapWords(words []string, width int) []string {
 	var lines []string
 	line := ""

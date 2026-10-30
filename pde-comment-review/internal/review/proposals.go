@@ -123,14 +123,12 @@ func findRequestProblem(request FeedbackRequest) error {
 	return nil
 }
 
-// Holds the first and last line of a comment in its file, counting from 1.
 type CommentLines struct {
 	First int
 	Last  int
 }
 
-// Returns the lines of a comment under review in its file, or an error when
-// the checker did not find that comment exactly once.
+// Returns where the item's comment is in its file.
 func FindCommentLines(request FeedbackRequest, places map[int]CommentLines) (CommentLines, error) {
 	at, ok := places[request.ID]
 	if !ok {
@@ -165,7 +163,7 @@ func ReadCodeAround(
 		strings.TrimSuffix(string(data), "\n"),
 		"\n",
 	)
-	// The file may have changed since the screen read it.
+	// The lines may be gone if the file got shorter since the screen read it.
 	if at.First < 1 || at.First > at.Last || at.Last > len(lines) {
 		return nil, nil, fmt.Errorf(
 			"%s changed after the screen read it",
