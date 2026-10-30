@@ -67,7 +67,7 @@ func replyToDraft(dir, checker string) agentReply {
 	return replyAfter(dir, err)
 }
 
-// Suggests keep, cut or reword for request id, with text as plain sentences.
+// Sets the AI's suggestion of keep, cut or reword for one feedback request.
 func replyToSet(
 	dir string,
 	id int,
@@ -86,8 +86,8 @@ func replyToSet(
 	return reply
 }
 
-// Changes the suggestion for request id in the branch's draft, or starts
-// the next batch's draft for a request the owner left a note on.
+// Changes one suggestion in the branch's draft. A request the owner left
+// a note on starts the next batch's draft instead.
 func changeDraftSuggestion(
 	dir string,
 	id int,

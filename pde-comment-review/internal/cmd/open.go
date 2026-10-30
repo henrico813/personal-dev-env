@@ -157,8 +157,8 @@ func runReviewScreen(
 	}
 }
 
-// Returns each named request's comment as its file has it now, running
-// the checker only when r has a named request.
+// Returns each named request's comment as its file has it now. Runs the
+// checker only when the review has a named request.
 func readCommentsByName(r *review.Review) (map[int]string, error) {
 	isNamed := func(e review.RequestWithFeedback) bool { return e.Request.Name != "" }
 	if !slices.ContainsFunc(r.ListFeedbackRequests(), isNamed) {
@@ -276,8 +276,8 @@ func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
 	v.Requests = r.ListFeedbackRequests()
 	switch {
 	case err != nil && !v.IsAllAnswered():
-		// A refusal for a request the new batch added opens that request; the
-		// answers are written once the owner answers it.
+		// A refused request from the new batch opens on screen. The answers are
+		// written once the owner answers it.
 		v.ShowNextUnanswered(
 			0,
 			time.Now(),

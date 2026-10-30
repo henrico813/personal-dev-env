@@ -248,7 +248,7 @@ func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
 	_, err := writeAndApproveAnswers(r, checker)
 
 	if err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 	approved, err := readApprovals(r.Repo())
 	if err != nil {
@@ -282,7 +282,7 @@ func TestApplyWritesOwnerAnswers(t *testing.T) {
 	_, err := writeAndApproveAnswers(r, checker)
 
 	if err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 	// gofmt realigns the const block once the comment inside it is cut.
 	want := `package cart
@@ -466,7 +466,7 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			_, err := writeAndApproveAnswers(r, checker)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was written") {
-				t.Fatalf("writeAndApproveDecisions() error = %v, want it to contain %q and say nothing was written", err, tt.want)
+				t.Fatalf("writeAndApproveAnswers() error = %v, want it to contain %q and say nothing was written", err, tt.want)
 			}
 			if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != tt.onDisk {
 				t.Errorf("cart.go changed:\n%s", got)

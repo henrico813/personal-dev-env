@@ -107,7 +107,7 @@ func TestParseBatchRefusesUnsafeFiles(t *testing.T) {
 			_, err := ParseBatch([]byte(tt.data))
 
 			if (err == nil) != (tt.want == "") || err != nil && !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("ParseProposals() error = %v, want it to contain %q", err, tt.want)
+				t.Fatalf("ParseBatch() error = %v, want it to contain %q", err, tt.want)
 			}
 		})
 	}

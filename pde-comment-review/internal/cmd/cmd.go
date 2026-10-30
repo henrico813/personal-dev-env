@@ -154,8 +154,8 @@ func addBatchFile(
 	return err
 }
 
-// Saves data, a proposals file, as the next batch of review name, unless
-// the write would refuse it.
+// Saves a proposals file as the review's next batch, unless the final
+// write into the code would refuse it.
 func saveBatch(
 	name string,
 	data []byte,
@@ -255,7 +255,7 @@ type noteForAI struct {
 	Request review.FeedbackRequest `json:"item"`
 }
 
-// Returns the owner's open notes on r, each with the request it is about.
+// Returns the owner's open notes, each with the request it is about.
 func listNotes(r *review.Review) []noteForAI {
 	notes := []noteForAI{}
 	for _, e := range r.ListFeedbackRequests() {
