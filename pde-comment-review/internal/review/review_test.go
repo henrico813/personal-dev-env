@@ -157,30 +157,33 @@ func TestNewBatchClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// A save from the tab or the popup must keep the other's saves.
-func TestConsistentTabAndPopupStateOnSave(t *testing.T) {
+// The popup and a Herdr tab can be open on the same review. A save in one
+// once erased the notes and answers saved in the other.
+func TestConsistentTabPopupStateOnSave(t *testing.T) {
 	repo := newRepo(t)
 	addTestBatch(t, "config", marshalBatch(t, repo, cutPort, rewordParse))
-	popup, err := OpenReview("config")
+	inPopup, err := OpenReview("config")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tab, err := OpenReview("config")
+	inTab, err := OpenReview("config")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := popup.SaveNote(1, "keep the first sentence"); err != nil {
+	// The owner saves a note on each request, one in the popup and one in
+	// the tab.
+	if err := inPopup.SaveNote(1, "keep the first sentence"); err != nil {
 		t.Fatal(err)
 	}
-	if err := popup.SaveAnswer(1, ActionKeep, ""); err != nil {
+	if err := inTab.SaveNote(2, "name the keys"); err != nil {
 		t.Fatal(err)
 	}
-	addTestBatch(t, "config", marshalBatch(t, repo, rewordParse))
-	if err := tab.SaveAnswer(2, ActionCut, ""); err != nil {
+	// The owner answers each request, one in the popup and one in the tab.
+	if err := inPopup.SaveAnswer(1, 1, ActionKeep, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := popup.SaveNote(2, "name the keys"); err != nil {
+	if err := inTab.SaveAnswer(2, 1, ActionCut, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -188,12 +191,39 @@ func TestConsistentTabAndPopupStateOnSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries := saved.ListFeedbackRequests()
-	if e := entries[0]; e.Feedback.Note != "keep the first sentence" || e.Feedback.Answer == nil {
-		t.Errorf("item 1 = %+v, want the popup's note and answer", e)
+	requests := saved.ListFeedbackRequests()
+	if e := requests[0]; e.Feedback.Note != "keep the first sentence" || e.Feedback.Answer == nil {
+		t.Errorf("request 1 = %+v, want the popup's note and answer", e)
 	}
-	if e := entries[1]; e.Batch != 2 || e.Feedback.Note != "name the keys" || e.Feedback.Answer != nil {
-		t.Errorf("item 2 = %+v, want a note and no answer on round 2", e)
+	if e := requests[1]; e.Feedback.Note != "name the keys" || e.Feedback.Answer == nil {
+		t.Errorf("request 2 = %+v, want the tab's note and answer", e)
+	}
+}
+
+// The AI can send a new suggestion while the owner reads the old one. An
+// answer to the old one must not count as an answer to text the owner never
+// saw.
+func TestReplacedSuggestionNeedsNewAnswer(t *testing.T) {
+	repo := newRepo(t)
+	addTestBatch(t, "config", marshalBatch(t, repo, cutPort, rewordParse))
+	r, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown := r.ListFeedbackRequests()[1]
+
+	// The AI sends a new suggestion while the owner reads the first one.
+	addTestBatch(t, "config", marshalBatch(t, repo, rewordParse))
+	if err := r.SaveAnswer(shown.Request.ID, shown.Batch, ActionAccept, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := saved.ListFeedbackRequests()[1]; e.Batch != 2 || e.Feedback.Answer != nil {
+		t.Errorf("request 2 = %+v, want the new suggestion with no answer", e)
 	}
 }
 
