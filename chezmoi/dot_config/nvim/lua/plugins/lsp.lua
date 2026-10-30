@@ -1,4 +1,11 @@
-vim.lsp.enable({ "lua_ls", "gopls" })
+-- Client machines have no language servers, so start only installed ones.
+local servers = {}
+for server, command in pairs({ lua_ls = "lua-language-server", gopls = "gopls" }) do
+  if vim.fn.executable(command) == 1 then
+    table.insert(servers, server)
+  end
+end
+vim.lsp.enable(servers)
 
 -- LSP buffer keymaps on attach
 vim.api.nvim_create_autocmd("LspAttach", {

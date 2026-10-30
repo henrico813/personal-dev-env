@@ -15,17 +15,22 @@ export PATH="$HOME/.local/bin:$PATH"
 pde-installer install terminal
 ```
 
-`terminal` is the small terminal-focused selection. A fresh installation must
-choose `terminal` or `full`; the installer saves that selection in
+Building the installer needs Go 1.21 or newer, for example from
+`sudo apt install golang-go` on Ubuntu 24.04.
+
+`terminal` is for headless homelab VMs, `client` for a laptop that edits files
+and shows Herdr sessions from other machines, with nothing compiled by the
+installer, and `full` for development machines. A fresh installation must choose
+`terminal`, `client`, or `full`; the installer saves that selection in
 `~/.config/pde/config.json`. Later bare `install` runs reuse the saved
-selection, including the inferred full selection for legacy installer state.
-A successful explicit selection switches future installs. A pre-commit failure
-preserves the prior selection. Switching from full to terminal stops
-reconciling full-only artifacts but does not uninstall them.
+selection, including the inferred full selection for legacy installer state. A
+successful explicit selection switches future installs. A pre-commit failure
+preserves the prior selection. Switching from full to terminal stops reconciling
+full-only artifacts but does not uninstall them.
 
 The independent `--color-profile` setting accepts `tokyo-night`,
 `everforest-dark`, or `gruvbox-dark`. It defaults to Tokyo Night, is saved per
-machine, and coordinates terminal, tmux, shell, and full-profile Neovim and
+machine, and coordinates terminal, tmux, shell, and client or full Neovim and
 OpenCode configuration included by the selected component profile.
 
 The installer does not clone or update the repository. Run it from anywhere
@@ -40,9 +45,9 @@ pde-installer doctor
 pde-installer list
 ```
 
-- `install [terminal|full]` reconciles tools and managed home configuration in
-  dependency order. A fresh installation requires an explicit selection;
-  later bare installs reuse saved or legacy selection.
+- `install [terminal|client|full]` reconciles tools and managed home
+  configuration in dependency order. A fresh installation requires an explicit
+  selection; later bare installs reuse saved or legacy selection.
 - `doctor` validates host prerequisites, pins, and managed paths for the saved
   profile (or full on a fresh `HOME`).
 - `list` reports ownership and installed status for the saved profile (or full
@@ -110,7 +115,7 @@ Vibe binaries plus repo-managed AI config.
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), and a Herdr pane that stays working while background subagents run |
-| Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (full only) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
+| Herdr layout | `chezmoi/dot_config/herdr/` | `~/.config/herdr/config.toml` (client and full) | Mobile-first agent workspace UI; Herdr is the installer-managed Herdr release |
 | OpenCode memory | `ai/AGENTS.md`, `chezmoi/` | Existing `~/.opencode-mem/` data | Unsupported with the managed Claude adapter |
 | OpenCode Inline | `nvim-plugins/opencode-inline.nvim/` | `~/.config/nvim/pack/plugins/start/opencode-inline.nvim`, `~/.local/bin/opencode-inline-shim` | CodeCompanion inline plugin and OpenAI-compatible bridge |
 | Pi | `ai/pi/agent/` | `~/.local/bin/pi`, `~/.pi/agent/` | Managed CLI plus settings |
@@ -119,7 +124,7 @@ Vibe binaries plus repo-managed AI config.
 | nobs | `pde-installer/internal/direct/` | `~/.local/bin/nobs` | Finds, reads and syncs vault notes; run `nobs vault set` once per vault |
 | PR write approval | `pdev2/`, `chezmoi/` | `~/.local/bin/{pde-gh-write,pde-pr-approve,gh}`, `~/.local/share/pde/herdr-plugins/pde-approval/` (full only) | Agents write to pull requests only after you approve; see the [approval docs](pdev2/docs/README.md) |
 | Comment review | `pde-comment-review/`, `chezmoi/` | `~/.local/bin/pde-comment-review`, `~/.local/share/pde/herdr-plugins/pde-comment-review/` (full only) | Decide on an AI's comments one per phone screen with Ctrl+b e; see the [comment review docs](pde-comment-review/docs/README.md) |
-| Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (full only) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
+| Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Comment checker | `pde-comment-checker/` | `~/.local/bin/pde-comment-checker` (full only) | Checks agents' code comments and keeps the ones you approved; see the [comment checker README](pde-comment-checker/README.md) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
@@ -173,7 +178,9 @@ loads `~/.agents/skills/`.
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
-stay aligned with the rest of the tree.
+stay aligned with the rest of the tree. `install client` installs only
+`obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
+`behavior-focused-testing`, and `delegate`; every other skill is full-only.
 
 ## Requirements
 
