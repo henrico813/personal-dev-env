@@ -179,7 +179,7 @@ func showReviewAsSaved(
 		v.Index = i
 		// Showing a new version of the item makes answer keys wait a moment.
 		if e.Round != shown.Round {
-			v.Show(i, time.Now())
+			v.ShowNewVersion(i, time.Now())
 		}
 	}
 	return saved, nil
