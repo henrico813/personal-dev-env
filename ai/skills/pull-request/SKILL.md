@@ -84,3 +84,35 @@ steps' defaults.
    `pde-gh-write pr merge NUMBER --squash --subject "$(head -n 1 SQUASH) (#NUMBER)"
    --body-file BODY`. Handle its result as in Open step 4.
 6. Confirm the commit on the default branch has that message.
+
+## Remembering corrections
+
+Here "the user" is the human who asked for the work, not a parent
+agent. Follow every lesson in the Lessons section below. Each is a
+correction the user made, so a lesson wins when it disagrees with the
+text above. If the section is empty and `skill-lessons` is installed,
+run `skill-lessons render` once, since an install can reset this file,
+and read the section again.
+
+When the user corrects how you write, open, update or merge pull
+requests, still save it to memory as your instructions say. If
+`skill-lessons` is installed, also offer once to save it here as a
+lesson. When the user says "remember", save it at once and show the one
+line it prints:
+
+    jq -n --rawfile text /dev/stdin \
+      '{skill: "pull-request", text: ($text | rtrimstr("\n"))}' \
+      <<'EOF' | skill-lessons add -
+    <rule>
+    EOF
+
+The rule goes on its own line, so apostrophes, quotes, backticks and
+`$` are saved as written. If the user corrects a lesson again, add
+`repeat_of: "L<n>"` inside the braces, with the ID from the end of that
+lesson. If `skill-lessons` is not installed, say so once and save no
+lesson. If the skills folder is read-only, as in a Vibe worker, follow
+the lessons shown and save or render nothing. Lessons become rules in
+this text only through a pull request the user asks for.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
