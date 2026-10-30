@@ -56,7 +56,7 @@ func replyToStatus(dir string) agentReply {
 		reply.Next = "The user left notes. Answer every note with review_set and its item's id, then call review_submit once."
 	default:
 		reply.State = "waiting_for_user"
-		reply.Next = fmt.Sprintf("Tell the user: Review %[1]s is ready; press Ctrl+b e in Herdr, or run pde-comment-review open %[1]s. Do not answer its items yourself.", name)
+		reply.Next = fmt.Sprintf("Tell the user: Review %[1]s is ready; press Ctrl+b e in Herdr, or Ctrl+b E for a full tab, or run pde-comment-review open %[1]s. Do not answer its items yourself.", name)
 	}
 	return reply
 }

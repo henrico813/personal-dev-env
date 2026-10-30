@@ -29,7 +29,7 @@ func runEditTab() error {
 	if err := editItemByID(name, os.Getenv(itemIDEnv)); err != nil {
 		waitForEnter(err)
 	}
-	if err := openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name}); err != nil {
+	if _, err := openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name}); err != nil {
 		waitForEnter(fmt.Errorf("cannot reopen the review: %w; press Ctrl+b e", err))
 	}
 	return closeOwnTab()
