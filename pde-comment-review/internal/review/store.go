@@ -218,13 +218,15 @@ func (r *Review) SetNote(id int, text string) error {
 // covers only that round's text: if the AI proposes the item again, it
 // needs a new answer.
 func (r *Review) SetDecision(id int, action, text string) error {
+	// An answer counts only for the text the owner saw.
+	round := r.findLatestRound(id)
 	// Another screen may have saved to this review since it was read.
 	saved, err := loadReview(r.Name)
 	if err != nil {
 		return err
 	}
 	*r = *saved
-	r.Decisions[id] = Decision{Action: action, Text: text, Round: r.findLatestRound(id)}
+	r.Decisions[id] = Decision{Action: action, Text: text, Round: round}
 	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Decisions)
 }
 

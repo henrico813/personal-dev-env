@@ -160,8 +160,7 @@ func runReviewScreen(
 	}
 }
 
-// Reads the review from disk again and keeps the screen on the same item,
-// since the popup can save to it while a tab stays open for hours.
+// Reads the review again to show changes saved elsewhere.
 func reloadReview(
 	r *review.Review,
 	v *popup.View,
@@ -170,18 +169,7 @@ func reloadReview(
 	if err != nil {
 		return r, err
 	}
-	shown := v.Entry()
-	v.Entries = saved.ListEntries()
-	for i, e := range v.Entries {
-		if e.Item.ID != shown.Item.ID {
-			continue
-		}
-		v.Index = i
-		// New text from the AI must be read before an answer counts.
-		if e.Round != shown.Round {
-			v.Refresh(time.Now())
-		}
-	}
+	v.Refresh(saved.ListEntries(), time.Now())
 	return saved, nil
 }
 
