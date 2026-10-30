@@ -204,7 +204,7 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	v.PressKey("a", start.Add(Settle))
 
 	// The AI sends a new suggestion while the owner types.
-	v.ReloadRequests(addNewSuggestion(v.Requests), start.Add(2*Settle))
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(2*Settle))
 	v.PressKey("b", start.Add(2*Settle))
 	saved := v.PressKey("\r", start.Add(2*Settle))
 
@@ -218,8 +218,8 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	}
 }
 
-// The screen reads the review again before every key. If that alone made
-// answer keys wait, the owner could never answer.
+// Reading the review before every key must not make the answer keys
+// wait, or the owner could never answer.
 func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
 	v := newView(
 		t,
@@ -234,7 +234,7 @@ func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
 	start := time.Now()
 	v.ShowNextUnanswered(0, start)
 
-	v.ReloadRequests(slices.Clone(v.Requests), start.Add(Settle))
+	v.ReplaceRequests(slices.Clone(v.Requests), start.Add(Settle))
 	keep := v.PressKey("o", start.Add(Settle))
 
 	if keep != Keep {
@@ -258,11 +258,42 @@ func TestNewTextDelaysAnswers(t *testing.T) {
 	start := time.Now()
 	v.ShowNextUnanswered(0, start)
 
-	v.ReloadRequests(addNewSuggestion(v.Requests), start.Add(Settle))
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(Settle))
 	quick := v.PressKey("o", start.Add(Settle))
 
 	if quick != None {
 		t.Errorf("o right after new text = %v, want None", quick)
+	}
+}
+
+// The AI can start a new review with the same name while the done screen
+// is open.
+func TestReusedReviewNameKeepsShownRequests(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+		review.FeedbackRequest{
+			ID:         2,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// Two.\n",
+		},
+	)
+	start := time.Now()
+	v.Show(1, start)
+	newReview := slices.Clone(v.Requests[:1])
+
+	v.ReplaceRequests(newReview, start.Add(Settle))
+	v.PressKey("j", start.Add(Settle))
+
+	if got := v.Current().Request.ID; got != 2 {
+		t.Errorf("shown request = %d, want 2", got)
 	}
 }
 

@@ -212,7 +212,7 @@ func TestReplacedSuggestionNeedsNewAnswer(t *testing.T) {
 	}
 	shown := r.ListFeedbackRequests()[1]
 
-	// The AI sends a new suggestion while the owner reads the first one.
+	// The AI sends a new suggestion for the request the owner is reading.
 	addTestBatch(t, "config", marshalBatch(t, repo, rewordParse))
 	if err := r.SaveAnswer(shown.Request.ID, shown.Batch, ActionAccept, ""); err != nil {
 		t.Fatal(err)
