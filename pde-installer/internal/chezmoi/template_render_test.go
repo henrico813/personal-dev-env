@@ -48,7 +48,6 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".config/aquaproj-aqua/aqua.yaml",
 				".claude",
 				".config/opencode/bin/planner",
-				".agents/skills/rust-development",
 				"link_herdr_plugins.sh",
 			},
 			omit: []string{

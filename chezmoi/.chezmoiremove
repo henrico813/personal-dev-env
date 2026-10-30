@@ -9,6 +9,34 @@
 {{ end }}
 {{ if ne (env "PDE_PROFILE") "terminal" }}
 .config/opencode/plugins/pde-approval-session.js
+.config/opencode/commands/document_codebase.md
+{{ end }}
+{{ if eq (env "PDE_PROFILE") "client" }}
+# Only full installs these, so client removes what a full install left.
+.agents/skills/cleanup-plan
+.agents/skills/code-documentation
+.agents/skills/comment-review
+.agents/skills/create-plan
+.agents/skills/design-doc
+.agents/skills/git-messages
+.agents/skills/go-development
+.agents/skills/implement-plan
+.agents/skills/promote-memory
+.agents/skills/pull-request
+.agents/skills/python-development
+.agents/skills/research-codebase
+.agents/skills/review-plan
+.agents/skills/roadmap-run
+.agents/skills/rust-development
+.config/opencode/commands/cleanup_plan.md
+.config/opencode/commands/create_plan.md
+.config/opencode/commands/design_doc.md
+.config/opencode/commands/implement_plan.md
+.config/opencode/commands/research_codebase.md
+.config/opencode/commands/review_plan.md
+.config/opencode/agents/plan-architecture-reviewer.md
+.config/opencode/agents/plan-bug-reviewer.md
+.config/opencode/agents/plan-completeness-reviewer.md
 {{ end }}
 {{ if eq (env "PDE_PROFILE") "full" }}
 Projects/CLAUDE.md
@@ -20,7 +48,6 @@ Projects/CLAUDE.md
 .codex/skills/promote-memory
 .codex/skills/python-development
 .codex/skills/rust-development
-.config/opencode/commands/document_codebase.md
 .codex/skills/document-codebase
 
 # Old Codex workflow skills (now in shared skills)
