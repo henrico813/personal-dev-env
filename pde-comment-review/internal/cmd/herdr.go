@@ -22,7 +22,7 @@ const (
 	diffPaneID  = "diff"
 )
 
-// An empty review name makes the popup list the waiting reviews.
+// With no review name, the popup and the review tab list the waiting reviews.
 const reviewNameEnv = "PDE_COMMENT_REVIEW"
 
 // The label the review tab gets, and the one a second Ctrl+b E looks for.
@@ -42,9 +42,8 @@ func (e *herdrError) Error() string {
 	return fmt.Sprintf("herdr: %s (%s)", e.Message, e.Code)
 }
 
-// Opens the one waiting review in Herdr's popup, or the list when several
-// wait. Only the owner's Ctrl+b e may run it, since a popup an agent opens
-// is drawn out of sight and blocks every PR approval.
+// Opens the one waiting review in Herdr's popup or review tab, or the list
+// when several wait.
 func openWaitingReview(placement string) error {
 	if os.Getenv("HERDR_PLUGIN_ACTION_ID") == "" {
 		return errors.New("only Herdr's Ctrl+b e or E opens the review; in a terminal, run open NAME")
@@ -79,7 +78,7 @@ func openWaitingPane(placement string) error {
 }
 
 // Opens the review tab, or moves to the one already open, so a second
-// Ctrl+b E does not start a second screen on the same review.
+// Ctrl+b E does not open a second review screen.
 func openReviewTab(env map[string]string) error {
 	var listed struct {
 		Tabs []struct {
@@ -109,7 +108,7 @@ func openReviewTab(env map[string]string) error {
 	)
 }
 
-// Opens the popup, or the edit or diff tab, with env for its program.
+// Opens the popup, or the review, edit or diff tab.
 func openPluginPane(pane, placement string, env map[string]string) (tabID string, err error) {
 	var opened struct {
 		PluginPane struct {
@@ -136,8 +135,7 @@ func openPluginPane(pane, placement string, env map[string]string) (tabID string
 	return tabID, focusTab(tabID)
 }
 
-// Moves every screen attached to Herdr to the tab. Opening a pane with focus
-// moves only Herdr's own view, which left the owner's screen where it was.
+// Moves every screen attached to Herdr to the tab.
 func focusTab(tabID string) error {
 	return sendHerdrRequest("tab.focus", map[string]any{"tab_id": tabID}, nil)
 }

@@ -40,8 +40,8 @@ func runReviewPopup(in, out *os.File) error {
 	return runReviewScreen(r, origin, in, out, screenOptions{settle: popup.Settle, inPopup: true})
 }
 
-// Runs in Herdr's review tab, where e and d run nvim and less in place. It
-// closes the tab when the owner quits.
+// Runs in Herdr's review tab, where the e and d keys open nvim and less in
+// the same tab. It closes the tab when the owner quits.
 func runReviewTab(in, out *os.File) error {
 	if os.Getenv("HERDR_PLUGIN_ENTRYPOINT_ID") != tabPaneID {
 		return errors.New("only Herdr's review tab runs tab; press Ctrl+b E")
