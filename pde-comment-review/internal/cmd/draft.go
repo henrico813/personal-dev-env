@@ -23,8 +23,8 @@ func saveBranchDraft(dir, checker string) (review.Draft, error) {
 	if err != nil {
 		return review.Draft{}, fmt.Errorf("nothing was saved: %w", err)
 	}
-	// The branch's review now has no round, so the draft is its first.
-	d.Round = 1
+	// The branch's review now has no batch, so the draft is its first.
+	d.BatchNumber = 1
 	if err := review.SaveDraft(name, d); err != nil {
 		return review.Draft{}, err
 	}
@@ -176,30 +176,30 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 			),
 		)
 	}
-	var items []review.Item
+	var requests []review.FeedbackRequest
 	for i, c := range changes.Items {
-		item := review.Item{
-			ID:       i + 1,
-			File:     c.File,
-			Name:     c.Name,
-			Old:      c.Old,
-			Proposal: review.ProposeKeep,
+		request := review.FeedbackRequest{
+			ID:         i + 1,
+			File:       c.File,
+			Name:       c.Name,
+			Old:        c.Old,
+			Suggestion: review.SuggestKeep,
 		}
 		switch {
 		case c.Reason == "code_removed":
-			item.Proposal, item.CodeRemoved = review.ProposeCut, true
+			request.Suggestion, request.CodeRemoved = review.SuggestCut, true
 		case c.Current != c.Old:
-			item.Proposal, item.New = review.ProposeReword, c.Current
+			request.Suggestion, request.New = review.SuggestReword, c.Current
 		}
-		items = append(items, item)
+		requests = append(requests, request)
 	}
 	return review.Draft{
 		Base: base,
-		Proposals: review.Proposals{
-			Version: review.Version,
-			Repo:    repo,
-			Items:   items,
-			Renames: changes.Renames,
+		Batch: review.Batch{
+			Version:  review.Version,
+			Repo:     repo,
+			Requests: requests,
+			Renames:  changes.Renames,
 		},
 	}, nil
 }

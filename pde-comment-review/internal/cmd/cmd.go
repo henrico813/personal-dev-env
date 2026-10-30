@@ -55,7 +55,7 @@ func Main(args []string) int {
 	case len(args) == 3 && args[0] == "add":
 		var checker string
 		if checker, err = findCheckerPath(); err == nil {
-			err = addRound(
+			err = addBatchFile(
 				args[1],
 				args[2],
 				checker,
@@ -134,7 +134,7 @@ func setUpToolEnvironment() {
 	os.Setenv("PATH", strings.Join(folders, string(os.PathListSeparator)))
 }
 
-func addRound(
+func addBatchFile(
 	name string,
 	file string,
 	checker string,
@@ -143,7 +143,7 @@ func addRound(
 	if err != nil {
 		return err
 	}
-	saved, err := saveRound(
+	saved, err := saveBatch(
 		name,
 		data,
 		checker,
@@ -154,18 +154,18 @@ func addRound(
 	return err
 }
 
-// Saves proposals data as the next round of review name, unless the write
-// would refuse it.
-func saveRound(
+// Saves a proposals file as the review's next batch, unless the final
+// write into the code would refuse it.
+func saveBatch(
 	name string,
 	data []byte,
 	checker string,
 ) (saved string, err error) {
-	p, err := review.ParseProposals(data)
+	p, err := review.ParseBatch(data)
 	if err != nil {
 		return "", err
 	}
-	next, err := review.BuildReviewWithRound(
+	next, err := review.BuildReviewWithBatch(
 		name,
 		p,
 	)
@@ -179,7 +179,7 @@ func saveRound(
 				next,
 				named,
 			),
-			refuseUnwritableProposals(
+			refuseUnwritableSuggestions(
 				next,
 				named,
 				checker,
@@ -189,7 +189,7 @@ func saveRound(
 	// The checker locates a comment by its function or type name. The
 	// screen locates it by its text when opening the file.
 	if err == nil {
-		err = refuseUnwritableNamedItems(
+		err = refuseUnwritableNamedRequests(
 			next,
 			named,
 		)
@@ -200,7 +200,7 @@ func saveRound(
 			err,
 		)
 	}
-	round, err := review.AddRound(name, p)
+	batch, err := review.AddBatch(name, p)
 	if err != nil {
 		return "", err
 	}
@@ -214,35 +214,35 @@ func saveRound(
 	}
 	saved = fmt.Sprintf(
 		"saved round %d of review %s: %s",
-		round,
+		batch,
 		name,
 		origin.Label(),
 	)
 	return saved, nil
 }
 
-// Returns an error for each new item that reuses another comment's id,
-// since it would replace that item and its answer.
+// Returns an error for each new request that reuses another comment's
+// id, since it would replace that request and its answer.
 func refuseReusedIDs(r *review.Review, named map[commentKey]string) error {
-	newest := len(r.Rounds) - 1
-	earlier := map[int]review.Item{}
-	for _, p := range r.Rounds[:newest] {
-		for _, item := range p.Items {
-			earlier[item.ID] = item
+	newest := len(r.Batches) - 1
+	earlier := map[int]review.FeedbackRequest{}
+	for _, p := range r.Batches[:newest] {
+		for _, request := range p.Requests {
+			earlier[request.ID] = request
 		}
 	}
 	var problems []error
-	for _, item := range r.Rounds[newest].Items {
-		before, isReused := earlier[item.ID]
-		// An earlier item with no name, such as one whose text changed, may
+	for _, request := range r.Batches[newest].Requests {
+		before, isReused := earlier[request.ID]
+		// An earlier request with no name, such as one whose text changed, may
 		// come back under its id.
-		nameBefore := findItemName(before, named)
-		inOtherFile := isReused && before.File != item.File
-		isOtherComment := isReused && nameBefore != "" && findItemName(item, named) != nameBefore
+		nameBefore := findRequestName(before, named)
+		inOtherFile := isReused && before.File != request.File
+		isOtherComment := isReused && nameBefore != "" && findRequestName(request, named) != nameBefore
 		if inOtherFile || isOtherComment {
 			problems = append(
 				problems,
-				fmt.Errorf("item %d: an earlier round used this id for another comment; use an unused id", item.ID),
+				fmt.Errorf("item %d: an earlier round used this id for another comment; use an unused id", request.ID),
 			)
 		}
 	}
@@ -250,17 +250,17 @@ func refuseReusedIDs(r *review.Review, named map[commentKey]string) error {
 }
 
 type noteForAI struct {
-	ID   int         `json:"id"`
-	Note string      `json:"note"`
-	Item review.Item `json:"item"`
+	ID      int                    `json:"id"`
+	Note    string                 `json:"note"`
+	Request review.FeedbackRequest `json:"item"`
 }
 
-// Returns the owner's open notes on r, each with the item it is about.
+// Returns the owner's open notes, each with the request it is about.
 func listNotes(r *review.Review) []noteForAI {
 	notes := []noteForAI{}
-	for _, e := range r.ListEntries() {
-		if e.Note != "" {
-			notes = append(notes, noteForAI{ID: e.Item.ID, Note: e.Note, Item: e.Item})
+	for _, e := range r.ListFeedbackRequests() {
+		if e.Feedback.Note != "" {
+			notes = append(notes, noteForAI{ID: e.Request.ID, Note: e.Feedback.Note, Request: e.Request})
 		}
 	}
 	return notes

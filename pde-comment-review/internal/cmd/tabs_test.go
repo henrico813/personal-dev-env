@@ -21,22 +21,22 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string // runs as nvim, with the edit page as $1
-		want       *review.Decision
-		wantShown  string // a + line the item screen shows afterwards
+		want       *review.Answer
+		wantShown  string // a + line the request screen shows afterwards
 		wantRefuse bool
 	}{
 		{
 			name:   "new wording",
 			script: `printf 'Returns the total, in cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
-			want: &review.Decision{
-				Action: review.ActionEdited, Text: "// Returns the total, in cents.\n", Round: 1,
+			want: &review.Answer{
+				Action: review.ActionEdited, Text: "// Returns the total, in cents.\n", Batch: 1,
 			},
 			wantShown: "+// Returns the total, in cents.",
 		},
 		{
 			name:   "every word deleted",
 			script: `printf '\n' > "$1.new"; ` + keepMarkerAndCode,
-			want:   &review.Decision{Action: review.ActionCut, Round: 1},
+			want:   &review.Answer{Action: review.ActionCut, Batch: 1},
 		},
 		{name: "closed without a change", script: "true"},
 		{name: "marker deleted", script: `printf 'Returns the total.\n' > "$1"`, wantRefuse: true},
@@ -61,17 +61,17 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, ok := saved.Decisions[rewordTotal.ID]
+			got, ok := saved.Answers[rewordTotal.ID]
 			if tt.want == nil && ok {
 				t.Errorf("saved %+v, want nothing saved", got)
 			}
 			if tt.want != nil && got != *tt.want {
 				t.Errorf("saved %+v, want %+v", got, *tt.want)
 			}
-			// The owner checks an edit on the item screen, which must show
+			// The owner checks an edit on the request screen, which must show
 			// the owner's wording in place of the AI's.
 			if tt.wantShown != "" {
-				v := &popup.View{Entries: saved.ListEntries(), Repo: r.Repo(), Cols: 80, Rows: 40}
+				v := &popup.View{Requests: saved.ListFeedbackRequests(), Repo: r.Repo(), Cols: 80, Rows: 40}
 				v.Show(1, time.Now())
 				screen := strings.Join(v.BuildScreen(), "\n")
 				if !strings.Contains(screen, tt.wantShown) {
