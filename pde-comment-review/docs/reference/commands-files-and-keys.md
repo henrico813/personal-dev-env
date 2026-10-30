@@ -20,10 +20,11 @@ with `pde-comment-review:`, and 2 for a command it does not know.
 `status`, `draft`, `set` and `submit` print their problems in the
 JSON instead, unless the home folder is unknown.
 
-Herdr runs three more commands itself: `popup`, the review screen in
-its popup, and `edit` and `diff`, its two tabs. Ctrl+b e runs `open`
-with no name. `edit`, `diff` and `open` with no name refuse to run
-anywhere else.
+Herdr runs four more commands itself. `popup` shows the review screen
+in Herdr's popup. `tab` shows the same screen in a Herdr tab. `edit`
+and `diff` are the two tabs the popup opens. Ctrl+b e runs `open` with
+no name, and Ctrl+b E runs `open --tab`. `tab`, `edit`, `diff`, `open`
+with no name and `open --tab` refuse to run anywhere else.
 
 The proposals file is described in the AI's skill:
 [The proposals file](../../../ai/skills/comment-review/references/proposals-file.md).
@@ -78,7 +79,8 @@ A review waits until its newest round is written. A review whose
 repository is gone does not wait. With one review waiting, Ctrl+b e
 opens it; with several, it lists them under the agent session that
 added them, newest first; with none, Herdr shows "No comment reviews
-are waiting".
+are waiting". Ctrl+b E opens the same in a tab named "comment
+review". While that tab is open, Ctrl+b E moves to it instead.
 
 ## Keys
 
@@ -90,13 +92,13 @@ comment is answered, it writes the answers or shows they are written.
 | `a` | Take the AI's proposal. |
 | `o` | Keep the comment as it is. |
 | `c` | Cut the comment. |
-| `e` | Edit the comment in nvim: in a new tab in Herdr, in place in a terminal. |
+| `e` | Edit the comment in nvim: in a new tab from Herdr's popup, in place elsewhere. |
 | `m` | Type a note for the AI; Enter saves it, and an empty note removes it. |
 | `v` | Open the file read-only in nvim at the comment. |
 | `s` | Type text and see where it appears in the repository, through `rg`. |
 | `j`, `k` | Scroll down or up. |
 | `l`, `h` | Next or previous comment. |
-| `d` | After the last answer, show the changes: in a new tab in Herdr, in place in a terminal. |
+| `d` | After the last answer, show the changes: in a new tab from Herdr's popup, in place elsewhere. |
 | `q`, Ctrl-c | Close the screen. |
 
 On a comment whose code was removed, `o`, `e` and `v` only say why
@@ -180,9 +182,9 @@ after it, or one that shares a name in its file.
 
 | Piece | Comes from |
 | --- | --- |
-| The plugin `pde.comment-review`: the popup, the edit and diff tabs, and the action Ctrl+b e runs | `chezmoi/dot_local/share/pde/herdr-plugins/pde-comment-review/herdr-plugin.toml.tmpl` |
+| The plugin `pde.comment-review`: the popup, the review, edit and diff tabs, and the actions Ctrl+b e and Ctrl+b E run | `chezmoi/dot_local/share/pde/herdr-plugins/pde-comment-review/herdr-plugin.toml.tmpl` |
 | Linking the plugin into Herdr and reloading Herdr's config after each `chezmoi apply` | `chezmoi/run_after_link_herdr_plugins.sh.tmpl` |
-| Ctrl+b e, in place of Herdr's scrollback editor | `chezmoi/dot_config/herdr/config.toml` |
+| Ctrl+b e, in place of Herdr's scrollback editor, and Ctrl+b E | `chezmoi/dot_config/herdr/config.toml` |
 | The program `~/.local/bin/pde-comment-review` | built by `pde-installer` from `pde-comment-review/` |
 
 Herdr shows one popup at a time; close another popup before pressing
@@ -200,7 +202,11 @@ herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
 
 | Package | Holds |
 | --- | --- |
-| `internal/comment` | Everything that knows Go comment syntax. |
 | `internal/review` | The proposals file, saved reviews, and building the new files. |
 | `internal/popup` | The screen, its keys, and the raw terminal. |
 | `internal/cmd` | The commands, the MCP server, the write after the last answer, and every call to Herdr, nvim, rg, less, git, delta and the checker. |
+
+The code names things differently from the files and messages. An
+item is a `FeedbackRequest`, its proposal is its `Suggestion`, and a
+round is a `Batch`. Your answer and note on an item are its
+`UserFeedback`.

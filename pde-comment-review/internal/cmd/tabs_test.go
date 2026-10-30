@@ -22,27 +22,29 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string // runs as nvim, with the edit page as $1
-		want       *review.Decision
-		wantShown  string // a + line the item screen shows afterwards
+		want       *review.Answer
+		wantShown  string // a + line the request screen shows afterwards
 		wantRefuse bool
 	}{
 		{
 			name: "new wording",
-			// The page opens with the AI's proposal, without comment marks.
+			// The edit page starts with the AI's proposal as plain sentences,
+			// without the // markers.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
 				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
-			want: &review.Decision{
+			want: &review.Answer{
 				Action: review.ActionEdited,
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
-				Round:  1,
+				Batch:  1,
 			},
-			// A different wrap at 37 columns proves the checker's layout.
+			// The screen wraps these lines at 37 columns, not where the saved
+			// comment wraps, so it used the checker's paragraphs.
 			wantShown: "+// in the cart, in cents, rounded\n+// down to whole cents.\n func Total(prices []int) int {",
 		},
 		{
 			name:   "every word deleted",
 			script: `printf '\n' > "$1.new"; ` + keepMarkerAndCode,
-			want:   &review.Decision{Action: review.ActionCut, Round: 1},
+			want:   &review.Answer{Action: review.ActionCut, Batch: 1},
 		},
 		{name: "closed without a change", script: "true"},
 		{name: "marker deleted", script: `printf 'Returns the total.\n' > "$1"`, wantRefuse: true},
@@ -68,21 +70,21 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, ok := saved.Decisions[rewordTotal.ID]
+			got, ok := saved.Answers[rewordTotal.ID]
 			if tt.want == nil && ok {
 				t.Errorf("saved %+v, want nothing saved", got)
 			}
 			if tt.want != nil && got != *tt.want {
 				t.Errorf("saved %+v, want %+v", got, *tt.want)
 			}
-			// The owner checks an edit on the item screen, which must show
+			// The owner checks an edit on the request screen, which must show
 			// the owner's wording in place of the AI's.
 			if tt.wantShown != "" {
 				v := &popup.View{
-					Entries: saved.ListEntries(),
-					Repo:    r.Repo(),
-					Cols:    37,
-					Rows:    40,
+					Requests: saved.ListFeedbackRequests(),
+					Repo:     r.Repo(),
+					Cols:     37,
+					Rows:     40,
 				}
 				askCheckerForCommentLayout(saved, v)
 				v.Show(1, time.Now())
@@ -99,13 +101,13 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 // next edit. The saved wording keeps the r prefix of the AI's wording, or the
 // tool would refuse the owner's backslash when it writes the files.
 func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
-	rewordTax := review.Item{
-		ID:       1,
-		File:     "tax.py",
-		Name:     "tax",
-		Proposal: review.ProposeReword,
-		Old:      "    \"\"\"Return the tax.\"\"\"\n",
-		New:      "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
+	rewordTax := review.FeedbackRequest{
+		ID:         1,
+		File:       "tax.py",
+		Name:       "tax",
+		Suggestion: review.SuggestReword,
+		Old:        "    \"\"\"Return the tax.\"\"\"\n",
+		New:        "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
 	}
 	// The fake nvim types closing quotes the first time. The second time it
 	// finds them in the file and fixes them.
@@ -133,12 +135,12 @@ func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := review.Decision{
+	want := review.Answer{
 		Action: review.ActionEdited,
 		Text:   "    r\"\"\"Return the tax at C:\\rates, rounded down.\"\"\"\n",
-		Round:  1,
+		Batch:  1,
 	}
-	if got := saved.Decisions[rewordTax.ID]; got != want {
+	if got := saved.Answers[rewordTax.ID]; got != want {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
@@ -148,26 +150,26 @@ func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 // comment, so c and an empty edit refuse it at once.
 func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	tests := []struct {
-		name     string
-		itemName string // empty for a hand-written comment found by its text
+		name        string
+		requestName string // empty when the comment is found by its text
 	}{
 		{
-			name:     "drafted item",
-			itemName: "tax",
+			name:        "drafted request",
+			requestName: "tax",
 		},
 		{
-			name:     "hand-written item without a name",
-			itemName: "",
+			name:        "hand-written request without a name",
+			requestName: "",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			keepTax := review.Item{
-				ID:       1,
-				File:     "tax.py",
-				Name:     tt.itemName,
-				Proposal: review.ProposeKeep,
-				Old:      "    \"\"\"Return the tax.\"\"\"\n",
+			keepTax := review.FeedbackRequest{
+				ID:         1,
+				File:       "tax.py",
+				Name:       tt.requestName,
+				Suggestion: review.SuggestKeep,
+				Old:        "    \"\"\"Return the tax.\"\"\"\n",
 			}
 			// The fake nvim deletes every word the first time. The second time
 			// it fails unless the file starts with the docstring's text again.
@@ -180,10 +182,10 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				script,
 			)
 			v := &popup.View{
-				Entries: r.ListEntries(),
-				Repo:    r.Repo(),
-				Cols:    37,
-				Rows:    40,
+				Requests: r.ListFeedbackRequests(),
+				Repo:     r.Repo(),
+				Cols:     37,
+				Rows:     40,
 			}
 			askCheckerForCommentLayout(r, v)
 
@@ -204,27 +206,28 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, ok := saved.Decisions[keepTax.ID]; ok {
+			if got, ok := saved.Answers[keepTax.ID]; ok {
 				t.Errorf("saved %+v, want no answer", got)
 			}
 		})
 	}
 }
 
-// Saves a review of item in a new repository whose tax.py holds code, and
-// puts a fake nvim first on PATH that runs script on the file it opens.
-func startTaxReview(t *testing.T, code string, item review.Item, script string) *review.Review {
+// Saves a review of one comment in a new repository with tax.py, and puts a
+// fake nvim first on PATH that runs the given shell script on the file it
+// opens.
+func startTaxReview(t *testing.T, code string, request review.FeedbackRequest, script string) *review.Review {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "tax.py"), code)
-	proposals := review.Proposals{
-		Version: review.Version,
-		Repo:    repo,
-		Items:   []review.Item{item},
+	batch := review.Batch{
+		Version:  review.Version,
+		Repo:     repo,
+		Requests: []review.FeedbackRequest{request},
 	}
-	if _, err := review.AddRound("tax", proposals); err != nil {
+	if _, err := review.AddBatch("tax", batch); err != nil {
 		t.Fatal(err)
 	}
 	r, err := review.OpenReview("tax")

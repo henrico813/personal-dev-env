@@ -1594,8 +1594,6 @@ class TestApplyCheck:
 
 
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
-# One comment edit in the sample Go file, and the file and approvals
-# after it.
 SUMS_EDIT = make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total")
 SUMS_GO = CART_GO.replace(TOTAL_TEXT, "// Sums.\n")
 SUMS_APPROVED = {
@@ -1653,7 +1651,7 @@ def write_cart_and_tax(repo: Path) -> list[dict]:
     ]
 
 
-def read_files(repo: Path) -> dict[str, bytes]:
+def read_folder_as_bytes(repo: Path) -> dict[str, bytes]:
     """Return the bytes of every file in a folder, by file name.
 
     Comparing this before and after a write shows a changed file and a
@@ -2009,13 +2007,14 @@ class TestApply:
                 tax.go, then the approvals file.
         """
         edits = write_cart_and_tax(tmp_path)
-        before, handlers = read_files(tmp_path), read_stop_handlers()
+        before = read_folder_as_bytes(tmp_path)
+        handlers = read_stop_handlers()
         fail_file_save(monkeypatch, save)
 
         code, _ = apply_answers(tmp_path, edits, flags=())
 
         assert code == 2
-        assert read_files(tmp_path) == before
+        assert read_folder_as_bytes(tmp_path) == before
         assert read_stop_handlers() == handlers
 
     @pytest.mark.parametrize("save", [1, 3], ids=["cart", "approvals"])
@@ -2034,13 +2033,14 @@ class TestApply:
             save: The save after which the error comes.
         """
         edits = write_cart_and_tax(tmp_path)
-        before, handlers = read_files(tmp_path), read_stop_handlers()
+        before = read_folder_as_bytes(tmp_path)
+        handlers = read_stop_handlers()
         interrupt_after_file_save(monkeypatch, save)
 
         with pytest.raises(KeyboardInterrupt):
             apply_answers(tmp_path, edits, flags=())
 
-        assert read_files(tmp_path) == before
+        assert read_folder_as_bytes(tmp_path) == before
         assert read_stop_handlers() == handlers
 
     @pytest.mark.parametrize("save", [2, 3], ids=["tax", "approvals"])
@@ -2065,14 +2065,15 @@ class TestApply:
             save: The save that the signal comes before.
         """
         edits = write_cart_and_tax(tmp_path)
-        before, handlers = read_files(tmp_path), read_stop_handlers()
+        before = read_folder_as_bytes(tmp_path)
+        handlers = read_stop_handlers()
         sent = send_signal_before_save(monkeypatch, save, sig)
 
         with pytest.raises(KeyboardInterrupt):
             apply_answers(tmp_path, edits, flags=())
 
         assert sent == [sig]
-        assert read_files(tmp_path) == before
+        assert read_folder_as_bytes(tmp_path) == before
         assert read_stop_handlers() == handlers
 
     def test_signal_cannot_stop_putting_files_back(
@@ -2088,7 +2089,8 @@ class TestApply:
             monkeypatch: Fails a file save and sends the signal.
         """
         edits = write_cart_and_tax(tmp_path)
-        before, handlers = read_files(tmp_path), read_stop_handlers()
+        before = read_folder_as_bytes(tmp_path)
+        handlers = read_stop_handlers()
         fail_file_save(monkeypatch, 2)
         # Save 3 is the first one that puts an old file back.
         sent = send_signal_before_save(monkeypatch, 3, signal.SIGTERM)
@@ -2097,7 +2099,7 @@ class TestApply:
 
         assert code == 2
         assert sent == [signal.SIGTERM]
-        assert read_files(tmp_path) == before
+        assert read_folder_as_bytes(tmp_path) == before
         assert read_stop_handlers() == handlers
 
     def test_signal_after_last_save_keeps_write(
@@ -2186,7 +2188,8 @@ class TestApply:
             program_handler: The program's handler on every stop signal.
         """
         write_cart(tmp_path)
-        before, blocked = read_files(tmp_path), read_blocked_signals()
+        before = read_folder_as_bytes(tmp_path)
+        blocked = read_blocked_signals()
         fail_handler_setup(monkeypatch, signal.SIGHUP)
         sent = send_signal_when_first_handler_is_back(
             monkeypatch,
@@ -2203,7 +2206,7 @@ class TestApply:
             program_handler,
         )
         assert read_blocked_signals() == blocked
-        assert read_files(tmp_path) == before
+        assert read_folder_as_bytes(tmp_path) == before
 
     def test_signal_ignored_when_cleanup_fails(
         self,

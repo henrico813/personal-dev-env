@@ -5,12 +5,12 @@ package popup
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/review"
 )
 
@@ -32,7 +32,7 @@ const codeLinesAround = 100
 // the next item.
 const Settle = 600 * time.Millisecond
 
-var decisionStatus = map[string]string{
+var answerStatus = map[string]string{
 	review.ActionKeep:   "kept",
 	review.ActionCut:    "cut",
 	review.ActionAccept: "accepted",
@@ -54,10 +54,10 @@ const (
 	Keep
 	Cut
 	Accept
-	SaveNote // save View.Typed as the item's note
+	SaveNote // save View.Typed as the request's note
 	Open     // open the review the picker shows as chosen
-	Edit     // edit the item's comment in nvim
-	ViewFile // open the item's file read-only at its comment
+	Edit     // edit the request's comment in nvim
+	ViewFile // open the request's file read-only at its comment
 	Search   // search the repository for View.Typed
 	ShowDiff // show the uncommitted changes in the review's files
 )
@@ -65,34 +65,31 @@ const (
 type screen int
 
 const (
-	itemScreen   screen = iota
-	resultScreen        // shows what writing the answers did
+	requestScreen screen = iota
+	resultScreen         // shows what writing the answers did
 )
 
 // What the screen shows: one entry, scrolled down scroll rows.
 type View struct {
-	Entries    []review.Entry
-	Repo       string
-	Origin     review.Origin
-	Index      int
-	scroll     int
-	Cols, Rows int
-	Settle     time.Duration
-	notice     string // shown above the key hint until the next key
-	typingFor  Action // SaveNote or Search while the owner types into Typed
-	Typed      string
-	shownAt    time.Time
-	screen     screen
-	result     string // what writing the answers did, or why it did not
-	written    bool   // whether the answers reached the code
-	// Each comment's first and last line, keyed by its proposals file ID.
+	Requests         []review.RequestWithFeedback
+	Repo             string
+	Origin           review.Origin
+	Index            int
+	scroll           int
+	Cols, Rows       int
+	Settle           time.Duration
+	notice           string // shown above the key hint until the next key
+	typingFor        Action // SaveNote or Search while the owner types into Typed
+	Typed            string
+	shownAt          time.Time
+	screen           screen
+	result           string // what writing the answers did, or why it did not
+	written          bool   // whether the answers reached the code
 	CommentLinesByID map[int]review.CommentLines
-	// The checker's screen layout for each comment, keyed by its wording.
-	CommentRows map[string][]ScreenRow
+	CommentRows      map[string][]ScreenRow
 }
 
-// One row of the checker's show reply. A row with Words is wrapped after
-// its marks; any other row is drawn as Fixed.
+// One line or paragraph of a comment.
 type ScreenRow struct {
 	First string `json:"first"`
 	Rest  string `json:"rest"`
@@ -100,8 +97,8 @@ type ScreenRow struct {
 	Fixed string `json:"fixed"`
 }
 
-// Wraps comment sentences with their marks, preserving code examples.
-func WrapScreenRows(rows []ScreenRow, width int) []string {
+// Wraps a comment's paragraphs to the screen width.
+func wrapScreenRows(rows []ScreenRow, width int) []string {
 	var lines []string
 	for _, row := range rows {
 		if row.Words == "" {
@@ -116,7 +113,7 @@ func WrapScreenRows(rows []ScreenRow, width int) []string {
 			len(row.Rest),
 		)
 		mark := row.First
-		words := comment.WrapWords(
+		words := wrapWords(
 			strings.Fields(row.Words),
 			width-marks,
 		)
@@ -131,14 +128,37 @@ func WrapScreenRows(rows []ScreenRow, width int) []string {
 	return lines
 }
 
-func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
+func (v *View) Current() review.RequestWithFeedback { return v.Requests[v.Index] }
 
 // Shows entry index scrolled past the code above, so its proposal is in
 // view first.
 func (v *View) Show(index int, now time.Time) {
 	v.Index = index
 	v.typingFor = None
-	v.screen = itemScreen
+	v.showRequest(now)
+}
+
+// Replaces the requests and keeps the same request on screen. A new
+// suggestion for that request makes the answer keys wait again.
+func (v *View) ReplaceRequests(requests []review.RequestWithFeedback, now time.Time) {
+	shown := v.Current()
+	i := slices.IndexFunc(requests, func(e review.RequestWithFeedback) bool {
+		return e.Request.ID == shown.Request.ID
+	})
+	// Keeps the old list when a new review has taken this review's name.
+	if i < 0 {
+		return
+	}
+	v.Requests = requests
+	v.Index = i
+	if v.Requests[i].Batch != shown.Batch {
+		v.showRequest(now)
+	}
+}
+
+// Scrolls to the current request's suggestion and makes the answer keys wait.
+func (v *View) showRequest(now time.Time) {
+	v.screen = requestScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
 	v.shownAt = now
@@ -148,10 +168,10 @@ func (v *View) Show(index int, now time.Time) {
 // decision. An entry with only a note still waits for one. When every
 // entry has one, it leaves the screen as it is, for the caller to
 // write the answers.
-func (v *View) ShowNextUndecided(index int, now time.Time) {
-	for i := range v.Entries {
-		next := (index + i) % len(v.Entries)
-		if v.Entries[next].Decision == nil {
+func (v *View) ShowNextUnanswered(index int, now time.Time) {
+	for i := range v.Requests {
+		next := (index + i) % len(v.Requests)
+		if v.Requests[next].Feedback.Answer == nil {
 			v.Show(next, now)
 			return
 		}
@@ -159,8 +179,8 @@ func (v *View) ShowNextUndecided(index int, now time.Time) {
 }
 
 func (v *View) IsAllAnswered() bool {
-	for _, e := range v.Entries {
-		if e.Decision == nil {
+	for _, e := range v.Requests {
+		if e.Feedback.Answer == nil {
 			return false
 		}
 	}
@@ -183,19 +203,21 @@ func (v *View) ShowNotWritten(reason string) {
 	v.scroll = 0
 }
 
+func (v *View) IsQuitKey(key string) bool {
+	return key == "\x03" || key == "q" && v.typingFor == None
+}
+
 // Handles one key press; l and h wrap around at the last and first item.
 func (v *View) PressKey(key string, now time.Time) Action {
 	v.notice = ""
-	if key == "\x03" { // Ctrl-c
+	if v.IsQuitKey(key) {
 		return Quit
 	}
 	if v.typingFor != None {
 		return v.typeText(key)
 	}
-	// q, j and k work on every screen; the other keys depend on the screen.
+	// j and k work on every screen; the other keys depend on the screen.
 	switch key {
-	case "q":
-		return Quit
 	case "j":
 		rows, _ := v.body()
 		if v.scroll < len(rows)-v.room() {
@@ -211,19 +233,19 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		return None
 	}
 	// Keeping, editing or viewing a comment needs its code.
-	if v.Entry().Item.CodeRemoved && (key == "o" || key == "e" || key == "v") {
+	if v.Current().Request.CodeRemoved && (key == "o" || key == "e" || key == "v") {
 		v.notice = "The code is gone. c or a drops the comment, and m asks the AI for the code back."
 		return None
 	}
-	if key == "c" && v.CommentLinesByID[v.Entry().Item.ID].NoCut {
+	if key == "c" && v.CommentLinesByID[v.Current().Request.ID].NoCut {
 		v.notice = "This docstring is the only statement in its block, so deleting it would break the code. Press o to keep it or e to edit it."
 		return None
 	}
 	switch key {
 	case "l":
-		v.Show((v.Index+1)%len(v.Entries), now)
+		v.Show((v.Index+1)%len(v.Requests), now)
 	case "h":
-		v.Show((v.Index+len(v.Entries)-1)%len(v.Entries), now)
+		v.Show((v.Index+len(v.Requests)-1)%len(v.Requests), now)
 	case "e":
 		return Edit
 	case "v":
@@ -238,7 +260,7 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		}
 		if key == "m" {
 			v.typingFor = SaveNote
-			v.Typed = v.Entry().Note
+			v.Typed = v.Current().Feedback.Note
 			return None
 		}
 		return answerKeys[key]
@@ -315,19 +337,19 @@ func (v *View) buildHeader() (left, status string) {
 		}
 		left = fmt.Sprintf(
 			"all %d answered",
-			len(v.Entries),
+			len(v.Requests),
 		)
 		return left, status
 	}
-	e := v.Entry()
+	e := v.Current()
 	status = "?"
 	switch {
-	case e.Decision != nil:
-		status = decisionStatus[e.Decision.Action]
-	case e.Note != "":
+	case e.Feedback.Answer != nil:
+		status = answerStatus[e.Feedback.Answer.Action]
+	case e.Feedback.Note != "":
 		status = "note"
 	}
-	left = fmt.Sprintf("%d/%d %s? %s", v.Index+1, len(v.Entries), e.Item.Proposal, filepath.Base(e.Item.File))
+	left = fmt.Sprintf("%d/%d %s? %s", v.Index+1, len(v.Requests), e.Request.Suggestion, filepath.Base(e.Request.File))
 	return left, status
 }
 
@@ -373,7 +395,7 @@ func (v *View) body() ([]string, int) {
 		}
 		return rows, 0
 	}
-	e := v.Entry()
+	e := v.Current()
 	add := func(color, mark, text string) {
 		text = escapeControlCharacters(strings.ReplaceAll(text, "\t", "  "))
 		prefix := mark
@@ -384,12 +406,12 @@ func (v *View) body() ([]string, int) {
 	}
 	addComment := func(color, mark, text string) {
 		rows, ok := v.CommentRows[text]
-		lines := WrapScreenRows(
-			rows,
-			width,
-		)
-		// Without a checker layout, wraps the original lines separately.
-		if !ok {
+		var lines []string
+		if ok {
+			lines = wrapScreenRows(rows, width)
+		} else {
+			// When the checker could not split this wording, the screen shows
+			// the comment's lines as written and folds any that are too wide.
 			lines = strings.Split(
 				strings.TrimSuffix(text, "\n"),
 				"\n",
@@ -405,10 +427,10 @@ func (v *View) body() ([]string, int) {
 	}
 	var before, after []string
 	var err error
-	if !e.Item.CodeRemoved {
+	if !e.Request.CodeRemoved {
 		before, after, err = review.ReadCodeAround(
 			v.Repo,
-			e.Item,
+			e.Request,
 			v.CommentLinesByID,
 			codeLinesAround,
 		)
@@ -420,18 +442,18 @@ func (v *View) body() ([]string, int) {
 	if err != nil {
 		add(yellow, ">", "cannot show the code: "+err.Error())
 	}
-	if e.Note != "" {
-		add(yellow+bold, ">", "note: "+e.Note)
+	if e.Feedback.Note != "" {
+		add(yellow+bold, ">", "note: "+e.Feedback.Note)
 	}
-	if len(e.Item.AlsoAt) > 0 {
-		add(yellow, ">", "also at: "+strings.Join(e.Item.AlsoAt, ", "))
+	if len(e.Request.AlsoAt) > 0 {
+		add(yellow, ">", "also at: "+strings.Join(e.Request.AlsoAt, ", "))
 	}
-	if e.Item.Why != "" {
-		add(yellow, ">", "why: "+e.Item.Why)
+	if e.Request.Why != "" {
+		add(yellow, ">", "why: "+e.Request.Why)
 	}
 	// The owner's own wording, once saved, takes the place of the AI's.
 	switch {
-	case e.Item.CodeRemoved:
+	case e.Request.CodeRemoved:
 		add(
 			yellow,
 			">",
@@ -440,20 +462,20 @@ func (v *View) body() ([]string, int) {
 		addComment(
 			red,
 			"-",
-			e.Item.Old,
+			e.Request.Old,
 		)
-	case e.Decision != nil && e.Decision.Action == review.ActionEdited:
-		addComment(red, "-", e.Item.Old)
-		addComment(green, "+", e.Decision.Text)
-	case e.Item.Proposal == review.ProposeReword:
-		addComment(red, "-", e.Item.Old)
-		addComment(green, "+", e.Item.New)
-	case e.Item.Proposal == review.ProposeCut:
-		addComment(red, "-", e.Item.Old)
+	case e.Feedback.Answer != nil && e.Feedback.Answer.Action == review.ActionEdited:
+		addComment(red, "-", e.Request.Old)
+		addComment(green, "+", e.Feedback.Answer.Text)
+	case e.Request.Suggestion == review.SuggestReword:
+		addComment(red, "-", e.Request.Old)
+		addComment(green, "+", e.Request.New)
+	case e.Request.Suggestion == review.SuggestCut:
+		addComment(red, "-", e.Request.Old)
 		add(green, "+", "(cut)")
 	default:
 		add(yellow, ">", "no change proposed")
-		addComment("", " ", e.Item.Old)
+		addComment("", " ", e.Request.Old)
 	}
 	for _, line := range after {
 		add(dim, " ", line)
@@ -523,6 +545,27 @@ func escapeControlCharacters(text string) string {
 	return out.String()
 }
 
+// Joins words into lines that fit the given width.
+func wrapWords(words []string, width int) []string {
+	var lines []string
+	line := ""
+	for _, word := range words {
+		if line != "" && utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line == "" {
+			line = word
+		} else {
+			line += " " + word
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // Breaks one line into rows of at most width columns; rows after the first
 // start with two spaces.
 func fold(line string, width int) []string {
@@ -530,7 +573,7 @@ func fold(line string, width int) []string {
 		return []string{line}
 	}
 	var rows []string
-	for _, row := range comment.WrapWords(strings.Fields(line), width-2) {
+	for _, row := range wrapWords(strings.Fields(line), width-2) {
 		// A row still too wide, such as a URL, is cut into pieces.
 		for row != "" {
 			piece := clip(row, width-2)

@@ -33,9 +33,9 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 	// Models see these three answers in the tool list, and the SDK refuses
 	// any other.
 	setSchema.Properties["answer"].Enum = []any{
-		review.ProposeKeep,
-		review.ProposeCut,
-		review.ProposeReword,
+		review.SuggestKeep,
+		review.SuggestCut,
+		review.SuggestReword,
 	}
 	// The SDK runs calls at the same time, and each set rewrites the draft.
 	var oneAtATime sync.Mutex

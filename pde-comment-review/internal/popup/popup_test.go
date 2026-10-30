@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ import (
 // Herdr's 40x16 popup leaves 37x14 inside its border.
 const popupCols, popupRows = 37, 14
 
-func newView(t *testing.T, code string, items ...review.Item) *View {
+func newView(t *testing.T, code string, requests ...review.FeedbackRequest) *View {
 	t.Helper()
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "wire.go"), []byte(code), 0o644); err != nil {
@@ -27,15 +28,16 @@ func newView(t *testing.T, code string, items ...review.Item) *View {
 		Settle:           Settle,
 		CommentLinesByID: map[int]review.CommentLines{},
 	}
-	for _, item := range items {
-		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
-		// The test finds lines that the checker supplies to the real
-		// screen.
-		if at := strings.Index(code, item.Old); at >= 0 {
+	for _, request := range requests {
+		v.Requests = append(v.Requests, review.RequestWithFeedback{Request: request, Batch: 1})
+		// The real screen asks the checker where each comment sits. These
+		// tests do not run the checker, so this helper finds each comment
+		// itself.
+		if at := strings.Index(code, request.Old); at >= 0 {
 			first := strings.Count(code[:at], "\n") + 1
-			v.CommentLinesByID[item.ID] = review.CommentLines{
+			v.CommentLinesByID[request.ID] = review.CommentLines{
 				First: first,
-				Last:  first + strings.Count(item.Old, "\n") - 1,
+				Last:  first + strings.Count(request.Old, "\n") - 1,
 			}
 		}
 	}
@@ -54,12 +56,25 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		"var docs = \"https://go.dev/doc/comment#doc-comments-for-constants-and-variables\"\n" +
 		"// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n" +
 		"func Shared() bool { return true }\n"
-	v := newView(t, code, review.Item{
-		ID: 11, File: "wire.go", Proposal: review.ProposeReword,
+	v := newView(t, code, review.FeedbackRequest{
+		ID: 11, File: "wire.go", Suggestion: review.SuggestReword,
 		Old: "// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n",
-		New: "// Reports whether no tool may declare code.\n",
+		New: "// Reports whether no tool may declare code.\n//\n//\tsave(answer)\n",
 		Why: "Restates the name\x1b[2J\u202e. 判定:✅名前と同じことを言っているだけなので、読み手には何も伝わりません。",
 	})
+	// Code examples must stay visible so the owner can review the whole
+	// comment.
+	v.CommentRows = map[string][]ScreenRow{
+		v.Current().Request.New: {
+			{
+				First: "// ",
+				Rest:  "// ",
+				Words: "Reports whether no tool may declare code.",
+			},
+			{Fixed: "//"},
+			{Fixed: "//\tsave(answer)"},
+		},
+	}
 	v.Origin = review.Origin{
 		RepoName: "personal-dev-env-sandbox-copy",
 		Branch:   "feat/review-apply-screen-画面表示",
@@ -102,6 +117,16 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		t.Errorf("row %d is blank: the screen opened past the end of the item", popupRows-1)
 	}
 
+	for range 3 {
+		v.PressKey("j", time.Now())
+	}
+	exampleLines := v.BuildScreen()
+	checkFits(exampleLines)
+	exampleScreen := colorCodes.ReplaceAllString(strings.Join(exampleLines, "\n"), "")
+	if !strings.Contains(exampleScreen, "\n+//\n+//  save(answer)\n") {
+		t.Errorf("screen does not show the code example and its separator:\n%s", exampleScreen)
+	}
+
 	v.ShowNotWritten("nothing was written: wire.go: item 11 changed in the file after it was added\x1b[2J")
 	resultRows := v.BuildScreen()
 
@@ -132,16 +157,16 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 
 // On a phone a key is easily pressed twice. The second press must not
 // answer, or start a note on, the item the first press moved to.
-func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
+func TestAnswerKeysWaitAfterNewRequest(t *testing.T) {
 	v := newView(t, "package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
-		review.Item{ID: 1, File: "wire.go", Proposal: review.ProposeCut, Old: "// One.\n"},
-		review.Item{ID: 2, File: "wire.go", Proposal: review.ProposeCut, Old: "// Two.\n"})
+		review.FeedbackRequest{ID: 1, File: "wire.go", Suggestion: review.SuggestCut, Old: "// One.\n"},
+		review.FeedbackRequest{ID: 2, File: "wire.go", Suggestion: review.SuggestCut, Old: "// Two.\n"})
 	start := time.Now()
-	v.ShowNextUndecided(0, start)
+	v.ShowNextUnanswered(0, start)
 
 	first := v.PressKey("o", start.Add(Settle))
-	v.Entries[0].Decision = &review.Decision{Action: review.ActionKeep, Round: 1}
-	v.ShowNextUndecided(1, start.Add(Settle))
+	v.Requests[0].Feedback.Answer = &review.Answer{Action: review.ActionKeep, Batch: 1}
+	v.ShowNextUnanswered(1, start.Add(Settle))
 	quick := start.Add(Settle + 50*time.Millisecond)
 	again := v.PressKey("o", quick)
 	v.PressKey("m", quick)
@@ -166,12 +191,12 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	v := newView(
 		t,
 		"package wire\n",
-		review.Item{
+		review.FeedbackRequest{
 			ID:          1,
 			File:        "wire.go",
 			Name:        "Dial",
 			Old:         "// Dials the server.\n",
-			Proposal:    review.ProposeCut,
+			Suggestion:  review.SuggestCut,
 			CodeRemoved: true,
 		},
 	)
@@ -196,4 +221,124 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 			cut,
 		)
 	}
+}
+
+// The AI can send new suggestions while the owner reviews. A new suggestion
+// must not erase a note the owner is typing.
+func TestNotePersistenceDuringAgentReview(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+	// The owner starts a note and types "a".
+	v.PressKey("m", start.Add(Settle))
+	v.PressKey("a", start.Add(Settle))
+
+	// The AI sends a new suggestion while the owner types.
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(2*Settle))
+	v.PressKey("b", start.Add(2*Settle))
+	saved := v.PressKey("\r", start.Add(2*Settle))
+
+	if saved != SaveNote || v.Typed != "ab" {
+		t.Errorf(
+			"Enter = %v with %q, want SaveNote with %q",
+			saved,
+			v.Typed,
+			"ab",
+		)
+	}
+}
+
+// Ensure reading the review before every key does not block answer keys,
+// otherwise there's no input for feedback.
+func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+
+	v.ReplaceRequests(slices.Clone(v.Requests), start.Add(Settle))
+	keep := v.PressKey("o", start.Add(Settle))
+
+	if keep != Keep {
+		t.Errorf("o after reading the same suggestion again = %v, want Keep", keep)
+	}
+}
+
+// The AI can send a new suggestion while the owner reviews. A key pressed
+// just as it appears must not answer text the owner has not read.
+func TestNewTextDelaysAnswers(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(Settle))
+	quick := v.PressKey("o", start.Add(Settle))
+
+	if quick != None {
+		t.Errorf("o right after new text = %v, want None", quick)
+	}
+}
+
+// The AI can start a new review with the same name while the done screen
+// is open.
+func TestReusedReviewNameKeepsShownRequests(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+		review.FeedbackRequest{
+			ID:         2,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// Two.\n",
+		},
+	)
+	start := time.Now()
+	v.Show(1, start)
+	newReview := slices.Clone(v.Requests[:1])
+
+	v.ReplaceRequests(newReview, start.Add(Settle))
+	v.PressKey("j", start.Add(Settle))
+
+	if got := v.Current().Request.ID; got != 2 {
+		t.Errorf("shown request = %d, want 2", got)
+	}
+}
+
+// Acts as if the AI sent a new suggestion for the first request.
+func addNewSuggestion(requests []review.RequestWithFeedback) []review.RequestWithFeedback {
+	requests = slices.Clone(requests)
+	requests[0].Batch++
+	return requests
 }

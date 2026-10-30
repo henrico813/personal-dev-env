@@ -16,7 +16,8 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
 `obsidian-daily-note` for approved sections in today's daily note,
-`python-development` for Python code, and `rust-development` for Rust code.
+`python-development` for Python code, `rust-development` for Rust code,
+and `typescript-development` for JavaScript and TypeScript code.
 Shared workflow skills include `create-plan` for implementation proposals,
 `review-plan` for reviewing plans, PRs, commits, and diffs,
 `implement-plan` for plan execution,
