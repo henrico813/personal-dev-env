@@ -59,10 +59,10 @@ func runReviewScreen(
 	r *review.Review, origin review.Origin, in, out *os.File, opts screenOptions,
 ) error {
 	v := &popup.View{
-		Entries: r.ListEntries(),
-		Repo:    r.Repo(),
-		Origin:  origin,
-		Settle:  opts.settle,
+		Requests: r.ListFeedbackRequests(),
+		Repo:     r.Repo(),
+		Origin:   origin,
+		Settle:   opts.settle,
 	}
 	askCheckerForCommentLayout(r, v)
 	term, err := popup.Start(in, out)
@@ -71,7 +71,7 @@ func runReviewScreen(
 	}
 	defer term.Restore()
 	v.Cols, v.Rows = term.Size()
-	v.ShowNextUndecided(0, time.Now())
+	v.ShowNextUnanswered(0, time.Now())
 	r, err = writeWhenAllAnswered(
 		r,
 		v,
@@ -87,9 +87,17 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		switch v.PressKey(key, time.Now()) {
-		case popup.Quit:
+		if v.IsQuitKey(key) {
 			return nil
+		}
+		// Reads the review again, since the popup, a Herdr tab or the AI may
+		// have changed it.
+		r, err = review.OpenReview(r.Name)
+		if err != nil {
+			return err
+		}
+		v.ReplaceRequests(r.ListFeedbackRequests(), time.Now())
+		switch v.PressKey(key, time.Now()) {
 		case popup.Keep:
 			r, err = saveAnswerAndShowNext(
 				r,
@@ -109,8 +117,8 @@ func runReviewScreen(
 				review.ActionAccept,
 			)
 		case popup.SaveNote:
-			err = r.SetNote(v.Entry().Item.ID, strings.TrimSpace(v.Typed))
-			v.Entries = r.ListEntries()
+			err = r.SaveNote(v.Current().Request.ID, strings.TrimSpace(v.Typed))
+			v.Requests = r.ListFeedbackRequests()
 		case popup.Edit:
 			if !opts.inPopup {
 				r, err = editInPlace(
@@ -130,14 +138,14 @@ func runReviewScreen(
 				return nil
 			}
 		case popup.ViewFile:
-			item := v.Entry().Item
+			request := v.Current().Request
 			err = runOutsideScreen(
 				term,
 				v,
 				func() error {
 					return viewFile(
 						r.Repo(),
-						item,
+						request,
 						v.CommentLinesByID,
 						in,
 						out,
@@ -222,15 +230,15 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 		return nil, err
 	}
 	places := map[int]review.CommentLines{}
-	for _, e := range r.ListEntries() {
+	for _, e := range r.ListFeedbackRequests() {
 		var found []review.CommentLines
 		for _, file := range listed.Files {
-			if file.File != e.Item.File || e.Item.CodeRemoved {
+			if file.File != e.Request.File || e.Request.CodeRemoved {
 				continue
 			}
 			for _, c := range file.Comments {
 				switch {
-				case e.Item.Name != "" && c.Name == e.Item.Name:
+				case e.Request.Name != "" && c.Name == e.Request.Name:
 					found = append(
 						found,
 						review.CommentLines{
@@ -238,15 +246,15 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 							Last:  c.EndLine,
 						},
 					)
-				case e.Item.Name == "":
-					if lines, ok := findTextInComment(c.Text, e.Item.Old, c.Line); ok {
+				case e.Request.Name == "":
+					if lines, ok := findTextInComment(c.Text, e.Request.Old, c.Line); ok {
 						found = append(found, lines)
 					}
 				}
 			}
 		}
 		if len(found) == 1 {
-			places[e.Item.ID] = found[0]
+			places[e.Request.ID] = found[0]
 		}
 	}
 	return places, nil
@@ -349,10 +357,10 @@ func convertSentencesToComment(checker, repo, file, old, plain string) (string, 
 func readCommentRows(r *review.Review, checker string) (map[string][]popup.ScreenRow, error) {
 	var entries []showEntry
 	seen := map[string]bool{}
-	for _, e := range r.ListEntries() {
-		texts := []string{e.Item.Old, e.Item.New}
-		if e.Decision != nil {
-			texts = append(texts, e.Decision.Text)
+	for _, e := range r.ListFeedbackRequests() {
+		texts := []string{e.Request.Old, e.Request.New}
+		if e.Feedback.Answer != nil {
+			texts = append(texts, e.Feedback.Answer.Text)
 		}
 		for _, text := range texts {
 			if text != "" && !seen[text] {
@@ -360,7 +368,7 @@ func readCommentRows(r *review.Review, checker string) (map[string][]popup.Scree
 				entries = append(
 					entries,
 					showEntry{
-						File: e.Item.File,
+						File: e.Request.File,
 						Text: text,
 					},
 				)
@@ -383,7 +391,7 @@ func readCommentRows(r *review.Review, checker string) (map[string][]popup.Scree
 }
 
 func openEditTab(r *review.Review, v *popup.View) bool {
-	env := map[string]string{reviewNameEnv: r.Name, itemIDEnv: strconv.Itoa(v.Entry().Item.ID)}
+	env := map[string]string{reviewNameEnv: r.Name, requestIDEnv: strconv.Itoa(v.Current().Request.ID)}
 	return openTabOrShowWhy(v, editPaneID, env)
 }
 
@@ -394,13 +402,13 @@ func editInPlace(
 	in *os.File,
 	out *os.File,
 ) (*review.Review, error) {
-	id := v.Entry().Item.ID
+	id := v.Current().Request.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
-	v.Entries = r.ListEntries()
+	v.Requests = r.ListFeedbackRequests()
 	askCheckerForCommentLayout(r, v)
 	// Moves on even when nothing was saved, as the popup does when the edit
-	// tab reopens it at the next unanswered item.
-	v.ShowNextUndecided(v.Index+1, time.Now())
+	// tab reopens it at the next unanswered request.
+	v.ShowNextUnanswered(v.Index+1, time.Now())
 	if err != nil {
 		return r, err
 	}
@@ -410,10 +418,10 @@ func editInPlace(
 	)
 }
 
-// Returns true once Herdr opens the tab, so the popup can close and leave
-// the screen to it.
+// Returns true once Herdr opens the tab and moves every screen to it, so the
+// popup can close.
 func openTabOrShowWhy(v *popup.View, pane string, env map[string]string) bool {
-	if err := openPluginPane(pane, "tab", env); err != nil {
+	if _, err := openPluginPane(pane, "tab", env); err != nil {
 		v.ShowNotice("cannot open the " + pane + " tab: " + err.Error())
 		return false
 	}
@@ -435,11 +443,12 @@ func saveAnswerAndShowNext(
 	v *popup.View,
 	action string,
 ) (*review.Review, error) {
-	if err := r.SetDecision(v.Entry().Item.ID, action, ""); err != nil {
+	shown := v.Current()
+	if err := r.SaveAnswer(shown.Request.ID, shown.Batch, action, ""); err != nil {
 		return r, err
 	}
-	v.Entries = r.ListEntries()
-	v.ShowNextUndecided(v.Index+1, time.Now())
+	v.Requests = r.ListFeedbackRequests()
+	v.ShowNextUnanswered(v.Index+1, time.Now())
 	return writeWhenAllAnswered(
 		r,
 		v,
@@ -462,33 +471,33 @@ func writeWhenAllAnswered(
 // Applies the review and returns it as read again, for the screen to use
 // from then on. A refusal stays on screen, so the owner can read why.
 func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
-	// An AI may have added a round since the screen read the review.
+	// An AI may have added a batch since the screen read the review.
 	r, err := review.OpenReview(name)
 	if err != nil {
 		return nil, err
 	}
 	// A second screen, or a review reopened after its write, finds the
 	// answers already in the code.
-	if r.AppliedRound == len(r.Rounds) {
+	if r.AppliedBatch == len(r.Batches) {
 		v.ShowDone()
 		return r, nil
 	}
 	// A missing checker is a refusal too, so its message stays on screen.
 	checker, err := findCheckerPath()
 	if err == nil {
-		_, err = writeAndApproveDecisions(
+		_, err = writeAndApproveAnswers(
 			r,
 			checker,
 		)
 	}
-	v.Entries = r.ListEntries()
+	v.Requests = r.ListFeedbackRequests()
 	switch {
 	case err != nil && !v.IsAllAnswered():
 		// The AI sent more comments while the screen was open, so the screen
 		// opens the first one without an answer. The answers reach the code
 		// once every comment has one.
 		askCheckerForCommentLayout(r, v)
-		v.ShowNextUndecided(
+		v.ShowNextUnanswered(
 			0,
 			time.Now(),
 		)

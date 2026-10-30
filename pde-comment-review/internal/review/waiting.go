@@ -10,13 +10,13 @@ import (
 )
 
 type appliedFile struct {
-	Round int `json:"round"`
+	Batch int `json:"round"`
 }
 
 // Records that the latest round's answers were written into the code, so
 // the review stops waiting until an AI adds another round.
 func (r *Review) SetApplied() error {
-	applied := appliedFile{Round: len(r.Rounds)}
+	applied := appliedFile{Batch: len(r.Batches)}
 	return replaceJSONFile(filepath.Join(r.Dir, "applied.json"), applied)
 }
 
@@ -40,14 +40,14 @@ func ListWaitingReviews() ([]*Review, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(r.Rounds) == 0 || r.AppliedRound == len(r.Rounds) {
+		if len(r.Batches) == 0 || r.AppliedBatch == len(r.Batches) {
 			continue
 		}
 		// A removed worktree's review can never be applied.
 		if _, err := os.Stat(r.Repo()); errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		info, err := os.Stat(buildRoundFilePath(r.Dir, len(r.Rounds)))
+		info, err := os.Stat(buildBatchFilePath(r.Dir, len(r.Batches)))
 		if err != nil {
 			return nil, err
 		}

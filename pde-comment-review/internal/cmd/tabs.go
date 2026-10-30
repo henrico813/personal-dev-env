@@ -25,23 +25,23 @@ func runEditTab() error {
 		return errors.New("only Herdr's edit tab runs edit; press e in the review popup")
 	}
 	name := os.Getenv(reviewNameEnv)
-	if err := editItemByID(name, os.Getenv(itemIDEnv)); err != nil {
+	if err := editRequestByID(name, os.Getenv(requestIDEnv)); err != nil {
 		waitForEnter(err)
 	}
-	if err := openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name}); err != nil {
+	if _, err := openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name}); err != nil {
 		waitForEnter(fmt.Errorf("cannot reopen the review: %w; press Ctrl+b e", err))
 	}
 	return closeOwnTab()
 }
 
-func editItemByID(name, itemID string) error {
+func editRequestByID(name, requestID string) error {
 	r, err := review.OpenReview(name)
 	if err != nil {
 		return err
 	}
-	id, err := strconv.Atoi(itemID)
+	id, err := strconv.Atoi(requestID)
 	if err != nil {
-		return fmt.Errorf("item %q is not a number", itemID)
+		return fmt.Errorf("item %q is not a number", requestID)
 	}
 	return editComment(r, id, os.Stdin, os.Stdout)
 }
@@ -72,7 +72,7 @@ func waitForEnter(err error) {
 // wording as the item's answer. A page left unchanged saves nothing, and a
 // page with no words cuts the comment.
 func editComment(r *review.Review, id int, in, out *os.File) error {
-	e, err := findEntry(r, id)
+	e, err := findFeedbackRequest(r, id)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	}
 	_, after, err := review.ReadCodeAround(
 		r.Repo(),
-		e.Item,
+		e.Request,
 		places,
 		30,
 	)
@@ -97,7 +97,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		checker,
 		r.Repo(),
 		[]showEntry{{
-			File: e.Item.File,
+			File: e.Request.File,
 			Text: chooseStartingWording(e),
 		}},
 	)
@@ -128,44 +128,45 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		return nil
 	}
 	if len(strings.Fields(edited)) == 0 {
-		return r.SetDecision(id, review.ActionCut, "")
+		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
 	}
 	comment, err := convertSentencesToComment(
 		checker,
 		r.Repo(),
-		e.Item.File,
-		e.Item.Old,
+		e.Request.File,
+		e.Request.Old,
 		edited,
 	)
 	if err != nil {
 		return err
 	}
-	return r.SetDecision(
+	return r.SaveAnswer(
 		id,
+		e.Batch,
 		review.ActionEdited,
 		comment,
 	)
 }
 
-func findEntry(r *review.Review, id int) (review.Entry, error) {
-	for _, e := range r.ListEntries() {
-		if e.Item.ID == id {
+func findFeedbackRequest(r *review.Review, id int) (review.RequestWithFeedback, error) {
+	for _, e := range r.ListFeedbackRequests() {
+		if e.Request.ID == id {
 			return e, nil
 		}
 	}
-	return review.Entry{}, fmt.Errorf("review %s has no item %d", r.Name, id)
+	return review.RequestWithFeedback{}, fmt.Errorf("review %s has no item %d", r.Name, id)
 }
 
 // Returns the newest wording: the owner's own, then the AI's reword, then
 // the comment as it is.
-func chooseStartingWording(e review.Entry) string {
-	if e.Decision != nil && e.Decision.Action == review.ActionEdited {
-		return e.Decision.Text
+func chooseStartingWording(e review.RequestWithFeedback) string {
+	if e.Feedback.Answer != nil && e.Feedback.Answer.Action == review.ActionEdited {
+		return e.Feedback.Answer.Text
 	}
-	if e.Item.Proposal == review.ProposeReword {
-		return e.Item.New
+	if e.Request.Suggestion == review.SuggestReword {
+		return e.Request.New
 	}
-	return e.Item.Old
+	return e.Request.Old
 }
 
 // Shows the uncommitted changes in the review's files, through delta when
@@ -191,19 +192,19 @@ func showDiff(r *review.Review, out *os.File) error {
 // Opens the item's file read-only in nvim at its comment.
 func viewFile(
 	repo string,
-	item review.Item,
+	request review.FeedbackRequest,
 	places map[int]review.CommentLines,
 	in *os.File,
 	out *os.File,
 ) error {
 	at, err := review.FindCommentLines(
-		item,
+		request,
 		places,
 	)
 	if err != nil {
 		return err
 	}
-	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", at.First), item.File)
+	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", at.First), request.File)
 	nvim.Dir = repo
 	return runOnTerminal(nvim, in, out)
 }

@@ -20,10 +20,10 @@ import (
 const Version = 1
 
 // The file an AI writes for one round of a review.
-type Proposals struct {
-	Version int    `json:"version"`
-	Repo    string `json:"repo"`
-	Items   []Item `json:"items"`
+type Batch struct {
+	Version  int               `json:"version"`
+	Repo     string            `json:"repo"`
+	Requests []FeedbackRequest `json:"items"`
 	// Code the AI renamed, each written "OLD=NEW", such as "Load=LoadConfig",
 	// so the owner's approved comments can move to the new names.
 	Renames []string `json:"renames,omitempty"`
@@ -32,14 +32,14 @@ type Proposals struct {
 // One comment and what the AI proposes for it. Old is the comment's
 // whole lines exactly as in File, or on a draft's item the approved
 // text.
-type Item struct {
-	ID       int      `json:"id"`
-	File     string   `json:"file"`
-	Old      string   `json:"old"`
-	Proposal string   `json:"proposal"`
-	New      string   `json:"new,omitempty"`
-	Why      string   `json:"why,omitempty"`
-	AlsoAt   []string `json:"also_at,omitempty"`
+type FeedbackRequest struct {
+	ID         int      `json:"id"`
+	File       string   `json:"file"`
+	Old        string   `json:"old"`
+	Suggestion string   `json:"proposal"`
+	New        string   `json:"new,omitempty"`
+	Why        string   `json:"why,omitempty"`
+	AlsoAt     []string `json:"also_at,omitempty"`
 	// The comment checker's name for the comment, such as "Cart.Total",
 	// on items a draft found.
 	Name string `json:"name,omitempty"`
@@ -49,15 +49,15 @@ type Item struct {
 }
 
 const (
-	ProposeKeep   = "keep"
-	ProposeCut    = "cut"
-	ProposeReword = "reword"
+	SuggestKeep   = "keep"
+	SuggestCut    = "cut"
+	SuggestReword = "reword"
 )
 
 // Reads a proposals file and checks its shape, reporting every bad item
 // and rename together rather than stopping at the first.
-func ParseProposals(data []byte) (Proposals, error) {
-	var p Proposals
+func ParseBatch(data []byte) (Batch, error) {
+	var p Batch
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&p); err != nil {
@@ -72,7 +72,7 @@ func ParseProposals(data []byte) (Proposals, error) {
 	if !filepath.IsAbs(p.Repo) {
 		return p, fmt.Errorf("repo %q is not an absolute path", p.Repo)
 	}
-	if len(p.Items) == 0 {
+	if len(p.Requests) == 0 {
 		return p, errors.New("proposals have no items")
 	}
 	var problems []error
@@ -82,42 +82,42 @@ func ParseProposals(data []byte) (Proposals, error) {
 		}
 	}
 	seen := map[int]bool{}
-	for _, item := range p.Items {
-		if seen[item.ID] {
-			problems = append(problems, fmt.Errorf("item %d: id is used twice", item.ID))
+	for _, request := range p.Requests {
+		if seen[request.ID] {
+			problems = append(problems, fmt.Errorf("item %d: id is used twice", request.ID))
 		}
-		seen[item.ID] = true
-		if err := findItemProblem(item); err != nil {
-			problems = append(problems, fmt.Errorf("item %d: %w", item.ID, err))
+		seen[request.ID] = true
+		if err := findRequestProblem(request); err != nil {
+			problems = append(problems, fmt.Errorf("item %d: %w", request.ID, err))
 		}
 	}
 	return p, errors.Join(problems...)
 }
 
-func findItemProblem(item Item) error {
+func findRequestProblem(request FeedbackRequest) error {
 	// Apply would write "./a.go" and "a.go" separately, losing one's edits.
-	if !filepath.IsLocal(item.File) || filepath.Clean(item.File) != item.File {
-		return fmt.Errorf("file %q must be a plain relative path inside the repo, such as a/b.go", item.File)
+	if !filepath.IsLocal(request.File) || filepath.Clean(request.File) != request.File {
+		return fmt.Errorf("file %q must be a plain relative path inside the repo, such as a/b.go", request.File)
 	}
-	if item.Old == "" {
+	if request.Old == "" {
 		return errors.New("old is empty; it must be the comment's whole lines")
 	}
-	switch item.Proposal {
-	case ProposeKeep, ProposeCut:
-		if item.New != "" {
-			return fmt.Errorf("new must be empty when the proposal is %s", item.Proposal)
+	switch request.Suggestion {
+	case SuggestKeep, SuggestCut:
+		if request.New != "" {
+			return fmt.Errorf("new must be empty when the proposal is %s", request.Suggestion)
 		}
-	case ProposeReword:
-		if item.New == "" {
+	case SuggestReword:
+		if request.New == "" {
 			return errors.New("new is empty; a reword needs the new comment lines")
 		}
-		if item.New == item.Old {
+		if request.New == request.Old {
 			return errors.New("new is the same as old; propose keep instead")
 		}
 	default:
-		return fmt.Errorf("proposal %q must be keep, cut, or reword", item.Proposal)
+		return fmt.Errorf("proposal %q must be keep, cut, or reword", request.Suggestion)
 	}
-	if item.CodeRemoved && (item.Name == "" || item.Proposal != ProposeCut) {
+	if request.CodeRemoved && (request.Name == "" || request.Suggestion != SuggestCut) {
 		return errors.New("an item with code_removed needs a name and proposal cut")
 	}
 	return nil
@@ -131,12 +131,12 @@ type CommentLines struct {
 
 // Returns the lines of a comment under review in its file, or an error when
 // the checker did not find that comment exactly once.
-func FindCommentLines(item Item, places map[int]CommentLines) (CommentLines, error) {
-	at, ok := places[item.ID]
+func FindCommentLines(request FeedbackRequest, places map[int]CommentLines) (CommentLines, error) {
+	at, ok := places[request.ID]
 	if !ok {
 		return at, fmt.Errorf(
 			"the checker cannot find this comment exactly once in %s",
-			item.File,
+			request.File,
 		)
 	}
 	return at, nil
@@ -146,18 +146,18 @@ func FindCommentLines(item Item, places map[int]CommentLines) (CommentLines, err
 // comment in repo, to show it in place.
 func ReadCodeAround(
 	repo string,
-	item Item,
+	request FeedbackRequest,
 	places map[int]CommentLines,
 	codeLinesAround int,
 ) (before, after []string, err error) {
 	at, err := FindCommentLines(
-		item,
+		request,
 		places,
 	)
 	if err != nil {
 		return nil, nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(repo, item.File))
+	data, err := os.ReadFile(filepath.Join(repo, request.File))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -169,7 +169,7 @@ func ReadCodeAround(
 	if at.First < 1 || at.First > at.Last || at.Last > len(lines) {
 		return nil, nil, fmt.Errorf(
 			"%s changed after the screen read it",
-			item.File,
+			request.File,
 		)
 	}
 	before = lines[max(0, at.First-1-codeLinesAround) : at.First-1]

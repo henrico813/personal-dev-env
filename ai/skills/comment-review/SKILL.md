@@ -72,7 +72,8 @@ the chat instead.
    another comment in its file, or as the approved text of one you
    edited, change an unapproved copy's wording in the code. Then tell
    the user what `next` says: "Review shop is ready: press Ctrl+b e in
-   Herdr, or run `pde-comment-review open shop`." Do not run `open`
+   Herdr, or Ctrl+b E for a full tab, or run
+   `pde-comment-review open shop`." Do not run `open`
    yourself: it takes over the terminal it runs in. Do not edit the
    listed comments before the last answer: the write refuses an
    edited one or puts the user's answer over your edit.

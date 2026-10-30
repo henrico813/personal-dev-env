@@ -22,8 +22,8 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string // runs as nvim, with the edit page as $1
-		want       *review.Decision
-		wantShown  string // a + line the item screen shows afterwards
+		want       *review.Answer
+		wantShown  string // a + line the request screen shows afterwards
 		wantRefuse bool
 	}{
 		{
@@ -31,10 +31,10 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			// The page opens with the AI's proposal, without comment marks.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
 				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
-			want: &review.Decision{
+			want: &review.Answer{
 				Action: review.ActionEdited,
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
-				Round:  1,
+				Batch:  1,
 			},
 			// The screen breaks these lines at 37 columns, not where the saved
 			// comment breaks, so it used the checker's split.
@@ -43,7 +43,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 		{
 			name:   "every word deleted",
 			script: `printf '\n' > "$1.new"; ` + keepMarkerAndCode,
-			want:   &review.Decision{Action: review.ActionCut, Round: 1},
+			want:   &review.Answer{Action: review.ActionCut, Batch: 1},
 		},
 		{name: "closed without a change", script: "true"},
 		{name: "marker deleted", script: `printf 'Returns the total.\n' > "$1"`, wantRefuse: true},
@@ -69,21 +69,21 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, ok := saved.Decisions[rewordTotal.ID]
+			got, ok := saved.Answers[rewordTotal.ID]
 			if tt.want == nil && ok {
 				t.Errorf("saved %+v, want nothing saved", got)
 			}
 			if tt.want != nil && got != *tt.want {
 				t.Errorf("saved %+v, want %+v", got, *tt.want)
 			}
-			// The owner checks an edit on the item screen, which must show
+			// The owner checks an edit on the request screen, which must show
 			// the owner's wording in place of the AI's.
 			if tt.wantShown != "" {
 				v := &popup.View{
-					Entries: saved.ListEntries(),
-					Repo:    r.Repo(),
-					Cols:    37,
-					Rows:    40,
+					Requests: saved.ListFeedbackRequests(),
+					Repo:     r.Repo(),
+					Cols:     37,
+					Rows:     40,
 				}
 				askCheckerForCommentLayout(saved, v)
 				v.Show(1, time.Now())

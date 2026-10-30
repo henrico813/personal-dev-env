@@ -107,12 +107,12 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
 	for _, name := range []string{"other", "cart"} {
-		p := review.Proposals{
-			Version: review.Version,
-			Repo:    repo,
-			Items:   []review.Item{cutCurrency, rewordTotal},
+		p := review.Batch{
+			Version:  review.Version,
+			Repo:     repo,
+			Requests: []review.FeedbackRequest{cutCurrency, rewordTotal},
 		}
-		if _, err := review.AddRound(name, p); err != nil {
+		if _, err := review.AddBatch(name, p); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -151,16 +151,82 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 		t.Fatal("the screen did not close on q")
 	}
 
-	want := map[int]review.Decision{1: {Action: review.ActionKeep, Round: 1}}
-	if !reflect.DeepEqual(cart.Decisions, want) {
-		t.Errorf("review cart saved %+v, want %+v", cart.Decisions, want)
+	want := map[int]review.Answer{1: {Action: review.ActionKeep, Batch: 1}}
+	if !reflect.DeepEqual(cart.Answers, want) {
+		t.Errorf("review cart saved %+v, want %+v", cart.Answers, want)
 	}
 	other, err := review.OpenReview("other")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(other.Decisions) != 0 {
-		t.Errorf("review other saved %+v, want nothing", other.Decisions)
+	if len(other.Answers) != 0 {
+		t.Errorf("review other saved %+v, want nothing", other.Answers)
+	}
+}
+
+// A note saved in the popup must show and stay in a Herdr tab open on the
+// same review.
+func TestConsistentTabPopupStateOnOpen(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	inPopup := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	// The owner saves notes on two requests in the popup.
+	if err := inPopup.SaveNote(1, "keep Currency"); err != nil {
+		t.Fatal(err)
+	}
+	if err := inPopup.SaveNote(2, "shorter"); err != nil {
+		t.Fatal(err)
+	}
+	// In the tab, the owner adds " for now" to the first note.
+	typeKeys(t, master, "m")
+	waitForScreen(t, master, "note for AI: keep Currency")
+	typeKeys(t, master, " for now\r")
+	waitForScreen(t, master, "note: keep Currency for now")
+	typeKeys(t, master, "q")
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
+	}
+
+	saved, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]string{1: "keep Currency for now", 2: "shorter"}
+	got := map[int]string{}
+	for id, n := range saved.Notes {
+		got[id] = n.Text
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("saved notes = %q, want %q", got, want)
+	}
+}
+
+// The AI moves a finished review's folder aside to start the next one.
+// Pressing q must still close the old screen without an error.
+func TestQuitWorksAfterReviewIsMoved(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	r := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	if err := os.Rename(r.Dir, r.Dir+".old"); err != nil {
+		t.Fatal(err)
+	}
+	typeKeys(t, master, "q")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("answerReview() error = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q")
 	}
 }
 
@@ -168,19 +234,19 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 // An AI can add a round while the screen is open; that round must
 // open, or its item could never be answered and nothing would be
 // written.
-func TestScreenAppliesNewRoundAfterRefusal(t *testing.T) {
+func TestScreenAppliesNewBatchAfterRefusal(t *testing.T) {
 	installRepoChecker(t)
 	t.Setenv("HERDR_ENV", "")
 	r := startReview(t, cartGo, `{"approved": [{"file": "cart.go", "name": "Valid", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`, nil)
-	setDecisions(t, r, map[int]review.Decision{1: {Action: review.ActionAccept}, 2: {Action: review.ActionAccept}})
+	saveAnswers(t, r, map[int]review.Answer{1: {Action: review.ActionAccept}, 2: {Action: review.ActionAccept}})
 	master, terminal := openFakeTerminal(t)
 
 	done := make(chan error, 1)
 	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
 	waitForScreen(t, master, "3/3 keep? cart.go")
-	p := review.Proposals{Version: review.Version, Repo: r.Repo(), Items: []review.Item{{ID: 4, File: "cart.go",
-		Proposal: review.ProposeCut, Old: "// Reports whether every price is above zero.\n"}}}
-	if _, err := review.AddRound("cart", p); err != nil {
+	p := review.Batch{Version: review.Version, Repo: r.Repo(), Requests: []review.FeedbackRequest{{ID: 4, File: "cart.go",
+		Suggestion: review.SuggestCut, Old: "// Reports whether every price is above zero.\n"}}}
+	if _, err := review.AddBatch("cart", p); err != nil {
 		t.Fatal(err)
 	}
 	typeKeys(
@@ -230,8 +296,8 @@ func Valid(prices []int) bool { return true }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if applied.AppliedRound != 2 {
-		t.Errorf("applied round = %d, want 2", applied.AppliedRound)
+	if applied.AppliedBatch != 2 {
+		t.Errorf("applied round = %d, want 2", applied.AppliedBatch)
 	}
 }
 
@@ -248,10 +314,10 @@ func TestMissingCheckerKeepsScreenOpen(t *testing.T) {
 		validApproval,
 		nil,
 	)
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionAccept},
 			2: {Action: review.ActionAccept},
 		},
@@ -334,10 +400,10 @@ func TestReopenWritesFullyAnsweredReview(t *testing.T) {
 		validApproval,
 		nil,
 	)
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionKeep},
 			2: {Action: review.ActionAccept},
 			3: {Action: review.ActionKeep},
@@ -352,10 +418,10 @@ func TestReopenWritesFullyAnsweredReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if written.AppliedRound != 1 {
+	if written.AppliedBatch != 1 {
 		t.Errorf(
 			"written round = %d, want 1",
-			written.AppliedRound,
+			written.AppliedBatch,
 		)
 	}
 }
@@ -441,29 +507,29 @@ func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 			func(t *testing.T) {
 				repo := t.TempDir()
 				writeFile(t, filepath.Join(repo, "cart.go"), code)
-				p := review.Proposals{
+				p := review.Batch{
 					Version: review.Version,
 					Repo:    repo,
 				}
 				for i, name := range tt.names {
-					item := review.Item{
-						ID:       i + 1,
-						File:     "cart.go",
-						Name:     name,
-						Old:      tt.old,
-						Proposal: review.ProposeKeep,
+					request := review.FeedbackRequest{
+						ID:         i + 1,
+						File:       "cart.go",
+						Name:       name,
+						Old:        tt.old,
+						Suggestion: review.SuggestKeep,
 					}
-					p.Items = append(p.Items, item)
+					p.Requests = append(p.Requests, request)
 				}
-				r, err := review.BuildReviewWithRound("twins", p)
+				r, err := review.BuildReviewWithBatch("twins", p)
 				if err != nil {
 					t.Fatal(err)
 				}
 				v := &popup.View{
-					Entries: r.ListEntries(),
-					Repo:    repo,
-					Cols:    100,
-					Rows:    40,
+					Requests: r.ListFeedbackRequests(),
+					Repo:     repo,
+					Cols:     100,
+					Rows:     40,
 				}
 				askCheckerForCommentLayout(r, v)
 				if tt.changed != "" {
