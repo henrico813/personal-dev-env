@@ -98,9 +98,42 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 }
 
 // Retyping on a phone is slow, so text the checker refuses opens again on the
-// next edit. The saved wording keeps the r prefix of the AI's wording, or the
-// tool would refuse the owner's backslash when it writes the files.
-func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
+// next edit.
+func TestRefusedEditReopensOwnerText(t *testing.T) {
+	keepTax := review.FeedbackRequest{
+		ID:         1,
+		File:       "tax.py",
+		Name:       "tax",
+		Suggestion: review.SuggestKeep,
+		Old:        "    \"\"\"Return the tax.\"\"\"\n",
+	}
+	// The fake nvim types closing quotes the first time. The second time it
+	// finds them in the file and fixes them.
+	script := `if head -n 1 "$1" | grep -qF '"""tax"""'; then ` +
+		`printf 'Return the whole tax.\n\n' > "$1.new"; ` +
+		`else printf 'Return the """tax""".\n\n' > "$1.new"; fi; ` +
+		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
+	r := startTaxReview(
+		t,
+		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
+		keepTax,
+		script,
+	)
+
+	refused := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+	fixed := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+
+	if refused == nil || !strings.Contains(refused.Error(), "your text is kept") {
+		t.Fatalf("first editComment() error = %v, want the text kept", refused)
+	}
+	if fixed != nil {
+		t.Errorf("second editComment() error = %v, want the fixed text saved", fixed)
+	}
+}
+
+// An owner who edits the AI's reword keeps its r prefix. Without it, the tool
+// would refuse the owner's backslash when it writes the files.
+func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 	rewordTax := review.FeedbackRequest{
 		ID:         1,
 		File:       "tax.py",
@@ -109,11 +142,7 @@ func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 		Old:        "    \"\"\"Return the tax.\"\"\"\n",
 		New:        "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
 	}
-	// The fake nvim types closing quotes the first time. The second time it
-	// finds them in the file and fixes them.
-	script := `if head -n 1 "$1" | grep -qF '"""tax"""'; then ` +
-		`printf 'Return the tax at C:\\rates, rounded down.\n\n' > "$1.new"; ` +
-		`else printf 'Return the """tax""".\n\n' > "$1.new"; fi; ` +
+	script := `printf 'Return the tax at C:\\rates, rounded down.\n\n' > "$1.new"; ` +
 		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
 	r := startTaxReview(
 		t,
@@ -122,14 +151,10 @@ func TestRefusedEditKeepsTypingAndPrefix(t *testing.T) {
 		script,
 	)
 
-	refused := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
-	fixed := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
+	err := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
 
-	if refused == nil || !strings.Contains(refused.Error(), "your text is kept") {
-		t.Fatalf("first editComment() error = %v, want the text kept", refused)
-	}
-	if fixed != nil {
-		t.Fatalf("second editComment() error = %v, want the fixed text saved", fixed)
+	if err != nil {
+		t.Fatalf("editComment() error = %v, want the text saved", err)
 	}
 	saved, err := review.OpenReview("tax")
 	if err != nil {
@@ -213,9 +238,8 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	}
 }
 
-// Saves a review of one comment in a new repository with tax.py, and puts a
-// fake nvim first on PATH that runs the given shell script on the file it
-// opens.
+// Saves a one-comment review of tax.py in a new repository. A fake nvim
+// first on PATH runs the given shell script on the file it opens.
 func startTaxReview(t *testing.T, code string, request review.FeedbackRequest, script string) *review.Review {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
