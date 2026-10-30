@@ -96,15 +96,27 @@ func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
 func (v *View) Show(index int, now time.Time) {
 	v.Index = index
 	v.typingFor = None
-	v.screen = itemScreen
-	rows, focus := v.body()
-	v.scroll = min(focus, max(0, len(rows)-v.room()))
-	v.shownAt = now
+	v.showProposal(now)
 }
 
-// Shows the current item again from its proposal and makes answer keys wait,
-// keeping any note being typed.
-func (v *View) Refresh(now time.Time) {
+// Takes the reloaded review but stays on the same item.
+func (v *View) Refresh(entries []review.Entry, now time.Time) {
+	shown := v.Entry()
+	v.Entries = entries
+	for i, e := range v.Entries {
+		if e.Item.ID != shown.Item.ID {
+			continue
+		}
+		v.Index = i
+		// New text from the AI must be read before an answer counts.
+		if e.Round != shown.Round {
+			v.showProposal(now)
+		}
+	}
+}
+
+// Shows the item's proposal and makes answer keys wait.
+func (v *View) showProposal(now time.Time) {
 	v.screen = itemScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))

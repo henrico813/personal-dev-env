@@ -157,8 +157,7 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// The popup and a review tab each hold a copy of one review, and a save from
-// either must keep the other's saves and use the AI's newest text.
+// A save from the tab or the popup must keep the other's saves.
 func TestConsistentTabAndPopupStateOnSave(t *testing.T) {
 	repo := newRepo(t)
 	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
@@ -193,8 +192,8 @@ func TestConsistentTabAndPopupStateOnSave(t *testing.T) {
 	if e := entries[0]; e.Note != "keep the first sentence" || e.Decision == nil {
 		t.Errorf("item 1 = %+v, want the popup's note and answer", e)
 	}
-	if e := entries[1]; e.Round != 2 || e.Note != "name the keys" || e.Decision == nil {
-		t.Errorf("item 2 = %+v, want a note and answer on round 2", e)
+	if e := entries[1]; e.Round != 2 || e.Note != "name the keys" || e.Decision != nil {
+		t.Errorf("item 2 = %+v, want a note and no answer on round 2", e)
 	}
 }
 

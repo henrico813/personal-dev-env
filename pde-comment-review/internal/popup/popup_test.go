@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -183,8 +184,7 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	}
 }
 
-// The AI can send new text while the owner types a note, and losing the note
-// would throw away the owner's typing.
+// New text from the AI must not erase a note the owner is typing.
 func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	v := newView(
 		t,
@@ -201,7 +201,7 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	v.PressKey("m", start.Add(Settle))
 	v.PressKey("a", start.Add(Settle))
 
-	v.Refresh(start.Add(2 * Settle))
+	v.Refresh(withNewText(v.Entries), start.Add(2*Settle))
 	v.PressKey("q", start.Add(2*Settle))
 	saved := v.PressKey("\r", start.Add(2*Settle))
 
@@ -215,8 +215,7 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	}
 }
 
-// An answer key pressed just as new text appears must not answer text the
-// owner has not read.
+// A key pressed as new text appears must not answer unread text.
 func TestNewTextDelaysAnswers(t *testing.T) {
 	v := newView(
 		t,
@@ -231,10 +230,16 @@ func TestNewTextDelaysAnswers(t *testing.T) {
 	start := time.Now()
 	v.ShowNextUndecided(0, start)
 
-	v.Refresh(start.Add(Settle))
+	v.Refresh(withNewText(v.Entries), start.Add(Settle))
 	quick := v.PressKey("o", start.Add(Settle))
 
 	if quick != None {
 		t.Errorf("o right after new text = %v, want None", quick)
 	}
+}
+
+func withNewText(entries []review.Entry) []review.Entry {
+	entries = slices.Clone(entries)
+	entries[0].Round++
+	return entries
 }
