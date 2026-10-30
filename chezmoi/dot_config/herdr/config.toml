@@ -16,6 +16,12 @@ type = "plugin_action"
 command = "pde.comment-review.open"
 description = "open comment review"
 
+[[keys.command]]
+key = "prefix+shift+e"
+type = "plugin_action"
+command = "pde.comment-review.open-tab"
+description = "open comment review in a tab"
+
 [theme]
 name = "vesper"
 auto_switch = false

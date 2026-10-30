@@ -39,8 +39,9 @@ const usage = `usage:
       stdout, for an agent harness to start
   pde-comment-review help
       show this help
-Herdr runs pde-comment-review popup, edit and diff itself, and
-pde-comment-review open with no NAME when the owner presses Ctrl+b e.
+Herdr runs pde-comment-review popup, tab, edit and diff itself,
+pde-comment-review open with no NAME when the owner presses Ctrl+b e, and
+pde-comment-review open --tab when the owner presses Ctrl+b E.
 `
 
 func Main(args []string) int {
@@ -75,11 +76,15 @@ func Main(args []string) int {
 			return printReply(os.Stdout, replyToSubmit(".", checker))
 		}
 	case len(args) == 1 && args[0] == "open":
-		err = openWaitingReview()
+		err = openWaitingReview("popup")
+	case len(args) == 2 && args[0] == "open" && args[1] == "--tab":
+		err = openWaitingReview("tab")
 	case len(args) == 2 && args[0] == "open":
 		err = answerReview(args[1], os.Stdin, os.Stdout, popup.Settle)
 	case len(args) == 1 && args[0] == "popup":
 		err = runReviewPopup(os.Stdin, os.Stdout)
+	case len(args) == 1 && args[0] == "tab":
+		err = runReviewTab(os.Stdin, os.Stdout)
 	case len(args) == 1 && args[0] == "edit":
 		err = runEditTab()
 	case len(args) == 1 && args[0] == "diff":

@@ -1,6 +1,7 @@
 id = "pde.comment-review"
 name = "PDE comment review"
-version = "0.1.0"
+# Raise the version with each change, so the next install links it again.
+version = "0.2.0"
 min_herdr_version = "0.9.1"
 platforms = ["linux"]
 
@@ -11,6 +12,12 @@ placement = "popup"
 width = 40
 height = 16
 command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "popup"]
+
+[[panes]]
+id = "tab"
+title = "Comment review"
+placement = "tab"
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "tab"]
 
 [[panes]]
 id = "edit"
@@ -29,3 +36,9 @@ id = "open"
 title = "Open comment review"
 contexts = ["workspace"]
 command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "open"]
+
+[[actions]]
+id = "open-tab"
+title = "Open comment review in a tab"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/pde-comment-review", "open", "--tab"]
