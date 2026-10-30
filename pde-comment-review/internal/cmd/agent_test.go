@@ -257,7 +257,22 @@ func TestDraftNamesFilesToolCannotReview(t *testing.T) {
 
 	reply := replyToDraft(repo, buildRepoCheckerOnPath(t))
 
-	if !slices.Equal(reply.Unsupported, []string{"main.rs"}) || !strings.Contains(reply.Next, "nothing for the tool to review") || !strings.Contains(reply.Next, "pull request") {
-		t.Errorf("replyToDraft() = %+v, want main.rs named for the pull request", reply)
+	if !slices.Equal(reply.Unsupported, []string{"main.rs"}) {
+		t.Errorf(
+			"unsupported = %v, want [main.rs]",
+			reply.Unsupported,
+		)
+	}
+	if !strings.Contains(reply.Next, "nothing for the tool to review") {
+		t.Errorf(
+			"next = %q, want nothing for the tool to review",
+			reply.Next,
+		)
+	}
+	if !strings.Contains(reply.Next, "pull request") {
+		t.Errorf(
+			"next = %q, want the comments shown in the pull request",
+			reply.Next,
+		)
 	}
 }

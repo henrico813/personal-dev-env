@@ -17,8 +17,6 @@ import (
 // change must not turn the AI's wording into the owner's. Without the
 // marker line, the code below it would become part of the comment.
 func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
-	// Copies the marker line and the code below it to the end of the new page.
-	const keepMarkerAndCode = `sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
 	tests := []struct {
 		name       string
 		script     string // runs as nvim, with the edit page as $1
@@ -31,7 +29,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 			// The edit page starts with the AI's proposal as plain sentences,
 			// without the // markers.
 			script: `head -n 1 "$1" | grep -qx 'Returns the sum of prices, in cents.' || exit 1; ` +
-				`printf 'Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n' > "$1.new"; ` + keepMarkerAndCode,
+				buildNvimTypingScript(`Returns the total of every price in the cart, in cents, rounded down to whole cents.\n\n`),
 			want: &review.Answer{
 				Action: review.ActionEdited,
 				Text:   "// Returns the total of every price in the cart, in cents, rounded down to\n// whole cents.\n",
@@ -43,7 +41,7 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 		},
 		{
 			name:   "every word deleted",
-			script: `printf '\n' > "$1.new"; ` + keepMarkerAndCode,
+			script: buildNvimTypingScript(`\n`),
 			want:   &review.Answer{Action: review.ActionCut, Batch: 1},
 		},
 		{name: "closed without a change", script: "true"},
@@ -53,13 +51,10 @@ func TestEditSavesOwnerWordingAsAnswer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buildRepoCheckerOnPath(t)
 			r := startReview(t, cartGo, `{"approved": [], "avoid": {}}`, nil)
-			bin := t.TempDir()
-			// nvim is run as: nvim -c COMMANDS PAGE.
-			writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+tt.script+"\n")
-			if err := os.Chmod(filepath.Join(bin, "nvim"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			installFakeNvim(
+				t,
+				tt.script,
+			)
 
 			err := editComment(r, rewordTotal.ID, os.Stdin, os.Stdout)
 
@@ -107,25 +102,25 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 		Suggestion: review.SuggestKeep,
 		Old:        "    \"\"\"Return the tax.\"\"\"\n",
 	}
-	// The fake nvim types closing quotes the first time. The second time it
-	// finds them in the file and fixes them.
-	script := `if head -n 1 "$1" | grep -qF '"""tax"""'; then ` +
-		`printf 'Return the whole tax.\n\n' > "$1.new"; ` +
-		`else printf 'Return the """tax""".\n\n' > "$1.new"; fi; ` +
-		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
 	r := startTaxReview(
 		t,
 		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
 		keepTax,
-		script,
+		buildNvimTypingScript(`Return the """tax""".\n\n`),
 	)
-
 	refused := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
-	fixed := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
-
 	if refused == nil || !strings.Contains(refused.Error(), "your text is kept") {
 		t.Fatalf("first editComment() error = %v, want the text kept", refused)
 	}
+	// The second nvim fails unless the page opens with the refused text.
+	installFakeNvim(
+		t,
+		`head -n 1 "$1" | grep -qxF 'Return the """tax""".' || exit 1; `+
+			buildNvimTypingScript(`Return the whole tax.\n\n`),
+	)
+
+	fixed := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
+
 	if fixed != nil {
 		t.Errorf("second editComment() error = %v, want the fixed text saved", fixed)
 	}
@@ -142,13 +137,11 @@ func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 		Old:        "    \"\"\"Return the tax.\"\"\"\n",
 		New:        "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
 	}
-	script := `printf 'Return the tax at C:\\rates, rounded down.\n\n' > "$1.new"; ` +
-		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
 	r := startTaxReview(
 		t,
 		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
 		rewordTax,
-		script,
+		buildNvimTypingScript(`Return the tax at C:\\rates, rounded down.\n\n`),
 	)
 
 	err := editComment(r, rewordTax.ID, os.Stdin, os.Stdout)
@@ -196,15 +189,11 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 				Suggestion: review.SuggestKeep,
 				Old:        "    \"\"\"Return the tax.\"\"\"\n",
 			}
-			// The fake nvim deletes every word the first time. The second time
-			// it fails unless the file starts with the docstring's text again.
-			script := `if [ -e "$0.ran" ]; then head -n 1 "$1" | grep -qx 'Return the tax.' || exit 1; ` +
-				`else touch "$0.ran"; printf '\n' > "$1.new"; sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"; fi`
 			r := startTaxReview(
 				t,
 				"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n",
 				keepTax,
-				script,
+				buildNvimTypingScript(`\n`),
 			)
 			v := &popup.View{
 				Requests: r.ListFeedbackRequests(),
@@ -216,16 +205,12 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 
 			pressed := v.PressKey("c", time.Now())
 			emptied := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
-			reopened := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
 
 			if pressed != popup.None {
 				t.Errorf("c gave action %v, want none", pressed)
 			}
 			if emptied == nil || !strings.Contains(emptied.Error(), "only statement") {
 				t.Errorf("editComment() error = %v, want the cut refused", emptied)
-			}
-			if reopened != nil {
-				t.Errorf("second editComment() error = %v, want the docstring's wording back", reopened)
 			}
 			saved, err := review.OpenReview("tax")
 			if err != nil {
@@ -238,8 +223,83 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	}
 }
 
-// Saves a one-comment review of tax.py in a new repository. A fake nvim
-// first on PATH runs the given shell script on the file it opens.
+// After the owner empties a docstring that cannot be cut, the next edit opens
+// its wording again. An empty page would make the owner retype it on a phone.
+func TestRefusedCutReopensDocstringWording(t *testing.T) {
+	keepTax := review.FeedbackRequest{
+		ID:         1,
+		File:       "tax.py",
+		Name:       "tax",
+		Suggestion: review.SuggestKeep,
+		Old:        "    \"\"\"Return the tax.\"\"\"\n",
+	}
+	r := startTaxReview(
+		t,
+		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n",
+		keepTax,
+		buildNvimTypingScript(`\n`),
+	)
+	emptied := editComment(
+		r,
+		keepTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
+	if emptied == nil {
+		t.Fatal("first editComment() saved the empty docstring, want it refused")
+	}
+	// The second nvim fails unless the page opens with the docstring's wording.
+	installFakeNvim(
+		t,
+		`head -n 1 "$1" | grep -qx 'Return the tax.'`,
+	)
+
+	reopened := editComment(
+		r,
+		keepTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
+
+	if reopened != nil {
+		t.Errorf(
+			"second editComment() error = %v, want the docstring's wording",
+			reopened,
+		)
+	}
+}
+
+// Returns a fake nvim script that replaces the page's comment with text, a
+// printf format such as 'Sum.\n'. It keeps the marker line and the code
+// under it.
+func buildNvimTypingScript(text string) string {
+	return `printf '` + text + `' > "$1.new"; ` +
+		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
+}
+
+// Puts a fake nvim first on PATH, which runs script with the page it opens as
+// $1. A later call replaces the earlier script.
+func installFakeNvim(t *testing.T, script string) {
+	t.Helper()
+	bin := t.TempDir()
+	// nvim is run as nvim -c COMMANDS PAGE.
+	nvim := filepath.Join(bin, "nvim")
+	writeFile(
+		t,
+		nvim,
+		"#!/bin/sh\nshift 2\n"+script+"\n",
+	)
+	if err := os.Chmod(nvim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(
+		"PATH",
+		bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+}
+
+// Saves a one-comment review of tax.py in a new repository, with a fake nvim
+// that runs script.
 func startTaxReview(t *testing.T, code string, request review.FeedbackRequest, script string) *review.Review {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
@@ -258,11 +318,9 @@ func startTaxReview(t *testing.T, code string, request review.FeedbackRequest, s
 	if err != nil {
 		t.Fatal(err)
 	}
-	bin := t.TempDir()
-	writeFile(t, filepath.Join(bin, "nvim"), "#!/bin/sh\nshift 2\n"+script+"\n")
-	if err := os.Chmod(filepath.Join(bin, "nvim"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	installFakeNvim(
+		t,
+		script,
+	)
 	return r
 }
