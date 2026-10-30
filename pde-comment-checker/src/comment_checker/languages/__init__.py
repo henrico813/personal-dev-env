@@ -18,18 +18,18 @@ from .go import (
 )
 from .line_comments import (
     ScreenRow,
-    prepare_line_comment_for_screen,
     lay_out_line_comment,
+    prepare_line_comment_for_screen,
 )
 from .python import (
     PYTHON_GENERATED_MARKER,
     finish_python_rewrite,
     is_python_comment_writable,
     join_python_prose,
+    lay_out_python_comment,
     list_python_warnings,
     parse_python_comments,
     prepare_python_comment_for_screen,
-    lay_out_python_comment,
 )
 
 
