@@ -124,6 +124,10 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
     to write. ``plain`` is laid out like the entry's ``text`` when it has
     one, or else like the comment now under ``name`` in ``file``.
 
+    Args:
+        repo: The repository that holds each entry's file.
+        entries: The comments to show, as the review tool sends them.
+
     Returns:
         The exit code described in the module docstring.
     """
