@@ -122,7 +122,10 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 	fixed := editComment(r, keepTax.ID, os.Stdin, os.Stdout)
 
 	if fixed != nil {
-		t.Errorf("second editComment() error = %v, want the fixed text saved", fixed)
+		t.Errorf(
+			"second editComment() error = %v, want the refused text reopened and the fix saved",
+			fixed,
+		)
 	}
 }
 
