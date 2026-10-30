@@ -122,14 +122,14 @@ type checkerAnswer struct {
 
 // Returns an error naming each problem the checker finds in r, as if the owner
 // accepted every proposal.
-func refuseUnwritableProposals(
+func refuseUnwritableSuggestions(
 	r *review.Review,
 	named map[commentKey]string,
 	checker string,
 ) error {
 	var answers []checkerAnswer
-	for _, e := range r.ListEntries() {
-		answers = append(answers, buildAcceptedAnswer(e.Item, named))
+	for _, e := range r.ListFeedbackRequests() {
+		answers = append(answers, buildAcceptedAnswer(e.Request, named))
 	}
 	reply, err := sendCommentsToChecker(r, answers, checker, true /* check */)
 	if err != nil {
@@ -193,51 +193,50 @@ func joinProblems(problems []string) error {
 }
 
 // Returns the answer the owner gives by accepting item's proposal.
-func buildAcceptedAnswer(item review.Item, named map[commentKey]string) checkerAnswer {
+func buildAcceptedAnswer(request review.FeedbackRequest, named map[commentKey]string) checkerAnswer {
 	answer := checkerAnswer{
-		ID:          item.ID,
-		File:        item.File,
-		Name:        item.Name,
-		Old:         item.Old,
-		CodeRemoved: item.CodeRemoved,
+		ID:          request.ID,
+		File:        request.File,
+		Name:        request.Name,
+		Old:         request.Old,
+		CodeRemoved: request.CodeRemoved,
 	}
-	if !item.CodeRemoved {
-		answer.Current = item.Old
-		// A drafted item's old may be the approved text, which its file no
-		// longer holds.
-		if text, ok := named[commentKey{item.File, item.Name}]; ok {
+	if !request.CodeRemoved {
+		answer.Current = request.Old
+		// A drafted request may quote approved text that its file no longer has.
+		if text, ok := named[commentKey{request.File, request.Name}]; ok {
 			answer.Current = text
 		}
 	}
-	switch item.Proposal {
-	case review.ProposeCut:
+	switch request.Suggestion {
+	case review.SuggestCut:
 		answer.Cut = true
-	case review.ProposeReword:
-		answer.Text = item.New
+	case review.SuggestReword:
+		answer.Text = request.New
 	default:
 		// Keeping a comment restores the text the owner was shown.
-		answer.Text = item.Old
+		answer.Text = request.Old
 	}
 	return answer
 }
 
 // Converts the owner's decision about a comment into a request for the
 // checker.
-func convertDecisionForChecker(e review.Entry, named map[commentKey]string) (checkerAnswer, error) {
-	answer := buildAcceptedAnswer(e.Item, named)
-	switch action := e.Decision.Action; action {
+func convertAnswerForChecker(e review.RequestWithFeedback, named map[commentKey]string) (checkerAnswer, error) {
+	answer := buildAcceptedAnswer(e.Request, named)
+	switch action := e.Feedback.Answer.Action; action {
 	case review.ActionAccept:
 	case review.ActionKeep:
 		// Keeping a comment restores the text the owner was shown.
-		answer.Text, answer.Cut = e.Item.Old, false
+		answer.Text, answer.Cut = e.Request.Old, false
 	case review.ActionCut:
 		answer.Text, answer.Cut = "", true
 	case review.ActionEdited:
-		answer.Text, answer.Cut = e.Decision.Text, false
+		answer.Text, answer.Cut = e.Feedback.Answer.Text, false
 	default:
 		return answer, fmt.Errorf(
 			"item %d: decision %q must be keep, cut, accept or edited",
-			e.Item.ID,
+			e.Request.ID,
 			action,
 		)
 	}
@@ -247,17 +246,17 @@ func convertDecisionForChecker(e review.Entry, named map[commentKey]string) (che
 // Writes the owner's decisions into the code and approves them, so the
 // comment checker fails if an agent changes them later. Writes nothing if
 // any check fails first.
-func writeAndApproveDecisions(r *review.Review, checker string) (string, error) {
-	var undecided []string
-	for _, e := range r.ListEntries() {
-		if e.Decision == nil {
-			undecided = append(undecided, fmt.Sprint(e.Item.ID))
+func writeAndApproveAnswers(r *review.Review, checker string) (string, error) {
+	var unanswered []string
+	for _, e := range r.ListFeedbackRequests() {
+		if e.Feedback.Answer == nil {
+			unanswered = append(unanswered, fmt.Sprint(e.Request.ID))
 		}
 	}
-	if len(undecided) > 0 {
+	if len(unanswered) > 0 {
 		return "", fmt.Errorf(
 			"nothing was written: not decided: items %s",
-			strings.Join(undecided, ", "),
+			strings.Join(unanswered, ", "),
 		)
 	}
 	named, err := readReviewComments(r, checker)
@@ -265,8 +264,8 @@ func writeAndApproveDecisions(r *review.Review, checker string) (string, error) 
 		return "", fmt.Errorf("nothing was written: %w", err)
 	}
 	var answers []checkerAnswer
-	for _, e := range r.ListEntries() {
-		answer, err := convertDecisionForChecker(e, named)
+	for _, e := range r.ListFeedbackRequests() {
+		answer, err := convertAnswerForChecker(e, named)
 		if err != nil {
 			return "", fmt.Errorf("nothing was written: %w", err)
 		}
@@ -318,26 +317,26 @@ func readReviewComments(r *review.Review, checker string) (map[commentKey]string
 	return readCommentTexts(sources, checker)
 }
 
-// Returns the checker's name for the item's comment, or "" for one it
+// Returns the checker's name for the request's comment, or "" for one it
 // never names, such as a comment inside a function.
-func findItemName(item review.Item, named map[commentKey]string) string {
-	if item.Name != "" {
-		return item.Name
+func findRequestName(request review.FeedbackRequest, named map[commentKey]string) string {
+	if request.Name != "" {
+		return request.Name
 	}
 	for key, text := range named {
-		if key.file == item.File && text == item.Old {
+		if key.file == request.File && text == request.Old {
 			return key.name
 		}
 	}
 	return ""
 }
 
-// Returns each named item's comment as its file has it now, by item ID.
+// Returns each named request's comment as its file has it now, by request ID.
 func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]string {
 	foundByName := map[int]string{}
-	for _, e := range r.ListEntries() {
-		if text, ok := named[commentKey{e.Item.File, e.Item.Name}]; ok {
-			foundByName[e.Item.ID] = text
+	for _, e := range r.ListFeedbackRequests() {
+		if text, ok := named[commentKey{e.Request.File, e.Request.Name}]; ok {
+			foundByName[e.Request.ID] = text
 		}
 	}
 	return foundByName
@@ -345,24 +344,24 @@ func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]s
 
 // Refuses a round the screen could not show, such as a comment whose text
 // appears twice in its file.
-func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) error {
+func refuseUnwritableNamedRequests(r *review.Review, named map[commentKey]string) error {
 	foundByName := findCommentsByName(r, named)
 	var problems []error
-	for _, e := range r.ListEntries() {
-		if _, found := foundByName[e.Item.ID]; !found {
+	for _, e := range r.ListFeedbackRequests() {
+		if _, found := foundByName[e.Request.ID]; !found {
 			continue
 		}
 		var err error
-		if e.Item.CodeRemoved {
+		if e.Request.CodeRemoved {
 			err = fmt.Errorf(
 				"%s %s: its removed code is back. Send the item again without code_removed.",
-				e.Item.File,
-				e.Item.Name,
+				e.Request.File,
+				e.Request.Name,
 			)
 		} else {
 			_, err = review.FindCommentLine(
 				r.Repo(),
-				e.Item,
+				e.Request,
 				foundByName,
 			)
 		}
@@ -371,7 +370,7 @@ func refuseUnwritableNamedItems(r *review.Review, named map[commentKey]string) e
 				problems,
 				fmt.Errorf(
 					"item %d: %w",
-					e.Item.ID,
+					e.Request.ID,
 					err,
 				),
 			)

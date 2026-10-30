@@ -30,11 +30,11 @@ func Valid(prices []int) bool { return true }
 `
 
 var (
-	cutCurrency = review.Item{ID: 1, File: "cart.go", Proposal: review.ProposeCut,
+	cutCurrency = review.FeedbackRequest{ID: 1, File: "cart.go", Suggestion: review.SuggestCut,
 		Old: "\t// Prices are in cents, so sums never round.\n"}
-	rewordTotal = review.Item{ID: 2, File: "cart.go", Proposal: review.ProposeReword,
+	rewordTotal = review.FeedbackRequest{ID: 2, File: "cart.go", Suggestion: review.SuggestReword,
 		Old: "// Sums the prices.\n", New: "// Returns the sum of prices, in cents.\n"}
-	keepTooHigh = review.Item{ID: 3, File: "cart.go", Proposal: review.ProposeKeep,
+	keepTooHigh = review.FeedbackRequest{ID: 3, File: "cart.go", Suggestion: review.SuggestKeep,
 		Old: "// Reports whether a price is too high.\n"}
 )
 
@@ -189,15 +189,15 @@ func TestCheckerFailureWithoutReasonsIsRefused(t *testing.T) {
 	}
 }
 
-func startReview(t *testing.T, code, settings string, renames []string, extra ...review.Item) *review.Review {
+func startReview(t *testing.T, code, settings string, renames []string, extra ...review.FeedbackRequest) *review.Review {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "cart.go"), code)
 	writeFile(t, filepath.Join(repo, ".code-comments.json"), settings)
-	p := review.Proposals{Version: review.Version, Repo: repo, Renames: renames,
-		Items: append([]review.Item{cutCurrency, rewordTotal, keepTooHigh}, extra...)}
-	if _, err := review.AddRound("cart", p); err != nil {
+	p := review.Batch{Version: review.Version, Repo: repo, Renames: renames,
+		Requests: append([]review.FeedbackRequest{cutCurrency, rewordTotal, keepTooHigh}, extra...)}
+	if _, err := review.AddBatch("cart", p); err != nil {
 		t.Fatal(err)
 	}
 	r, err := review.OpenReview("cart")
@@ -214,10 +214,10 @@ func writeFile(t *testing.T, path, text string) {
 	}
 }
 
-func setDecisions(t *testing.T, r *review.Review, decisions map[int]review.Decision) {
+func saveAnswers(t *testing.T, r *review.Review, answers map[int]review.Answer) {
 	t.Helper()
-	for id, d := range decisions {
-		if err := r.SetDecision(id, d.Action, d.Text); err != nil {
+	for id, d := range answers {
+		if err := r.SaveAnswer(id, d.Action, d.Text); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -227,7 +227,7 @@ func setDecisions(t *testing.T, r *review.Review, decisions map[int]review.Decis
 // owner never saw stays unlocked.
 func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
 	checker := buildRepoCheckerOnPath(t)
-	// No item shows Clear's comment, so it must stay unapproved.
+	// No request shows Clear's comment, so it must stay unapproved.
 	unanswered := "\n// Deletes every order.\nfunc Clear() {}\n"
 	r := startReview(
 		t,
@@ -235,20 +235,20 @@ func TestApplyApprovesOnlyAnsweredComments(t *testing.T) {
 		validApproval,
 		nil,
 	)
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionAccept},
 			2: {Action: review.ActionAccept},
 			3: {Action: review.ActionKeep},
 		},
 	)
 
-	_, err := writeAndApproveDecisions(r, checker)
+	_, err := writeAndApproveAnswers(r, checker)
 
 	if err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 	approved, err := readApprovals(r.Repo())
 	if err != nil {
@@ -269,20 +269,20 @@ func TestApplyWritesOwnerAnswers(t *testing.T) {
 		`{"approved": [{"file": "cart.go", "name": "Check", "text": "// Reports whether every price is above zero.\n"}], "avoid": {}}`,
 		[]string{"Check=Valid"},
 	)
-	setDecisions(
+	saveAnswers(
 		t,
 		r,
-		map[int]review.Decision{
+		map[int]review.Answer{
 			1: {Action: review.ActionAccept},
 			2: {Action: review.ActionAccept},
 			3: {Action: review.ActionEdited, Text: "// Reports whether price is over the 1000 cent limit.\n"},
 		},
 	)
 
-	_, err := writeAndApproveDecisions(r, checker)
+	_, err := writeAndApproveAnswers(r, checker)
 
 	if err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 	// gofmt realigns the const block once the comment inside it is cut.
 	want := `package cart
@@ -334,19 +334,19 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 		{"file": "cart.go", "name": "Reset", "text": ""},
 		{"file": "tax.go", "name": "Check", "text": "// Checks the tax.\n"}], "avoid": {}}`
 	tests := []struct {
-		name       string
-		onDisk     string // cart.go when apply runs
-		renames    []string
-		extra      []review.Item // items after the three every row has; the owner keeps them
-		crash      bool          // a checker that raises an exception, as Python does on a bug
-		reproposed bool          // the AI sends item 2 again after the owner decided it
-		want       string
+		name      string
+		onDisk    string // cart.go when apply runs
+		renames   []string
+		extra     []review.FeedbackRequest // requests after the three every row has; the owner keeps them
+		crash     bool                     // a checker that raises an exception, as Python does on a bug
+		sentAgain bool                     // the AI sends request 2 again after the owner answered it
+		want      string
 	}{
 		{
-			name:       "item proposed again",
-			onDisk:     cartGo,
-			reproposed: true,
-			want:       "not decided: items 2",
+			name:      "item proposed again",
+			onDisk:    cartGo,
+			sentAgain: true,
+			want:      "not decided: items 2",
 		},
 		{
 			// Approving it would approve wording the owner never saw.
@@ -364,7 +364,7 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			// Listing an edited approved comment must not approve the edit.
 			name:   "approved comment changed, in review",
 			onDisk: strings.Replace(cartGo, "every price is above zero", "no price is negative", 1),
-			extra: []review.Item{{ID: 4, File: "cart.go", Proposal: review.ProposeKeep,
+			extra: []review.FeedbackRequest{{ID: 4, File: "cart.go", Suggestion: review.SuggestKeep,
 				Old: "// Reports whether no price is negative.\n"}},
 			want: "cart.go Valid: differs from the text the owner approved",
 		},
@@ -378,11 +378,11 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			name:    "renamed approved comment rewritten, in review",
 			onDisk:  strings.Replace(cartGo, "// Reports whether every price is above zero.\nfunc Valid", "// Always returns true; safe to skip.\nfunc Check", 1),
 			renames: []string{"Valid=Check"},
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeKeep,
-				Old:      "// Always returns true; safe to skip.\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Suggestion: review.SuggestKeep,
+				Old:        "// Always returns true; safe to skip.\n",
 			}},
 			want: "cart.go Check: differs from the text the owner approved",
 		},
@@ -398,23 +398,23 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			// The write would approve the named comment, not the one shown.
 			name:   "item named after another comment",
 			onDisk: cartGo,
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Name:     "Valid",
-				Proposal: review.ProposeKeep,
-				Old:      "// Sums the prices.\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Name:       "Valid",
+				Suggestion: review.SuggestKeep,
+				Old:        "// Sums the prices.\n",
 			}},
 			want: "item 4: cart.go Valid: no comment by this name has the item's old",
 		},
 		{
 			name:   "cut comment put back, in review",
 			onDisk: cartGo + "\n// Empties the cart.\nfunc Reset() {}\n",
-			extra: []review.Item{{
-				ID:       4,
-				File:     "cart.go",
-				Proposal: review.ProposeKeep,
-				Old:      "// Empties the cart.\n",
+			extra: []review.FeedbackRequest{{
+				ID:         4,
+				File:       "cart.go",
+				Suggestion: review.SuggestKeep,
+				Old:        "// Empties the cart.\n",
 			}},
 			want: "cart.go Reset: the owner cut this comment",
 		},
@@ -442,19 +442,19 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 				}
 			}
 			r := startReview(t, tt.onDisk, approveValid, tt.renames, tt.extra...)
-			decisions := map[int]review.Decision{
+			answers := map[int]review.Answer{
 				1: {Action: review.ActionAccept},
 				2: {Action: review.ActionAccept},
 				3: {Action: review.ActionKeep},
 			}
-			for _, item := range tt.extra {
-				decisions[item.ID] = review.Decision{Action: review.ActionKeep}
+			for _, request := range tt.extra {
+				answers[request.ID] = review.Answer{Action: review.ActionKeep}
 			}
-			setDecisions(t, r, decisions)
-			if tt.reproposed {
+			saveAnswers(t, r, answers)
+			if tt.sentAgain {
 				shorter := rewordTotal
 				shorter.New = "// Returns the sum.\n"
-				if _, err := review.AddRound("cart", review.Proposals{Version: review.Version, Repo: r.Repo(), Items: []review.Item{shorter}}); err != nil {
+				if _, err := review.AddBatch("cart", review.Batch{Version: review.Version, Repo: r.Repo(), Requests: []review.FeedbackRequest{shorter}}); err != nil {
 					t.Fatal(err)
 				}
 				var err error
@@ -463,10 +463,10 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 				}
 			}
 
-			_, err := writeAndApproveDecisions(r, checker)
+			_, err := writeAndApproveAnswers(r, checker)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), "nothing was written") {
-				t.Fatalf("writeAndApproveDecisions() error = %v, want it to contain %q and say nothing was written", err, tt.want)
+				t.Fatalf("writeAndApproveAnswers() error = %v, want it to contain %q and say nothing was written", err, tt.want)
 			}
 			if got, _ := os.ReadFile(filepath.Join(r.Repo(), "cart.go")); string(got) != tt.onDisk {
 				t.Errorf("cart.go changed:\n%s", got)
@@ -476,7 +476,7 @@ func TestApplyRefusesReviewOnFailedCheck(t *testing.T) {
 			}
 			// Marking a failed check as written would prevent the owner
 			// from trying again.
-			if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedRound != 0 {
+			if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedBatch != 0 {
 				t.Errorf("review reopened as %+v, %v; want it still waiting", reopened, err)
 			}
 		})
@@ -492,7 +492,7 @@ func TestFailedWritePreservesFilesAndReview(t *testing.T) {
 	checker := buildRepoCheckerOnPath(t)
 	const approvals = `{"approved": [], "avoid": {}}`
 	r := startReview(t, cartGo, approvals, nil)
-	setDecisions(t, r, map[int]review.Decision{
+	saveAnswers(t, r, map[int]review.Answer{
 		1: {Action: review.ActionAccept},
 		2: {Action: review.ActionAccept},
 		3: {Action: review.ActionKeep},
@@ -502,7 +502,7 @@ func TestFailedWritePreservesFilesAndReview(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(r.Repo(), 0o755) })
 
-	_, err := writeAndApproveDecisions(r, checker)
+	_, err := writeAndApproveAnswers(r, checker)
 
 	if err == nil || !strings.Contains(err.Error(), "Permission denied") ||
 		!strings.Contains(err.Error(), "files may have changed") ||
@@ -514,7 +514,7 @@ func TestFailedWritePreservesFilesAndReview(t *testing.T) {
 			t.Errorf("%s = %q, %v; want unchanged", file, got, err)
 		}
 	}
-	if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedRound != 0 {
+	if reopened, err := review.OpenReview("cart"); err != nil || reopened.AppliedBatch != 0 {
 		t.Errorf("review reopened as %+v, %v; want it still waiting", reopened, err)
 	}
 }

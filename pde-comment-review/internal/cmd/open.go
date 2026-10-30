@@ -59,7 +59,7 @@ func runReviewScreen(
 ) error {
 	foundByName, err := readCommentsByName(r)
 	v := &popup.View{
-		Entries:     r.ListEntries(),
+		Requests:    r.ListFeedbackRequests(),
 		Repo:        r.Repo(),
 		Origin:      origin,
 		Settle:      opts.settle,
@@ -74,7 +74,7 @@ func runReviewScreen(
 	}
 	defer term.Restore()
 	v.Cols, v.Rows = term.Size()
-	v.ShowNextUndecided(0, time.Now())
+	v.ShowNextUnanswered(0, time.Now())
 	r, err = writeWhenAllAnswered(
 		r,
 		v,
@@ -115,8 +115,8 @@ func runReviewScreen(
 				review.ActionAccept,
 			)
 		case popup.SaveNote:
-			err = r.SetNote(v.Entry().Item.ID, strings.TrimSpace(v.Typed))
-			v.Entries = r.ListEntries()
+			err = r.SaveNote(v.Current().Request.ID, strings.TrimSpace(v.Typed))
+			v.Requests = r.ListFeedbackRequests()
 		case popup.Edit:
 			if !opts.inPopup {
 				r, err = editInPlace(
@@ -136,14 +136,14 @@ func runReviewScreen(
 				return nil
 			}
 		case popup.ViewFile:
-			item := v.Entry().Item
+			request := v.Current().Request
 			err = runOutsideScreen(
 				term,
 				v,
 				func() error {
 					return viewFile(
 						r.Repo(),
-						item,
+						request,
 						v.FoundByName,
 						in,
 						out,
@@ -169,15 +169,15 @@ func reloadReview(
 	if err != nil {
 		return r, err
 	}
-	v.Refresh(saved.ListEntries(), time.Now())
+	v.Refresh(saved.ListFeedbackRequests(), time.Now())
 	return saved, nil
 }
 
-// Returns each named item's comment as its file has it now, running the
-// checker only when r has a named item.
+// Returns each named request's comment as its file has it now. Runs the
+// checker only when the review has a named request.
 func readCommentsByName(r *review.Review) (map[int]string, error) {
-	isNamed := func(e review.Entry) bool { return e.Item.Name != "" }
-	if !slices.ContainsFunc(r.ListEntries(), isNamed) {
+	isNamed := func(e review.RequestWithFeedback) bool { return e.Request.Name != "" }
+	if !slices.ContainsFunc(r.ListFeedbackRequests(), isNamed) {
 		return nil, nil
 	}
 	checker, err := findCheckerPath()
@@ -192,7 +192,7 @@ func readCommentsByName(r *review.Review) (map[int]string, error) {
 }
 
 func openEditTab(r *review.Review, v *popup.View) bool {
-	env := map[string]string{reviewNameEnv: r.Name, itemIDEnv: strconv.Itoa(v.Entry().Item.ID)}
+	env := map[string]string{reviewNameEnv: r.Name, requestIDEnv: strconv.Itoa(v.Current().Request.ID)}
 	return openTabOrShowWhy(v, editPaneID, env)
 }
 
@@ -203,12 +203,12 @@ func editInPlace(
 	in *os.File,
 	out *os.File,
 ) (*review.Review, error) {
-	id := v.Entry().Item.ID
+	id := v.Current().Request.ID
 	err := runOutsideScreen(term, v, func() error { return editComment(r, id, in, out) })
-	v.Entries = r.ListEntries()
+	v.Requests = r.ListFeedbackRequests()
 	// Moves on even when nothing was saved, as the popup does when the edit
-	// tab reopens it at the next unanswered item.
-	v.ShowNextUndecided(v.Index+1, time.Now())
+	// tab reopens it at the next unanswered request.
+	v.ShowNextUnanswered(v.Index+1, time.Now())
 	if err != nil {
 		return r, err
 	}
@@ -243,11 +243,11 @@ func saveAnswerAndShowNext(
 	v *popup.View,
 	action string,
 ) (*review.Review, error) {
-	if err := r.SetDecision(v.Entry().Item.ID, action, ""); err != nil {
+	if err := r.SaveAnswer(v.Current().Request.ID, action, ""); err != nil {
 		return r, err
 	}
-	v.Entries = r.ListEntries()
-	v.ShowNextUndecided(v.Index+1, time.Now())
+	v.Requests = r.ListFeedbackRequests()
+	v.ShowNextUnanswered(v.Index+1, time.Now())
 	return writeWhenAllAnswered(
 		r,
 		v,
@@ -270,31 +270,31 @@ func writeWhenAllAnswered(
 // Applies the review and returns it as read again, for the screen to use
 // from then on. A refusal stays on screen, so the owner can read why.
 func applyFromScreen(name string, v *popup.View) (*review.Review, error) {
-	// An AI may have added a round since the screen read the review.
+	// An AI may have added a batch since the screen read the review.
 	r, err := review.OpenReview(name)
 	if err != nil {
 		return nil, err
 	}
 	// A second screen, or a review reopened after its write, finds the
 	// answers already in the code.
-	if r.AppliedRound == len(r.Rounds) {
+	if r.AppliedBatch == len(r.Batches) {
 		v.ShowDone()
 		return r, nil
 	}
 	// A missing checker is a refusal too, so its message stays on screen.
 	checker, err := findCheckerPath()
 	if err == nil {
-		_, err = writeAndApproveDecisions(
+		_, err = writeAndApproveAnswers(
 			r,
 			checker,
 		)
 	}
-	v.Entries = r.ListEntries()
+	v.Requests = r.ListFeedbackRequests()
 	switch {
 	case err != nil && !v.IsAllAnswered():
-		// A refusal for an item the new round added opens that item; the
-		// answers are written once the owner answers it.
-		v.ShowNextUndecided(
+		// A refused request from the new batch opens on screen. The answers are
+		// written once the owner answers it.
+		v.ShowNextUnanswered(
 			0,
 			time.Now(),
 		)
