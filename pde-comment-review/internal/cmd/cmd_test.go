@@ -229,7 +229,7 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 				)
 
 				if err == nil {
-					t.Fatal("addRound() saved a review that apply would refuse")
+					t.Fatal("addBatchFile() saved a review that apply would refuse")
 				}
 				wants := append(
 					tt.want,
@@ -241,7 +241,7 @@ func TestAddRefusesReviewThatFailsLater(t *testing.T) {
 						want,
 					) {
 						t.Errorf(
-							"addRound() error = %v, want it to contain %q",
+							"addBatchFile() error = %v, want it to contain %q",
 							err,
 							want,
 						)
@@ -286,7 +286,7 @@ func TestAddSavesRequestQuotingApprovedText(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf(
-			"addRound() error = %v",
+			"addBatchFile() error = %v",
 			err,
 		)
 	}
@@ -328,7 +328,7 @@ func TestAddKeepsSameWordedCommentsApart(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf(
-			"addRound() error = %v",
+			"addBatchFile() error = %v",
 			err,
 		)
 	}
@@ -377,7 +377,7 @@ func TestAddRechecksFilesFromEarlierBatches(t *testing.T) {
 		"cart.go Valid: the owner's approved comment is gone",
 	) {
 		t.Fatalf(
-			"addRound() error = %v, want it to name cart.go Valid",
+			"addBatchFile() error = %v, want it to name cart.go Valid",
 			err,
 		)
 	}
@@ -425,7 +425,7 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	want := "nothing was saved: gofmt would change cart.go"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf(
-			"addRound() error = %v, want it to contain %q",
+			"addBatchFile() error = %v, want it to contain %q",
 			err,
 			want,
 		)
@@ -471,7 +471,7 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 	want := "nothing was saved: item 4: tax.py: owner reviews are off for this language"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf(
-			"addRound() error = %v, want it to contain %q",
+			"addBatchFile() error = %v, want it to contain %q",
 			err,
 			want,
 		)
@@ -522,7 +522,7 @@ func TestAddAcceptsSameWordingInTwoFiles(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf(
-			"addRound() error = %v",
+			"addBatchFile() error = %v",
 			err,
 		)
 	}
@@ -562,6 +562,6 @@ func TestAddRefusesIDOfAnotherComment(t *testing.T) {
 
 	want := "nothing was saved: item 2: an earlier round used this id for another comment"
 	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), "item 3: an earlier round used this id") {
-		t.Fatalf("addRound() error = %v, want items 2 and 3 refused", err)
+		t.Fatalf("addBatchFile() error = %v, want requests 2 and 3 refused", err)
 	}
 }

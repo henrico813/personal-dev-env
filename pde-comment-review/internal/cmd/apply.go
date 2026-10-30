@@ -203,8 +203,7 @@ func buildAcceptedAnswer(request review.FeedbackRequest, named map[commentKey]st
 	}
 	if !request.CodeRemoved {
 		answer.Current = request.Old
-		// A drafted request's old may be the approved text, which its file no
-		// longer holds.
+		// A drafted request may quote approved text that its file no longer has.
 		if text, ok := named[commentKey{request.File, request.Name}]; ok {
 			answer.Current = text
 		}

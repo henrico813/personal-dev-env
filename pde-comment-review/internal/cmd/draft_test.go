@@ -289,7 +289,7 @@ func TestDraftAnswersLandOnNamedComments(t *testing.T) {
 	_, err = writeAndApproveAnswers(r, checker)
 
 	if err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 	wantShop := strings.NewReplacer(
 		"// Returns the sum of prices, in cents.\n",
@@ -358,7 +358,7 @@ func TestNewDraftSetsFinishedReviewAside(t *testing.T) {
 		},
 	)
 	if _, err := writeAndApproveAnswers(r, checker); err != nil {
-		t.Fatalf("writeAndApproveDecisions() error = %v", err)
+		t.Fatalf("writeAndApproveAnswers() error = %v", err)
 	}
 
 	again := replyToDraft(repo, checker)

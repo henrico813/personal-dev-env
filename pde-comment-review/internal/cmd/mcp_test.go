@@ -74,8 +74,8 @@ func startMCPServer(t *testing.T) func(tool string, args map[string]any) string 
 	}
 }
 
-// Verifies that sets sent at once all reach the owner's batch, since
-// models send several in one turn.
+// Verifies that review_set calls sent at once all reach the owner's
+// batch, since models send several in one turn.
 func TestParallelSetsKeepEverySuggestion(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	numbers := "package shop\n"
