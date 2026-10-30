@@ -90,9 +90,17 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		switch v.PressKey(key, time.Now()) {
-		case popup.Quit:
+		if v.IsQuitKey(key) {
 			return nil
+		}
+		// Reads the review again, since the popup, a Herdr tab or the AI may
+		// have changed it.
+		r, err = review.OpenReview(r.Name)
+		if err != nil {
+			return err
+		}
+		v.ReplaceRequests(r.ListFeedbackRequests(), time.Now())
+		switch v.PressKey(key, time.Now()) {
 		case popup.Keep:
 			r, err = saveAnswerAndShowNext(
 				r,
@@ -227,7 +235,8 @@ func saveAnswerAndShowNext(
 	v *popup.View,
 	action string,
 ) (*review.Review, error) {
-	if err := r.SaveAnswer(v.Current().Request.ID, action, ""); err != nil {
+	shown := v.Current()
+	if err := r.SaveAnswer(shown.Request.ID, shown.Batch, action, ""); err != nil {
 		return r, err
 	}
 	v.Requests = r.ListFeedbackRequests()

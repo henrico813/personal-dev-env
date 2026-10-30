@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -181,4 +182,124 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 			cut,
 		)
 	}
+}
+
+// The AI can send new suggestions while the owner reviews. A new suggestion
+// must not erase a note the owner is typing.
+func TestNotePersistenceDuringAgentReview(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+	// The owner starts a note and types "a".
+	v.PressKey("m", start.Add(Settle))
+	v.PressKey("a", start.Add(Settle))
+
+	// The AI sends a new suggestion while the owner types.
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(2*Settle))
+	v.PressKey("b", start.Add(2*Settle))
+	saved := v.PressKey("\r", start.Add(2*Settle))
+
+	if saved != SaveNote || v.Typed != "ab" {
+		t.Errorf(
+			"Enter = %v with %q, want SaveNote with %q",
+			saved,
+			v.Typed,
+			"ab",
+		)
+	}
+}
+
+// Ensure reading the review before every key does not block answer keys,
+// otherwise there's no input for feedback.
+func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+
+	v.ReplaceRequests(slices.Clone(v.Requests), start.Add(Settle))
+	keep := v.PressKey("o", start.Add(Settle))
+
+	if keep != Keep {
+		t.Errorf("o after reading the same suggestion again = %v, want Keep", keep)
+	}
+}
+
+// The AI can send a new suggestion while the owner reviews. A key pressed
+// just as it appears must not answer text the owner has not read.
+func TestNewTextDelaysAnswers(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUnanswered(0, start)
+
+	v.ReplaceRequests(addNewSuggestion(v.Requests), start.Add(Settle))
+	quick := v.PressKey("o", start.Add(Settle))
+
+	if quick != None {
+		t.Errorf("o right after new text = %v, want None", quick)
+	}
+}
+
+// The AI can start a new review with the same name while the done screen
+// is open.
+func TestReusedReviewNameKeepsShownRequests(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// One.\n",
+		},
+		review.FeedbackRequest{
+			ID:         2,
+			File:       "wire.go",
+			Suggestion: review.SuggestCut,
+			Old:        "// Two.\n",
+		},
+	)
+	start := time.Now()
+	v.Show(1, start)
+	newReview := slices.Clone(v.Requests[:1])
+
+	v.ReplaceRequests(newReview, start.Add(Settle))
+	v.PressKey("j", start.Add(Settle))
+
+	if got := v.Current().Request.ID; got != 2 {
+		t.Errorf("shown request = %d, want 2", got)
+	}
+}
+
+// Acts as if the AI sent a new suggestion for the first request.
+func addNewSuggestion(requests []review.RequestWithFeedback) []review.RequestWithFeedback {
+	requests = slices.Clone(requests)
+	requests[0].Batch++
+	return requests
 }
