@@ -32,7 +32,7 @@ const codeLinesAround = 100
 // the next item.
 const Settle = 600 * time.Millisecond
 
-var decisionStatus = map[string]string{
+var answerStatus = map[string]string{
 	review.ActionKeep:   "kept",
 	review.ActionCut:    "cut",
 	review.ActionAccept: "accepted",
@@ -54,10 +54,10 @@ const (
 	Keep
 	Cut
 	Accept
-	SaveNote // save View.Typed as the item's note
+	SaveNote // save View.Typed as the request's note
 	Open     // open the review the picker shows as chosen
-	Edit     // edit the item's comment in nvim
-	ViewFile // open the item's file read-only at its comment
+	Edit     // edit the request's comment in nvim
+	ViewFile // open the request's file read-only at its comment
 	Search   // search the repository for View.Typed
 	ShowDiff // show the uncommitted changes in the review's files
 )
@@ -65,13 +65,13 @@ const (
 type screen int
 
 const (
-	itemScreen   screen = iota
-	resultScreen        // shows what writing the answers did
+	requestScreen screen = iota
+	resultScreen         // shows what writing the answers did
 )
 
 // What the screen shows: one entry, scrolled down scroll rows.
 type View struct {
-	Entries    []review.Entry
+	Requests   []review.RequestWithFeedback
 	Repo       string
 	Origin     review.Origin
 	Index      int
@@ -85,11 +85,11 @@ type View struct {
 	screen     screen
 	result     string // what writing the answers did, or why it did not
 	written    bool   // whether the answers reached the code
-	// Each named item's comment as it is in its file now, by item ID.
+	// Each named request's comment as it is in its file now, by request ID.
 	FoundByName map[int]string
 }
 
-func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
+func (v *View) Current() review.RequestWithFeedback { return v.Requests[v.Index] }
 
 // Shows entry index scrolled past the code above, so its proposal is in
 // view first.
@@ -100,16 +100,16 @@ func (v *View) Show(index int, now time.Time) {
 }
 
 // Takes the reloaded review but stays on the same item.
-func (v *View) Refresh(entries []review.Entry, now time.Time) {
-	shown := v.Entry()
-	v.Entries = entries
-	for i, e := range v.Entries {
-		if e.Item.ID != shown.Item.ID {
+func (v *View) Refresh(requests []review.RequestWithFeedback, now time.Time) {
+	shown := v.Current()
+	v.Requests = requests
+	for i, e := range v.Requests {
+		if e.Request.ID != shown.Request.ID {
 			continue
 		}
 		v.Index = i
 		// New text from the AI must be read before an answer counts.
-		if e.Round != shown.Round {
+		if e.Batch != shown.Batch {
 			v.showProposal(now)
 		}
 	}
@@ -117,7 +117,7 @@ func (v *View) Refresh(entries []review.Entry, now time.Time) {
 
 // Shows the item's proposal and makes answer keys wait.
 func (v *View) showProposal(now time.Time) {
-	v.screen = itemScreen
+	v.screen = requestScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
 	v.shownAt = now
@@ -127,10 +127,10 @@ func (v *View) showProposal(now time.Time) {
 // decision. An entry with only a note still waits for one. When every
 // entry has one, it leaves the screen as it is, for the caller to
 // write the answers.
-func (v *View) ShowNextUndecided(index int, now time.Time) {
-	for i := range v.Entries {
-		next := (index + i) % len(v.Entries)
-		if v.Entries[next].Decision == nil {
+func (v *View) ShowNextUnanswered(index int, now time.Time) {
+	for i := range v.Requests {
+		next := (index + i) % len(v.Requests)
+		if v.Requests[next].Feedback.Answer == nil {
 			v.Show(next, now)
 			return
 		}
@@ -138,8 +138,8 @@ func (v *View) ShowNextUndecided(index int, now time.Time) {
 }
 
 func (v *View) IsAllAnswered() bool {
-	for _, e := range v.Entries {
-		if e.Decision == nil {
+	for _, e := range v.Requests {
+		if e.Feedback.Answer == nil {
 			return false
 		}
 	}
@@ -190,15 +190,15 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		return None
 	}
 	// Keeping, editing or viewing a comment needs its code.
-	if v.Entry().Item.CodeRemoved && (key == "o" || key == "e" || key == "v") {
+	if v.Current().Request.CodeRemoved && (key == "o" || key == "e" || key == "v") {
 		v.notice = "The code is gone. c or a drops the comment, and m asks the AI for the code back."
 		return None
 	}
 	switch key {
 	case "l":
-		v.Show((v.Index+1)%len(v.Entries), now)
+		v.Show((v.Index+1)%len(v.Requests), now)
 	case "h":
-		v.Show((v.Index+len(v.Entries)-1)%len(v.Entries), now)
+		v.Show((v.Index+len(v.Requests)-1)%len(v.Requests), now)
 	case "e":
 		return Edit
 	case "v":
@@ -213,7 +213,7 @@ func (v *View) PressKey(key string, now time.Time) Action {
 		}
 		if key == "m" {
 			v.typingFor = SaveNote
-			v.Typed = v.Entry().Note
+			v.Typed = v.Current().Feedback.Note
 			return None
 		}
 		return answerKeys[key]
@@ -290,19 +290,19 @@ func (v *View) buildHeader() (left, status string) {
 		}
 		left = fmt.Sprintf(
 			"all %d answered",
-			len(v.Entries),
+			len(v.Requests),
 		)
 		return left, status
 	}
-	e := v.Entry()
+	e := v.Current()
 	status = "?"
 	switch {
-	case e.Decision != nil:
-		status = decisionStatus[e.Decision.Action]
-	case e.Note != "":
+	case e.Feedback.Answer != nil:
+		status = answerStatus[e.Feedback.Answer.Action]
+	case e.Feedback.Note != "":
 		status = "note"
 	}
-	left = fmt.Sprintf("%d/%d %s? %s", v.Index+1, len(v.Entries), e.Item.Proposal, filepath.Base(e.Item.File))
+	left = fmt.Sprintf("%d/%d %s? %s", v.Index+1, len(v.Requests), e.Request.Suggestion, filepath.Base(e.Request.File))
 	return left, status
 }
 
@@ -348,7 +348,7 @@ func (v *View) body() ([]string, int) {
 		}
 		return rows, 0
 	}
-	e := v.Entry()
+	e := v.Current()
 	add := func(color, mark, text string) {
 		text = escapeControlCharacters(strings.ReplaceAll(text, "\t", "  "))
 		prefix := mark
@@ -364,10 +364,10 @@ func (v *View) body() ([]string, int) {
 	}
 	var before, after []string
 	var err error
-	if !e.Item.CodeRemoved {
+	if !e.Request.CodeRemoved {
 		before, after, err = review.ReadCodeAround(
 			v.Repo,
-			e.Item,
+			e.Request,
 			v.FoundByName,
 			codeLinesAround,
 		)
@@ -379,18 +379,18 @@ func (v *View) body() ([]string, int) {
 	if err != nil {
 		add(yellow, ">", "cannot show the code: "+err.Error())
 	}
-	if e.Note != "" {
-		add(yellow+bold, ">", "note: "+e.Note)
+	if e.Feedback.Note != "" {
+		add(yellow+bold, ">", "note: "+e.Feedback.Note)
 	}
-	if len(e.Item.AlsoAt) > 0 {
-		add(yellow, ">", "also at: "+strings.Join(e.Item.AlsoAt, ", "))
+	if len(e.Request.AlsoAt) > 0 {
+		add(yellow, ">", "also at: "+strings.Join(e.Request.AlsoAt, ", "))
 	}
-	if e.Item.Why != "" {
-		add(yellow, ">", "why: "+e.Item.Why)
+	if e.Request.Why != "" {
+		add(yellow, ">", "why: "+e.Request.Why)
 	}
 	// The owner's own wording, once saved, takes the place of the AI's.
 	switch {
-	case e.Item.CodeRemoved:
+	case e.Request.CodeRemoved:
 		add(
 			yellow,
 			">",
@@ -399,20 +399,20 @@ func (v *View) body() ([]string, int) {
 		addComment(
 			red,
 			"-",
-			e.Item.Old,
+			e.Request.Old,
 		)
-	case e.Decision != nil && e.Decision.Action == review.ActionEdited:
-		addComment(red, "-", e.Item.Old)
-		addComment(green, "+", e.Decision.Text)
-	case e.Item.Proposal == review.ProposeReword:
-		addComment(red, "-", e.Item.Old)
-		addComment(green, "+", e.Item.New)
-	case e.Item.Proposal == review.ProposeCut:
-		addComment(red, "-", e.Item.Old)
+	case e.Feedback.Answer != nil && e.Feedback.Answer.Action == review.ActionEdited:
+		addComment(red, "-", e.Request.Old)
+		addComment(green, "+", e.Feedback.Answer.Text)
+	case e.Request.Suggestion == review.SuggestReword:
+		addComment(red, "-", e.Request.Old)
+		addComment(green, "+", e.Request.New)
+	case e.Request.Suggestion == review.SuggestCut:
+		addComment(red, "-", e.Request.Old)
 		add(green, "+", "(cut)")
 	default:
 		add(yellow, ">", "no change proposed")
-		addComment("", " ", e.Item.Old)
+		addComment("", " ", e.Request.Old)
 	}
 	for _, line := range after {
 		add(dim, " ", line)

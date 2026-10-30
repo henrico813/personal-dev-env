@@ -32,8 +32,8 @@ func TestPopupRecordNamesItsReview(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_CONTEXT_JSON", `{"workspace_id":"w1"}`)
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
-	p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
-	if _, err := review.AddRound("cart", p); err != nil {
+	p := review.Batch{Version: review.Version, Repo: repo, Requests: []review.FeedbackRequest{cutCurrency}}
+	if _, err := review.AddBatch("cart", p); err != nil {
 		t.Fatal(err)
 	}
 	r, err := review.OpenReview("cart")
@@ -221,14 +221,14 @@ func TestActionOpensReviewInAskedPane(t *testing.T) {
 			writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
 			start := time.Now()
 			for i, name := range tt.reviews {
-				p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
-				if _, err := review.AddRound(name, p); err != nil {
+				p := review.Batch{Version: review.Version, Repo: repo, Requests: []review.FeedbackRequest{cutCurrency}}
+				if _, err := review.AddBatch(name, p); err != nil {
 					t.Fatal(err)
 				}
-				// Rounds saved in one test can share a timestamp, so set them apart.
+				// Batches saved in one test can share a timestamp, so set them apart.
 				added := start.Add(time.Duration(i) * time.Minute)
-				round := filepath.Join(review.FindStateRoot(), name, "round-1.json")
-				if err := os.Chtimes(round, added, added); err != nil {
+				batchFile := filepath.Join(review.FindStateRoot(), name, "round-1.json")
+				if err := os.Chtimes(batchFile, added, added); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -276,8 +276,8 @@ func TestPickerGroupsWaitingReviewsBySession(t *testing.T) {
 		repo := t.TempDir()
 		repos[saved.name] = repo
 		writeFile(t, filepath.Join(repo, "cart.go"), cartGo)
-		p := review.Proposals{Version: review.Version, Repo: repo, Items: []review.Item{cutCurrency}}
-		if _, err := review.AddRound(saved.name, p); err != nil {
+		p := review.Batch{Version: review.Version, Repo: repo, Requests: []review.FeedbackRequest{cutCurrency}}
+		if _, err := review.AddBatch(saved.name, p); err != nil {
 			t.Fatal(err)
 		}
 		r, err := review.OpenReview(saved.name)

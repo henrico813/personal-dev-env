@@ -26,7 +26,7 @@ func runEditTab() error {
 		return errors.New("only Herdr's edit tab runs edit; press e in the review popup")
 	}
 	name := os.Getenv(reviewNameEnv)
-	if err := editItemByID(name, os.Getenv(itemIDEnv)); err != nil {
+	if err := editRequestByID(name, os.Getenv(requestIDEnv)); err != nil {
 		waitForEnter(err)
 	}
 	if _, err := openPluginPane(popupPaneID, "popup", map[string]string{reviewNameEnv: name}); err != nil {
@@ -35,14 +35,14 @@ func runEditTab() error {
 	return closeOwnTab()
 }
 
-func editItemByID(name, itemID string) error {
+func editRequestByID(name, requestID string) error {
 	r, err := review.OpenReview(name)
 	if err != nil {
 		return err
 	}
-	id, err := strconv.Atoi(itemID)
+	id, err := strconv.Atoi(requestID)
 	if err != nil {
-		return fmt.Errorf("item %q is not a number", itemID)
+		return fmt.Errorf("item %q is not a number", requestID)
 	}
 	return editComment(r, id, os.Stdin, os.Stdout)
 }
@@ -73,7 +73,7 @@ func waitForEnter(err error) {
 // wording as the item's answer. A page left unchanged saves nothing, and a
 // page with no words cuts the comment.
 func editComment(r *review.Review, id int, in, out *os.File) error {
-	e, err := findEntry(r, id)
+	e, err := findFeedbackRequest(r, id)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	}
 	_, after, err := review.ReadCodeAround(
 		r.Repo(),
-		e.Item,
+		e.Request,
 		foundByName,
 		30,
 	)
@@ -113,32 +113,32 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if strings.TrimSpace(edited) == strings.TrimSpace(text) {
 		return nil
 	}
-	wording := comment.ToCommentLines(edited, e.Item.Old)
+	wording := comment.ToCommentLines(edited, e.Request.Old)
 	if wording == "" {
-		return r.SetDecision(id, review.ActionCut, "")
+		return r.SaveAnswer(id, review.ActionCut, "")
 	}
-	return r.SetDecision(id, review.ActionEdited, wording)
+	return r.SaveAnswer(id, review.ActionEdited, wording)
 }
 
-func findEntry(r *review.Review, id int) (review.Entry, error) {
-	for _, e := range r.ListEntries() {
-		if e.Item.ID == id {
+func findFeedbackRequest(r *review.Review, id int) (review.RequestWithFeedback, error) {
+	for _, e := range r.ListFeedbackRequests() {
+		if e.Request.ID == id {
 			return e, nil
 		}
 	}
-	return review.Entry{}, fmt.Errorf("review %s has no item %d", r.Name, id)
+	return review.RequestWithFeedback{}, fmt.Errorf("review %s has no item %d", r.Name, id)
 }
 
 // Returns the newest wording: the owner's own, then the AI's reword, then
 // the comment as it is.
-func chooseStartingWording(e review.Entry) string {
-	if e.Decision != nil && e.Decision.Action == review.ActionEdited {
-		return e.Decision.Text
+func chooseStartingWording(e review.RequestWithFeedback) string {
+	if e.Feedback.Answer != nil && e.Feedback.Answer.Action == review.ActionEdited {
+		return e.Feedback.Answer.Text
 	}
-	if e.Item.Proposal == review.ProposeReword {
-		return e.Item.New
+	if e.Request.Suggestion == review.SuggestReword {
+		return e.Request.New
 	}
-	return e.Item.Old
+	return e.Request.Old
 }
 
 // Shows the uncommitted changes in the review's files, through delta when
@@ -164,20 +164,20 @@ func showDiff(r *review.Review, out *os.File) error {
 // Opens the item's file read-only in nvim at its comment.
 func viewFile(
 	repo string,
-	item review.Item,
+	request review.FeedbackRequest,
 	foundByName map[int]string,
 	in *os.File,
 	out *os.File,
 ) error {
 	line, err := review.FindCommentLine(
 		repo,
-		item,
+		request,
 		foundByName,
 	)
 	if err != nil {
 		return err
 	}
-	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", line), item.File)
+	nvim := exec.Command("nvim", "-R", fmt.Sprintf("+%d", line), request.File)
 	nvim.Dir = repo
 	return runOnTerminal(nvim, in, out)
 }
