@@ -19,9 +19,9 @@ from .line_comments import (
     FixedRow,
     ScreenRow,
     WrappedRow,
+    lay_out_line_comment,
     prepare_line_comment_for_screen,
     wrap_words,
-    lay_out_line_comment,
 )
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
