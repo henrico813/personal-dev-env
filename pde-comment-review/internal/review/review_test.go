@@ -157,9 +157,9 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// The popup and a review tab each hold their own copy of one review. A save
-// from either must keep the other's saves and land on the newest round.
-func TestSaveBuildsOnReviewAsSaved(t *testing.T) {
+// The popup and a review tab each hold a copy of one review, and a save from
+// either must keep the other's saves and use the AI's newest text.
+func TestConsistentTabAndPopupStateOnSave(t *testing.T) {
 	repo := newRepo(t)
 	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
 	popup, err := OpenReview("config")
