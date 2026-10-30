@@ -8,10 +8,10 @@ import (
 
 // One waiting review in the list Ctrl+b e shows when several wait.
 type Choice struct {
-	Name     string
-	Origin   review.Origin
-	Items    int
-	Answered int
+	Name         string
+	Origin       review.Origin
+	RequestCount int
+	Answered     int
 }
 
 type group struct {
@@ -95,7 +95,7 @@ func (p *Picker) BuildScreen() []string {
 			}
 			rows = append(rows, marker+fitLabel(choice.Origin, p.Cols-len(marker)))
 			name := escapeControlCharacters(choice.Name)
-			details := fmt.Sprintf("    %s · %d/%d answered", name, choice.Answered, choice.Items)
+			details := fmt.Sprintf("    %s · %d/%d answered", name, choice.Answered, choice.RequestCount)
 			rows = append(rows, dim+clip(details, p.Cols)+reset)
 		}
 	}

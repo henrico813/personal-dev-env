@@ -74,9 +74,9 @@ func startMCPServer(t *testing.T) func(tool string, args map[string]any) string 
 	}
 }
 
-// Verifies that sets sent at once all reach the owner's round, since
+// Verifies that sets sent at once all reach the owner's batch, since
 // models send several in one turn.
-func TestParallelSetsKeepEveryProposal(t *testing.T) {
+func TestParallelSetsKeepEverySuggestion(t *testing.T) {
 	repo := newShopClone(t, "feat")
 	numbers := "package shop\n"
 	for n := 1; n <= 8; n++ {
@@ -113,15 +113,15 @@ func TestParallelSetsKeepEveryProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Rounds) != 1 || len(r.Rounds[0].Items) != 8 {
-		t.Fatalf("rounds = %+v, want one round of 8 items", r.Rounds)
+	if len(r.Batches) != 1 || len(r.Batches[0].Requests) != 8 {
+		t.Fatalf("rounds = %+v, want one round of 8 items", r.Batches)
 	}
-	for _, item := range r.Rounds[0].Items {
-		if want := fmt.Sprintf("// Item %d words.\n", item.ID); item.New != want {
+	for _, request := range r.Batches[0].Requests {
+		if want := fmt.Sprintf("// Item %d words.\n", request.ID); request.New != want {
 			t.Errorf(
 				"item %d proposal = %q, want %q",
-				item.ID,
-				item.New,
+				request.ID,
+				request.New,
 				want,
 			)
 		}
@@ -150,7 +150,7 @@ func TestToolsRequireAbsoluteDir(t *testing.T) {
 			giveArgs: map[string]any{
 				"dir":    ".",
 				"id":     1,
-				"answer": review.ProposeKeep,
+				"answer": review.SuggestKeep,
 			},
 		},
 		{
