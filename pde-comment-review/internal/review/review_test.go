@@ -232,19 +232,37 @@ func TestReplacedSuggestionNeedsNewAnswer(t *testing.T) {
 // out of date and would hide the new wording.
 func TestAnswersAndBatchesDeleteEditFiles(t *testing.T) {
 	repo := newRepo(t)
-	addTestBatch(t, "config", marshalBatch(t, repo, cutPort, rewordParse))
+	addTestBatch(
+		t,
+		"config",
+		marshalBatch(t, repo, cutPort, rewordParse),
+	)
 	r, err := OpenReview("config")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []int{1, 2} {
-		if err := os.WriteFile(r.BuildEditFilePath(id), []byte("typed\n"), 0o600); err != nil {
+		err := os.WriteFile(
+			r.BuildEditFilePath(id),
+			[]byte("typed\n"),
+			0o600,
+		)
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	answerErr := r.SaveAnswer(1, 1, ActionKeep, "")
-	addTestBatch(t, "config", marshalBatch(t, repo, rewordParse))
+	answerErr := r.SaveAnswer(
+		1,
+		1,
+		ActionKeep,
+		"",
+	)
+	addTestBatch(
+		t,
+		"config",
+		marshalBatch(t, repo, rewordParse),
+	)
 
 	if answerErr != nil {
 		t.Fatal(answerErr)
