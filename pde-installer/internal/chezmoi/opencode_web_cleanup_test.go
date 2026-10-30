@@ -116,6 +116,51 @@ func TestClientRemovesFullApprovalTools(t *testing.T) {
 	}
 }
 
+// A machine that moves from full to client keeps full's skills, plan commands
+// and reviewer agents, which call tools client lacks. Client must remove every
+// skill and OpenCode file that only full installs.
+func TestClientRemovesWhatOnlyFullInstalls(t *testing.T) {
+	clientInstalls := map[string]bool{}
+	clientExternals := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
+	for _, target := range renderedExternalTargets(clientExternals) {
+		clientInstalls[toRemovalTarget(target)] = true
+	}
+	fullOnly := map[string]bool{}
+	fullExternals := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "full")
+	for _, target := range renderedExternalTargets(fullExternals) {
+		target = toRemovalTarget(target)
+		removable := strings.HasPrefix(target, ".agents/skills/") || strings.HasPrefix(target, ".config/opencode/")
+		if removable && !clientInstalls[target] {
+			fullOnly[target] = true
+		}
+	}
+	clientRemoves := renderProfileTemplate(t, removeFileTemplate, "client")
+
+	if len(fullOnly) == 0 {
+		t.Fatal("full installs no skills or OpenCode files that client lacks")
+	}
+	for target := range fullOnly {
+		if !containsLine(clientRemoves, target) {
+			t.Errorf("client keeps full-only %s", target)
+		}
+	}
+	for target := range clientInstalls {
+		if containsLine(clientRemoves, target) {
+			t.Errorf("client removes %s, which it installs", target)
+		}
+	}
+}
+
+// Returns the removal target that covers an installed file, which for a skill
+// is its whole folder.
+func toRemovalTarget(target string) string {
+	if name, found := strings.CutPrefix(target, ".agents/skills/"); found {
+		skill, _, _ := strings.Cut(name, "/")
+		return ".agents/skills/" + skill
+	}
+	return target
+}
+
 // The one-time script must disable and stop the live units while their files
 // still exist, then reload systemd, or the public service survives the apply.
 func TestCleanupScriptDisablesWebUnits(t *testing.T) {

@@ -43,7 +43,8 @@ restore saved lessons. A failed render prints a warning and leaves the install
 in place. `install client` installs only the `obsidian-zettel`,
 `obsidian-daily-note`, `plain-direct-english`, `behavior-focused-testing`, and
 `delegate` skills, `skill-lessons` and its render step, and the OpenCode config
-without the plan and design commands or the plan reviewer agents. The installer
+without the plan and design commands or the plan reviewer agents. It removes
+those files and full's other skills if a full install left them. The installer
 also syncs `opencode/` and `pi/agent/` into their managed config homes. Pi
 extension packages referenced from `pi/agent/settings.json` remain unmanaged by
 the installer. Vibe relies on provider env vars or `~/.pi/agent/auth.json`

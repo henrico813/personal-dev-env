@@ -65,7 +65,8 @@ npm tools, herdr, nobs, `skill-lessons`, and the Alacritty, WezTerm, herdr,
 Neovim, and OpenCode configuration with the shared agent guidance. Its skills
 are only `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
 `behavior-focused-testing`, and `delegate`, and its OpenCode config leaves out
-the plan and design commands and the plan reviewer agents. It still excludes Go,
+the plan and design commands and the plan reviewer agents. Client removes those
+files and full's other skills if a full install left them. It still excludes Go,
 Rust, LSPs, Keychain, Moshi Hook, the other local builds such as planner and
 vibe, the native blink.cmp matcher, the herdr plugins, the `gh` approval guard,
 and the Claude Code, Codex, and Pi configuration. Full retains all of these

@@ -27,9 +27,6 @@ README.md
 link_herdr_plugins.sh
 # The planner link points at a build that only full installs.
 .config/opencode/bin/planner
-# The rust-development source holds only keep files, which would leave an empty folder on client.
-.agents/skills/rust-development
-.agents/skills/rust-development/**
 {{- if eq $profile "terminal" }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty
