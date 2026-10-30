@@ -16,7 +16,10 @@ from typing import NamedTuple
 from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
-    show_line_comment,
+    FixedRow,
+    ScreenRow,
+    WrappedRow,
+    prepare_line_comment_for_screen,
     wrap_words,
     write_line_comment,
 )
@@ -199,48 +202,82 @@ class Part(NamedTuple):
     text: str
 
 
-def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
-    """Return a comment's plain text and the rows a screen draws for it.
+def prepare_python_comment_for_screen(
+    text: str,
+) -> tuple[str, list[ScreenRow]]:
+    """Return a comment's words for editing and its rows for the screen.
 
-    A ``#`` comment is drawn as a Go comment is, with ``#`` marks. A
-    docstring's first row starts with its opening quotes. Each line
-    under a heading such as ``Args:`` indents its wrapped rows two
-    spaces. The closing quotes get a row of their own, unless the
-    docstring is one line in the code.
+    The checker's ``show`` command calls this for the review tool. The
+    owner edits the words in nvim, and the review screen draws the rows
+    on the owner's phone. A ``#`` comment is drawn as a Go comment is,
+    with ``#`` marks.
 
     Args:
-        text: The comment exactly as it is in the file.
+        text: The comment exactly as it is in the file, either ``#``
+            lines or one whole docstring.
 
     Returns:
-        The plain text the owner edits, and the rows the screen draws.
-
-    Raises:
-        SourceError: The text is neither ``#`` lines nor one whole
-            docstring.
+        The comment's words without ``#`` marks or quotes, and the rows
+        that draw it.
     """
     if text.lstrip().startswith("#"):
-        return show_line_comment(text, "#")
+        return prepare_line_comment_for_screen(text, "#")
     docstring, parts = read_docstring_parts(text)
+    return join_parts_as_text(parts), draw_docstring_rows(docstring, parts)
+
+
+def draw_docstring_rows(
+    docstring: re.Match[str], parts: list[Part]
+) -> list[ScreenRow]:
+    """Return the rows the review screen draws for a docstring.
+
+    The opening quotes start the first row. The closing quotes get a row
+    of their own, unless the docstring is one line in the code.
+
+    Args:
+        docstring: The docstring's match, which gives its prefix, quotes
+            and body.
+        parts: The docstring's lines, as ``read_docstring_parts`` returns
+            them.
+
+    Returns:
+        One row for each part, plus rows for the quotes.
+    """
     opening = docstring["prefix"] + docstring["quotes"]
-    # A docstring on one line in the code is drawn on one row, with its
-    # closing quotes after the words.
+    quotes = docstring["quotes"]
     if len(parts) == 1 and "\n" not in docstring["body"]:
-        words = parts[0].text + docstring["quotes"]
-        row = {"first": opening, "rest": "", "words": words}
-        return write_plain_parts(parts), [row]
-    rows: list[dict[str, str]] = []
-    for part in parts:
-        if part.kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
-            rest = "  " if part.kind is PartKind.ENTRY else ""
-            rows.append({"first": "", "rest": rest, "words": part.text})
-        else:
-            rows.append({"fixed": part.text})
-    if rows and rows[0].get("first") == "":
-        rows[0]["first"] = opening
+        words = parts[0].text + quotes
+        return [WrappedRow(first=opening, rest="", words=words)]
+    rows = [draw_part_row(part) for part in parts]
+    # The opening quotes cannot share a row drawn as written, such as a
+    # heading, so they get a row of their own above it.
+    if parts and parts[0].kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
+        rows[0] = draw_part_row(parts[0], opening)
     else:
-        rows.insert(0, {"fixed": opening})
-    rows.append({"fixed": docstring["quotes"]})
-    return write_plain_parts(parts), rows
+        rows.insert(0, FixedRow(fixed=opening))
+    return rows + [FixedRow(fixed=quotes)]
+
+
+def draw_part_row(part: Part, first: str = "") -> ScreenRow:
+    """Return the review screen's row for one line of a docstring.
+
+    Paragraphs and the lines under a heading wrap to the screen. The
+    wrapped rows of a line under a heading indent two spaces. Headings,
+    blank lines and lines kept as written are drawn as they are.
+
+    Args:
+        part: The docstring line to draw.
+        first: The mark before a wrapped row's first screen line, such
+            as the opening quotes.
+
+    Returns:
+        The row for the part.
+    """
+    if part.kind is PartKind.PARAGRAPH:
+        return WrappedRow(first=first, rest="", words=part.text)
+    if part.kind is PartKind.ENTRY:
+        return WrappedRow(first=first, rest="  ", words=part.text)
+    return FixedRow(fixed=part.text)
 
 
 def write_python_comment(plain: str, old: str) -> str:
@@ -433,8 +470,17 @@ def trim_blank_parts(parts: list[Part]) -> list[Part]:
     return trimmed
 
 
-def write_plain_parts(parts: list[Part]) -> str:
-    """Return the plain text of a docstring's parts, one line each."""
+def join_parts_as_text(parts: list[Part]) -> str:
+    """Return a docstring's lines as the text the owner edits.
+
+    Args:
+        parts: The docstring's lines, as ``read_docstring_parts`` or
+            ``read_plain_parts`` returns them.
+
+    Returns:
+        Each part's text on a line of its own, or one line break when
+        there are no parts.
+    """
     return "".join(part.text + "\n" for part in parts) or "\n"
 
 
@@ -465,7 +511,7 @@ def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
         return ""
     indent, prefix = docstring["indent"], docstring["prefix"]
     quote = docstring["quotes"][0]
-    text = write_plain_parts(parts)
+    text = join_parts_as_text(parts)
     width = PYTHON_LINE_WIDTH - len(indent.replace("\t", "    "))
     summary = parts[0].text
     # The closing quotes would join a last quote or be escaped by a "\".
