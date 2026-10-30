@@ -159,7 +159,7 @@ func TestActionOpensReviewInAskedPane(t *testing.T) {
 		actionID    string
 		args        []string
 		reviews     []string          // oldest first
-		tabs        map[string]string // Herdr's open tabs by ID, with their labels
+		tabs        map[string]string // Herdr's open tabs by ID, with labels
 		want        []string
 		wantRefused bool
 	}{

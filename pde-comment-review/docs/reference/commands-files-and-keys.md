@@ -179,13 +179,9 @@ after it, or one that shares a name in its file.
 Herdr shows one popup at a time; close another popup before pressing
 Ctrl+b e. When Ctrl+b e does nothing, `herdr plugin log list` shows
 why. When it opens the scrollback editor instead, run
-`herdr server reload-config`. If the popup has no edit or diff tab
-after an update, link the plugin again:
-
-```bash
-herdr plugin unlink pde.comment-review
-herdr plugin link ~/.local/share/pde/herdr-plugins/pde-comment-review
-```
+`herdr server reload-config`. When a pane or action is missing, run
+`herdr plugin list --json` and read the `warnings` that Herdr lists for
+`pde.comment-review`. They name problems with its `herdr-plugin.toml`.
 
 ## Where the code lives
 
