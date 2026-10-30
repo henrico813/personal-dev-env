@@ -216,8 +216,12 @@ func writeFile(t *testing.T, path, text string) {
 
 func saveAnswers(t *testing.T, r *review.Review, answers map[int]review.Answer) {
 	t.Helper()
-	for id, d := range answers {
-		if err := r.SaveAnswer(id, d.Action, d.Text); err != nil {
+	for _, e := range r.ListFeedbackRequests() {
+		answer, ok := answers[e.Request.ID]
+		if !ok {
+			continue
+		}
+		if err := r.SaveAnswer(e.Request.ID, e.Batch, answer.Action, answer.Text); err != nil {
 			t.Fatal(err)
 		}
 	}
