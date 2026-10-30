@@ -48,7 +48,7 @@ def show_line_comment(
 def write_line_comment(
     plain: str, old: str, marker: str = "//", width: int = LINE_WIDTH
 ) -> str:
-    """Return plain text as comment lines indented like the old one.
+    """Return plain text as comment lines indented like the old comment.
 
     Sentences are rewrapped so that each line, indentation included,
     fits in the width. Lines that start with a tab or two spaces are

@@ -202,8 +202,7 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 			Requests: requests,
 			Renames:  changes.Renames,
 		},
-		// An empty list becomes nil, so draft.json leaves the field out and
-		// reads back the same.
+		// An empty list is kept as nil, which is how draft.json reads it back.
 		Unsupported: append([]string(nil), changes.Unsupported...),
 	}, nil
 }

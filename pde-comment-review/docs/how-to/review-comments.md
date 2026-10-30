@@ -1,9 +1,8 @@
 # Review Comments
 
-Use this page to decide on each comment an AI wrote or changed in Go
-or Python code before it stays. You answer one comment per screen;
-after the
-last answer, the tool writes your answers into the code, with no AI
+Use this page to decide on each comment an AI wrote or changed in Go or
+Python code before it stays. You answer one comment per screen; after
+the last answer, the tool writes your answers into the code, with no AI
 involved, and approves the comments, so agents keep your wording.
 
 The full install puts the tool in `~/.local/bin`. Check that it runs:
