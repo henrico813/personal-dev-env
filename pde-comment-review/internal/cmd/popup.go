@@ -100,18 +100,18 @@ func listWaitingChoices() ([]popup.Choice, error) {
 		if err != nil {
 			return nil, err
 		}
-		entries := r.ListEntries()
+		requests := r.ListFeedbackRequests()
 		answered := 0
-		for _, e := range entries {
-			if e.Decision != nil {
+		for _, e := range requests {
+			if e.Feedback.Answer != nil {
 				answered++
 			}
 		}
 		choices = append(choices, popup.Choice{
-			Name:     r.Name,
-			Origin:   origin,
-			Items:    len(entries),
-			Answered: answered,
+			Name:         r.Name,
+			Origin:       origin,
+			RequestCount: len(requests),
+			Answered:     answered,
 		})
 	}
 	return choices, nil

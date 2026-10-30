@@ -29,7 +29,7 @@ const reviewNameEnv = "PDE_COMMENT_REVIEW"
 const reviewTabLabel = "comment review"
 
 // The ID of the item the edit tab edits.
-const itemIDEnv = "PDE_COMMENT_REVIEW_ITEM"
+const requestIDEnv = "PDE_COMMENT_REVIEW_ITEM"
 
 // Herdr's answer to a refused request, such as ui_busy while another popup
 // is open.

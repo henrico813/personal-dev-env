@@ -14,15 +14,15 @@ import (
 // Herdr's 40x16 popup leaves 37x14 inside its border.
 const popupCols, popupRows = 37, 14
 
-func newView(t *testing.T, code string, items ...review.Item) *View {
+func newView(t *testing.T, code string, requests ...review.FeedbackRequest) *View {
 	t.Helper()
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "wire.go"), []byte(code), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	v := &View{Repo: repo, Cols: popupCols, Rows: popupRows, Settle: Settle}
-	for _, item := range items {
-		v.Entries = append(v.Entries, review.Entry{Item: item, Round: 1})
+	for _, request := range requests {
+		v.Requests = append(v.Requests, review.RequestWithFeedback{Request: request, Batch: 1})
 	}
 	return v
 }
@@ -39,8 +39,8 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 		"var docs = \"https://go.dev/doc/comment#doc-comments-for-constants-and-variables\"\n" +
 		"// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n" +
 		"func Shared() bool { return true }\n"
-	v := newView(t, code, review.Item{
-		ID: 11, File: "wire.go", Proposal: review.ProposeReword,
+	v := newView(t, code, review.FeedbackRequest{
+		ID: 11, File: "wire.go", Suggestion: review.SuggestReword,
 		Old: "// Shared reports whether code is one of the shared codes, which no tool may declare as its own.\n",
 		New: "// Reports whether no tool may declare code.\n",
 		Why: "Restates the name\x1b[2J\u202e. 判定:✅名前と同じことを言っているだけなので、読み手には何も伝わりません。",
@@ -117,16 +117,16 @@ func TestScreenFitsPhonePopup(t *testing.T) {
 
 // On a phone a key is easily pressed twice. The second press must not
 // answer, or start a note on, the item the first press moved to.
-func TestAnswerKeysWaitAfterNewItem(t *testing.T) {
+func TestAnswerKeysWaitAfterNewRequest(t *testing.T) {
 	v := newView(t, "package wire\n\n// One.\nvar one = 1\n\n// Two.\nvar two = 2\n",
-		review.Item{ID: 1, File: "wire.go", Proposal: review.ProposeCut, Old: "// One.\n"},
-		review.Item{ID: 2, File: "wire.go", Proposal: review.ProposeCut, Old: "// Two.\n"})
+		review.FeedbackRequest{ID: 1, File: "wire.go", Suggestion: review.SuggestCut, Old: "// One.\n"},
+		review.FeedbackRequest{ID: 2, File: "wire.go", Suggestion: review.SuggestCut, Old: "// Two.\n"})
 	start := time.Now()
-	v.ShowNextUndecided(0, start)
+	v.ShowNextUnanswered(0, start)
 
 	first := v.PressKey("o", start.Add(Settle))
-	v.Entries[0].Decision = &review.Decision{Action: review.ActionKeep, Round: 1}
-	v.ShowNextUndecided(1, start.Add(Settle))
+	v.Requests[0].Feedback.Answer = &review.Answer{Action: review.ActionKeep, Batch: 1}
+	v.ShowNextUnanswered(1, start.Add(Settle))
 	quick := start.Add(Settle + 50*time.Millisecond)
 	again := v.PressKey("o", quick)
 	v.PressKey("m", quick)
@@ -151,12 +151,12 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	v := newView(
 		t,
 		"package wire\n",
-		review.Item{
+		review.FeedbackRequest{
 			ID:          1,
 			File:        "wire.go",
 			Name:        "Dial",
 			Old:         "// Dials the server.\n",
-			Proposal:    review.ProposeCut,
+			Suggestion:  review.SuggestCut,
 			CodeRemoved: true,
 		},
 	)
