@@ -132,7 +132,11 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
     for entry in entries:
         file, name = entry["file"], entry.get("name", "")
         language = LANGUAGES.get(Path(file).suffix)
-        if not (language and language.show_text and language.write_plain):
+        if not (
+            language
+            and language.prepare_for_screen
+            and language.lay_out_wording
+        ):
             print(f"{file}: show does not take this language", file=sys.stderr)
             return 2
         text = entry.get("text", "")
@@ -140,10 +144,12 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
             if "plain" in entry:
                 old = find_layout_comment(repo, entry, language)
                 # Text that is not a comment of this language has no layout.
-                language.show_text(old.text)
-                text = language.write_plain(entry["plain"], old.text)
+                language.prepare_for_screen(old.text)
+                text = language.lay_out_wording(entry["plain"], old.text)
             # Plain text with no words gives no text, which cuts the comment.
-            plain, screen = language.show_text(text) if text else ("", [])
+            plain, screen = ("", [])
+            if text:
+                plain, screen = language.prepare_for_screen(text)
         except (OSError, UnicodeDecodeError) as error:
             print(f"{file}: {error}", file=sys.stderr)
             return 2

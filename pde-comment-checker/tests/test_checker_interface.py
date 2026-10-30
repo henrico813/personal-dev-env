@@ -2330,8 +2330,8 @@ class TestApply:
             kept = apply_answers(tmp_path, answers, flags=())
             unchanged = copy.read_bytes() == (root / file).read_bytes()
             rewords = {
-                answer["id"]: language.write_plain(
-                    language.show_text(answer["text"])[0].replace(
+                answer["id"]: language.lay_out_wording(
+                    language.prepare_for_screen(answer["text"])[0].replace(
                         "\n", " One more sentence.\n", 1
                     ),
                     answer["text"],

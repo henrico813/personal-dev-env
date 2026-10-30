@@ -16,7 +16,11 @@ from .go import (
     list_go_functions,
     parse_go_comments,
 )
-from .line_comments import show_line_comment, write_line_comment
+from .line_comments import (
+    ScreenRow,
+    prepare_line_comment_for_screen,
+    write_line_comment,
+)
 from .python import (
     PYTHON_GENERATED_MARKER,
     finish_python_rewrite,
@@ -24,7 +28,7 @@ from .python import (
     join_python_prose,
     list_python_warnings,
     parse_python_comments,
-    show_python_comment,
+    prepare_python_comment_for_screen,
     write_python_comment,
 )
 
@@ -33,14 +37,33 @@ from .python import (
 class Language:
     """How the checker reads the files of one suffix, such as ``.py``.
 
-    ``list_warnings`` is ``None`` for a language ``--list`` does not take,
-    and ``list_functions`` for one whose names another checker checks.
-    ``show_text`` and ``write_plain`` are ``None`` for a language ``show``
-    does not take, and ``finish_rewrite`` for one ``apply`` does not.
-    ``finish_rewrite`` takes the old and new source and the file, and
-    returns the new source as the write leaves it, or raises
-    ``SourceError`` when the write would be unsafe. ``changes`` and
-    ``apply`` take comments only while ``reviews_on`` is true.
+    Attributes:
+        name: The language's name, such as ``python``.
+        read_comments: Returns each comment in a file, given its source
+            and its path.
+        join_prose: Returns a comment's words as one line of prose.
+        generated_marker: Finds the line that marks a generated file.
+        is_writable: Returns whether a comment can be rewritten without
+            changing the code around it.
+        list_warnings: Returns the warnings the compiler gives for a
+            file. It is ``None`` for a language ``--list`` does not take.
+        list_functions: Returns each function in a file, for the
+            function name rules. It is ``None`` for a language whose
+            names another checker checks.
+        reviews_on: Whether the ``changes`` and ``apply`` commands take
+            this language's comments for the owner's review.
+        prepare_for_screen: Returns a comment's words for the owner to
+            edit, and the rows the review screen draws for it. It is
+            ``None`` for a language ``show`` does not take.
+        lay_out_wording: Returns new wording laid out like the old
+            comment it replaces. It is ``None`` for a language ``show``
+            does not take.
+        finish_rewrite: Returns the new source as the write leaves it,
+            given the old source, the new source and the file. It raises
+            ``SourceError`` when the write would be unsafe. It is
+            ``None`` for a language ``apply`` does not take.
+        behaviors_not_applying: Each behavior of the shared sample suite
+            the language has no case for, and why.
     """
 
     name: str
@@ -51,10 +74,11 @@ class Language:
     list_warnings: Callable[[str, str], list[str]] | None = None
     list_functions: Callable[[str, str], list[Function]] | None = None
     reviews_on: bool = False
-    show_text: Callable[[str], tuple[str, list[dict[str, str]]]] | None = None
-    write_plain: Callable[[str, str], str] | None = None
+    prepare_for_screen: Callable[[str], tuple[str, list[ScreenRow]]] | None = (
+        None
+    )
+    lay_out_wording: Callable[[str, str], str] | None = None
     finish_rewrite: Callable[[str, str, str], str] | None = None
-    # Each behavior of the shared sample suite it has no case for, and why.
     behaviors_not_applying: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -68,8 +92,8 @@ LANGUAGES = {
         is_writable=is_go_comment_writable,
         list_functions=list_go_functions,
         reviews_on=True,
-        show_text=show_line_comment,
-        write_plain=write_line_comment,
+        prepare_for_screen=prepare_line_comment_for_screen,
+        lay_out_wording=write_line_comment,
         finish_rewrite=finish_go_rewrite,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
@@ -81,8 +105,8 @@ LANGUAGES = {
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
         reviews_on=True,
-        show_text=show_python_comment,
-        write_plain=write_python_comment,
+        prepare_for_screen=prepare_python_comment_for_screen,
+        lay_out_wording=write_python_comment,
         finish_rewrite=finish_python_rewrite,
     ),
 }

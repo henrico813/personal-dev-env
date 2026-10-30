@@ -2,12 +2,42 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import NamedTuple, TypedDict
 
 from ..records import SourceError
 
 # The column a rewritten comment's lines may reach, counting indentation.
 LINE_WIDTH = 79
+
+
+class WrappedRow(TypedDict):
+    """Words the review screen wraps to its width, after a mark.
+
+    The review tool shows each comment as rows on the owner's phone.
+
+    Attributes:
+        first: The mark before the row's first screen line, such as
+            a docstring's opening quotes or ``# ``.
+        rest: The mark before each later screen line, such as ``# ``.
+        words: The words to wrap.
+    """
+
+    first: str
+    rest: str
+    words: str
+
+
+class FixedRow(TypedDict):
+    """A row the review screen draws as written, such as an example.
+
+    Attributes:
+        fixed: The row's text.
+    """
+
+    fixed: str
+
+
+ScreenRow = WrappedRow | FixedRow
 
 
 class Block(NamedTuple):
@@ -17,32 +47,40 @@ class Block(NamedTuple):
     text: str
 
 
-def show_line_comment(
+def prepare_line_comment_for_screen(
     text: str, marker: str = "//"
-) -> tuple[str, list[dict[str, str]]]:
-    """Return a comment's plain text and the rows a screen draws for it.
+) -> tuple[str, list[ScreenRow]]:
+    """Return a comment's words for editing and its rows for the screen.
 
-    A sentence row is wrapped to the screen, after its ``first`` and
-    ``rest`` marks. A ``fixed`` row is drawn as written, such as an
-    example line or the ``//`` row between paragraphs.
+    The owner edits the words in nvim. Each paragraph becomes one row the
+    screen wraps, and each example line a row drawn as written. A row
+    holding only the mark separates each paragraph or example from the
+    next.
 
-    Raises:
-        SourceError: A line of ``text`` does not start with ``marker``.
+    Args:
+        text: The comment exactly as it is in the file, with the mark
+            starting each line.
+        marker: The mark that starts each line, such as ``//`` or ``#``.
+
+    Returns:
+        The comment's words without its marks, with each paragraph on
+        one line, and the rows that draw it.
     """
     blocks = read_comment_blocks(text, marker)
-    rows: list[dict[str, str]] = []
+    rows: list[ScreenRow] = []
     for block in blocks:
         if rows:
-            rows.append({"fixed": marker})
+            rows.append(FixedRow(fixed=marker))
         if block.example:
             rows += [
-                {"fixed": marker + line} for line in block.text.split("\n")
+                FixedRow(fixed=marker + line)
+                for line in block.text.split("\n")
             ]
         else:
             marks = marker + " "
-            rows.append({"first": marks, "rest": marks, "words": block.text})
-    plain = "\n\n".join(block.text for block in blocks) + "\n"
-    return plain, rows
+            rows.append(WrappedRow(first=marks, rest=marks, words=block.text))
+    words = "\n\n".join(block.text for block in blocks) + "\n"
+    return words, rows
 
 
 def write_line_comment(
