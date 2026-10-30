@@ -200,9 +200,12 @@ func (r *Review) ListEntries() []Entry {
 
 // Saves a note on the latest round of item id; empty text removes it.
 func (r *Review) SetNote(id int, text string) error {
-	if err := r.readAgain(); err != nil {
+	// Another screen may have saved to this review since it was read.
+	saved, err := loadReview(r.Name)
+	if err != nil {
 		return err
 	}
+	*r = *saved
 	if text == "" {
 		delete(r.Notes, id)
 	} else {
@@ -215,21 +218,14 @@ func (r *Review) SetNote(id int, text string) error {
 // covers only that round's text: if the AI proposes the item again, it
 // needs a new answer.
 func (r *Review) SetDecision(id int, action, text string) error {
-	if err := r.readAgain(); err != nil {
-		return err
-	}
-	r.Decisions[id] = Decision{Action: action, Text: text, Round: r.findLatestRound(id)}
-	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Decisions)
-}
-
-// Reads the saved review into r, so a save keeps what another screen saved.
-func (r *Review) readAgain() error {
+	// Another screen may have saved to this review since it was read.
 	saved, err := loadReview(r.Name)
 	if err != nil {
 		return err
 	}
 	*r = *saved
-	return nil
+	r.Decisions[id] = Decision{Action: action, Text: text, Round: r.findLatestRound(id)}
+	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Decisions)
 }
 
 // Returns every file the review's items are in, sorted.

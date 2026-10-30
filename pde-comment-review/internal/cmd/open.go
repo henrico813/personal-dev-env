@@ -90,7 +90,7 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		if r, err = showReviewAsSaved(r, v); err != nil {
+		if r, err = reloadReview(r, v); err != nil {
 			return err
 		}
 		switch v.PressKey(key, time.Now()) {
@@ -160,9 +160,9 @@ func runReviewScreen(
 	}
 }
 
-// Reads review r again and keeps the screen on its item, since the popup can
-// save to the review while a tab stays open for hours.
-func showReviewAsSaved(
+// Reads the review from disk again and keeps the screen on the same item,
+// since the popup can save to it while a tab stays open for hours.
+func reloadReview(
 	r *review.Review,
 	v *popup.View,
 ) (*review.Review, error) {
@@ -177,9 +177,9 @@ func showReviewAsSaved(
 			continue
 		}
 		v.Index = i
-		// Showing a new version of the item makes answer keys wait a moment.
+		// New text from the AI must be read before an answer counts.
 		if e.Round != shown.Round {
-			v.ShowNewVersion(i, time.Now())
+			v.Refresh(time.Now())
 		}
 	}
 	return saved, nil

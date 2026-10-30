@@ -164,7 +164,7 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 
 // A review tab stays open for hours while the popup saves notes to the same
 // review, and an old screen once erased those notes when it saved its own.
-func TestOpenScreenKeepsNotesSavedElsewhere(t *testing.T) {
+func TestConsistentTabAndPopupStateOnOpen(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	popupCopy := startReview(t, cartGo, validApproval, nil)
 	master, terminal := openFakeTerminal(t)

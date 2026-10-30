@@ -183,9 +183,9 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 	}
 }
 
-// A new round must not drop a note being typed, and its new text must wait
-// before an answer counts.
-func TestNewVersionKeepsTypingAndWaits(t *testing.T) {
+// The AI can send new text while the owner types a note, and losing the note
+// would throw away the owner's typing.
+func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	v := newView(
 		t,
 		"package wire\n\n// One.\nvar one = 1\n",
@@ -201,12 +201,9 @@ func TestNewVersionKeepsTypingAndWaits(t *testing.T) {
 	v.PressKey("m", start.Add(Settle))
 	v.PressKey("a", start.Add(Settle))
 
-	// A new round of the same item arrives while the owner types.
-	v.Entries[0].Round = 2
-	v.ShowNewVersion(0, start.Add(2*Settle))
+	v.Refresh(start.Add(2 * Settle))
 	v.PressKey("q", start.Add(2*Settle))
 	saved := v.PressKey("\r", start.Add(2*Settle))
-	quick := v.PressKey("o", start.Add(2*Settle))
 
 	if saved != SaveNote || v.Typed != "aq" {
 		t.Errorf(
@@ -216,10 +213,28 @@ func TestNewVersionKeepsTypingAndWaits(t *testing.T) {
 			"aq",
 		)
 	}
+}
+
+// An answer key pressed just as new text appears must not answer text the
+// owner has not read.
+func TestNewTextDelaysAnswers(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.Item{
+			ID:       1,
+			File:     "wire.go",
+			Proposal: review.ProposeCut,
+			Old:      "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUndecided(0, start)
+
+	v.Refresh(start.Add(Settle))
+	quick := v.PressKey("o", start.Add(Settle))
+
 	if quick != None {
-		t.Errorf(
-			"o right after the new round = %v, want None",
-			quick,
-		)
+		t.Errorf("o right after new text = %v, want None", quick)
 	}
 }
