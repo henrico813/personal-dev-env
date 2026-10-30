@@ -64,6 +64,8 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   the `rust-development` skill.
 - When planning changes to, changing, or reviewing Python code, load and follow
   the `python-development` skill.
+- When planning changes to, changing, or reviewing JavaScript or
+  TypeScript code, load and follow the `typescript-development` skill.
 
 ## Source Documentation
 
