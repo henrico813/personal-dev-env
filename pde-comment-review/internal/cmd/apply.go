@@ -331,54 +331,6 @@ func findRequestName(request review.FeedbackRequest, named map[commentKey]string
 	return ""
 }
 
-// Returns each named request's comment as its file has it now, by request ID.
-func findCommentsByName(r *review.Review, named map[commentKey]string) map[int]string {
-	foundByName := map[int]string{}
-	for _, e := range r.ListFeedbackRequests() {
-		if text, ok := named[commentKey{e.Request.File, e.Request.Name}]; ok {
-			foundByName[e.Request.ID] = text
-		}
-	}
-	return foundByName
-}
-
-// Refuses a round the screen could not show, such as a comment whose text
-// appears twice in its file.
-func refuseUnwritableNamedRequests(r *review.Review, named map[commentKey]string) error {
-	foundByName := findCommentsByName(r, named)
-	var problems []error
-	for _, e := range r.ListFeedbackRequests() {
-		if _, found := foundByName[e.Request.ID]; !found {
-			continue
-		}
-		var err error
-		if e.Request.CodeRemoved {
-			err = fmt.Errorf(
-				"%s %s: its removed code is back. Send the item again without code_removed.",
-				e.Request.File,
-				e.Request.Name,
-			)
-		} else {
-			_, err = review.FindCommentLine(
-				r.Repo(),
-				e.Request,
-				foundByName,
-			)
-		}
-		if err != nil {
-			problems = append(
-				problems,
-				fmt.Errorf(
-					"item %d: %w",
-					e.Request.ID,
-					err,
-				),
-			)
-		}
-	}
-	return errors.Join(problems...)
-}
-
 // Returns each comment's approved text from the folder's
 // .code-comments.json, or an empty string for a comment the owner cut.
 func readApprovals(dir string) (map[commentKey]string, error) {

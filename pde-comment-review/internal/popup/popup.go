@@ -11,7 +11,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"pde-comment-review/internal/comment"
 	"pde-comment-review/internal/review"
 )
 
@@ -72,22 +71,61 @@ const (
 
 // What the screen shows: one entry, scrolled down scroll rows.
 type View struct {
-	Requests   []review.RequestWithFeedback
-	Repo       string
-	Origin     review.Origin
-	Index      int
-	scroll     int
-	Cols, Rows int
-	Settle     time.Duration
-	notice     string // shown above the key hint until the next key
-	typingFor  Action // SaveNote or Search while the owner types into Typed
-	Typed      string
-	shownAt    time.Time
-	screen     screen
-	result     string // what writing the answers did, or why it did not
-	written    bool   // whether the answers reached the code
-	// Each named request's comment as it is in its file now, by request ID.
-	FoundByName map[int]string
+	Requests         []review.RequestWithFeedback
+	Repo             string
+	Origin           review.Origin
+	Index            int
+	scroll           int
+	Cols, Rows       int
+	Settle           time.Duration
+	notice           string // shown above the key hint until the next key
+	typingFor        Action // SaveNote or Search while the owner types into Typed
+	Typed            string
+	shownAt          time.Time
+	screen           screen
+	result           string // what writing the answers did, or why it did not
+	written          bool   // whether the answers reached the code
+	CommentLinesByID map[int]review.CommentLines
+	CommentRows      map[string][]ScreenRow
+}
+
+// One line or paragraph of a comment.
+type ScreenRow struct {
+	First string `json:"first"`
+	Rest  string `json:"rest"`
+	Words string `json:"words"`
+	Fixed string `json:"fixed"`
+}
+
+// Wraps a comment's paragraphs to the screen width.
+func wrapScreenRows(rows []ScreenRow, width int) []string {
+	var lines []string
+	for _, row := range rows {
+		if row.Words == "" {
+			lines = append(
+				lines,
+				row.Fixed,
+			)
+			continue
+		}
+		marks := max(
+			len(row.First),
+			len(row.Rest),
+		)
+		mark := row.First
+		words := wrapWords(
+			strings.Fields(row.Words),
+			width-marks,
+		)
+		for _, line := range words {
+			lines = append(
+				lines,
+				mark+line,
+			)
+			mark = row.Rest
+		}
+	}
+	return lines
 }
 
 func (v *View) Current() review.RequestWithFeedback { return v.Requests[v.Index] }
@@ -363,8 +401,24 @@ func (v *View) body() ([]string, int) {
 		}
 	}
 	addComment := func(color, mark, text string) {
-		for _, row := range comment.WrapForScreen(text, width) {
-			add(color, mark, row)
+		rows, ok := v.CommentRows[text]
+		var lines []string
+		if ok {
+			lines = wrapScreenRows(rows, width)
+		} else {
+			// When the checker could not split this wording, the screen shows
+			// the comment's lines as written and folds any that are too wide.
+			lines = strings.Split(
+				strings.TrimSuffix(text, "\n"),
+				"\n",
+			)
+		}
+		for _, row := range lines {
+			add(
+				color,
+				mark,
+				row,
+			)
 		}
 	}
 	var before, after []string
@@ -373,7 +427,7 @@ func (v *View) body() ([]string, int) {
 		before, after, err = review.ReadCodeAround(
 			v.Repo,
 			e.Request,
-			v.FoundByName,
+			v.CommentLinesByID,
 			codeLinesAround,
 		)
 	}
@@ -487,6 +541,27 @@ func escapeControlCharacters(text string) string {
 	return out.String()
 }
 
+// Joins words into lines that fit the given width.
+func wrapWords(words []string, width int) []string {
+	var lines []string
+	line := ""
+	for _, word := range words {
+		if line != "" && utf8.RuneCountInString(line)+1+utf8.RuneCountInString(word) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line == "" {
+			line = word
+		} else {
+			line += " " + word
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
 // Breaks one line into rows of at most width columns; rows after the first
 // start with two spaces.
 func fold(line string, width int) []string {
@@ -494,7 +569,7 @@ func fold(line string, width int) []string {
 		return []string{line}
 	}
 	var rows []string
-	for _, row := range comment.WrapWords(strings.Fields(line), width-2) {
+	for _, row := range wrapWords(strings.Fields(line), width-2) {
 		// A row still too wide, such as a URL, is cut into pieces.
 		for row != "" {
 			piece := clip(row, width-2)

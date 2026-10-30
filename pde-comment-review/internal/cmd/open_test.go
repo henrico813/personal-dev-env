@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 	"unsafe"
 
+	"pde-comment-review/internal/popup"
 	"pde-comment-review/internal/review"
 )
 
@@ -253,6 +255,9 @@ func TestScreenAppliesNewBatchAfterRefusal(t *testing.T) {
 		"o",
 	)
 	waitForScreen(t, master, "4/4 cut? cart.go")
+	// The screen shows the comment the AI just sent wrapped like this only
+	// after it asks the checker again.
+	waitForScreen(t, master, "-// above zero.")
 	typeKeys(t, master, "o")
 	waitForScreen(
 		t,
@@ -460,4 +465,84 @@ func openUntilDone(t *testing.T) {
 func installRepoChecker(t *testing.T) {
 	t.Helper()
 	buildRepoCheckerOnPath(t)
+}
+
+// Two functions with the same comment must each show their own code.
+func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
+	buildRepoCheckerOnPath(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	const code = "package cart\n\n// Same.\nfunc First() {\n\t// Inside.\n}\n" +
+		"\n\n\n\n\n\n// Same.\nfunc Second() {\n\t// Inside.\n}\n"
+	const missing = "the checker cannot find this comment exactly once in cart.go"
+	const stale = "cart.go changed after the screen read it"
+	tests := []struct {
+		name         string
+		names        [2]string
+		old, changed string
+		want         [2]string
+	}{
+		{
+			name:  "named duplicates show their own code",
+			names: [2]string{"First", "Second"},
+			old:   "// Same.\n",
+			want:  [2]string{"func First() {", "func Second() {"},
+		},
+		{
+			name: "unnamed duplicates show an error",
+			old:  "\t// Inside.\n",
+			want: [2]string{missing, missing},
+		},
+		{
+			name:    "file shortened after the screen read it",
+			names:   [2]string{"First", "Second"},
+			old:     "// Same.\n",
+			changed: "package cart\n",
+			want:    [2]string{stale, stale},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				repo := t.TempDir()
+				writeFile(t, filepath.Join(repo, "cart.go"), code)
+				p := review.Batch{
+					Version: review.Version,
+					Repo:    repo,
+				}
+				for i, name := range tt.names {
+					request := review.FeedbackRequest{
+						ID:         i + 1,
+						File:       "cart.go",
+						Name:       name,
+						Old:        tt.old,
+						Suggestion: review.SuggestKeep,
+					}
+					p.Requests = append(p.Requests, request)
+				}
+				r, err := review.BuildReviewWithBatch("twins", p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				v := &popup.View{
+					Requests: r.ListFeedbackRequests(),
+					Repo:     repo,
+					Cols:     100,
+					Rows:     40,
+				}
+				askCheckerForCommentLayout(r, v)
+				if tt.changed != "" {
+					writeFile(t, filepath.Join(repo, "cart.go"), tt.changed)
+				}
+				for i, want := range tt.want {
+					v.Show(i, time.Now())
+					screen := strings.Join(v.BuildScreen(), "\n")
+
+					if !strings.Contains(screen, want) {
+						t.Errorf("item %d screen lacks %q:\n%s", i+1, want, screen)
+					}
+				}
+			},
+		)
+	}
 }
