@@ -157,6 +157,47 @@ func TestNewRoundClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
+// The popup and a review tab each hold their own copy of one review. A save
+// from either must keep the other's saves and land on the newest round.
+func TestSaveKeepsWhatOtherCopiesSaved(t *testing.T) {
+	repo := newRepo(t)
+	addTestRound(t, "config", marshalProposals(t, repo, cutPort, rewordParse))
+	popup, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := popup.SetNote(1, "keep the first sentence"); err != nil {
+		t.Fatal(err)
+	}
+	if err := popup.SetDecision(1, ActionKeep, ""); err != nil {
+		t.Fatal(err)
+	}
+	addTestRound(t, "config", marshalProposals(t, repo, rewordParse))
+	if err := tab.SetDecision(2, ActionCut, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := popup.SetNote(2, "name the keys"); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := saved.ListEntries()
+	if e := entries[0]; e.Note != "keep the first sentence" || e.Decision == nil {
+		t.Errorf("item 1 = %+v, want the popup's note and answer", e)
+	}
+	if e := entries[1]; e.Round != 2 || e.Note != "name the keys" || e.Decision == nil {
+		t.Errorf("item 2 = %+v, want a note and answer on round 2", e)
+	}
+}
+
 // Ctrl+b e opens the only waiting review, or lists them newest first within
 // each session. The owner once left ten notes on another session's review,
 // so the wrong order, an applied or removed review still listed, or a new
