@@ -162,6 +162,72 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	}
 }
 
+// A note saved in the popup must show and stay in a Herdr tab open on the
+// same review.
+func TestConsistentTabPopupStateOnOpen(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	inPopup := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	// The owner saves notes on two requests in the popup.
+	if err := inPopup.SaveNote(1, "keep Currency"); err != nil {
+		t.Fatal(err)
+	}
+	if err := inPopup.SaveNote(2, "shorter"); err != nil {
+		t.Fatal(err)
+	}
+	// In the tab, the owner adds " for now" to the first note.
+	typeKeys(t, master, "m")
+	waitForScreen(t, master, "note for AI: keep Currency")
+	typeKeys(t, master, " for now\r")
+	waitForScreen(t, master, "note: keep Currency for now")
+	typeKeys(t, master, "q")
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
+	}
+
+	saved, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]string{1: "keep Currency for now", 2: "shorter"}
+	got := map[int]string{}
+	for id, n := range saved.Notes {
+		got[id] = n.Text
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("saved notes = %q, want %q", got, want)
+	}
+}
+
+// The AI moves a finished review's folder aside to start the next one.
+// Pressing q must still close the old screen without an error.
+func TestQuitWorksAfterReviewIsMoved(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	r := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	if err := os.Rename(r.Dir, r.Dir+".old"); err != nil {
+		t.Fatal(err)
+	}
+	typeKeys(t, master, "q")
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("answerReview() error = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q")
+	}
+}
+
 // The last answer writes every answer into the code, with no question.
 // An AI can add a round while the screen is open; that round must
 // open, or its item could never be answered and nothing would be

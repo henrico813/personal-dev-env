@@ -5,6 +5,7 @@ package popup
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -96,6 +97,29 @@ func (v *View) Current() review.RequestWithFeedback { return v.Requests[v.Index]
 func (v *View) Show(index int, now time.Time) {
 	v.Index = index
 	v.typingFor = None
+	v.showRequest(now)
+}
+
+// Replaces the requests and keeps the same request on screen. A new
+// suggestion for that request makes the answer keys wait again.
+func (v *View) ReplaceRequests(requests []review.RequestWithFeedback, now time.Time) {
+	shown := v.Current()
+	i := slices.IndexFunc(requests, func(e review.RequestWithFeedback) bool {
+		return e.Request.ID == shown.Request.ID
+	})
+	// Keeps the old list when a new review has taken this review's name.
+	if i < 0 {
+		return
+	}
+	v.Requests = requests
+	v.Index = i
+	if v.Requests[i].Batch != shown.Batch {
+		v.showRequest(now)
+	}
+}
+
+// Scrolls to the current request's suggestion and makes the answer keys wait.
+func (v *View) showRequest(now time.Time) {
 	v.screen = requestScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))
@@ -141,19 +165,21 @@ func (v *View) ShowNotWritten(reason string) {
 	v.scroll = 0
 }
 
+func (v *View) IsQuitKey(key string) bool {
+	return key == "\x03" || key == "q" && v.typingFor == None
+}
+
 // Handles one key press; l and h wrap around at the last and first item.
 func (v *View) PressKey(key string, now time.Time) Action {
 	v.notice = ""
-	if key == "\x03" { // Ctrl-c
+	if v.IsQuitKey(key) {
 		return Quit
 	}
 	if v.typingFor != None {
 		return v.typeText(key)
 	}
-	// q, j and k work on every screen; the other keys depend on the screen.
+	// j and k work on every screen; the other keys depend on the screen.
 	switch key {
-	case "q":
-		return Quit
 	case "j":
 		rows, _ := v.body()
 		if v.scroll < len(rows)-v.room() {
