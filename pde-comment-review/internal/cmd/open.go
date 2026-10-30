@@ -90,7 +90,6 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
-		// Quits before reading the review, because the AI may have moved it aside.
 		if v.IsQuitKey(key) {
 			return nil
 		}

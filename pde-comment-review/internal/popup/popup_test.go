@@ -218,8 +218,8 @@ func TestNotePersistenceDuringAgentReview(t *testing.T) {
 	}
 }
 
-// Reading the review before every key must not make the answer keys
-// wait, or the owner could never answer.
+// Ensure reading the review before every key does not block answer keys,
+// otherwise there's no input for feedback.
 func TestUnchangedSuggestionKeepsAnswerKeysReady(t *testing.T) {
 	v := newView(
 		t,

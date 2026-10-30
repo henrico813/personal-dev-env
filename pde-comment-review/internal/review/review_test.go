@@ -157,8 +157,8 @@ func TestNewBatchClosesOnlyItsNotes(t *testing.T) {
 	}
 }
 
-// The popup and a Herdr tab can be open on the same review. A save in one
-// once erased the notes and answers saved in the other.
+// The popup and a Herdr tab can be open on the same review. A save in one must
+// not erase the notes and answers saved in the other.
 func TestConsistentTabPopupStateOnSave(t *testing.T) {
 	repo := newRepo(t)
 	addTestBatch(t, "config", marshalBatch(t, repo, cutPort, rewordParse))
