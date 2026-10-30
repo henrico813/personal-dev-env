@@ -94,8 +94,13 @@ func (v *View) Entry() review.Entry { return v.Entries[v.Index] }
 // Shows entry index scrolled past the code above, so its proposal is in
 // view first.
 func (v *View) Show(index int, now time.Time) {
-	v.Index = index
 	v.typingFor = None
+	v.ShowNewVersion(index, now)
+}
+
+// Shows entry index without ending a note or search the owner is typing.
+func (v *View) ShowNewVersion(index int, now time.Time) {
+	v.Index = index
 	v.screen = itemScreen
 	rows, focus := v.body()
 	v.scroll = min(focus, max(0, len(rows)-v.room()))

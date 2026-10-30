@@ -182,3 +182,44 @@ func TestRemovedCodeOffersOnlyDrop(t *testing.T) {
 		)
 	}
 }
+
+// A new round must not drop a note being typed, and its new text must wait
+// before an answer counts.
+func TestNewVersionKeepsTypingAndWaits(t *testing.T) {
+	v := newView(
+		t,
+		"package wire\n\n// One.\nvar one = 1\n",
+		review.Item{
+			ID:       1,
+			File:     "wire.go",
+			Proposal: review.ProposeCut,
+			Old:      "// One.\n",
+		},
+	)
+	start := time.Now()
+	v.ShowNextUndecided(0, start)
+	v.PressKey("m", start.Add(Settle))
+	v.PressKey("a", start.Add(Settle))
+
+	// A new round of the same item arrives while the owner types.
+	v.Entries[0].Round = 2
+	v.ShowNewVersion(0, start.Add(2*Settle))
+	v.PressKey("q", start.Add(2*Settle))
+	saved := v.PressKey("\r", start.Add(2*Settle))
+	quick := v.PressKey("o", start.Add(2*Settle))
+
+	if saved != SaveNote || v.Typed != "aq" {
+		t.Errorf(
+			"Enter = %v with %q, want SaveNote with %q",
+			saved,
+			v.Typed,
+			"aq",
+		)
+	}
+	if quick != None {
+		t.Errorf(
+			"o right after the new round = %v, want None",
+			quick,
+		)
+	}
+}
