@@ -428,9 +428,9 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// Agents put a comment before the owner by hand with pde-comment-review
-// add. The tool now reviews Python, so it saves a Python comment instead of
-// refusing it.
+// An agent can send the owner a Python comment by hand with
+// pde-comment-review add. Add refused Python comments until the review
+// screen could show them.
 func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	repo := startSecondBatch(
 		t,
@@ -468,7 +468,7 @@ func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	)
 	if _, err := os.Stat(batchTwo); err != nil {
 		t.Errorf(
-			"round file %s was not saved: %v",
+			"batch file %s was not saved: %v",
 			batchTwo,
 			err,
 		)
