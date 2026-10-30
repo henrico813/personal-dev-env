@@ -162,6 +162,47 @@ func TestAnswerSavedOnlyInChosenReview(t *testing.T) {
 	}
 }
 
+// A review tab stays open for hours while the popup saves notes to the same
+// review, and an old screen once erased those notes when it saved its own.
+func TestOpenScreenKeepsNotesSavedElsewhere(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	popupCopy := startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	// The popup saves two notes while the screen waits.
+	if err := popupCopy.SetNote(1, "keep Currency"); err != nil {
+		t.Fatal(err)
+	}
+	if err := popupCopy.SetNote(2, "shorter"); err != nil {
+		t.Fatal(err)
+	}
+	// The screen adds to the first note and saves it.
+	typeKeys(t, master, "m")
+	waitForScreen(t, master, "note for AI: keep Currency")
+	typeKeys(t, master, " for now\r")
+	waitForScreen(t, master, "note: keep Currency for now")
+	typeKeys(t, master, "q")
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
+	}
+
+	saved, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int]string{1: "keep Currency for now", 2: "shorter"}
+	got := map[int]string{}
+	for id, n := range saved.Notes {
+		got[id] = n.Text
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("saved notes = %q, want %q", got, want)
+	}
+}
+
 // The last answer writes every answer into the code, with no question.
 // An AI can add a round while the screen is open; that round must
 // open, or its item could never be answered and nothing would be

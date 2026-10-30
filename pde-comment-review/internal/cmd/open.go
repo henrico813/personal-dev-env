@@ -90,6 +90,9 @@ func runReviewScreen(
 		if err != nil {
 			return err
 		}
+		if r, err = showReviewAsSaved(r, v); err != nil {
+			return err
+		}
 		switch v.PressKey(key, time.Now()) {
 		case popup.Quit:
 			return nil
@@ -155,6 +158,31 @@ func runReviewScreen(
 			return err
 		}
 	}
+}
+
+// Reads review r again and keeps the screen on its item, since the popup can
+// save to the review while a tab stays open for hours.
+func showReviewAsSaved(
+	r *review.Review,
+	v *popup.View,
+) (*review.Review, error) {
+	saved, err := review.OpenReview(r.Name)
+	if err != nil {
+		return r, err
+	}
+	shown := v.Entry()
+	v.Entries = saved.ListEntries()
+	for i, e := range v.Entries {
+		if e.Item.ID != shown.Item.ID {
+			continue
+		}
+		v.Index = i
+		// Showing a new version of the item makes answer keys wait a moment.
+		if e.Round != shown.Round {
+			v.Show(i, time.Now())
+		}
+	}
+	return saved, nil
 }
 
 // Returns each named item's comment as its file has it now, running the
