@@ -22,13 +22,13 @@ from .line_comments import (
 )
 from .python import (
     PYTHON_GENERATED_MARKER,
+    build_python_comment,
     finish_python_rewrite,
     is_python_comment_writable,
     join_python_prose,
     list_python_warnings,
     parse_python_comments,
-    show_python_comment,
-    write_python_comment,
+    prepare_python_comment_for_screen,
 )
 from .screen_rows import ScreenRow
 
@@ -75,8 +75,8 @@ LANGUAGES = {
         generated_marker=PYTHON_GENERATED_MARKER,
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
-        prepare_for_screen=show_python_comment,
-        build_comment=write_python_comment,
+        prepare_for_screen=prepare_python_comment_for_screen,
+        build_comment=build_python_comment,
         finish_rewrite=finish_python_rewrite,
     ),
 }
