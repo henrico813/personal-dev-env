@@ -216,14 +216,14 @@ func (v *View) PressKey(key string, now time.Time) Action {
 	if v.typingFor != None {
 		return v.typeText(key)
 	}
-	// j and k work on every screen; the other keys depend on the screen.
+	// Scrolling works on every screen, and the other keys depend on the screen.
 	switch key {
-	case "j":
+	case "j", DownKey:
 		rows, _ := v.body()
 		if v.scroll < len(rows)-v.room() {
 			v.scroll++
 		}
-	case "k":
+	case "k", UpKey:
 		v.scroll = max(v.scroll-1, 0)
 	}
 	if v.screen == resultScreen && key == "d" {
