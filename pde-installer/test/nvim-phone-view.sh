@@ -141,6 +141,21 @@ end)
 
 assert(next_block == 19, "zj must reach the next block, not a diff header")
 
+-- With the cursor in the open diff block and the others closed, sa opens
+-- them all, and a second sa closes them all.
+vim.api.nvim_win_call(code_win, function()
+  vim.api.nvim_win_set_cursor(0, { 13, 0 })
+  vim.cmd("normal sa")
+end)
+
+assert(closed_fold(code_win, 1) == -1, "sa must open every block")
+
+vim.api.nvim_win_call(code_win, function()
+  vim.cmd("normal sa")
+end)
+
+assert(closed_fold(code_win, 8) == 8, "a second sa must close every block")
+
 -- Open every block with zR, which changes foldlevel, and leave the cursor
 -- in the diff block.
 vim.api.nvim_win_call(code_win, function()
