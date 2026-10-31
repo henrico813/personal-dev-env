@@ -140,6 +140,49 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 	}
 }
 
+// An owner who edits the AI's suggested wording keeps its r prefix. Without
+// it, the checker would refuse the owner's backslash as soon as the owner
+// closes nvim.
+func TestEditKeepsRawPrefixOfReword(t *testing.T) {
+	rewordTax := review.FeedbackRequest{
+		ID:         1,
+		File:       "tax.py",
+		Name:       "tax",
+		Suggestion: review.SuggestReword,
+		Old:        "    \"\"\"Return the tax.\"\"\"\n",
+		New:        "    r\"\"\"Return the tax at C:\\rates.\"\"\"\n",
+	}
+	r := startTaxReview(
+		t,
+		"def tax(price):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
+		rewordTax,
+		buildNvimTypingScript(`Return the tax at C:\\rates, rounded down.\n\n`),
+	)
+
+	err := editComment(
+		r,
+		rewordTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
+
+	if err != nil {
+		t.Fatalf("editComment() error = %v, want the text saved", err)
+	}
+	saved, err := review.OpenReview("tax")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := review.Answer{
+		Action: review.ActionEdited,
+		Text:   "    r\"\"\"Return the tax at C:\\rates, rounded down.\"\"\"\n",
+		Batch:  1,
+	}
+	if got := saved.Answers[rewordTax.ID]; got != want {
+		t.Errorf("saved %+v, want %+v", got, want)
+	}
+}
+
 // Deleting a docstring that is its function's only statement breaks the file.
 // The tool would find this only when it writes the files, so pressing c or
 // emptying the text in nvim refuses it at once.
