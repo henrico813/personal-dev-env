@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from .approvals import load_settings, unname_unapprovable_comments
-from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES
+from .languages.rules import LANGUAGES, UNSUPPORTED_SUFFIXES
 from .records import Comment, SourceError
 from .rules import find_rename_candidates
 
