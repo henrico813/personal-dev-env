@@ -428,9 +428,9 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// Python reviews stay off until the review screen can show them, so add
-// must refuse a hand-written Python item before the owner sees it.
-func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
+// Agents can send Python comments to the owner with the add command. If add
+// refused them, the owner would never see those comments.
+func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	repo := startSecondBatch(
 		t,
 		map[string]string{
@@ -454,12 +454,10 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 		buildRepoCheckerOnPath(t),
 	)
 
-	want := "nothing was saved: item 4: tax.py: owner reviews are off for this language"
-	if err == nil || !strings.Contains(err.Error(), want) {
+	if err != nil {
 		t.Fatalf(
-			"addBatchFile() error = %v, want it to contain %q",
+			"addBatchFile() error = %v, want the Python comment saved",
 			err,
-			want,
 		)
 	}
 	batchTwo := filepath.Join(
@@ -467,12 +465,9 @@ func TestAddRefusesPythonWhileReviewsOff(t *testing.T) {
 		"cart",
 		"round-2.json",
 	)
-	if _, err := os.Stat(batchTwo); !errors.Is(
-		err,
-		fs.ErrNotExist,
-	) {
+	if _, err := os.Stat(batchTwo); err != nil {
 		t.Errorf(
-			"round file %s was left behind: %v",
+			"batch file %s was not saved: %v",
 			batchTwo,
 			err,
 		)

@@ -16,7 +16,6 @@ from typing import NamedTuple
 from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
-    LINE_WIDTH,
     build_comment_lines,
     prepare_line_comment_for_screen,
     wrap_words,
@@ -24,6 +23,10 @@ from .line_comments import (
 from .screen_rows import ParagraphRow, ScreenRow, UnwrappedRow
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+# PEP 8 limits docstring and comment lines to 72 columns, counting
+# indentation.
+PYTHON_LINE_WIDTH = 72
 
 DocstringOwner = (
     ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
@@ -308,7 +311,7 @@ def build_python_comment(new_wording: str, old: str) -> str:
     if "\r" in new_wording or "\0" in new_wording:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return build_comment_lines(new_wording, old, "#")
+        return build_comment_lines(new_wording, old, "#", PYTHON_LINE_WIDTH)
     return build_docstring(new_wording, old)
 
 
@@ -316,8 +319,9 @@ def build_docstring(new_wording: str, old: str) -> str:
     """Return new words laid out as a docstring like the old one.
 
     The new docstring keeps the old one's indent, quote mark and any
-    ``r`` prefix. A docstring opened with one quote mark gets triple
-    quotes when it needs more lines or holds that mark.
+    ``r`` prefix, and wraps at 72 columns. A docstring opened with one
+    quote mark gets triple quotes when it needs more lines or holds that
+    mark.
 
     Args:
         new_wording: The new words, without quotes.
@@ -564,6 +568,18 @@ def join_parts_as_text(parts: list[Part]) -> str:
     return "".join(part.text + "\n" for part in parts) or "\n"
 
 
+def measure_docstring_width(docstring: re.Match[str]) -> int:
+    """Return how many columns a docstring line has after its indent.
+
+    Args:
+        docstring: The docstring's match, which gives its indentation.
+
+    Returns:
+        The columns left before PEP 8's limit, counting a tab as four.
+    """
+    return PYTHON_LINE_WIDTH - len(docstring["indent"].replace("\t", "    "))
+
+
 def fit_docstring_on_one_line(
     parts: list[Part], old: re.Match[str]
 ) -> str | None:
@@ -591,7 +607,7 @@ def fit_docstring_on_one_line(
         return None
     quotes = quote * 3 if quote in summary else old["quotes"]
     line = f"{old['prefix']}{quotes}{summary}{quotes}"
-    if len(line) > LINE_WIDTH - len(old["indent"].replace("\t", "    ")):
+    if len(line) > measure_docstring_width(old):
         return None
     return f"{old['indent']}{line}\n"
 
@@ -612,7 +628,7 @@ def wrap_docstring_lines(parts: list[Part], old: re.Match[str]) -> str:
     """
     indent, prefix = old["indent"], old["prefix"]
     quotes = old["quotes"][0] * 3
-    width = LINE_WIDTH - len(indent.replace("\t", "    "))
+    width = measure_docstring_width(old)
     lines = [indent + prefix + quotes]
     for number, part in enumerate(parts):
         if part.kind is PartKind.PARAGRAPH:
