@@ -22,10 +22,10 @@ from .line_comments import (
 )
 from .python import (
     PYTHON_GENERATED_MARKER,
+    build_python_comment,
     finish_python_rewrite,
     is_python_comment_writable,
     join_python_prose,
-    lay_out_python_comment,
     list_python_warnings,
     parse_python_comments,
     prepare_python_comment_for_screen,
@@ -76,7 +76,7 @@ LANGUAGES = {
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
         prepare_for_screen=prepare_python_comment_for_screen,
-        build_comment=lay_out_python_comment,
+        build_comment=build_python_comment,
         finish_rewrite=finish_python_rewrite,
     ),
 }

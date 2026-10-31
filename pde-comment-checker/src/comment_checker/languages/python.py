@@ -285,7 +285,7 @@ def draw_part_row(part: Part, first: str = "") -> ScreenRow:
     return UnwrappedRow(fixed=part.text)
 
 
-def lay_out_python_comment(new_wording: str, old: str) -> str:
+def build_python_comment(new_wording: str, old: str) -> str:
     """Return new words laid out like the comment they replace.
 
     The owner and agents write new words without ``#`` marks or quotes.
@@ -302,17 +302,17 @@ def lay_out_python_comment(new_wording: str, old: str) -> str:
 
     Raises:
         SourceError: The new words hold a carriage return or a NUL, or
-            ``lay_out_docstring`` refuses them.
+            ``build_docstring`` refuses them.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in new_wording or "\0" in new_wording:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
         return build_comment_lines(new_wording, old, "#")
-    return lay_out_docstring(new_wording, old)
+    return build_docstring(new_wording, old)
 
 
-def lay_out_docstring(new_wording: str, old: str) -> str:
+def build_docstring(new_wording: str, old: str) -> str:
     """Return new words laid out as a docstring like the old one.
 
     The new docstring keeps the old one's indent, quote mark and any
@@ -574,7 +574,7 @@ def wrap_first_and_rest(words: str, first: int, rest: int) -> list[str]:
     Returns:
         The wrapped lines.
     """
-    # lay_out_python_comment refuses wording with a NUL, so a NUL can
+    # build_python_comment refuses wording with a NUL, so a NUL can
     # stand in for a space where the line must not break.
     words = words.replace("\\ ", "\\\0")
     words = NAMED_ESCAPE.sub(lambda name: name[0].replace(" ", "\0"), words)
