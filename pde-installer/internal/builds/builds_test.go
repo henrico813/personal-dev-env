@@ -50,7 +50,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker",
+		"pde-comment-checker", "pde-comment-review-next",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -75,7 +75,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker",
+		"pde-comment-checker", "pde-comment-review-next",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -109,13 +109,13 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 
 	// A tool left out of the source hashes would never rebuild after a change.
-	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review", "input.txt"), "changed\n", 0o644)
+	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "input.txt"), "changed\n", 0o644)
 	journal, err = manager.Reconcile(profile.Full)
 	if err != nil {
 		t.Fatalf("changed Reconcile() error = %v", err)
 	}
 	if len(journal.Changes) == 0 {
-		t.Fatal("changed pde-comment-review source did not rebuild")
+		t.Fatal("changed Rust review source did not rebuild")
 	}
 }
 
@@ -240,7 +240,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker",
+		"pde-comment-checker", "pde-comment-review-next",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -279,6 +279,36 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 		if !strings.Contains(entry, want) {
 			t.Errorf("blink.cmp external lacks %s", want)
 		}
+	}
+}
+
+// Keeps a failed install from leaving today's review tools unusable.
+func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
+	home, repoRoot := t.TempDir(), t.TempDir()
+	writeBuildSources(t, repoRoot)
+	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
+	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "fail-help"), "fail\n", 0o644)
+	names := []string{
+		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
+		"pde-comment-review", "pde-comment-review-next", "skill-lessons", "pde-comment-checker",
+	}
+	for _, name := range names {
+		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
+	}
+	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
+
+	_, err := manager.Reconcile(profile.Full)
+
+	if err == nil || !strings.Contains(err.Error(), "verify pde-comment-review-next") {
+		t.Fatalf("Reconcile() error = %v, want the new review check to fail", err)
+	}
+	for _, name := range names {
+		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
+	}
+	assertBuildFile(t, manager.statePath(), "old state\n")
+	stage := filepath.Join(home, ".local", "state", "pde", "build-stage")
+	if _, err := os.Stat(stage); !os.IsNotExist(err) {
+		t.Fatalf("build stage remains after failure: %v", err)
 	}
 }
 
@@ -326,6 +356,7 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
 		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
+		"pde-comment-review-rs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -539,6 +570,7 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 func cargoFixture(logPath string) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
+[ "$1 $2 $3" = "build --locked --release" ] || exit 2
 printf '%%s\n' cargo >> %s
 target=
 name=${PWD##*/}
@@ -554,6 +586,9 @@ printf '%%s\n' cache > "$CARGO_HOME/content"
 output=$target/release/$name
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by cargo' > "$output"
+if [ "$name" = pde-comment-review-next ] && [ -f fail-help ]; then
+  printf '%%s\n' '#!/bin/sh' 'exit 1' > "$output"
+fi
 chmod +x "$output"
 `, shellQuote(logPath))
 }
@@ -582,7 +617,8 @@ func assertBuildOutputs(t *testing.T, home string) {
 	for name, tool := range map[string]string{
 		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
 		"pde-comment-review": "go", "skill-lessons": "python",
-		"pde-comment-checker": "python",
+		"pde-comment-checker":     "python",
+		"pde-comment-review-next": "cargo",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}
@@ -605,6 +641,7 @@ func assertBuildArtifactsRemoved(t *testing.T, stageRoot string) {
 		filepath.Join(stageRoot, "planner"),
 		filepath.Join(stageRoot, "opencode-inline-shim"),
 		filepath.Join(stageRoot, "vibe-target"),
+		filepath.Join(stageRoot, "comment-review-target"),
 		filepath.Join(stageRoot, "go-cache"),
 		filepath.Join(stageRoot, "go-mod-cache"),
 		filepath.Join(stageRoot, "cargo-home"),
