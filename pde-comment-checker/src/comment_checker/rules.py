@@ -7,7 +7,7 @@ import shlex
 from pathlib import Path
 from typing import NamedTuple
 
-from .languages import LANGUAGES
+from .languages.rules import LANGUAGES
 from .records import Comment, Finding, Function
 
 GO_AND_PYTHON = frozenset({".go", ".py"})
