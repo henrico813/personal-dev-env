@@ -29,9 +29,9 @@ const usage = `usage:
   pde-comment-review open NAME
       answer the items of review NAME one per screen, each saved at once:
       o keep, c cut, a accept, e edit in nvim, m note for the AI,
-      v view the file, s search with rg, j/k scroll, h/l previous/next
-      item, q quit; after the last answer, every answer is written into the
-      code and approved, and d shows the diff
+      v view the file, s search with rg, j/k or swipe scroll, h/l
+      previous/next comment, q quit; after the last answer, every answer is
+      written into the code and approved, and d shows the diff
   pde-comment-review notes NAME
       print the owner's open notes on review NAME as JSON
   pde-comment-review mcp
