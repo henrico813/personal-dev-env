@@ -2,12 +2,46 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import NamedTuple, TypedDict
 
 from ..records import SourceError
 
 # The column a rewritten comment's lines may reach, counting indentation.
 LINE_WIDTH = 79
+
+
+class ParagraphRow(TypedDict):
+    """A paragraph the review window wraps to fit, after a comment mark.
+
+    The window can be narrower than the file, so lines wrapped for the
+    file would break again at odd places.
+
+    Attributes:
+        first: The mark before the first line, such as the opening
+            quotes.
+        rest: The mark before each later line, such as ``# ``.
+        words: The words to wrap.
+    """
+
+    first: str
+    rest: str
+    words: str
+
+
+class AsWrittenRow(TypedDict):
+    """A row the review window draws as written, without wrapping.
+
+    Code examples, headings and blank lines use it, so wrapping cannot
+    break their layout.
+
+    Attributes:
+        fixed: The row's text.
+    """
+
+    fixed: str
+
+
+ScreenRow = ParagraphRow | AsWrittenRow
 
 
 class Block(NamedTuple):
@@ -17,46 +51,64 @@ class Block(NamedTuple):
     text: str
 
 
-def show_line_comment(
+def prepare_line_comment_for_screen(
     text: str, marker: str = "//"
-) -> tuple[str, list[dict[str, str]]]:
-    """Return a comment's plain text and the rows a screen draws for it.
+) -> tuple[str, list[ScreenRow]]:
+    """Return a comment's words to edit, and the rows the window draws.
 
-    A sentence row is wrapped to the screen, after its ``first`` and
-    ``rest`` marks. A ``fixed`` row is drawn as written, such as an
-    example line or the ``//`` row between paragraphs.
+    Args:
+        text: The comment as it is in the file, with its marks.
+        marker: The mark that starts each line, such as ``//`` or ``#``.
+
+    Returns:
+        The words, one line per paragraph, and the rows to draw.
 
     Raises:
-        SourceError: A line of ``text`` does not start with ``marker``.
+        SourceError: A line does not start with the mark.
     """
     blocks = read_comment_blocks(text, marker)
-    rows: list[dict[str, str]] = []
+    rows: list[ScreenRow] = []
     for block in blocks:
         if rows:
-            rows.append({"fixed": marker})
+            rows.append(AsWrittenRow(fixed=marker))
         if block.example:
             rows += [
-                {"fixed": marker + line} for line in block.text.split("\n")
+                AsWrittenRow(fixed=marker + line)
+                for line in block.text.split("\n")
             ]
         else:
             marks = marker + " "
-            rows.append({"first": marks, "rest": marks, "words": block.text})
-    plain = "\n\n".join(block.text for block in blocks) + "\n"
-    return plain, rows
+            rows.append(
+                ParagraphRow(first=marks, rest=marks, words=block.text)
+            )
+    words = "\n\n".join(block.text for block in blocks) + "\n"
+    return words, rows
 
 
-def write_line_comment(plain: str, old: str, marker: str = "//") -> str:
-    """Return ``plain`` as comment lines, indented like ``old``.
+def lay_out_line_comment(
+    new_wording: str, old: str, marker: str = "//"
+) -> str:
+    """Return new words as comment lines ready for the file.
 
-    Sentences are rewrapped to ``LINE_WIDTH``, and lines that start with
-    a tab or two spaces are kept as example lines. Plain text with no
-    words returns ``""``, so writing it deletes the comment.
+    The owner edits a comment without its marks or line breaks, so the
+    words need them back before they go in the file.
+
+    Args:
+        new_wording: The new words, without marks. Lines that start with
+            a tab or two spaces stay as written.
+        old: The comment the new words replace, whose indentation they
+            copy. It may be suggested wording that is not in the file
+            yet.
+        marker: The mark that starts each line, such as ``//`` or ``#``.
+
+    Returns:
+        The comment lines, or an empty string to delete the comment.
     """
     first_line = old.split("\n", 1)[0]
     indent = first_line[: len(first_line) - len(first_line.lstrip(" \t"))]
     width = LINE_WIDTH - len(indent.replace("\t", "    ")) - len(marker) - 1
     lines: list[str] = []
-    for block in group_comment_blocks(plain.split("\n")):
+    for block in group_comment_blocks(new_wording.split("\n")):
         if lines:
             lines.append(indent + marker)
         if block.example:
