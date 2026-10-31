@@ -820,6 +820,24 @@ class TestShowDocstrings:
             {"fixed": '"""'},
         ]
 
+    def test_one_line_docstring_draws_one_row(self, tmp_path: Path) -> None:
+        """Draw a one-line docstring on one row, as in the code.
+
+        Closing quotes on a row of their own made a one-line docstring
+        look like two lines.
+
+        Args:
+            tmp_path: An empty folder the checker runs in.
+        """
+        text = '        """Sum the prices."""\n'
+
+        code, reply = show_entries(tmp_path, {"file": "shop.py", "text": text})
+
+        assert code == 0
+        assert reply["shown"][0]["screen"] == [
+            {"first": '"""', "rest": "", "words": 'Sum the prices."""'}
+        ]
+
     @pytest.mark.parametrize(
         ("old", "plain", "expected"),
         [
