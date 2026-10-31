@@ -10,7 +10,7 @@ from ..records import SourceError
 LINE_WIDTH = 79
 
 
-class WrappedRow(TypedDict):
+class ParagraphRow(TypedDict):
     """Words the review screen wraps to its width, after a mark.
 
     The review tool shows each comment as rows on the owner's phone.
@@ -27,7 +27,7 @@ class WrappedRow(TypedDict):
     words: str
 
 
-class FixedRow(TypedDict):
+class AsWrittenRow(TypedDict):
     """A row the review screen draws as written, such as an example.
 
     Attributes:
@@ -37,7 +37,7 @@ class FixedRow(TypedDict):
     fixed: str
 
 
-ScreenRow = WrappedRow | FixedRow
+ScreenRow = ParagraphRow | AsWrittenRow
 
 
 class Block(NamedTuple):
@@ -73,15 +73,17 @@ def prepare_line_comment_for_screen(
     rows: list[ScreenRow] = []
     for block in blocks:
         if rows:
-            rows.append(FixedRow(fixed=marker))
+            rows.append(AsWrittenRow(fixed=marker))
         if block.example:
             rows += [
-                FixedRow(fixed=marker + line)
+                AsWrittenRow(fixed=marker + line)
                 for line in block.text.split("\n")
             ]
         else:
             marks = marker + " "
-            rows.append(WrappedRow(first=marks, rest=marks, words=block.text))
+            rows.append(
+                ParagraphRow(first=marks, rest=marks, words=block.text)
+            )
     words = "\n\n".join(block.text for block in blocks) + "\n"
     return words, rows
 

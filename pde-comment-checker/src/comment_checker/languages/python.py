@@ -16,9 +16,9 @@ from typing import NamedTuple
 from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
-    FixedRow,
+    AsWrittenRow,
+    ParagraphRow,
     ScreenRow,
-    WrappedRow,
     lay_out_line_comment,
     prepare_line_comment_for_screen,
     wrap_words,
@@ -263,15 +263,15 @@ def draw_docstring_rows(
     quotes = docstring["quotes"]
     if len(parts) == 1 and "\n" not in docstring["body"]:
         words = parts[0].text + quotes
-        return [WrappedRow(first=opening, rest="", words=words)]
+        return [ParagraphRow(first=opening, rest="", words=words)]
     rows = [draw_part_row(part) for part in parts]
     # The opening quotes cannot share a row drawn as written, such as a
     # heading, so they get a row of their own above it.
     if parts and parts[0].kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
         rows[0] = draw_part_row(parts[0], opening)
     else:
-        rows.insert(0, FixedRow(fixed=opening))
-    return rows + [FixedRow(fixed=quotes)]
+        rows.insert(0, AsWrittenRow(fixed=opening))
+    return rows + [AsWrittenRow(fixed=quotes)]
 
 
 def draw_part_row(part: Part, first: str = "") -> ScreenRow:
@@ -290,10 +290,10 @@ def draw_part_row(part: Part, first: str = "") -> ScreenRow:
         The row for the part.
     """
     if part.kind is PartKind.PARAGRAPH:
-        return WrappedRow(first=first, rest="", words=part.text)
+        return ParagraphRow(first=first, rest="", words=part.text)
     if part.kind is PartKind.ENTRY:
-        return WrappedRow(first=first, rest="  ", words=part.text)
-    return FixedRow(fixed=part.text)
+        return ParagraphRow(first=first, rest="  ", words=part.text)
+    return AsWrittenRow(fixed=part.text)
 
 
 def lay_out_python_comment(new_wording: str, old: str) -> str:
