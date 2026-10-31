@@ -75,6 +75,7 @@ LANGUAGES = {
         generated_marker=PYTHON_GENERATED_MARKER,
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
+        reviews_on=True,
         prepare_for_screen=prepare_python_comment_for_screen,
         lay_out_wording=lay_out_python_comment,
         finish_rewrite=finish_python_rewrite,

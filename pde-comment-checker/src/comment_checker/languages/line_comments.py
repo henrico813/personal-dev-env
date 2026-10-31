@@ -86,7 +86,7 @@ def prepare_line_comment_for_screen(
 
 
 def lay_out_line_comment(
-    new_wording: str, old: str, marker: str = "//"
+    new_wording: str, old: str, marker: str = "//", width: int = LINE_WIDTH
 ) -> str:
     """Return new words as comment lines ready for the file.
 
@@ -100,13 +100,14 @@ def lay_out_line_comment(
             copy. It may be suggested wording that is not in the file
             yet.
         marker: The mark that starts each line, such as ``//`` or ``#``.
+        width: The last column a line may reach, counting indentation.
 
     Returns:
         The comment lines, or an empty string to delete the comment.
     """
     first_line = old.split("\n", 1)[0]
     indent = first_line[: len(first_line) - len(first_line.lstrip(" \t"))]
-    width = LINE_WIDTH - len(indent.replace("\t", "    ")) - len(marker) - 1
+    width -= len(indent.replace("\t", "    ")) + len(marker) + 1
     lines: list[str] = []
     for block in group_comment_blocks(new_wording.split("\n")):
         if lines:
