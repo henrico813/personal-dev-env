@@ -22,7 +22,9 @@ type agentReply struct {
 	Requests []review.FeedbackRequest `json:"items,omitempty"`
 	Notes    []noteForAI              `json:"notes,omitempty"`
 	Problems []string                 `json:"problems,omitempty"`
-	Next     string                   `json:"next"`
+	// Changed files whose comments the tool cannot review.
+	Unsupported []string `json:"unsupported,omitempty"`
+	Next        string   `json:"next"`
 }
 
 // Returns the state of the branch's review at dir, with the feedback
@@ -44,6 +46,9 @@ func replyToStatus(dir string) agentReply {
 	case d != nil:
 		reply.State = "done"
 		reply.Next = "No comment on this branch needs the user's answer. Tell the user there is nothing to review."
+		if len(d.Unsupported) > 0 {
+			reply.Next = "There is nothing for the tool to review."
+		}
 	case len(r.Batches) == 0:
 		reply.State = "no_review"
 		reply.Next = "Call review_draft to find the comments the user must answer."
@@ -56,6 +61,10 @@ func replyToStatus(dir string) agentReply {
 	default:
 		reply.State = "waiting_for_user"
 		reply.Next = fmt.Sprintf("Tell the user: Review %[1]s is ready; press Ctrl+b e in Herdr, or Ctrl+b E for a full tab, or run pde-comment-review open %[1]s. Do not answer its items yourself.", name)
+	}
+	if d != nil && len(d.Unsupported) > 0 {
+		reply.Unsupported = d.Unsupported
+		reply.Next += " The tool cannot review comments in the files listed in unsupported, so show the user those comments in the pull request."
 	}
 	return reply
 }

@@ -227,6 +227,53 @@ func TestReplacedSuggestionNeedsNewAnswer(t *testing.T) {
 	}
 }
 
+// When the checker refuses an edit, the owner's text waits in a file for the
+// next try. After the owner keeps, cuts or edits the comment, or the AI sends
+// new wording, that file would reopen out-of-date text.
+func TestAnswersAndBatchesDeleteEditFiles(t *testing.T) {
+	repo := newRepo(t)
+	addTestBatch(
+		t,
+		"config",
+		marshalBatch(t, repo, cutPort, rewordParse),
+	)
+	r, err := OpenReview("config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2} {
+		err := os.WriteFile(
+			r.BuildEditFilePath(id),
+			[]byte("typed\n"),
+			0o600,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	answerErr := r.SaveAnswer(
+		1,
+		1,
+		ActionKeep,
+		"",
+	)
+	addTestBatch(
+		t,
+		"config",
+		marshalBatch(t, repo, rewordParse),
+	)
+
+	if answerErr != nil {
+		t.Fatal(answerErr)
+	}
+	for _, id := range []int{1, 2} {
+		if _, err := os.Stat(r.BuildEditFilePath(id)); err == nil {
+			t.Errorf("comment %d's edit file is still there", id)
+		}
+	}
+}
+
 // Ctrl+b e opens the only waiting review, or lists them newest first within
 // each session. The owner once left ten notes on another session's review,
 // so the wrong order, an applied or removed review still listed, or a new

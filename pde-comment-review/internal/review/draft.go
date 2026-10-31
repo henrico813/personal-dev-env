@@ -18,6 +18,9 @@ type Draft struct {
 	Batch Batch  `json:"proposals"`
 	// The batch number submit saves it as, so a sent draft is never sent again.
 	BatchNumber int `json:"round"`
+	// Changed code files the checker cannot read, such as Rust. The agent
+	// shows the owner their comments in the pull request.
+	Unsupported []string `json:"unsupported,omitempty"`
 }
 
 // Returns the review name for a branch, such as "vibe-add-tax" for
