@@ -84,6 +84,14 @@ function M.fold_text()
   return label(vim.api.nvim_get_current_buf(), vim.v.foldstart)
 end
 
+local function is_block_start(levels, lnum)
+  return levels[lnum] > 0 and (levels[lnum - 1] or 0) == 0
+end
+
+local function shows_phone_folds()
+  return vim.wo.foldexpr == M.window_opts.foldexpr
+end
+
 -- Moves to the first line of the next (1) or previous (-1) code block or
 -- frontmatter, open or closed. nvim's own zj and zk stop at the diff header
 -- fold inside an opened block.
@@ -92,7 +100,7 @@ function M.jump_to_block(direction)
   local lnum = vim.fn.line(".")
   for _ = 1, vim.v.count1 do
     local i = lnum + direction
-    while levels[i] and not (levels[i] > 0 and (levels[i - 1] or 0) == 0) do
+    while levels[i] and not is_block_start(levels, i) do
       i = i + direction
     end
     if not levels[i] then
@@ -103,15 +111,35 @@ function M.jump_to_block(direction)
   vim.api.nvim_win_set_cursor(0, { lnum, 0 })
 end
 
+-- Opens or closes the block around the cursor. Unlike za, it acts on the
+-- whole block from inside a diff header too.
+function M.toggle_block()
+  local levels = scan(vim.api.nvim_get_current_buf()).levels
+  local start = vim.fn.line(".")
+  if not shows_phone_folds() or (levels[start] or 0) == 0 then
+    return
+  end
+  while not is_block_start(levels, start) do
+    start = start - 1
+  end
+  vim.cmd(start .. (vim.fn.foldclosed(start) == -1 and "foldclose" or "foldopen"))
+end
+
 -- Opens every block when any is closed, and closes them all otherwise.
+-- foldlevel 1, unlike zR, keeps diff headers folded, so a block looks the
+-- same whether sa or sd opened it.
 function M.toggle_all_blocks()
-  for lnum = 1, vim.fn.line("$") do
-    if vim.fn.foldclosed(lnum) ~= -1 then
-      vim.cmd("normal! zR")
+  if not shows_phone_folds() then
+    return
+  end
+  local levels = scan(vim.api.nvim_get_current_buf()).levels
+  for lnum = 1, #levels do
+    if is_block_start(levels, lnum) and vim.fn.foldclosed(lnum) ~= -1 then
+      vim.wo.foldlevel = 1
       return
     end
   end
-  vim.cmd("normal! zM")
+  vim.wo.foldlevel = 0
 end
 
 -- Remembers whether the cursor is in an open fold before the desktop view
