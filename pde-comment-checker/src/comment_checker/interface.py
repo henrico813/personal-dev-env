@@ -120,10 +120,6 @@ def describe_comment(comment: Comment) -> dict[str, object]:
 def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
     """Print each entry's comment text, plain text and screen rows.
 
-    An entry gives a comment's exact ``text``, or the ``plain`` sentences
-    to write. ``plain`` is laid out like the entry's ``text`` when it has
-    one, or else like the comment now under ``name`` in ``file``.
-
     Args:
         repo: The repository that holds each comment's file.
         entries: The comments to show, as the review tool sends them.
@@ -147,9 +143,9 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
         try:
             if "plain" in entry:
                 old = find_layout_comment(repo, entry, language)
-                # Raises SourceError when the old text is not a
-                # comment of this language, which leaves the new
-                # wording no layout.
+                # The new wording copies the old comment's layout, so
+                # this call raises SourceError when the old text is not
+                # a comment of this language.
                 language.prepare_for_screen(old.text)
                 text = language.lay_out_wording(entry["plain"], old.text)
             # Plain text with no words gives no text, which cuts the comment.
