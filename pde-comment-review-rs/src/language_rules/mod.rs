@@ -5,6 +5,7 @@ mod go;
 mod python;
 mod rust;
 
+use std::iter::successors;
 use std::path::Path;
 
 use tree_sitter::{Language, Node};
@@ -18,6 +19,20 @@ pub trait LanguageRules {
     /// Returns a comment node's style, or `None` for other nodes and
     /// tool lines.
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle>;
+    /// Returns the name of the code a comment describes, or `None` when
+    /// it describes no one definition. `code_below` is the first node on
+    /// the next line, or `None` when that line is blank.
+    fn name_comment(&self, comment: Node, code_below: Option<Node>, source: &str)
+    -> Option<String>;
+}
+
+/// Returns `node` and each parent that starts where it does, innermost
+/// first.
+fn nodes_starting_at(node: Node) -> impl Iterator<Item = Node> {
+    let start = node.start_byte();
+    successors(Some(node), move |child| {
+        child.parent().filter(|parent| parent.start_byte() == start)
+    })
 }
 
 /// Returns the rules for the file's language, if supported.
