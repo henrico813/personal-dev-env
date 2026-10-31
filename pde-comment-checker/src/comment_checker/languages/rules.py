@@ -1,4 +1,4 @@
-"""Which language reads which file, by suffix."""
+"""The comment rules for each language, picked by file suffix."""
 
 from __future__ import annotations
 
@@ -82,6 +82,6 @@ LANGUAGES = {
     ),
 }
 
-# Code suffixes the checker cannot read yet, so their comments reach the
-# owner another way. A language added to LANGUAGES leaves this list.
+# Code file suffixes the checker cannot read yet, such as .rs. Their
+# comments go to the owner in the pull request.
 UNSUPPORTED_SUFFIXES = (".js", ".lua", ".rs", ".sh", ".ts")
