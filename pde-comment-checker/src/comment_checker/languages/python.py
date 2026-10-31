@@ -17,13 +17,11 @@ from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
     LINE_WIDTH,
-    AsWrittenRow,
-    ParagraphRow,
-    ScreenRow,
-    lay_out_line_comment,
+    build_comment_lines,
     prepare_line_comment_for_screen,
     wrap_words,
 )
+from .screen_rows import ParagraphRow, ScreenRow, UnwrappedRow
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
@@ -261,8 +259,8 @@ def draw_docstring_rows(
     if parts and parts[0].kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
         rows[0] = draw_part_row(parts[0], opening)
     else:
-        rows.insert(0, AsWrittenRow(fixed=opening))
-    return rows + [AsWrittenRow(fixed=quotes)]
+        rows.insert(0, UnwrappedRow(fixed=opening))
+    return rows + [UnwrappedRow(fixed=quotes)]
 
 
 def draw_part_row(part: Part, first: str = "") -> ScreenRow:
@@ -284,10 +282,10 @@ def draw_part_row(part: Part, first: str = "") -> ScreenRow:
         return ParagraphRow(first=first, rest="", words=part.text)
     if part.kind is PartKind.ENTRY:
         return ParagraphRow(first=first, rest="  ", words=part.text)
-    return AsWrittenRow(fixed=part.text)
+    return UnwrappedRow(fixed=part.text)
 
 
-def lay_out_python_comment(new_wording: str, old: str) -> str:
+def build_python_comment(new_wording: str, old: str) -> str:
     """Return new words laid out like the comment they replace.
 
     The owner and agents write new words without ``#`` marks or quotes.
@@ -304,17 +302,17 @@ def lay_out_python_comment(new_wording: str, old: str) -> str:
 
     Raises:
         SourceError: The new words hold a carriage return or a NUL, or
-            ``lay_out_docstring`` refuses them.
+            ``build_docstring`` refuses them.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in new_wording or "\0" in new_wording:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return lay_out_line_comment(new_wording, old, "#")
-    return lay_out_docstring(new_wording, old)
+        return build_comment_lines(new_wording, old, "#")
+    return build_docstring(new_wording, old)
 
 
-def lay_out_docstring(new_wording: str, old: str) -> str:
+def build_docstring(new_wording: str, old: str) -> str:
     """Return new words laid out as a docstring like the old one.
 
     The new docstring keeps the old one's indent, quote mark and any
@@ -649,7 +647,7 @@ def wrap_first_and_rest(words: str, first: int, rest: int) -> list[str]:
     Returns:
         The wrapped lines.
     """
-    # lay_out_python_comment refuses wording with a NUL, so a NUL can
+    # build_python_comment refuses wording with a NUL, so a NUL can
     # stand in for a space where the line must not break.
     words = words.replace("\\ ", "\\\0")
     words = NAMED_ESCAPE.sub(lambda name: name[0].replace(" ", "\0"), words)

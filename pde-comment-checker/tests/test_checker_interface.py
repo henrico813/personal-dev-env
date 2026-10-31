@@ -20,7 +20,7 @@ import pytest
 from comment_checker import INTERFACE, VERSION, interface
 from comment_checker.approvals import unname_unapprovable_comments
 from comment_checker.cli import main
-from comment_checker.languages import LANGUAGES, LanguageRules
+from comment_checker.languages.rules import LANGUAGES, LanguageRules
 from comment_checker.records import Comment
 
 SAMPLES = Path(__file__).parent / "comment_samples"
@@ -2312,7 +2312,7 @@ class TestApply:
             kept = apply_answers(tmp_path, answers, flags=())
             unchanged = copy.read_bytes() == (root / file).read_bytes()
             rewords = {
-                answer["id"]: language.lay_out_wording(
+                answer["id"]: language.build_comment(
                     language.prepare_for_screen(answer["text"])[0].replace(
                         "\n", " One more sentence.\n", 1
                     ),
