@@ -71,7 +71,7 @@ func buildMCPServer(checker string) (*mcp.Server, error) {
 		server,
 		&mcp.Tool{
 			Name:        "review_draft",
-			Description: "Finds every Go comment on the branch in dir that the user must answer and saves them as a draft. Change any item with review_set, then send the draft with review_submit.",
+			Description: "Finds every comment on the branch in dir that the user must answer and saves them as a draft. Change any item with review_set, then send the draft with review_submit.",
 		},
 		func(_ context.Context, _ *mcp.CallToolRequest, in checkoutInput) (*mcp.CallToolResult, any, error) {
 			return runInCheckoutOneAtATime(in.Dir, func() agentReply { return replyToDraft(in.Dir, checker) })

@@ -449,11 +449,14 @@ class TestChanges:
         assert code == 0
         assert [i["name"] for i in reply["items"]] == ["Reset"]
 
-    def test_python_comments_wait_for_reviews(self, tmp_path: Path) -> None:
-        """List no Python comment while Python's owner reviews are off.
+    def test_new_python_docstring_is_listed(self, tmp_path: Path) -> None:
+        """List a new Python docstring for the owner like a Go comment.
 
-        The review tool cannot write Python answers yet, so a Python item
-        would make the whole review fail when the owner sends it.
+        A docstring left out of this list would stay in the code without
+        the owner ever seeing it, and no later step would notice.
+
+        Args:
+            tmp_path: A folder the test turns into a Git repository.
         """
         base = commit_all(tmp_path)
         (tmp_path / "shop.py").write_text('"""Sells things."""\n')
@@ -461,7 +464,8 @@ class TestChanges:
         code, reply = list_changes(tmp_path, base)
 
         assert code == 0
-        assert reply["items"] == []
+        listed = [(i["name"], i["reason"]) for i in reply["items"]]
+        assert listed == [("<module>", "new")]
 
     def test_unsupported_changed_file_is_named(self, tmp_path: Path) -> None:
         """Name a changed code file the checker cannot read yet.
@@ -560,7 +564,7 @@ class TestShow:
         ]
 
     @pytest.mark.parametrize(
-        ("entry", "expected"),
+        ("comment", "expected"),
         [
             pytest.param(
                 {"file": "shop.go", "name": "Cart.Items", "plain": LONG_PLAIN},
@@ -587,7 +591,7 @@ class TestShow:
                     "plain": LONG_PLAIN,
                 },
                 "    # Returns the sum of prices, in cents, so a total of many"
-                " items never gets\n    # rounded.\n    #\n"
+                " items\n    # never gets rounded.\n    #\n"
                 "    #\tTotal(prices)\n",
                 id="python-by-name",
             ),
@@ -599,18 +603,25 @@ class TestShow:
         ],
     )
     def test_plain_is_written_like_old_comment(
-        self, tmp_path: Path, entry: dict[str, str], expected: str
+        self, tmp_path: Path, comment: dict[str, str], expected: str
     ) -> None:
-        """Write plain sentences with the old comment's indent, at 79 columns.
+        """Write new words at the language's width and the old indent.
 
-        A wrong indent would put the comment out of line with its code,
-        a wrong width would leave lines past 79 columns, and plain text
-        with no words must cut the comment rather than leave an empty one.
+        Go comments wrap at 79 columns and Python comments at 72. A
+        wrong indent puts the comment out of line with its code. A wrong
+        width leaves lines too long. Empty new words delete the comment
+        instead of leaving an empty one.
+
+        Args:
+            tmp_path: An empty folder that gets the Go and Python files.
+            comment: The comment to write, found by name or by its text,
+                with its new words.
+            expected: The comment the checker should write.
         """
         (tmp_path / "shop.go").write_text(SHOP_GO)
         (tmp_path / "shop.py").write_text(SHOP_PY)
 
-        code, reply = show_entries(tmp_path, entry)
+        code, reply = show_entries(tmp_path, comment)
 
         assert code == 0
         assert reply["shown"][0]["text"] == expected
@@ -846,8 +857,8 @@ class TestShowDocstrings:
                 "Sum the prices.\n\nArgs:\nprices: The prices, in cents, of "
                 "every item in the cart, which may be empty.\n\nIn cents.\n",
                 '    r"""Sum the prices.\n\n    Args:\n        prices: The '
-                "prices, in cents, of every item in the cart, which may be\n"
-                '            empty.\n\n    In cents.\n    """\n',
+                "prices, in cents, of every item in the cart, which\n"
+                '            may be empty.\n\n    In cents.\n    """\n',
                 id="sections",
             ),
             pytest.param(
@@ -1483,20 +1494,24 @@ class TestApplyCheck:
         ],
     )
     def test_python_write_keeps_code_meaning(
-        self, tmp_path: Path, monkeypatch, edits: dict, problem: str
+        self, tmp_path: Path, edits: dict, problem: str
     ) -> None:
-        """Refuse a docstring answer that would change what the code does.
+        """Refuse a write that would change what the code does.
 
-        The owner types plain text on the phone, so ``C:\\new`` would
-        silently become a line break and ``\\d`` a warning, even when the
-        answer takes an escape out of another docstring. A doubled
-        backslash, or a warning already in the code, is fine. Code after
-        a docstring, a cut that leaves a body empty or turns a comment
-        into a coding line, or a new directive would change the code.
-        Keys with ``@`` are docstrings whose name is shared, so unnamed.
+        The owner types plain words, so ``C:\\new`` would become a line
+        break. The same escape moved from another docstring is refused
+        too. The checker also refuses code after a docstring, a new tool
+        comment such as ``# nosec``, a comment that becomes the encoding
+        line and cutting a function's only statement. A doubled
+        backslash, or a warning the code already had, passes.
+
+        Args:
+            tmp_path: An empty folder the checker writes in.
+            edits: The new text for each docstring or comment. A key
+                with ``@`` marks one found by its text, not its name.
+            problem: Part of the refusal the checker should give, or an
+                empty string when the change is allowed.
         """
-        python = replace(LANGUAGES[".py"], reviews_on=True)
-        monkeypatch.setitem(LANGUAGES, ".py", python)
         docstrings = {
             "<module>": '"""Shop."""\n',
             "#@top": "# Prices follow the decoding: latin-1 table.\n",
@@ -2278,19 +2293,17 @@ class TestApply:
         assert TOTAL_TEXT in (tmp_path / "cart.go").read_text()
         assert (tmp_path / edited).read_text() == edit
 
-    def test_repository_comments_survive_rewrite(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
-        """Write back every comment here unchanged, then reword every other.
+    def test_repository_comments_survive_rewrite(self, tmp_path: Path) -> None:
+        """Write back each comment, then reword every second one.
 
-        Writing a comment's own text must change no byte, and a reword
-        must keep the file parsing and change only that comment, under
-        its name, in every Go and Python file of this repository. A write
-        bug here would change a real file outside the one comment it was
-        asked to touch, which a small sample would never show.
+        In every Go and Python file here, writing a comment's own text
+        must change no byte, and a reword must change only that comment.
+        A small sample would miss a bug that changes a real file outside
+        the comment.
+
+        Args:
+            tmp_path: An empty folder that gets a copy of each file.
         """
-        python = replace(LANGUAGES[".py"], reviews_on=True)
-        monkeypatch.setitem(LANGUAGES, ".py", python)
         root = Path(__file__).resolve().parents[2]
         listed = ["git", "-C", str(root), "ls-files", "*.go", "*.py"]
         files = subprocess.check_output(listed, text=True).split()
