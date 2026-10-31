@@ -38,9 +38,21 @@ func TestIgnoreTemplateProfiles(t *testing.T) {
 				".codex",
 				".agents",
 				".pi",
-				".config/nvim/pack/plugins/start/blink.cmp",
 				".config/nvim/pack/plugins/start/opencode-inline.nvim",
 				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
+			},
+		},
+		"client": {
+			profile: "client",
+			want: []string{
+				".config/aquaproj-aqua/aqua.yaml",
+				".claude",
+				".config/opencode/bin/planner",
+				"link_herdr_plugins.sh",
+			},
+			omit: []string{
+				".config/nvim",
+				".agents",
 			},
 		},
 		"full": {
@@ -82,6 +94,20 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				".agents/skills/code-documentation/SKILL.md",
 			},
 		},
+		"client": {
+			profile: "client",
+			want: []string{
+				"obsidian.nvim",
+				"copilot.lua",
+				".config/opencode/AGENTS.md",
+				".config/nvim/pack/plugins/start/blink.cmp",
+			},
+			omit: []string{
+				".claude/CLAUDE.md",
+				".pi/agent",
+				".config/opencode/agents/plan-bug-reviewer.md",
+			},
+		},
 		"full": {
 			profile: "full",
 			want: []string{
@@ -90,9 +116,41 @@ func TestExternalTemplateProfiles(t *testing.T) {
 				".config/opencode/AGENTS.md",
 				".agents/skills/code-documentation/SKILL.md",
 			},
+			omit: []string{
+				".config/nvim/pack/plugins/start/blink.cmp",
+			},
 		},
 	}
 	assertProfileTemplates(t, ".chezmoiexternal.toml.tmpl", tests)
+}
+
+// A client laptop is not a development machine, and most skills call planner,
+// vibe or Go tools it lacks. The allow list keeps a new skill off it until
+// someone adds that skill on purpose.
+func TestClientGetsOnlyAllowedSkills(t *testing.T) {
+	text := renderProfileTemplate(t, ".chezmoiexternal.toml.tmpl", "client")
+
+	var skills []string
+	for _, target := range renderedExternalTargets(text) {
+		if name, found := strings.CutPrefix(target, ".agents/skills/"); found {
+			skill, _, _ := strings.Cut(name, "/")
+			if !slices.Contains(skills, skill) {
+				skills = append(skills, skill)
+			}
+		}
+	}
+
+	slices.Sort(skills)
+	want := []string{
+		"behavior-focused-testing",
+		"delegate",
+		"obsidian-daily-note",
+		"obsidian-zettel",
+		"plain-direct-english",
+	}
+	if !slices.Equal(skills, want) {
+		t.Fatalf("client skills = %q, want %q", skills, want)
+	}
 }
 
 // TestSharedWorkflowMappings catches rules and skills diverging between tools,
@@ -174,6 +232,17 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"$HOME/.config/pde/tw.yml",
 				"local -a roles=(herdr wallace shell)",
 				"@tw-root",
+			},
+		},
+		"client": {
+			profile: "client",
+			want: []string{
+				"aqua-terminal.yaml",
+				"alias vim='nvim'",
+				"EDITOR=$(which nvim)",
+			},
+			omit: []string{
+				"keychain --eval",
 			},
 		},
 		"full": {
@@ -358,7 +427,11 @@ func TestTmuxTemplateProfiles(t *testing.T) {
 		omit    []string
 	}{
 		"terminal": {profile: "terminal", want: []string{"set -s set-clipboard on", "allow-passthrough on", "@resurrect-processes 'ssh'", "set -g base-index 1"}, omit: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'"}},
-		"full":     {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
+		"client": {
+			profile: "client",
+			want:    []string{"@resurrect-strategy-nvim"},
+		},
+		"full": {profile: "full", want: []string{"@resurrect-strategy-vim", "@resurrect-strategy-nvim", "@resurrect-processes 'ssh vim nvim'", "set -s set-clipboard on", "set -g base-index 1"}, omit: []string{"@resurrect-processes 'ssh'"}},
 	}
 	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
 }

@@ -31,6 +31,9 @@ Copilot stores its authentication credentials at
 blink does not open automatically. In Insert mode, use `<C-Space>` to open the
 menu after typing enough of a symbol, path, or word to narrow the choices.
 
+Client machines have no Rust build of blink's matcher, so blink uses its Lua
+matcher there. It ignores typos, recent use, and nearby words when ranking.
+
 | Key | Action |
 |---|---|
 | `<C-Space>` | Open the completion menu. |
