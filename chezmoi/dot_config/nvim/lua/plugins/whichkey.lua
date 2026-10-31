@@ -1,3 +1,7 @@
+-- The z popup lists only these, to fit a phone. Other z keys work as before
+-- when typed.
+local z_keys_shown = { zR = true, zM = true, za = true }
+
 require("which-key").setup({
   -- On a phone the popup covers the screen, so it waits for a pause.
   delay = function()
@@ -8,8 +12,17 @@ require("which-key").setup({
     mappings = false,
   },
   filter = function(mapping)
+    if mapping.lhs:sub(1, 1) == "z" and not z_keys_shown[mapping.lhs] then
+      return false
+    end
     return mapping.desc and mapping.desc ~= ""
   end,
+  -- Automatic triggers skip single letters other than g and z, so the
+  -- Markdown block keys under s need their own.
+  triggers = {
+    { "<auto>", mode = "nxso" },
+    { "s", mode = "n" },
+  },
   spec = {
     {
       mode = { "n", "x" },

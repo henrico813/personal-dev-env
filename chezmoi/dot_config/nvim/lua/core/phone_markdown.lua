@@ -103,6 +103,17 @@ function M.jump_to_block(direction)
   vim.api.nvim_win_set_cursor(0, { lnum, 0 })
 end
 
+-- Opens every block when any is closed, and closes them all otherwise.
+function M.toggle_all_blocks()
+  for lnum = 1, vim.fn.line("$") do
+    if vim.fn.foldclosed(lnum) ~= -1 then
+      vim.cmd("normal! zR")
+      return
+    end
+  end
+  vim.cmd("normal! zM")
+end
+
 -- Remembers whether the cursor is in an open fold before the desktop view
 -- removes the folds.
 function M.remember_open_fold(win)
