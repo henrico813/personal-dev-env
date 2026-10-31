@@ -17,6 +17,9 @@ from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
     LINE_WIDTH,
+    AsWrittenRow,
+    ParagraphRow,
+    ScreenRow,
     lay_out_line_comment,
     prepare_line_comment_for_screen,
     wrap_words,
@@ -177,80 +180,186 @@ def is_python_comment_writable(comment: Comment) -> bool:
 
 
 class PartKind(enum.Enum):
-    """What one line of a docstring's plain text is."""
+    """The kind of one line of a docstring, as the owner edits it.
+
+    Attributes:
+        PARAGRAPH: A paragraph's sentences joined into one line.
+        HEADING: A section heading, such as ``Args:``.
+        ENTRY: One line under a heading, such as an argument, with its
+            wrapped lines joined.
+        KEPT: A line kept as written, such as an example.
+        BLANK: An empty line between paragraphs or sections.
+    """
 
     PARAGRAPH = enum.auto()
-    # A section heading, such as Args.
     HEADING = enum.auto()
-    # One line of a section, such as an argument.
     ENTRY = enum.auto()
-    # A line kept as written, such as an example.
     KEPT = enum.auto()
     BLANK = enum.auto()
 
 
 class Part(NamedTuple):
-    """One line of a docstring's plain text and what kind of line it is."""
+    """One line of a docstring, as the owner edits it.
+
+    Attributes:
+        kind: What the line is, such as a heading.
+        text: The line's words, without the docstring's indentation.
+    """
 
     kind: PartKind
     text: str
 
 
-def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
-    """Return a comment's plain text and screen rows.
+def prepare_python_comment_for_screen(
+    text: str,
+) -> tuple[str, list[ScreenRow]]:
+    """Return a comment's words to edit, and the rows the window draws.
 
-    A ``#`` comment is shown as a Go comment is, with ``#`` marks. A
-    docstring's first row starts with its opening quotes, a section
-    entry's later rows are indented two spaces, and the closing quotes
-    are a row of their own.
+    Args:
+        text: The comment as it is in the file, either ``#`` lines or
+            one whole docstring.
+
+    Returns:
+        The words without marks or quotes, and the rows to draw.
 
     Raises:
-        SourceError: ``text`` is neither ``#`` lines nor a whole docstring.
+        SourceError: The text is neither ``#`` lines nor one whole
+            docstring.
     """
     if text.lstrip().startswith("#"):
         return prepare_line_comment_for_screen(text, "#")
     docstring, parts = read_docstring_parts(text)
-    rows: list[dict[str, str]] = []
-    for part in parts:
-        if part.kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
-            rest = "  " if part.kind is PartKind.ENTRY else ""
-            rows.append({"first": "", "rest": rest, "words": part.text})
-        else:
-            rows.append({"fixed": part.text})
+    return join_parts_as_text(parts), draw_docstring_rows(docstring, parts)
+
+
+def draw_docstring_rows(
+    docstring: re.Match[str], parts: list[Part]
+) -> list[ScreenRow]:
+    """Return the rows the review window draws for a docstring.
+
+    The rows look like the docstring in the code. A one-line docstring
+    stays on one row. A longer one gets a row of its own for the closing
+    quotes.
+
+    Args:
+        docstring: The docstring's regex match, which gives its prefix,
+            quotes and body.
+        parts: The docstring's lines, as ``read_docstring_parts``
+            returns them.
+
+    Returns:
+        The rows in order, from opening quotes to closing quotes.
+    """
     opening = docstring["prefix"] + docstring["quotes"]
-    if rows and rows[0].get("first") == "":
-        rows[0]["first"] = opening
+    quotes = docstring["quotes"]
+    if len(parts) == 1 and "\n" not in docstring["body"]:
+        words = parts[0].text + quotes
+        return [ParagraphRow(first=opening, rest="", words=words)]
+    rows = [draw_part_row(part) for part in parts]
+    # The opening quotes cannot share a row drawn as written, such as a
+    # heading, so they get a row of their own above it.
+    if parts and parts[0].kind in (PartKind.PARAGRAPH, PartKind.ENTRY):
+        rows[0] = draw_part_row(parts[0], opening)
     else:
-        rows.insert(0, {"fixed": opening})
-    rows.append({"fixed": docstring["quotes"]})
-    return write_plain_parts(parts), rows
+        rows.insert(0, AsWrittenRow(fixed=opening))
+    return rows + [AsWrittenRow(fixed=quotes)]
 
 
-def write_python_comment(plain: str, old: str) -> str:
-    """Return ``plain`` laid out as ``old``, a ``#`` comment or docstring.
+def draw_part_row(part: Part, first: str = "") -> ScreenRow:
+    """Return the review window's row for one line of a docstring.
 
-    A docstring keeps the indentation, prefix and quote character of
-    ``old``, and puts its summary on the opening quotes' line. Plain text
-    with no words returns ``""``, so writing it deletes the comment.
+    Paragraphs and lines under a heading wrap. A line under a heading
+    indents its wrapped lines two spaces. Other lines are drawn as
+    written.
+
+    Args:
+        part: The docstring line to draw.
+        first: The mark before a wrapped row's first line, such as the
+            opening quotes.
+
+    Returns:
+        The row for the line.
+    """
+    if part.kind is PartKind.PARAGRAPH:
+        return ParagraphRow(first=first, rest="", words=part.text)
+    if part.kind is PartKind.ENTRY:
+        return ParagraphRow(first=first, rest="  ", words=part.text)
+    return AsWrittenRow(fixed=part.text)
+
+
+def lay_out_python_comment(new_wording: str, old: str) -> str:
+    """Return new words laid out like the comment they replace.
+
+    The owner and agents write new words without ``#`` marks or quotes.
+    This puts them back before the words go in the file.
+
+    Args:
+        new_wording: The new words.
+        old: The comment the new words replace, either ``#`` lines or
+            one whole docstring. It may be suggested wording that is not
+            in the file yet.
+
+    Returns:
+        The new comment, or an empty string to delete the comment.
 
     Raises:
-        SourceError: ``plain`` holds the docstring's closing quotes, a
-            carriage return or a NUL.
+        SourceError: The new words hold a carriage return or a NUL, or
+            ``lay_out_docstring`` refuses them.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
-    if "\r" in plain or "\0" in plain:
+    if "\r" in new_wording or "\0" in new_wording:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return lay_out_line_comment(plain, old, "#")
-    docstring = read_docstring_parts(old)[0]
-    return write_docstring(read_plain_parts(plain), docstring)
+        return lay_out_line_comment(new_wording, old, "#")
+    return lay_out_docstring(new_wording, old)
+
+
+def lay_out_docstring(new_wording: str, old: str) -> str:
+    """Return new words laid out as a docstring like the old one.
+
+    The new docstring keeps the old one's indent, quote mark and any
+    ``r`` prefix. A docstring opened with one quote mark gets triple
+    quotes when it needs more lines or holds that mark.
+
+    Args:
+        new_wording: The new words, without quotes.
+        old: The docstring the new words replace. It may be suggested
+            wording that is not in the file yet.
+
+    Returns:
+        The new docstring, or an empty string to delete it.
+
+    Raises:
+        SourceError: The old text is not one whole docstring, or the new
+            words hold the closing quotes.
+    """
+    old_docstring = read_docstring_parts(old)[0]
+    parts = read_plain_parts(new_wording)
+    if not parts:
+        return ""
+    closing = old_docstring["quotes"][0] * 3
+    if closing in join_parts_as_text(parts):
+        raise SourceError(
+            f"the text holds {closing}, which ends the docstring"
+        )
+    text = fit_docstring_on_one_line(parts, old_docstring)
+    if text is None:
+        text = wrap_docstring_lines(parts, old_docstring)
+    return text
 
 
 def read_docstring_parts(text: str) -> tuple[re.Match[str], list[Part]]:
-    """Return a docstring's quotes match and the parts of its plain text.
+    """Return a docstring's match and its lines as the owner edits them.
+
+    Args:
+        text: The docstring exactly as it is in the file.
+
+    Returns:
+        The match, which gives the indentation, prefix, quotes and body,
+        and the docstring's lines without quotes or indentation.
 
     Raises:
-        SourceError: ``text`` is not a whole docstring.
+        SourceError: The text is not one whole docstring.
     """
     docstring = WHOLE_DOCSTRING.fullmatch(text)
     if not (docstring and is_one_string_literal(text)):
@@ -311,16 +420,23 @@ def is_one_string_literal(text: str) -> bool:
     return kinds == [tokenize.STRING]
 
 
-def read_plain_parts(plain: str) -> list[Part]:
-    """Return the parts of plain text an owner or agent edited.
+def read_plain_parts(new_wording: str) -> list[Part]:
+    """Return the lines of a docstring's new words, by kind.
 
     Lines that start with a tab or two spaces, doctest lines and lines
-    ending in a backslash are kept. After a heading such as ``Args:``,
-    each line up to a blank line is one entry.
+    ending in a backslash stay as written. Lines under a heading such as
+    ``Args:`` stay separate up to the next blank line.
+
+    Args:
+        new_wording: The new words, without quotes, as the owner or an
+            agent wrote them.
+
+    Returns:
+        The lines, with each paragraph joined into one.
     """
     parts: list[Part] = []
     in_section = False
-    for line in plain.split("\n"):
+    for line in new_wording.split("\n"):
         stripped = line.strip()
         if not stripped:
             in_section = False
@@ -363,45 +479,69 @@ def trim_blank_parts(parts: list[Part]) -> list[Part]:
     return trimmed
 
 
-def write_plain_parts(parts: list[Part]) -> str:
-    """Return the plain text of a docstring's parts, one line each."""
+def join_parts_as_text(parts: list[Part]) -> str:
+    """Return a docstring's lines as the text the owner edits.
+
+    Args:
+        parts: The docstring's lines, as ``read_docstring_parts`` or
+            ``read_plain_parts`` returns them.
+
+    Returns:
+        Each part's text on a line of its own, or one line break when
+        there are no parts.
+    """
     return "".join(part.text + "\n" for part in parts) or "\n"
 
 
-def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
-    """Return ``parts`` as a docstring with the quotes of ``docstring``.
+def fit_docstring_on_one_line(
+    parts: list[Part], old: re.Match[str]
+) -> str | None:
+    """Return a one-paragraph docstring on one line, when it fits.
 
-    Paragraphs wrap at ``LINE_WIDTH``, and section entries are indented
-    four spaces, with their later lines four more. A docstring with one
-    short paragraph stays on one line. A docstring in single quotes
-    becomes triple quoted when it needs a second line or holds its quote
-    character.
+    A docstring opened with one quote mark gets triple quotes when it
+    holds that mark.
 
-    Raises:
-        SourceError: The text holds the triple quotes it would be in.
+    Args:
+        parts: The new docstring's lines.
+        old: The old docstring's regex match, which gives the indent,
+            prefix and quotes.
+
+    Returns:
+        The docstring's line, or ``None`` when it needs more lines.
     """
-    if not parts:
-        return ""
-    indent, prefix = docstring["indent"], docstring["prefix"]
-    quote = docstring["quotes"][0]
-    text = write_plain_parts(parts)
-    width = LINE_WIDTH - len(indent.replace("\t", "    "))
     summary = parts[0].text
+    quote = old["quotes"][0]
     # The closing quotes would join a last quote or be escaped by a "\".
     if (
-        len(parts) == 1
-        and parts[0].kind is PartKind.PARAGRAPH
-        and not summary.endswith((quote, "\\"))
+        len(parts) != 1
+        or parts[0].kind is not PartKind.PARAGRAPH
+        or summary.endswith((quote, "\\"))
     ):
-        quotes = docstring["quotes"]
-        if quote in summary:
-            quotes = quote * 3
-        line = f"{prefix}{quotes}{summary}{quotes}"
-        if len(line) <= width and quote * 3 not in summary:
-            return f"{indent}{line}\n"
-    quotes = quote * 3
-    if quotes in text:
-        raise SourceError(f"the text holds {quotes}, which ends the docstring")
+        return None
+    quotes = quote * 3 if quote in summary else old["quotes"]
+    line = f"{old['prefix']}{quotes}{summary}{quotes}"
+    if len(line) > LINE_WIDTH - len(old["indent"].replace("\t", "    ")):
+        return None
+    return f"{old['indent']}{line}\n"
+
+
+def wrap_docstring_lines(parts: list[Part], old: re.Match[str]) -> str:
+    """Return a docstring on several lines, in triple quotes.
+
+    Each line under a heading is indented four spaces, and its wrapped
+    lines four more. The closing quotes get a line of their own.
+
+    Args:
+        parts: The new docstring's lines.
+        old: The old docstring's match, which gives the indentation,
+            prefix and quote character.
+
+    Returns:
+        The docstring as it would appear in the file.
+    """
+    indent, prefix = old["indent"], old["prefix"]
+    quotes = old["quotes"][0] * 3
+    width = LINE_WIDTH - len(indent.replace("\t", "    "))
     lines = [indent + prefix + quotes]
     for number, part in enumerate(parts):
         if part.kind is PartKind.PARAGRAPH:
@@ -421,15 +561,23 @@ def write_docstring(parts: list[Part], docstring: re.Match[str]) -> str:
 
 
 def wrap_first_and_rest(words: str, first: int, rest: int) -> list[str]:
-    """Wrap ``words`` with the first line at most ``first`` wide.
+    """Wrap a paragraph, with its own width for the first line.
 
-    A word ending in a backslash stays on a line with the word after it,
-    since Python joins a docstring line that ends in a backslash to the
-    next one, which would change the docstring's text. A named escape
-    such as ``\\N{EM DASH}`` stays whole, as a split one does not compile.
+    A word ending in a backslash stays on the line of the next word,
+    because a backslash at a line end joins the lines and changes the
+    text. A named escape such as ``\\N{EM DASH}`` stays whole, because a
+    split one does not compile.
+
+    Args:
+        words: One paragraph, with single spaces between words.
+        first: The first line's width.
+        rest: The width of every later line.
+
+    Returns:
+        The wrapped lines.
     """
-    # Plain text with a NUL is refused, so one stands for a space that
-    # must not break.
+    # lay_out_python_comment refuses wording with a NUL, so a NUL can
+    # stand in for a space where the line must not break.
     words = words.replace("\\ ", "\\\0")
     words = NAMED_ESCAPE.sub(lambda name: name[0].replace(" ", "\0"), words)
     lines = wrap_words(words.split(), first)

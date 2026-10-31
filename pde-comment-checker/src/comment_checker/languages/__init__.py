@@ -26,10 +26,10 @@ from .python import (
     finish_python_rewrite,
     is_python_comment_writable,
     join_python_prose,
+    lay_out_python_comment,
     list_python_warnings,
     parse_python_comments,
-    show_python_comment,
-    write_python_comment,
+    prepare_python_comment_for_screen,
 )
 
 
@@ -75,8 +75,8 @@ LANGUAGES = {
         generated_marker=PYTHON_GENERATED_MARKER,
         is_writable=is_python_comment_writable,
         list_warnings=list_python_warnings,
-        prepare_for_screen=show_python_comment,
-        lay_out_wording=write_python_comment,
+        prepare_for_screen=prepare_python_comment_for_screen,
+        lay_out_wording=lay_out_python_comment,
         finish_rewrite=finish_python_rewrite,
     ),
 }
