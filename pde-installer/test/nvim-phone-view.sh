@@ -142,14 +142,32 @@ end)
 assert(next_block == 19, "zj must reach the next block, not a diff header")
 
 -- With the cursor in the open diff block and the others closed, sa opens
--- them all, and a second sa closes them all.
+-- them all and keeps the diff header folded.
 vim.api.nvim_win_call(code_win, function()
   vim.api.nvim_win_set_cursor(0, { 13, 0 })
   vim.cmd("normal sa")
 end)
 
 assert(closed_fold(code_win, 1) == -1, "sa must open every block")
+assert(closed_fold(code_win, 9) == 9, "sa must keep diff headers folded")
 
+-- sd on the folded diff header closes the whole block, and a second sd
+-- opens it the way sa did.
+vim.api.nvim_win_call(code_win, function()
+  vim.api.nvim_win_set_cursor(0, { 9, 0 })
+  vim.cmd("normal sd")
+end)
+
+assert(closed_fold(code_win, 9) == 8, "sd on a diff header must close its block")
+
+vim.api.nvim_win_call(code_win, function()
+  vim.cmd("normal sd")
+end)
+
+assert(closed_fold(code_win, 8) == -1, "a second sd must open the block")
+assert(closed_fold(code_win, 9) == 9, "sd must keep the diff header folded")
+
+-- With every block open, sa closes them all.
 vim.api.nvim_win_call(code_win, function()
   vim.cmd("normal sa")
 end)

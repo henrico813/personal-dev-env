@@ -144,7 +144,7 @@ per session if `~/.config/pde/config.json` still lists vaults.
 
 When the screen is 100 columns or fewer, as over SSH from a phone, nvim switches to a phone view, and back to the desktop view when the screen widens. It hides line numbers, the sign column, the status line and the tab line, and wraps long lines.
 
-- **Markdown:** each code block, the frontmatter and each diff header fold to one labeled line, such as `▸ lua · 12 lines`. `sd` opens or closes the block under the cursor, `sa` opens every block or closes them all, and `zj` / `zk` jump to the next or previous block. In a `diff` block, every screen row of a wrapped added or removed line gets a colored bar.
+- **Markdown:** each code block, the frontmatter and each diff header fold to one labeled line, such as `▸ lua · 12 lines`. `sd` opens or closes the block under the cursor, even from its diff header, `sa` opens every block or closes them all, both leave diff headers folded, and `zj` / `zk` jump to the next or previous block. In a `diff` block, every screen row of a wrapped added or removed line gets a colored bar.
 - **Pickers:** fzf-lua fills the screen with no preview. `j` / `k` move, `Enter` opens, `q` closes, and `/` starts typing; after `/`, `j` and `k` type until the picker closes.
 - **which-key:** waits 300 ms before its popup, so a quick key sequence does not flash it over the screen.
 
