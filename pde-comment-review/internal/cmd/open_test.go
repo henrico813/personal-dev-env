@@ -50,29 +50,36 @@ func openFakeTerminal(t *testing.T) (master, terminal *os.File) {
 	return master, terminal
 }
 
-func waitForScreen(t *testing.T, master *os.File, want string) {
+// Waits until the screen shows every given text, in the given order.
+func waitForScreen(t *testing.T, master *os.File, wants ...string) {
 	t.Helper()
 	found := make(chan bool, 1)
 	go func() {
-		var screen bytes.Buffer
+		var screen []byte
 		buf := make([]byte, 256)
-		for !bytes.Contains(screen.Bytes(), []byte(want)) {
-			n, err := master.Read(buf)
-			if err != nil {
-				found <- false
-				return
+		for _, want := range wants {
+			for {
+				if at := bytes.Index(screen, []byte(want)); at >= 0 {
+					screen = screen[at+len(want):]
+					break
+				}
+				n, err := master.Read(buf)
+				if err != nil {
+					found <- false
+					return
+				}
+				screen = append(screen, buf[:n]...)
 			}
-			screen.Write(buf[:n])
 		}
 		found <- true
 	}()
 	select {
 	case ok := <-found:
 		if !ok {
-			t.Fatalf("screen closed before showing %q", want)
+			t.Fatalf("screen closed before showing %q", wants)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("%q was never shown", want)
+		t.Fatalf("%q was never shown", wants)
 	}
 }
 
@@ -544,5 +551,175 @@ func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 				}
 			},
 		)
+	}
+}
+
+// What the terminal sends for one wheel turn once mouse input is on. A phone
+// app sends a swipe as several of these.
+const (
+	wheelUp   = "\x1b[<64;20;5M"
+	wheelDown = "\x1b[<65;20;5M"
+)
+
+// What the terminal sends for a tap and its release. Without mode 1006 it
+// sends the old form, where column 65 and row 65 arrive as the letter a.
+const (
+	tapPress      = "\x1b[<0;20;5M"
+	tapRelease    = "\x1b[<0;20;5m"
+	oldTapPress   = "\x1b[M aa"
+	oldTapRelease = "\x1b[M#aa"
+)
+
+// The owner reviews on a phone, where people scroll by swiping.
+func TestSwipeScrollsReviewScreen(t *testing.T) {
+	// The screen shows code around a comment only when the checker finds it.
+	installRepoChecker(t)
+	t.Setenv("HERDR_ENV", "")
+	startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go ↑4")
+
+	typeKeys(t, master, wheelDown)
+	waitForScreen(t, master, "1/3 cut? cart.go ↑5")
+	typeKeys(t, master, wheelUp+wheelUp)
+	waitForScreen(t, master, "1/3 cut? cart.go ↑3")
+	typeKeys(t, master, "q")
+
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
+	}
+}
+
+// A tap sends mouse bytes such as m and a. If any of them acted as a key, a
+// tap could start a note or accept a comment.
+func TestTapNeverAnswersOrStartsNote(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	typeKeys(
+		t,
+		master,
+		tapPress+tapRelease+oldTapPress+oldTapRelease,
+	)
+	// q closes the screen only when no note is being typed.
+	typeKeys(t, master, "q")
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("answerReview() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q after a tap")
+	}
+
+	saved, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Answers) != 0 || len(saved.Notes) != 0 {
+		t.Errorf(
+			"a tap saved answers %+v and notes %+v, want none",
+			saved.Answers,
+			saved.Notes,
+		)
+	}
+}
+
+// A swipe sends many wheel reports at once, more than one 64-byte read
+// holds. A tap cut off at that limit must not leak its m and start a note.
+func TestLongSwipeThenTapLeaksNothing(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	typeKeys(
+		t,
+		master,
+		strings.Repeat(wheelUp, 5)+tapRelease+"q",
+	)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("answerReview() error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the screen did not close on q after a swipe and a tap")
+	}
+}
+
+// A swipe while the owner types a note must not put its bytes in the note.
+func TestSwipeLeavesTypedNoteUnchanged(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	startReview(t, cartGo, validApproval, nil)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+	waitForScreen(t, master, "1/3 cut? cart.go")
+
+	typeKeys(t, master, "m")
+	waitForScreen(t, master, "note for AI: ")
+	typeKeys(t, master, "ab"+wheelDown+wheelUp+"\r")
+	waitForScreen(t, master, "note: ab")
+	typeKeys(t, master, "q")
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
+	}
+
+	saved, err := review.OpenReview("cart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Notes[1].Text; got != "ab" {
+		t.Errorf("saved note = %q, want %q", got, "ab")
+	}
+}
+
+// Mouse input left on floods less, nvim and the owner's shell with escape
+// codes on every swipe, so it is on only while the screen shows.
+func TestMouseInputOnlyWhileScreenShows(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	startReview(t, cartGo, validApproval, nil)
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "rg"), "#!/bin/sh\necho match\n")
+	writeFile(t, filepath.Join(bin, "less"), "#!/bin/sh\ncat >/dev/null\necho in-less\n")
+	for _, name := range []string{"rg", "less"} {
+		if err := os.Chmod(filepath.Join(bin, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	const (
+		mouseOn  = "\x1b[?1000h\x1b[?1006h"
+		mouseOff = "\x1b[?1006l\x1b[?1000l"
+	)
+	master, terminal := openFakeTerminal(t)
+	done := make(chan error, 1)
+	go func() { done <- answerReview("cart", terminal, terminal, 0) }()
+
+	waitForScreen(t, master, mouseOn)
+	// A search hands the terminal to less and takes it back after.
+	typeKeys(t, master, "sx\r")
+	waitForScreen(
+		t,
+		master,
+		mouseOff,
+		"in-less",
+		mouseOn,
+	)
+	typeKeys(t, master, "q")
+	waitForScreen(t, master, mouseOff)
+
+	if err := <-done; err != nil {
+		t.Fatalf("answerReview() error = %v", err)
 	}
 }
