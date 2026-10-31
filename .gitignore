@@ -42,3 +42,4 @@ planner/planner
 pde-installer/pde-installer
 pde-installer/pde-installer.exe
 vibe/target/
+pde-comment-review-rs/target/
