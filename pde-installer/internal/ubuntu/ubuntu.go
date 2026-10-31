@@ -13,8 +13,17 @@ import (
 )
 
 func packages(selected profile.Profile) []string {
-	if selected == profile.Terminal {
+	switch selected {
+	case profile.Terminal:
 		return []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}
+	case profile.Client:
+		// fontconfig provides fc-cache for the fonts, and python3 runs the packed
+		// skill-lessons.
+		return append(
+			packages(profile.Terminal),
+			"fontconfig",
+			"python3",
+		)
 	}
 	return []string{
 		"build-essential", "bzip2", "ca-certificates", "curl", "file",
@@ -37,7 +46,11 @@ func New(selected profile.Profile, runner run.Runner) Manager {
 // Validate checks whether the host can install Ubuntu packages.
 func (m Manager) Validate() error {
 	if !m.profile.Valid() {
-		return fmt.Errorf("invalid profile %q; use full or terminal", m.profile)
+		return fmt.Errorf(
+			"invalid profile %q; use %s",
+			m.profile,
+			profile.ValidValues,
+		)
 	}
 	if err := validateRelease(m.osReleasePath); err != nil {
 		return err
