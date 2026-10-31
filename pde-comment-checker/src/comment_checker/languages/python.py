@@ -17,9 +17,9 @@ from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
     LINE_WIDTH,
-    show_line_comment,
+    build_comment_lines,
+    prepare_line_comment_for_screen,
     wrap_words,
-    write_line_comment,
 )
 
 PYTHON_DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
@@ -208,7 +208,7 @@ def show_python_comment(text: str) -> tuple[str, list[dict[str, str]]]:
         SourceError: ``text`` is neither ``#`` lines nor a whole docstring.
     """
     if text.lstrip().startswith("#"):
-        return show_line_comment(text, "#")
+        return prepare_line_comment_for_screen(text, "#")
     docstring, parts = read_docstring_parts(text)
     rows: list[dict[str, str]] = []
     for part in parts:
@@ -241,7 +241,7 @@ def write_python_comment(plain: str, old: str) -> str:
     if "\r" in plain or "\0" in plain:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return write_line_comment(plain, old, "#")
+        return build_comment_lines(plain, old, "#")
     docstring = read_docstring_parts(old)[0]
     return write_docstring(read_plain_parts(plain), docstring)
 

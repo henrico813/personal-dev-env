@@ -19,7 +19,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import TextIO
 
 from . import INTERFACE, VERSION
 from .apply import (
@@ -29,8 +28,9 @@ from .apply import (
 )
 from .approvals import unname_unapprovable_comments
 from .changes import find_owner_changes
-from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES, Language
+from .languages.rules import LANGUAGES, UNSUPPORTED_SUFFIXES
 from .records import Comment, SourceError
+from .show import read_show_entries, show_comments
 
 COMMANDS = ("version", "list", "changes", "show", "apply")
 
@@ -117,112 +117,6 @@ def describe_comment(comment: Comment) -> dict[str, object]:
     }
 
 
-def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
-    """Print each entry's comment text, plain text and screen rows.
-
-    An entry gives a comment's exact ``text``, or the ``plain`` sentences
-    to write. ``plain`` is laid out like the entry's ``text`` when it has
-    one, or else like the comment now under ``name`` in ``file``.
-
-    Returns:
-        The exit code described in the module docstring.
-    """
-    shown = []
-    problems = []
-    for entry in entries:
-        file, name = entry["file"], entry.get("name", "")
-        language = LANGUAGES.get(Path(file).suffix)
-        if not (language and language.show_text and language.write_plain):
-            print(f"{file}: show does not take this language", file=sys.stderr)
-            return 2
-        text = entry.get("text", "")
-        try:
-            if "plain" in entry:
-                old = find_layout_comment(repo, entry, language)
-                # Text that is not a comment of this language has no layout.
-                language.show_text(old.text)
-                text = language.write_plain(entry["plain"], old.text)
-            # Plain text with no words gives no text, which cuts the comment.
-            plain, screen = language.show_text(text) if text else ("", [])
-        except (OSError, UnicodeDecodeError) as error:
-            print(f"{file}: {error}", file=sys.stderr)
-            return 2
-        except SourceError as error:
-            problems.append(f"{file} {name}".strip() + f": {error}")
-            continue
-        shown.append(
-            {
-                "file": file,
-                "name": name,
-                "text": text,
-                "plain": plain,
-                "screen": screen,
-            }
-        )
-    if problems:
-        print_reply({"shown": [], "problems": problems})
-        return 1
-    print_reply({"shown": shown})
-    return 0
-
-
-def find_layout_comment(
-    repo: Path, entry: dict[str, str], language: Language
-) -> Comment:
-    """Return the comment whose layout an entry's ``plain`` takes.
-
-    Raises:
-        SourceError: There is no such comment, or a rewrite of it could
-            change how the code builds or is checked.
-    """
-    file = entry["file"]
-    if "text" in entry:
-        comment = Comment(
-            file=file, line=1, name="", text=entry["text"], prose=""
-        )
-    else:
-        source = (repo / file).read_bytes().decode("utf-8")
-        if "\r" in source:
-            raise SourceError("cannot be read (it has a carriage return)")
-        comments = unname_unapprovable_comments(
-            language.read_comments(source, file)
-        )[0]
-        named = [c for c in comments if c.name == entry["name"]]
-        if not named:
-            raise SourceError("no comment has this name in the file")
-        comment = named[0]
-    if not language.is_writable(comment):
-        raise SourceError(
-            "a rewrite could change how the code builds or is checked"
-        )
-    return comment
-
-
-def read_show_entries(stream: TextIO) -> list[dict[str, str]]:
-    """Return the entries ``show`` reads, a JSON list.
-
-    Raises:
-        ValueError: An entry lacks a ``file``, or both a ``text`` and a
-            ``name`` with ``plain``, or has a value that is not a string.
-    """
-    entries = json.load(stream)
-    if not isinstance(entries, list):
-        raise ValueError("show reads a JSON list of entries")
-    for entry in entries:
-        if not (
-            isinstance(entry, dict)
-            and set(entry) <= {"file", "name", "text", "plain"}
-            and all(isinstance(value, str) for value in entry.values())
-            and "file" in entry
-            and ("text" in entry or (entry.get("name") and "plain" in entry))
-        ):
-            raise ValueError(
-                "each show entry needs a file and a text, or a name and "
-                f"plain: {json.dumps(entry)}"
-            )
-    return entries
-
-
 def print_reply(reply: dict[str, object]) -> None:
     """Print ``reply`` as one JSON object with the interface number."""
     print(json.dumps({"interface": INTERFACE, **reply}))
@@ -258,10 +152,12 @@ def main(argv: list[str]) -> int:
     if args.command == "show":
         try:
             entries = read_show_entries(sys.stdin)
+            reply, code = show_comments(repo, entries)
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2
-        return show_comments(repo, entries)
+        print_reply(reply)
+        return code
     if args.command == "apply":
         try:
             renames, answers = read_apply_request(sys.stdin)
