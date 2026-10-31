@@ -183,6 +183,49 @@ func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 	}
 }
 
+// The edit page showed only the code after a docstring, so the owner could
+// not see which function it describes. The def lines sit below the marker,
+// where the page's text is never read as the owner's wording.
+func TestEditPageShowsDefBelowMarker(t *testing.T) {
+	keepTax := review.FeedbackRequest{
+		ID:         1,
+		File:       "tax.py",
+		Name:       "tax",
+		Suggestion: review.SuggestKeep,
+		Old:        "    \"\"\"Return the tax.\"\"\"\n",
+	}
+	page := filepath.Join(t.TempDir(), "page.txt")
+	r := startTaxReview(
+		t,
+		"def tax(\n    price,\n):\n    \"\"\"Return the tax.\"\"\"\n    return 0\n",
+		keepTax,
+		`cp "$1" '`+page+`'`,
+	)
+
+	err := editComment(
+		r,
+		keepTax.ID,
+		os.Stdin,
+		os.Stdout,
+	)
+
+	if err != nil {
+		t.Fatalf("editComment() error = %v", err)
+	}
+	opened, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCode := editMarker + "\ndef tax(\n    price,\n):\n    return 0\n"
+	if !strings.HasSuffix(string(opened), wantCode) {
+		t.Errorf(
+			"page ends %q, want %q",
+			opened,
+			wantCode,
+		)
+	}
+}
+
 // Deleting a docstring that is its function's only statement breaks the file.
 // The tool would find this only when it writes the files, so pressing c or
 // emptying the text in nvim refuses it at once.
