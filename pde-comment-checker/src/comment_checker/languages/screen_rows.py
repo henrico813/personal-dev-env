@@ -26,8 +26,8 @@ class ParagraphRow(TypedDict):
 class UnwrappedRow(TypedDict):
     """A row the review window shows exactly, without wrapping.
 
-    Code examples, headings and blank lines use it, so wrapping cannot
-    break their layout.
+    Wrapping would join a heading such as ``Args:`` to the next line, so
+    the window would show a layout the file will not have.
 
     Attributes:
         fixed: The row's text.
