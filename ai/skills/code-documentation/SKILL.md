@@ -283,11 +283,12 @@ comment in the code.
 
 ## Comment checker
 
-For Go or Python files whose comments you write or review, run the
-checker in this skill's `scripts/` folder, with Python 3.10 or later:
+For Go or Python files whose comments you write or review, run
+`pde-comment-checker`, which `pde-installer` installs. If it is not on
+`PATH`, tell the user to run `pde-installer`:
 
 ```bash
-python3 <this skill's folder>/scripts/check_comments.py \
+pde-comment-checker \
   --repo <repository root> --base <commit your task started from> \
   <Go or Python files>
 ```
@@ -326,9 +327,9 @@ Run the checker again until it exits 0. If it still fails only with
 task renamed, moved or deleted that code, keep the owner's text and
 list those findings in your final message for the owner.
 
-If Python cannot read a file, fix its syntax, or report it when the
-file needs a newer Python than the checker's `python3`. Never edit
-approved text to get past it.
+If Python cannot read a file, fix its syntax, or report it when the file
+needs a newer Python than `/usr/bin/python3`, which runs
+`pde-comment-checker`. Never edit approved text to get past it.
 
 Only the owner runs the checker with `--approve`, or an agent the
 owner asked to. It rewrites `.code-comments.json` itself, so no one
@@ -367,25 +368,24 @@ win:
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
 
-For Python files you add or change, run the rule checker in this
-skill's `scripts/` folder:
+For Python files you add or change, run the rule checker:
 
 ```bash
-python3 <this skill's folder>/scripts/check_python_rules.py \
+pde-comment-checker python-rules \
   --repo <repository root> --base <commit your task started from> \
   <Python files>
 ```
 
-It needs Python 3.10 or later. It checks only code your task added
-or changed. Changing any line of an old function makes the checker
-ask for its docstring, so add one. Leave docstrings on old functions
-you did not touch for a separate change. Move files with `git mv`, so
-the checker compares a moved file with its old path. Each
-finding names the rule it checks, and the output ends by quoting that
-rule's sentence. Fix each finding and run the checker again until it
-exits 0. `verb-first` is reported, never failed: rename the function
-when the word is not a verb, and when it is, keep the name and list
-the finding in your final message.
+It runs with `/usr/bin/python3`, which must be 3.10 or later. It checks
+only code your task added or changed. Changing any line of an old
+function makes the checker ask for its docstring, so add one. Leave
+docstrings on old functions you did not touch for a separate change.
+Move files with `git mv`, so the checker compares a moved file with its
+old path. Each finding names the rule it checks, and the output ends by
+quoting that rule's sentence. Fix each finding and run the checker again
+until it exits 0. `verb-first` is reported, never failed: rename the
+function when the word is not a verb, and when it is, keep the name and
+list the finding in your final message.
 
 ## Completion check
 

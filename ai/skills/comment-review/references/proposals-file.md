@@ -38,8 +38,8 @@ the `review` the JSON shows.
 | `version` | Must be `1`. |
 | `repo` | The repository's absolute path. Every round of a review uses the same one. |
 | `items[].id` | A number unique in the file. A later round uses an `id` again only to replace that item; `add` refuses an `id` an earlier round used for another comment. |
-| `items[].file` | A `.go` file, as a plain path inside `repo`, such as `internal/cart/cart.go`. |
-| `items[].old` | The whole comment exactly as it is in the file now: every `//` line, its indentation and its final newline. On an item with a `name`, it may be the approved text, which the file no longer has. |
+| `items[].file` | A `.go` or `.py` file, as a plain path inside `repo`, such as `internal/cart/cart.go`. |
+| `items[].old` | The whole comment exactly as it is in the file now: every `//` or `#` line, or the whole docstring with its quotes, with its indentation and its final newline. On an item with a `name`, it may be the approved text, which the file no longer has. |
 | `items[].proposal` | `keep`, `cut` or `reword`. |
 | `items[].new` | The new comment lines, for `reword` only. |
 | `items[].why` | Optional: one or two sentences the user sees as `why:`. |
@@ -55,10 +55,11 @@ one is wrong. It names each problem, for example:
 
 - the name has a capital letter or a space;
 - `version` is not 1, or a field name is unknown;
-- `file` is not a `.go` file inside `repo`. A Python item is refused
-  because Python reviews are off;
-- `old` or `new` is not whole `//` lines, or is a directive such as
-  `//go:generate`;
+- `file` is not a `.go` or `.py` file inside `repo`;
+- `old` or `new` is not whole `//` or `#` lines or one whole
+  docstring, or is a directive such as `//go:generate`;
+- `new` adds a backslash escape, such as `\d`, to a docstring that
+  is not raw. Double the backslash;
 - `old` of an item without a `name` is not found exactly once in its
   file. For a repeated comment the error gives
   the line of each copy; the skill's step 4 says what to do;
@@ -66,7 +67,7 @@ one is wrong. It names each problem, for example:
   its removed code is back;
 - `new` is missing for `reword`, set for `keep` or `cut`, or the same
   as `old`;
-- `gofmt` would change a file whose comment an item cuts or rewords.
+- `gofmt` would change a Go file whose comment an item cuts or rewords.
   Run `gofmt -w` on it first;
 - an `id` is used twice, or a rename is not `OLD=NEW`;
 - two items are the same comment;
