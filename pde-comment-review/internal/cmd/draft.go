@@ -211,7 +211,7 @@ func buildDraft(repo, base, checker string) (review.Draft, error) {
 // Returns the text of each comment the checker names in sources. It
 // approves them in a scratch copy, so the checkout's approvals never change.
 func readCommentTexts(sources map[string]string, checker string) (map[commentKey]string, error) {
-	// The checker exits 2 when it is given no file it can read.
+	// The checker exits 2 when it is given no file.
 	if len(sources) == 0 {
 		return nil, nil
 	}

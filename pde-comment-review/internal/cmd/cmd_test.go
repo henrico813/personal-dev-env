@@ -428,8 +428,8 @@ func TestAddRefusesKeepInUnformattedFile(t *testing.T) {
 	}
 }
 
-// Agents send Python comments to the owner by hand with add. A refusal
-// would leave those comments unreviewed.
+// Agents can send Python comments to the owner with the add command. If add
+// refused them, the owner would never see those comments.
 func TestAddSavesHandWrittenPythonComment(t *testing.T) {
 	repo := startSecondBatch(
 		t,

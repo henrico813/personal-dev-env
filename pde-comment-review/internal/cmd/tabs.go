@@ -137,8 +137,6 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		return nil
 	}
 	if len(strings.Fields(edited)) == 0 {
-		// Deleting a docstring that is its block's only statement would
-		// break the code.
 		if places[id].NoCut {
 			return fmt.Errorf(
 				"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d and press e to change its wording",

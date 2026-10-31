@@ -117,7 +117,8 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 	if refused == nil || !strings.Contains(refused.Error(), "your text is kept") {
 		t.Fatalf("first editComment() error = %v, want the text kept", refused)
 	}
-	// The second nvim fails unless the page opens with the refused text.
+	// The second nvim fails unless the file nvim opens starts with the refused
+	// text.
 	installFakeNvim(
 		t,
 		`head -n 1 "$1" | grep -qxF 'Return the """tax""".' || exit 1; `+
@@ -139,8 +140,9 @@ func TestRefusedEditReopensOwnerText(t *testing.T) {
 	}
 }
 
-// An owner who edits the AI's reword keeps its r prefix. Without it, the tool
-// would refuse the owner's backslash when it writes the files.
+// An owner who edits the AI's suggested wording keeps its r prefix. Without
+// it, the checker would refuse the owner's backslash as soon as the owner
+// closes nvim.
 func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 	rewordTax := review.FeedbackRequest{
 		ID:         1,
@@ -182,8 +184,8 @@ func TestEditKeepsRawPrefixOfReword(t *testing.T) {
 }
 
 // Deleting a docstring that is its function's only statement breaks the file.
-// The tool would find this only when it writes the files after the last
-// comment, so c and an empty edit refuse it at once.
+// The tool would find this only when it writes the files, so pressing c or
+// emptying the text in nvim refuses it at once.
 func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -250,7 +252,7 @@ func TestBodyOnlyDocstringCannotBeCut(t *testing.T) {
 }
 
 // After the owner empties a docstring that cannot be cut, the next edit opens
-// its wording again. An empty page would make the owner retype it on a phone.
+// its wording again. An empty file would make the owner retype it on a phone.
 func TestRefusedCutReopensDocstringWording(t *testing.T) {
 	keepTax := review.FeedbackRequest{
 		ID:         1,
@@ -274,7 +276,8 @@ func TestRefusedCutReopensDocstringWording(t *testing.T) {
 	if emptied == nil {
 		t.Fatal("first editComment() saved the empty docstring, want it refused")
 	}
-	// The second nvim fails unless the page opens with the wording.
+	// The second nvim fails unless the file nvim opens starts with the
+	// wording.
 	installFakeNvim(
 		t,
 		`head -n 1 "$1" | grep -qx 'Return the tax.'`,
@@ -295,16 +298,16 @@ func TestRefusedCutReopensDocstringWording(t *testing.T) {
 	}
 }
 
-// Returns a fake nvim script that replaces the page's comment with text, a
-// printf format such as 'Sum.\n'. It keeps the marker line and the code
-// under it.
+// Returns a fake nvim script that types the given printf text, such as
+// 'Sum.\n', in place of the comment. The script keeps the "# ----" line and
+// the code under it.
 func buildNvimTypingScript(text string) string {
 	return `printf '` + text + `' > "$1.new"; ` +
 		`sed -n '/^# ----/,$p' "$1" >> "$1.new"; mv "$1.new" "$1"`
 }
 
-// Puts a fake nvim first on PATH, which runs script with the page it opens as
-// $1. A later call replaces the earlier script.
+// Puts a fake nvim first on PATH, which runs the given shell script with the
+// opened file as $1. A later call replaces the earlier script.
 func installFakeNvim(t *testing.T, script string) {
 	t.Helper()
 	bin := t.TempDir()
@@ -325,7 +328,7 @@ func installFakeNvim(t *testing.T, script string) {
 }
 
 // Saves a one-comment review of tax.py in a new repository, with a fake nvim
-// that runs script.
+// that runs the given shell script.
 func startTaxReview(
 	t *testing.T,
 	code string,

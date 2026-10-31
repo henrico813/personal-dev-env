@@ -227,9 +227,9 @@ func TestReplacedSuggestionNeedsNewAnswer(t *testing.T) {
 	}
 }
 
-// A refused edit leaves the owner's text in a file for the next edit. Once
-// the owner answers the comment or the AI sends new wording, that text is
-// out of date and would hide the new wording.
+// When the checker refuses an edit, the owner's text waits in a file for the
+// next try. After the owner keeps, cuts or edits the comment, or the AI sends
+// new wording, that file would reopen out-of-date text.
 func TestAnswersAndBatchesDeleteEditFiles(t *testing.T) {
 	repo := newRepo(t)
 	addTestBatch(
