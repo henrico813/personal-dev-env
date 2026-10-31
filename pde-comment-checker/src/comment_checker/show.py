@@ -1,4 +1,4 @@
-"""Turn comments into the words the owner edits and the rows shown."""
+"""The checker's show command, which the review tool runs."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ from .records import Comment, SourceError
 def show_comments(
     repo: Path, entries: list[dict[str, str]]
 ) -> tuple[dict[str, object], int]:
-    """Return each entry's comment text, plain text and screen rows.
+    """Return each comment's text, words to edit and screen rows.
 
     Args:
         repo: The repository that holds each comment's file.
         entries: The comments to show, as the review tool sends them.
 
     Returns:
-        The reply without its interface number, and the exit code.
+        The reply for the review tool, and the exit code.
 
     Raises:
         ValueError: A file is not of a language ``show`` takes, or
@@ -71,7 +71,16 @@ def show_comments(
 def find_layout_comment(
     repo: Path, entry: dict[str, str], language: LanguageRules
 ) -> Comment:
-    """Return the comment whose layout an entry's ``plain`` takes.
+    """Return the comment that new words are laid out like.
+
+    Args:
+        repo: The repository that holds the comment's file.
+        entry: One comment the review tool sent, with its ``file`` and
+            ``name``.
+        language: The comment rules for the file's language.
+
+    Returns:
+        The comment now in the file under that name.
 
     Raises:
         SourceError: There is no such comment, or a rewrite of it could
@@ -101,11 +110,18 @@ def find_layout_comment(
 
 
 def read_show_entries(stream: TextIO) -> list[dict[str, str]]:
-    """Return the entries ``show`` reads, a JSON list.
+    """Return the comments ``show`` reads from its input, a JSON list.
+
+    Args:
+        stream: The input to read.
+
+    Returns:
+        One dict per comment, as the review tool sent it.
 
     Raises:
-        ValueError: An entry lacks a ``file``, or both a ``text`` and a
-            ``name`` with ``plain``, or has a value that is not a string.
+        ValueError: A comment lacks a ``file``, lacks both a ``text``
+            and a ``name`` with ``plain``, or holds a value that is not
+            a string.
     """
     entries = json.load(stream)
     if not isinstance(entries, list):
