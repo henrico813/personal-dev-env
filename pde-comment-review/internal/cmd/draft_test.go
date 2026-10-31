@@ -243,6 +243,54 @@ func TestDraftFindsCommentsNeedingTheOwner(t *testing.T) {
 	}
 }
 
+// Verifies that a new worktree's draft uses the main checkout's approvals.
+func TestDraftUsesMainApprovalsInWorktree(t *testing.T) {
+	repo := newShopClone(
+		t,
+		"feat",
+	)
+	worktree := filepath.Join(
+		filepath.Dir(repo),
+		"worktree",
+	)
+	runScript(
+		t,
+		repo,
+		"git worktree add -q -b other "+worktree,
+	)
+	writeFile(
+		t,
+		filepath.Join(
+			worktree,
+			"shop.go",
+		),
+		editedShopGo,
+	)
+
+	_, d, err := buildBranchDraft(
+		worktree,
+		buildRepoCheckerOnPath(t),
+	)
+
+	if err != nil {
+		t.Fatalf(
+			"buildBranchDraft() error = %v",
+			err,
+		)
+	}
+	// Only main's record says Valid was approved, so its deletion is listed
+	// only when that record was read.
+	for _, request := range d.Batch.Requests {
+		if request.Name == "Valid" && request.CodeRemoved {
+			return
+		}
+	}
+	t.Errorf(
+		"requests = %+v, want Valid's deletion",
+		d.Batch.Requests,
+	)
+}
+
 // Verifies that answers reach the right comment by name, since an edited
 // approved comment's old text is gone from its file.
 func TestDraftAnswersLandOnNamedComments(t *testing.T) {

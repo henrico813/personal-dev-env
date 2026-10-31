@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from .approvals import load_settings, unname_unapprovable_comments
+from .approvals import load_approved_texts, unname_unapprovable_comments
 from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES
 from .records import Comment, SourceError
 from .rules import find_rename_candidates
@@ -108,7 +108,7 @@ def read_moved_approvals(
     }
     approvals = {}
     renames: list[str] = []
-    for (file, name), text in load_settings(repo)[0].items():
+    for (file, name), text in load_approved_texts(repo)[0].items():
         if Path(file).suffix not in suffixes:
             continue
         if file in moved_to:

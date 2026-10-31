@@ -172,39 +172,28 @@ Untracked files outside the artifact being updated or removed do not block unrel
 ### Keep the owner's comment approvals
 
 A worktree's root `.code-comments.json` holds the comment text the
-owner approved there, and removing the worktree loses it. When the
-target worktree has one, after main synchronization:
+owner approved on its branch, and removing the worktree loses it.
+When the target worktree has one, after main synchronization, run:
 
-1. From the main checkout, back up both copies:
+```bash
+pde-keep-approvals <worktree path>
+```
 
-   ```bash
-   dir=~/.local/state/pde/approval-backups
-   mkdir -p "$dir"
-   backup=$(mktemp -d "$dir/$(date +%Y%m%d-%H%M%S)-XXXX")
-   mkdir "$backup/worktree"
-   cp -p <worktree path>/.code-comments.json "$backup/worktree/"
-   [ ! -f .code-comments.json ] || cp -p .code-comments.json "$backup/"
-   ```
+It backs up the worktree's file and the main checkout's under
+`~/.local/state/pde/approval-backups/`. When a merged pull request's
+head is the worktree's commit, it then merges the approvals into the
+main checkout's file with the comment checker's `--merge-approvals`.
 
-   If any of these commands fails, stop: do not merge or remove the
-   worktree, and report the failure.
-2. Read the pull request with
-   `gh pr view <pr> --json state,mergeCommit`. If there is no merged
-   pull request, skip the merge; the backup keeps the approvals.
-3. Otherwise load the `code-documentation` skill to learn its folder,
-   and bring the approvals in with the comment checker there:
-
-   ```bash
-   python3 <that skill's folder>/scripts/check_comments.py \
-     --repo . --merge-approvals <worktree path> <merge commit>
-   ```
-
-4. Exit 0 means the approvals are kept. Report its output, including
-   skipped and dropped entries, and the backup folder. Any other exit
-   blocks worktree removal; report the output. If it refuses a comment
-   that a later merged pull request also reworded, clean up that later
-   pull request's worktree first, then run this again.
-5. Apart from the backups and the worktree removal, never copy, edit
+1. Exit 0 means the approvals are backed up. They are also merged
+   only when a pull request merged from the worktree's commit; the
+   output says which.
+   Report it, including the backup folder and any skipped and dropped
+   entries.
+2. Any other exit blocks worktree removal; report the output. If it
+   refuses a comment that a later merged pull request also reworded,
+   clean up that later pull request's worktree first, then run this
+   again.
+3. Apart from this command and the worktree removal, never copy, edit
    or delete a `.code-comments.json`.
 
 ### 3. Finish housekeeping

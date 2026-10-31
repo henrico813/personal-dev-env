@@ -7,6 +7,10 @@ from being changed later. It is the only program that reads or writes
 must answer and has it record your answers. The skill owns each rule's
 sentence, and a test fails when the checker's quote differs.
 
+In a linked worktree it also reads the main checkout's
+`.code-comments.json`, so a worktree's file holds only the approvals
+made on its branch.
+
 `pde-installer install` builds it with `build.py` on the full profile,
 at `~/.local/bin/pde-comment-checker`, as one file that runs with
 `/usr/bin/python3` 3.10 or later. The skill's `check_comments.py` and

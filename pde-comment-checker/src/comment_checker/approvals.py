@@ -32,7 +32,22 @@ def load_settings(
         ValueError: The file is not JSON of the shape in the module
             docstring. The owner edits the avoid list by hand.
     """
-    path = repo / SETTINGS
+    return read_settings_file(repo / SETTINGS)
+
+
+def read_settings_file(
+    path: Path,
+) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+    """Read ``.code-comments.json``.
+
+    Returns:
+        Approved text by ``(file, name)`` and the avoid list, both empty
+        when the file does not exist.
+
+    Raises:
+        ValueError: The file is not JSON of the shape the cli module
+            docstring shows.
+    """
     if not path.exists():
         return {}, {}
     try:
@@ -56,6 +71,205 @@ def load_settings(
         )
     approved = {(e["file"], e["name"]): e["text"] for e in entries}
     return approved, avoid
+
+
+def find_main_record(repo: Path) -> tuple[Path, str] | None:
+    """Return the main checkout's ``.code-comments.json`` and HEAD commit.
+
+    Returns:
+        The record's path, which may not exist, and the commit, or
+        ``None`` when ``repo`` is in the main checkout, outside Git, or
+        in a worktree of a bare repository.
+
+    Raises:
+        ValueError: Git cannot list the repository's worktrees.
+    """
+    git = ["git", "-C", str(repo)]
+    where = subprocess.run(
+        [*git, "rev-parse", "--show-toplevel", "--show-prefix"],
+        capture_output=True,
+        text=True,
+    )
+    if where.returncode != 0:
+        return None
+    listed = subprocess.run(
+        [*git, "worktree", "list", "--porcelain"],
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise ValueError(
+            f"{repo}: cannot list worktrees: {listed.stderr.strip()}"
+        )
+    top, prefix = where.stdout.split("\n")[:2]
+    # Git lists the main checkout first, as "worktree /src" and "HEAD 1a2b".
+    first = listed.stdout.split("\n\n")[0].splitlines()
+    main = dict(line.partition(" ")[::2] for line in first)
+    if "bare" in main:
+        return None
+    if Path(main["worktree"]).resolve() == Path(top).resolve():
+        return None
+    return Path(main["worktree"]) / prefix / SETTINGS, main["HEAD"]
+
+
+@dataclass(frozen=True)
+class MainApprovals:
+    """Approvals from the main checkout that still apply in a worktree.
+
+    Attributes:
+        approved: Main's approved text by ``(file, name)``, only where
+            the branch began with that text.
+        avoid: Main's avoid list.
+        fork: The commit where the branch left main.
+        branch_files: Each file changed since the branch left main,
+            relative to the worktree, uncommitted, deleted and untracked
+            files included.
+    """
+
+    approved: dict[tuple[str, str], str]
+    avoid: dict[str, str]
+    fork: str
+    branch_files: set[str]
+
+
+def load_main_approvals(repo: Path) -> MainApprovals | None:
+    """Return main's approvals that hold where the branch began.
+
+    Main may approve new wording after the branch starts, and the branch
+    still has the old wording.
+
+    Returns:
+        Main's approvals, or ``None`` when ``repo`` is not in a worktree
+        with a main checkout.
+
+    Raises:
+        ValueError: Main's record is not JSON of the shape the cli module
+            docstring shows, or Git cannot find the commit the branch
+            shares with main, such as on an orphan branch.
+    """
+    found = find_main_record(repo)
+    if found is None:
+        return None
+    path, head = found
+    approved, avoid = read_settings_file(path)
+    fork = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "HEAD", head],
+        capture_output=True,
+        text=True,
+    )
+    if fork.returncode != 0:
+        # Skipping main's record would leave every comment it approves
+        # unprotected.
+        raise ValueError(
+            f"{repo}: cannot find where this branch left main at {head}, "
+            "so the main checkout's approvals cannot be checked"
+        )
+    fork_commit = fork.stdout.strip()
+    files = {file for file, _ in approved if Path(file).suffix in LANGUAGES}
+    sources = read_sources_at_commit(repo, fork_commit, files)
+    texts = {(c.file, c.name): c.text for c in read_comments_in_files(sources)}
+    held = {
+        key: text
+        for key, text in approved.items()
+        if key[0] in sources and texts.get(key, "") == text
+    }
+    return MainApprovals(
+        held, avoid, fork_commit, list_branch_files(repo, fork_commit)
+    )
+
+
+def list_branch_files(repo: Path, fork: str) -> set[str]:
+    """Return each file changed since ``fork``, relative to ``repo``.
+
+    Uncommitted, deleted and untracked files count, and a moved file
+    counts under both paths.
+
+    Raises:
+        ValueError: Git cannot compare the files with ``fork``.
+    """
+    git = ["git", "-C", str(repo)]
+    diff = subprocess.run(
+        [*git, "diff", "--name-only", "--no-renames", "--relative", fork],
+        capture_output=True,
+        text=True,
+    )
+    untracked = subprocess.run(
+        [*git, "ls-files", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+    )
+    if diff.returncode != 0 or untracked.returncode != 0:
+        raise ValueError(f"{repo}: cannot list the files changed since {fork}")
+    return set(diff.stdout.splitlines()) | set(untracked.stdout.splitlines())
+
+
+def read_sources_at_commit(
+    repo: Path, rev: str, files: set[str]
+) -> dict[str, str]:
+    """Return each file's text at ``rev``, skipping missing ones."""
+    sources = {}
+    for file in sorted(files):
+        shown = subprocess.run(
+            ["git", "-C", str(repo), "show", f"{rev}:./{file}"],
+            capture_output=True,
+        )
+        if shown.returncode == 0:
+            sources[file] = shown.stdout.decode("utf-8", errors="replace")
+    return sources
+
+
+def load_approved_texts(
+    repo: Path,
+) -> tuple[dict[tuple[str, str], str], dict[str, str]]:
+    """Read the approvals that protect the comments in ``repo``.
+
+    In a worktree, the worktree's record holds its branch's approvals,
+    and main's record adds the rest. A comment passes when its text
+    matches either record.
+
+    Returns:
+        Approved text by ``(file, name)``, and the avoid list, where the
+        worktree's advice for a word wins.
+
+    Raises:
+        ValueError: A record is not JSON of the shape the cli module
+            docstring shows, or a worktree's branch shares no commit
+            with main.
+    """
+    approved, avoid = load_settings(repo)
+    main = load_main_approvals(repo)
+    if main is None:
+        return approved, avoid
+    # Older worktrees copied all of main's record, so an entry in a file the
+    # branch never changed counts only if it matches where the branch began.
+    unchanged = {
+        file
+        for file, _ in approved
+        if file not in main.branch_files and Path(file).suffix in LANGUAGES
+    }
+    fork_sources = read_sources_at_commit(repo, main.fork, unchanged)
+    fork_texts = {
+        (c.file, c.name): c.text for c in read_comments_in_files(fork_sources)
+    }
+    approved = {
+        key: text
+        for key, text in approved.items()
+        if key[0] in main.branch_files
+        or (key[0] in fork_sources and fork_texts.get(key, "") == text)
+    }
+    files = {file for file, _ in main.approved if (repo / file).is_file()}
+    sources = {
+        file: (repo / file).read_text(encoding="utf-8", errors="replace")
+        for file in files
+    }
+    texts_now = {
+        (c.file, c.name): c.text for c in read_comments_in_files(sources)
+    }
+    merged = dict(approved)
+    for key, text in main.approved.items():
+        if key not in approved or texts_now.get(key, "") == text:
+            merged[key] = text
+    return merged, {**main.avoid, **avoid}
 
 
 def is_string_map(value: object) -> TypeGuard[dict[str, str]]:
@@ -310,12 +524,9 @@ def parse_rename_pair(value: str) -> tuple[str, str]:
 def replace_settings_file(
     repo: Path, entries: list[dict[str, str]], avoid: dict[str, str]
 ) -> None:
-    """Write ``.code-comments.json`` to a temporary file, then rename it over.
-
-    An interrupted run leaves the old file whole. The old file's mode is
-    kept.
-    """
+    """Write ``.code-comments.json``, keeping it whole on failure."""
     path = repo / SETTINGS
+    entries, avoid = drop_main_approvals(repo, entries, avoid)
     text = json.dumps({"approved": entries, "avoid": avoid}, indent=1)
     handle, temp = tempfile.mkstemp(dir=repo, prefix=f"{SETTINGS}.")
     try:
@@ -327,6 +538,38 @@ def replace_settings_file(
     except BaseException:
         Path(temp).unlink(missing_ok=True)
         raise
+
+
+def drop_main_approvals(
+    repo: Path, entries: list[dict[str, str]], avoid: dict[str, str]
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Leave out what main's record already holds.
+
+    Returns:
+        The entries and avoid list to write, unchanged outside a
+        worktree with a main checkout.
+
+    Raises:
+        ValueError: Main's record is not JSON of the shape the cli
+            module docstring shows, or the branch shares no commit with
+            main.
+    """
+    main = load_main_approvals(repo)
+    if main is None:
+        return entries, avoid
+    keys = {(e["file"], e["name"]) for e in entries}
+    kept = [
+        e
+        for e in entries
+        if main.approved.get((e["file"], e["name"])) != e["text"]
+    ]
+    cuts = [
+        {"file": file, "name": name, "text": ""}
+        for (file, name), text in main.approved.items()
+        if text and (file, name) not in keys
+    ]
+    own_avoid = {w: a for w, a in avoid.items() if main.avoid.get(w) != a}
+    return sorted(kept + cuts, key=lambda e: e["file"]), own_avoid
 
 
 def summarize_approval(
@@ -380,7 +623,7 @@ def approve_one_comment(
     """
     try:
         file = (repo / file).resolve().relative_to(repo).as_posix()
-        approved, avoid = load_settings(repo)
+        approved, avoid = load_approved_texts(repo)
         path = repo / file
         source = path.read_text(encoding="utf-8") if path.exists() else ""
     except (OSError, ValueError) as error:

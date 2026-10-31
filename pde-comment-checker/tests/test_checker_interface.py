@@ -1835,6 +1835,67 @@ def send_signal_when_first_handler_is_back(
     return sent
 
 
+def make_cart_worktree(tmp_path: Path) -> Path:
+    """Return a new worktree whose main checkout approves ``cart.go``.
+
+    Like the owner's new worktrees, it has no ``.code-comments.json`` of
+    its own.
+    """
+    main, worktree = tmp_path / "main", tmp_path / "worktree"
+    main.mkdir()
+    (main / "cart.go").write_text(CART_GO)
+    commit_all(main)
+    (main / ".git/info").mkdir(exist_ok=True)
+    (main / ".git/info/exclude").write_text(SETTINGS + "\n")
+    git = ["git", "-C", str(main), "worktree", "add", "-q", "-b", "feat"]
+    subprocess.run([*git, str(worktree)], check=True)
+    (main / SETTINGS).write_text(json.dumps(APPROVED))
+    return worktree
+
+
+class TestApplyInWorktree:
+    """Check and write answers in a worktree that reads main's approvals."""
+
+    def test_write_keeps_only_the_answered_entry(self, tmp_path: Path) -> None:
+        """Answering in a new worktree must save only that answer.
+
+        Otherwise the write would cut every approval in main's record.
+        """
+        worktree = make_cart_worktree(tmp_path)
+        answer = make_answer(1, TOTAL_TEXT, "// Sums.\n", name="Total")
+
+        code, _ = apply_answers(worktree, [answer], flags=())
+
+        assert code == 0
+        assert json.loads((worktree / SETTINGS).read_text()) == {
+            "approved": [
+                {"file": "cart.go", "name": "Total", "text": "// Sums.\n"}
+            ],
+            "avoid": {},
+        }
+
+    def test_edit_of_main_approval_is_refused(self, tmp_path: Path) -> None:
+        """Refuse an answer to an agent's edit of a comment only main approves.
+
+        Only main's record approves Valid, so a check that read only the
+        worktree's file would approve the edit as the owner's text.
+        """
+        worktree = make_cart_worktree(tmp_path)
+        edited = "// Checks every price.\n"
+        cart = worktree / "cart.go"
+        cart.write_text(cart.read_text().replace(VALID_TEXT, edited))
+
+        code, reply = apply_answers(
+            worktree, [make_answer(1, edited, name="Valid")]
+        )
+
+        assert code == 1
+        assert (
+            "differs from the text the owner approved"
+            in (reply["problems"][0])
+        )
+
+
 class TestApply:
     """Write the owner's answers and approve them, all or nothing.
 

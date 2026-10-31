@@ -13,10 +13,10 @@ Example:
 
 Prints one line per finding, then quotes each broken rule's sentence
 from the skill. ``.code-comments.json`` in the ``--repo`` folder holds
-the owner's approved text, ``""`` for a cut comment, and words to
-avoid. ``--approve`` rewrites the approved text from the checked files,
-after ``--rename OLD=NEW`` moves the entries of each renamed comment or
-file, so a rename is not recorded as a cut::
+the owner's approved text, ``""`` for a cut comment, and words to avoid.
+``--approve`` rewrites the approved text from the checked files, after
+``--rename OLD=NEW`` moves the entries of each renamed comment or file,
+so a rename is not recorded as a cut::
 
     {"approved": [{"file": "store/cart.go", "name": "Cart.Total",
                    "text": "// Total is in cents.\n"}],
@@ -24,15 +24,21 @@ file, so a rename is not recorded as a cut::
 
 ``--approve-comment FILE NAME`` records only that comment's text, or
 ``""`` when it is gone, after the renames, and leaves every other entry
-as it was. A ``--rename`` pair of paths moves that file's
-entries, and a name pair renames an entry only in FILE. FILE may be
-deleted only when, after the renames, it has an entry for NAME; that
-entry is then recorded as cut.
+as it was. A ``--rename`` pair of paths moves that file's entries, and a
+name pair renames an entry only in FILE. FILE may be deleted only when,
+after the renames, it has an entry for NAME; that entry is then recorded
+as cut.
 
 ``--merge-approvals FOLDER COMMIT`` takes ``FOLDER``'s approvals, such
-as a worktree's before removal, for the files ``COMMIT`` changed,
-when their text is the comment now. If the two files approve a comment
+as a worktree's before removal, for the files ``COMMIT`` changed, when
+their text is the comment now. If the two files approve a comment
 differently and neither is the comment now, nothing is written.
+
+In a worktree, the main checkout's ``.code-comments.json`` counts too,
+but only for text the branch began with. A comment passes when its text
+matches either file. Writes in a worktree add only the branch's
+approvals, and a cut for each comment of main's that the branch renamed
+or deleted.
 
 In Python, every docstring is named, such as ``RenameRules.move_key``
 or ``<module>`` for the module docstring, and so is a ``#`` comment
@@ -40,11 +46,11 @@ above a ``def``, a ``class`` or an assignment outside functions, such
 as ``# RULES`` above ``RULES``.
 
 ``--list`` prints one line of JSON per Python file for
-``pde-comment-review``, with each named comment's lines and the
-warnings Python gives when it compiles the file. Line numbers start at
-1, and ``end_line`` is the comment's last line. A ``#`` comment with a
-tool directive line, such as ``# noqa``, is left out, since writing
-over it could drop the directive.
+``pde-comment-review``, with each named comment's lines and the warnings
+Python gives when it compiles the file. Line numbers start at 1, and
+``end_line`` is the comment's last line. A ``#`` comment with a tool
+directive line, such as ``# noqa``, is left out, since writing over it
+could drop the directive.
 
 The commands ``version``, ``list`` and ``changes`` answer
 ``pde-comment-review`` with JSON, as ``interface.py`` describes.
@@ -61,17 +67,16 @@ The rules are:
 - ``restated-name``: a comment's first sentence repeats the name of the
   code below it. This never fails the run.
 
-Go files also get ``seven-words``, ``verb-first``, which never fails
-the run, ``starts-with-name``, ``comment-length`` and ``comment-colon``,
-the rules ``check_python_rules.py`` describes and checks in Python files.
+Go files also get ``seven-words``, ``verb-first``, which never fails the
+run, ``starts-with-name``, ``comment-length`` and ``comment-colon``, the
+rules ``check_python_rules.py`` describes and checks in Python files.
 
 With ``--base``, sentences present at that commit never fail the run,
 and ``restated-name`` findings on them are left out. The Go rules skip
 function names present at that commit and comments whose every sentence
-is. Findings in approved text, or in a license header above
-``package`` or a Python file's first statement, are only reported.
-Generated files are skipped. A sentence is present only in a file of
-the same language.
+is. Findings in approved text, or in a license header above ``package``
+or a Python file's first statement, are only reported. Generated files
+are skipped. A sentence is present only in a file of the same language.
 
 Exit codes:
     0: Nothing failed.
@@ -107,7 +112,7 @@ from .approvals import (
     approve_one_comment,
     build_approved_entries,
     list_function_names,
-    load_settings,
+    load_approved_texts,
     merge_approvals,
     parse_rename_pair,
     read_comments_in_files,
@@ -271,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.paths:
         parser.error("give the files to check")
     try:
-        approved, avoid = load_settings(repo)
+        approved, avoid = load_approved_texts(repo)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2

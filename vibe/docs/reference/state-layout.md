@@ -41,9 +41,9 @@ A run first reuses any worktree already on the branch, such as an older
 `<repo-root>/worktrees/<slug>`. State from the pre-0.8.0
 `~/.local/state/vibe/<basename>/` layout is orphaned and is not migrated.
 
-A new worktree also gets a copy of `<repo-root>/.code-comments.json`,
-the owner's approved comments, when Git ignores that file, so the
-comment checker in the container protects them.
+When `<repo-root>/.code-comments.json`, the owner's approved comments,
+exists, the container gets it read-only at the same path, so the
+comment checker there protects them. A new worktree gets no copy.
 
 See [CLI reference](cli.md) for output fields and [run lifecycle](../explanation/run-lifecycle.md)
 for why these boundaries exist.

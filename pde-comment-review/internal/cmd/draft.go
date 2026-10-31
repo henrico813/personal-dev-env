@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -68,13 +69,36 @@ func buildBranchDraft(dir, checker string) (string, review.Draft, error) {
 	if err != nil {
 		return "", review.Draft{}, err
 	}
-	// A new worktree has none, and without it an edited approved comment
-	// would look new, so the owner would never see the approved text.
-	if _, err := os.Stat(filepath.Join(repo, settingsFile)); errors.Is(err, fs.ErrNotExist) {
+	main, err := findMainCheckout(repo)
+	if err != nil {
+		return "", review.Draft{}, err
+	}
+	// A worktree needs no record of its own, since the checker also reads
+	// main's. Without either, an edited approved comment would look new.
+	_, ownErr := os.Stat(filepath.Join(
+		repo,
+		settingsFile,
+	))
+	_, mainErr := os.Stat(filepath.Join(
+		main,
+		settingsFile,
+	))
+	ownMissing := errors.Is(
+		ownErr,
+		fs.ErrNotExist,
+	)
+	mainMissing := errors.Is(
+		mainErr,
+		fs.ErrNotExist,
+	)
+	if ownMissing && mainMissing {
 		return "", review.Draft{}, fmt.Errorf(
-			`%s is missing, so the draft cannot tell which comments the owner approved; copy it from the checkout where the owner last approved comments, such as one that git worktree list shows. Only if the owner confirms this repository never had approved comments, create an empty one with: echo '{}' > %s`,
+			`%s is missing here and in the main checkout, so the draft cannot tell which comments the owner approved. Only if the owner confirms this repository never had approved comments, create an empty one with: echo '{}' > %s`,
 			settingsFile,
-			settingsFile,
+			filepath.Join(
+				main,
+				settingsFile,
+			),
 		)
 	}
 	base, err := findDraftBase(repo)
@@ -87,6 +111,39 @@ func buildBranchDraft(dir, checker string) (string, review.Draft, error) {
 		checker,
 	)
 	return name, d, err
+}
+
+// Returns the main checkout's folder, or repo in a bare repository's worktree.
+func findMainCheckout(repo string) (string, error) {
+	listed, err := runGit(
+		repo,
+		"worktree",
+		"list",
+		"--porcelain",
+	)
+	if err != nil {
+		return "", err
+	}
+	// Git lists the main checkout first, as lines such as "worktree /src".
+	first, _, _ := strings.Cut(
+		listed,
+		"\n\n",
+	)
+	lines := strings.Split(
+		first,
+		"\n",
+	)
+	// A bare repository has no checkout, so no record of its own.
+	if slices.Contains(
+		lines,
+		"bare",
+	) {
+		return repo, nil
+	}
+	return strings.TrimPrefix(
+		lines[0],
+		"worktree ",
+	), nil
 }
 
 // Returns the commit where the branch left the remote's default branch,

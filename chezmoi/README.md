@@ -116,10 +116,14 @@ in a fresh `zsh -c` that `wt switch --create docs/x` makes `worktrees/docs-x`
 and `wt switch --create Bad_Name` is refused, since a renamed setting would
 otherwise go unnoticed.
 
-A new worktree starts with a copy of the main checkout's
-`.code-comments.json`, your approved comments, when Git ignores that
-file. Removing a worktree with the `cleanup-plan` skill brings its
-approvals back to the main checkout.
+The comment checker in a worktree also reads the main checkout's
+`.code-comments.json`, your approved comments, so a new worktree gets
+no copy. Its own file holds only what you approve on its branch. Before
+a worktree is removed, `pde-keep-approvals` backs that file up under
+`~/.local/state/pde/approval-backups/` and, once its pull request has
+merged, merges it into the main checkout's. Worktrunk runs it as a
+`pre-remove` hook, and the `cleanup-plan` skill runs it before
+`git worktree remove`.
 
 ## Terminal Workspaces
 

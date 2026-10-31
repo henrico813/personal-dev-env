@@ -32,12 +32,26 @@ impl Drop for RunLock {
 }
 
 impl WorktreeSession {
+    /// Adds the main checkout's `.code-comments.json`, when it exists and its
+    /// path has no comma, to the read-only inputs. The comment checker in the
+    /// container reads the owner's approvals from it.
     pub fn sandbox_mounts(&self, inputs: &[PathBuf]) -> SandboxMounts {
+        let mut inputs = inputs.to_vec();
+        let approvals = self.repo_root.join(".code-comments.json");
+        // Docker's --mount option splits its value at commas.
+        if approvals.to_string_lossy().contains(',') {
+            eprintln!(
+                "warning: not mounting {}, since a Docker mount path cannot contain a comma",
+                approvals.display()
+            );
+        } else if approvals.is_file() {
+            inputs.push(approvals);
+        }
         SandboxMounts {
             repo_root: self.repo_root.clone(),
             git_common_dir: self.git_common_dir.clone(),
             worktree: self.worktree.clone(),
-            inputs: inputs.to_vec(),
+            inputs,
         }
     }
 }
@@ -178,7 +192,7 @@ pub fn commit_result(worktree: &Path, message: &str, hooks_dir: &Path) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::acquire_run_lock_in;
+    use super::{acquire_run_lock_in, WorktreeSession};
     use crate::target::RunTarget;
     use std::path::{Path, PathBuf};
     use std::thread;
@@ -197,6 +211,51 @@ mod tests {
                 Err(error) => panic!("reacquire failed: {error}"),
             }
         }
+    }
+
+    // Docker refuses a mount whose file is missing, and without the file the
+    // checker in the container would protect none of main's approvals.
+    #[test]
+    fn sandbox_mounts_main_comment_approvals_when_present() {
+        let repo = tempdir().expect("repo");
+        let session = WorktreeSession {
+            key: "k".to_string(),
+            slug: "k".to_string(),
+            branch: "vibe/k".to_string(),
+            worktree: repo.path().join("worktrees/vibe-k"),
+            repo_root: repo.path().to_path_buf(),
+            git_common_dir: repo.path().join(".git"),
+        };
+        let input = PathBuf::from("/tmp/input.md");
+        let approvals = repo.path().join(".code-comments.json");
+
+        let without = session.sandbox_mounts(std::slice::from_ref(&input));
+        std::fs::write(&approvals, "{}").expect("write approvals");
+        let with = session.sandbox_mounts(std::slice::from_ref(&input));
+
+        assert_eq!(without.inputs, std::slice::from_ref(&input));
+        assert_eq!(with.inputs, [input, approvals]);
+    }
+
+    // A comma in the mount path would make Docker refuse to start the run.
+    #[test]
+    fn sandbox_mounts_skip_approvals_path_with_comma() {
+        let temp = tempdir().expect("tempdir");
+        let repo = temp.path().join("repo,with-comma");
+        std::fs::create_dir_all(&repo).expect("mkdir repo");
+        std::fs::write(repo.join(".code-comments.json"), "{}").expect("write approvals");
+        let session = WorktreeSession {
+            key: "k".to_string(),
+            slug: "k".to_string(),
+            branch: "vibe/k".to_string(),
+            worktree: repo.join("worktrees/vibe-k"),
+            repo_root: repo.clone(),
+            git_common_dir: repo.join(".git"),
+        };
+
+        let mounts = session.sandbox_mounts(&[]);
+
+        assert!(mounts.inputs.is_empty());
     }
 
     #[test]
