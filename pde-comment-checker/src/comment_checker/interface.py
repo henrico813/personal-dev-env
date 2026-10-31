@@ -29,7 +29,7 @@ from .apply import (
 )
 from .approvals import unname_unapprovable_comments
 from .changes import find_owner_changes
-from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES, Language
+from .languages import LANGUAGES, UNSUPPORTED_SUFFIXES, LanguageRules
 from .records import Comment, SourceError
 
 COMMANDS = ("version", "list", "changes", "show", "apply")
@@ -179,7 +179,7 @@ def show_comments(repo: Path, entries: list[dict[str, str]]) -> int:
 
 
 def find_layout_comment(
-    repo: Path, entry: dict[str, str], language: Language
+    repo: Path, entry: dict[str, str], language: LanguageRules
 ) -> Comment:
     """Return the comment whose layout an entry's ``plain`` takes.
 

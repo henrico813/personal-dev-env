@@ -34,38 +34,8 @@ from .python import (
 
 
 @dataclass(frozen=True)
-class Language:
-    """How the checker reads the files of one suffix, such as ``.py``.
-
-    Attributes:
-        name: The language's name, such as ``python``.
-        read_comments: Returns each comment in a file, given its source
-            and its path.
-        join_prose: Returns a comment's words as one line of prose.
-        generated_marker: Finds the line that marks a generated file.
-        is_writable: Returns whether a comment can be rewritten without
-            changing the code around it.
-        list_warnings: Returns the warnings the compiler gives for a
-            file. It is ``None`` for a language ``--list`` does not
-            take.
-        list_functions: Returns each function in a file, for the
-            function name rules. It is ``None`` for a language whose
-            names another checker checks.
-        reviews_on: Whether the ``changes`` and ``apply`` commands take
-            this language's comments for the owner's review.
-        prepare_for_screen: Returns a comment's words for the owner to
-            edit, and the rows the review screen draws for it. It is
-            ``None`` for a language ``show`` does not take.
-        lay_out_wording: Returns new wording laid out like the old
-            comment it replaces. It is ``None`` for a language ``show``
-            does not take.
-        finish_rewrite: Returns the new source as the write leaves it,
-            given the old source, the new source and the file. It raises
-            ``SourceError`` when the write would be unsafe. It is
-            ``None`` for a language ``apply`` does not take.
-        behaviors_not_applying: Each behavior of the shared sample suite
-            the language has no case for, and why.
-    """
+class LanguageRules:
+    """The comment rules for one programming language, such as Python."""
 
     name: str
     read_comments: Callable[[str, str], list[Comment]]
@@ -85,7 +55,7 @@ class Language:
 
 # Each language the checker reads, by file suffix.
 LANGUAGES = {
-    ".go": Language(
+    ".go": LanguageRules(
         name="go",
         read_comments=parse_go_comments,
         join_prose=join_comment_prose,
@@ -98,7 +68,7 @@ LANGUAGES = {
         finish_rewrite=finish_go_rewrite,
         behaviors_not_applying=GO_BEHAVIORS_NOT_APPLYING,
     ),
-    ".py": Language(
+    ".py": LanguageRules(
         name="python",
         read_comments=parse_python_comments,
         join_prose=join_python_prose,

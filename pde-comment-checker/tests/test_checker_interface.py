@@ -20,7 +20,7 @@ import pytest
 from comment_checker import INTERFACE, VERSION, interface
 from comment_checker.approvals import unname_unapprovable_comments
 from comment_checker.cli import main
-from comment_checker.languages import LANGUAGES, Language
+from comment_checker.languages import LANGUAGES, LanguageRules
 from comment_checker.records import Comment
 
 SAMPLES = Path(__file__).parent / "comment_samples"
@@ -56,7 +56,7 @@ def read_note_comments(source: str, file: str) -> list[Comment]:
 
 
 # A made-up language, which proves a language needs only its module.
-NOTE = Language(
+NOTE = LanguageRules(
     name="note",
     read_comments=read_note_comments,
     join_prose=str.strip,
@@ -564,7 +564,7 @@ class TestShow:
         ]
 
     @pytest.mark.parametrize(
-        ("entry", "expected"),
+        ("comment", "expected"),
         [
             pytest.param(
                 {"file": "shop.go", "name": "Cart.Items", "plain": LONG_PLAIN},
@@ -603,7 +603,7 @@ class TestShow:
         ],
     )
     def test_plain_is_written_like_old_comment(
-        self, tmp_path: Path, entry: dict[str, str], expected: str
+        self, tmp_path: Path, comment: dict[str, str], expected: str
     ) -> None:
         """Write plain text with the old indent and the language's width.
 
@@ -616,14 +616,14 @@ class TestShow:
         Args:
             tmp_path: An empty folder that receives the Go and Python
                 files.
-            entry: The comment to write, found by name or by its text,
+            comment: The comment to write, found by name or by its text,
                 with its new wording.
             expected: The comment the checker should write.
         """
         (tmp_path / "shop.go").write_text(SHOP_GO)
         (tmp_path / "shop.py").write_text(SHOP_PY)
 
-        code, reply = show_entries(tmp_path, entry)
+        code, reply = show_entries(tmp_path, comment)
 
         assert code == 0
         assert reply["shown"][0]["text"] == expected
