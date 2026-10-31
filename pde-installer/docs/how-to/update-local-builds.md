@@ -2,10 +2,15 @@
 
 The local backend builds repository applications: `planner`,
 `opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
-`pde-pr-approve`), `pde-comment-review`, `skill-lessons` and
-`pde-comment-checker`. Each of the last two has a `build.py` that packs it into
-one file run by `/usr/bin/python3`. Client builds only `skill-lessons`, and
-terminal builds no local applications.
+`pde-pr-approve`), `pde-comment-review`, `pde-comment-review-next`,
+`skill-lessons` and `pde-comment-checker`. Each of the last two has a `build.py`
+that packs it into one file run by `/usr/bin/python3`. Client builds only
+`skill-lessons`, and terminal builds no local applications.
+
+The Rust `pde-comment-review-next` command runs only `help` for now.
+It installs beside the current review tool and checker without replacing them.
+The installer builds it with Cargo and checks it with `help` after activation.
+A failed check restores the previous tools through the installer's journal.
 
 1. Change the application source in its repository directory.
 2. If an application is added or removed, update the build specifications in
@@ -22,7 +27,7 @@ terminal builds no local applications.
 The installer hashes regular source files, excluding `.git` and `target`
 directories. For `skill-lessons` and `pde-comment-checker` it hashes only
 `build.py` and the regular `.py` files under `src/`, so caches and tests do not
-count. It rebuilds all seven applications when inputs or managed Go and Rust
+count. It rebuilds all eight applications when inputs or managed Go and Rust
 toolchain versions change. A Python upgrade does not trigger a rebuild or a
 check; after upgrading `/usr/bin/python3`, run `pde-comment-checker version` and
 `skill-lessons --version` yourself. If it fails, the code needs a fix for
