@@ -216,20 +216,14 @@ class Part(NamedTuple):
 def prepare_python_comment_for_screen(
     text: str,
 ) -> tuple[str, list[ScreenRow]]:
-    """Return a comment's words for editing and its rows for the screen.
-
-    The checker's ``show`` command calls this for the review tool. The
-    owner edits the words in nvim, and the review screen draws the rows
-    on the owner's phone. A ``#`` comment is drawn as a Go comment is,
-    with ``#`` marks.
+    """Return a comment's words to edit, and the rows the window draws.
 
     Args:
-        text: The comment exactly as it is in the file, either ``#``
-            lines or one whole docstring.
+        text: The comment as it is in the file, either ``#`` lines or
+            one whole docstring.
 
     Returns:
-        The comment's words without ``#`` marks or quotes, and the rows
-        that draw it.
+        The words without marks or quotes, and the rows to draw.
 
     Raises:
         SourceError: The text is neither ``#`` lines nor one whole
@@ -244,20 +238,20 @@ def prepare_python_comment_for_screen(
 def draw_docstring_rows(
     docstring: re.Match[str], parts: list[Part]
 ) -> list[ScreenRow]:
-    """Return the rows the review screen draws for a docstring.
+    """Return the rows the review window draws for a docstring.
 
-    The opening quotes start the first row, or get a row of their own
-    above a heading or a line kept as written. The closing quotes get a
-    row of their own, unless the docstring is one line in the code.
+    The rows look like the docstring in the code. A one-line docstring
+    stays on one row. A longer one gets a row of its own for the closing
+    quotes.
 
     Args:
-        docstring: The docstring's match, which gives its prefix, quotes
-            and body.
+        docstring: The docstring's regex match, which gives its prefix,
+            quotes and body.
         parts: The docstring's lines, as ``read_docstring_parts``
             returns them.
 
     Returns:
-        The rows, one for each line of the docstring.
+        The rows in order, from opening quotes to closing quotes.
     """
     opening = docstring["prefix"] + docstring["quotes"]
     quotes = docstring["quotes"]
@@ -275,19 +269,19 @@ def draw_docstring_rows(
 
 
 def draw_part_row(part: Part, first: str = "") -> ScreenRow:
-    """Return the review screen's row for one line of a docstring.
+    """Return the review window's row for one line of a docstring.
 
-    Paragraphs and the lines under a heading wrap to the screen. The
-    wrapped rows of a line under a heading indent two spaces. Headings,
-    blank lines and lines kept as written are drawn as they are.
+    Paragraphs and lines under a heading wrap. A line under a heading
+    indents its wrapped lines two spaces. Other lines are drawn as
+    written.
 
     Args:
         part: The docstring line to draw.
-        first: The mark before a wrapped row's first screen line, such
-            as the opening quotes.
+        first: The mark before a wrapped row's first line, such as the
+            opening quotes.
 
     Returns:
-        The row for the part.
+        The row for the line.
     """
     if part.kind is PartKind.PARAGRAPH:
         return ParagraphRow(first=first, rest="", words=part.text)
@@ -297,27 +291,23 @@ def draw_part_row(part: Part, first: str = "") -> ScreenRow:
 
 
 def lay_out_python_comment(new_wording: str, old: str) -> str:
-    """Return new wording laid out like the comment it replaces.
+    """Return new words laid out like the comment they replace.
 
-    The checker's ``show`` command calls this when the review tool sends
-    new wording. The wording comes from the owner's edit in nvim or from
-    an agent's ``set`` command, without ``#`` marks or quotes.
+    The owner and agents write new words without ``#`` marks or quotes.
+    This puts them back before the words go in the file.
 
     Args:
-        new_wording: The comment's new words. Text with no words deletes
-            the comment.
-        old: The comment's current text in the file, either ``#`` lines
-            or one whole docstring.
+        new_wording: The new words.
+        old: The comment the new words replace, either ``#`` lines or
+            one whole docstring. It may be suggested wording that is not
+            in the file yet.
 
     Returns:
-        The new comment as it would appear in the file, or an empty
-        string when the new wording has no words.
+        The new comment, or an empty string to delete the comment.
 
     Raises:
-        SourceError: The new wording holds a carriage return or a
-            NUL. For a docstring, it also raises when the old text is
-            not one whole docstring, or the new wording holds the
-            closing quotes or adds a backslash escape.
+        SourceError: The new words hold a carriage return or a NUL, or
+            ``lay_out_docstring`` refuses them.
     """
     # Python reads a carriage return as a line end and refuses a NUL.
     if "\r" in new_wording or "\0" in new_wording:
@@ -328,28 +318,24 @@ def lay_out_python_comment(new_wording: str, old: str) -> str:
 
 
 def lay_out_docstring(new_wording: str, old: str) -> str:
-    """Return new wording laid out as a docstring like the old one.
+    """Return new words laid out as a docstring like the old one.
 
-    The new docstring keeps the old one's indentation, quote character
-    and any ``r`` prefix. A docstring in single quotes becomes triple
-    quoted when it needs more than one line or holds its quote
-    character. Its first paragraph starts on the line of the opening
-    quotes. Paragraphs wrap at 72 columns, counting indentation, as
-    PEP 8 asks of docstrings.
+    The new docstring keeps the old one's indent, quote mark and any
+    ``r`` prefix, and wraps at 72 columns. A docstring opened with one
+    quote mark gets triple quotes when it needs more lines or holds that
+    mark.
 
     Args:
-        new_wording: The docstring's new words, without quotes. Text
-            with no words deletes the docstring.
-        old: The docstring in the file now.
+        new_wording: The new words, without quotes.
+        old: The docstring the new words replace. It may be suggested
+            wording that is not in the file yet.
 
     Returns:
-        The new docstring as it would appear in the file, or an empty
-        string when the new wording has no words.
+        The new docstring, or an empty string to delete it.
 
     Raises:
-        SourceError: The old text is not one whole docstring, or the
-            new wording holds the closing quotes or adds a backslash
-            escape.
+        SourceError: The old text is not one whole docstring, or the new
+            words hold the closing quotes or add a backslash escape.
     """
     old_docstring = read_docstring_parts(old)[0]
     parts = read_plain_parts(new_wording)
@@ -372,10 +358,9 @@ def lay_out_docstring(new_wording: str, old: str) -> str:
 def count_backslash_escapes(body: str) -> Counter[str]:
     """Count each backslash escape in a docstring body, such as ``\\n``.
 
-    A doubled backslash is how a backslash is typed on purpose, so it is
-    not counted. Unlike ``count_docstring_escapes``, which the final
-    write uses, it also counts unknown escapes such as ``\\d``, because
-    no compiler warning checks the wording at edit time.
+    Unknown escapes such as ``\\d`` count too, since nothing compiles
+    the words while the owner edits them. A doubled backslash does not
+    count, since it is how a backslash is typed.
 
     Args:
         body: The docstring's text between its quotes.
@@ -412,21 +397,20 @@ def describe_escape(escape: str) -> str:
 def refuse_added_backslash_escape(
     new: re.Match[str], old: re.Match[str]
 ) -> None:
-    """Raise when new docstring wording adds a backslash escape.
+    """Raise when new docstring words add a backslash escape.
 
-    The owner types on a phone and cannot see that ``C:\\new`` becomes
-    a line break. The final write refuses it too, but only after every
-    comment is answered. An escape the old docstring already holds is
-    allowed. The text the owner edits shows it as typed, so refusing it
-    would block every edit of a docstring that holds ``\\N{EM DASH}``.
+    The owner cannot see that ``C:\\new`` becomes a line break, so the
+    checker refuses it while the owner can still fix it. An escape the
+    old docstring already holds is allowed, so a docstring with
+    ``\\N{EM DASH}`` can still be edited.
 
     Args:
-        new: The new docstring's match.
-        old: The old docstring's match.
+        new: The new docstring's regex match.
+        old: The old docstring's regex match.
 
     Raises:
-        SourceError: The new docstring holds more of one escape than the
-            old one, and is not raw.
+        SourceError: The new docstring is not raw and holds more of one
+            escape than the old one.
     """
     if new["prefix"] in ("r", "R"):
         return
@@ -514,18 +498,18 @@ def is_one_string_literal(text: str) -> bool:
 
 
 def read_plain_parts(new_wording: str) -> list[Part]:
-    """Return the lines of a docstring's new wording, by kind.
+    """Return the lines of a docstring's new words, by kind.
 
     Lines that start with a tab or two spaces, doctest lines and lines
-    ending in a backslash are kept as written. After a heading such as
-    ``Args:``, each line up to a blank line is one line under it.
+    ending in a backslash stay as written. Lines under a heading such as
+    ``Args:`` stay separate up to the next blank line.
 
     Args:
-        new_wording: The docstring's new words, without quotes, as the
-            owner or an agent wrote them.
+        new_wording: The new words, without quotes, as the owner or an
+            agent wrote them.
 
     Returns:
-        The lines, with each paragraph's sentences joined into one.
+        The lines, with each paragraph joined into one.
     """
     parts: list[Part] = []
     in_section = False
@@ -603,12 +587,12 @@ def fit_docstring_on_one_line(
 ) -> str | None:
     """Return a one-paragraph docstring on one line, when it fits.
 
-    A docstring in single quotes becomes triple quoted when it holds its
-    quote character.
+    A docstring opened with one quote mark gets triple quotes when it
+    holds that mark.
 
     Args:
         parts: The new docstring's lines.
-        old: The old docstring's match, which gives the indentation,
+        old: The old docstring's regex match, which gives the indent,
             prefix and quotes.
 
     Returns:
@@ -666,12 +650,12 @@ def wrap_docstring_lines(parts: list[Part], old: re.Match[str]) -> str:
 
 
 def wrap_first_and_rest(words: str, first: int, rest: int) -> list[str]:
-    """Wrap ``words`` with the first line at most ``first`` wide.
+    """Wrap a paragraph, with its own width for the first line.
 
-    A word ending in a backslash stays on a line with the word after it,
-    since Python joins a docstring line that ends in a backslash to the
-    next one, which would change the docstring's text. A named escape
-    such as ``\\N{EM DASH}`` stays whole, as a split one does not compile.
+    A word ending in a backslash stays on the line of the next word,
+    because a backslash at a line end joins the lines and changes the
+    text. A named escape such as ``\\N{EM DASH}`` stays whole, because a
+    split one does not compile.
 
     Args:
         words: One paragraph, with single spaces between words.
@@ -681,8 +665,8 @@ def wrap_first_and_rest(words: str, first: int, rest: int) -> list[str]:
     Returns:
         The wrapped lines.
     """
-    # New wording with a NUL is refused, so one stands for a space that
-    # must not break.
+    # lay_out_python_comment refuses wording with a NUL, so a NUL can
+    # stand in for a space where the line must not break.
     words = words.replace("\\ ", "\\\0")
     words = NAMED_ESCAPE.sub(lambda name: name[0].replace(" ", "\0"), words)
     lines = wrap_words(words.split(), first)
@@ -837,12 +821,12 @@ def list_python_warnings(source: str, file: str) -> list[str]:
 
 
 def finish_python_rewrite(old: str, new: str, file: str) -> str:
-    """Return ``new`` once it compiles with no new warning or escape.
+    """Return the new source if it adds no warning or escape.
 
-    Warnings are compared by message, not by line, since the write moves
-    lines, so a warning already in the code, such as an invalid escape in
-    a regular expression, is left alone. ``compile`` ignores a coding
-    line, so the encoding Python reads the file in is compared too.
+    The check compares warnings by message, not line, because the write
+    moves lines. A warning the code already had, such as an invalid
+    escape in a regular expression, then passes. The check also compares
+    the encoding a coding line names, which ``compile`` ignores.
 
     Args:
         old: The file's source before the write.
@@ -853,9 +837,8 @@ def finish_python_rewrite(old: str, new: str, file: str) -> str:
         The new source, unchanged.
 
     Raises:
-        SourceError: ``new`` does not compile, gives a warning ``old``
-            does not, such as an invalid escape, has a docstring escape
-            ``old`` lacks, such as ``\\n``, or changes the encoding.
+        SourceError: The new source does not compile, adds a warning or
+            a docstring escape such as ``\\n``, or changes the encoding.
     """
     try:
         warned = Counter(list_python_warnings(new, file))

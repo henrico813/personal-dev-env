@@ -605,19 +605,17 @@ class TestShow:
     def test_plain_is_written_like_old_comment(
         self, tmp_path: Path, comment: dict[str, str], expected: str
     ) -> None:
-        """Write plain text with the old indent and the language's width.
+        """Write new words at the language's width and the old indent.
 
-        Go comments wrap at 79 columns, and Python comments at the 72
-        that PEP 8 asks for. A wrong indent would put the comment out of
-        line with its code, and a wrong width would leave lines too
-        long. Plain text with no words deletes the comment instead of
-        leaving an empty one.
+        Go comments wrap at 79 columns and Python comments at 72. A
+        wrong indent puts the comment out of line with its code. A wrong
+        width leaves lines too long. Empty new words delete the comment
+        instead of leaving an empty one.
 
         Args:
-            tmp_path: An empty folder that receives the Go and Python
-                files.
+            tmp_path: An empty folder that gets the Go and Python files.
             comment: The comment to write, found by name or by its text,
-                with its new wording.
+                with its new words.
             expected: The comment the checker should write.
         """
         (tmp_path / "shop.go").write_text(SHOP_GO)
@@ -834,10 +832,10 @@ class TestShowDocstrings:
         ]
 
     def test_one_line_docstring_draws_one_row(self, tmp_path: Path) -> None:
-        """Draw a one-line docstring on one screen row, as in the code.
+        """Draw a one-line docstring on one row, as in the code.
 
-        The owner compares the screen with the code. Closing quotes on a
-        row of their own made a one-line docstring look like two lines.
+        Closing quotes on a row of their own made a one-line docstring
+        look like two lines.
 
         Args:
             tmp_path: An empty folder the checker runs in.
@@ -925,17 +923,17 @@ class TestShowDocstrings:
     def test_plain_is_written_as_docstring(
         self, tmp_path: Path, old: str, plain: str, expected: str
     ) -> None:
-        """Write plain text keeping the old indent, prefix and quotes.
+        """Write new words keeping the old indent, prefix and quotes.
 
         A lost ``r`` prefix changes what a backslash means, and a quote
-        next to the closing quotes would end the string early. Escapes
-        already in the old docstring are allowed, so two cases put theirs
-        there.
+        next to the closing quotes would end the string early. The
+        checker refuses an escape the old docstring lacks, so two cases
+        start from an old docstring that already holds theirs.
 
         Args:
             tmp_path: An empty folder the checker runs in.
             old: The docstring in the file now.
-            plain: The new wording, as the owner types it.
+            plain: The new words, as the owner types them.
             expected: The docstring the checker should return.
         """
         code, reply = show_entries(
@@ -1500,19 +1498,17 @@ class TestApplyCheck:
     ) -> None:
         """Refuse a write that would change what the code does.
 
-        The owner types plain text on a phone, so ``C:\\new`` would
-        silently become a line break and ``\\d`` a warning, even when
-        the backslash was moved from another docstring. A doubled
-        backslash, or a warning already in the code, is fine. The
-        checker also refuses code after a docstring, cutting a docstring
-        its body needs, a comment that becomes the encoding line and a
-        new comment such as ``# nosec``.
+        The owner types plain words, so ``C:\\new`` would become a line
+        break. The same escape moved from another docstring is refused
+        too. The checker also refuses code after a docstring, a new tool
+        comment such as ``# nosec``, a comment that becomes the encoding
+        line and cutting a function's only statement. A doubled
+        backslash, or a warning the code already had, passes.
 
         Args:
             tmp_path: An empty folder the checker writes in.
             edits: The new text for each docstring or comment. A key
-                with ``@`` marks a docstring whose function name is used
-                twice, which the checker leaves unnamed.
+                with ``@`` marks one found by its text, not its name.
             problem: Part of the refusal the checker should give, or an
                 empty string when the change is allowed.
         """
@@ -2298,16 +2294,15 @@ class TestApply:
         assert (tmp_path / edited).read_text() == edit
 
     def test_repository_comments_survive_rewrite(self, tmp_path: Path) -> None:
-        """Write back each comment here, then reword every other one.
+        """Write back each comment, then reword every second one.
 
-        In every Go and Python file of this repository, writing a
-        comment's own text changes no byte. A reword leaves the file
-        parsing and changes only that comment, under the same name. A
-        bug in the write would change a real file outside the one
-        comment it was given, which a small sample would never show.
+        In every Go and Python file here, writing a comment's own text
+        must change no byte, and a reword must change only that comment.
+        A small sample would miss a bug that changes a real file outside
+        the comment.
 
         Args:
-            tmp_path: An empty folder that receives a copy of each file.
+            tmp_path: An empty folder that gets a copy of each file.
         """
         root = Path(__file__).resolve().parents[2]
         listed = ["git", "-C", str(root), "ls-files", "*.go", "*.py"]

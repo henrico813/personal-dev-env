@@ -11,14 +11,15 @@ LINE_WIDTH = 79
 
 
 class ParagraphRow(TypedDict):
-    """Words the review screen wraps to its width, after a mark.
+    """A paragraph the review window wraps to fit, after a comment mark.
 
-    The review tool shows each comment as rows on the owner's phone.
+    The window can be narrower than the file, so lines wrapped for the
+    file would break again at odd places.
 
     Attributes:
-        first: The mark before the row's first screen line, such as
-            a docstring's opening quotes or ``# ``.
-        rest: The mark before each later screen line, such as ``# ``.
+        first: The mark before the first line, such as the opening
+            quotes.
+        rest: The mark before each later line, such as ``# ``.
         words: The words to wrap.
     """
 
@@ -28,7 +29,10 @@ class ParagraphRow(TypedDict):
 
 
 class AsWrittenRow(TypedDict):
-    """A row the review screen draws as written, such as an example.
+    """A row the review window draws as written, without wrapping.
+
+    Code examples, headings and blank lines use it, so wrapping cannot
+    break their layout.
 
     Attributes:
         fixed: The row's text.
@@ -50,24 +54,17 @@ class Block(NamedTuple):
 def prepare_line_comment_for_screen(
     text: str, marker: str = "//"
 ) -> tuple[str, list[ScreenRow]]:
-    """Return a comment's words for editing and its rows for the screen.
-
-    The owner edits the words in nvim. Each paragraph becomes one row
-    the screen wraps, and each example line a row drawn as written. A
-    row holding only the mark separates each paragraph or example from
-    the next.
+    """Return a comment's words to edit, and the rows the window draws.
 
     Args:
-        text: The comment exactly as it is in the file, with the mark
-            starting each line.
+        text: The comment as it is in the file, with its marks.
         marker: The mark that starts each line, such as ``//`` or ``#``.
 
     Returns:
-        The comment's words without its marks, with each paragraph on
-        one line, and the rows that draw it.
+        The words, one line per paragraph, and the rows to draw.
 
     Raises:
-        SourceError: A line of the text does not start with the mark.
+        SourceError: A line does not start with the mark.
     """
     blocks = read_comment_blocks(text, marker)
     rows: list[ScreenRow] = []
@@ -91,23 +88,22 @@ def prepare_line_comment_for_screen(
 def lay_out_line_comment(
     new_wording: str, old: str, marker: str = "//", width: int = LINE_WIDTH
 ) -> str:
-    """Return new wording as comment lines indented like the old one.
+    """Return new words as comment lines ready for the file.
 
-    Sentences are rewrapped so that each line, indentation included,
-    fits in the width. Lines that start with a tab or two spaces are
-    kept as example lines.
+    The owner edits a comment without its marks or line breaks, so the
+    words need them back before they go in the file.
 
     Args:
-        new_wording: The comment's new words, without marks. Text with
-            no words deletes the comment.
-        old: The comment's current lines in the file, whose indentation
-            the new lines copy.
+        new_wording: The new words, without marks. Lines that start with
+            a tab or two spaces stay as written.
+        old: The comment the new words replace, whose indentation they
+            copy. It may be suggested wording that is not in the file
+            yet.
         marker: The mark that starts each line, such as ``//`` or ``#``.
         width: The last column a line may reach, counting indentation.
 
     Returns:
-        The new comment's lines, or an empty string when the new wording
-        has no words.
+        The comment lines, or an empty string to delete the comment.
     """
     first_line = old.split("\n", 1)[0]
     indent = first_line[: len(first_line) - len(first_line.lstrip(" \t"))]
