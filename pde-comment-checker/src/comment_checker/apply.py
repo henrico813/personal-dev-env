@@ -36,7 +36,7 @@ from .approvals import (
     replace_settings_file,
     unname_unapprovable_comments,
 )
-from .languages import LANGUAGES, LanguageRules
+from .languages.rules import LANGUAGES, LanguageRules
 from .records import Comment, SourceError
 
 
