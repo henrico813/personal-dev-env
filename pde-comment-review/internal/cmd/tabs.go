@@ -92,12 +92,13 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
+	start := chooseStartingWording(e)
 	shown, err := prepareCommentsForScreen(
 		checker,
 		r.Repo(),
 		[]showEntry{{
 			File: e.Request.File,
-			Text: chooseStartingWording(e),
+			Text: start,
 		}},
 	)
 	if err != nil {
@@ -149,11 +150,13 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 			"",
 		)
 	}
+	// The owner's text takes the quotes and prefix of the wording shown in
+	// nvim, such as the r prefix of the AI's reword.
 	comment, err := convertSentencesToComment(
 		checker,
 		r.Repo(),
 		e.Request.File,
-		e.Request.Old,
+		start,
 		edited,
 	)
 	if err != nil {

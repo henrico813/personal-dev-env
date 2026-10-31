@@ -331,7 +331,7 @@ def lay_out_docstring(new_wording: str, old: str) -> str:
 
     Raises:
         SourceError: The old text is not one whole docstring, or the new
-            words hold the closing quotes.
+            words hold the closing quotes or add a backslash escape.
     """
     old_docstring = read_docstring_parts(old)[0]
     parts = read_plain_parts(new_wording)
@@ -345,7 +345,80 @@ def lay_out_docstring(new_wording: str, old: str) -> str:
     text = fit_docstring_on_one_line(parts, old_docstring)
     if text is None:
         text = wrap_docstring_lines(parts, old_docstring)
+    new_docstring = WHOLE_DOCSTRING.fullmatch(text)
+    assert new_docstring is not None
+    refuse_added_backslash_escape(new_docstring, old_docstring)
     return text
+
+
+def count_backslash_escapes(body: str) -> Counter[str]:
+    """Count each backslash escape in a docstring body, such as ``\\n``.
+
+    Unknown escapes such as ``\\d`` count too, since nothing compiles
+    the words while the owner edits them. A doubled backslash does not
+    count, since it is how a backslash is typed.
+
+    Args:
+        body: The docstring's text between its quotes.
+
+    Returns:
+        How many times each escape appears.
+    """
+    return Counter(
+        found[0]
+        for found in DOCSTRING_ESCAPE.finditer(body)
+        if found[0] != "\\\\"
+    )
+
+
+def describe_escape(escape: str) -> str:
+    """Return what Python does with one backslash escape, for an error.
+
+    Args:
+        escape: A backslash and what follows it, such as ``\\n``.
+
+    Returns:
+        The escape and its effect, such as ``\\d, which Python warns
+        about``.
+    """
+    if escape == "\\\n":
+        return "a backslash at a line end, which joins the next line"
+    found = DOCSTRING_ESCAPE.fullmatch(escape)
+    if found and found[1] is not None:
+        return f"{escape}, which Python reads as another character"
+    # Python keeps both characters of an unknown escape.
+    return f"{escape}, which Python warns about"
+
+
+def refuse_added_backslash_escape(
+    new: re.Match[str], old: re.Match[str]
+) -> None:
+    """Raise when new docstring words add a backslash escape.
+
+    The owner cannot see that ``C:\\new`` becomes a line break, so the
+    checker refuses it while the owner can still fix it. An escape the
+    old docstring already holds is allowed, so a docstring with
+    ``\\N{EM DASH}`` can still be edited.
+
+    Args:
+        new: The new docstring's regex match.
+        old: The old docstring's regex match.
+
+    Raises:
+        SourceError: The new docstring is not raw and holds more of one
+            escape than the old one.
+    """
+    if new["prefix"] in ("r", "R"):
+        return
+    # Subtracting keeps only the escapes the new body has more of.
+    added = count_backslash_escapes(new["body"]) - count_backslash_escapes(
+        old["body"]
+    )
+    if added:
+        raise SourceError(
+            f"the text holds {describe_escape(min(added))}; "
+            "double the backslash to keep it"
+        )
 
 
 def read_docstring_parts(text: str) -> tuple[re.Match[str], list[Part]]:
@@ -732,17 +805,24 @@ def list_python_warnings(source: str, file: str) -> list[str]:
 
 
 def finish_python_rewrite(old: str, new: str, file: str) -> str:
-    """Return ``new`` once it compiles with no new warning or escape.
+    """Return the new source if it adds no warning or escape.
 
-    Warnings are compared by message, not by line, since the write moves
-    lines, so a warning already in the code, such as an invalid escape in
-    a regular expression, is left alone. ``compile`` ignores a coding
-    line, so the encoding Python reads the file in is compared too.
+    The check compares warnings by message, not line, because the write
+    moves lines. A warning the code already had, such as an invalid
+    escape in a regular expression, then passes. The check also compares
+    the encoding a coding line names, which ``compile`` ignores.
+
+    Args:
+        old: The file's source before the write.
+        new: The file's source after the write.
+        file: The file's path, which the error messages name.
+
+    Returns:
+        The new source, unchanged.
 
     Raises:
-        SourceError: ``new`` does not compile, gives a warning ``old``
-            does not, such as an invalid escape, has a docstring escape
-            ``old`` lacks, such as ``\\n``, or changes the encoding.
+        SourceError: The new source does not compile, adds a warning or
+            a docstring escape such as ``\\n``, or changes the encoding.
     """
     try:
         warned = Counter(list_python_warnings(new, file))
@@ -767,12 +847,9 @@ def finish_python_rewrite(old: str, new: str, file: str) -> str:
         )
     if escapes:
         name, _, escape = sorted(escapes)[0]
-        # A backslash at a line's end joins the next line.
-        shown = "a backslash at a line end" if escape == "\\\n" else escape
         raise SourceError(
-            f"{file}: the write adds {shown} to the docstring of {name}, "
-            "which Python reads as another character; double the backslash "
-            "to keep it"
+            f"{file}: the docstring of {name} would hold "
+            f"{describe_escape(escape)}; double the backslash to keep it"
         )
     return new
 
