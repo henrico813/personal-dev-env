@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -105,12 +104,21 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		return err
 	}
 	text := shown[0].Plain
-	page := filepath.Join(r.Dir, fmt.Sprintf("edit-%d.txt", id))
-	content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
-	if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
-		return err
+	page := r.BuildEditFilePath(id)
+	// A file left by a refused edit holds what the owner typed, so nvim opens
+	// that text again.
+	if _, err := os.Stat(page); err != nil {
+		content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
+		if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
+			return err
+		}
 	}
-	defer os.Remove(page)
+	keepTypedText := false
+	defer func() {
+		if !keepTypedText {
+			os.Remove(page)
+		}
+	}()
 	nvim := exec.Command("nvim", "-c", "setlocal wrap linebreak nolist spell", page)
 	if err := runOnTerminal(nvim, in, out); err != nil {
 		return fmt.Errorf("nvim quit with an error, so nothing was saved: %w", err)
@@ -128,7 +136,18 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		return nil
 	}
 	if len(strings.Fields(edited)) == 0 {
-		return r.SaveAnswer(id, e.Batch, review.ActionCut, "")
+		if places[id].NoCut {
+			return fmt.Errorf(
+				"the docstring is the only statement in its function, class or block, so deleting it would break the code; go back to item %d and press e to change its wording",
+				id,
+			)
+		}
+		return r.SaveAnswer(
+			id,
+			e.Batch,
+			review.ActionCut,
+			"",
+		)
 	}
 	comment, err := convertSentencesToComment(
 		checker,
@@ -138,14 +157,28 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 		edited,
 	)
 	if err != nil {
-		return err
+		keepTypedText = true
+		return fmt.Errorf(
+			"%w; your text is kept, so go back to item %d and press e to fix it",
+			err,
+			id,
+		)
 	}
-	return r.SaveAnswer(
+	err = r.SaveAnswer(
 		id,
 		e.Batch,
 		review.ActionEdited,
 		comment,
 	)
+	if err != nil {
+		keepTypedText = true
+		return fmt.Errorf(
+			"%w; your text is kept, so go back to item %d and press e to save it again",
+			err,
+			id,
+		)
+	}
+	return nil
 }
 
 func findFeedbackRequest(r *review.Review, id int) (review.RequestWithFeedback, error) {
