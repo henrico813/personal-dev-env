@@ -1,1 +1,1 @@
-"""The language modules, and in ``rules`` the table that picks one."""
+"""The checker's code for each programming language."""
