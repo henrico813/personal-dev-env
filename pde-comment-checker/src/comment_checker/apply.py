@@ -36,7 +36,7 @@ from .approvals import (
     replace_settings_file,
     unname_unapprovable_comments,
 )
-from .languages import LANGUAGES, Language
+from .languages import LANGUAGES, LanguageRules
 from .records import Comment, SourceError
 
 
@@ -260,7 +260,10 @@ def read_file_comments(repo: Path, file: str) -> tuple[str, list[Comment]]:
 
 
 def find_answer_place(
-    answer: Answer, source: str, comments: list[Comment], language: Language
+    answer: Answer,
+    source: str,
+    comments: list[Comment],
+    language: LanguageRules,
 ) -> Place | None:
     """Return where an answer's comment is, or ``None`` for removed code.
 

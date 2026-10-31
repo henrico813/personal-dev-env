@@ -20,7 +20,7 @@ import pytest
 from comment_checker import INTERFACE, VERSION, interface
 from comment_checker.approvals import unname_unapprovable_comments
 from comment_checker.cli import main
-from comment_checker.languages import LANGUAGES, Language
+from comment_checker.languages import LANGUAGES, LanguageRules
 from comment_checker.records import Comment
 
 SAMPLES = Path(__file__).parent / "comment_samples"
@@ -56,7 +56,7 @@ def read_note_comments(source: str, file: str) -> list[Comment]:
 
 
 # A made-up language, which proves a language needs only its module.
-NOTE = Language(
+NOTE = LanguageRules(
     name="note",
     read_comments=read_note_comments,
     join_prose=str.strip,
@@ -1302,13 +1302,24 @@ class TestApplyCheck:
         [pytest.param(("--check",), id="check"), pytest.param((), id="write")],
     )
     def test_reviews_off_language_is_refused(
-        self, tmp_path: Path, monkeypatch, flags: tuple[str, ...]
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        flags: tuple[str, ...],
     ) -> None:
-        """Refuse an answer in a language whose owner reviews are off.
+        """Write no comment in a language whose reviews are off.
 
-        Python reviews stay off until the review tool can show them, and
-        the tool's own Go-only filter goes away before then, so the
-        checker alone keeps a hand-written answer out of such a file.
+        A new language starts with reviews off, because the owner has
+        not yet checked how the review screen shows its comments. The
+        review tool has no list of languages, so only the checker keeps
+        an agent's hand-written change out of a file in that language.
+
+        Args:
+            tmp_path: An empty folder the checker writes in.
+            monkeypatch: Adds the made-up ``.note`` language for this
+                test.
+            flags: Extra arguments, so the run that only checks and the
+                run that writes are both tested.
         """
         writable = replace(NOTE, finish_rewrite=lambda old, new, file: new)
         monkeypatch.setitem(LANGUAGES, ".note", writable)
@@ -2240,8 +2251,8 @@ class TestApply:
             kept = apply_answers(tmp_path, answers, flags=())
             unchanged = copy.read_bytes() == (root / file).read_bytes()
             rewords = {
-                answer["id"]: language.write_plain(
-                    language.show_text(answer["text"])[0].replace(
+                answer["id"]: language.lay_out_wording(
+                    language.prepare_for_screen(answer["text"])[0].replace(
                         "\n", " One more sentence.\n", 1
                     ),
                     answer["text"],
