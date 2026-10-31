@@ -875,7 +875,7 @@ class TestShowDocstrings:
                 id="ends-in-quote",
             ),
             pytest.param(
-                '    """Sum."""\n',
+                '    """Sum at C:\\ prices."""\n',
                 "Sum the prices.\n\nReads the price list from the shared "
                 "folder on the north drive at C:\\ prices daily.\n",
                 '    """Sum the prices.\n\n    Reads the price list from the '
@@ -884,7 +884,7 @@ class TestShowDocstrings:
                 id="backslash-keeps-next-word",
             ),
             pytest.param(
-                '    """Sum."""\n',
+                '    """Sum at caf\\N{LATIN SMALL LETTER E WITH ACUTE}."""\n',
                 "Sum the prices.\n\nPrices are listed in euros, and the name "
                 "of the cafe is written caf\\N{LATIN SMALL LETTER E WITH "
                 "ACUTE} here.\n",
@@ -894,16 +894,36 @@ class TestShowDocstrings:
                 '    """\n',
                 id="named-escape-stays-whole",
             ),
+            pytest.param(
+                '"""Sum."""\n',
+                "Match \\\\d.\n",
+                '"""Match \\\\d."""\n',
+                id="doubled-backslash",
+            ),
+            pytest.param(
+                '    r"""Sum."""\n',
+                "Match \\d.\n",
+                '    r"""Match \\d."""\n',
+                id="raw-keeps-backslash",
+            ),
             pytest.param('"""Sum."""\n', "\n", "", id="no-words-cuts"),
         ],
     )
     def test_plain_is_written_as_docstring(
         self, tmp_path: Path, old: str, plain: str, expected: str
     ) -> None:
-        """Write plain text with the old docstring's indent, prefix and quotes.
+        """Write new words keeping the old indent, prefix and quotes.
 
         A lost ``r`` prefix changes what a backslash means, and a quote
-        next to the closing quotes would end the string early.
+        next to the closing quotes would end the string early. The
+        checker refuses an escape the old docstring lacks, so two cases
+        start from an old docstring that already holds theirs.
+
+        Args:
+            tmp_path: An empty folder the checker runs in.
+            old: The docstring in the file now.
+            plain: The new words, as the owner types them.
+            expected: The docstring the checker should return.
         """
         code, reply = show_entries(
             tmp_path, {"file": "shop.py", "text": old, "plain": plain}
@@ -930,16 +950,39 @@ class TestShowDocstrings:
                 "shop.py: the text holds a carriage return or a NUL",
                 id="nul",
             ),
+            pytest.param(
+                "Match \\d.\n",
+                "shop.py: the text holds \\d, which Python warns about; "
+                "double the backslash to keep it",
+                id="unknown-escape",
+            ),
+            pytest.param(
+                "Save to C:\\new.\n",
+                "shop.py: the text holds \\n, which Python reads as another "
+                "character; double the backslash to keep it",
+                id="known-escape",
+            ),
+            pytest.param(
+                "Sum the prices \\\nand the tax.\n",
+                "shop.py: the text holds a backslash at a line end, which "
+                "joins the next line; double the backslash to keep it",
+                id="line-end-backslash",
+            ),
         ],
     )
     def test_unwritable_plain_text_is_refused(
         self, tmp_path: Path, plain: str, problem: str
     ) -> None:
-        """Refuse plain text that would break the file it is written into.
+        """Refuse new wording that would break or change the docstring.
 
-        Closing quotes would turn the rest of the text into code, Python
-        reads a carriage return as a line end, which the checker refuses
-        in a file, and a file holding a NUL does not compile.
+        The owner types on a phone and cannot see that ``C:\\new``
+        becomes a line break. Refusing at edit time lets the owner fix
+        the text before answering more comments.
+
+        Args:
+            tmp_path: An empty folder the checker runs in.
+            plain: The new wording, as the owner types it.
+            problem: The refusal the checker should give.
         """
         code, reply = show_entries(
             tmp_path,
@@ -1374,17 +1417,17 @@ class TestApplyCheck:
             ),
             pytest.param(
                 {"total": '    """Sum C:\\\\a or C:\\new."""\n'},
-                "shop.py: the write adds \\n to the docstring of total",
+                "shop.py: the docstring of total would hold \\n",
                 id="escape",
             ),
             pytest.param(
                 {"total": '    """Sum \\N{EM DASH} in cents."""\n'},
-                "the write adds \\N{EM DASH} to the docstring of total",
+                "the docstring of total would hold \\N{EM DASH}",
                 id="named-escape",
             ),
             pytest.param(
                 {"total": '    """Sum \\\n    prices."""\n'},
-                "the write adds a backslash at a line end to the docstring",
+                "the docstring of total would hold a backslash at a line end",
                 id="line-end-backslash",
             ),
             pytest.param(
@@ -1392,7 +1435,7 @@ class TestApplyCheck:
                     "fee": '    """Fee."""\n',
                     "total": '    """Sum at C:\\new."""\n',
                 },
-                "the write adds \\n to the docstring of total",
+                "the docstring of total would hold \\n",
                 id="swap-escape",
             ),
             pytest.param(
@@ -1400,7 +1443,7 @@ class TestApplyCheck:
                     "f@if": '        """F."""\n',
                     "f@else": '        """F at C:\\new."""\n',
                 },
-                "the write adds \\n to the docstring of f",
+                "the docstring of f would hold \\n",
                 id="swap-escape-same-name",
             ),
             pytest.param({"tax": ""}, "only statement", id="cut-whole-body"),
