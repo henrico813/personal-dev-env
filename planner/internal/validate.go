@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"planner/internal/planpatch"
 )
 
 // ValidationError records one violation from the aggregate walker.
@@ -161,23 +163,7 @@ func walkValidationRules(plan Plan) []ValidationError {
 // GetCodeFence returns the shortest backtick fence that safely wraps content.
 // Always at least three backticks; longer if content contains backtick runs.
 func GetCodeFence(code string) string {
-	longest := 0
-	cur := 0
-	for _, r := range code {
-		if r == '`' {
-			cur++
-			if cur > longest {
-				longest = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	n := longest + 1
-	if n < 3 {
-		n = 3
-	}
-	return strings.Repeat("`", n)
+	return planpatch.ChooseCodeFence(code)
 }
 
 func VerifyRenderedText(rendered string, plan Plan) error {

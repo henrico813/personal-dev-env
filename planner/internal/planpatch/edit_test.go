@@ -34,6 +34,26 @@ func TestReplaceDiffPreservesAndGrowsFences(t *testing.T) {
 	}
 }
 
+// nvim's Markdown parser ends a 3-backtick block at any line ending in three
+// backticks, so a + diff line ending in three backticks would leak the rest of
+// the plan out of it.
+func TestReplaceDiffFenceOutgrowsPrefixedBackticks(t *testing.T) {
+	raw := []byte("# Plan\n```diff\nold\n```\nTail.\n")
+	start := strings.Index(string(raw), "old")
+	end := start + len("old")
+	replacement := []byte("--- a/README.md\n+++ b/README.md\n@@ -0,0 +1 @@\n+```\n")
+
+	out, err := ReplaceDiff(raw, start, end, replacement)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Plan\n````diff\n--- a/README.md\n+++ b/README.md\n@@ -0,0 +1 @@\n+```\n````\nTail.\n"
+	if string(out) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 // A file change added by hand can have an empty code block. Replacing that
 // empty body must insert the new diff instead of rejecting a span with no
 // content; otherwise the change can only be fixed by editing the diff by hand.
