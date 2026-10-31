@@ -1,16 +1,22 @@
-//! Finds each comment in a file's syntax tree. This is the only file
-//! that calls `language_rules/`.
+//! Finds each comment in a file's syntax tree and names the code it
+//! describes. This is the only file that calls `language_rules/`.
 
+use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tree_sitter::{Node, Parser};
 
 use crate::language_rules::{LanguageRules, find_rules_for};
 
-/// One comment and where it is in its file. Lines count from 1.
+/// One comment, where it is in its file, and the code it describes.
+/// Lines count from 1.
 #[derive(Debug)]
 pub struct Comment {
+    pub file: PathBuf,
+    /// The key approvals use for this comment. It is `None` when no
+    /// approval can be saved for the comment.
+    pub name: Option<String>,
     pub line: usize,
     pub end_line: usize,
     pub style: CommentStyle,
@@ -81,8 +87,8 @@ impl fmt::Display for FindCommentsError {
 
 impl std::error::Error for FindCommentsError {}
 
-/// Finds every comment in a file's source, in file order, leaving out
-/// tool lines.
+/// Finds and names every comment in a file's source, in file order,
+/// leaving out tool lines.
 ///
 /// # Errors
 ///
@@ -101,23 +107,25 @@ pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindComm
         return Err(FindCommentsError::SyntaxError);
     }
     let mut comments = Vec::new();
-    collect_comments(rules, tree.root_node(), source, &mut comments);
+    collect_comments(rules, file, tree.root_node(), source, &mut comments);
+    unname_shared_names(&mut comments);
     Ok(comments)
 }
 
 /// Adds the comments in `node` and its children to `comments`.
 fn collect_comments(
     rules: &dyn LanguageRules,
+    file: &Path,
     node: Node,
     source: &str,
     comments: &mut Vec<Comment>,
 ) {
     match rules.classify_node(node, source) {
-        Some(style) => add_comment(node, style, source, comments),
+        Some(style) => add_comment(rules, file, node, style, source, comments),
         None => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                collect_comments(rules, child, source, comments);
+                collect_comments(rules, file, child, source, comments);
             }
         }
     }
@@ -125,7 +133,14 @@ fn collect_comments(
 
 /// Adds a comment, joining it to the comment above when both are
 /// neighboring lines of one style.
-fn add_comment(node: Node, style: CommentStyle, source: &str, comments: &mut Vec<Comment>) {
+fn add_comment(
+    rules: &dyn LanguageRules,
+    file: &Path,
+    node: Node,
+    style: CommentStyle,
+    source: &str,
+    comments: &mut Vec<Comment>,
+) {
     let line_start = node.start_byte() - node.start_position().column;
     let after_code = !source[line_start..node.start_byte()].trim().is_empty();
     // A comment after code starts at its marker, so the code stays out.
@@ -155,17 +170,28 @@ fn add_comment(node: Node, style: CommentStyle, source: &str, comments: &mut Vec
     }
     let line = node.start_position().row + 1;
     let end_line = line + text.lines().count() - 1;
+    // Today's comment checker names no comment that shares a line with code.
+    let name = if after_code || code_after {
+        None
+    } else {
+        let code_below = find_code_below(node, line_end, source);
+        rules.name_comment(node, code_below, source)
+    };
 
     if let Some(above) = comments.last_mut()
         && style.joins_neighboring_lines()
         && above.style == style
         && above.end_line + 1 == line
     {
+        // The code below the last line names the whole comment.
+        above.name = name;
         above.end_line = end_line;
         above.text.push_str(&text);
         return;
     }
     comments.push(Comment {
+        file: file.to_path_buf(),
+        name,
         line,
         end_line,
         style,
@@ -183,6 +209,39 @@ fn find_line_end(source: &str, node_end: usize) -> usize {
     match source[node_end..].find('\n') {
         Some(offset) => node_end + offset + 1,
         None => source.len(),
+    }
+}
+
+/// Returns the first node on the line that starts at `line_start`, or
+/// `None` when that line is blank or missing.
+fn find_code_below<'tree>(
+    comment: Node<'tree>,
+    line_start: usize,
+    source: &str,
+) -> Option<Node<'tree>> {
+    let line = source[line_start..].lines().next()?;
+    if line.trim().is_empty() {
+        return None;
+    }
+    let code_start = line_start + line.len() - line.trim_start().len();
+    let mut root = comment;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    root.named_descendant_for_byte_range(code_start, code_start + 1)
+}
+
+/// Takes the name off comments that share it, since an approval could
+/// not tell them apart.
+fn unname_shared_names(comments: &mut [Comment]) {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for name in comments.iter().filter_map(|comment| comment.name.clone()) {
+        *counts.entry(name).or_default() += 1;
+    }
+    for comment in comments {
+        if comment.name.as_ref().is_some_and(|name| counts[name] > 1) {
+            comment.name = None;
+        }
     }
 }
 
@@ -506,6 +565,11 @@ mod tests {
                 source: "import json  # noqa: F401\n",
                 expected_count: 0,
             },
+            ToolCase {
+                file: "approvals.py",
+                source: "# vim: set fileencoding=utf-8\n",
+                expected_count: 0,
+            },
         ];
 
         for case in cases {
@@ -524,5 +588,158 @@ mod tests {
         let result = find_comments(Path::new("broken.go"), source);
 
         assert_eq!(result.err(), Some(FindCommentsError::SyntaxError));
+    }
+
+    /// One comment's first line and the name a test expects for it.
+    struct ExpectedName {
+        line: usize,
+        name: Option<&'static str>,
+    }
+
+    /// Checks each comment's first line and name.
+    fn assert_names(file: &str, source: &str, expected: &[ExpectedName]) {
+        let comments = find_comments(Path::new(file), source).expect("the sample parses");
+        let found: Vec<_> = comments
+            .iter()
+            .map(|c| (c.line, c.name.as_deref()))
+            .collect();
+        let wanted: Vec<_> = expected.iter().map(|e| (e.line, e.name)).collect();
+        assert_eq!(found, wanted, "{file}");
+    }
+
+    /// Approvals match by name, so a wrong name loses the owner's
+    /// approval. A shared name could match the wrong comment.
+    #[test]
+    fn names_each_comment_by_its_code() {
+        assert_names(
+            "names.go",
+            include_str!("../../tests/samples/names.go"),
+            &[
+                ExpectedName {
+                    line: 1,
+                    name: Some("review"),
+                },
+                ExpectedName {
+                    line: 5,
+                    name: Some("const Waiting"),
+                },
+                ExpectedName {
+                    line: 7,
+                    name: Some("Waiting"),
+                },
+                ExpectedName {
+                    line: 12,
+                    name: Some("ReviewStore"),
+                },
+                ExpectedName {
+                    line: 14,
+                    name: Some("ReviewStore.Answers"),
+                },
+                ExpectedName {
+                    line: 18,
+                    name: Some("ReviewStore.SaveAnswer"),
+                },
+                ExpectedName {
+                    line: 20,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 24,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 28,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 31,
+                    name: None,
+                },
+            ],
+        );
+        assert_names(
+            "names.py",
+            include_str!("../../tests/samples/names.py"),
+            &[
+                ExpectedName {
+                    line: 1,
+                    name: Some("<module>"),
+                },
+                ExpectedName {
+                    line: 3,
+                    name: Some("# APPROVALS_PATH"),
+                },
+                ExpectedName {
+                    line: 8,
+                    name: Some("Approvals"),
+                },
+                ExpectedName {
+                    line: 10,
+                    name: Some("# Approvals.load"),
+                },
+                ExpectedName {
+                    line: 13,
+                    name: Some("Approvals.load"),
+                },
+                ExpectedName {
+                    line: 14,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 19,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 22,
+                    name: None,
+                },
+            ],
+        );
+        assert_names(
+            "names.rs",
+            include_str!("../../tests/samples/names.rs"),
+            &[
+                ExpectedName {
+                    line: 1,
+                    name: Some("<module>"),
+                },
+                ExpectedName {
+                    line: 3,
+                    name: Some("ReviewStore"),
+                },
+                ExpectedName {
+                    line: 6,
+                    name: Some("ReviewStore::answers"),
+                },
+                ExpectedName {
+                    line: 10,
+                    name: Some("impl ReviewStore"),
+                },
+                ExpectedName {
+                    line: 12,
+                    name: Some("ReviewStore::save_answer"),
+                },
+                ExpectedName {
+                    line: 14,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 19,
+                    name: Some("LOCK_TRIES"),
+                },
+                ExpectedName {
+                    line: 20,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 23,
+                    name: None,
+                },
+                ExpectedName {
+                    line: 29,
+                    name: Some("tests::saves_each_answer"),
+                },
+            ],
+        );
     }
 }
