@@ -73,9 +73,9 @@ func (p *Picker) PressKey(key string) Action {
 		return Quit
 	case "\r", "\n":
 		return Open
-	case "j":
+	case "j", DownKey:
 		p.index = min(p.index+1, len(p.choices)-1)
-	case "k":
+	case "k", UpKey:
 		p.index = max(p.index-1, 0)
 	}
 	return None

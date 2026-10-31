@@ -96,7 +96,7 @@ comment is answered, it writes the answers or shows they are written.
 | `m` | Type a note for the AI; Enter saves it, and an empty note removes it. |
 | `v` | Open the file read-only in nvim at the comment. |
 | `s` | Type text and see where it appears in the repository, through `rg`. |
-| `j`, `k` | Scroll down or up. |
+| `j`, `k`, up and down arrows, swipe | Scroll down or up. A swipe or mouse wheel works only in a terminal that passes mouse input on. |
 | `l`, `h` | Next or previous comment. |
 | `d` | After the last answer, show the changes: in a new tab from Herdr's popup, in place elsewhere. |
 | `q`, Ctrl-c | Close the screen. |
@@ -107,6 +107,11 @@ they do nothing.
 `a`, `o`, `c` and `m` do nothing for 600 ms after a comment appears,
 so a key pressed twice on a phone answers only once. Keys typed
 before the screen draws, or while nvim or less is open, are dropped.
+
+The screen asks the terminal for mouse input. In a terminal that
+passes mouse input on, a swipe scrolls and a tap does nothing. While
+the screen is open, dragging does not select text to copy. On a
+desktop, Shift-drag usually still does.
 
 The top row names the repository and branch. The second row shows
 the comment's place, the proposal and the file, `↑N` when `N` rows
