@@ -129,6 +129,9 @@ type CommentLines struct {
 	// True for a docstring that is the only statement in its block, so
 	// deleting it would break the code.
 	NoCut bool
+	// A line of the code the comment describes, or 0 for none. For a Python
+	// docstring, this is the def or class line, below any decorators.
+	CodeLine int
 }
 
 // Returns where the item's comment is in its file.
@@ -176,4 +179,20 @@ func ReadCodeAround(
 	before = lines[max(0, at.First-1-codeLinesAround) : at.First-1]
 	after = lines[at.Last:min(len(lines), at.Last+codeLinesAround)]
 	return before, after, nil
+}
+
+// Returns the code above a comment in two parts. The second part is the
+// code the comment describes, such as a def line above its docstring.
+func SplitDescribedCode(
+	before []string,
+	at CommentLines,
+) (above, described []string) {
+	if at.CodeLine < 1 || at.CodeLine >= at.First {
+		return before, nil
+	}
+	split := max(
+		0,
+		len(before)-(at.First-at.CodeLine),
+	)
+	return before[:split], before[split:]
 }
