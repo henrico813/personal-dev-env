@@ -435,10 +435,33 @@ func (v *View) body() ([]string, int) {
 			codeLinesAround,
 		)
 	}
+	before, described := review.SplitDescribedCode(
+		before,
+		v.CommentLinesByID[e.Request.ID],
+	)
 	for _, line := range before {
 		add(dim, " ", line)
 	}
 	focus := len(rows)
+	// The def sits right on top of its docstring, below the notes.
+	addDescribedCode := func() {
+		first := len(rows)
+		for _, line := range described {
+			add(
+				dim,
+				" ",
+				line,
+			)
+		}
+		// A tall def loses its top rows, so the notes and three rows of the
+		// comment fit. The screen's last row holds the "more" line.
+		keep := max(0, v.room()-4-(first-focus))
+		rows = slices.Delete(
+			rows,
+			first,
+			max(first, len(rows)-keep),
+		)
+	}
 	if err != nil {
 		add(yellow, ">", "cannot show the code: "+err.Error())
 	}
@@ -465,16 +488,20 @@ func (v *View) body() ([]string, int) {
 			e.Request.Old,
 		)
 	case e.Feedback.Answer != nil && e.Feedback.Answer.Action == review.ActionEdited:
+		addDescribedCode()
 		addComment(red, "-", e.Request.Old)
 		addComment(green, "+", e.Feedback.Answer.Text)
 	case e.Request.Suggestion == review.SuggestReword:
+		addDescribedCode()
 		addComment(red, "-", e.Request.Old)
 		addComment(green, "+", e.Request.New)
 	case e.Request.Suggestion == review.SuggestCut:
+		addDescribedCode()
 		addComment(red, "-", e.Request.Old)
 		add(green, "+", "(cut)")
 	default:
 		add(yellow, ">", "no change proposed")
+		addDescribedCode()
 		addComment("", " ", e.Request.Old)
 	}
 	for _, line := range after {

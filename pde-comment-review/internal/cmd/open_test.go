@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -545,4 +546,156 @@ func TestScreenLocatesCodeOrExplainsWhy(t *testing.T) {
 			},
 		)
 	}
+}
+
+// The screen opened past the code above a comment, which hid the def line
+// that names a Python docstring's function. Notes sit above the def, so the
+// def stays right on top of its docstring.
+func TestScreenShowsDefAboveDocstring(t *testing.T) {
+	codeAbove := strings.Repeat("RATE = 1\n", 20) + "\n\n"
+	codeBelow := strings.Repeat("    total += 1\n", 20)
+	const docstring = "    \"\"\"Return the sum of prices.\"\"\"\n"
+	tests := []struct {
+		name string
+		// The checker's name for the comment, which a draft sets. Without it
+		// the screen finds the comment by its text.
+		commentName string
+		why         string
+		code        string
+		wantShown   string
+	}{
+		{
+			name:        "why, then def of a docstring found by name",
+			commentName: "total",
+			why:         "Says the unit.",
+			code:        codeAbove + "def total(prices):\n" + docstring + codeBelow,
+			// The header row ends with ?, so the why note is the first row.
+			wantShown: "?\n>why: Says the unit.\n def total(prices):\n-\"\"\"Return the sum of prices.\"\"\"\n",
+		},
+		{
+			name:      "def over several lines found by text",
+			code:      codeAbove + "def total(\n    prices,\n    tax,\n):\n" + docstring + codeBelow,
+			wantShown: "\n def total(\n     prices,\n     tax,\n ):\n-\"\"\"Return",
+		},
+		{
+			name:      "long note above a tall def",
+			why:       "Says the unit, the rounding, and what an empty list returns.",
+			code:      codeAbove + "def total(\n    prices,\n    tax,\n    rounding,\n):\n" + docstring + codeBelow,
+			wantShown: "?\n>why: Says the unit, the rounding,",
+		},
+		{
+			name: "def taller than the screen",
+			code: codeAbove + "def total(\n" +
+				strings.Repeat("    price,\n", 12) +
+				"):\n" + docstring + codeBelow,
+			wantShown: "\n ):\n-\"\"\"Return the sum of prices.\"\"\"\n+(cut)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(
+			tt.name,
+			func(t *testing.T) {
+				screen := showCutOnPhoneScreen(
+					t,
+					"cart.py",
+					tt.code,
+					review.FeedbackRequest{
+						ID:         1,
+						File:       "cart.py",
+						Name:       tt.commentName,
+						Old:        docstring,
+						Why:        tt.why,
+						Suggestion: review.SuggestCut,
+					},
+				)
+
+				if !strings.Contains(screen, tt.wantShown) {
+					t.Errorf(
+						"screen lacks %q:\n%s",
+						tt.wantShown,
+						screen,
+					)
+				}
+			},
+		)
+	}
+}
+
+// A Go comment's code sits below it. Showing the code above, as for a
+// Python docstring, would push the Go comment down the screen.
+func TestGoScreenStartsAtComment(t *testing.T) {
+	code := "package cart\n\n" +
+		strings.Repeat("var rate = 1\n", 20) +
+		"\n// Returns the sum.\nfunc Total() int {\n" +
+		strings.Repeat("\ttotal++\n", 20) +
+		"}\n"
+
+	screen := showCutOnPhoneScreen(
+		t,
+		"cart.go",
+		code,
+		review.FeedbackRequest{
+			ID:         1,
+			File:       "cart.go",
+			Old:        "// Returns the sum.\n",
+			Suggestion: review.SuggestCut,
+		},
+	)
+
+	// The header row ends with ?, so the comment must be the next row.
+	if want := "?\n-// Returns the sum.\n+(cut)\n func Total"; !strings.Contains(screen, want) {
+		t.Errorf(
+			"screen lacks %q:\n%s",
+			want,
+			screen,
+		)
+	}
+}
+
+// Returns the 37x14 phone screen, without colors, for a review that asks to
+// cut one comment in file. The real checker says where the comment sits.
+func showCutOnPhoneScreen(
+	t *testing.T,
+	file string,
+	code string,
+	request review.FeedbackRequest,
+) string {
+	t.Helper()
+	buildRepoCheckerOnPath(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	repo := t.TempDir()
+	writeFile(
+		t,
+		filepath.Join(
+			repo,
+			file,
+		),
+		code,
+	)
+	r, err := review.BuildReviewWithBatch(
+		"cart",
+		review.Batch{
+			Version:  review.Version,
+			Repo:     repo,
+			Requests: []review.FeedbackRequest{request},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := &popup.View{
+		Requests: r.ListFeedbackRequests(),
+		Repo:     repo,
+		Cols:     37,
+		Rows:     14,
+	}
+	askCheckerForCommentLayout(
+		r,
+		v,
+	)
+	v.Show(0, time.Now())
+	return regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(
+		strings.Join(v.BuildScreen(), "\n"),
+		"",
+	)
 }

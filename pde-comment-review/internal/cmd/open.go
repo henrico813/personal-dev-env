@@ -214,11 +214,12 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 		Files []struct {
 			File     string `json:"file"`
 			Comments []struct {
-				Name    string `json:"name"`
-				Line    int    `json:"line"`
-				EndLine int    `json:"end_line"`
-				Text    string `json:"text"`
-				CanCut  bool   `json:"can_cut"`
+				Name     string `json:"name"`
+				Line     int    `json:"line"`
+				EndLine  int    `json:"end_line"`
+				CodeLine int    `json:"code_line"`
+				Text     string `json:"text"`
+				CanCut   bool   `json:"can_cut"`
 			} `json:"comments"`
 		} `json:"files"`
 		Problems []string `json:"problems"`
@@ -248,9 +249,10 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 					found = append(
 						found,
 						review.CommentLines{
-							First: c.Line,
-							Last:  c.EndLine,
-							NoCut: !c.CanCut,
+							First:    c.Line,
+							Last:     c.EndLine,
+							NoCut:    !c.CanCut,
+							CodeLine: c.CodeLine,
 						},
 					)
 				case e.Request.Name == "":
@@ -258,6 +260,7 @@ func findCommentLineRanges(r *review.Review, checker string) (map[int]review.Com
 						// Cutting part of a docstring leaves the rest in
 						// place, so only cutting a whole docstring is refused.
 						lines.NoCut = !c.CanCut && e.Request.Old == c.Text
+						lines.CodeLine = c.CodeLine
 						found = append(found, lines)
 					}
 				}

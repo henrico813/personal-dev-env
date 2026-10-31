@@ -117,6 +117,11 @@ a accept o keep c cut e edit
 m note v view s search q quit
 ```
 
+A Python docstring sits below its `def` or `class` line, so the screen
+shows that line right above the docstring, below any notes. A `def` too
+tall for the screen loses its top lines, so three rows stay for the
+comment. Press `v` to see the whole file.
+
 Press `a` to take the proposal. The screen moves to `TooHigh`. To ask
 the AI for a different proposal, press `m`, type
 `say the limit is 1000 cents`, and press Enter. Then press `q`. Each

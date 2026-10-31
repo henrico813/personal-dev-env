@@ -120,7 +120,8 @@ one line per paragraph, and code examples starting with a tab or two
 spaces. It starts from your own wording if you have one, then from the
 AI's reword, then from the comment. Below the
 `# ---- edits below are ignored ----` line is the code after the
-comment, to read.
+comment, to read. For a Python docstring, its `def` or `class` lines
+come first.
 
 When nvim closes, the text is saved as `//` or `#` lines or a docstring,
 laid out like the wording you started from and rewrapped. Text with no

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -83,7 +84,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
-	_, after, err := review.ReadCodeAround(
+	before, after, err := review.ReadCodeAround(
 		r.Repo(),
 		e.Request,
 		places,
@@ -92,6 +93,16 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	if err != nil {
 		return err
 	}
+	_, described := review.SplitDescribedCode(
+		before,
+		places[id],
+	)
+	// A docstring's def lines go below the marker, so they are never read
+	// as the owner's wording.
+	code := slices.Concat(
+		described,
+		after,
+	)
 	start := chooseStartingWording(e)
 	shown, err := prepareCommentsForScreen(
 		checker,
@@ -109,7 +120,7 @@ func editComment(r *review.Review, id int, in, out *os.File) error {
 	// A file left by a refused edit holds what the owner typed, so nvim opens
 	// that text again.
 	if _, err := os.Stat(page); err != nil {
-		content := text + "\n" + editMarker + "\n" + strings.Join(after, "\n") + "\n"
+		content := text + "\n" + editMarker + "\n" + strings.Join(code, "\n") + "\n"
 		if err := os.WriteFile(page, []byte(content), 0o600); err != nil {
 			return err
 		}
