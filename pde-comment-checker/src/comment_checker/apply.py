@@ -32,6 +32,7 @@ from . import INTERFACE
 from .approvals import (
     SETTINGS,
     apply_renames,
+    load_approved_texts,
     load_settings,
     replace_settings_file,
     unname_unapprovable_comments,
@@ -392,7 +393,7 @@ def find_approval_problems(
     Raises:
         ValueError: ``.code-comments.json`` is not of its shape.
     """
-    approved = load_settings(repo)[0]
+    approved = load_approved_texts(repo)[0]
     files = {answer.file for answer, _ in named_answers}
     texts = {
         (c.file, c.name): c.text
@@ -525,7 +526,7 @@ def approve_answers(
     Raises:
         ValueError: ``.code-comments.json`` is not of its shape.
     """
-    approved = load_settings(repo)[0]
+    approved = load_approved_texts(repo)[0]
     for answer, name in named_answers:
         file = answer.file
         language = LANGUAGES[Path(file).suffix]

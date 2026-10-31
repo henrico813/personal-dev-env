@@ -1573,6 +1573,221 @@ class TestMergeApprovals:
         }
 
 
+def add_worktree(main: Path, worktree: Path) -> None:
+    """Add a linked worktree of ``main`` on a new branch.
+
+    Git ignores ``.code-comments.json``, as on the owner's checkouts, so
+    commits never include it.
+    """
+    (main / ".git/info").mkdir(exist_ok=True)
+    (main / ".git/info/exclude").write_text(".code-comments.json\n")
+    git = ["git", "-C", str(main), "worktree", "add", "-q"]
+    subprocess.run([*git, "-b", worktree.name, str(worktree)], check=True)
+
+
+def read_head(repo: Path) -> str:
+    """Return the commit checked out in ``repo``."""
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+class TestMainCheckoutApprovals:
+    """Read the main checkout's approvals in a linked worktree."""
+
+    def test_rebase_passes_main_rewording_or_rename(
+        self, tmp_path: Path
+    ) -> None:
+        """Pass a rebased worktree with an old record copy.
+
+        An old worktree record must not flag main's newer wording or
+        report a comment that main renamed as gone.
+        """
+        main, rebased = tmp_path / "main", tmp_path / "rebased"
+        main.mkdir()
+        adds = "// Add puts an item in the till.\n"
+        puts = "// Put puts an item in the till.\n"
+        (main / "cart.go").write_text(TOTAL + "func Total() {}\n")
+        (main / "till.go").write_text(adds + "func Add() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, rebased)
+        write_settings_file(
+            rebased, [("cart.go", "Total", TOTAL), ("till.go", "Add", adds)]
+        )
+        (main / "cart.go").write_text(SUMS + "func Total() {}\n")
+        (main / "till.go").write_text(puts + "func Put() {}\n")
+        commit_all(main)
+        write_settings_file(
+            main, [("cart.go", "Total", SUMS), ("till.go", "Put", puts)]
+        )
+        subprocess.run(
+            ["git", "-C", str(rebased), "merge", "-q", "--ff-only"]
+            + [read_head(main)],
+            check=True,
+        )
+        # The branch changes cart.go, so its old Total entry still counts.
+        with (rebased / "cart.go").open("a") as cart:
+            cart.write("\nfunc Clear() {}\n")
+
+        result = run_checker(rebased)
+
+        assert result.returncode == 0, result.stdout
+
+    def test_worktree_behind_main_passes(self, tmp_path: Path) -> None:
+        """Pass a worktree whose text is older than main's.
+
+        Every open branch has older text after main approves new
+        wording, and flagging it would give each branch false review
+        items.
+        """
+        main, behind = tmp_path / "main", tmp_path / "behind"
+        main.mkdir()
+        (main / "cart.go").write_text(TOTAL + "func Total() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, behind)
+        (main / "cart.go").write_text(SUMS + "func Total() {}\n")
+        commit_all(main)
+        write_settings_file(main, [("cart.go", "Total", SUMS)])
+
+        result = run_checker(behind)
+
+        assert result.returncode == 0, result.stdout
+
+    def test_main_record_rules_apply_in_worktree(
+        self, tmp_path: Path
+    ) -> None:
+        """Fail a worktree edit that main's record forbids.
+
+        New worktrees have no record of their own, so main's record is
+        all that protects their comments.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        (main / "cart.go").write_text(TOTAL + "func Total() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, worktree)
+        write_settings_file(
+            main,
+            [("cart.go", "Total", TOTAL)],
+            avoid={"client": "say customer"},
+        )
+        post = "// Post hands the bill to the client.\nfunc Post() {}\n"
+        (worktree / "cart.go").write_text(SUMS + "func Total() {}\n\n" + post)
+
+        result = run_checker(worktree, "--base", "HEAD")
+
+        assert result.returncode == 1
+        assert "approved text changed" in result.stdout
+        assert '"client": say customer' in result.stdout
+
+    def test_unchanged_file_approval_survives_next_write(
+        self, tmp_path: Path
+    ) -> None:
+        """Keep an approval in a file the branch never changed.
+
+        Approving a second comment must not drop the first, or a later
+        edit of the first would pass.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        note = "// Note keeps a reminder.\n"
+        (main / "note.go").write_text(note + "func Note() {}\n")
+        (main / "other.go").write_text("// Bump adds one.\nfunc Bump() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, worktree)
+        write_settings_file(main)
+
+        for file, name in (("note.go", "Note"), ("other.go", "Bump")):
+            run_checker(
+                worktree, "--approve-comment", file, name, paths=[]
+            )
+        (worktree / "note.go").write_text(
+            "// Note keeps a list.\nfunc Note() {}\n"
+        )
+        result = run_checker(worktree)
+
+        assert result.returncode == 1
+        assert "approved text changed" in result.stdout
+
+    def test_branch_without_shared_commit_exits_two(
+        self, tmp_path: Path
+    ) -> None:
+        """Refuse to check when the branch shares no commit with main.
+
+        Main's entries count only where the branch began, so without
+        that commit the checker would silently protect none of them.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        (main / "cart.go").write_text(TOTAL + "func Total() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, worktree)
+        write_settings_file(main, [("cart.go", "Total", TOTAL)])
+        git = ["git", "-C", str(worktree), "-c", "user.name=t"]
+        subprocess.run(
+            [*git, "checkout", "-q", "--orphan", "lone"], check=True
+        )
+        subprocess.run(
+            [*git, "-c", "user.email=t", "commit", "-qm", "lone"], check=True
+        )
+
+        result = run_checker(worktree)
+
+        assert result.returncode == 2
+        assert "cannot find where this branch left main" in result.stderr
+
+    def test_rename_writes_cut_and_branch_entries(
+        self, tmp_path: Path
+    ) -> None:
+        """Save a worktree rename as the new name and a cut.
+
+        Otherwise main's entry reports the renamed comment as gone.
+        """
+        main, worktree = tmp_path / "main", tmp_path / "worktree"
+        main.mkdir()
+        adds = "// Add puts an item in the cart.\n"
+        puts = "// Put puts an item in the cart.\n"
+        total_go = TOTAL + "func Total() {}\n\n"
+        (main / "cart.go").write_text(total_go + adds + "func Add() {}\n")
+        (main / "till.go").write_text("func Shut() {}\n")
+        init_repo_and_commit_all(main)
+        add_worktree(main, worktree)
+        write_settings_file(
+            main, [("cart.go", "Total", TOTAL), ("cart.go", "Add", adds)]
+        )
+        shuts = "// Shut closes the till.\n"
+        rings = "// Ring sounds the bell.\n"
+        write_settings_file(
+            worktree, [("till.go", "Shut", shuts), ("bell.go", "Ring", rings)]
+        )
+        (worktree / "bell.go").write_text(rings + "func Ring() {}\n")
+        (worktree / "cart.go").write_text(total_go + puts + "func Put() {}\n")
+
+        run_checker(
+            worktree,
+            "--approve-comment",
+            "cart.go",
+            "Put",
+            "--rename",
+            "Add=Put",
+            paths=[],
+        )
+        result = run_checker(worktree)
+
+        assert read_settings_file(worktree) == {
+            "approved": [
+                {"file": "bell.go", "name": "Ring", "text": rings},
+                {"file": "cart.go", "name": "Put", "text": puts},
+                {"file": "cart.go", "name": "Add", "text": ""},
+            ],
+            "avoid": {},
+        }
+        assert result.returncode == 0
+
+
 class TestListComments:
     """Give ``pde-comment-review`` each named Python comment's lines."""
 
