@@ -17,7 +17,7 @@ from ..records import Comment, SourceError
 from .go import join_comment_prose
 from .line_comments import (
     LINE_WIDTH,
-    lay_out_line_comment,
+    build_comment_lines,
     prepare_line_comment_for_screen,
     wrap_words,
 )
@@ -241,7 +241,7 @@ def write_python_comment(plain: str, old: str) -> str:
     if "\r" in plain or "\0" in plain:
         raise SourceError("the text holds a carriage return or a NUL")
     if old.lstrip().startswith("#"):
-        return lay_out_line_comment(plain, old, "#")
+        return build_comment_lines(plain, old, "#")
     docstring = read_docstring_parts(old)[0]
     return write_docstring(read_plain_parts(plain), docstring)
 

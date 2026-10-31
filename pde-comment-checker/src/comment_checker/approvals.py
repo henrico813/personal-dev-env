@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TypeGuard
 
-from .languages import LANGUAGES
+from .languages.rules import LANGUAGES
 from .records import Comment, SourceError
 
 SETTINGS = ".code-comments.json"
