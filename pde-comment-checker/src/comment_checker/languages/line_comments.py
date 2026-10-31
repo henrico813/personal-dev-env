@@ -2,46 +2,13 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple
 
 from ..records import SourceError
+from .screen_rows import ParagraphRow, ScreenRow, UnwrappedRow
 
 # The column a rewritten comment's lines may reach, counting indentation.
 LINE_WIDTH = 79
-
-
-class ParagraphRow(TypedDict):
-    """A paragraph the review window wraps to fit, after a comment mark.
-
-    The window can be narrower than the file, so lines wrapped for the
-    file would break again at odd places.
-
-    Attributes:
-        first: The mark before the first line, such as the opening
-            quotes.
-        rest: The mark before each later line, such as ``# ``.
-        words: The words to wrap.
-    """
-
-    first: str
-    rest: str
-    words: str
-
-
-class AsWrittenRow(TypedDict):
-    """A row the review window draws as written, without wrapping.
-
-    Code examples, headings and blank lines use it, so wrapping cannot
-    break their layout.
-
-    Attributes:
-        fixed: The row's text.
-    """
-
-    fixed: str
-
-
-ScreenRow = ParagraphRow | AsWrittenRow
 
 
 class Block(NamedTuple):
@@ -54,7 +21,10 @@ class Block(NamedTuple):
 def prepare_line_comment_for_screen(
     text: str, marker: str = "//"
 ) -> tuple[str, list[ScreenRow]]:
-    """Return a comment's words to edit, and the rows the window draws.
+    """Split a ``#`` or ``//`` comment into words and screen rows.
+
+    For the comment ``# Prices are in cents.``, it returns ``Prices are
+    in cents.`` for nvim and one row for the screen.
 
     Args:
         text: The comment as it is in the file, with its marks.
@@ -70,10 +40,10 @@ def prepare_line_comment_for_screen(
     rows: list[ScreenRow] = []
     for block in blocks:
         if rows:
-            rows.append(AsWrittenRow(fixed=marker))
+            rows.append(UnwrappedRow(fixed=marker))
         if block.example:
             rows += [
-                AsWrittenRow(fixed=marker + line)
+                UnwrappedRow(fixed=marker + line)
                 for line in block.text.split("\n")
             ]
         else:
@@ -85,9 +55,7 @@ def prepare_line_comment_for_screen(
     return words, rows
 
 
-def lay_out_line_comment(
-    new_wording: str, old: str, marker: str = "//"
-) -> str:
+def build_comment_lines(new_wording: str, old: str, marker: str = "//") -> str:
     """Return new words as comment lines ready for the file.
 
     The owner edits a comment without its marks or line breaks, so the

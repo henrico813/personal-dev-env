@@ -116,8 +116,8 @@ from .approvals import (
     summarize_approval,
     unname_unapprovable_comments,
 )
-from .languages import LANGUAGES
 from .languages.python import PYTHON_DIRECTIVE
+from .languages.rules import LANGUAGES
 from .records import Comment, Function, SourceError
 from .rules import (
     RULES,
