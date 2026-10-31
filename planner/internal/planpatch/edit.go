@@ -46,12 +46,7 @@ func ReplaceDiff(raw []byte, start, end int, diff []byte) ([]byte, error) {
 	if fenceLen < 3 || strings.TrimSpace(closing) != strings.Repeat("`", fenceLen) {
 		return nil, fmt.Errorf("invalid diff fence span")
 	}
-	needed := fenceLen
-	for _, line := range bytes.Split(diff, []byte("\n")) {
-		if n := leadingTicks(strings.TrimSpace(string(line))); n >= needed {
-			needed = n + 1
-		}
-	}
+	needed := max(fenceLen, len(ChooseCodeFence(string(diff))))
 	oldFence, newFence := strings.Repeat("`", fenceLen), strings.Repeat("`", needed)
 	opening = strings.Replace(opening, oldFence, newFence, 1)
 	closing = strings.Replace(closing, oldFence, newFence, 1)
@@ -64,6 +59,26 @@ func ReplaceDiff(raw []byte, start, end int, diff []byte) ([]byte, error) {
 	out.WriteString(closing)
 	out.Write(raw[closeEnd:])
 	return out.Bytes(), nil
+}
+
+// The fence is one backtick longer than the longest backtick run in code, and
+// at least three. Runs in the middle or at the end of a line count because nvim
+// ends a 3-backtick block at any line that ends in three backticks, such as an
+// added fence line in a diff.
+func ChooseCodeFence(code string) string {
+	longest := 0
+	cur := 0
+	for _, r := range code {
+		if r == '`' {
+			cur++
+			if cur > longest {
+				longest = cur
+			}
+		} else {
+			cur = 0
+		}
+	}
+	return strings.Repeat("`", max(longest+1, 3))
 }
 
 func leadingTicks(s string) int {
