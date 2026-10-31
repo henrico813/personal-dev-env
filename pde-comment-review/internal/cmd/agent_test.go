@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -244,5 +245,38 @@ func TestDraftReportsNothingToReview(t *testing.T) {
 
 	if len(reply.Problems) > 0 || reply.State != "done" {
 		t.Errorf("replyToDraft() = %+v, want state done", reply)
+	}
+}
+
+// A branch that changes only Rust has nothing the tool can review, but the
+// owner still has to see its comments. The reply names the Rust file and
+// tells the agent to show its comments in the pull request.
+func TestDraftNamesFilesToolCannotReview(t *testing.T) {
+	repo := newShopClone(t, "feat")
+	writeFile(
+		t,
+		filepath.Join(repo, "main.rs"),
+		"// Starts the shop.\nfn main() {}\n",
+	)
+
+	reply := replyToDraft(repo, buildRepoCheckerOnPath(t))
+
+	if !slices.Equal(reply.Unsupported, []string{"main.rs"}) {
+		t.Errorf(
+			"unsupported = %v, want [main.rs]",
+			reply.Unsupported,
+		)
+	}
+	if !strings.Contains(reply.Next, "nothing for the tool to review") {
+		t.Errorf(
+			"next = %q, want nothing for the tool to review",
+			reply.Next,
+		)
+	}
+	if !strings.Contains(reply.Next, "pull request") {
+		t.Errorf(
+			"next = %q, want the comments shown in the pull request",
+			reply.Next,
+		)
 	}
 }

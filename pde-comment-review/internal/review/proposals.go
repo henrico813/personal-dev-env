@@ -126,6 +126,9 @@ func findRequestProblem(request FeedbackRequest) error {
 type CommentLines struct {
 	First int
 	Last  int
+	// True for a docstring that is the only statement in its block, so
+	// deleting it would break the code.
+	NoCut bool
 }
 
 // Returns where the item's comment is in its file.

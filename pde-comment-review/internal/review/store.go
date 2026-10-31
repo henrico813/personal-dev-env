@@ -83,13 +83,21 @@ func AddBatch(name string, p Batch) (int, error) {
 		return 0, err
 	}
 	batch := len(r.Batches)
-	return batch, replaceJSONFile(
+	err = replaceJSONFile(
 		buildBatchFilePath(
 			r.Dir,
 			batch,
 		),
 		p,
 	)
+	if err == nil {
+		// The AI sent new wording for these comments, so text the owner typed
+		// for the old wording is deleted.
+		for _, request := range p.Requests {
+			os.Remove(r.BuildEditFilePath(request.ID))
+		}
+	}
+	return batch, err
 }
 
 // Returns the whole review called name, every earlier round plus p as
@@ -228,7 +236,24 @@ func (r *Review) SaveAnswer(id, batch int, action, text string) error {
 	}
 	*r = *saved
 	r.Answers[id] = Answer{Action: action, Text: text, Batch: batch}
-	return replaceJSONFile(filepath.Join(r.Dir, "decisions.json"), r.Answers)
+	err = replaceJSONFile(
+		filepath.Join(r.Dir, "decisions.json"),
+		r.Answers,
+	)
+	if err != nil {
+		return err
+	}
+	// Text the owner typed in a refused edit is no longer needed once the
+	// owner's answer is saved.
+	os.Remove(r.BuildEditFilePath(id))
+	return nil
+}
+
+// Returns the path of the file nvim opens to edit a comment's wording. The
+// file stays after the checker refuses its text, until the owner answers
+// the comment or the AI sends new wording.
+func (r *Review) BuildEditFilePath(id int) string {
+	return filepath.Join(r.Dir, fmt.Sprintf("edit-%d.txt", id))
 }
 
 // Returns every file the review's items are in, sorted.
