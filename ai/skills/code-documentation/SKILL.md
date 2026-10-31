@@ -219,7 +219,8 @@ When source code or tests change:
    otherwise leave it byte-for-byte unchanged. Do not broaden, reformat, or
    polish it merely because more implementation details could be stated.
    The owner is the person who approved text in `.code-comments.json`
-   at the repository root. Never change that text or that file, even
+   at the repository root, or at the main checkout's root when you
+   work in a worktree. Never change that text or those files, even
    when the text seems false; report it instead. The exceptions: run
    the checker's `--approve` when the owner asks you to, and its
    `--merge-approvals` as the `cleanup-plan` skill says.

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Back up a worktree's .code-comments.json, the comments the owner
+# approved on its branch, before the worktree is removed. When a merged pull
+# request's head is the worktree's commit, merge those approvals into the
+# main checkout's record. Worktrunk runs this before wt remove (see
+# ~/.config/pde/worktrunk.toml), and the cleanup-plan skill runs it
+# before git worktree remove.
+#
+# Usage: pde-keep-approvals WORKTREE
+#
+# Exits nonzero after the backup when the merge cannot run, so the
+# removal stops and the approvals are not lost. Without a merged pull
+# request, or without the comment checker, the backup alone keeps them.
+set -euo pipefail
+
+record=.code-comments.json
+worktree=$(cd "${1:?usage: pde-keep-approvals WORKTREE}" && pwd -P)
+if [ ! -f "$worktree/$record" ]; then
+    exit 0
+fi
+# Git lists the main checkout first, marked "bare" when there is none.
+listing=$(git -C "$worktree" worktree list --porcelain | sed -n '1,/^$/p')
+main=$(sed -n '1s/^worktree //p' <<<"$listing")
+main=$(cd "$main" && pwd -P)
+if [ "$main" = "$worktree" ]; then
+    exit 0
+fi
+
+backups=${XDG_STATE_HOME:-$HOME/.local/state}/pde/approval-backups
+mkdir -p "$backups"
+backup=$(mktemp -d "$backups/$(date +%Y%m%d-%H%M%S)-XXXX")
+mkdir "$backup/worktree"
+cp -p "$worktree/$record" "$backup/worktree/"
+if [ -f "$main/$record" ]; then
+    cp -p "$main/$record" "$backup/"
+fi
+echo "approvals backed up in $backup"
+if grep -qx bare <<<"$listing"; then
+    echo "the repository is bare, so there is no main checkout to merge into; only the backup keeps the approvals"
+    exit 0
+fi
+
+stop() {
+    printf '%s\nThe backup in %s keeps them. The owner can remove the worktree anyway with wt remove --no-hooks; agents must not.\n' "$1" "$backup" >&2
+    exit 1
+}
+
+branch=$(git -C "$worktree" branch --show-current)
+if [ -z "$branch" ]; then
+    echo "no branch is checked out, so only the backup keeps the approvals"
+    exit 0
+fi
+# The checker is installed only on the full profile.
+if ! command -v pde-comment-checker >/dev/null; then
+    echo "pde-comment-checker is not installed, so only the backup keeps the approvals"
+    exit 0
+fi
+# One line per merged pull request, such as "12 <head commit> <merge commit>".
+query='.[] | "\(.number) \(.headRefOid) \(.mergeCommit.oid)"'
+if ! merged=$(cd "$worktree" && gh pr list --head "$branch" \
+    --state merged --json number,headRefOid,mergeCommit --jq "$query"); then
+    stop "gh could not list the merged pull requests of $branch."
+fi
+if [ -z "$merged" ]; then
+    echo "no pull request of $branch has merged, so only the backup keeps the approvals"
+    exit 0
+fi
+# A pull request whose head is another commit, such as after GitHub's Update
+# branch button, may not match this worktree's approvals.
+head=$(git -C "$worktree" rev-parse HEAD)
+merge_commit=$(awk -v head="$head" '$2 == head { print $3; exit }' <<<"$merged")
+if [ -z "$merge_commit" ]; then
+    numbers=$(awk '{ printf "#%s ", $1 }' <<<"$merged")
+    stop "Pull requests ${numbers% } of $branch merged from another commit than this worktree's $head, so its approvals were not merged. Merge them by hand with pde-comment-checker --repo $main --merge-approvals $worktree MERGE_COMMIT."
+fi
+if ! pde-comment-checker --repo "$main" \
+    --merge-approvals "$worktree" "$merge_commit"; then
+    stop "The approvals were not merged into $main/$record. If its HEAD lacks $merge_commit, update the main checkout and remove the worktree again."
+fi
