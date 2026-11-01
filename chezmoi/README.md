@@ -7,9 +7,6 @@ passes the profile's tiers as `.pde.tiers` with `--override-data`, and
 component and visual selections match. Templates test a tier, such as
 `{{ if has "workstation" .pde.tiers }}`, instead of a profile name. The
 profiles and their tiers are in `pde-installer/internal/profile/profiles.yaml`.
-`.pde.desktop` holds the machine's desktop, `i3` or `sway`, and is empty
-without one. `.chezmoiignore.tmpl` uses it to keep desktop files off other
-machines.
 
 Edit files here using chezmoi source names. Add remote archives to
 `.chezmoiexternal.toml.tmpl` with a SHA-256 checksum.
