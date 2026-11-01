@@ -67,6 +67,10 @@ impl LanguageRules for RustRules {
         line_comments::to_plain_words(text, find_line_marker(text))
     }
 
+    fn to_paragraphs(&self, text: &str) -> Vec<String> {
+        line_comments::to_paragraphs(text, find_line_marker(text))
+    }
+
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {
         line_comments::lay_out_plain_words(words, old_text, find_line_marker(old_text))
     }

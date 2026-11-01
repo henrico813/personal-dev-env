@@ -1,13 +1,14 @@
 //! Runs step 2, which fails each changed comment whose name has approved
-//! texts, none equal to its text, and each approved comment removed from code
-//! that stays. It reads files and writes none.
+//! texts, none equal to its text, each approved comment removed from code
+//! that stays, and each style rule broken on a changed line. It reads files
+//! and writes none.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use super::{NextStep, StepOutput};
 use crate::shared::approvals::{self, Approvals, DecisionMatch};
-use crate::shared::comment_rules::{Finding, Rule};
+use crate::shared::comment_rules::{self, Finding, OldText, Rule};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
 use crate::shared::{Error, ErrorCode};
@@ -16,6 +17,8 @@ use crate::shared::{Error, ErrorCode};
 #[derive(Debug)]
 pub struct CheckResult {
     pub failures: Vec<Finding>,
+    /// Lists the style findings the agent reports but need not fix.
+    pub reported: Vec<Finding>,
     /// Lists changed files no language rule reads, whose comments go unchecked.
     pub unsupported: Vec<PathBuf>,
 }
@@ -52,7 +55,10 @@ pub fn check_comments(
         .chain(approvals.files())
         .collect();
     let mut failures = Vec::new();
+    let mut reported = Vec::new();
     let mut unsupported = Vec::new();
+    let mut changed_files = Vec::new();
+    let mut old_text = OldText::default();
     for file in files {
         if !comments::is_supported(file) {
             if changed.contains(file) {
@@ -66,7 +72,12 @@ pub fn check_comments(
             continue;
         }
         let before = comments::read_comments_at_commit(&root, &base, file)?;
+        old_text.add(&before);
+        changed_files.push((file, versions, before));
+    }
+    for (file, versions, before) in changed_files {
         for version in versions {
+            let is_on_disk = version.place == git::ON_DISK;
             let now = comments::read_version_comments(file, version)?;
             let found = find_changed_approved_texts(&approvals, &now, &before)
                 .into_iter()
@@ -74,6 +85,19 @@ pub fn check_comments(
             for failure in found {
                 if !failures.contains(&failure) {
                     failures.push(failure);
+                }
+            }
+            // Git's diff numbers only the disk copy's lines, and agents edit that copy.
+            if is_on_disk {
+                let changed_lines = git::list_changed_lines(dir, &base, file)?;
+                for finding in
+                    comment_rules::check_file(&now, &old_text, &changed_lines, &approvals)
+                {
+                    if finding.note.is_none() {
+                        failures.push(finding);
+                    } else {
+                        reported.push(finding);
+                    }
                 }
             }
         }
@@ -86,6 +110,7 @@ pub fn check_comments(
     Ok(StepOutput {
         result: CheckResult {
             failures,
+            reported,
             unsupported,
         },
         next,
@@ -110,6 +135,8 @@ fn find_changed_approved_texts(
                 name: comment.name.clone(),
                 line: comment.line,
                 rule: Rule::Approved,
+                note: None,
+                detail: None,
             });
         }
     }
@@ -140,6 +167,8 @@ fn find_removed_approved_comments(
                 name: Some(name.clone()),
                 line,
                 rule: Rule::ApprovedRemoved,
+                note: None,
+                detail: None,
             });
         }
     }

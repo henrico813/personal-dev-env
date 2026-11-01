@@ -3,16 +3,25 @@
 //! a tool line, so older approvals still match.
 
 use std::path::Path;
+use std::sync::LazyLock;
 
+use regex::Regex;
 use tree_sitter::{Language, Node};
 
 use super::{LanguageRules, format_if_old_is_formatted, line_comments};
 use crate::shared::Error;
-use crate::shared::comments::CommentStyle;
+use crate::shared::comments::{CommentStyle, Definition, NameCheck};
 
 /// Words that mark a comment a Go linter reads, wherever they sit in it, in
 /// any case.
 const LINTER_MARKS: [&str; 3] = ["nolint", "#nosec", "lint:ignore"];
+
+/// Lists the words that start a function `go test` runs, such as `TestTotal`.
+const TEST_PREFIXES: [&str; 4] = ["Test", "Benchmark", "Fuzz", "Example"];
+
+static GENERATED_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^// Code generated .* DO NOT EDIT\.$").expect("the pattern is valid")
+});
 
 pub struct GoRules;
 
@@ -67,8 +76,59 @@ impl LanguageRules for GoRules {
         line_comments::to_plain_words(text, "//")
     }
 
+    fn to_paragraphs(&self, text: &str) -> Vec<String> {
+        line_comments::to_paragraphs(text, "//")
+    }
+
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {
         line_comments::lay_out_plain_words(words, old_text, "//")
+    }
+
+    /// Returns each function and method. A test, a getter with no arguments,
+    /// `main`, `init` and a name that starts with `New` need no verb.
+    fn list_definitions(&self, file: &Path, root: Node, source: &str) -> Vec<Definition> {
+        let is_test_file = file.to_string_lossy().ends_with("_test.go");
+        let mut cursor = root.walk();
+        let mut definitions = Vec::new();
+        for node in root.named_children(&mut cursor) {
+            let (name, is_getter) = match node.kind() {
+                "function_declaration" => match node.child_by_field_name("name") {
+                    Some(name) => (source[name.byte_range()].to_owned(), false),
+                    None => continue,
+                },
+                "method_declaration" => {
+                    let Some(name) = name_method(node, source) else {
+                        continue;
+                    };
+                    let takes_nothing = node
+                        .child_by_field_name("parameters")
+                        .is_some_and(|parameters| parameters.named_child_count() == 0);
+                    (name, takes_nothing)
+                }
+                _ => continue,
+            };
+            let bare_name = name.rsplit('.').next().unwrap_or(&name);
+            let is_test = is_test_file && is_test_name(bare_name);
+            let needs_verb = !(is_test
+                || is_getter
+                || ["main", "init"].contains(&bare_name)
+                || starts_with_word_new(bare_name));
+            definitions.push(Definition {
+                line: node.start_position().row + 1,
+                name_check: if needs_verb {
+                    NameCheck::WordCountAndVerb
+                } else {
+                    NameCheck::WordCount
+                },
+                name,
+                docstring: None,
+            });
+        }
+        definitions
+    }
+
+    fn is_generated(&self, source: &str) -> bool {
+        GENERATED_MARKER.is_match(source)
     }
 
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
@@ -118,6 +178,23 @@ fn name_method(method: Node, source: &str) -> Option<String> {
     let type_name = find_leading_word(type_text.trim_start())?;
     let name = method.child_by_field_name("name")?;
     Some(format!("{type_name}.{}", &source[name.byte_range()]))
+}
+
+/// Returns true for a name `go test` runs, such as `TestTotal`, but not
+/// `Testify`.
+fn is_test_name(name: &str) -> bool {
+    TEST_PREFIXES.iter().any(|prefix| {
+        name.strip_prefix(prefix)
+            .is_some_and(|rest| !rest.starts_with(|c: char| c.is_ascii_lowercase()))
+    })
+}
+
+/// Returns true when the name's first word is `New` or `new`.
+fn starts_with_word_new(name: &str) -> bool {
+    ["New", "new"].iter().any(|word| {
+        name.strip_prefix(word)
+            .is_some_and(|rest| !rest.starts_with(|c: char| c.is_ascii_lowercase()))
+    })
 }
 
 /// Returns the top-level declaration that holds `node`.
