@@ -99,6 +99,52 @@ func TestExplicitSelectionsOverrideSaved(t *testing.T) {
 	}
 }
 
+// Installing a profile keeps the saved desktop, and installing a desktop keeps
+// the saved profile, so neither argument resets the other.
+func TestInstallArgumentKeepsOtherSavedSelection(t *testing.T) {
+	tests := map[string]struct {
+		saved       string
+		args        []string
+		wantProfile profile.Profile
+		wantDesktop profile.Desktop
+	}{
+		"profile keeps desktop": {
+			saved: `{"profile":"full","desktop":"i3"}`, args: []string{"client"},
+			wantProfile: "client", wantDesktop: "i3",
+		},
+		"desktop keeps profile": {
+			saved: `{"profile":"terminal"}`, args: []string{"sway"},
+			wantProfile: "terminal", wantDesktop: "sway",
+		},
+		"desktop replaces desktop": {
+			saved: `{"profile":"full","desktop":"i3"}`, args: []string{"sway"},
+			wantProfile: "full", wantDesktop: "sway",
+		},
+		"bare install keeps both": {
+			saved:       `{"profile":"client","desktop":"sway"}`,
+			wantProfile: "client", wantDesktop: "sway",
+		},
+		"no desktop saved": {
+			saved: `{"profile":"full"}`, args: []string{"full"},
+			wantProfile: "full", wantDesktop: "",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			home := profileHome(t, test.saved)
+
+			got, err := resolveInstallSelections(config{Home: home}, test.args, "")
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Profile != test.wantProfile || got.Desktop != test.wantDesktop {
+				t.Fatalf("profile, desktop = %q, %q; want %q, %q", got.Profile, got.Desktop, test.wantProfile, test.wantDesktop)
+			}
+		})
+	}
+}
+
 func profileHome(t *testing.T, config string) string {
 	t.Helper()
 	home := t.TempDir()

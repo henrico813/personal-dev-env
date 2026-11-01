@@ -11,7 +11,7 @@ import (
 )
 
 func TestValidateRejectsInvalidProfile(t *testing.T) {
-	manager := New(profile.Profile("desktop"), run.Runner{})
+	manager := New(profile.Profile("desktop"), "", run.Runner{})
 	if err := manager.Validate(); err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -33,7 +33,7 @@ func TestReleaseSupport(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "os-release")
 			writeFixture(t, path, test.release, 0o644)
-			err := validateRelease(path)
+			err := validateRelease(path, minimumRelease)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("validateRelease() error = %v, wantErr %t", err, test.wantErr)
 			}
@@ -59,6 +59,35 @@ func TestReconcileInstallsMissingTogether(t *testing.T) {
 	}
 	if !strings.Contains(lines[1], " unzip ") {
 		t.Fatalf("install call omits unzip: %q", lines[1])
+	}
+}
+
+// Desktop packages were checked on 24.04 only, and tool profiles keep 22.04.
+func TestDesktopsRequireUbuntu2404(t *testing.T) {
+	tests := []struct {
+		desktop profile.Desktop
+		wantErr string
+	}{
+		{desktop: ""},
+		{desktop: "i3", wantErr: "i3 desktop: unsupported Ubuntu version \"22.04\": Ubuntu 24.04 or newer required"},
+		{desktop: "sway", wantErr: "sway desktop: unsupported Ubuntu version \"22.04\": Ubuntu 24.04 or newer required"},
+	}
+	for _, test := range tests {
+		t.Run("desktop "+string(test.desktop), func(t *testing.T) {
+			manager, _ := fixtureManager(t, nil, false)
+			manager.desktop = test.desktop
+			writeFixture(t, manager.osReleasePath, "ID=ubuntu\nVERSION_ID=22.04\n", 0o644)
+
+			err := manager.Validate()
+
+			got := ""
+			if err != nil {
+				got = err.Error()
+			}
+			if got != test.wantErr {
+				t.Fatalf("Validate() error = %q, want %q", got, test.wantErr)
+			}
+		})
 	}
 }
 
@@ -118,7 +147,7 @@ func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Man
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	release := filepath.Join(root, "os-release")
 	writeFixture(t, release, "ID=ubuntu\nVERSION_ID=24.04\n", 0o644)
-	manager := New("full", run.Runner{DryRun: dryRun, Stdout: &strings.Builder{}, Stderr: &strings.Builder{}})
+	manager := New("full", "", run.Runner{DryRun: dryRun, Stdout: &strings.Builder{}, Stderr: &strings.Builder{}})
 	manager.osReleasePath = release
 	return manager, log
 }

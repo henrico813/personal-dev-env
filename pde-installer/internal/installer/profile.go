@@ -29,7 +29,37 @@ func resolveInstallArgument(home string, args []string) (profile.Profile, error)
 	if len(args) == 1 {
 		requested = args[0]
 	}
+	if profile.Desktop(requested).Valid() {
+		// A desktop argument keeps the saved profile. With no saved profile,
+		// install stops instead of guessing one.
+		saved, found, err := loadProfile(home)
+		if err != nil || found {
+			return saved, err
+		}
+		return "", fmt.Errorf(
+			"no saved profile; first run pde-installer install %s, then pde-installer install %s",
+			profile.ValidValues,
+			requested,
+		)
+	}
+	if requested != "" && !profile.Profile(requested).Valid() {
+		return "", fmt.Errorf(
+			"invalid install argument %q; use a profile (%s) or a desktop (%s)",
+			requested,
+			profile.ValidValues,
+			profile.ValidDesktops,
+		)
+	}
 	return resolveProfile(home, requested, installProfile)
+}
+
+// Returns the desktop named by install's optional argument, or the saved
+// desktop. The result is "" when neither names one.
+func resolveInstallDesktop(home string, args []string) (profile.Desktop, error) {
+	if len(args) == 1 && profile.Desktop(args[0]).Valid() {
+		return profile.Desktop(args[0]), nil
+	}
+	return loadDesktop(home)
 }
 
 func resolveProfile(home, requested string, mode profileMode) (profile.Profile, error) {
@@ -91,6 +121,33 @@ func loadProfile(home string) (profile.Profile, bool, error) {
 		return "", false, fmt.Errorf("read profile in %s: %w", path, err)
 	}
 	return selected, true, nil
+}
+
+// Returns the desktop saved in config.json, or "" when the file or its
+// desktop key is missing.
+func loadDesktop(home string) (profile.Desktop, error) {
+	path := filepath.Join(home, ".config", "pde", "config.json")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) || err == nil && len(bytes.TrimSpace(data)) == 0 {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read PDE config: %w", err)
+	}
+	var values struct {
+		Desktop *string `json:"desktop"`
+	}
+	if err := json.Unmarshal(data, &values); err != nil {
+		return "", fmt.Errorf("read PDE config: %w", err)
+	}
+	if values.Desktop == nil {
+		return "", nil
+	}
+	selected, err := profile.ParseDesktop(*values.Desktop)
+	if err != nil {
+		return "", fmt.Errorf("read desktop in %s: %w", path, err)
+	}
+	return selected, nil
 }
 
 func repairProfileError(path string) error {
