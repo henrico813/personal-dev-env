@@ -22,8 +22,14 @@ const TEMP_FILE: &str = "code-comments.json.tmp";
 /// Loads the decisions, or none when the file is missing. Refuses a field
 /// it does not know, so an older program cannot drop it when it adds decisions.
 pub fn load(dir: &Path) -> Result<Approvals, Error> {
-    let path = find_approvals_folder(dir)?.join(APPROVALS_FILE);
-    let saved = read_saved_file(&path)?;
+    load_file(&find_approvals_folder(dir)?.join(APPROVALS_FILE))
+}
+
+/// Loads the decisions from one approvals file, or none when it is missing.
+/// Refuses a field it does not know, so an older program cannot drop it when
+/// it adds decisions.
+pub(crate) fn load_file(path: &Path) -> Result<Approvals, Error> {
+    let saved = read_saved_file(path)?;
     let approved = saved
         .approved
         .into_iter()

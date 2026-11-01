@@ -720,7 +720,454 @@ fn build_avoided_word_patterns(avoid: &BTreeMap<String, String>) -> Vec<(Regex, 
 
 #[cfg(test)]
 mod tests {
+    //! Tests the style rules on source text, with no Git clone. The tests that
+    //! need Git's diff or a branch sit in `tests/check_comments.rs`.
+
+    use std::fs;
+    use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use serde_json::{Value, json};
+
     use super::*;
+    use crate::shared::approvals::{self, Approvals};
+    use crate::shared::git::{FileVersion, ON_DISK};
+
+    /// Names the Go file `find_in_changed_store` reads.
+    const STORE: &str = "review_store.go";
+    /// Holds the comment above `SaveAnswer` in the store file at `base`.
+    const BASE_COMMENT: &str = "// Saves the answer under the lock.\n";
+    /// Holds an avoid list with one word, which the avoided-word rows break.
+    const AVOID_BLOB: &str = r#"{"approved": [], "avoid": {"blob": "say file"}}"#;
+    /// Numbers the temporary folders, so tests that run at once never share one.
+    static NEXT_FOLDER: AtomicUsize = AtomicUsize::new(0);
+
+    /// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
+    fn store_source(comment: &str, body: &str) -> String {
+        format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
+    }
+
+    /// Returns the comments in `source`, read as `file` on disk.
+    fn read_source(file: &str, source: &str) -> FileComments {
+        let version = FileVersion {
+            place: ON_DISK,
+            text: Some(source.to_owned()),
+        };
+        comments::read_version_comments(Path::new(file), version).unwrap()
+    }
+
+    /// Writes `saved` as an approvals file in a temporary folder and loads it.
+    fn load_approvals(saved: Value) -> Approvals {
+        let number = NEXT_FOLDER.fetch_add(1, Ordering::SeqCst);
+        let folder =
+            std::env::temp_dir().join(format!("style-rules-{}-{number}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("code-comments.json");
+        fs::write(&path, saved.to_string()).unwrap();
+        let approvals = approvals::load_file(&path).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        approvals
+    }
+
+    /// Returns each finding's rule, outcome and detail, failures first.
+    fn list_rules(findings: Vec<Finding>) -> Vec<(Rule, Outcome, String)> {
+        let (failures, reported): (Vec<Finding>, Vec<Finding>) = findings
+            .into_iter()
+            .partition(|finding| finding.outcome == Outcome::Fails);
+        failures
+            .into_iter()
+            .chain(reported)
+            .map(|finding| {
+                (
+                    finding.rule,
+                    finding.outcome,
+                    finding.detail.unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
+    /// Returns the findings, failures first, in a new file holding `source`.
+    fn find_in_new_file(file: &str, source: &str) -> Vec<(Rule, Outcome, String)> {
+        let approvals = load_approvals(serde_json::from_str(AVOID_BLOB).unwrap());
+        let check = StyleCheck::new(&approvals, TextAtBase::default());
+        let changed = (1..=source.lines().count()).collect();
+        list_rules(check.find_file_style_issues(&read_source(file, source), &changed))
+    }
+
+    /// Returns the findings, failures first, when the store file changes from `before` to `now`.
+    fn find_in_changed_store(
+        approvals: &Approvals,
+        before: &str,
+        now: &str,
+        changed: &[usize],
+    ) -> Vec<(Rule, Outcome, String)> {
+        let mut at_base = TextAtBase::default();
+        at_base.add(&read_source(STORE, before), false);
+        let check = StyleCheck::new(approvals, at_base);
+        let changed = changed.iter().copied().collect();
+        list_rules(check.find_file_style_issues(&read_source(STORE, now), &changed))
+    }
+
+    mod find_file_style_issues {
+        use super::*;
+
+        /// `find_file_style_issues` must find a break of each style rule and name what broke it.
+        /// Otherwise filler, long comments or unclear names an agent writes would reach the user unflagged.
+        #[test]
+        fn finds_each_style_rule_break() {
+            let go = |code: &str| format!("package review\n\n{code}");
+            let cases = [
+                (
+                    "filler",
+                    "answer.go",
+                    go("// This facilitates saving.\nfunc SaveAnswer() {}\n"),
+                    vec![(Rule::Filler, Outcome::Fails, "\"facilitates\"".to_owned())],
+                ),
+                (
+                    "avoided-word",
+                    "answer.go",
+                    go("// Saves the blob.\nfunc SaveAnswer() {}\n"),
+                    vec![(Rule::AvoidedWord, Outcome::Fails, "\"blob\": say file".to_owned())],
+                ),
+                (
+                    "restated-name",
+                    "answer.go",
+                    go("// Writes the answer, as SaveAnswer says.\nfunc SaveAnswer() {}\n"),
+                    vec![(
+                        Rule::RestatedName,
+                        Outcome::Reported(ReportNote::ReportOnly),
+                        String::new(),
+                    )],
+                ),
+                (
+                    "starts-with-name",
+                    "answer.go",
+                    go("// SaveAnswer writes it.\nfunc SaveAnswer() {}\n"),
+                    vec![
+                        (Rule::StartsWithName, Outcome::Fails, String::new()),
+                        (
+                            Rule::RestatedName,
+                            Outcome::Reported(ReportNote::ReportOnly),
+                            String::new(),
+                        ),
+                    ],
+                ),
+                (
+                    "comment-length",
+                    "answer.go",
+                    go("// Saves it. Locks it. Logs it.\nfunc SaveAnswer() {}\n"),
+                    vec![(Rule::CommentLength, Outcome::Fails, "3 sentences".to_owned())],
+                ),
+                (
+                    "comment-colon",
+                    "answer.go",
+                    go("// Saves it: now.\nfunc SaveAnswer() {}\n"),
+                    vec![(Rule::CommentColon, Outcome::Fails, String::new())],
+                ),
+                (
+                    "comment-colon-inside-function",
+                    "answer.go",
+                    go("func SaveAnswer() {\n\t// Saves it: now.\n}\n"),
+                    vec![(Rule::CommentColon, Outcome::Fails, String::new())],
+                ),
+                (
+                    "seven-words",
+                    "answer.go",
+                    go("func SaveTheAnswerToTheStoreRightNow() {}\n"),
+                    vec![(Rule::SevenWords, Outcome::Fails, "8 words".to_owned())],
+                ),
+                (
+                    "verb-first",
+                    "answer.go",
+                    go("func Total() {}\n"),
+                    vec![(
+                        Rule::VerbFirst,
+                        Outcome::Reported(ReportNote::ReportOnly),
+                        "\"Total\" is not in the checker's verbs".to_owned(),
+                    )],
+                ),
+                (
+                    "docstring",
+                    "answer.py",
+                    "def save_answer():\n    return 1\n".to_owned(),
+                    vec![(Rule::Docstring, Outcome::Fails, String::new())],
+                ),
+                (
+                    "docstring-on-init",
+                    "answer.py",
+                    "class Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        pass\n"
+                        .to_owned(),
+                    vec![(Rule::Docstring, Outcome::Fails, String::new())],
+                ),
+                (
+                    "summary-line",
+                    "answer.py",
+                    "def save_answer():\n    \"\"\"Saves\n    the answer.\"\"\"\n".to_owned(),
+                    vec![(
+                        Rule::SummaryLine,
+                        Outcome::Fails,
+                        "summary runs onto a second line".to_owned(),
+                    )],
+                ),
+                (
+                    "test-why",
+                    "answer.py",
+                    "def test_saves_answer():\n    \"\"\"Saves the answer.\"\"\"\n".to_owned(),
+                    vec![(Rule::TestWhy, Outcome::Fails, String::new())],
+                ),
+                (
+                    "section-heading",
+                    "answer.py",
+                    "def save_answer():\n    \"\"\"Saves the answer.\n\n    Why: it is lost.\n    \"\"\"\n"
+                        .to_owned(),
+                    vec![(Rule::SectionHeading, Outcome::Fails, "\"Why:\"".to_owned())],
+                ),
+                (
+                    "python-comment-with-example",
+                    "answer.py",
+                    "# Saves it. Logs it.\n#\n#   example: 1\n#   example: 2\nLIMIT = 1\n".to_owned(),
+                    vec![
+                        (Rule::CommentLength, Outcome::Fails, "3 sentences".to_owned()),
+                        (Rule::CommentColon, Outcome::Fails, String::new()),
+                    ],
+                ),
+                (
+                    "rust-filler",
+                    "lib.rs",
+                    "/// This facilitates saving.\npub fn save_answer() {}\n".to_owned(),
+                    vec![(Rule::Filler, Outcome::Fails, "\"facilitates\"".to_owned())],
+                ),
+                (
+                    "rust-avoided-word",
+                    "lib.rs",
+                    "/// Saves the blob.\npub fn save_answer() {}\n".to_owned(),
+                    vec![(
+                        Rule::AvoidedWord,
+                        Outcome::Fails,
+                        "\"blob\": say file".to_owned(),
+                    )],
+                ),
+                (
+                    "rust-restated-name",
+                    "lib.rs",
+                    "/// Writes the answer, as save_answer says.\npub fn save_answer() {}\n".to_owned(),
+                    vec![(
+                        Rule::RestatedName,
+                        Outcome::Reported(ReportNote::ReportOnly),
+                        String::new(),
+                    )],
+                ),
+                (
+                    "rust-starts-with-name",
+                    "lib.rs",
+                    "/// save_answer writes it.\npub fn save_answer() {}\n".to_owned(),
+                    vec![
+                        (Rule::StartsWithName, Outcome::Fails, String::new()),
+                        (
+                            Rule::RestatedName,
+                            Outcome::Reported(ReportNote::ReportOnly),
+                            String::new(),
+                        ),
+                    ],
+                ),
+            ];
+
+            for (case, file, source, expected) in cases {
+                assert_eq!(find_in_new_file(file, &source), expected, "{case}");
+            }
+        }
+
+        /// `find_file_style_issues` must only report a style break in a comment that matches the user's approval.
+        /// Otherwise an agent would be stuck on text it may not change.
+        #[test]
+        fn only_reports_approved_text_style_breaks() {
+            let filler = "// This facilitates saving.\n";
+            let decision = json!({"file": STORE, "name": "SaveAnswer", "text": filler});
+            let approvals = load_approvals(json!({"approved": [decision], "avoid": {}}));
+
+            let found = find_in_changed_store(
+                &approvals,
+                &store_source(BASE_COMMENT, ""),
+                &store_source(filler, ""),
+                &[3],
+            );
+
+            let expected = (
+                Rule::Filler,
+                Outcome::Reported(ReportNote::Approved),
+                "\"facilitates\"".to_owned(),
+            );
+            assert_eq!(found, [expected]);
+        }
+
+        /// `find_file_style_issues` must only report a style break in a sentence already there at `base` or in a license header.
+        /// Otherwise an agent would be stuck on an earlier author's text or a license it may not change.
+        #[test]
+        fn only_reports_old_or_license_style_breaks() {
+            let approvals = load_approvals(json!({}));
+            let cases = [
+                (
+                    "sentence-at-base",
+                    "// This facilitates saving.\n",
+                    store_source("// This facilitates saving. It holds the lock.\n", ""),
+                    vec![3],
+                    (
+                        Rule::Filler,
+                        Outcome::Reported(ReportNote::Existing),
+                        "\"facilitates\"".to_owned(),
+                    ),
+                ),
+                (
+                    "license-header",
+                    BASE_COMMENT,
+                    format!("// One. Two. Three.\n\n{}", store_source(BASE_COMMENT, "")),
+                    vec![1, 2],
+                    (
+                        Rule::CommentLength,
+                        Outcome::Reported(ReportNote::Header),
+                        "3 sentences".to_owned(),
+                    ),
+                ),
+            ];
+
+            for (case, base_comment, now, changed, expected) in cases {
+                let before = store_source(base_comment, "");
+
+                let found = find_in_changed_store(&approvals, &before, &now, &changed);
+
+                assert_eq!(found, [expected], "{case}");
+            }
+        }
+
+        /// `find_file_style_issues` must fail an old comment that new sentences make too long.
+        /// Otherwise an agent could add sentences to an old comment until it is too long, and the branch would pass.
+        #[test]
+        fn fails_old_comment_made_too_long() {
+            let approvals = load_approvals(json!({}));
+
+            let found = find_in_changed_store(
+                &approvals,
+                &store_source("// Saves it.\n", ""),
+                &store_source("// Saves it. Locks it. Logs it.\n", ""),
+                &[3],
+            );
+
+            let expected = (
+                Rule::CommentLength,
+                Outcome::Fails,
+                "3 sentences".to_owned(),
+            );
+            assert_eq!(found, [expected]);
+        }
+
+        /// `find_file_style_issues` must find nothing in a file a generator wrote, whatever its comments say.
+        /// Otherwise an agent would be told to fix comments that the next run of the generator writes back.
+        #[test]
+        fn skips_generated_file() {
+            let generated = "// Code generated by protoc. DO NOT EDIT.\n\npackage review\n\n// This facilitates saving.\nfunc SaveAnswer() {}\n";
+
+            assert_eq!(find_in_new_file("answer.go", generated), []);
+        }
+
+        /// `find_file_style_issues` must read a Python comment without the `# noqa` mark after it.
+        /// Otherwise an agent would be told to fix the colon in a mark that a linter reads.
+        #[test]
+        fn ignores_linter_mark_after_python_comment() {
+            let source = "LIMIT = 1  # Counts it.  # noqa: E501\n";
+
+            assert_eq!(find_in_new_file("answer.py", source), []);
+        }
+
+        /// `find_file_style_issues` must not run the length and colon rules on Rust comments, which this version checks only in Go and Python.
+        /// Otherwise a Rust comment of three sentences or with a colon would fail the branch.
+        #[test]
+        fn skips_length_and_colon_rules_in_rust() {
+            let source = "// Saves it: now. Locks it. Logs it.\npub fn save_answer() {}\n";
+
+            assert_eq!(find_in_new_file("lib.rs", source), []);
+        }
+
+        /// `find_file_style_issues` must not ask for a verb at the start of a test, getter, constructor or framework method name.
+        /// Otherwise an agent would be told to put a verb on a name that must not have one.
+        #[test]
+        fn skips_verb_rule_on_conventional_names() {
+            let go = |code: &str| format!("package review\n\n{code}");
+            let python = r#"import pytest
+from typing import override
+
+
+class Store:
+    """Holds answers."""
+
+    def __init__(self):
+        """Starts empty."""
+
+    def setUp(self):
+        """Prepares it."""
+
+    def tearDown(self):
+        """Cleans up."""
+
+    @property
+    def total(self):
+        """Counts answers."""
+
+    @override
+    def ledger(self):
+        """Lists answers."""
+
+
+@pytest.fixture
+def database():
+    """Opens an empty one."""
+"#;
+            let not_a_verb = |word: &str| {
+                let detail = format!("\"{word}\" is not in the checker's verbs");
+                vec![(
+                    Rule::VerbFirst,
+                    Outcome::Reported(ReportNote::ReportOnly),
+                    detail,
+                )]
+            };
+            let cases = [
+                (
+                    "go-constructor",
+                    "answer.go",
+                    go("func NewStore() {}\n"),
+                    vec![],
+                ),
+                (
+                    "go-getter",
+                    "answer.go",
+                    go("type Store struct{}\n\nfunc (s Store) Total() int { return 0 }\n"),
+                    vec![],
+                ),
+                (
+                    "go-test-and-benchmark",
+                    "answer_test.go",
+                    go("func TestSave(t *testing.T) {}\n\nfunc BenchmarkSave(b *testing.B) {}\n"),
+                    vec![],
+                ),
+                (
+                    "go-testify-needs-verb",
+                    "answer_test.go",
+                    go("func Testify() {}\n"),
+                    not_a_verb("Testify"),
+                ),
+                (
+                    "python-framework-names",
+                    "answer.py",
+                    python.to_owned(),
+                    vec![],
+                ),
+            ];
+
+            for (case, file, source, expected) in cases {
+                assert_eq!(find_in_new_file(file, &source), expected, "{case}");
+            }
+        }
+    }
 
     /// `Rule::sentence` must quote the `code-documentation` skill word for word.
     /// Otherwise an agent could be told to follow a sentence the skill no longer says.
