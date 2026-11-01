@@ -167,6 +167,79 @@ pub fn read_file_at_commit(
     read_text(output).map(Some)
 }
 
+/// Holds one version of a root-relative file.
+pub(crate) struct FileVersion {
+    /// Says where the version is, such as `in HEAD`, for messages.
+    pub(crate) place: &'static str,
+    /// Holds the text, or `None` where the file is absent.
+    pub(crate) text: Option<String>,
+}
+
+/// Returns each distinct version of a root-relative file on disk, in the index
+/// and in HEAD that Git would store differently from its version at `base`.
+/// Reads only, so the index is never refreshed.
+pub(crate) fn read_changed_versions(
+    dir: &Path,
+    base: &CommitId,
+    file: &Path,
+) -> Result<Vec<FileVersion>, Error> {
+    let root = find_root(dir)?;
+    validate_file(file)?;
+    let disk = match fs::read(root.join(file)) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(unreadable_version(file, "on disk", error)),
+    };
+    // hash-object applies the file's line-end rules, such as core.autocrlf, and saves nothing without -w.
+    let disk_id = match disk {
+        Some(_) => {
+            let output = run_git(
+                &root,
+                &[
+                    OsStr::new("hash-object"),
+                    OsStr::new("--"),
+                    file.as_os_str(),
+                ],
+            )?;
+            Some(read_text(output)?.trim().to_owned())
+        }
+        None => None,
+    };
+    let mut seen = vec![find_tree_blob(&root, base.as_str(), file)?];
+    let mut versions = Vec::new();
+    if !seen.contains(&disk_id) {
+        versions.push(to_version(file, "on disk", disk)?);
+        seen.push(disk_id);
+    }
+    let staged_id = find_staged_blob(&root, file)?;
+    let head_id = find_tree_blob(&root, "HEAD", file)?;
+    for (place, id) in [("in the index", staged_id), ("in HEAD", head_id)] {
+        if seen.contains(&id) {
+            continue;
+        }
+        let bytes = match &id {
+            Some(id) => Some(run_git(&root, &["cat-file", "blob", id])?),
+            None => None,
+        };
+        versions.push(to_version(file, place, bytes)?);
+        seen.push(id);
+    }
+    Ok(versions)
+}
+
+/// Returns true when `commit` is HEAD or one of its ancestors.
+pub(crate) fn is_ancestor_of_head(dir: &Path, commit: &CommitId) -> Result<bool, Error> {
+    let output = git_command(dir)
+        .args(["merge-base", "--is-ancestor", commit.as_str(), "HEAD"])
+        .output()
+        .map_err(command_error)?;
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(git_failure(dir, output)),
+    }
+}
+
 /// Finds the absolute Git folder that belongs to this worktree alone.
 pub fn find_worktree_git_folder(dir: &Path) -> Result<PathBuf, Error> {
     find_git_folder(dir, "--git-dir")
@@ -181,6 +254,80 @@ pub fn find_shared_git_folder(dir: &Path) -> Result<PathBuf, Error> {
 pub fn read_current_branch(dir: &Path) -> Result<String, Error> {
     let output = run_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     Ok(read_text(output)?.trim_end_matches('\n').to_owned())
+}
+
+/// Returns the blob ID of `file` in a commit's tree, or `None` when no file is there.
+fn find_tree_blob(root: &Path, revision: &str, file: &Path) -> Result<Option<String>, Error> {
+    let output = run_git(
+        root,
+        &[
+            OsStr::new("ls-tree"),
+            OsStr::new("-z"),
+            OsStr::new(revision),
+            OsStr::new("--"),
+            file.as_os_str(),
+        ],
+    )?;
+    // Each entry reads `<mode> <type> <id>` and a tab before its path.
+    Ok(read_entries(&output, file)
+        .into_iter()
+        .find(|fields| fields.get(1).map(String::as_str) == Some("blob"))
+        .and_then(|fields| fields.get(2).cloned()))
+}
+
+/// Returns the blob ID of `file` in the index, or `None` when it is absent or
+/// in a merge conflict.
+fn find_staged_blob(root: &Path, file: &Path) -> Result<Option<String>, Error> {
+    let output = run_git(
+        root,
+        &[
+            OsStr::new("ls-files"),
+            OsStr::new("--stage"),
+            OsStr::new("-z"),
+            OsStr::new("--"),
+            file.as_os_str(),
+        ],
+    )?;
+    // Each entry reads `<mode> <id> <stage>`, and only stage 0 is free of conflicts.
+    Ok(read_entries(&output, file)
+        .into_iter()
+        .find(|fields| fields.get(2).map(String::as_str) == Some("0"))
+        .and_then(|fields| fields.get(1).cloned()))
+}
+
+/// Returns the space-separated fields of each `-z` entry whose path is `file`.
+fn read_entries(output: &[u8], file: &Path) -> Vec<Vec<String>> {
+    output
+        .split(|byte| *byte == 0)
+        .filter_map(|entry| {
+            let tab = entry.iter().position(|byte| *byte == b'\t')?;
+            (&entry[tab + 1..] == file.as_os_str().as_bytes()).then(|| {
+                String::from_utf8_lossy(&entry[..tab])
+                    .split(' ')
+                    .map(str::to_owned)
+                    .collect()
+            })
+        })
+        .collect()
+}
+
+fn to_version(
+    file: &Path,
+    place: &'static str,
+    bytes: Option<Vec<u8>>,
+) -> Result<FileVersion, Error> {
+    let text = bytes
+        .map(String::from_utf8)
+        .transpose()
+        .map_err(|error| unreadable_version(file, place, error))?;
+    Ok(FileVersion { place, text })
+}
+
+fn unreadable_version(file: &Path, place: &str, error: impl std::fmt::Display) -> Error {
+    Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!("Cannot read {} {place}. {error}", file.display()),
+    }
 }
 
 fn find_root(dir: &Path) -> Result<PathBuf, Error> {

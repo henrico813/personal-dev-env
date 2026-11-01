@@ -42,7 +42,11 @@ impl LanguageRules for RustRules {
         if is_module_doc(comment) {
             return Some("<module>".to_string());
         }
-        let item = find_item(code_below?)?;
+        self.name_code_below(code_below?, source)
+    }
+
+    fn name_code_below(&self, code: Node, source: &str) -> Option<String> {
+        let item = find_item(code)?;
         let mut names = vec![name_item(item, source)?];
         for outer in successors(item.parent(), Node::parent) {
             match outer.kind() {

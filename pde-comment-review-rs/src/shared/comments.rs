@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use tree_sitter::{Node, Parser, Tree};
 
+use super::git::{self, CommitId, FileVersion};
 use super::{Error, ErrorCode};
 use crate::language_rules::{LanguageRules, find_rules_for};
 
@@ -119,6 +120,112 @@ pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindComm
         }
     }
     Ok(comments)
+}
+
+/// Holds every comment in one file, in file order, and the file's source.
+pub(crate) struct FileComments {
+    pub(crate) comments: Vec<Comment>,
+    file: PathBuf,
+    source: Option<String>,
+}
+
+impl FileComments {
+    /// Returns true when the file holds a comment with the same name and text.
+    pub(crate) fn has_same(&self, comment: &Comment) -> bool {
+        self.comments
+            .iter()
+            .any(|old| old.name == comment.name && old.text == comment.text)
+    }
+
+    /// Returns the line of the code a comment named `name` would describe, or
+    /// `None` when no code in the file would give a comment that name.
+    pub(crate) fn find_code_line(&self, name: &str) -> Option<usize> {
+        let source = self.source.as_deref()?;
+        // A module comment describes the whole file, which is still here.
+        if name == "<module>" {
+            return Some(1);
+        }
+        let rules = find_rules_for(&self.file)?;
+        let tree = parse_source(rules, source);
+        let root = tree.root_node();
+        // Each line's first node is the code a comment just above it would describe.
+        let mut line_start = 0;
+        for (index, line) in source.split_inclusive('\n').enumerate() {
+            let code_start = line_start + line.len() - line.trim_start().len();
+            line_start += line.len();
+            if line.trim().is_empty() {
+                continue;
+            }
+            let code = root.named_descendant_for_byte_range(code_start, code_start + 1);
+            if code
+                .and_then(|code| rules.name_code_below(code, source))
+                .as_deref()
+                == Some(name)
+            {
+                return Some(index + 1);
+            }
+        }
+        // A docstring names the definition it sits in, not the code below it.
+        let mut nodes = vec![root];
+        while let Some(node) = nodes.pop() {
+            if rules.name_docstring_owner(node, source).as_deref() == Some(name) {
+                return Some(node.start_position().row + 1);
+            }
+            let mut cursor = node.walk();
+            nodes.extend(node.named_children(&mut cursor));
+        }
+        None
+    }
+}
+
+/// Finds the comments in one version of a root-relative file, or none where
+/// the file is absent. Refuses with `FileUnreadable`, naming the file and the
+/// version, when that version does not parse.
+pub(crate) fn read_version_comments(
+    file: &Path,
+    version: FileVersion,
+) -> Result<FileComments, Error> {
+    let file_label = format!("{} {}", file.display(), version.place);
+    find_file_comments(file, version.text, &file_label)
+}
+
+/// Finds the comments in a root-relative file as it was at `commit`, or none
+/// for a file added since. Refuses with `FileUnreadable`, naming the file, when
+/// that version does not parse.
+pub(crate) fn read_comments_at_commit(
+    dir: &Path,
+    commit: &CommitId,
+    file: &Path,
+) -> Result<FileComments, Error> {
+    let source = git::read_file_at_commit(dir, commit, file)?;
+    let file_label = format!("{} at {}", file.display(), commit.as_str());
+    find_file_comments(file, source, &file_label)
+}
+
+/// Returns true when a language rule reads the file.
+pub(crate) fn is_supported(file: &Path) -> bool {
+    find_rules_for(file).is_some()
+}
+
+fn find_file_comments(
+    file: &Path,
+    source: Option<String>,
+    file_label: &str,
+) -> Result<FileComments, Error> {
+    // Approvals hold `\n` line ends, so a checkout with `\r\n` ones must still match them.
+    let source = source.map(|source| source.replace("\r\n", "\n"));
+    let comments = match &source {
+        Some(source) => find_comments(file, source).map_err(|error| Error {
+            code: ErrorCode::FileUnreadable,
+            message: format!("Cannot read the comments in {file_label}, since {error}."),
+        })?,
+        None => Vec::new(),
+    };
+    Ok(FileComments {
+        comments,
+        file: file.to_path_buf(),
+        source,
+    })
 }
 
 /// Returns the comment's words without `//`, `#` or quotes, for the user to

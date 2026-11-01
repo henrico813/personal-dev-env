@@ -29,6 +29,14 @@ pub trait LanguageRules {
     /// the next line, or `None` when that line is blank.
     fn name_comment(&self, comment: Node, code_below: Option<Node>, source: &str)
     -> Option<String>;
+    /// Returns the name a comment on the line above `code` would get, or
+    /// `None` when that comment would describe no one definition.
+    fn name_code_below(&self, code: Node, source: &str) -> Option<String>;
+    /// Returns the name a docstring inside `definition` would get, in a
+    /// language that has docstrings.
+    fn name_docstring_owner(&self, _definition: Node, _source: &str) -> Option<String> {
+        None
+    }
     /// Returns the comment's words without its markers or quotes, or the
     /// text as it is when the user cannot reword it.
     fn to_plain_words(&self, text: &str) -> String;
