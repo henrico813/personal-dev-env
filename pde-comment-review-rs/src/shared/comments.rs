@@ -5,7 +5,7 @@
 //! `to_plain_words(file, text)`, and `read_version_comments(file, version)`
 //! functions to understand the module.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::fs;
 use std::ops::Range;
@@ -15,6 +15,7 @@ use tree_sitter::{Node, Parser, Tree};
 
 use super::git::{self, CommitId, FileVersion};
 use super::review_session::FeedbackRequest;
+use super::style_rules::Rule;
 use super::{Error, ErrorCode};
 use crate::language_rules::{LanguageRules, find_rules_for};
 
@@ -26,20 +27,7 @@ use crate::language_rules::{LanguageRules, find_rules_for};
 /// Fails when no language rules read the file or the source does not
 /// parse.
 pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindCommentsError> {
-    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
-    let tree = parse_source(rules, source);
-    if tree.root_node().has_error() {
-        return Err(FindCommentsError::SyntaxError);
-    }
-    let mut comments = Vec::new();
-    collect_comments(rules, file, tree.root_node(), source, &mut comments);
-    unname_shared_names(&mut comments);
-    for comment in &mut comments {
-        if rules.is_read_by_tools(file, &comment.text) {
-            comment.can_cut = false;
-        }
-    }
-    Ok(comments)
+    find_comments_and_tree(file, source).map(|(comments, _)| comments)
 }
 
 /// Returns each edited file's new contents, writing no file. A file whose
@@ -124,6 +112,38 @@ pub(crate) fn read_comments_at_commit(
 /// Returns true when a language rule reads the file.
 pub(crate) fn is_supported(file: &Path) -> bool {
     find_rules_for(file).is_some()
+}
+
+/// Returns the style rules the file's language uses, or none for an unsupported file.
+pub(crate) fn find_style_rules(file: &Path) -> &'static [Rule] {
+    find_rules_for(file).map_or(&[], |rules| rules.style_rules())
+}
+
+/// Returns true when the file's language lets the paragraph keep its colon
+/// and length, such as Go's `Deprecated:` note.
+pub(crate) fn is_exempt_note(file: &Path, paragraph: &str) -> bool {
+    find_rules_for(file).is_some_and(|rules| rules.is_exempt_note(paragraph))
+}
+
+/// Returns the file's language name, such as "go", or `None` for an
+/// unsupported file. `TextAtBase` groups old text by it.
+pub(crate) fn find_language_name(file: &Path) -> Option<&'static str> {
+    find_rules_for(file).map(|rules| rules.name())
+}
+
+/// Returns every line of a comment joined into one line, examples included,
+/// in a language whose length and colon rules read them all.
+pub(crate) fn join_unfiltered_lines(comment: &Comment) -> Option<String> {
+    find_rules_for(&comment.file)?.join_unfiltered_lines(&comment.text)
+}
+
+/// Returns a comment's paragraphs of prose, each on one line, leaving out
+/// examples, code and the comment's markers.
+pub(crate) fn list_paragraphs(comment: &Comment) -> Vec<String> {
+    match find_rules_for(&comment.file) {
+        Some(rules) => rules.to_paragraphs(&comment.text),
+        None => Vec::new(),
+    }
 }
 
 /// One comment, where it is in its file, and the code it describes.
@@ -223,11 +243,15 @@ pub struct RewrittenFile {
     pub new_contents: String,
 }
 
-/// Holds every comment in one file, in file order, and the file's source.
+/// Holds every comment in one file, in file order, with the file's source and
+/// syntax tree.
 pub(crate) struct FileComments {
     pub(crate) comments: Vec<Comment>,
-    file: PathBuf,
+    pub(crate) file: PathBuf,
     source: Option<String>,
+    /// Holds the syntax tree parsed with the comments, so the style rules read
+    /// definitions without parsing the file again.
+    tree: Option<Tree>,
 }
 
 impl FileComments {
@@ -319,6 +343,101 @@ impl FileComments {
         }
         None
     }
+
+    /// Returns true when the file was there in this version.
+    pub(crate) fn exists(&self) -> bool {
+        self.source.is_some()
+    }
+
+    /// Returns true for a comment with no name above the file's first code,
+    /// where a license sits.
+    pub(crate) fn is_header(&self, comment: &Comment) -> bool {
+        if comment.name.is_some() {
+            return false;
+        }
+        let Some(tree) = &self.tree else {
+            return true;
+        };
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let first_code_line = root
+            .named_children(&mut cursor)
+            .find(|node| !node.is_extra())
+            .map(|node| node.start_position().row + 1);
+        first_code_line.is_none_or(|line| comment.end_line < line)
+    }
+
+    /// Returns the file's functions, methods and classes, read from its tree
+    /// only when a style rule asks.
+    pub(crate) fn list_definitions(&self) -> Vec<Definition> {
+        match (&self.source, &self.tree, find_rules_for(&self.file)) {
+            (Some(source), Some(tree), Some(rules)) => {
+                rules.list_definitions(&self.file, tree.root_node(), source)
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Returns true for a file a generator wrote, whose style is not checked.
+    pub(crate) fn is_generated(&self) -> bool {
+        match (&self.source, find_rules_for(&self.file)) {
+            (Some(source), Some(rules)) => rules.is_generated(source),
+            _ => false,
+        }
+    }
+}
+
+/// Holds one function, method or class and what its rules need to know.
+pub(crate) struct Definition {
+    /// Holds the name with its type or class, as the comment above it is named.
+    pub(crate) name: String,
+    pub(crate) line: usize,
+    pub(crate) name_check: NameCheck,
+    /// Holds what the docstring rules need, or `None` in a language without
+    /// docstrings.
+    pub(crate) docstring: Option<DocstringFacts>,
+}
+
+/// Says which rules a definition's name must meet.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum NameCheck {
+    /// Skips a name the language or a framework chose, and a class name.
+    Skip,
+    /// Checks only the word count, for a name that needs no verb.
+    WordCount,
+    WordCountAndVerb,
+}
+
+/// Holds what the docstring rules need to know about one definition.
+pub(crate) struct DocstringFacts {
+    /// Holds the text between the quotes, or `None` when there is no docstring.
+    pub(crate) text: Option<String>,
+    /// Lists the definition's lines and its decorators, leaving out the
+    /// definitions inside it.
+    pub(crate) own_lines: BTreeSet<usize>,
+    pub(crate) is_required: bool,
+    pub(crate) is_test: bool,
+}
+
+/// Returns what `find_comments` returns and the tree it parsed.
+fn find_comments_and_tree(
+    file: &Path,
+    source: &str,
+) -> Result<(Vec<Comment>, Tree), FindCommentsError> {
+    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
+    let tree = parse_source(rules, source);
+    if tree.root_node().has_error() {
+        return Err(FindCommentsError::SyntaxError);
+    }
+    let mut comments = Vec::new();
+    collect_comments(rules, file, tree.root_node(), source, &mut comments);
+    unname_shared_names(&mut comments);
+    for comment in &mut comments {
+        if rules.is_read_by_tools(file, &comment.text) {
+            comment.can_cut = false;
+        }
+    }
+    Ok((comments, tree))
 }
 
 /// Parses `source` with the language's grammar.
@@ -698,17 +817,20 @@ fn find_file_comments(
 ) -> Result<FileComments, Error> {
     // Approvals hold `\n` line ends, so a checkout with `\r\n` ones must still match them.
     let source = source.map(|source| source.replace("\r\n", "\n"));
-    let comments = match &source {
-        Some(source) => find_comments(file, source).map_err(|error| Error {
-            code: ErrorCode::FileUnreadable,
-            message: format!("Cannot read the comments in {file_label}, since {error}."),
-        })?,
-        None => Vec::new(),
+    let (comments, tree) = match &source {
+        Some(source) => find_comments_and_tree(file, source)
+            .map_err(|error| Error {
+                code: ErrorCode::FileUnreadable,
+                message: format!("Cannot read the comments in {file_label}, since {error}."),
+            })
+            .map(|(comments, tree)| (comments, Some(tree)))?,
+        None => (Vec::new(), None),
     };
     Ok(FileComments {
         comments,
         file: file.to_path_buf(),
         source,
+        tree,
     })
 }
 
