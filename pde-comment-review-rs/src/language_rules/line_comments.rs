@@ -1,5 +1,7 @@
-//! Turns `//` and `#` comment lines into plain words and back, as today's
-//! comment checker does.
+//! This module turns `//` and `#` comment lines into plain words and back,
+//! as today's comment checker does. Read the `to_plain_words(text, marker)`
+//! and `lay_out_plain_words(words, old_text, marker)` functions to understand
+//! the module.
 
 use std::mem;
 
@@ -8,16 +10,6 @@ pub(super) const LINE_WIDTH: usize = 79;
 
 /// Lists the marks that open and close a code fence.
 const FENCE_MARKS: [&str; 2] = ["```", "~~~"];
-
-/// Holds comment lines that plain words keep together.
-enum Block {
-    /// Holds sentences joined into one line of words.
-    Words(String),
-    /// Holds lines that start with a tab or two spaces, kept as written.
-    Example(Vec<String>),
-    /// Holds a code fence and the lines inside it, kept as written.
-    Fence(Vec<String>),
-}
 
 /// Returns the comment's words without `marker`, or the text as it is when a
 /// line does not start with `marker`.
@@ -71,6 +63,16 @@ pub(super) fn lay_out_plain_words(words: &str, old_text: &str, marker: &str) -> 
         }
     }
     lines.iter().map(|line| format!("{line}\n")).collect()
+}
+
+/// Holds comment lines that plain words keep together.
+enum Block {
+    /// Holds sentences joined into one line of words.
+    Words(String),
+    /// Holds lines that start with a tab or two spaces, kept as written.
+    Example(Vec<String>),
+    /// Holds a code fence and the lines inside it, kept as written.
+    Fence(Vec<String>),
 }
 
 /// Splits comment lines, with their markers removed, into blocks. A blank

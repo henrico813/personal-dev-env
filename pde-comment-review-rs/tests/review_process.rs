@@ -20,12 +20,18 @@ use pde_comment_review::steps::make_feedback_request_list::{
 use pde_comment_review::steps::show_status::{Waiting, show_status};
 use serde_json::{Value, json};
 
+/// Names the Go file most tests change.
 const STORE: &str = "review_store.go";
+/// Holds the comment text the user approved.
 const APPROVED: &str = "// Saves the answer under the lock.\n";
+/// Holds an agent's new wording of the approved comment.
 const REWORDED: &str = "// Writes the answer while holding the lock.\n";
+/// Holds Go source that does not parse.
 const BROKEN_GO: &str = "package review\n\nfunc SaveAnswer( {}\n";
-const WAITING_REVIEW: &str = r#"{"status": "waiting_for_user_feedback", "origin": {"repo": "personal-dev-env", "branch": "review-comments", "agent_session": "ses_123"}, "lists": [], "feedback": {}}"#;
+/// Holds a Review Session waiting for User Feedback.
+const WAITING_REVIEW_SESSION: &str = r#"{"status": "waiting_for_user_feedback", "origin": {"repo": "personal-dev-env", "branch": "review-comments", "agent_session": "ses_123"}, "lists": [], "feedback": {}}"#;
 
+/// Runs Git without the test machine's own settings, so they cannot change the result.
 fn run_git(dir: &Path, args: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
@@ -53,19 +59,23 @@ fn make_repo() -> TempFolder {
     folder
 }
 
+/// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
 fn store_source(comment: &str, body: &str) -> String {
     format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
 }
 
+/// Writes `store_source(comment, body)` to the store file on disk.
 fn write_store(dir: &Path, comment: &str, body: &str) {
     fs::write(dir.join(STORE), store_source(comment, body)).unwrap();
 }
 
+/// Commits every change, or makes an empty commit when nothing changed.
 fn commit_all(dir: &Path) {
     run_git(dir, &["add", "--all"]);
     run_git(dir, &["commit", "--allow-empty", "-m", "Change the store"]);
 }
 
+/// Saves the user's approval of `text` for `name`, or a cut when `text` is empty.
 fn add_decision(dir: &Path, file: &str, name: &str, text: &str) {
     let decision = Approval {
         file: PathBuf::from(file),
@@ -75,12 +85,12 @@ fn add_decision(dir: &Path, file: &str, name: &str, text: &str) {
     approvals::add(dir, &[decision]).unwrap();
 }
 
-/// Commits `before` in a file, adds one decision on `name`, writes `after`,
-/// and returns step 2's failures.
+/// Commits `before` in a file, adds the decision on `name` if one is given,
+/// writes `after`, and returns step 2's failures.
 fn check_removal(
     file: &str,
     name: &str,
-    decision: &str,
+    decision: Option<&str>,
     before: &str,
     after: &str,
 ) -> Vec<Finding> {
@@ -89,9 +99,46 @@ fn check_removal(
     fs::write(dir.join(file), before).unwrap();
     commit_all(dir);
     let base = resolve_commit(dir, "HEAD").unwrap();
-    add_decision(dir, file, name, decision);
+    if let Some(decision) = decision {
+        add_decision(dir, file, name, decision);
+    }
     fs::write(dir.join(file), after).unwrap();
     check_comments(dir, Some(base)).unwrap().result.failures
+}
+
+/// Returns every folder and file below `folder`, with each one's modified time and each file's bytes.
+fn read_every_file(folder: &Path) -> BTreeMap<PathBuf, (SystemTime, Option<Vec<u8>>)> {
+    let mut found = BTreeMap::new();
+    let mut folders = vec![folder.to_path_buf()];
+    while let Some(folder) = folders.pop() {
+        for entry in fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            let modified = fs::metadata(&path).unwrap().modified().unwrap();
+            if path.is_dir() {
+                folders.push(path.clone());
+                found.insert(path, (modified, None));
+            } else {
+                let bytes = fs::read(&path).unwrap();
+                found.insert(path, (modified, Some(bytes)));
+            }
+        }
+    }
+    found
+}
+
+/// Makes a clone with an approved comment, a reword staged then undone on disk,
+/// a new Markdown file, and `review_session` saved as its Review Session.
+fn make_repo_with_review_session(review_session: &str) -> TempFolder {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", APPROVED);
+    // A reword staged and then undone on disk makes step 2 read the index too.
+    write_store(dir, REWORDED, "");
+    run_git(dir, &["add", STORE]);
+    write_store(dir, APPROVED, "");
+    fs::write(dir.join("README.md"), "Notes on the store.\n").unwrap();
+    fs::write(dir.join(".git/pde/review.json"), review_session).unwrap();
+    repo
 }
 
 /// Saves a review in `status` that sent each of `lists` from HEAD, with `feedback` by request ID.
@@ -139,27 +186,8 @@ fn describe(request: &FeedbackRequest) -> String {
     format!("{} {name} {reason}", request.file.display())
 }
 
-/// Returns every folder and file below `folder`, with each one's modified time and each file's bytes.
-fn read_every_file(folder: &Path) -> BTreeMap<PathBuf, (SystemTime, Option<Vec<u8>>)> {
-    let mut found = BTreeMap::new();
-    let mut folders = vec![folder.to_path_buf()];
-    while let Some(folder) = folders.pop() {
-        for entry in fs::read_dir(&folder).unwrap() {
-            let path = entry.unwrap().path();
-            let modified = fs::metadata(&path).unwrap().modified().unwrap();
-            if path.is_dir() {
-                folders.push(path.clone());
-                found.insert(path, (modified, None));
-            } else {
-                let bytes = fs::read(&path).unwrap();
-                found.insert(path, (modified, Some(bytes)));
-            }
-        }
-    }
-    found
-}
-
-/// Without it, an agent could reword text the user approved, committed, staged or not, from any folder, in a file Git does not list, or behind a restored copy.
+/// `check_comments` must fail a reworded approved comment from any folder, whether the reword is committed, staged, on disk, hidden from Git or behind a restored copy.
+/// Otherwise an agent could change text the user approved.
 #[test]
 fn changed_approved_text_fails_check() {
     let commit: &[&str] = &["commit", "--all", "-m", "Reword the store"];
@@ -216,7 +244,8 @@ fn changed_approved_text_fails_check() {
     }
 }
 
-/// Without it, an agent would be stuck on a decision from another worktree, on a new comment for a name the user cut, or on `\r\n` line ends.
+/// `check_comments` must pass a comment the branch did not change, even one approved with other text, and a changed comment on a name the user cut.
+/// Otherwise the agent would be stuck on comments that step 3 asks the user about.
 #[test]
 fn unchanged_or_cut_name_comments_pass_check() {
     // Each branch changes the file, so step 2 reads it.
@@ -227,11 +256,6 @@ fn unchanged_or_cut_name_comments_pass_check() {
             store_source(APPROVED, "return"),
         ),
         ("cut-then-reworded", "", store_source(REWORDED, "")),
-        (
-            "crlf-line-ends",
-            APPROVED,
-            store_source(APPROVED, "").replace('\n', "\r\n"),
-        ),
     ];
 
     for (case, decision, source) in cases {
@@ -247,7 +271,24 @@ fn unchanged_or_cut_name_comments_pass_check() {
     }
 }
 
-/// Without it, an agent could delete an approved comment, docstring or module comment while the code it described stays.
+/// `check_comments` must read an approved comment in a file with `\r\n` line ends as unchanged.
+/// Otherwise every approved comment in a checkout with `\r\n` line ends would fail.
+#[test]
+fn crlf_checkout_passes_unchanged_approved_comment() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", APPROVED);
+    let source = store_source(APPROVED, "").replace('\n', "\r\n");
+    fs::write(dir.join(STORE), source).unwrap();
+
+    let output = check_comments(dir, None).unwrap();
+
+    assert_eq!(output.result.failures, []);
+    assert_eq!(output.next, NextStep::MakeFeedbackRequestList);
+}
+
+/// `check_comments` must fail an approved comment, docstring or module comment that the branch removed while the code it describes stays.
+/// Otherwise an agent could delete text the user approved.
 #[test]
 fn removed_approved_comment_fails_while_code_stays() {
     let docstring = "        \"\"\"Saves the answer.\"\"\"\n";
@@ -261,7 +302,7 @@ fn removed_approved_comment_fails_while_code_stays() {
             "go-comment-removed",
             STORE,
             "SaveAnswer",
-            APPROVED,
+            Some(APPROVED),
             store_source(APPROVED, ""),
             store_source("", ""),
             3,
@@ -270,7 +311,7 @@ fn removed_approved_comment_fails_while_code_stays() {
             "python-docstring-removed",
             "review.py",
             "Review.save",
-            docstring,
+            Some(docstring),
             python_before,
             python_after.to_owned(),
             2,
@@ -279,7 +320,7 @@ fn removed_approved_comment_fails_while_code_stays() {
             "rust-module-comment-removed",
             "lib.rs",
             "<module>",
-            module_comment,
+            Some(module_comment),
             rust_before,
             "pub mod shared;\n".to_owned(),
             1,
@@ -299,12 +340,18 @@ fn removed_approved_comment_fails_while_code_stays() {
     }
 }
 
-/// Without it, an agent would be stuck after deleting a function with its approved comment, or a comment the user cut.
+/// `check_comments` must pass a removed comment whose code went too, or that the user cut or never decided on.
+/// Otherwise an agent would be stuck after deleting a function, or a comment the user did not approve.
 #[test]
-fn removing_code_or_cut_comment_passes_check() {
+fn deleted_code_or_unapproved_comment_passes_check() {
     let cases = [
-        ("code-removed-too", APPROVED, "package review\n".to_owned()),
-        ("cut-comment-removed", "", store_source("", "")),
+        (
+            "code-removed-too",
+            Some(APPROVED),
+            "package review\n".to_owned(),
+        ),
+        ("cut-comment-removed", Some(""), store_source("", "")),
+        ("undecided-comment-removed", None, store_source("", "")),
     ];
 
     for (case, decision, after) in cases {
@@ -320,7 +367,8 @@ fn removing_code_or_cut_comment_passes_check() {
     }
 }
 
-/// Without it, a branch made from another would fail on its parent's changes, which its agent must not undo.
+/// `check_comments` must check only the changes since the `base` it is given.
+/// Otherwise a branch made from another would fail on its parent's changes, which its agent must not undo.
 #[test]
 fn stacked_branch_checks_only_its_own_changes() {
     let repo = make_repo();
@@ -338,9 +386,10 @@ fn stacked_branch_checks_only_its_own_changes() {
     assert_eq!(from_parent.result.failures, []);
 }
 
-/// Without it, a base from a sibling branch that already holds the branch's reword would hide it.
+/// `check_comments` must refuse a `base` that HEAD does not build on.
+/// Otherwise a base from a sibling branch that already holds the branch's reword would hide it.
 #[test]
-fn refuses_base_that_is_not_an_ancestor() {
+fn non_ancestor_base_refuses_check() {
     let repo = make_repo();
     let dir = repo.path();
     add_decision(dir, STORE, "SaveAnswer", APPROVED);
@@ -356,9 +405,10 @@ fn refuses_base_that_is_not_an_ancestor() {
     assert_eq!(error.code, ErrorCode::BadInput);
 }
 
-/// Without it, a changed file that does not parse could hide a changed approved comment, and a Markdown change would block the branch.
+/// `check_comments` must list a changed file that no language rule reads, instead of refusing the check.
+/// Otherwise a Markdown change would block the branch, or the agent would not know its comments went unchecked.
 #[test]
-fn lists_unsupported_and_refuses_changed_unparsable_files() {
+fn unsupported_changed_file_is_listed_unchecked() {
     let repo = make_repo();
     let dir = repo.path();
     fs::write(dir.join("README.md"), "Notes on the store.\n").unwrap();
@@ -366,7 +416,14 @@ fn lists_unsupported_and_refuses_changed_unparsable_files() {
     let output = check_comments(dir, None).unwrap();
 
     assert_eq!(output.result.unsupported, [PathBuf::from("README.md")]);
+}
 
+/// `check_comments` must refuse a changed file that does not parse, naming the file.
+/// Otherwise a broken file could hide a changed approved comment.
+#[test]
+fn unparsable_changed_file_refuses_check() {
+    let repo = make_repo();
+    let dir = repo.path();
     fs::write(dir.join("broken.go"), BROKEN_GO).unwrap();
 
     let error = check_comments(dir, None).unwrap_err();
@@ -375,13 +432,16 @@ fn lists_unsupported_and_refuses_changed_unparsable_files() {
     assert!(error.message.contains("broken.go"), "{}", error.message);
 }
 
-/// Without it, an approved file the branch never changed that does not parse would block the branch, once its time stamp or line ends change.
+/// `check_comments` must pass an approved file the branch never changed, even one that does not parse, after its time stamp or line ends change.
+/// Otherwise an old broken file would block a branch that never touched it.
 #[test]
 fn unchanged_broken_approved_file_passes_check() {
+    /// Sets the broken file's modified time to 1970 without changing its bytes.
     fn change_time_stamp(dir: &Path) {
         let file = File::options().write(true).open(dir.join("old_broken.go"));
         file.unwrap().set_modified(UNIX_EPOCH).unwrap();
     }
+    /// Rewrites the broken file with `\r\n` line ends, which Git stores as `\n` under autocrlf.
     fn write_crlf_line_ends(dir: &Path) {
         run_git(dir, &["config", "core.autocrlf", "true"]);
         let source = BROKEN_GO.replace('\n', "\r\n");
@@ -407,35 +467,40 @@ fn unchanged_broken_approved_file_passes_check() {
     }
 }
 
-/// Without it, a check could change the user's approvals, a waiting or broken review, or the code it reads.
+/// `check_comments` must leave every file in the clone as it was, beside a waiting or damaged Review Session.
+/// Otherwise a check could change the user's decisions, the Review Session or the code it reads.
 #[test]
-fn check_leaves_repository_files_unchanged() {
+fn check_comments_leaves_repository_files_unchanged() {
     let cases = [
-        ("waiting-review", WAITING_REVIEW, false),
-        ("broken-review", "{\"status\": ", false),
-        ("broken-review-and-refused-check", "{\"status\": ", true),
+        ("waiting-review-session", WAITING_REVIEW_SESSION),
+        ("damaged-review-session", "{\"status\": "),
     ];
 
-    for (case, review, refuses) in cases {
-        let repo = make_repo();
+    for (case, review_session) in cases {
+        let repo = make_repo_with_review_session(review_session);
         let dir = repo.path();
-        add_decision(dir, STORE, "SaveAnswer", APPROVED);
-        // A reword staged and then undone on disk makes step 2 read the index too.
-        write_store(dir, REWORDED, "");
-        run_git(dir, &["add", STORE]);
-        write_store(dir, APPROVED, "");
-        fs::write(dir.join("README.md"), "Notes on the store.\n").unwrap();
-        fs::write(dir.join(".git/pde/review.json"), review).unwrap();
-        if refuses {
-            fs::write(dir.join("broken.go"), BROKEN_GO).unwrap();
-        }
         let before = read_every_file(dir);
 
         let result = check_comments(dir, None);
 
-        assert_eq!(result.is_err(), refuses, "{case}");
+        assert!(result.is_ok(), "{case}");
         assert_eq!(read_every_file(dir), before, "{case}");
     }
+}
+
+/// `check_comments` must leave every file in the clone as it was when it refuses a file that does not parse.
+/// Otherwise a refused check could move a damaged Review Session aside.
+#[test]
+fn refused_check_leaves_repository_files_unchanged() {
+    let repo = make_repo_with_review_session("{\"status\": ");
+    let dir = repo.path();
+    fs::write(dir.join("broken.go"), BROKEN_GO).unwrap();
+    let before = read_every_file(dir);
+
+    let result = check_comments(dir, None);
+
+    assert!(result.is_err());
+    assert_eq!(read_every_file(dir), before);
 }
 
 mod make_feedback_request_list {
