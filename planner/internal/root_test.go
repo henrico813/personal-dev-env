@@ -148,6 +148,7 @@ func TestHelpTextIncludesRules(t *testing.T) {
 		"planner new",
 		"planner check",
 		"planner inspect",
+		"planner key",
 		"planner patch",
 	} {
 		if !strings.Contains(help, command) {

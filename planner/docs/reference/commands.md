@@ -121,6 +121,26 @@ The JSON view models are the data source for both output formats. Frontmatter
 is read as flat `key: value` pairs and `- item` lists; nested YAML is not
 supported.
 
+## planner key
+
+```text
+planner key <plan.md> [--json-errors]
+```
+
+Prints the plan's issue key in lowercase, read from the start of its file name.
+`ABC-12 Approvals file.md` prints `abc-12`, and `XYZ-07B Refactor.md` prints
+`xyz-07b`. Skills start planned branch names, Vibe keys and run folder names
+with it, so one search for the key finds all of them. It reads only the file
+name, never the plan's text, and ignores a repository's `pde.branchPattern`.
+
+It exits 1 and prints nothing on stdout when the file is missing or its name
+does not start with a key, such as a design doc. Callers store the key and stop
+on that failure, so no name is ever built without it:
+
+```sh
+K=$(planner key "$P") || exit 1
+```
+
 ## planner inspect
 
 ```text

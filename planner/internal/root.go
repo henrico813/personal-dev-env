@@ -27,6 +27,7 @@ Usage:
   planner inspect <plan.md>
   planner inspect <plan.md> --target SELECTOR --repo DIR
       --base-commit COMMIT [--code-out NEWFILE [--before]] [--json-errors]
+  planner key <plan.md> [--json-errors]
   planner patch <plan.md> --target SELECTOR --expect TOKEN --repo DIR
       --base-commit COMMIT (--after-file FILE | --diff-file FILE)
       [--dry-run] [--diff] [--json-errors]
@@ -86,6 +87,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 			return runGuardedInspect(args[1:], stdout, stderr)
 		}
 		return runInspect(args[1:], stdout, stderr)
+	case "key":
+		return runKey(args[1:], stdout, stderr)
 	case "patch":
 		return runGuardedPatch(args[1:], stdout, stderr)
 	default:
