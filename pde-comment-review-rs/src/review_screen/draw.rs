@@ -339,10 +339,10 @@ mod tests {
         assert!(
             refused_rows
                 .iter()
-                .any(|row| row.starts_with("This answer cannot be written."))
+                .any(|row| row.starts_with("That change can't be made"))
         );
         assert!(
-            refused_rows[13].trim_end().ends_with("code."),
+            refused_rows[13].trim_end().ends_with("comment."),
             "{refused_rows:?}"
         );
         for screen in [&opened, &refused, &typing] {

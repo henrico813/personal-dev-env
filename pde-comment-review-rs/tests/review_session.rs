@@ -15,6 +15,7 @@ use pde_comment_review::shared::review_session::{
 use pde_comment_review::shared::user_feedback::{UserAnswer, UserFeedback, UserNote};
 use serde_json::{Value, json};
 
+/// Makes a new Git repository, standing in for the user's worktree.
 fn make_repo() -> TempFolder {
     let folder = TempFolder::new();
     let output = Command::new("git")
@@ -26,13 +27,15 @@ fn make_repo() -> TempFolder {
     folder
 }
 
+/// Returns where the worktree's Review Session is saved, in its own Git folder.
 fn find_review_file(repo: &Path) -> PathBuf {
     find_worktree_git_folder(repo)
         .unwrap()
         .join("pde/review.json")
 }
 
-fn make_review(status: &str, request_count: u32) -> Value {
+/// Builds a saved Review Session with one Feedback Request List and no User Feedback yet.
+fn make_review_session(status: &str, request_count: u32) -> Value {
     let requests: Vec<Value> = (1..=request_count)
         .map(|id| {
             json!({
@@ -40,12 +43,12 @@ fn make_review(status: &str, request_count: u32) -> Value {
                 "file": "src/lib.rs",
                 "name": format!("item_{id}"),
                 "reason": "new",
-                "text": "/// Saves one answer.\n",
+                "text": "/// Takes the lock.\n",
                 "can_reword": true,
                 "line": id,
                 "suggestion": {
                     "kind": "keep",
-                    "reasoning": "Says what it saves.",
+                    "reasoning": "Says what it locks.",
                     "also_at": []
                 }
             })
@@ -55,7 +58,7 @@ fn make_review(status: &str, request_count: u32) -> Value {
         "status": status,
         "origin": {
             "repo": "personal-dev-env",
-            "branch": "feat/review-lock",
+            "branch": "feat/lock-and-save",
             "agent_session": "ses_123"
         },
         "lists": [{ "base": "4f2a9c1e", "requests": requests }],
@@ -63,84 +66,91 @@ fn make_review(status: &str, request_count: u32) -> Value {
     })
 }
 
-fn write_review(repo: &Path, saved_text: &str) {
+/// Writes `review.json` directly, as if another program had saved it.
+fn write_review_session(repo: &Path, saved_text: &str) {
     let review_file = find_review_file(repo);
     fs::create_dir_all(review_file.parent().unwrap()).unwrap();
     fs::write(review_file, saved_text).unwrap();
 }
 
+/// Returns the Feedback Requests of the first Feedback Request List, as a screen shows them.
 fn load_requests(repo: &Path) -> Vec<FeedbackRequest> {
-    let mut review = load(repo).unwrap().unwrap();
-    review.lists.remove(0).requests
+    let mut review_session = load(repo).unwrap().unwrap();
+    review_session.lists.remove(0).requests
 }
 
-/// Keeps an older version from losing a newer review, and a broken file from blocking reviews or replacing a backup.
+/// `load` must refuse a file from a newer version and leave it where it is.
+/// Otherwise an older program would move it aside, and the newer version would lose its Review Session.
 #[test]
-fn refused_saved_files_stay_put_unless_unreadable() {
-    let mut newer_field = make_review("waiting_for_user_feedback", 1);
+fn load_leaves_newer_version_file_in_place() {
+    let mut newer_field = make_review_session("waiting_for_user_feedback", 1);
     newer_field["paused_at"] = json!("2026-10-31");
-    let whole = make_review("waiting_for_user_feedback", 1).to_string();
     let cases = [
+        ("unknown-field", newer_field.to_string()),
         (
-            "unknown field",
-            newer_field.to_string(),
-            ErrorCode::UnknownSavedField,
-            "review.json",
-        ),
-        (
-            "unknown value",
-            make_review("paused", 1).to_string(),
-            ErrorCode::UnknownSavedField,
-            "review.json",
-        ),
-        (
-            "cut short",
-            whole[..whole.len() / 2].to_owned(),
-            ErrorCode::SavedFileUnreadable,
-            "review.json.unreadable.2",
+            "unknown-value",
+            make_review_session("paused", 1).to_string(),
         ),
     ];
-    for (case, saved_text, code, kept_as) in cases {
+    for (case, saved_text) in cases {
         let repo = make_repo();
-        // An earlier damaged file was already moved aside.
-        write_review(repo.path(), "not json");
-        load(repo.path()).unwrap_err();
-        write_review(repo.path(), &saved_text);
+        write_review_session(repo.path(), &saved_text);
         let review_file = find_review_file(repo.path());
 
         let error = load(repo.path()).unwrap_err();
 
-        assert_eq!(error.code, code, "{case}");
-        let first_backup = review_file.with_file_name("review.json.unreadable");
+        // The file keeps its name and every byte, and no backup appears.
+        assert_eq!(error.code, ErrorCode::UnknownSavedField, "{case}");
         assert_eq!(
-            fs::read_to_string(&first_backup).unwrap(),
-            "not json",
-            "{case}"
-        );
-        let kept_file = review_file.with_file_name(kept_as);
-        assert_eq!(
-            fs::read_to_string(&kept_file).unwrap(),
+            fs::read_to_string(&review_file).unwrap(),
             saved_text,
             "{case}"
         );
-        // Only a file kept in place leaves review.json behind.
-        assert_eq!(review_file.exists(), kept_file == review_file, "{case}");
+        let backup = review_file.with_file_name("review.json.unreadable");
+        assert!(!backup.exists(), "{case}");
     }
 }
 
-/// Keeps two open review screens from losing each other's answers.
+/// `load` must move a damaged file to a backup name no earlier backup uses.
+/// Otherwise the damaged file would block every later Review Session in the worktree, or replace the earlier backup.
 #[test]
-fn concurrent_saves_keep_all_user_feedback() {
+fn load_moves_damaged_file_to_new_backup() {
+    // An earlier damaged file was already moved aside.
     let repo = make_repo();
-    write_review(
+    write_review_session(repo.path(), "not json");
+    load(repo.path()).unwrap_err();
+
+    // A Review Session cut short in the middle is saved next.
+    let whole = make_review_session("waiting_for_user_feedback", 1).to_string();
+    let cut_short = &whole[..whole.len() / 2];
+    write_review_session(repo.path(), cut_short);
+    let review_file = find_review_file(repo.path());
+
+    let error = load(repo.path()).unwrap_err();
+
+    // Both backups hold their own text, and review.json is gone.
+    assert_eq!(error.code, ErrorCode::SavedFileUnreadable);
+    let first_backup = review_file.with_file_name("review.json.unreadable");
+    assert_eq!(fs::read_to_string(&first_backup).unwrap(), "not json");
+    let second_backup = review_file.with_file_name("review.json.unreadable.2");
+    assert_eq!(fs::read_to_string(&second_backup).unwrap(), cut_short);
+    assert!(!review_file.exists());
+}
+
+/// Two screens that save User Feedback at the same time must keep every piece of it.
+/// Otherwise one screen would write over the other's User Feedback, and the user would have to give it again.
+#[test]
+fn two_screens_lose_no_user_feedback() {
+    let repo = make_repo();
+    write_review_session(
         repo.path(),
-        &make_review("waiting_for_user_feedback", 40).to_string(),
+        &make_review_session("waiting_for_user_feedback", 40).to_string(),
     );
     let requests = load_requests(repo.path());
     let start = Barrier::new(2);
 
     // Each thread opens its own lock, which Linux treats like a second process.
-
+    // The two threads start together and each saves User Feedback on 20 Feedback Requests.
     thread::scope(|scope| {
         for half in requests.chunks(20) {
             let (dir, start) = (repo.path(), &start);
@@ -154,33 +164,35 @@ fn concurrent_saves_keep_all_user_feedback() {
         }
     });
 
-    let review = load(repo.path()).unwrap().unwrap();
-    assert_eq!(review.feedback.len(), 40);
+    let review_session = load(repo.path()).unwrap().unwrap();
+    assert_eq!(review_session.feedback.len(), 40);
 }
 
-/// Keeps a review from going to the agent before the last answer, or with no note to act on.
+/// The Review Session must go to the agent only after the last User Feedback, and only when a User Note waits.
+/// Otherwise the agent could start before the user is done, or get a Review Session with no User Note to act on.
 #[test]
-fn status_changes_after_last_feedback_if_noted() {
+fn agent_gets_user_notes_after_last_user_feedback() {
     let cases = [
         (
-            "note first",
+            "user-note-first",
             UserFeedback::Note(UserNote("Say why it locks.".to_owned())),
             ReviewStatus::UserNotesWaiting,
         ),
         (
-            "answers only",
+            "no-user-note",
             UserFeedback::Answer(UserAnswer::Cut),
             ReviewStatus::WaitingForUserFeedback,
         ),
     ];
     for (case, first_feedback, status_after_last) in cases {
         let repo = make_repo();
-        write_review(
+        write_review_session(
             repo.path(),
-            &make_review("waiting_for_user_feedback", 2).to_string(),
+            &make_review_session("waiting_for_user_feedback", 2).to_string(),
         );
         let requests = load_requests(repo.path());
 
+        // The user gives User Feedback on the first of two Feedback Requests, then the last.
         let status_after_first =
             save_user_feedback(repo.path(), &requests[0], first_feedback).unwrap();
         let returned_after_last = save_user_feedback(
@@ -190,6 +202,7 @@ fn status_changes_after_last_feedback_if_noted() {
         )
         .unwrap();
 
+        // The status waits after the first, and both the reply and the file agree after the last.
         assert_eq!(
             status_after_first,
             ReviewStatus::WaitingForUserFeedback,
@@ -201,12 +214,13 @@ fn status_changes_after_last_feedback_if_noted() {
     }
 }
 
-/// Tells the user an answer came too late to be written, instead of silently dropping it.
+/// `save_user_feedback` must refuse User Feedback once the Review Session stops waiting for it, and change nothing.
+/// Otherwise the screen could not tell the user that this User Feedback came too late to count.
 #[test]
-fn feedback_refused_and_unsaved_unless_review_waits() {
+fn late_user_feedback_is_refused_and_unsaved() {
     for status in ["user_notes_waiting", "writing_user_feedback", "done"] {
         let repo = make_repo();
-        write_review(repo.path(), &make_review(status, 1).to_string());
+        write_review_session(repo.path(), &make_review_session(status, 1).to_string());
         let review_file = find_review_file(repo.path());
         let saved_before = fs::read(&review_file).unwrap();
         let requests = load_requests(repo.path());
@@ -223,33 +237,38 @@ fn feedback_refused_and_unsaved_unless_review_waits() {
     }
 }
 
-/// Keeps a screen left open from approving text the user never saw.
+/// A screen left open must not save User Feedback on a Feedback Request the agent changed since.
+/// Otherwise the user could approve a comment or Agent Suggestion they never saw.
 #[test]
-fn answer_to_changed_request_refused_and_unsaved() {
+fn outdated_screen_cannot_answer_a_changed_request() {
     let cases = [
         (
-            "comment reworded",
+            "comment-reworded",
             "/text",
-            json!("/// Saves one answer under the lock.\n"),
+            json!("/// Takes the lock and reads the file.\n"),
         ),
         (
-            "suggestion changed",
+            "suggestion-changed",
             "/suggestion/kind",
-            json!({ "reword": { "text": "Saves one answer under the lock." } }),
+            json!({ "reword": { "text": "Takes the lock and reads the file." } }),
         ),
     ];
     for (case, changed_field, new_value) in cases {
         let repo = make_repo();
-        let mut review = make_review("waiting_for_user_feedback", 1);
-        write_review(repo.path(), &review.to_string());
+        let mut review_session = make_review_session("waiting_for_user_feedback", 1);
+        write_review_session(repo.path(), &review_session.to_string());
         let shown_request = load_requests(repo.path()).remove(0);
-        // The agent sends the request again with a change this screen never showed.
-        let mut sent_again = review["lists"][0].clone();
+
+        // The agent sends the Feedback Request again with a change this screen never showed.
+        let mut sent_again = review_session["lists"][0].clone();
         *sent_again["requests"][0]
             .pointer_mut(changed_field)
             .unwrap() = new_value;
-        review["lists"].as_array_mut().unwrap().push(sent_again);
-        write_review(repo.path(), &review.to_string());
+        review_session["lists"]
+            .as_array_mut()
+            .unwrap()
+            .push(sent_again);
+        write_review_session(repo.path(), &review_session.to_string());
         let review_file = find_review_file(repo.path());
         let saved_before = fs::read(&review_file).unwrap();
 
@@ -260,7 +279,7 @@ fn answer_to_changed_request_refused_and_unsaved() {
         )
         .unwrap_err();
 
-        assert_eq!(error.code, ErrorCode::TextChanged, "{case}");
+        assert_eq!(error.code, ErrorCode::RequestChanged, "{case}");
         assert_eq!(fs::read(&review_file).unwrap(), saved_before, "{case}");
     }
 }

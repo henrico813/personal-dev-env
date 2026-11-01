@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -56,7 +55,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
 
-	journal, err := manager.Reconcile(profile.Full)
+	journal, err := manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -82,7 +81,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	assertBuildFile(t, manager.statePath(), "old state\n")
 
 	// Build and commit, then run again with nothing changed.
-	journal, err = manager.Reconcile(profile.Full)
+	journal, err = manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
@@ -93,7 +92,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal, err = manager.Reconcile(profile.Full)
+	journal, err = manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("unchanged Reconcile() error = %v", err)
 	}
@@ -110,7 +109,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 
 	// A tool left out of the source hashes would never rebuild after a change.
 	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "input.txt"), "changed\n", 0o644)
-	journal, err = manager.Reconcile(profile.Full)
+	journal, err = manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("changed Reconcile() error = %v", err)
 	}
@@ -130,7 +129,7 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 	// A finished install, then only the link is deleted.
-	journal, err := manager.Reconcile(profile.Full)
+	journal, err := manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -142,7 +141,7 @@ func TestReconcileRestoresMissingApproveLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err = manager.Reconcile(profile.Full)
+	journal, err = manager.Reconcile("full")
 
 	if err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
@@ -174,7 +173,7 @@ func TestReconcileReplacesLinkedSkillLessons(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	journal, err := manager.Reconcile(profile.Full)
+	journal, err := manager.Reconcile("full")
 
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -216,7 +215,7 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 			before := readBuildLog(t, logPath)
 			writeBuildFile(t, filepath.Join(repoRoot, tt.path), "changed\n", 0o644)
 
-			journal, err := manager.Reconcile(profile.Full)
+			journal, err := manager.Reconcile("full")
 			if err != nil {
 				t.Fatalf("Reconcile() error = %v", err)
 			}
@@ -246,7 +245,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
 
-	_, err := manager.Reconcile(profile.Full)
+	_, err := manager.Reconcile("full")
 
 	if err == nil || !strings.Contains(err.Error(), "verify skill-lessons") {
 		t.Fatalf("Reconcile() error = %v, want the skill-lessons check to fail", err)
@@ -297,7 +296,7 @@ func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
 	}
 	writeBuildFile(t, manager.statePath(), "old state\n", 0o644)
 
-	_, err := manager.Reconcile(profile.Full)
+	_, err := manager.Reconcile("full")
 
 	if err == nil || !strings.Contains(err.Error(), "verify pde-comment-review-next") {
 		t.Fatalf("Reconcile() error = %v, want the new review check to fail", err)
@@ -320,7 +319,7 @@ func TestClientBuildsOnlySkillLessons(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "build.log")
 	manager := newFixtureManager(t, home, repoRoot, logPath)
 
-	journal, err := manager.Reconcile(profile.Client)
+	journal, err := manager.Reconcile("client")
 
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -342,7 +341,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 	writeBuildSources(t, repoRoot)
 	logPath = filepath.Join(t.TempDir(), "build.log")
 	manager = newFixtureManager(t, home, repoRoot, logPath)
-	journal, err := manager.Reconcile(profile.Full)
+	journal, err := manager.Reconcile("full")
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}

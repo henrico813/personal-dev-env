@@ -62,11 +62,7 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 				if pending {
 					return fmt.Errorf("pending filesystem recovery; rerun without --dry-run")
 				}
-				requested := ""
-				if len(args) == 1 {
-					requested = args[0]
-				}
-				config.Profile, err = resolveProfile(config.Home, requested, installProfile)
+				config.Profile, err = resolveInstallArgument(config.Home, args)
 				if err != nil {
 					return err
 				}
@@ -83,11 +79,7 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
 				return errors.Join(err, lock.Close())
 			}
-			requested := ""
-			if len(args) == 1 {
-				requested = args[0]
-			}
-			config.Profile, err = resolveProfile(config.Home, requested, installProfile)
+			config.Profile, err = resolveInstallArgument(config.Home, args)
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
@@ -143,7 +135,7 @@ func reconcile(config config, runner run.Runner) error {
 		return err
 	}
 	// Check before apt runs, so a refused install changes nothing.
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		if err := direct.New(config.Home, runner).RejectToolRemoval(config.Profile); err != nil {
 			return err
 		}
@@ -175,7 +167,7 @@ func reconcile(config config, runner run.Runner) error {
 	// builds that use files installed by chezmoi.
 	var buildManager builds.Manager
 	var directManager direct.Manager
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		directManager = direct.New(config.Home, runner)
 		toolJournal, err := directManager.ReconcileTools(config.Profile)
 		if err != nil {
@@ -189,7 +181,7 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("Aqua", err)
 	}
 	journals = append(journals, aquaJournal)
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		npmJournal, err := npm.New(config.Home, config.RepoRoot, runner).Reconcile()
 		if err != nil {
 			return fail("npm", err)
@@ -212,7 +204,7 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("PDE config migration", err)
 	}
 	journals = append(journals, migrationJournal)
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		pluginJournal, err := buildManager.InstallPlugin("opencode-inline.nvim")
 		if err != nil {
 			return fail("opencode-inline.nvim", err)
@@ -224,7 +216,7 @@ func reconcile(config config, runner run.Runner) error {
 		return fail("chezmoi", err)
 	}
 	journals = append(journals, chezmoiJournal)
-	if config.Profile == profile.Full {
+	if config.Profile.Has(profile.Development) {
 		blinkJournal, err := buildManager.BuildBlink()
 		if err != nil {
 			return fail("blink.cmp", err)
@@ -237,7 +229,7 @@ func reconcile(config config, runner run.Runner) error {
 	// Render after the chezmoi apply, which copies the empty Lessons sections,
 	// and before the OpenCode refresh, whose errors return early.
 	// Terminal installs no skills.
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		if err := renderSkillLessons(config.Home, runner); err != nil {
 			return fmt.Errorf("skill lessons: %w", err)
 		}

@@ -11,6 +11,7 @@ import (
 	"pde-installer/internal/direct"
 	"pde-installer/internal/manifest"
 	"pde-installer/internal/npm"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 	"pde-installer/internal/tmux"
 	"pde-installer/internal/ubuntu"
@@ -31,7 +32,7 @@ func list(config config, runner run.Runner) error {
 	var directManager direct.Manager
 	var directTools []direct.Tool
 	var buildManager builds.Manager
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		npmManager = npm.New(config.Home, config.RepoRoot, runner)
 		directManager = direct.New(config.Home, runner)
 		var directToolsErr error
