@@ -326,6 +326,11 @@ impl FileComments {
         None
     }
 
+    /// Returns true when the file was there in this version.
+    pub(crate) fn exists(&self) -> bool {
+        self.source.is_some()
+    }
+
     /// Returns true for a comment with no name above the file's first code,
     /// where a license sits.
     pub(crate) fn is_header(&self, comment: &Comment) -> bool {
