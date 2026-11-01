@@ -157,6 +157,8 @@ fields can suit deliberately exposed, unconstrained data.
 Use constructors to establish required guarantees. Add `Default` only when a
 sensible default exists. Derive standard traits when their meaning fits the type;
 do not add traits, getters, setters, builders, or wrappers automatically.
+Add each one only for code that uses it, and confirm that with the
+[where-is-it-used check](#check-where-each-new-public-item-is-used).
 A constructor with three clear required values can be easier to use than a
 builder. A long sequence of boolean arguments can be harder to read than a named
 configuration struct. Choose from the caller's needs, not a fixed pattern.
@@ -228,9 +230,14 @@ Use `Option` for absence and `Result` for recoverable failure. Use `?` to propag
 errors when appropriate. Preserve useful error context. Choose typed errors when
 callers need to distinguish failures; application-level error wrappers can suit
 errors that are mainly reported. Follow the project's existing error approach.
-Custom error types should implement `Debug`, `Display`, and `Error`; retain
-underlying errors through `source()` where appropriate instead of flattening
-all failures into strings. Add actionable context without exposing secrets.
+Derive `Debug` on every error type, because `unwrap` and `expect` need
+it. Implement `Display` and `Error`, and keep the cause through
+`source()`, when something prints the error for people, another crate
+receives it, or another error wraps it. An error that only becomes a
+code and a message can be a plain struct that derives `Debug`, with the
+cause written into the message.
+Do not flatten failures into strings when callers must tell them apart.
+Add actionable context without exposing secrets.
 
 A parse failure should remain distinguishable from a read failure when the
 caller handles them differently. A function with one useful existing error type
@@ -389,6 +396,30 @@ Check the areas affected by the change: behavior and failure paths; ownership
 and cleanup; names and documentation; trait requirements and public compatibility;
 test coverage of meaningful outcomes; and supported build configurations. Skip
 irrelevant specialized checks, but not unfamiliar ones.
+
+### Check where each new public item is used
+
+Run this check before finishing a change and when reviewing one. List
+each public item the change adds, including fields, variants, methods
+and trait impls. Next to each, name the code in this change that uses
+it.
+
+- Cut an item that nothing uses, or move it to the change that first
+  needs it.
+- Count an item that only its own tests use as unused. The exception is
+  a task to add that API for a caller the task names. Then name that
+  caller in the handoff.
+
+The compiler does not warn about these items, because its `dead_code`
+lint skips `pub` items in a library that another crate might use. To
+find them, temporarily make the new items and their `pub use` lines
+`pub(crate)`, then run `cargo check`. It warns about unused types,
+variants, fields and methods, but not trait impls, so check those by
+hand. Plain `cargo check` builds neither `tests/` nor `#[cfg(test)]`
+modules, so an item only tests use gets a warning and counts as unused.
+An E0603 "is private" error from the package's `main.rs` means the
+binary uses that item, not that something broke. Undo the visibility
+change afterward.
 
 ## Finish
 
