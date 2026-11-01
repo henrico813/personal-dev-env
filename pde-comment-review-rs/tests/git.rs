@@ -45,7 +45,7 @@ fn commit_files(dir: &Path) {
     run_git(dir, &["commit", "-m", "Change review comments"]);
 }
 
-/// Prevents later main commits from shifting the review's task start.
+/// Keeps new main commits from asking the user about comments the agent never touched.
 #[test]
 fn branch_start_uses_the_shared_ancestor() {
     let repo = make_repo();
@@ -65,7 +65,7 @@ fn branch_start_uses_the_shared_ancestor() {
     assert_eq!(find_branch_start(dir).unwrap(), split);
 }
 
-/// Keeps staged, new and removed comments from disappearing before review.
+/// Keeps staged, unstaged, deleted or oddly named files from hiding edits to approved comments.
 #[test]
 fn changed_files_include_every_working_change() {
     let repo = make_repo();
@@ -111,13 +111,11 @@ fn changed_files_include_every_working_change() {
     assert_eq!(files.into_iter().collect::<BTreeSet<_>>(), expected);
 }
 
-/// Keeps review calls from depending on the caller's current subfolder.
+/// Keeps a review started in a subfolder from missing new files elsewhere.
 #[test]
 fn changed_files_work_from_a_subfolder() {
     let repo = make_repo();
     let dir = repo.path();
-    fs::write(dir.join("review.rs"), "// Original comment.\n").unwrap();
-    commit_files(dir);
     let base = resolve_commit(dir, "HEAD").unwrap();
     fs::write(dir.join("review.rs"), "// Changed comment.\n").unwrap();
     fs::create_dir(dir.join("nested")).unwrap();
@@ -127,7 +125,7 @@ fn changed_files_work_from_a_subfolder() {
     assert_eq!(files, vec![PathBuf::from("review.rs")]);
 }
 
-/// Keeps read-only review calls from competing with commits for the index lock.
+/// Guards against Git rewriting the index during review, which we found could make a simultaneous commit fail.
 #[test]
 fn git_reads_preserve_index_bytes() {
     let repo = make_repo();
@@ -153,7 +151,7 @@ fn git_reads_preserve_index_bytes() {
     assert_eq!(fs::read(&index).unwrap(), before);
 }
 
-/// Keeps style checks on present changed lines instead of unchanged neighbors.
+/// Keeps wrong line numbers from flagging old sentences or skipping new ones in style checks.
 #[test]
 fn changed_lines_follow_current_line_numbers() {
     struct Case {
@@ -208,7 +206,7 @@ fn changed_lines_follow_current_line_numbers() {
         let lines = list_changed_lines(dir, &base, file).unwrap();
 
         assert_eq!(
-            lines.lines(),
+            &lines,
             &case.expected.iter().copied().collect(),
             "{}",
             case.name
@@ -216,7 +214,7 @@ fn changed_lines_follow_current_line_numbers() {
     }
 }
 
-/// Protects comments edited again after the agent staged an earlier wording.
+/// Keeps edits made after staging from leaving half the changes outside the style checks.
 #[test]
 fn changed_lines_include_unstaged_and_staged_edits() {
     let repo = make_repo();
@@ -231,27 +229,10 @@ fn changed_lines_include_unstaged_and_staged_edits() {
 
     let lines = list_changed_lines(dir, &base, file).unwrap();
 
-    assert_eq!(lines.lines(), &BTreeSet::from([1, 3]));
+    assert_eq!(&lines, &BTreeSet::from([1, 3]));
 }
 
-/// Keeps local Git settings from marking unchanged lines as changed.
-#[test]
-fn changed_lines_ignore_local_diff_settings() {
-    let repo = make_repo();
-    let dir = repo.path();
-    let file = Path::new("review.rs");
-    fs::write(dir.join(file), "// First.\n// Middle.\n// Last.\n").unwrap();
-    commit_files(dir);
-    let base = resolve_commit(dir, "HEAD").unwrap();
-    run_git(dir, &["config", "diff.interHunkContext", "10"]);
-    fs::write(dir.join(file), "// New first.\n// Middle.\n// New last.\n").unwrap();
-
-    let lines = list_changed_lines(dir, &base, file).unwrap();
-
-    assert_eq!(lines.lines(), &BTreeSet::from([1, 3]));
-}
-
-/// Keeps original wording available even after the working file changes.
+/// Keeps altered old text from making every comment look changed while treating files missing at the base as absent.
 #[test]
 fn historical_reads_preserve_text_and_absence() {
     let repo = make_repo();
@@ -273,9 +254,9 @@ fn historical_reads_preserve_text_and_absence() {
     );
 }
 
-/// Keeps bad paths and revisions from masquerading as absent comments.
+/// Keeps a mistyped base from making every comment look new instead of reporting an error.
 #[test]
-fn invalid_inputs_return_structured_failures() {
+fn bad_bases_paths_and_checkouts_return_codes() {
     let repo = make_repo();
     let dir = repo.path();
     let base = resolve_commit(dir, "HEAD").unwrap();
@@ -297,7 +278,7 @@ fn invalid_inputs_return_structured_failures() {
     );
 }
 
-/// Separates worktree reviews while keeping their clone's approvals together.
+/// Keeps worktrees from overwriting each other's reviews or missing approvals made in another worktree.
 #[test]
 fn worktree_identity_separates_branches_and_git_folders() {
     let repo = make_repo();

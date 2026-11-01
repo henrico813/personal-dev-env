@@ -11,7 +11,7 @@ use std::process::{Command, Output};
 use super::{Error, ErrorCode};
 
 /// Holds a resolved commit hash rather than a movable branch name.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct CommitId(String);
 
 impl CommitId {
@@ -86,36 +86,24 @@ pub fn list_changed_files(dir: &Path, base: &CommitId) -> Result<Vec<PathBuf>, E
     Ok(files.into_iter().collect())
 }
 
-/// Holds changed line numbers in the current file, counted from one.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChangedLines(BTreeSet<usize>);
-
-impl ChangedLines {
-    /// Lets style rules test a current line without exposing mutation.
-    pub fn contains(&self, line: usize) -> bool {
-        self.0.contains(&line)
-    }
-
-    /// Borrows the ordered set for callers that visit changed lines.
-    pub fn lines(&self) -> &BTreeSet<usize> {
-        &self.0
-    }
-}
-
 /// Marks additions and replacements in a root-relative current file.
 /// Deletions have no current lines and every new file line counts.
-pub fn list_changed_lines(dir: &Path, base: &CommitId, file: &Path) -> Result<ChangedLines, Error> {
+pub fn list_changed_lines(
+    dir: &Path,
+    base: &CommitId,
+    file: &Path,
+) -> Result<BTreeSet<usize>, Error> {
     let root = find_root(dir)?;
     validate_file(file)?;
     let current = match fs::read_to_string(root.join(file)) {
         Ok(text) => text,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(ChangedLines(BTreeSet::new()));
+            return Ok(BTreeSet::new());
         }
         Err(error) => return Err(file_error(error)),
     };
     if read_file_at_commit(&root, base, file)?.is_none() {
-        return Ok(ChangedLines((1..=current.lines().count()).collect()));
+        return Ok((1..=current.lines().count()).collect());
     }
     let output = run_git(
         &root,
@@ -147,7 +135,7 @@ pub fn list_changed_lines(dir: &Path, base: &CommitId, file: &Path) -> Result<Ch
         let end = start.checked_add(count).ok_or_else(invalid_diff)?;
         lines.extend(start..end);
     }
-    Ok(ChangedLines(lines))
+    Ok(lines)
 }
 
 /// Reads historical UTF-8 text at a root-relative path, or None when absent.
@@ -219,10 +207,10 @@ fn validate_file(file: &Path) -> Result<(), Error> {
             .components()
             .any(|part| !matches!(part, std::path::Component::Normal(_)))
     {
-        return Err(Error::new(
-            ErrorCode::BadInput,
-            "Use a path relative to the repository root.".to_owned(),
-        ));
+        return Err(Error {
+            code: ErrorCode::BadInput,
+            message: "Use a path relative to the repository root.".to_owned(),
+        });
     }
     Ok(())
 }
@@ -273,41 +261,36 @@ fn git_failure(dir: &Path, output: Output) -> Error {
         _ => ErrorCode::NotAGitCheckout,
     };
     let detail = String::from_utf8_lossy(&output.stderr);
-    Error::new(
+    Error {
         code,
-        format!("Git failed with {}. {}", output.status, detail.trim()),
-    )
+        message: format!("Git failed with {}. {}", output.status, detail.trim()),
+    }
 }
 
 fn read_text(output: Vec<u8>) -> Result<String, Error> {
-    String::from_utf8(output).map_err(|error| {
-        Error::with_source(
-            ErrorCode::FileUnreadable,
-            "Git returned text that is not UTF-8.".to_owned(),
-            error,
-        )
+    String::from_utf8(output).map_err(|error| Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!("Git returned text that is not UTF-8. {error}"),
     })
 }
 
 fn command_error(error: io::Error) -> Error {
-    Error::with_source(
-        ErrorCode::FileUnreadable,
-        "Cannot run Git.".to_owned(),
-        error,
-    )
+    Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!("Cannot run Git. {error}"),
+    }
 }
 
 fn file_error(error: io::Error) -> Error {
-    Error::with_source(
-        ErrorCode::FileUnreadable,
-        "Cannot read the current file.".to_owned(),
-        error,
-    )
+    Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!("Cannot read the current file. {error}"),
+    }
 }
 
 fn invalid_diff() -> Error {
-    Error::new(
-        ErrorCode::BadInput,
-        "Cannot read Git's line diff.".to_owned(),
-    )
+    Error {
+        code: ErrorCode::BadInput,
+        message: "Cannot read Git's line diff.".to_owned(),
+    }
 }
