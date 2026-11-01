@@ -10,9 +10,12 @@ name = "pde-comment-review-next"
 path = "src/main.rs"
 
 [dependencies]
+crossterm = { version = "0.29.0", default-features = false, features = ["events"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tree-sitter = "0.27.1"
 tree-sitter-go = "0.25.0"
 tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
+unicode-segmentation = "1.13.3"
+unicode-width = "0.2.2"

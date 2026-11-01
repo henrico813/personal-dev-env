@@ -16,7 +16,7 @@ use crate::language_rules::{LanguageRules, find_rules_for};
 
 /// One comment, where it is in its file, and the code it describes.
 /// Lines count from 1.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Comment {
     pub file: PathBuf,
     /// The key approvals use for this comment. It is `None` when no
