@@ -1,5 +1,6 @@
-//! Picks a language's comment rules from a file's path. Only
-//! `shared/comments.rs` calls this.
+//! This module picks a language's comment rules from a file's path. Only
+//! `shared/comments.rs` calls it. Read the `LanguageRules` trait and the
+//! `find_rules_for(file)` function to understand the module.
 
 mod docstrings;
 mod go;
@@ -29,8 +30,8 @@ pub trait LanguageRules {
     /// the next line, or `None` when that line is blank.
     fn name_comment(&self, comment: Node, code_below: Option<Node>, source: &str)
     -> Option<String>;
-    /// Returns the comment's words without its markers or quotes, or the
-    /// text as it is when the user cannot reword it.
+    /// Returns the comment's words without its markers or quotes. Text that
+    /// is not all marked lines, or one whole docstring, comes back as it is.
     fn to_plain_words(&self, text: &str) -> String;
     /// Returns `words` laid out like `old_text`, with its markers and
     /// indentation, or an empty text when `words` has none.
@@ -40,12 +41,20 @@ pub trait LanguageRules {
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error>;
     /// Returns true for comment text a build or test tool reads, in any case
     /// or spacing, so a cut or reword would change what the tool does.
-    fn is_read_by_tools(&self, _file: &Path, _text: &str) -> bool {
-        false
-    }
+    fn is_read_by_tools(&self, file: &Path, text: &str) -> bool;
     /// Returns true for a comment node that a cut could turn into different
     /// code, such as one inside a macro call.
     fn is_keep_only(&self, comment: Node, source: &str) -> bool;
+}
+
+/// Returns the rules for the file's language, if supported.
+pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
+    match file.extension()?.to_str()? {
+        "go" => Some(&go::GoRules),
+        "py" => Some(&python::PythonRules),
+        "rs" => Some(&rust::RustRules),
+        _ => None,
+    }
 }
 
 /// Returns true when `node` sits inside a node of one of `kinds`.
@@ -105,14 +114,4 @@ fn run_with_input(command: &[&str], folder: &Path, input: &str) -> Result<String
     }
     written.map_err(|error| format!("Cannot send {} the file. {error}", command[0]))?;
     String::from_utf8(output.stdout).map_err(|error| error.to_string())
-}
-
-/// Returns the rules for the file's language, if supported.
-pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
-    match file.extension()?.to_str()? {
-        "go" => Some(&go::GoRules),
-        "py" => Some(&python::PythonRules),
-        "rs" => Some(&rust::RustRules),
-        _ => None,
-    }
 }
