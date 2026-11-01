@@ -157,8 +157,10 @@ fields can suit deliberately exposed, unconstrained data.
 Use constructors to establish required guarantees. Add `Default` only when a
 sensible default exists. Derive standard traits when their meaning fits the type;
 do not add traits, getters, setters, builders, or wrappers automatically.
-Add each one only for code that uses it, and confirm that with the
-[where-is-it-used check](#check-where-each-new-public-item-is-used).
+Add a getter, setter, builder, wrapper, custom trait or handwritten
+trait implementation only when code in the change uses it. The
+[where-is-it-used check](#check-where-each-new-public-item-is-used)
+confirms this.
 A constructor with three clear required values can be easier to use than a
 builder. A long sequence of boolean arguments can be harder to read than a named
 configuration struct. Choose from the caller's needs, not a fixed pattern.
@@ -231,13 +233,12 @@ errors when appropriate. Preserve useful error context. Choose typed errors when
 callers need to distinguish failures; application-level error wrappers can suit
 errors that are mainly reported. Follow the project's existing error approach.
 Derive `Debug` on every error type, because `unwrap` and `expect` need
-it. Implement `Display` and `Error`, and keep the cause through
-`source()`, when something prints the error for people, another crate
-receives it, or another error wraps it. An error that only becomes a
-code and a message can be a plain struct that derives `Debug`, with the
-cause written into the message.
-Do not flatten failures into strings when callers must tell them apart.
-Add actionable context without exposing secrets.
+it. Implement `Display` and `Error` when something prints the error for
+people, another crate receives it, or another error wraps it. In those
+cases, return the underlying error from `source()` when there is one.
+Some errors end up only as an exit code and a message. Such an error
+can be a struct that derives only `Debug`. Write the cause into its
+message. Add actionable context without exposing secrets.
 
 A parse failure should remain distinguishable from a read failure when the
 caller handles them differently. A function with one useful existing error type
@@ -401,25 +402,41 @@ irrelevant specialized checks, but not unfamiliar ones.
 
 Run this check before finishing a change and when reviewing one. List
 each public item the change adds, including fields, variants, methods
-and trait impls. Next to each, name the code in this change that uses
-it.
+and handwritten trait implementations. Next to each, name the code in
+this change that uses it. Leave out standard derives such as
+`#[derive(Debug)]`, because [section 5](#5-traits) and
+[section 7](#7-errors-and-resource-cleanup) decide those.
 
 - Cut an item that nothing uses, or move it to the change that first
   needs it.
-- Count an item that only its own tests use as unused. The exception is
-  a task to add that API for a caller the task names. Then name that
-  caller in the handoff.
+- Count an item as unused when only its own tests use it.
+- Keep an unused item when the task asks for that public API, either
+  for a caller the task names or for other crates. Name that caller, or
+  say "other crates", in the handoff.
 
-The compiler does not warn about these items, because its `dead_code`
-lint skips `pub` items in a library that another crate might use. To
-find them, temporarily make the new items and their `pub use` lines
-`pub(crate)`, then run `cargo check`. It warns about unused types,
-variants, fields and methods, but not trait impls, so check those by
-hand. Plain `cargo check` builds neither `tests/` nor `#[cfg(test)]`
-modules, so an item only tests use gets a warning and counts as unused.
-An E0603 "is private" error from the package's `main.rs` means the
-binary uses that item, not that something broke. Undo the visibility
-change afterward.
+The compiler does not warn about unused public items. In a library, its
+`dead_code` lint skips any `pub` item another crate can reach. To find
+unused items, follow these steps:
+
+1. Temporarily mark the new items and their `pub use` lines
+   `pub(crate)`. Rust does not allow `pub(crate)` on a single enum
+   variant, so for a new variant mark the whole enum `pub(crate)`.
+2. Run `cargo check`. It warns about unused types, variants, fields,
+   methods, and custom traits nothing implements or calls. It does not
+   warn about an unused implementation of a standard trait such as
+   `Display` or `From`, so check those by hand.
+3. Undo the visibility change.
+
+Read the results of step 2 this way:
+
+- Plain `cargo check` builds neither `tests/` nor `#[cfg(test)]`
+  modules. An item that only tests use gets a warning and counts as
+  unused.
+- A warning that a type is "more private than" a public function using
+  it is expected. The visibility change causes it.
+- If `main.rs` or another crate in the workspace fails with an "is
+  private" error (E0603 for a type, E0624 for a method, E0616 for a
+  field), that code uses the item. Nothing broke.
 
 ## Finish
 

@@ -47,10 +47,10 @@ These are proposed acceptance cases, not evidence of completed agent tests.
 
 | Request | Expected behavior |
 | --- | --- |
-| Review this change. It adds public types, enum variants and methods that nothing in it calls. | Lists each new public item with the code that uses it. Flags items nothing uses, and items only their own tests use, as ones to cut or move to the change that needs them. |
+| Review this change. It adds public types, enum variants and methods that nothing in it uses. | Lists each new public item with the code that uses it. Flags each item that nothing uses or that only its own tests use. Says to cut each one or move it to the change that needs it. |
 | Add the data types from the design doc now, so later work can start early. | Adds only the types this change uses. Leaves the rest for the change that first needs them. |
-| Add an error type to this command-line tool. Its errors become an exit code and a JSON message. | Uses a plain struct and writes the cause into the message. Does not add `Display`, `Error`, `source()` or constructors that nothing calls. |
-| Add a public parsing API to this library for other crates to call. | Keeps the requested public items and names the caller in the handoff. Implements `Display` and `Error` with `source()` on the returned error. Does not cut the API as unused. |
+| Add an error type to this command-line tool. Its errors become an exit code and a JSON message. | Uses a struct that derives only `Debug` and writes the cause into the message. Does not implement `Display`, `Error` or `source()`. Does not add constructors that nothing calls. |
+| Add a public parsing API to this library for other crates to call. | Keeps the requested public items. Says in the handoff that they are for other crates. Implements `Display` and `Error` on the returned error, with `source()` returning any underlying error. Does not cut the API as unused. |
 
 ## Negative and constraint cases
 
