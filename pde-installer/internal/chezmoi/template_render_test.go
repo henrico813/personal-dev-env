@@ -148,6 +148,7 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 		"obsidian-zettel",
 		"plain-direct-english",
 		"skill-lessons",
+		"status-updates",
 	}
 	if !slices.Equal(skills, want) {
 		t.Fatalf("client skills = %q, want %q", skills, want)
