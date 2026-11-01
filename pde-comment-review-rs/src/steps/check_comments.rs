@@ -1,6 +1,6 @@
-//! Runs step 2, which fails each changed comment whose name has approved
-//! texts, none equal to its text, and each approved comment removed from code
-//! that stays. It reads files and writes none.
+//! This module runs step 2, which fails a branch that rewords an approved
+//! comment or removes one whose code stays, and writes no file. Read the
+//! `check_comments(dir, base)` function to understand the module.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -11,14 +11,6 @@ use crate::shared::comment_rules::{Finding, Rule};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
 use crate::shared::{Error, ErrorCode};
-
-/// Holds what step 2 found.
-#[derive(Debug)]
-pub struct CheckResult {
-    pub failures: Vec<Finding>,
-    /// Lists changed files no language rule reads, whose comments go unchecked.
-    pub unsupported: Vec<PathBuf>,
-}
 
 /// Returns step 2's failures for changes since `base`, or since the branch
 /// start when it is `None`. Refuses a `base` that HEAD does not build on, and
@@ -89,6 +81,14 @@ pub fn check_comments(
         },
         next,
     })
+}
+
+/// Holds what step 2 found.
+#[derive(Debug)]
+pub struct CheckResult {
+    pub failures: Vec<Finding>,
+    /// Lists changed files no language rule reads, whose comments go unchecked.
+    pub unsupported: Vec<PathBuf>,
 }
 
 fn find_changed_approved_texts(
