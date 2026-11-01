@@ -1,8 +1,9 @@
 //! This module finds each comment in a file's syntax tree, names the code it
 //! describes, and rewrites comments in memory until a later step writes them.
 //! It is the only file that calls `language_rules/`. Read the
-//! `find_comments(file, source)`, `rewrite(dir, edits)`, and
-//! `to_plain_words(file, text)` functions to understand the module.
+//! `find_comments(file, source)`, `rewrite(dir, edits)`,
+//! `to_plain_words(file, text)`, and `read_version_comments(file, version)`
+//! functions to understand the module.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
