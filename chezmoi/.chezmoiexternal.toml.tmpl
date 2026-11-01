@@ -344,7 +344,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
 {{- if . }}
 {{- $skill := index (splitList "/" .) 1 }}
 {{- /* Client gets only these skills, so a new skill reaches it only when added here. */}}
-{{- if or (has "development" $.pde.tiers) (eq $skill "behavior-focused-testing" "delegate" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english" "skill-lessons") }}
+{{- if or (has "development" $.pde.tiers) (eq $skill "behavior-focused-testing" "delegate" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english" "skill-lessons" "status-updates") }}
 
 [".agents/{{ . }}"]
 type = "file"

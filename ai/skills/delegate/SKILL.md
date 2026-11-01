@@ -39,7 +39,8 @@ bring it to the user.
 - When the work changes code comments, bring the comments to the user
   for review last, after behavior and names are done.
 - Make minor decisions yourself and say so. Ask only about real ones.
-- Keep updates short; put detail in files, not chat.
+- Write each update and the final summary by the `status-updates`
+  skill.
 
 ## Remembering corrections
 
