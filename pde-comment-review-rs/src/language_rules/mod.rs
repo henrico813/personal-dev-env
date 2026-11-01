@@ -1,6 +1,9 @@
-//! This module picks a language's comment rules from a file's path. Only
+//! This module picks a language's comment rules from a file's path, and runs
+//! gofmt, rustfmt and python3 for those rules with a time limit. Only
 //! `shared/comments.rs` calls it. Read the `LanguageRules` trait and the
-//! `find_rules_for(file)` function to understand the module.
+//! `find_rules_for(file)`, `format_if_old_is_formatted(command, folder, old, new)`,
+//! and `run_with_input(command, folder, input)` functions to understand the
+//! module.
 
 mod docstrings;
 mod go;
@@ -22,8 +25,8 @@ use tree_sitter::{Language, Node};
 use crate::shared::comments::{CommentStyle, Definition};
 use crate::shared::{Error, ErrorCode};
 
-/// Stops a formatter or check that runs longer, because step 7 holds the
-/// review's lock while one runs.
+/// Stops a formatter or check that runs longer, because step 7 holds the Review
+/// Session's lock while one runs.
 const TOOL_TIME_LIMIT: Duration = Duration::from_secs(10);
 
 /// Limits the wait for a killed tool's output to close, which only a process
@@ -94,20 +97,6 @@ pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
     }
 }
 
-/// Returns true when `node` sits inside a node of one of `kinds`.
-fn is_inside(node: Node, kinds: &[&str]) -> bool {
-    successors(node.parent(), Node::parent).any(|outer| kinds.contains(&outer.kind()))
-}
-
-/// Returns `node` and each parent that starts where it does, innermost
-/// first.
-fn nodes_starting_at(node: Node) -> impl Iterator<Item = Node> {
-    let start = node.start_byte();
-    successors(Some(node), move |child| {
-        child.parent().filter(|parent| parent.start_byte() == start)
-    })
-}
-
 /// Formats `new` only when the formatter leaves `old` as it is, so a review
 /// never reformats code the user wrote.
 fn format_if_old_is_formatted(
@@ -130,6 +119,20 @@ fn format_if_old_is_formatted(
 /// Returns what `command` prints for `input`, or why it failed.
 fn run_with_input(command: &[&str], folder: &Path, input: &str) -> Result<String, String> {
     run_for_at_most(command, folder, input, TOOL_TIME_LIMIT)
+}
+
+/// Returns true when `node` sits inside a node of one of `kinds`.
+fn is_inside(node: Node, kinds: &[&str]) -> bool {
+    successors(node.parent(), Node::parent).any(|outer| kinds.contains(&outer.kind()))
+}
+
+/// Returns `node` and each parent that starts where it does, innermost
+/// first.
+fn nodes_starting_at(node: Node) -> impl Iterator<Item = Node> {
+    let start = node.start_byte();
+    successors(Some(node), move |child| {
+        child.parent().filter(|parent| parent.start_byte() == start)
+    })
 }
 
 /// Runs `command` as `run_with_input` does, and stops it and everything it
@@ -259,10 +262,10 @@ mod run_for_at_most {
 
     use super::*;
 
-    /// Without it, a formatter that hangs, or a child it leaves holding its
-    /// output, would keep the review locked or keep running after the limit.
+    /// `run_for_at_most` must stop the tool, and a child that keeps its output open, once the time limit passes.
+    /// Otherwise a hung formatter would keep the Review Session locked, or keep running after the limit.
     #[test]
-    fn stops_tool_and_lingering_child_at_limit() {
+    fn stops_tool_and_its_children_at_limit() {
         let output = Command::new("mktemp").arg("-d").output().unwrap();
         let folder = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim_end());
         let cases = [

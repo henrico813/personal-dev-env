@@ -149,8 +149,8 @@ impl ReviewSession {
         newest.into_values().collect()
     }
 
-    /// Returns every Feedback Request in its newest version with its answer,
-    /// or `None` while any request has no answer.
+    /// Returns every Answered Request, or `None` while any Feedback Request in
+    /// its newest version is not answered.
     pub(crate) fn answered_requests(&self) -> Option<Vec<AnsweredRequest<'_>>> {
         self.newest_requests()
             .into_iter()
@@ -162,7 +162,8 @@ impl ReviewSession {
     }
 }
 
-/// Pairs a Feedback Request in its newest version with the user's answer.
+/// Holds an Answered Request, a Feedback Request in its newest version with the
+/// User Feedback that answers it.
 pub(crate) struct AnsweredRequest<'review> {
     pub(crate) request: &'review FeedbackRequest,
     pub(crate) answer: &'review UserAnswer,
