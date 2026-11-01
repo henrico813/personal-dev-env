@@ -81,55 +81,6 @@ Alacritty, WezTerm, Neovim, and OpenCode; terminal installs retain those files
 unchanged. Static rendering never recolors the local terminal during SSH
 sessions. Restart OpenCode after changing profiles.
 
-## Desktops
-
-On Ubuntu 24.04 or newer, `install i3` or `install sway` adds a desktop to a
-machine that already has a saved profile:
-
-```bash
-pde-installer install full
-pde-installer install i3
-```
-
-The desktop's packages come from apt, its wallpaper player is built and
-installed in `~/.local/bin`, and its configs and scripts come from chezmoi.
-Machines with no desktop get none of these files. The installer writes no login
-entry; log in with the `i3` or `sway` session that Ubuntu's packages add.
-
-The wallpaper plays the first `.mp4` file in `~/.config/wallpapers/`, or the
-first `.webm` file when there is no `.mp4`. Copy a video there yourself. Without
-one, the desktop shows Ubuntu's default image.
-
-Settings for one machine go in `~/.config/i3/local.conf`: the monitor names,
-which workspace goes on which monitor, the monitor layout command and the
-terminal key. The installer writes that file once and never changes it.
-`~/.config/gtk-3.0/settings.ini` is also written once, so a theme picked in
-lxappearance stays. Edits to the other desktop files are lost on the next
-install.
-
-To leave notifications to dunst, the installer hides xfce4-notifyd's autostart
-entry. That entry applies to every session, so the plain Xubuntu (Xfce) session
-on a desktop machine shows no notifications.
-
-To show clocks for other time zones in polybar, create
-`~/.config/pde-desktop/world-clocks` yourself; the installer never writes it.
-Each line is a short label, a time zone from `timedatectl list-timezones` (or
-`-` for no time), and an optional [wttr.in](https://wttr.in) location for the
-weather. Lines starting with `#` are skipped:
-
-```text
-# LABEL ZONE PLACE
-AAA Etc/UTC Place+Name
-BBB - Other+Place
-```
-
-Without the file, polybar shows only the local date, time and weather. The
-local weather and each place's weather are fetched from wttr.in every minute.
-
-On an NVIDIA GPU, use i3. Ubuntu 24.04 and 26.04 ship Sway versions older than
-1.12, which start on NVIDIA's driver only with `--unsupported-gpu`. Passing that
-flag needs a login entry that only root can install.
-
 ## Documentation
 
 - [Documentation index](docs/README.md)

@@ -131,65 +131,6 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 	}
 }
 
-// Desktop files must reach only machines with their desktop. A source file
-// under these folders that the ignore list misses installs on every
-// terminal, client and full machine, or on the other desktop.
-func TestIgnoreListCoversEveryDesktopFile(t *testing.T) {
-	// Each folder or file maps to the desktop that owns it, or to "" when both
-	// desktops share it.
-	owners := map[string]string{
-		".config/pde-desktop":                     "",
-		".config/rofi":                            "",
-		".config/dunst":                           "",
-		".config/gtk-3.0/settings.ini":            "",
-		".config/autostart/xfce4-notifyd.desktop": "",
-		".config/i3":                              "i3",
-		".config/polybar":                         "i3",
-		".config/cava":                            "i3",
-	}
-	files := map[string]string{}
-	found := map[string]bool{}
-	for _, target := range managedSourceTargets(t) {
-		for root, owner := range owners {
-			if pathsOverlap(target, root) {
-				files[target] = owner
-				found[root] = true
-			}
-		}
-	}
-	for root := range owners {
-		if !found[root] {
-			t.Errorf("no source file installs %s", root)
-		}
-	}
-
-	for _, selected := range []string{"terminal", "client", "full"} {
-		for _, desktop := range []string{"", "i3", "sway"} {
-			ignores := renderPathList(t, ".chezmoiignore.tmpl", selected, desktop)
-			for target, owner := range files {
-				want := desktop == "" || (owner != "" && owner != desktop)
-				if got := isIgnored(target, ignores); got != want {
-					t.Errorf("%s %q: %s ignored = %t, want %t", selected, desktop, target, got, want)
-				}
-			}
-		}
-	}
-}
-
-// Matches the two pattern forms .chezmoiignore.tmpl writes, a target path or
-// a folder followed by /**.
-func isIgnored(target string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if folder, found := strings.CutSuffix(pattern, "/**"); found && strings.HasPrefix(target, folder+"/") {
-			return true
-		}
-		if pattern == target {
-			return true
-		}
-	}
-	return false
-}
-
 // Each profile's remove list. chezmoi deletes these targets on every apply, so
 // a tool listed for a profile that installs it, such as pde-gh-write on full,
 // disappears after each install.
