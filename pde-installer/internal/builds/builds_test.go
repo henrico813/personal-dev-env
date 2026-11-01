@@ -282,7 +282,7 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 	}
 }
 
-// Keeps a failed install from leaving today's review tools unusable.
+// Keeps a failed install of the new program from breaking today's review tools.
 func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
