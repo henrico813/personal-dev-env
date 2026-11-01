@@ -54,7 +54,8 @@ commands in [references/build.md](references/build.md).
 
 1. **Plan.** Delegate the plan with `create-plan`. The planner reads
    the design's index note, its Dictionary, every part its PR touches
-   and the design-edits section, or all of a design kept in one note.
+   and each design-edits entry those parts point to, or all of a
+   design kept in one note.
    The plan lists each place it differs from the design under
    `### Design edits to apply` in its `## Notes for agents`. A child
    of an unbuilt parent is written against a commit of the parent's
@@ -146,9 +147,10 @@ from the plan, so the check before Ship is the PR's design check.
 5. When no fix is left to send, copy the plan's design edits into the
    design-edits section, as below.
 
-The design-edits section is its own part note, which the index tells
-every agent to read, or the last section of a design kept in one
-note. Add it if the design has none, and back up the design before
+The design-edits section is its own part note in a split design, or
+the last section of a design kept in one note. You read all of it;
+planners and reviewers read the entries that pointers in their parts
+lead to. Add it if the design has none, and back up the design before
 every edit. Each entry names the PR, the design text it replaces and
 the new text, and the replaced text gets a short pointer to the
 entry. An entry replaces the text it names; the rest of the design
