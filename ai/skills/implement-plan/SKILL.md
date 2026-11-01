@@ -72,7 +72,19 @@ Before every implementation step:
 
 - Select the exact checkout that will receive edits before checking freshness.
 - For a candidate new Vibe key, resolve a clean full commit SHA and choose a key
-  of at most 48 characters matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Run
+  of at most 48 characters matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Build
+  it from the plan's key in one shell call, so a file with no key stops
+  it:
+
+  ```sh
+  K=$(planner key "<plan.md>") || exit 1
+  KEY="$K-<words>"
+  echo "$KEY"
+  ```
+
+  Plan `ABC-12 Approvals file.md` gives `abc-12-approvals-file`. Vibe
+  never runs the branch check, so the key comes first even when the
+  repository sets `pde.branchPattern`. Run
   `vibe status --key "$KEY" --long`; treat only its specific no-record error as
   absence. Also inspect Git's worktree list,
   `refs/heads/vibe/$KEY`, and the `worktrees/vibe-$KEY` path. Use
@@ -87,7 +99,9 @@ Before every implementation step:
   ownership, and cleanliness. Omit `--base`; Vibe rejects it for existing state.
 - For non-Vibe execution, select the target worktree first, or create
   one with `wt switch --create <branch> --no-cd --format=json` and work
-  in the `path` it prints.
+  in the `path` it prints. Name a new branch as the branch rule in
+  your instructions shows, which may use `planner key` or, under a
+  pattern, the plan's own ticket key.
 - In that checkout, verify proposed hunk context, affected files, directly
   affected callers, relevant tests, and configuration.
 - Reuse prior evidence as context, not proof of freshness.
