@@ -9,7 +9,9 @@ installs skip them all.
 1. Change the version in `internal/manifest/manifest.go`.
 2. Update architecture checksums in `internal/direct/tools.go`. Keychain uses
    one architecture-independent checksum. For nobs, copy both values
-   from the release's `checksums.txt`.
+   from the release's `checksums.txt`. The Moshi CDN deletes older
+   moshi-hook releases. When the pinned one returns 404, move to the
+   version in `https://cdn.getmoshi.app/hook/latest/version.txt`.
 3. If the upstream archive name, URL, directory layout, or version output
    changed, update its `Tool` entry there too.
 4. Run:
