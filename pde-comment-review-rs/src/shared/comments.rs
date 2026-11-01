@@ -1,6 +1,9 @@
-//! Finds each comment in a file's syntax tree and names the code it
-//! describes. Its rewrites stay in memory until a later step writes them.
-//! This is the only file that calls `language_rules/`.
+//! This module finds each comment in a file's syntax tree, names the code it
+//! describes, and rewrites comments in memory until a later step writes them.
+//! It is the only file that calls `language_rules/`. Read the
+//! `find_comments(file, source)`, `rewrite(dir, edits)`,
+//! `to_plain_words(file, text)`, and `read_version_comments(file, version)`
+//! functions to understand the module.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -13,6 +16,108 @@ use tree_sitter::{Node, Parser, Tree};
 use super::git::{self, CommitId, FileVersion};
 use super::{Error, ErrorCode};
 use crate::language_rules::{LanguageRules, find_rules_for};
+
+/// Finds and names every comment in a file's source, in file order,
+/// leaving out tool lines.
+///
+/// # Errors
+///
+/// Fails when no language rules read the file or the source does not
+/// parse.
+pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindCommentsError> {
+    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
+    let tree = parse_source(rules, source);
+    if tree.root_node().has_error() {
+        return Err(FindCommentsError::SyntaxError);
+    }
+    let mut comments = Vec::new();
+    collect_comments(rules, file, tree.root_node(), source, &mut comments);
+    unname_shared_names(&mut comments);
+    for comment in &mut comments {
+        if rules.is_read_by_tools(file, &comment.text) {
+            comment.can_cut = false;
+        }
+    }
+    Ok(comments)
+}
+
+/// Returns each edited file's new contents, writing no file. A file whose
+/// edits change nothing is left out.
+///
+/// # Errors
+///
+/// Refuses with `TextChanged` when a comment is no longer in its file as it
+/// was read. Refuses with `WouldNotWrite` when an edit would change more than
+/// its comment, changes a comment the user can only keep, rewords a comment
+/// the user can only keep or cut, or fails the language's checks. Fails with
+/// `FileUnreadable` when a file cannot be read or does not parse.
+pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, Error> {
+    let mut edits_by_file: BTreeMap<&Path, Vec<&CommentEdit>> = BTreeMap::new();
+    for edit in edits {
+        edits_by_file
+            .entry(&edit.comment.file)
+            .or_default()
+            .push(edit);
+    }
+    let mut rewritten = Vec::new();
+    for (file, file_edits) in edits_by_file {
+        if let Some(new_contents) = rewrite_file(dir, file, &file_edits)? {
+            rewritten.push(RewrittenFile {
+                path: file.to_path_buf(),
+                new_contents,
+            });
+        }
+    }
+    Ok(rewritten)
+}
+
+/// Returns the comment's words without `//`, `#` or quotes, for the user to
+/// read and edit. Text that is not all `//` or `#` lines, or one whole
+/// docstring, comes back as it is.
+pub fn to_plain_words(file: &Path, text: &str) -> String {
+    match find_rules_for(file) {
+        Some(rules) => rules.to_plain_words(text),
+        None => text.to_owned(),
+    }
+}
+
+/// Returns `words` as comment lines laid out like `old_text`, with its
+/// markers and indentation, or an empty text when `words` has none.
+pub(crate) fn lay_out_plain_words(file: &Path, words: &str, old_text: &str) -> String {
+    match find_rules_for(file) {
+        Some(rules) => rules.lay_out_plain_words(words, old_text),
+        None => words.to_owned(),
+    }
+}
+
+/// Finds the comments in one version of a root-relative file, or none where
+/// the file is absent. Refuses with `FileUnreadable`, naming the file and the
+/// version, when that version does not parse.
+pub(crate) fn read_version_comments(
+    file: &Path,
+    version: FileVersion,
+) -> Result<FileComments, Error> {
+    let file_label = format!("{} {}", file.display(), version.place);
+    find_file_comments(file, version.text, &file_label)
+}
+
+/// Finds the comments in a root-relative file as it was at `commit`, or none
+/// for a file added since. Refuses with `FileUnreadable`, naming the file, when
+/// that version does not parse.
+pub(crate) fn read_comments_at_commit(
+    dir: &Path,
+    commit: &CommitId,
+    file: &Path,
+) -> Result<FileComments, Error> {
+    let source = git::read_file_at_commit(dir, commit, file)?;
+    let file_label = format!("{} at {}", file.display(), commit.as_str());
+    find_file_comments(file, source, &file_label)
+}
+
+/// Returns true when a language rule reads the file.
+pub(crate) fn is_supported(file: &Path) -> bool {
+    find_rules_for(file).is_some()
+}
 
 /// One comment, where it is in its file, and the code it describes.
 /// Lines count from 1.
@@ -98,28 +203,17 @@ impl fmt::Display for FindCommentsError {
 
 impl std::error::Error for FindCommentsError {}
 
-/// Finds and names every comment in a file's source, in file order,
-/// leaving out tool lines.
-///
-/// # Errors
-///
-/// Fails when no language rules read the file or the source does not
-/// parse.
-pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindCommentsError> {
-    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
-    let tree = parse_source(rules, source);
-    if tree.root_node().has_error() {
-        return Err(FindCommentsError::SyntaxError);
-    }
-    let mut comments = Vec::new();
-    collect_comments(rules, file, tree.root_node(), source, &mut comments);
-    unname_shared_names(&mut comments);
-    for comment in &mut comments {
-        if rules.is_read_by_tools(file, &comment.text) {
-            comment.can_cut = false;
-        }
-    }
-    Ok(comments)
+/// Holds a comment and the text that replaces it, or `None` to cut it.
+pub struct CommentEdit {
+    pub comment: Comment,
+    pub new_text: Option<String>,
+}
+
+/// Holds a file's new contents, checked and formatted, not yet written.
+#[derive(Debug)]
+pub struct RewrittenFile {
+    pub path: PathBuf,
+    pub new_contents: String,
 }
 
 /// Holds every comment in one file, in file order, and the file's source.
@@ -178,307 +272,6 @@ impl FileComments {
     }
 }
 
-/// Finds the comments in one version of a root-relative file, or none where
-/// the file is absent. Refuses with `FileUnreadable`, naming the file and the
-/// version, when that version does not parse.
-pub(crate) fn read_version_comments(
-    file: &Path,
-    version: FileVersion,
-) -> Result<FileComments, Error> {
-    let file_label = format!("{} {}", file.display(), version.place);
-    find_file_comments(file, version.text, &file_label)
-}
-
-/// Finds the comments in a root-relative file as it was at `commit`, or none
-/// for a file added since. Refuses with `FileUnreadable`, naming the file, when
-/// that version does not parse.
-pub(crate) fn read_comments_at_commit(
-    dir: &Path,
-    commit: &CommitId,
-    file: &Path,
-) -> Result<FileComments, Error> {
-    let source = git::read_file_at_commit(dir, commit, file)?;
-    let file_label = format!("{} at {}", file.display(), commit.as_str());
-    find_file_comments(file, source, &file_label)
-}
-
-/// Returns true when a language rule reads the file.
-pub(crate) fn is_supported(file: &Path) -> bool {
-    find_rules_for(file).is_some()
-}
-
-fn find_file_comments(
-    file: &Path,
-    source: Option<String>,
-    file_label: &str,
-) -> Result<FileComments, Error> {
-    // Approvals hold `\n` line ends, so a checkout with `\r\n` ones must still match them.
-    let source = source.map(|source| source.replace("\r\n", "\n"));
-    let comments = match &source {
-        Some(source) => find_comments(file, source).map_err(|error| Error {
-            code: ErrorCode::FileUnreadable,
-            message: format!("Cannot read the comments in {file_label}, since {error}."),
-        })?,
-        None => Vec::new(),
-    };
-    Ok(FileComments {
-        comments,
-        file: file.to_path_buf(),
-        source,
-    })
-}
-
-/// Returns the comment's words without `//`, `#` or quotes, for the user to
-/// read and edit. A comment the user cannot reword comes back as it is.
-pub fn to_plain_words(file: &Path, text: &str) -> String {
-    match find_rules_for(file) {
-        Some(rules) => rules.to_plain_words(text),
-        None => text.to_owned(),
-    }
-}
-
-/// Returns `words` as comment lines laid out like `old_text`, with its
-/// markers and indentation, or an empty text when `words` has none.
-pub(crate) fn lay_out_plain_words(file: &Path, words: &str, old_text: &str) -> String {
-    match find_rules_for(file) {
-        Some(rules) => rules.lay_out_plain_words(words, old_text),
-        None => words.to_owned(),
-    }
-}
-
-/// Holds a comment and the text that replaces it, or `None` to cut it.
-pub struct CommentEdit {
-    pub comment: Comment,
-    pub new_text: Option<String>,
-}
-
-/// Holds a file's new contents, checked and formatted, not yet written.
-#[derive(Debug)]
-pub struct RewrittenFile {
-    pub path: PathBuf,
-    pub new_contents: String,
-}
-
-/// Returns each edited file's new contents, writing no file. A file whose
-/// edits change nothing is left out.
-///
-/// Its checks prove only that the parsed code stays the same. Of the comments
-/// tools read, it protects only those the Go, Rust and Python rules list, such
-/// as `# noqa`.
-///
-/// # Errors
-///
-/// Refuses with `TextChanged` when a comment is no longer in its file as it
-/// was read. Refuses with `WouldNotWrite` when an edit would change more than
-/// its comment, changes a comment the user can only keep, rewords a comment
-/// the user can only keep or cut, or fails the language's checks. Fails with
-/// `FileUnreadable` when a file cannot be read or does not parse.
-pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, Error> {
-    let mut edits_by_file: BTreeMap<&Path, Vec<&CommentEdit>> = BTreeMap::new();
-    for edit in edits {
-        edits_by_file
-            .entry(&edit.comment.file)
-            .or_default()
-            .push(edit);
-    }
-    let mut rewritten = Vec::new();
-    for (file, file_edits) in edits_by_file {
-        if let Some(new_contents) = rewrite_file(dir, file, &file_edits)? {
-            rewritten.push(RewrittenFile {
-                path: file.to_path_buf(),
-                new_contents,
-            });
-        }
-    }
-    Ok(rewritten)
-}
-
-/// Returns one file's new contents, or `None` when its edits change nothing.
-fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Option<String>, Error> {
-    let path = dir.join(file);
-    let source = fs::read_to_string(&path).map_err(|error| refuse_unreadable(file, error))?;
-    let comments = find_comments(file, &source).map_err(|error| refuse_unreadable(file, error))?;
-    let rules = find_rules_for(file).expect("find_comments found rules for the file");
-    let mut new_texts: Vec<Option<&str>> = comments
-        .iter()
-        .map(|comment| Some(comment.text.as_str()))
-        .collect();
-    for edit in edits {
-        let Some(index) = comments.iter().position(|comment| {
-            comment.byte_range == edit.comment.byte_range && comment.text == edit.comment.text
-        }) else {
-            return Err(refuse(
-                ErrorCode::TextChanged,
-                file,
-                "A comment changed after it was read.",
-            ));
-        };
-        let new_text = edit.new_text.as_deref();
-        if new_text != Some(comments[index].text.as_str()) && !comments[index].can_cut {
-            return Err(refuse(
-                ErrorCode::WouldNotWrite,
-                file,
-                "This comment can only be kept, since a tool reads it or it sits inside code.",
-            ));
-        }
-        if new_text.is_some_and(|text| text != comments[index].text) {
-            check_reword(rules, file, &comments[index], new_text.unwrap_or_default())?;
-        }
-        new_texts[index] = new_text;
-    }
-
-    let cuts: Vec<&Comment> = comments
-        .iter()
-        .zip(&new_texts)
-        .filter(|(_, new_text)| new_text.is_none())
-        .map(|(comment, _)| comment)
-        .collect();
-    let mut splices: Vec<(Range<usize>, &str)> = find_cut_ranges(&source, &cuts)
-        .into_iter()
-        .map(|range| (range, ""))
-        .collect();
-    let mut expected = Vec::new();
-    for (comment, new_text) in comments.iter().zip(&new_texts) {
-        if let Some(text) = new_text {
-            if *text != comment.text {
-                splices.push((comment.byte_range.clone(), text));
-            }
-            expected.push((comment.style, *text));
-        }
-    }
-    splices.sort_by_key(|(range, _)| range.start);
-    let mut new_source = source.clone();
-    // The last splice goes first, so earlier byte ranges still hold their text.
-    for (range, text) in splices.into_iter().rev() {
-        new_source.replace_range(range, text);
-    }
-    if new_source == source {
-        return Ok(None);
-    }
-
-    let folder = path.parent().unwrap_or(dir);
-    let finished = rules
-        .finish_rewrite(folder, &source, &new_source)
-        .map_err(|error| refuse(error.code, file, &error.message))?;
-    let would_change_code = || {
-        refuse(
-            ErrorCode::WouldNotWrite,
-            file,
-            "The new text would change more than the answered comments.",
-        )
-    };
-    // Reading the formatted comments back shows each holds the text the user approves.
-    let found = find_comments(file, &finished).map_err(|_| would_change_code())?;
-    let found: Vec<_> = found
-        .iter()
-        .map(|comment| (comment.style, comment.text.as_str()))
-        .collect();
-    if found != expected {
-        return Err(would_change_code());
-    }
-    // Checking the text that would be written catches a change by the splice or the formatter.
-    let old_code =
-        read_code_shape(file, &source).map_err(|error| refuse_unreadable(file, error))?;
-    let new_code = read_code_shape(file, &finished).map_err(|_| would_change_code())?;
-    if new_code != old_code {
-        return Err(would_change_code());
-    }
-    Ok(Some(finished))
-}
-
-/// Refuses a reword of a comment the user can only keep or cut, and text
-/// that a language could read as a line end, that it rejects, or that a tool
-/// reads.
-fn check_reword(
-    rules: &dyn LanguageRules,
-    file: &Path,
-    comment: &Comment,
-    new_text: &str,
-) -> Result<(), Error> {
-    if !comment.style.can_reword() {
-        return Err(refuse(
-            ErrorCode::WouldNotWrite,
-            file,
-            "A comment that can only be kept or cut was reworded.",
-        ));
-    }
-    if rules.is_read_by_tools(file, new_text) {
-        return Err(refuse(
-            ErrorCode::WouldNotWrite,
-            file,
-            "A tool would read the new text.",
-        ));
-    }
-    // Python reads a carriage return as a line end, and Rust rejects one in a doc comment.
-    if new_text.contains(['\r', '\0']) {
-        return Err(refuse(
-            ErrorCode::WouldNotWrite,
-            file,
-            "The new text holds a carriage return or a NUL.",
-        ));
-    }
-    // rustc rejects these in a comment, since they make code read unlike how it runs.
-    let changes_direction = |letter: char| {
-        ('\u{202A}'..='\u{202E}').contains(&letter) || ('\u{2066}'..='\u{2069}').contains(&letter)
-    };
-    if new_text.contains(changes_direction) {
-        return Err(refuse(
-            ErrorCode::WouldNotWrite,
-            file,
-            "The new text holds a character that changes the direction of text.",
-        ));
-    }
-    Ok(())
-}
-
-/// Returns the bytes the cuts remove, in file order. Cuts that overlap or
-/// touch merge first, so no cut takes a line end another cut left, and a cut
-/// that leaves its lines blank takes them whole.
-fn find_cut_ranges(source: &str, cuts: &[&Comment]) -> Vec<Range<usize>> {
-    let mut ranges: Vec<Range<usize>> = Vec::new();
-    for comment in cuts {
-        let range = find_cut_range(source, comment);
-        match ranges.last_mut() {
-            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
-            _ => ranges.push(range),
-        }
-    }
-    for range in &mut ranges {
-        let line_start = source[..range.start]
-            .rfind('\n')
-            .map_or(0, |index| index + 1);
-        let line_end = find_line_end(source, range.end);
-        if source[line_start..range.start].trim().is_empty()
-            && source[range.end..line_end].trim().is_empty()
-        {
-            *range = line_start..line_end;
-        }
-    }
-    ranges
-}
-
-/// Returns the bytes one cut removes, the spaces before it included and its
-/// line end left out.
-fn find_cut_range(source: &str, comment: &Comment) -> Range<usize> {
-    let Range { start, end } = comment.byte_range.clone();
-    let text = &source[start..end];
-    let before = &source[..start];
-    let spaces_before = before.len() - before.trim_end_matches([' ', '\t']).len();
-    let line_end = text.len() - text.trim_end_matches(['\r', '\n']).len();
-    start - spaces_before..end - line_end
-}
-
-fn refuse(code: ErrorCode, file: &Path, reason: &str) -> Error {
-    Error {
-        code,
-        message: format!("Cannot rewrite {}. {reason}", file.display()),
-    }
-}
-
-fn refuse_unreadable(file: &Path, error: impl fmt::Display) -> Error {
-    refuse(ErrorCode::FileUnreadable, file, &format!("{error}."))
-}
-
 /// Parses `source` with the language's grammar.
 fn parse_source(rules: &dyn LanguageRules, source: &str) -> Tree {
     let mut parser = Parser::new();
@@ -488,42 +281,6 @@ fn parse_source(rules: &dyn LanguageRules, source: &str) -> Tree {
     parser
         .parse(source, None)
         .expect("parsing fails only after a timeout or cancel, and neither is set")
-}
-
-/// Returns each node's depth and kind and each leaf's text, in tree order,
-/// leaving out nodes inside a comment. Equal results mean equal code, Python's
-/// blocks too.
-fn read_code_shape<'source>(
-    file: &Path,
-    source: &'source str,
-) -> Result<Vec<(usize, u16, &'source str)>, FindCommentsError> {
-    let comments = find_comments(file, source)?;
-    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
-    let tree = parse_source(rules, source);
-    let mut shape = Vec::new();
-    let mut nodes = vec![(tree.root_node(), 0)];
-    while let Some((node, depth)) = nodes.pop() {
-        let range = node.byte_range();
-        // A docstring's string node sits inside its comment's text, so it is left out too.
-        // The root stays, so a file that holds only a comment can still be cut.
-        let in_comment = depth > 0
-            && comments.iter().any(|comment| {
-                comment.byte_range.start <= range.start && range.end <= comment.byte_range.end
-            });
-        if in_comment {
-            continue;
-        }
-        let text = if node.child_count() == 0 {
-            &source[range]
-        } else {
-            ""
-        };
-        shape.push((depth, node.kind_id(), text));
-        let mut cursor = node.walk();
-        let children: Vec<_> = node.children(&mut cursor).collect();
-        nodes.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
-    }
-    Ok(shape)
 }
 
 /// Adds the comments in `node` and its children to `comments`.
@@ -664,6 +421,248 @@ fn unname_shared_names(comments: &mut [Comment]) {
     }
 }
 
+/// Returns one file's new contents, or `None` when its edits change nothing.
+fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Option<String>, Error> {
+    let path = dir.join(file);
+    let source = fs::read_to_string(&path).map_err(|error| refuse_unreadable(file, error))?;
+    let comments = find_comments(file, &source).map_err(|error| refuse_unreadable(file, error))?;
+    let rules = find_rules_for(file).expect("find_comments found rules for the file");
+    let mut new_texts: Vec<Option<&str>> = comments
+        .iter()
+        .map(|comment| Some(comment.text.as_str()))
+        .collect();
+    for edit in edits {
+        let Some(index) = comments.iter().position(|comment| {
+            comment.byte_range == edit.comment.byte_range && comment.text == edit.comment.text
+        }) else {
+            return Err(refuse(
+                ErrorCode::TextChanged,
+                file,
+                "A comment changed after it was read.",
+            ));
+        };
+        let new_text = edit.new_text.as_deref();
+        if new_text != Some(comments[index].text.as_str()) && !comments[index].can_cut {
+            return Err(refuse(
+                ErrorCode::WouldNotWrite,
+                file,
+                "This comment can only be kept, since a tool reads it or it sits inside code.",
+            ));
+        }
+        if new_text.is_some_and(|text| text != comments[index].text) {
+            check_reword(rules, file, &comments[index], new_text.unwrap_or_default())?;
+        }
+        new_texts[index] = new_text;
+    }
+
+    let cuts: Vec<&Comment> = comments
+        .iter()
+        .zip(&new_texts)
+        .filter(|(_, new_text)| new_text.is_none())
+        .map(|(comment, _)| comment)
+        .collect();
+    let mut splices: Vec<(Range<usize>, &str)> = find_cut_ranges(&source, &cuts)
+        .into_iter()
+        .map(|range| (range, ""))
+        .collect();
+    let mut expected = Vec::new();
+    for (comment, new_text) in comments.iter().zip(&new_texts) {
+        if let Some(text) = new_text {
+            if *text != comment.text {
+                splices.push((comment.byte_range.clone(), text));
+            }
+            expected.push((comment.style, *text));
+        }
+    }
+    splices.sort_by_key(|(range, _)| range.start);
+    let mut new_source = source.clone();
+    // The last splice goes first, so earlier byte ranges still hold their text.
+    for (range, text) in splices.into_iter().rev() {
+        new_source.replace_range(range, text);
+    }
+    if new_source == source {
+        return Ok(None);
+    }
+
+    let folder = path.parent().unwrap_or(dir);
+    let finished = rules
+        .finish_rewrite(folder, &source, &new_source)
+        .map_err(|error| refuse(error.code, file, &error.message))?;
+    let would_change_code = || {
+        refuse(
+            ErrorCode::WouldNotWrite,
+            file,
+            "The new text would change more than the edited comments.",
+        )
+    };
+    // Reading the formatted comments back shows each holds the text the user approves.
+    let found = find_comments(file, &finished).map_err(|_| would_change_code())?;
+    let found: Vec<_> = found
+        .iter()
+        .map(|comment| (comment.style, comment.text.as_str()))
+        .collect();
+    if found != expected {
+        return Err(would_change_code());
+    }
+    // Checking the text that would be written catches a change by the splice or the formatter.
+    let old_code =
+        read_code_shape(file, &source).map_err(|error| refuse_unreadable(file, error))?;
+    let new_code = read_code_shape(file, &finished).map_err(|_| would_change_code())?;
+    if new_code != old_code {
+        return Err(would_change_code());
+    }
+    Ok(Some(finished))
+}
+
+fn refuse_unreadable(file: &Path, error: impl fmt::Display) -> Error {
+    refuse(ErrorCode::FileUnreadable, file, &format!("{error}."))
+}
+
+fn refuse(code: ErrorCode, file: &Path, reason: &str) -> Error {
+    Error {
+        code,
+        message: format!("Cannot rewrite {}. {reason}", file.display()),
+    }
+}
+
+/// Refuses a reword the user cannot make, or text a tool or the language
+/// would read differently.
+fn check_reword(
+    rules: &dyn LanguageRules,
+    file: &Path,
+    comment: &Comment,
+    new_text: &str,
+) -> Result<(), Error> {
+    if !comment.style.can_reword() {
+        return Err(refuse(
+            ErrorCode::WouldNotWrite,
+            file,
+            "A comment that can only be kept or cut was reworded.",
+        ));
+    }
+    if rules.is_read_by_tools(file, new_text) {
+        return Err(refuse(
+            ErrorCode::WouldNotWrite,
+            file,
+            "A tool would read the new text.",
+        ));
+    }
+    // Python reads a carriage return as a line end, and Rust rejects one in a doc comment.
+    if new_text.contains(['\r', '\0']) {
+        return Err(refuse(
+            ErrorCode::WouldNotWrite,
+            file,
+            "The new text holds a carriage return or a NUL.",
+        ));
+    }
+    // rustc rejects these in a comment, since they make code read unlike how it runs.
+    let changes_direction = |letter: char| {
+        ('\u{202A}'..='\u{202E}').contains(&letter) || ('\u{2066}'..='\u{2069}').contains(&letter)
+    };
+    if new_text.contains(changes_direction) {
+        return Err(refuse(
+            ErrorCode::WouldNotWrite,
+            file,
+            "The new text holds a character that changes the direction of text.",
+        ));
+    }
+    Ok(())
+}
+
+/// Returns the bytes the cuts remove, in file order. Cuts that overlap or
+/// touch merge first, so no cut takes a line end another cut left, and a cut
+/// that leaves its lines blank takes them whole.
+fn find_cut_ranges(source: &str, cuts: &[&Comment]) -> Vec<Range<usize>> {
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    for comment in cuts {
+        let range = find_cut_range(source, comment);
+        match ranges.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => ranges.push(range),
+        }
+    }
+    for range in &mut ranges {
+        let line_start = source[..range.start]
+            .rfind('\n')
+            .map_or(0, |index| index + 1);
+        let line_end = find_line_end(source, range.end);
+        if source[line_start..range.start].trim().is_empty()
+            && source[range.end..line_end].trim().is_empty()
+        {
+            *range = line_start..line_end;
+        }
+    }
+    ranges
+}
+
+/// Returns the bytes one cut removes, the spaces before it included and its
+/// line end left out.
+fn find_cut_range(source: &str, comment: &Comment) -> Range<usize> {
+    let Range { start, end } = comment.byte_range.clone();
+    let text = &source[start..end];
+    let before = &source[..start];
+    let spaces_before = before.len() - before.trim_end_matches([' ', '\t']).len();
+    let line_end = text.len() - text.trim_end_matches(['\r', '\n']).len();
+    start - spaces_before..end - line_end
+}
+
+/// Returns each node's depth and kind and each leaf's text, in tree order,
+/// leaving out nodes inside a comment. Equal results mean equal code, Python's
+/// blocks too.
+fn read_code_shape<'source>(
+    file: &Path,
+    source: &'source str,
+) -> Result<Vec<(usize, u16, &'source str)>, FindCommentsError> {
+    let comments = find_comments(file, source)?;
+    let rules = find_rules_for(file).ok_or(FindCommentsError::UnsupportedLanguage)?;
+    let tree = parse_source(rules, source);
+    let mut shape = Vec::new();
+    let mut nodes = vec![(tree.root_node(), 0)];
+    while let Some((node, depth)) = nodes.pop() {
+        let range = node.byte_range();
+        // A docstring's string node sits inside its comment's text, so it is left out too.
+        // The root stays, so a file that holds only a comment can still be cut.
+        let in_comment = depth > 0
+            && comments.iter().any(|comment| {
+                comment.byte_range.start <= range.start && range.end <= comment.byte_range.end
+            });
+        if in_comment {
+            continue;
+        }
+        let text = if node.child_count() == 0 {
+            &source[range]
+        } else {
+            ""
+        };
+        shape.push((depth, node.kind_id(), text));
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+        nodes.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
+    }
+    Ok(shape)
+}
+
+fn find_file_comments(
+    file: &Path,
+    source: Option<String>,
+    file_label: &str,
+) -> Result<FileComments, Error> {
+    // Approvals hold `\n` line ends, so a checkout with `\r\n` ones must still match them.
+    let source = source.map(|source| source.replace("\r\n", "\n"));
+    let comments = match &source {
+        Some(source) => find_comments(file, source).map_err(|error| Error {
+            code: ErrorCode::FileUnreadable,
+            message: format!("Cannot read the comments in {file_label}, since {error}."),
+        })?,
+        None => Vec::new(),
+    };
+    Ok(FileComments {
+        comments,
+        file: file.to_path_buf(),
+        source,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,9 +690,10 @@ mod tests {
         assert_eq!(found, wanted, "{file}");
     }
 
-    /// A comment missed or cut short here never reaches the owner.
+    /// `find_comments` must return every Go, Python and Rust comment with its whole text.
+    /// Otherwise a missed or cut-short comment never reaches the user for review.
     #[test]
-    fn finds_every_comment_in_each_language() {
+    fn find_comments_returns_every_comment_whole() {
         assert_finds(
             "review_store.go",
             include_str!("../../tests/samples/review_store.go"),
@@ -756,10 +756,10 @@ mod tests {
         );
     }
 
-    /// Approvals match a comment's exact text, so a wrong join loses
-    /// them.
+    /// `find_comments` must join neighboring comment lines into one comment only when their style matches.
+    /// Otherwise an approval, which matches a comment's exact text, would no longer match.
     #[test]
-    fn groups_comment_lines_by_style() {
+    fn find_comments_joins_lines_of_matching_style() {
         assert_finds(
             "review_store.go",
             "package review\n\n// Saves the answer.\n// Waits for the lock.\nfunc SaveAnswer() {}\n",
@@ -819,10 +819,10 @@ mod tests {
         );
     }
 
-    /// A missed keep-or-cut comment slips past review. One holding code
-    /// would lose that code when cut.
+    /// `find_comments` must find each comment the user can only keep or cut, holding none of the code beside it.
+    /// Otherwise the comment slips past review, or a cut takes the code that shares its line.
     #[test]
-    fn finds_keep_or_cut_comments_exactly() {
+    fn find_comments_keeps_code_out_of_comments() {
         assert_finds(
             "keep_or_cut.go",
             include_str!("../../tests/samples/keep_or_cut.go"),
@@ -885,9 +885,10 @@ mod tests {
         );
     }
 
-    /// A docstring missed here never reaches review.
+    /// `find_comments` must find a docstring below a `#` comment or inside parentheses, and no later string.
+    /// Otherwise that docstring never reaches the user for review.
     #[test]
-    fn finds_docstrings_below_comments_or_in_parentheses() {
+    fn find_comments_finds_commented_or_parenthesized_docstrings() {
         assert_finds(
             "docstrings.py",
             include_str!("../../tests/samples/docstrings.py"),
@@ -942,6 +943,21 @@ mod tests {
         assert_finds("approvals.py", "(load_approvals())\n", &[]);
     }
 
+    /// `find_comments` must not take an f-string, bytes or t-string for a docstring, as Python does not.
+    /// Otherwise a cut could remove code Python runs, such as the call inside an f-string.
+    #[test]
+    fn find_comments_skips_strings_that_are_code() {
+        let sources = [
+            "def shout():\n    f\"{print('Not a docstring, since Python runs this call.')}\"\n    return 1\n",
+            "def read_bytes():\n    b\"\"\"Not a docstring, since Python skips bytes.\"\"\"\n",
+            "def template():\n    t\"\"\"Not a docstring, since Python skips template strings.\"\"\"\n",
+        ];
+
+        for source in sources {
+            assert_finds("docstrings.py", source, &[]);
+        }
+    }
+
     /// One source and how many comments `find_comments` should find.
     struct ToolCase {
         file: &'static str,
@@ -949,10 +965,10 @@ mod tests {
         expected_count: usize,
     }
 
-    /// Cutting a tool line changes the build. Dropping a prose line skips
-    /// its review.
+    /// `find_comments` must leave out tool lines, such as `//go:generate` and `# noqa`, and keep prose that looks like them.
+    /// Otherwise a cut tool line changes the build, or a prose line skips review.
     #[test]
-    fn finds_prose_but_leaves_out_tool_lines() {
+    fn find_comments_leaves_out_tool_lines() {
         let cases = [
             ToolCase {
                 file: "review_store.go",
@@ -998,10 +1014,10 @@ mod tests {
         }
     }
 
-    /// A file the program could misread must stop the review, not lose
-    /// comments.
+    /// `find_comments` must refuse a file that does not parse.
+    /// Otherwise it could misread the file and leave comments out of review.
     #[test]
-    fn refuses_a_file_that_does_not_parse() {
+    fn find_comments_refuses_unparsable_files() {
         let source = "package review\n\nfunc SaveAnswer( {}\n";
 
         let result = find_comments(Path::new("broken.go"), source);
@@ -1026,10 +1042,10 @@ mod tests {
         assert_eq!(found, wanted, "{file}");
     }
 
-    /// Approvals match by name, so a wrong name loses the owner's
-    /// approval. A shared name could match the wrong comment.
+    /// `find_comments` must name each comment by the code it describes, and name no two comments the same.
+    /// Otherwise an approval, which matches by name, is lost or matches the wrong comment.
     #[test]
-    fn names_each_comment_by_its_code() {
+    fn find_comments_names_comments_by_their_code() {
         assert_names(
             "names.go",
             include_str!("../../tests/samples/names.go"),
@@ -1162,10 +1178,10 @@ mod tests {
         );
     }
 
-    /// Without it, a reword could drop an example, a section or the comment's
-    /// markers.
+    /// `lay_out_plain_words` must turn the words `to_plain_words` returns back into the same comment.
+    /// Otherwise a reword could drop an example, a section or the comment's markers.
     #[test]
-    fn plain_words_turn_back_into_same_comment() {
+    fn lay_out_plain_words_rebuilds_the_comment() {
         let cases = [
             (
                 "save.go",

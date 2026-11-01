@@ -288,3 +288,18 @@ tw() {
     [[ -n "$cmd_right" ]] && { tmux send-keys -t "$pane_right" -l -- "$cmd_right" && tmux send-keys -t "$pane_right" C-m; }
     tmux select-pane -t "$pane_middle"
 }
+
+{{- if has "workstation" .pde.tiers }}
+# Open a vault plan or doc in nvim, picked with fzf, newest first.
+plan() {
+    local root file window=right:60%
+    root="$(nobs vault path)/500 Zettelkasten/Projects" || return 1
+    (( COLUMNS <= 100 )) && window=down:60%
+    file="$(cd "$root" && rg --files -g '*.md' --sortr modified |
+        fzf --query "$*" --select-1 --exit-0 --height=100% \
+            --border=none --margin=0 --padding=0 --info=inline \
+            --preview 'bat --color=always --style=plain {}' \
+            --preview-window "$window")" || return
+    nvim "$root/$file"
+}
+{{- end }}
