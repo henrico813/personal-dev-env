@@ -8,10 +8,12 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use serde::{Deserialize, Serialize};
+
 use super::{Error, ErrorCode};
 
 /// Holds a resolved commit hash rather than a movable branch name.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct CommitId(String);
 
 impl CommitId {
