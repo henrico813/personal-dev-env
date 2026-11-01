@@ -1,0 +1,28 @@
+# Cava config for polybar
+# Prints digits 0-7, which cava-polybar.sh turns into bars
+
+[general]
+bars = 8
+framerate = 30
+sensitivity = 100
+autosens = 1
+overshoot = 20
+
+[input]
+method = pulse
+source = auto
+
+[output]
+method = raw
+raw_target = /dev/stdout
+data_format = ascii
+ascii_max_range = 7
+
+[color]
+gradient = 0
+
+[smoothing]
+integral = 77
+monstercat = 1
+waves = 0
+gravity = 100
