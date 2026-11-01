@@ -1,7 +1,10 @@
-//! Runs step 7, which writes the user's answers into the files and saves an
-//! approval or a cut for each named comment. A stop signal waits until every
-//! file is written or back and the review is saved, so one after the last file
-//! still ends with every answer written.
+//! This module runs step 7, which writes each Answered Request into its file
+//! and saves a decision for each named comment. A stop signal waits until every
+//! file is written or back and the Review Session is saved, so one after the
+//! last file still ends with all User Feedback written. Read the
+//! `write_user_feedback(dir)`,
+//! `write_files_and_decisions(lock, root, backup_folder, files, decisions, signals)`,
+//! and `write_every_file(backup, signals)` functions to understand the module.
 
 use std::collections::BTreeMap;
 use std::ffi::c_int;
@@ -30,15 +33,16 @@ const BACKUP_FOLDER: &str = "write-backup";
 
 const STOP_SIGNALS: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 
-/// Writes every answer into the files and saves the decisions, or puts every
-/// file back and keeps the answers. When a file cannot go back, it refuses with
-/// `WriteNotFinished`, and the user checks git status.
+/// Writes every Answered Request into its file and saves the decisions, or puts
+/// every file back and keeps the User Feedback. When a file cannot go back, it
+/// refuses with `WriteNotFinished`; when only the save of `done` fails, it
+/// returns `SaveFailed` with everything written.
 pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
     let root = git::find_root(dir)?;
     let mut lock = review_session::lock(&root)?;
     let backup_folder = lock.folder().join(BACKUP_FOLDER);
     let Some(review_session) = lock.review_session_mut() else {
-        return Err(nothing_to_write("No review waits here."));
+        return Err(nothing_to_write("No Review Session waits here."));
     };
     match review_session.status {
         ReviewStatus::Done => return Ok(WriteResult::AlreadyWritten),
@@ -51,7 +55,7 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
                 ),
             });
         }
-        // User Notes waiting leave requests unanswered, so the next check refuses the review.
+        // Waiting User Notes leave Feedback Requests unanswered, so the next check refuses the write.
         ReviewStatus::WaitingForUserFeedback | ReviewStatus::UserNotesWaiting => {}
     }
     let Some(answered) = review_session.answered_requests() else {
@@ -65,7 +69,7 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
     let result =
         write_files_and_decisions(&mut lock, &root, backup_folder, files, &decisions, &signals);
     if let Some(signal) = signals.release() {
-        // The signal waited for the files and the review to settle, and now acts.
+        // The signal waited for the files and the Review Session to settle, and now acts.
         deliver_held_signal(signal);
     }
     result
@@ -95,7 +99,7 @@ fn write_files_and_decisions(
     save_status(lock, ReviewStatus::Done).map_err(|error| Error {
         code: error.code,
         message: format!(
-            "Every answer and approval was written, but the review could not be marked done. Do not put back the originals in {}. {}",
+            "All User Feedback and every decision was written, but the Review Session could not be marked done. Do not put back the originals in {}. {}",
             backup.folder.display(),
             error.message
         ),
@@ -127,7 +131,7 @@ fn write_every_file(backup: &mut FileBackup, signals: &HeldSignals) -> Result<()
             // Writing over a change made since the rewrite read the file would lose it.
             Ok(false) => {
                 return Err(format!(
-                    "{shown_path} changed while the answers were written."
+                    "{shown_path} changed while the User Feedback was written."
                 ));
             }
             Err(error) => return Err(format!("Cannot write {shown_path}. {error}")),
@@ -144,12 +148,13 @@ fn write_every_file(backup: &mut FileBackup, signals: &HeldSignals) -> Result<()
 #[derive(Debug, PartialEq)]
 pub enum WriteResult {
     /// Lists the files written, from the worktree's top folder, and counts the
-    /// approvals and cuts saved.
+    /// decisions saved.
     Written {
         files: Vec<PathBuf>,
         approved: usize,
     },
-    /// Says an earlier call, such as one from a second screen, wrote the answers.
+    /// Says an earlier call, such as one from a second screen, wrote the User
+    /// Feedback.
     AlreadyWritten,
 }
 
@@ -349,9 +354,9 @@ impl HeldSignals {
     }
 }
 
-/// Returns each file the answers change, in memory, once every answered
-/// comment still holds the text the user answered. A file whose answers keep
-/// every text is left out.
+/// Returns each file the Answered Requests change, in memory, once every
+/// answered comment still holds the text the user answered. A file whose User
+/// Feedback keeps every text is left out.
 fn rewrite_answered_requests(
     root: &Path,
     answered: &[AnsweredRequest],
@@ -419,8 +424,8 @@ fn take_answered_comment(
     Some(comments.swap_remove(index))
 }
 
-/// Returns the new text with `\r\n` line ends where the old comment had them,
-/// or the old text as it is when the words did not change.
+/// Returns the new text with `\r\n` line ends when the old comment had any, or
+/// the old text as it is when the words did not change.
 fn match_line_ends(new_text: String, request: &FeedbackRequest, comment: &Comment) -> String {
     if new_text == request.text {
         comment.text.clone()
@@ -431,8 +436,8 @@ fn match_line_ends(new_text: String, request: &FeedbackRequest, comment: &Commen
     }
 }
 
-/// Returns the approval each named answer saves, with an empty text for a cut.
-/// A comment with no name has nothing to save it under.
+/// Returns the decision each named Answered Request saves, with an empty text
+/// for a cut. A comment with no name has nothing to save it under.
 fn list_decisions(answered: &[AnsweredRequest]) -> Vec<Approval> {
     answered
         .iter()
@@ -454,7 +459,10 @@ fn list_decisions(answered: &[AnsweredRequest]) -> Vec<Approval> {
 fn refuse_after_write(lock: &mut ReviewSessionLock, error: Error) -> Result<WriteResult, Error> {
     // The status only goes back to waiting once every file is restored.
     if error.code == ErrorCode::WriteFailed {
-        save_status(lock, ReviewStatus::WaitingForUserFeedback)?;
+        save_status(lock, ReviewStatus::WaitingForUserFeedback).map_err(|save_error| Error {
+            code: save_error.code,
+            message: format!("{} {}", error.message, save_error.message),
+        })?;
     }
     Err(error)
 }
@@ -607,7 +615,7 @@ fn nothing_to_write(reason: &str) -> Error {
     }
 }
 
-/// Lets one test at a time raise a signal, since every hold in the process
+/// Lets one test at a time hold stop signals, since every hold in the process
 /// shares one count.
 #[cfg(test)]
 static SIGNAL_TESTS: Mutex<()> = Mutex::new(());
@@ -618,13 +626,14 @@ mod write_every_file {
 
     use super::*;
 
-    /// Without it, a Ctrl-C halfway through the write would leave some files
-    /// with the new answers and others without.
+    /// `write_every_file` must stop at a stop signal, so that every written file can go back.
+    /// Otherwise a Ctrl-C halfway through would leave some files with the new User Feedback and others without.
     #[test]
     fn puts_every_file_back_after_stop_signal() {
         let _one_signal_test = SIGNAL_TESTS.lock().unwrap();
         let output = Command::new("mktemp").arg("-d").output().unwrap();
         let folder = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim_end());
+        // Two files hold the old comment, and the backup saves both.
         let files = ["a.go", "b.go"].map(|name| {
             fs::write(folder.join(name), "// Old.\n").unwrap();
             RewrittenFile {
@@ -634,11 +643,13 @@ mod write_every_file {
             }
         });
         let mut backup = FileBackup::save(&folder, folder.join("backup"), files.into()).unwrap();
+        // Raise SIGINT during the hold, so the write stops after its first file.
         let signals = hold_stop_signals();
         low_level::raise(SIGINT).unwrap();
 
         let written = write_every_file(&mut backup, &signals);
 
+        // Put back what was written, as step 7 does after a failed write.
         let caught = signals.release();
         let error = backup.undo(written.unwrap_err());
         let contents = ["a.go", "b.go"].map(|name| fs::read_to_string(folder.join(name)).unwrap());
@@ -647,16 +658,46 @@ mod write_every_file {
         assert_eq!(error.code, ErrorCode::WriteFailed);
         assert_eq!(contents, ["// Old.\n", "// Old.\n"]);
     }
+
+    /// `write_every_file` must stop at a file that changed since its rewrite and leave it as it is.
+    /// Otherwise one file would miss its User Feedback while the other files and every decision are saved.
+    #[test]
+    fn stops_at_file_changed_since_rewrite() {
+        let _one_signal_test = SIGNAL_TESTS.lock().unwrap();
+        let output = Command::new("mktemp").arg("-d").output().unwrap();
+        let folder = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim_end());
+        // Two files hold the old comment, and the backup saves both.
+        let files = ["a.go", "b.go"].map(|name| {
+            fs::write(folder.join(name), "// Old.\n").unwrap();
+            RewrittenFile {
+                path: PathBuf::from(name),
+                old_contents: "// Old.\n".to_owned(),
+                new_contents: "// New.\n".to_owned(),
+            }
+        });
+        let mut backup = FileBackup::save(&folder, folder.join("backup"), files.into()).unwrap();
+        fs::write(folder.join("b.go"), "// Edited.\n").unwrap();
+        let signals = hold_stop_signals();
+
+        let written = write_every_file(&mut backup, &signals);
+
+        signals.release();
+        let b_contents = fs::read_to_string(folder.join("b.go")).unwrap();
+        fs::remove_dir_all(&folder).unwrap();
+        assert!(written.is_err());
+        assert_eq!(backup.written, 1);
+        assert_eq!(b_contents, "// Edited.\n");
+    }
 }
 
 #[cfg(test)]
 mod hold_stop_signals {
     use super::*;
 
-    /// Without it, one write ending its hold would let a Ctrl-C end the program
-    /// halfway through another write.
+    /// `hold_stop_signals` must keep a stop signal waiting until the last of two holds ends.
+    /// Otherwise one write's release would let a Ctrl-C end the program halfway through another write.
     #[test]
-    fn keeps_signal_until_last_overlapping_hold_ends() {
+    fn keeps_signal_until_last_hold_ends() {
         let _one_signal_test = SIGNAL_TESTS.lock().unwrap();
         let first = hold_stop_signals();
         let second = hold_stop_signals();
