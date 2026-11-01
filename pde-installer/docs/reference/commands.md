@@ -13,7 +13,7 @@ A valid root contains `chezmoi/`, `planner/go.mod`, and
 
 ## Commands
 
-### `pde-installer install [terminal|client|full] [--color-profile NAME] [--dry-run]`
+### `pde-installer install [terminal|client|full|i3|sway] [--color-profile NAME] [--dry-run]`
 
 Reconciles tools and managed home configuration for one selection. A fresh HOME
 must specify `terminal`, `client`, or `full`; bare `install` exits with an error
@@ -21,6 +21,15 @@ when no saved or legacy selection exists. An explicit selection is saved in
 `~/.config/pde/config.json`. Bare `install` reuses the saved selection. Existing
 `paths.env` state or a config containing `install_path` without `profile` is
 legacy full state and is saved during the next install.
+
+`install i3` or `install sway` saves that desktop as `desktop` in `config.json`,
+next to the saved profile, which it keeps. With no saved or legacy profile, it exits
+before any change and says to install a profile first. Installing a profile, and
+bare `install`, keep the saved desktop. A desktop needs Ubuntu 24.04 or newer
+and adds its apt packages to the same `apt-get install`. chezmoi applies desktop
+config only on a machine with that desktop. Changing the desktop, like
+narrowing the profile, leaves the old packages and files in place. To stop
+managing a desktop, delete the `desktop` key from `config.json`.
 
 `--color-profile` accepts `tokyo-night`, `everforest-dark`, or `gruvbox-dark`.
 This per-machine setting is independent of the component selection. Missing
@@ -82,7 +91,8 @@ git -C "$repository" init --template="$HOME/.config/git/template"
 
 Checks the non-root user, common archive commands and a fetcher, Ubuntu and
 package-manager requirements, repository metadata, and writable managed
-destinations for the resolved profile. C and C++ compilation and build-command
+destinations for the resolved profile. The Ubuntu check also requires the saved
+desktop's release. C and C++ compilation and build-command
 checks are full-profile-only; common archive and fetch checks apply to every
 profile. It exits with an error if any applicable check fails.
 

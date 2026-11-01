@@ -74,7 +74,7 @@ func TestTerminalInventory(t *testing.T) {
 			want = append(want, inventoryItem{name: name, owner: group.owner})
 		}
 	}
-	items := ItemsFor("terminal")
+	items := ItemsFor("terminal", "")
 	got := make([]inventoryItem, 0, len(items))
 	for _, item := range items {
 		got = append(got, inventoryItem{name: item.Name, owner: item.Owner})
@@ -137,12 +137,12 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 	for _, test := range tests {
 		t.Run(string(test.profile), func(t *testing.T) {
 			smaller := map[string]bool{}
-			for _, item := range ItemsFor(test.smaller) {
+			for _, item := range ItemsFor(test.smaller, "") {
 				smaller[item.Name] = true
 			}
 
 			var adds []string
-			for _, item := range ItemsFor(test.profile) {
+			for _, item := range ItemsFor(test.profile, "") {
 				if !smaller[item.Name] {
 					adds = append(adds, item.Name)
 				}
@@ -156,26 +156,31 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 }
 
 // pde-installer list shows the manifest's Ubuntu items, and apt installs the
-// profile's packages from profiles.yaml. Each listed package must install on
-// exactly the profiles whose apt groups contain it.
+// packages of the profile's and desktop's apt groups in profiles.yaml. Each
+// listed package must install on exactly the machines whose groups contain it.
 func TestUbuntuItemsMatchProfilePackages(t *testing.T) {
 	for _, selected := range []profile.Profile{"terminal", "client", "full"} {
-		t.Run(string(selected), func(t *testing.T) {
-			listed := map[string]bool{}
-			for _, item := range ByOwnerFor(selected, Ubuntu) {
-				listed[item.Name] = true
-			}
+		for _, desktop := range []profile.Desktop{"", "i3", "sway"} {
+			t.Run(string(selected)+" "+string(desktop), func(t *testing.T) {
+				listed := map[string]bool{}
+				for _, item := range ItemsFor(selected, desktop) {
+					if item.Owner == Ubuntu {
+						listed[item.Name] = true
+					}
+				}
+				packages := append(selected.Packages(), desktop.Packages()...)
 
-			for _, item := range Items() {
-				if item.Owner != Ubuntu {
-					continue
+				for _, item := range Items() {
+					if item.Owner != Ubuntu {
+						continue
+					}
+					installed := slices.Contains(packages, item.Name)
+					if installed != listed[item.Name] {
+						t.Errorf("%s: apt installs it = %t, list shows it = %t", item.Name, installed, listed[item.Name])
+					}
 				}
-				installed := slices.Contains(selected.Packages(), item.Name)
-				if installed != listed[item.Name] {
-					t.Errorf("%s: apt installs it = %t, list shows it = %t", item.Name, installed, listed[item.Name])
-				}
-			}
-		})
+			})
+		}
 	}
 }
 
