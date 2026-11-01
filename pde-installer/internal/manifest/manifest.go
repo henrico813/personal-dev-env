@@ -44,8 +44,8 @@ func ItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
 // ByOwnerFor returns selected items assigned to one backend.
 func ByOwnerFor(selected profile.Profile, owner Backend) []Item {
 	var result []Item
-	// The backends that call this own no desktop items. Apt installs those
-	// from profiles.yaml.
+	// Desktop items are left out. Apt installs the Ubuntu ones from
+	// profiles.yaml, and BuildWallpaperPlayer builds the local ones.
 	for _, item := range ItemsFor(selected, "") {
 		if item.Owner == owner {
 			result = append(result, item)
@@ -130,6 +130,8 @@ func Items() []Item {
 			Tier:  profile.Workstation,
 		},
 		{Name: "pde-comment-checker", Owner: Local, Tier: profile.Development},
+		{Name: "xwinwrap", Owner: Local, Tier: profile.Terminal, Desktop: "i3"},
+		{Name: "mpvpaper", Owner: Local, Tier: profile.Terminal, Desktop: "sway"},
 		{
 			Name:    "FiraCode",
 			Version: "v3.2.1",

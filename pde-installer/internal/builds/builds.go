@@ -26,6 +26,7 @@ type Manager struct {
 	blinkURL       string
 	blinkSHA256    string
 	python         string
+	players        map[string]wallpaperPlayer // Keyed by the manifest item name.
 }
 
 type buildSpec struct {
@@ -57,6 +58,46 @@ const (
 	defaultBlinkSHA256 = "25d47c66081f55bdd95d2952166aa48ad45c7bb5ebb1646678279f4d2ecc3868"
 )
 
+// A desktop's animated wallpaper player, built from a pinned source archive.
+type wallpaperPlayer struct {
+	url, sha256 string
+	build       [][]string // Commands run in order in the extracted source.
+	outputs     []string   // Built files, relative to the source, that go in ~/.local/bin.
+	checkArg    string     // Argument that makes the installed player exit 0, or empty.
+}
+
+type playerState struct {
+	ArchiveSHA256 string `json:"archive_sha256"`
+}
+
+// Each player was built on Ubuntu 24.04 with only its desktop's apt groups in
+// profiles.yaml.
+var wallpaperPlayers = map[string]wallpaperPlayer{
+	// The original repository is archived with no tags. This fork commit has
+	// tag v0.9's source in a smaller archive, without the demo gif.
+	"xwinwrap": {
+		url:     "https://github.com/mmhobi7/xwinwrap/archive/391519d3bb53e981218de41a37d1f0f95aef3d17.tar.gz",
+		sha256:  "7e64bc455048bd10655b385591f4d738965c0048f80a405c55572f7674919bd7",
+		build:   [][]string{{"make"}},
+		outputs: []string{"xwinwrap"},
+		// xwinwrap has no option that exits 0, so it rebuilds only when its pin
+		// changes or its binary is missing or not executable.
+	},
+	"mpvpaper": {
+		// Tag 1.9.
+		url:    "https://github.com/GhostNaN/mpvpaper/archive/131a52c266d25262c62b85f52a4a978cafae6ee2.tar.gz",
+		sha256: "f52f407dd210ba72f934e5a3ee35f88390da3fab27003218fc50da7e143f37ee",
+		build: [][]string{
+			{"meson", "setup", "build", "--buildtype=release"},
+			{"ninja", "-C", "build"},
+		},
+		// mpvpaper runs mpvpaper-holder from the folder that holds its own
+		// binary, so both go in ~/.local/bin.
+		outputs:  []string{"build/mpvpaper", "build/mpvpaper-holder"},
+		checkArg: "-h",
+	},
+}
+
 // New returns a local build manager.
 func New(home, repoRoot string, runner run.Runner) Manager {
 	return Manager{
@@ -66,6 +107,7 @@ func New(home, repoRoot string, runner run.Runner) Manager {
 		blinkURL:    defaultBlinkURL,
 		blinkSHA256: defaultBlinkSHA256,
 		python:      "/usr/bin/python3",
+		players:     wallpaperPlayers,
 	}
 }
 
@@ -371,6 +413,148 @@ func (m Manager) BuildBlink() (*fsutil.Journal, error) {
 		return nil, journal.Revert(fmt.Errorf("activate blink state: %w", err))
 	}
 	return journal, nil
+}
+
+// Builds the desktop's wallpaper player from its pinned archive into
+// ~/.local/bin, or skips the build when the installed player is current. A
+// desktop without a player gets an empty journal.
+func (m Manager) BuildWallpaperPlayer(desktop profile.Desktop) (*fsutil.Journal, error) {
+	name, player, err := m.findWallpaperPlayer(desktop)
+	if err != nil {
+		return nil, err
+	}
+	if name == "" {
+		return &fsutil.Journal{}, nil
+	}
+	bin := filepath.Join(m.Home, ".local", "bin")
+	statePath := filepath.Join(m.Home, ".local", "state", "pde", name+".json")
+	if m.isPlayerCurrent(name, player, statePath) {
+		return &fsutil.Journal{}, nil
+	}
+	if m.Runner.DryRun {
+		if err := m.Runner.Plan("download and verify "+player.url+" sha256="+player.sha256, nil); err != nil {
+			return nil, err
+		}
+		if err := m.Runner.Plan("build and atomically activate "+name, nil); err != nil {
+			return nil, err
+		}
+		return &fsutil.Journal{}, nil
+	}
+	stateDir := filepath.Dir(statePath)
+	if err := fsutil.GuardHome(m.Home, stateDir, bin); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, err
+	}
+	workspace, err := os.MkdirTemp(stateDir, "."+name+"-")
+	if err != nil {
+		return nil, err
+	}
+	tracked := false
+	defer func() {
+		if !tracked {
+			_ = os.RemoveAll(workspace)
+		}
+	}()
+	archive, source := filepath.Join(workspace, name+".tar.gz"), filepath.Join(workspace, "source")
+	if err := m.Runner.Retry(name+" download", 3, func() error {
+		if err := fsutil.GuardHome(m.Home, workspace, archive); err != nil {
+			return err
+		}
+		return fsutil.Download(player.url, archive, player.sha256)
+	}); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		return nil, err
+	}
+	if err := m.Runner.Run("extract "+name, run.Command{Name: "tar", Args: []string{"-xzf", archive, "--strip-components=1", "-C", source}}); err != nil {
+		return nil, err
+	}
+	for _, args := range player.build {
+		if err := fsutil.GuardHome(m.Home, workspace, source); err != nil {
+			return nil, err
+		}
+		if err := m.Runner.Run("build "+name, run.Command{Name: args[0], Args: args[1:], Dir: source, Env: m.environment()}); err != nil {
+			return nil, err
+		}
+	}
+	stateData, err := json.Marshal(playerState{ArchiveSHA256: player.sha256})
+	if err != nil {
+		return nil, err
+	}
+	stateStage := filepath.Join(workspace, name+".json")
+	if err := os.WriteFile(stateStage, append(stateData, '\n'), 0o644); err != nil {
+		return nil, fmt.Errorf("write %s state: %w", name, err)
+	}
+	journal, err := fsutil.NewJournal(fsutil.JournalConfig{Home: m.Home})
+	if err != nil {
+		return nil, err
+	}
+	if err := journal.AddCleanup(workspace); err != nil {
+		return nil, journal.Revert(err)
+	}
+	tracked = true
+	for _, output := range player.outputs {
+		destination := filepath.Join(bin, filepath.Base(output))
+		if err := journal.Activate(filepath.Join(source, output), destination); err != nil {
+			return nil, journal.Revert(fmt.Errorf("activate %s: %w", filepath.Base(output), err))
+		}
+	}
+	if err := m.runPlayerCheck(name, player); err != nil {
+		return nil, journal.Revert(err)
+	}
+	if err := journal.Activate(stateStage, statePath); err != nil {
+		return nil, journal.Revert(fmt.Errorf("activate %s state: %w", name, err))
+	}
+	return journal, nil
+}
+
+// Returns the name and pinned source of the desktop's local manifest item, or
+// an empty name when the desktop has none.
+func (m Manager) findWallpaperPlayer(desktop profile.Desktop) (string, wallpaperPlayer, error) {
+	for _, item := range manifest.Items() {
+		if item.Owner != manifest.Local || desktop == "" || item.Desktop != desktop {
+			continue
+		}
+		player, ok := m.players[item.Name]
+		if !ok {
+			return "", wallpaperPlayer{}, fmt.Errorf("no pinned source for %s", item.Name)
+		}
+		return item.Name, player, nil
+	}
+	return "", wallpaperPlayer{}, nil
+}
+
+// Reports whether the installed player came from the pinned archive and
+// still passes its check.
+func (m Manager) isPlayerCurrent(name string, player wallpaperPlayer, statePath string) bool {
+	data, err := os.ReadFile(statePath)
+	var state playerState
+	if err != nil || json.Unmarshal(data, &state) != nil || state.ArchiveSHA256 != player.sha256 {
+		return false
+	}
+	for _, output := range player.outputs {
+		if !regularExecutable(filepath.Join(m.Home, ".local", "bin", filepath.Base(output))) {
+			return false
+		}
+	}
+	return m.runPlayerCheck(name, player) == nil
+}
+
+// Runs the installed player with its check argument. An apt update that
+// removes a library the player linked makes this fail.
+func (m Manager) runPlayerCheck(name string, player wallpaperPlayer) error {
+	if player.checkArg == "" {
+		return nil
+	}
+	_, err := m.Runner.Query("check "+name, run.Command{
+		Name: filepath.Join(m.Home, ".local", "bin", name),
+		Args: []string{player.checkArg},
+		Env:  m.environment(),
+	})
+	return err
 }
 
 // Status reports whether a built binary is installed.

@@ -26,7 +26,9 @@ legacy full state and is saved during the next install.
 next to the saved profile, which it keeps. With no saved or legacy profile, it exits
 before any change and says to install a profile first. Installing a profile, and
 bare `install`, keep the saved desktop. A desktop needs Ubuntu 24.04 or newer
-and adds its apt packages to the same `apt-get install`. chezmoi applies desktop
+and adds its apt packages to the same `apt-get install`. The installer then
+builds the desktop's wallpaper player, `xwinwrap` for i3 or `mpvpaper` for
+Sway, from a pinned archive into `~/.local/bin`. chezmoi applies desktop
 config only on a machine with that desktop. Changing the desktop, like
 narrowing the profile, leaves the old packages and files in place. To stop
 managing a desktop, delete the `desktop` key from `config.json`.

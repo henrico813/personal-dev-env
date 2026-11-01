@@ -12,8 +12,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"pde-installer/internal/fsutil"
 	"pde-installer/internal/run"
 )
 
@@ -564,6 +566,93 @@ func TestBlinkCleanupPreservesRollback(t *testing.T) {
 		t.Fatalf("Rollback() error = %v", err)
 	}
 	assertBuildFile(t, filepath.Join(destination, "old"), "old plugin\n")
+}
+
+// Without mpvpaper-holder the Sway wallpaper does not start. A rollback must
+// restore the old mpvpaper and remove the new holder.
+func TestMpvpaperInstallsHolderAndRollsBack(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, ".local", "bin")
+	manager, _ := newPlayerManager(t, home)
+	writeBuildFixture(t, filepath.Join(bin, "mpvpaper"), "#!/bin/sh\nexit 0\n# old\n")
+
+	journal, err := manager.BuildWallpaperPlayer("sway")
+	if err != nil {
+		t.Fatalf("BuildWallpaperPlayer() error = %v", err)
+	}
+
+	for _, name := range []string{"mpvpaper", "mpvpaper-holder"} {
+		assertBuildFile(t, filepath.Join(bin, name), "#!/bin/sh\nexit 0\n# built by ninja\n")
+	}
+	if err := journal.Rollback(); err != nil {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	assertBuildFile(t, filepath.Join(bin, "mpvpaper"), "#!/bin/sh\nexit 0\n# old\n")
+	if _, err := os.Stat(filepath.Join(bin, "mpvpaper-holder")); !os.IsNotExist(err) {
+		t.Fatalf("Stat(mpvpaper-holder) error = %v, want not exist", err)
+	}
+}
+
+// An unchanged rerun skips the download. A failing mpvpaper -h, as after an
+// apt update removes libmpv, rebuilds the player.
+func TestMpvpaperRebuildsOnlyWhenCheckFails(t *testing.T) {
+	home := t.TempDir()
+	player := filepath.Join(home, ".local", "bin", "mpvpaper")
+	manager, downloads := newPlayerManager(t, home)
+	build := func() {
+		t.Helper()
+		journal, err := manager.BuildWallpaperPlayer("sway")
+		if err != nil {
+			t.Fatalf("BuildWallpaperPlayer() error = %v", err)
+		}
+		if err := fsutil.CommitJournals(journal); err != nil {
+			t.Fatalf("CommitJournals() error = %v", err)
+		}
+	}
+
+	build()
+	build()
+	if got := downloads.Load(); got != 1 {
+		t.Fatalf("downloads after an unchanged rerun = %d, want 1", got)
+	}
+	// A player that no longer starts, as after an apt update removes its libmpv.
+	writeBuildFixture(t, player, "#!/bin/sh\nexit 1\n")
+	build()
+
+	if got := downloads.Load(); got != 2 {
+		t.Fatalf("downloads after a failed check = %d, want 2", got)
+	}
+	assertBuildFile(t, player, "#!/bin/sh\nexit 0\n# built by ninja\n")
+}
+
+// Returns a manager that downloads mpvpaper from a local server and builds it
+// with fake meson and ninja, and the server's download count.
+func newPlayerManager(t *testing.T, home string) (Manager, *atomic.Int32) {
+	t.Helper()
+	// The fake build ignores the source, so any archive works.
+	archive := blinkArchiveFixture(t)
+	digest := sha256.Sum256(archive)
+	var downloads atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		downloads.Add(1)
+		_, _ = response.Write(archive)
+	}))
+	t.Cleanup(server.Close)
+	tools := t.TempDir()
+	writeBuildFixture(t, filepath.Join(tools, "meson"), "#!/bin/sh\nmkdir -p build\n")
+	writeBuildFixture(t, filepath.Join(tools, "ninja"), `#!/bin/sh
+set -eu
+for name in mpvpaper mpvpaper-holder; do
+  printf '%s\n' '#!/bin/sh' 'exit 0' '# built by ninja' > "build/$name"
+  chmod +x "build/$name"
+done
+`)
+	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+	player := wallpaperPlayers["mpvpaper"]
+	player.url, player.sha256 = server.URL, hex.EncodeToString(digest[:])
+	manager := New(home, t.TempDir(), run.Runner{})
+	manager.players = map[string]wallpaperPlayer{"mpvpaper": player}
+	return manager, &downloads
 }
 
 func cargoFixture(logPath string) string {
