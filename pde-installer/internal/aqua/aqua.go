@@ -129,7 +129,7 @@ func (m Manager) Reconcile() (*fsutil.Journal, error) {
 	}()
 	// Start from the current root so a smaller profile keeps Aqua tools a
 	// full install left behind.
-	if m.profile != profile.Full {
+	if !m.profile.Has(profile.Development) {
 		if _, err := os.Stat(m.root); err == nil {
 			if err := fsutil.CopyTree(m.root, stage); err != nil {
 				return nil, fmt.Errorf("seed Aqua staging root: %w", err)

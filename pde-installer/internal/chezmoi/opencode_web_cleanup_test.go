@@ -309,7 +309,7 @@ func runCleanupScript(t *testing.T, home, selected string, environment []string)
 		t.Fatal(err)
 	}
 	command := exec.Command("sh", script)
-	command.Env = append(os.Environ(), "HOME="+home, "PDE_PROFILE="+selected)
+	command.Env = append(os.Environ(), "HOME="+home)
 	command.Env = append(command.Env, environment...)
 	return command.CombinedOutput()
 }
