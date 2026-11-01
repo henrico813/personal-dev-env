@@ -8,6 +8,18 @@ apt_groups:
   # The packed skill-lessons runs with /usr/bin/python3.
   python: [python3]
   dev: [build-essential, bzip2, gawk, make, patch]
+  # Both desktops list this group. Apt runs with --no-install-recommends, so
+  # each package a desktop config calls is listed.
+  desktop: [rofi, lxpolkit, network-manager-gnome, pavucontrol,
+            pulseaudio-utils, brightnessctl, playerctl, psmisc,
+            papirus-icon-theme, fonts-noto-color-emoji, blueman, dunst,
+            mpv, ubuntu-wallpapers]
+  i3: [i3-wm, i3lock, polybar, feh, picom, autorandr, arandr,
+       xfce4-power-manager, xss-lock, xautolock, dex, lxappearance, cava]
+  # waybar's scripts run apt's jq, because the session PATH may lack
+  # Aqua's.
+  sway: [sway, xwayland, swaylock, swayidle, swaybg, waybar,
+         wl-clipboard, grim, slurp, grimshot, xdg-desktop-portal-wlr, jq]
 
 # Tiers say what a profile is for, and profile.go describes each one.
 # The manifest tags every item with the tier that installs it.
@@ -26,3 +38,9 @@ profiles:
   full:
     apt: [base, fonts, python, dev]
     tiers: [terminal, workstation, development]
+
+# A desktop adds a window manager to a machine with a saved profile.
+# Its packages were checked on Ubuntu 24.04 only.
+desktops:
+  i3: {min_ubuntu: "24.04", apt: [desktop, i3]}
+  sway: {min_ubuntu: "24.04", apt: [desktop, sway]}
