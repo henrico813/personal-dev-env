@@ -49,6 +49,11 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 	values["install_path"] = config.RepoRoot
 	values["profile"] = string(config.Profile)
 	values["color_profile"] = string(config.ColorProfile)
+	// A machine without a desktop gets no empty desktop key. A saved desktop
+	// stays because values starts as the saved config.json.
+	if config.Desktop != "" {
+		values["desktop"] = string(config.Desktop)
+	}
 
 	if data, err := os.ReadFile(legacy); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {

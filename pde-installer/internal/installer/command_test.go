@@ -107,6 +107,32 @@ func writeCommandTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// A desktop never guesses a profile. A default would turn a full machine whose
+// config was deleted into terminal and stop managing its full tools.
+func TestDesktopWithoutSavedProfileRunsNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("mutating commands intentionally reject UID 0")
+	}
+	t.Setenv("HOME", t.TempDir())
+	repoRoot := testRepositoryRoot(t)
+	ran := false
+	command := mutatingCommand("install", "", &repoRoot, func(config, run.Runner) error {
+		ran = true
+		return nil
+	})
+	command.SetArgs([]string{"i3"})
+
+	err := command.Execute()
+
+	want := "no saved profile; first run pde-installer install terminal, client, or full, then pde-installer install i3"
+	if err == nil || err.Error() != want {
+		t.Fatalf("Execute() error = %v, want %q", err, want)
+	}
+	if ran {
+		t.Fatal("install ran its stages without a saved profile")
+	}
+}
+
 func TestInstallRejectsMultipleSelections(t *testing.T) {
 	command := NewCommand()
 	command.SetArgs([]string{"install", "terminal", "full"})
