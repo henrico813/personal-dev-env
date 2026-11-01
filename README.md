@@ -129,6 +129,7 @@ Vibe binaries plus repo-managed AI config.
 | Comment review | `pde-comment-review/`, `chezmoi/` | `~/.local/bin/pde-comment-review`, `~/.local/share/pde/herdr-plugins/pde-comment-review/` (full only) | Decide on an AI's comments one per phone screen with Ctrl+b e; see the [comment review docs](pde-comment-review/docs/README.md) |
 | Skill lessons | `skill-lessons/` | `~/.local/bin/skill-lessons` (client and full) | Saves your corrections as lessons in the installed copy of a skill; see the [skill-lessons README](skill-lessons/README.md) |
 | Comment checker | `pde-comment-checker/` | `~/.local/bin/pde-comment-checker` (full only) | Checks agents' code comments and keeps the ones you approved; see the [comment checker README](pde-comment-checker/README.md) |
+| prs | `prs/` | `~/.local/bin/prs` (full only) | Reads your open pull requests on a phone; see [GitHub Pull Request Reviews](chezmoi/README.md#github-pull-request-reviews) |
 
 Shared configuration lives in `chezmoi/`, including local-file mappings for the complete `ai/` source tree and checksummed remote externals.
 
