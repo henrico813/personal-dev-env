@@ -221,6 +221,8 @@ mod tests {
             end_line: 1,
             style: CommentStyle::Line,
             text: text.to_owned(),
+            byte_range: 0..text.len(),
+            can_cut: true,
         }
     }
 

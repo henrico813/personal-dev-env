@@ -232,6 +232,8 @@ fn every_worktree_sees_the_newest_decision() {
         end_line: 1,
         style: CommentStyle::Line,
         text: text.to_owned(),
+        byte_range: 0..text.len(),
+        can_cut: true,
     };
     let approvals = approvals::load(repo.path()).unwrap();
     assert_eq!(approvals.compare(&in_code), DecisionMatch::Approved);
