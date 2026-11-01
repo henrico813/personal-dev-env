@@ -144,6 +144,7 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 	want := []string{
 		"behavior-focused-testing",
 		"delegate",
+		"lessons.md",
 		"obsidian-daily-note",
 		"obsidian-zettel",
 		"plain-direct-english",

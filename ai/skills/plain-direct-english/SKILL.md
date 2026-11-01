@@ -136,10 +136,8 @@ lesson. If the skills folder is read-only, as in a Vibe worker, follow
 the lessons shown and save or render nothing. Lessons become rules in
 this text only through a pull request the user asks for.
 
-Offer a lesson only for a rule an agent would apply correctly in
-another repository or task. Write it without facts true only of this
-task, such as its PR numbers, option labels, models on trial or
-one-time slips. If no such rule is left, offer no lesson.
+Before you offer or write a lesson, follow
+[../lessons.md](../lessons.md).
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
