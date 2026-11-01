@@ -13,13 +13,21 @@ apt_groups:
   desktop: [rofi, lxpolkit, network-manager-gnome, pavucontrol,
             pulseaudio-utils, brightnessctl, playerctl, psmisc,
             papirus-icon-theme, fonts-noto-color-emoji, blueman, dunst,
-            mpv, ubuntu-wallpapers]
+            mpv, ubuntu-wallpapers,
+            # The installer builds each desktop's wallpaper player, which
+            # no Ubuntu package provides.
+            build-essential]
+  # The X11 headers build xwinwrap.
   i3: [i3-wm, i3lock, polybar, feh, picom, autorandr, arandr,
-       xfce4-power-manager, xss-lock, xautolock, dex, lxappearance, cava]
+       xfce4-power-manager, xss-lock, xautolock, dex, lxappearance, cava,
+       libx11-dev, libxext-dev, libxrender-dev]
   # waybar's scripts run apt's jq, because the session PATH may lack
-  # Aqua's.
+  # Aqua's. The build tools and the mpv, Wayland and EGL headers build
+  # mpvpaper.
   sway: [sway, xwayland, swaylock, swayidle, swaybg, waybar,
-         wl-clipboard, grim, slurp, grimshot, xdg-desktop-portal-wlr, jq]
+         wl-clipboard, grim, slurp, grimshot, xdg-desktop-portal-wlr, jq,
+         meson, ninja-build, pkg-config, libmpv-dev, libwayland-dev,
+         wayland-protocols, libegl-dev]
 
 # Tiers say what a profile is for, and profile.go describes each one.
 # The manifest tags every item with the tier that installs it.
