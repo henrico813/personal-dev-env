@@ -13,6 +13,7 @@ Shared skills include `git-messages` for commit and PR text, `pull-request` for 
 `code-documentation` for proportional source explanations,
 `comment-review` for putting code comments in front of the user,
 `plain-direct-english` for clear sentences in comments and docs,
+`status-updates` for status updates and recaps a new reader follows,
 `skill-lessons` for saving the user's corrections as lessons in a skill,
 `go-development`
 for Go code, `obsidian-zettel` for template-aligned vault notes,
@@ -43,7 +44,8 @@ empty one from `skills/`, so the installer then runs `skill-lessons render` to
 restore saved lessons. A failed render prints a warning and leaves the install
 in place. `install client` installs only the `obsidian-zettel`,
 `obsidian-daily-note`, `plain-direct-english`, `behavior-focused-testing`,
-`delegate` and `skill-lessons` skills, the `skill-lessons` tool and its render
+`delegate`, `skill-lessons` and `status-updates` skills, the
+`skill-lessons` tool and its render
 step, and the OpenCode config
 without the plan and design commands or the plan reviewer agents. It removes
 those files and full's other skills if a full install left them. The installer
