@@ -1,10 +1,6 @@
-//! This module holds the style rules from the `code-documentation` skill,
-//! checked on the lines a branch changed. Text the agent may not change is
-//! reported, never failed. Read the
-//! `check_file(now, old_text, changed, approvals)`,
-//! `check_comment(comment, now, old_text, avoided, approvals)`, and
-//! `check_definition(definition, now, old_text, changed, approvals)`
-//! functions to understand the module.
+//! Holds the style rules from the `code-documentation` skill, checked on the
+//! lines a branch changed. Text the agent may not change is reported, never
+//! failed.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -15,182 +11,6 @@ use regex::Regex;
 use super::approvals::{Approvals, DecisionMatch};
 use super::comments::{self, Comment, CommentStyle, Definition, FileComments, NameCheck};
 
-/// Returns the style findings on one file's changed lines, where `changed`
-/// lists the lines Git's diff marks in `now`.
-pub(crate) fn check_file(
-    now: &FileComments,
-    old_text: &OldText,
-    changed: &BTreeSet<usize>,
-    approvals: &Approvals,
-) -> Vec<Finding> {
-    // A generated file changes only when its generator runs again.
-    if now.is_generated() {
-        return Vec::new();
-    }
-    let avoided = build_avoided_word_patterns(approvals.avoided_words());
-    let mut findings = Vec::new();
-    for comment in &now.comments {
-        if (comment.line..=comment.end_line).any(|line| changed.contains(&line)) {
-            findings.extend(check_comment(comment, now, old_text, &avoided, approvals));
-        }
-    }
-    for definition in &now.list_definitions() {
-        findings.extend(check_definition(
-            definition, now, old_text, changed, approvals,
-        ));
-    }
-    findings.sort_by_key(|finding| finding.line);
-    findings
-}
-
-/// Returns the findings in one changed comment.
-fn check_comment(
-    comment: &Comment,
-    now: &FileComments,
-    old_text: &OldText,
-    avoided: &[(Regex, String)],
-    approvals: &Approvals,
-) -> Vec<Finding> {
-    let decision = approvals.compare(comment);
-    // Changed approved text already fails, and the agent must put it back as it was.
-    if decision == DecisionMatch::DiffersFromApproved {
-        return Vec::new();
-    }
-    let is_approved = decision == DecisionMatch::Approved;
-    let paragraphs = comments::list_paragraphs(comment);
-    let sentences = split_sentences(&paragraphs.join(" "));
-    let name = comment.name.as_deref().map_or("", strip_qualifier);
-    let mut broken: Vec<RuleMatch> = Vec::new();
-    if !is_approved {
-        broken.extend(find_restated_name(&sentences, name));
-    }
-    broken.extend(find_avoided_words(&sentences, avoided));
-    broken.extend(find_filler(&sentences, name));
-    broken.extend(find_name_at_start(&sentences, name));
-    if is_go_or_python(&comment.file)
-        && matches!(
-            comment.style,
-            CommentStyle::Line | CommentStyle::Hash | CommentStyle::AfterCode
-        )
-    {
-        let unmarked = list_unmarked_sentences(comment, &paragraphs);
-        broken.extend(find_long_comment(&unmarked));
-        broken.extend(find_colons(&unmarked));
-    }
-    let mut findings = Vec::new();
-    for RuleMatch {
-        rule,
-        sentences: found,
-        detail,
-    } in broken
-    {
-        let existing = old_text.has_sentences(&comment.file, &found);
-        // An old sentence may be a person's words, so it is never called a restatement.
-        if existing && rule == Rule::RestatedName {
-            continue;
-        }
-        let note = if is_approved {
-            Some(ReportNote::Approved)
-        } else if now.is_header(comment) {
-            Some(ReportNote::Header)
-        } else if existing {
-            Some(ReportNote::Existing)
-        } else if rule == Rule::RestatedName {
-            Some(ReportNote::ReportOnly)
-        } else {
-            None
-        };
-        findings.push(Finding {
-            file: comment.file.clone(),
-            name: comment.name.clone(),
-            line: comment.line,
-            rule,
-            note,
-            detail,
-        });
-    }
-    findings
-}
-
-/// Returns the findings in a new name, and in the docstring of a definition
-/// whose own lines changed.
-fn check_definition(
-    definition: &Definition,
-    now: &FileComments,
-    old_text: &OldText,
-    changed: &BTreeSet<usize>,
-    approvals: &Approvals,
-) -> Vec<Finding> {
-    let mut broken: Vec<(Rule, Option<ReportNote>, Option<String>)> = Vec::new();
-    if definition.name_check != NameCheck::Skip && !old_text.has_name(&now.file, &definition.name) {
-        let words = split_name_words(strip_qualifier(&definition.name));
-        if words.len() > 7 {
-            broken.push((
-                Rule::SevenWords,
-                None,
-                Some(format!("{} words", words.len())),
-            ));
-        }
-        if let Some(first_word) = words.first()
-            && definition.name_check == NameCheck::WordCountAndVerb
-            && !is_verb(first_word)
-        {
-            let detail = format!("\"{first_word}\" is not in the checker's verbs");
-            broken.push((Rule::VerbFirst, Some(ReportNote::ReportOnly), Some(detail)));
-        }
-    }
-    if let Some(docstring) = &definition.docstring
-        && !docstring.own_lines.is_disjoint(changed)
-    {
-        let comment = now.comments.iter().find(|comment| {
-            comment.style == CommentStyle::Docstring
-                && comment.name.as_deref() == Some(definition.name.as_str())
-        });
-        let decision = comment.map(|comment| approvals.compare(comment));
-        let note = match (comment, &decision) {
-            (_, Some(DecisionMatch::Approved)) => Some(ReportNote::Approved),
-            (Some(comment), _)
-                if old_text.has_sentences(
-                    &now.file,
-                    &split_sentences(&comments::list_paragraphs(comment).join(" ")),
-                ) =>
-            {
-                Some(ReportNote::Existing)
-            }
-            _ => None,
-        };
-        match &docstring.text {
-            None if docstring.is_required => {
-                // Every line of a moved file counts as changed, so a function a deleted
-                // changed file held at `base` is old.
-                let is_moved = !old_text.has_file(&now.file)
-                    && old_text.has_gone_name(&now.file, &definition.name);
-                let note = is_moved.then_some(ReportNote::Existing);
-                broken.push((Rule::Docstring, note, None));
-            }
-            None => {}
-            // Changed approved text already fails, and the agent must put it back as it was.
-            Some(_) if decision == Some(DecisionMatch::DiffersFromApproved) => {}
-            Some(text) => {
-                for (rule, detail) in find_docstring_rules(text, docstring.is_test) {
-                    broken.push((rule, note, detail));
-                }
-            }
-        }
-    }
-    broken
-        .into_iter()
-        .map(|(rule, note, detail)| Finding {
-            file: now.file.clone(),
-            name: Some(definition.name.clone()),
-            line: definition.line,
-            rule,
-            note,
-            detail,
-        })
-        .collect()
-}
-
 /// Holds one comment or name that breaks a rule.
 #[derive(Debug, PartialEq)]
 pub struct Finding {
@@ -198,7 +18,7 @@ pub struct Finding {
     pub name: Option<String>,
     pub line: usize,
     pub rule: Rule,
-    /// Says why the finding is only reported, or `None` when it fails step 2.
+    /// Says why the finding is only reported, or `None` when it fails `check_comments`.
     pub note: Option<ReportNote>,
     /// Names what to fix where the rule alone does not, such as the filler
     /// phrase, or `None`.
@@ -269,7 +89,7 @@ impl Rule {
 pub enum ReportNote {
     /// Marks text that matches an approval, which the agent may not change.
     Approved,
-    /// Marks a sentence or function a changed file in the same language held at `base`.
+    /// Marks a sentence the file already held at `base`.
     Existing,
     /// Marks a license header above a file's first code.
     Header,
@@ -356,31 +176,20 @@ pub(crate) struct OldText {
     /// depends on the language.
     sentences: BTreeSet<(String, String)>,
     names: BTreeSet<(String, String)>,
-    /// Lists the changed files that were there at `base`.
-    files: BTreeSet<PathBuf>,
-    /// Holds the definition names of the changed files the branch deleted.
-    gone_names: BTreeSet<(String, String)>,
 }
 
 impl OldText {
-    /// Adds one changed file's comments and definitions as it was at `base`,
-    /// where `is_gone` says the branch deleted the file.
-    pub(crate) fn add(&mut self, before: &FileComments, is_gone: bool) {
+    /// Adds one changed file's comments and definitions as it was at `base`.
+    pub(crate) fn add(&mut self, before: &FileComments) {
         let language = read_extension(&before.file);
-        if before.exists() {
-            self.files.insert(before.file.clone());
-        }
         for comment in &before.comments {
             for sentence in split_sentences(&comments::list_paragraphs(comment).join(" ")) {
                 self.sentences.insert((language.clone(), sentence));
             }
         }
         for definition in &before.list_definitions() {
-            let name = (language.clone(), definition.name.clone());
-            if is_gone {
-                self.gone_names.insert(name.clone());
-            }
-            self.names.insert(name);
+            self.names
+                .insert((language.clone(), definition.name.clone()));
         }
     }
 
@@ -396,15 +205,103 @@ impl OldText {
         self.names
             .contains(&(read_extension(file), name.to_owned()))
     }
+}
 
-    fn has_gone_name(&self, file: &Path, name: &str) -> bool {
-        self.gone_names
-            .contains(&(read_extension(file), name.to_owned()))
+/// Returns the style findings on one file's changed lines, where `changed`
+/// lists the lines Git's diff marks in `now`.
+pub(crate) fn check_file(
+    now: &FileComments,
+    old_text: &OldText,
+    changed: &BTreeSet<usize>,
+    approvals: &Approvals,
+) -> Vec<Finding> {
+    // A generated file changes only when its generator runs again.
+    if now.is_generated() {
+        return Vec::new();
     }
+    let avoided = find_avoided_word_patterns(approvals.avoided_words());
+    let mut findings = Vec::new();
+    for comment in &now.comments {
+        if (comment.line..=comment.end_line).any(|line| changed.contains(&line)) {
+            findings.extend(check_comment(comment, now, old_text, &avoided, approvals));
+        }
+    }
+    for definition in &now.list_definitions() {
+        findings.extend(check_definition(
+            definition, now, old_text, changed, approvals,
+        ));
+    }
+    findings.sort_by_key(|finding| finding.line);
+    findings
+}
 
-    fn has_file(&self, file: &Path) -> bool {
-        self.files.contains(file)
+/// Returns the findings in one changed comment.
+fn check_comment(
+    comment: &Comment,
+    now: &FileComments,
+    old_text: &OldText,
+    avoided: &[(Regex, String)],
+    approvals: &Approvals,
+) -> Vec<Finding> {
+    let decision = approvals.compare(comment);
+    // Changed approved text already fails, and the agent must put it back as it was.
+    if decision == DecisionMatch::DiffersFromApproved {
+        return Vec::new();
     }
+    let is_approved = decision == DecisionMatch::Approved;
+    let paragraphs = comments::list_paragraphs(comment);
+    let sentences = split_sentences(&paragraphs.join(" "));
+    let name = comment.name.as_deref().map_or("", strip_qualifier);
+    let mut broken: Vec<RuleMatch> = Vec::new();
+    if !is_approved {
+        broken.extend(find_restated_name(&sentences, name));
+    }
+    broken.extend(find_avoided_words(&sentences, avoided));
+    broken.extend(find_filler(&sentences, name));
+    broken.extend(find_name_at_start(&sentences, name));
+    if is_go_or_python(&comment.file)
+        && matches!(
+            comment.style,
+            CommentStyle::Line | CommentStyle::Hash | CommentStyle::AfterCode
+        )
+    {
+        let unmarked = list_unmarked_sentences(comment, &paragraphs);
+        broken.extend(find_long_comment(&unmarked));
+        broken.extend(find_colons(&unmarked));
+    }
+    let mut findings = Vec::new();
+    for RuleMatch {
+        rule,
+        sentences: found,
+        detail,
+    } in broken
+    {
+        let existing = old_text.has_sentences(&comment.file, &found);
+        // An old sentence may be a person's words, so it is never called a restatement.
+        if existing && rule == Rule::RestatedName {
+            continue;
+        }
+        let note = if is_approved {
+            Some(ReportNote::Approved)
+        } else if now.is_header(comment) {
+            Some(ReportNote::Header)
+        } else if existing {
+            Some(ReportNote::Existing)
+        } else if rule == Rule::RestatedName {
+            Some(ReportNote::ReportOnly)
+        } else {
+            None
+        };
+        findings.push(Finding {
+            file: comment.file.clone(),
+            name: comment.name.clone(),
+            line: comment.line,
+            rule,
+            note,
+            detail,
+        });
+    }
+    findings
 }
 
 /// Holds a rule one comment breaks, the sentences that break it, and what to fix.
@@ -422,6 +319,76 @@ impl RuleMatch {
             detail,
         }
     }
+}
+
+/// Returns the findings in a new name, and in the docstring of a definition
+/// whose own lines changed.
+fn check_definition(
+    definition: &Definition,
+    now: &FileComments,
+    old_text: &OldText,
+    changed: &BTreeSet<usize>,
+    approvals: &Approvals,
+) -> Vec<Finding> {
+    let mut broken: Vec<(Rule, Option<ReportNote>, Option<String>)> = Vec::new();
+    if definition.name_check != NameCheck::Skip && !old_text.has_name(&now.file, &definition.name) {
+        let words = split_name_words(strip_qualifier(&definition.name));
+        if words.len() > 7 {
+            broken.push((
+                Rule::SevenWords,
+                None,
+                Some(format!("{} words", words.len())),
+            ));
+        }
+        let first_word = words.first().map_or("", String::as_str);
+        if definition.name_check == NameCheck::WordCountAndVerb && !is_verb(first_word) {
+            let detail = format!("\"{first_word}\" is not in the checker's verbs");
+            broken.push((Rule::VerbFirst, Some(ReportNote::ReportOnly), Some(detail)));
+        }
+    }
+    if let Some(docstring) = &definition.docstring
+        && !docstring.own_lines.is_disjoint(changed)
+    {
+        let comment = now.comments.iter().find(|comment| {
+            comment.style == CommentStyle::Docstring
+                && comment.name.as_deref() == Some(definition.name.as_str())
+        });
+        let decision = comment.map(|comment| approvals.compare(comment));
+        let note = match (comment, &decision) {
+            (_, Some(DecisionMatch::Approved)) => Some(ReportNote::Approved),
+            (Some(comment), _)
+                if old_text.has_sentences(
+                    &now.file,
+                    &split_sentences(&comments::list_paragraphs(comment).join(" ")),
+                ) =>
+            {
+                Some(ReportNote::Existing)
+            }
+            _ => None,
+        };
+        match &docstring.text {
+            None if docstring.is_required => broken.push((Rule::Docstring, None, None)),
+            None => {}
+            // Changed approved text already fails, and the agent must put it back as it was.
+            Some(_) if decision == Some(DecisionMatch::DiffersFromApproved) => {}
+            Some(text) => {
+                for (rule, detail) in find_docstring_rules(text, docstring.is_test) {
+                    broken.push((rule, note, detail));
+                }
+            }
+        }
+    }
+    broken
+        .into_iter()
+        .map(|(rule, note, detail)| Finding {
+            file: now.file.clone(),
+            name: Some(definition.name.clone()),
+            line: definition.line,
+            rule,
+            note,
+            detail,
+        })
+        .collect()
 }
 
 /// Returns the rules a docstring's text breaks.
@@ -516,7 +483,6 @@ fn find_filler(sentences: &[String], name: &str) -> Option<RuleMatch> {
             phrases.push(format!("\"{phrase}\""));
         }
     }
-    found.sort();
     found.dedup();
     let detail = phrases.join(", ");
     (!found.is_empty()).then(|| RuleMatch::new(Rule::Filler, found, Some(detail)))
@@ -685,7 +651,7 @@ fn build_whole_word_pattern(text: &str) -> Regex {
 }
 
 /// Returns a whole-word pattern for each word in the approvals file's `avoid` list.
-fn build_avoided_word_patterns(avoid: &BTreeMap<String, String>) -> Vec<(Regex, String)> {
+fn find_avoided_word_patterns(avoid: &BTreeMap<String, String>) -> Vec<(Regex, String)> {
     avoid
         .iter()
         .map(|(word, instead)| {
@@ -701,8 +667,7 @@ fn build_avoided_word_patterns(avoid: &BTreeMap<String, String>) -> Vec<(Regex, 
 mod tests {
     use super::*;
 
-    /// `Rule::sentence` must quote the `code-documentation` skill word for word.
-    /// Otherwise an agent could be told to follow a sentence the skill no longer says.
+    /// Without it, an agent could be told to follow a sentence the skill no longer says.
     #[test]
     fn rule_sentences_quote_the_skill() {
         let skill_path = concat!(
