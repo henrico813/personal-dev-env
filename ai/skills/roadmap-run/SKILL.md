@@ -150,8 +150,7 @@ parent's final commit and run `planner check` again.
 
 ## Keeping the user informed
 
-- Write each chat update so a reader with no context can follow it.
-  Lead with what changed and anything the user must decide.
+- Write each chat update by the `status-updates` skill.
 - Keep one bullet per PR on the roadmap page current. Detail belongs
   in the plans, not in chat.
 - Write each PR's status line from the output of build.md's status
