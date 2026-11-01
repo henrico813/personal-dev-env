@@ -199,6 +199,7 @@ mod tests {
     use super::*;
     use crate::shared::comments::CommentStyle;
 
+    /// Builds one answer the user gave, with an empty text for a cut.
     fn approval(file: &str, name: &str, text: &str) -> Approval {
         Approval {
             file: PathBuf::from(file),
@@ -207,6 +208,7 @@ mod tests {
         }
     }
 
+    /// Builds a comment as the code holds it now.
     fn comment(file: &str, name: &str, text: &str) -> Comment {
         Comment {
             file: PathBuf::from(file),
@@ -218,9 +220,11 @@ mod tests {
         }
     }
 
-    /// Without it, the check would fail text the user approved earlier, or pass an agent's reword.
+    /// The user may approve a comment and later approve a new wording, and both must pass.
+    /// Any other wording must fail, or an agent could quietly rewrite what the user approved.
     #[test]
-    fn approved_texts_match_and_other_texts_differ() {
+    fn approved_wordings_pass_and_rewordings_fail() {
+        // The user approved one wording, then a second one later.
         let approvals = Approvals {
             approved: vec![
                 approval("review_store.go", "SaveAnswer", "// Saves the answer.\n"),
@@ -232,49 +236,50 @@ mod tests {
             ],
         };
 
+        // Either approved wording in the code passes.
         let older = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
         let newer = comment(
             "review_store.go",
             "SaveAnswer",
             "// Saves the answer safely.\n",
         );
-        let reworded = comment("review_store.go", "SaveAnswer", "// Writes the answer.\n");
         assert_eq!(approvals.compare(&older), DecisionMatch::Approved);
         assert_eq!(approvals.compare(&newer), DecisionMatch::Approved);
+
+        // A wording the user never approved is caught.
+        let reworded = comment("review_store.go", "SaveAnswer", "// Writes the answer.\n");
         assert_eq!(
             approvals.compare(&reworded),
             DecisionMatch::DiffersFromApproved
         );
     }
 
-    /// Without it, the user's latest keep or cut would be ignored, and they would be asked again.
+    /// When the user changes their mind about a comment, their latest choice must count.
+    /// Otherwise a comment the user cut would still pass, or one they kept again would still count as cut.
     #[test]
-    fn newest_cut_or_approval_settles_the_name() {
+    fn latest_keep_or_cut_decides_the_comment() {
         let kept = approval("review_store.go", "SaveAnswer", "// Saves the answer.\n");
         let cut = approval("review_store.go", "SaveAnswer", "");
         let cases = [
             (
-                "cut-after-approval",
+                "cut-after-keep",
                 vec![kept.clone(), cut.clone()],
                 DecisionMatch::WasCut,
             ),
-            (
-                "approval-after-cut",
-                vec![cut, kept],
-                DecisionMatch::Approved,
-            ),
+            ("keep-after-cut", vec![cut, kept], DecisionMatch::Approved),
         ];
 
         for (case, approved, expected) in cases {
             let approvals = Approvals { approved };
-            let saved = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
-            assert_eq!(approvals.compare(&saved), expected, "{case}");
+            let in_code = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
+            assert_eq!(approvals.compare(&in_code), expected, "{case}");
         }
     }
 
-    /// Without it, approving one file's module comment would fail other files' module comments.
+    /// Many files have a comment with the same name, such as the comment at the top of each file.
+    /// An answer for one file must not count for another, or approving one would fail the rest.
     #[test]
-    fn same_name_in_another_file_is_undecided() {
+    fn approval_counts_only_in_its_own_file() {
         let approvals = Approvals {
             approved: vec![approval("review.rs", "<module>", "//! Reads the review.\n")],
         };
