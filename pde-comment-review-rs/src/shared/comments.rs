@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use tree_sitter::{Node, Parser, Tree};
 
 use super::git::{self, CommitId, FileVersion};
+use super::review_session::FeedbackRequest;
 use super::{Error, ErrorCode};
 use crate::language_rules::{LanguageRules, find_rules_for};
 
@@ -137,6 +138,48 @@ impl FileComments {
             .any(|old| old.name == comment.name && old.text == comment.text)
     }
 
+    /// Returns the comment each request matches, never reusing a comment for two
+    /// requests. A named request matches by name; otherwise it takes the nearest
+    /// comment with the same text, or the unnamed comment at its line.
+    pub(crate) fn match_requests(&self, requests: &[&FeedbackRequest]) -> Vec<Option<&Comment>> {
+        let mut matched = vec![None; requests.len()];
+        let mut taken = vec![false; self.comments.len()];
+        for (slot, request) in matched.iter_mut().zip(requests) {
+            let nearest = self
+                .comments
+                .iter()
+                .enumerate()
+                .filter(|(index, comment)| {
+                    !taken[*index]
+                        && comment.name == request.name
+                        && (request.name.is_some() || comment.text == request.text)
+                })
+                .min_by_key(|(_, comment)| comment.line.abs_diff(request.line));
+            if let Some((index, _)) = nearest {
+                taken[index] = true;
+                *slot = Some(index);
+            }
+        }
+        // A comment reworded in place keeps its request, unless another request took it.
+        for (slot, request) in matched.iter_mut().zip(requests) {
+            if slot.is_some() || request.name.is_some() {
+                continue;
+            }
+            let at_line = self
+                .comments
+                .iter()
+                .position(|comment| comment.name.is_none() && comment.line == request.line);
+            if let Some(index) = at_line.filter(|index| !taken[*index]) {
+                taken[index] = true;
+                *slot = Some(index);
+            }
+        }
+        matched
+            .into_iter()
+            .map(|slot| slot.map(|index| &self.comments[index]))
+            .collect()
+    }
+
     /// Returns the line of the code a comment named `name` would describe, or
     /// `None` when no code in the file would give a comment that name.
     pub(crate) fn find_code_line(&self, name: &str) -> Option<usize> {
@@ -189,15 +232,21 @@ pub(crate) fn read_version_comments(
     find_file_comments(file, version.text, &file_label)
 }
 
+/// Finds the comments in a root-relative file as it is on disk, or none where
+/// it is absent. `root` is the worktree's top folder.
+pub(crate) fn read_comments_on_disk(root: &Path, file: &Path) -> Result<FileComments, Error> {
+    read_version_comments(file, git::read_file_on_disk(root, file)?)
+}
+
 /// Finds the comments in a root-relative file as it was at `commit`, or none
 /// for a file added since. Refuses with `FileUnreadable`, naming the file, when
 /// that version does not parse.
 pub(crate) fn read_comments_at_commit(
-    dir: &Path,
+    root: &Path,
     commit: &CommitId,
     file: &Path,
 ) -> Result<FileComments, Error> {
-    let source = git::read_file_at_commit(dir, commit, file)?;
+    let source = git::read_file_at_commit_from_root(root, commit, file)?;
     let file_label = format!("{} at {}", file.display(), commit.as_str());
     find_file_comments(file, source, &file_label)
 }
