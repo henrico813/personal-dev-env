@@ -35,4 +35,27 @@ that Python; a rebuild alone won't help, since the packed file is plain
 source. It builds `blink.cmp` later, after chezmoi has installed the
 plugin tree.
 
+## Wallpaper players
+
+A machine with a desktop also builds that desktop's animated wallpaper
+player, since no Ubuntu package provides one: `xwinwrap` for i3, and `mpvpaper`
+with `mpvpaper-holder` for Sway. They build on every profile, terminal and
+client included, and their compilers and headers come from the desktop's apt
+groups in `internal/profile/profiles.yaml`.
+
+Each player is a pinned source archive in `wallpaperPlayers` in
+`internal/builds/builds.go`. The installer downloads it, checks its SHA-256,
+builds it under `~/.local/state/pde` and puts the binaries in `~/.local/bin`.
+`~/.local/state/pde/<player>.json` records the archive's SHA-256. A rerun
+skips the build when that matches and `mpvpaper -h` exits 0, so an apt update
+that breaks mpvpaper's libmpv link rebuilds it. `xwinwrap` has no such check
+and rebuilds when its pin changes or its binary is missing or not executable.
+
+To change a pin, set the archive URL to the new commit, download it, and
+replace the SHA-256 with the output of `sha256sum`. For `mpvpaper`, also
+update the tag comment above its URL. If the build needs new packages, add
+them to the desktop's group in `profiles.yaml`. Then build in a fresh Ubuntu
+24.04 container with only the desktop's apt groups installed, and run
+`install i3` or `install sway` on a desktop machine.
+
 There is no local-build-only command.

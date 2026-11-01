@@ -101,6 +101,25 @@ wt list
 wt switch pr:123
 ```
 
+A branch for planned work starts with its plan's issue key, in lowercase:
+plan `ABC-12` gets `feat/abc-12-approvals-file` and the folder
+`worktrees/feat-abc-12-approvals-file`. Agents get the key from
+`planner key "<plan file>"`, which prints `abc-12` and fails for a file with no
+key, such as a design doc. Pull request titles leave the key
+out, but the pull request's branch keeps it, so one key finds the plan, the
+branch and its worktree, and the pull request:
+
+```bash
+nobs find abc-12
+wt list | rg abc-12
+gh pr list -s all -L 200 | rg abc-12
+```
+
+`wt switch` with no branch opens a picker that filters by branch, folder and
+pull request number as you type, so typing `abc-12` there and pressing
+Enter opens the worktree. A fix with no plan has no key; search for its branch
+words, such as `login-timeout`, instead.
+
 A new branch must be `<type>/<words>`: a commit type or `vibe`, then lowercase
 letters and digits joined by hyphens. Existing branches and pull request
 branches are not checked. A repository can replace the rule in its own Git
@@ -109,6 +128,10 @@ config with an extended regular expression, as used by `grep -E`:
 ```bash
 git config pde.branchPattern '^[A-Z]+-[0-9]+-[a-z0-9-]+$'
 ```
+
+Under a pattern, the branch still starts with the ticket key the plan
+names, in the form the pattern asks for; agents ask the user when the
+plan names none. Vibe keys and run folders keep using `planner key`.
 
 `~/.zshenv` points Worktrunk at `~/.config/pde/worktrunk.toml`, and
 `~/.config/worktrunk/config.toml` can override it. Do not use `wt merge` or
