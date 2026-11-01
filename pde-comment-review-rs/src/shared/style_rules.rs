@@ -1,11 +1,9 @@
-//! Holds the style rules from the `code-documentation` skill, such
-//! as no filler and at most two sentences per comment, checked on
-//! the lines a branch changed. Each rule quotes the skill sentence
-//! it enforces, so an agent reads the rule, not just its name. Text
-//! the agent may not change is reported, never failed. Each
-//! language lists its own rules, so this file never checks which
-//! language a file is in. Read `StyleCheck::new` and
-//! `find_file_style_issues` first.
+//! This module finds the style issues on a branch's changed lines, by the
+//! rules of the `code-documentation` skill. Each language lists its own
+//! rules, so this file never checks which language a file is in. Read the
+//! `StyleCheck::new(approvals, at_base)` and
+//! `StyleCheck::find_file_style_issues(now, changed)` functions to understand
+//! the module.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
