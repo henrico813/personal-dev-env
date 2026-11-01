@@ -12,7 +12,7 @@ use pde_comment_review::shared::approvals::{self, Approval, DecisionMatch};
 use pde_comment_review::shared::comments::{Comment, CommentStyle};
 use serde_json::{Value, json};
 
-/// A file of answers the current Python checker already wrote on a user's
+/// A file of decisions the current Python checker already wrote on a user's
 /// machine, with a cut comment and a word the user asked agents to avoid.
 const FILE_FROM_PYTHON_CHECKER: &str = r#"{
  "approved": [
@@ -66,23 +66,23 @@ fn make_repo() -> TempFolder {
     folder
 }
 
-/// Returns where the user's answers live, in the Git folder all worktrees share.
+/// Returns where the user's decisions live, in the Git folder all worktrees share.
 fn approvals_file(repo: &Path) -> PathBuf {
     repo.join(".git/pde/code-comments.json")
 }
 
-/// Puts a file of answers in place, as if an earlier review had saved it.
+/// Puts a file of decisions in place, as if an earlier review had added them.
 fn write_approvals_file(repo: &Path, text: &str) {
     fs::create_dir_all(repo.join(".git/pde")).unwrap();
     fs::write(approvals_file(repo), text).unwrap();
 }
 
-/// Reads the saved answers back as JSON, so a test can compare their content.
+/// Reads the stored decisions back as JSON, so a test can compare their content.
 fn read_approvals_file(repo: &Path) -> Value {
     serde_json::from_slice(&fs::read(approvals_file(repo)).unwrap()).unwrap()
 }
 
-/// Builds one answer the user gave, with an empty text for a cut.
+/// Builds one decision the user made, with an empty text for a cut.
 fn approval(file: &str, name: &str, text: &str) -> Approval {
     Approval {
         file: PathBuf::from(file),
@@ -91,15 +91,15 @@ fn approval(file: &str, name: &str, text: &str) -> Approval {
     }
 }
 
-/// Saving new answers must keep every answer and avoided word already in the file.
-/// Otherwise the user would be asked again about answered comments, and agents could use words the user banned.
+/// Adding new decisions must keep every decision and avoided word already in the file.
+/// Otherwise the user would be asked again about decided comments, and agents could use words the user banned.
 #[test]
-fn saving_keeps_earlier_answers_and_avoided_words() {
+fn add_keeps_earlier_decisions_and_avoided_words() {
     // Start from a file the Python checker wrote.
     let repo = make_repo();
     write_approvals_file(repo.path(), FILE_FROM_PYTHON_CHECKER);
 
-    // Save a new wording for one comment and a cut for another.
+    // Add a new approved text for one comment and a cut for another.
     approvals::add(
         repo.path(),
         &[
@@ -109,20 +109,20 @@ fn saving_keeps_earlier_answers_and_avoided_words() {
     )
     .unwrap();
 
-    // The file holds the old content unchanged, with the new answers after it.
+    // The file holds the old content unchanged, with the new decisions after it.
     let mut expected: Value = serde_json::from_str(FILE_FROM_PYTHON_CHECKER).unwrap();
-    let answers = expected["approved"].as_array_mut().unwrap();
-    answers.push(
+    let decisions = expected["approved"].as_array_mut().unwrap();
+    decisions.push(
         json!({"file": "review_store.go", "name": "SaveAnswer", "text": "// Saves the answer.\n"}),
     );
-    answers.push(json!({"file": "review.py", "name": "Review.save", "text": ""}));
+    decisions.push(json!({"file": "review.py", "name": "Review.save", "text": ""}));
     assert_eq!(read_approvals_file(repo.path()), expected);
 }
 
-/// Saving must stop and leave the file alone when it is damaged or came from a newer version.
-/// Writing over it would throw away the user's answers or the newer version's data.
+/// Adding must stop and leave the file alone when it is damaged or came from a newer version.
+/// Writing over it would throw away the user's decisions or the newer version's data.
 #[test]
-fn saving_leaves_damaged_or_newer_files_untouched() {
+fn add_leaves_a_damaged_or_newer_file_untouched() {
     let repo = make_repo();
     let cases = [
         (
@@ -131,7 +131,7 @@ fn saving_leaves_damaged_or_newer_files_untouched() {
             ErrorCode::SavedFileUnreadable,
         ),
         (
-            "answer-without-text",
+            "decision-without-text",
             r#"{"approved": [{"file": "review.py", "name": "Review.save"}]}"#,
             ErrorCode::SavedFileUnreadable,
         ),
@@ -141,13 +141,13 @@ fn saving_leaves_damaged_or_newer_files_untouched() {
             ErrorCode::UnknownSavedField,
         ),
         (
-            "unknown-answer-field",
+            "unknown-decision-field",
             r#"{"approved": [{"file": "review.py", "name": "Review.save", "text": "", "at": "2026-10-31"}]}"#,
             ErrorCode::UnknownSavedField,
         ),
     ];
 
-    let new_answer = [approval(
+    let new_decision = [approval(
         "review_store.go",
         "SaveAnswer",
         "// Saves the answer.\n",
@@ -156,33 +156,33 @@ fn saving_leaves_damaged_or_newer_files_untouched() {
     for (case, text, code) in cases {
         write_approvals_file(repo.path(), text);
 
-        let error = approvals::add(repo.path(), &new_answer).unwrap_err();
+        let error = approvals::add(repo.path(), &new_decision).unwrap_err();
 
-        // The save fails with the right reason, and the file keeps every byte.
+        // The add fails with the right reason, and the file keeps every byte.
         assert_eq!(error.code, code, "{case}");
-        let kept = fs::read_to_string(approvals_file(repo.path())).unwrap();
-        assert_eq!(kept, text, "{case}");
+        let unchanged = fs::read_to_string(approvals_file(repo.path())).unwrap();
+        assert_eq!(unchanged, text, "{case}");
     }
 }
 
-/// Two reviews can save at the same moment, such as one in each worktree.
-/// No save may overwrite another, or the user would lose answers and be asked again.
+/// Two reviews can add decisions at the same moment, such as one in each worktree.
+/// No add may overwrite another, or the user would lose decisions and be asked again.
 #[test]
-fn simultaneous_saves_lose_no_answers() {
+fn simultaneous_adds_lose_no_decisions() {
     let repo = make_repo();
     let threads = 8;
-    let saves_per_thread = 4;
+    let adds_per_thread = 4;
     let start = Barrier::new(threads);
 
-    // Start every thread at once, and have each save a few distinct answers.
+    // Start every thread at once, and have each add a few distinct decisions.
     thread::scope(|scope| {
         for thread_number in 0..threads {
             let start = &start;
             let dir = repo.path();
             scope.spawn(move || {
                 start.wait();
-                for save_number in 0..saves_per_thread {
-                    let name = format!("Save{thread_number}x{save_number}");
+                for add_number in 0..adds_per_thread {
+                    let name = format!("Save{thread_number}x{add_number}");
                     approvals::add(dir, &[approval("review_store.go", &name, "// Saves.\n")])
                         .unwrap();
                 }
@@ -190,18 +190,18 @@ fn simultaneous_saves_lose_no_answers() {
         }
     });
 
-    // Every answer from every thread is in the file.
+    // Every decision from every thread is in the file.
     let saved = read_approvals_file(repo.path());
     assert_eq!(
         saved["approved"].as_array().unwrap().len(),
-        threads * saves_per_thread
+        threads * adds_per_thread
     );
 }
 
-/// All worktrees of a clone must share one set of answers, with the newest answer winning.
-/// Otherwise keeping a comment in one worktree would not undo a cut made in another.
+/// All worktrees of a clone must share one set of decisions, with the newest decision winning.
+/// Otherwise approving a comment in one worktree would not undo a cut made in another.
 #[test]
-fn every_worktree_sees_the_newest_answer() {
+fn every_worktree_sees_the_newest_decision() {
     // Make a second worktree of the same clone.
     let repo = make_repo();
     let second = TempFolder::new();
@@ -212,7 +212,7 @@ fn every_worktree_sees_the_newest_answer() {
     );
     let text = "// Saves the answer.\n";
 
-    // Save a cut from the main checkout, then a keep from the second worktree.
+    // Add a cut from the main checkout, then an approval from the second worktree.
     approvals::add(
         repo.path(),
         &[approval("review_store.go", "SaveAnswer", "")],
@@ -224,7 +224,7 @@ fn every_worktree_sees_the_newest_answer() {
     )
     .unwrap();
 
-    // The main checkout sees the keep, so the comment counts as approved.
+    // The main checkout sees the approval, so the comment counts as approved.
     let in_code = Comment {
         file: PathBuf::from("review_store.go"),
         name: Some("SaveAnswer".to_owned()),
