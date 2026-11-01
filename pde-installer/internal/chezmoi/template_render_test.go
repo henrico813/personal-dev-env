@@ -354,6 +354,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"alias vim=",
 				"vibe() (",
 				"EDITOR=$(which nvim)",
+				"plan() {",
 				"/aqua.yaml",
 				"/aqua-checksums.json",
 				"local -a roles=(work test shell)",
@@ -369,6 +370,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"aqua-terminal.yaml",
 				"alias vim='nvim'",
 				"EDITOR=$(which nvim)",
+				"plan() {",
 			},
 			omit: []string{
 				"keychain --eval",
@@ -388,6 +390,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				".left // \"\"",
 				"prd() (",
 				"command gh pr diff \"$@\" --color=never | command delta --navigate",
+				"plan() {",
 			},
 			omit: []string{
 				"vibe() (",

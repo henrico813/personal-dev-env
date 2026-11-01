@@ -28,18 +28,7 @@ use crate::shared::{Error, ErrorCode};
 /// step 7 writes.
 const BACKUP_FOLDER: &str = "write-backup";
 
-/// Says what step 7 did.
-#[derive(Debug, PartialEq)]
-pub enum WriteResult {
-    /// Lists the files written, from the worktree's top folder, and counts the
-    /// approvals and cuts saved.
-    Written {
-        files: Vec<PathBuf>,
-        approved: usize,
-    },
-    /// Says an earlier call, such as one from a second screen, wrote the answers.
-    AlreadyWritten,
-}
+const STOP_SIGNALS: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 
 /// Writes every answer into the files and saves the decisions, or puts every
 /// file back and keeps the answers. When a file cannot go back, it refuses with
@@ -80,106 +69,6 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
         deliver_held_signal(signal);
     }
     result
-}
-
-/// Returns each file the answers change, in memory, once every answered
-/// comment still holds the text the user answered. A file whose answers keep
-/// every text is left out.
-fn rewrite_answered_requests(
-    root: &Path,
-    answered: &[AnsweredRequest],
-) -> Result<Vec<RewrittenFile>, Error> {
-    let mut answered_by_file: BTreeMap<&Path, Vec<&AnsweredRequest>> = BTreeMap::new();
-    for answered_request in answered {
-        answered_by_file
-            .entry(&answered_request.request.file)
-            .or_default()
-            .push(answered_request);
-    }
-    let mut edits = Vec::new();
-    for (file, answered_requests) in answered_by_file {
-        let mut comments = read_comments_as_written(root, file)?;
-        for answered_request in answered_requests {
-            let request = answered_request.request;
-            let Some(comment) = take_answered_comment(&mut comments, request) else {
-                return Err(Error {
-                    code: ErrorCode::TextChanged,
-                    message: format!(
-                        "A comment in {} changed after the user answered it.",
-                        file.display()
-                    ),
-                });
-            };
-            let new_text = choose_new_text(request, answered_request.answer)
-                .map(|new_text| match_line_ends(new_text, request, &comment));
-            edits.push(CommentEdit { comment, new_text });
-        }
-    }
-    comments::rewrite(root, &edits)
-}
-
-/// Returns the comments in the file as it is on disk, with its own line ends
-/// so their byte ranges fit the file, or none when the file is gone.
-fn read_comments_as_written(root: &Path, file: &Path) -> Result<Vec<Comment>, Error> {
-    let Some(source) = git::read_file_on_disk(root, file)?.text else {
-        // A gone file holds no answered comment, so its requests count as changed.
-        return Ok(Vec::new());
-    };
-    comments::find_comments(file, &source).map_err(|error| Error {
-        code: ErrorCode::FileUnreadable,
-        message: format!(
-            "Cannot read the comments in {}, since {error}.",
-            file.display()
-        ),
-    })
-}
-
-/// Takes out the comment a request asked about, if it still holds the text the
-/// user answered. A named comment is found by its name, an unnamed one by its
-/// line.
-fn take_answered_comment(
-    comments: &mut Vec<Comment>,
-    request: &FeedbackRequest,
-) -> Option<Comment> {
-    let index = comments.iter().position(|comment| {
-        let same_comment = match &request.name {
-            Some(_) => comment.name == request.name,
-            None => comment.name.is_none() && comment.line == request.line,
-        };
-        // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
-        same_comment && comment.text.replace("\r\n", "\n") == request.text
-    })?;
-    Some(comments.swap_remove(index))
-}
-
-/// Returns the new text with `\r\n` line ends where the old comment had them,
-/// or the old text as it is when the words did not change.
-fn match_line_ends(new_text: String, request: &FeedbackRequest, comment: &Comment) -> String {
-    if new_text == request.text {
-        comment.text.clone()
-    } else if comment.text.contains("\r\n") {
-        new_text.replace('\n', "\r\n")
-    } else {
-        new_text
-    }
-}
-
-/// Returns the approval each named answer saves, with an empty text for a cut.
-/// A comment with no name has nothing to save it under.
-fn list_decisions(answered: &[AnsweredRequest]) -> Vec<Approval> {
-    answered
-        .iter()
-        .filter_map(|answered_request| {
-            let request = answered_request.request;
-            let name = request.name.clone()?;
-            let text = choose_new_text(request, answered_request.answer).unwrap_or_default();
-            Some(Approval {
-                file: request.file.clone(),
-                name,
-                text,
-            })
-        })
-        .collect()
 }
 
 /// Writes the files and saves the decisions, or puts every file back.
@@ -223,21 +112,45 @@ fn write_files_and_decisions(
     })
 }
 
-/// Returns the write's error, and lets the user try again when every file went
-/// back.
-fn refuse_after_write(lock: &mut ReviewSessionLock, error: Error) -> Result<WriteResult, Error> {
-    // The status only goes back to waiting once every file is restored.
-    if error.code == ErrorCode::WriteFailed {
-        save_status(lock, ReviewStatus::WaitingForUserFeedback)?;
+/// Writes each file in turn, and stops at a file that changed since its
+/// rewrite, a failed write or a stop signal, returning why.
+fn write_every_file(backup: &mut FileBackup, signals: &HeldSignals) -> Result<(), String> {
+    for file in &backup.files {
+        let shown_path = file.rewritten.path.display();
+        match replace_file(
+            &file.path,
+            file.rewritten.old_contents.as_bytes(),
+            file.rewritten.new_contents.as_bytes(),
+            &file.permissions,
+        ) {
+            Ok(true) => {}
+            // Writing over a change made since the rewrite read the file would lose it.
+            Ok(false) => {
+                return Err(format!(
+                    "{shown_path} changed while the answers were written."
+                ));
+            }
+            Err(error) => return Err(format!("Cannot write {shown_path}. {error}")),
+        }
+        backup.written += 1;
+        if signals.was_caught() {
+            return Err("A stop signal arrived.".to_owned());
+        }
     }
-    Err(error)
+    Ok(())
 }
 
-fn save_status(lock: &mut ReviewSessionLock, status: ReviewStatus) -> Result<(), Error> {
-    if let Some(review_session) = lock.review_session_mut() {
-        review_session.status = status;
-    }
-    lock.save()
+/// Says what step 7 did.
+#[derive(Debug, PartialEq)]
+pub enum WriteResult {
+    /// Lists the files written, from the worktree's top folder, and counts the
+    /// approvals and cuts saved.
+    Written {
+        files: Vec<PathBuf>,
+        approved: usize,
+    },
+    /// Says an earlier call, such as one from a second screen, wrote the answers.
+    AlreadyWritten,
 }
 
 /// Holds each file's original, also saved in the backup folder, and counts the
@@ -380,32 +293,177 @@ impl FileBackup {
     }
 }
 
-/// Writes each file in turn, and stops at a file that changed since its
-/// rewrite, a failed write or a stop signal, returning why.
-fn write_every_file(backup: &mut FileBackup, signals: &HeldSignals) -> Result<(), String> {
-    for file in &backup.files {
-        let shown_path = file.rewritten.path.display();
-        match replace_file(
-            &file.path,
-            file.rewritten.old_contents.as_bytes(),
-            file.rewritten.new_contents.as_bytes(),
-            &file.permissions,
-        ) {
-            Ok(true) => {}
-            // Writing over a change made since the rewrite read the file would lose it.
-            Ok(false) => {
-                return Err(format!(
-                    "{shown_path} changed while the answers were written."
-                ));
-            }
-            Err(error) => return Err(format!("Cannot write {shown_path}. {error}")),
+/// Makes Ctrl-C, SIGTERM and SIGHUP wait until released, so a stop puts every
+/// file back instead of leaving the write half done.
+struct HeldSignals {
+    owner: &'static SignalOwner,
+}
+
+/// Owns this program's actions for the stop signals and SIGXFSZ, added on the
+/// first hold and kept for the program's life. A count of holds decides when a
+/// signal waits, so one write's release never lets a signal end another.
+struct SignalOwner {
+    holds: Mutex<usize>,
+    /// Holds the number of the last stop signal during the holds, or 0.
+    caught: Arc<AtomicUsize>,
+    /// True while no hold runs, when a signal with its default action ends the
+    /// program as it would without step 7.
+    unheld: Arc<AtomicBool>,
+    /// Lists the signals that had their default action before this program
+    /// added its own, the only ones it ends the program for.
+    had_default_action: Vec<c_int>,
+}
+
+/// Says what a signal did before this program added its own action.
+#[derive(Clone, Copy, PartialEq)]
+enum EarlierAction {
+    Default,
+    Ignored,
+    /// A handler of the caller's, which signal-hook still runs first.
+    Handled,
+}
+
+impl HeldSignals {
+    fn was_caught(&self) -> bool {
+        self.owner.caught.load(Ordering::SeqCst) != 0
+    }
+
+    /// Ends this hold, and returns the stop signal that arrived during the
+    /// holds when no other hold remains.
+    fn release(self) -> Option<c_int> {
+        let mut holds = self
+            .owner
+            .holds
+            .lock()
+            .expect("no code panics while holding the count");
+        *holds -= 1;
+        if *holds > 0 {
+            return None;
         }
-        backup.written += 1;
-        if signals.was_caught() {
-            return Err("A stop signal arrived.".to_owned());
+        // Set first, so a signal that arrives now acts at once instead of being lost.
+        self.owner.unheld.store(true, Ordering::SeqCst);
+        match self.owner.caught.swap(0, Ordering::SeqCst) {
+            0 => None,
+            signal => Some(signal as c_int),
         }
     }
-    Ok(())
+}
+
+/// Returns each file the answers change, in memory, once every answered
+/// comment still holds the text the user answered. A file whose answers keep
+/// every text is left out.
+fn rewrite_answered_requests(
+    root: &Path,
+    answered: &[AnsweredRequest],
+) -> Result<Vec<RewrittenFile>, Error> {
+    let mut answered_by_file: BTreeMap<&Path, Vec<&AnsweredRequest>> = BTreeMap::new();
+    for answered_request in answered {
+        answered_by_file
+            .entry(&answered_request.request.file)
+            .or_default()
+            .push(answered_request);
+    }
+    let mut edits = Vec::new();
+    for (file, answered_requests) in answered_by_file {
+        let mut comments = read_comments_as_written(root, file)?;
+        for answered_request in answered_requests {
+            let request = answered_request.request;
+            let Some(comment) = take_answered_comment(&mut comments, request) else {
+                return Err(Error {
+                    code: ErrorCode::TextChanged,
+                    message: format!(
+                        "A comment in {} changed after the user answered it.",
+                        file.display()
+                    ),
+                });
+            };
+            let new_text = choose_new_text(request, answered_request.answer)
+                .map(|new_text| match_line_ends(new_text, request, &comment));
+            edits.push(CommentEdit { comment, new_text });
+        }
+    }
+    comments::rewrite(root, &edits)
+}
+
+/// Returns the comments in the file as it is on disk, with its own line ends
+/// so their byte ranges fit the file, or none when the file is gone.
+fn read_comments_as_written(root: &Path, file: &Path) -> Result<Vec<Comment>, Error> {
+    let Some(source) = git::read_file_on_disk(root, file)?.text else {
+        // A gone file holds no answered comment, so its requests count as changed.
+        return Ok(Vec::new());
+    };
+    comments::find_comments(file, &source).map_err(|error| Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!(
+            "Cannot read the comments in {}, since {error}.",
+            file.display()
+        ),
+    })
+}
+
+/// Takes out the comment a request asked about, if it still holds the text the
+/// user answered. A named comment is found by its name, an unnamed one by its
+/// line.
+fn take_answered_comment(
+    comments: &mut Vec<Comment>,
+    request: &FeedbackRequest,
+) -> Option<Comment> {
+    let index = comments.iter().position(|comment| {
+        let same_comment = match &request.name {
+            Some(_) => comment.name == request.name,
+            None => comment.name.is_none() && comment.line == request.line,
+        };
+        // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
+        same_comment && comment.text.replace("\r\n", "\n") == request.text
+    })?;
+    Some(comments.swap_remove(index))
+}
+
+/// Returns the new text with `\r\n` line ends where the old comment had them,
+/// or the old text as it is when the words did not change.
+fn match_line_ends(new_text: String, request: &FeedbackRequest, comment: &Comment) -> String {
+    if new_text == request.text {
+        comment.text.clone()
+    } else if comment.text.contains("\r\n") {
+        new_text.replace('\n', "\r\n")
+    } else {
+        new_text
+    }
+}
+
+/// Returns the approval each named answer saves, with an empty text for a cut.
+/// A comment with no name has nothing to save it under.
+fn list_decisions(answered: &[AnsweredRequest]) -> Vec<Approval> {
+    answered
+        .iter()
+        .filter_map(|answered_request| {
+            let request = answered_request.request;
+            let name = request.name.clone()?;
+            let text = choose_new_text(request, answered_request.answer).unwrap_or_default();
+            Some(Approval {
+                file: request.file.clone(),
+                name,
+                text,
+            })
+        })
+        .collect()
+}
+
+/// Returns the write's error, and lets the user try again when every file went
+/// back.
+fn refuse_after_write(lock: &mut ReviewSessionLock, error: Error) -> Result<WriteResult, Error> {
+    // The status only goes back to waiting once every file is restored.
+    if error.code == ErrorCode::WriteFailed {
+        save_status(lock, ReviewStatus::WaitingForUserFeedback)?;
+    }
+    Err(error)
+}
+
+fn save_status(lock: &mut ReviewSessionLock, status: ReviewStatus) -> Result<(), Error> {
+    if let Some(review_session) = lock.review_session_mut() {
+        review_session.status = status;
+    }
+    lock.save()
 }
 
 /// Replaces the file through a synced temporary file beside it, so a crash
@@ -472,38 +530,6 @@ fn write_failed(reason: impl Display) -> Error {
     }
 }
 
-/// Makes Ctrl-C, SIGTERM and SIGHUP wait until released, so a stop puts every
-/// file back instead of leaving the write half done.
-struct HeldSignals {
-    owner: &'static SignalOwner,
-}
-
-/// Owns this program's actions for the stop signals and SIGXFSZ, added on the
-/// first hold and kept for the program's life. A count of holds decides when a
-/// signal waits, so one write's release never lets a signal end another.
-struct SignalOwner {
-    holds: Mutex<usize>,
-    /// Holds the number of the last stop signal during the holds, or 0.
-    caught: Arc<AtomicUsize>,
-    /// True while no hold runs, when a signal with its default action ends the
-    /// program as it would without step 7.
-    unheld: Arc<AtomicBool>,
-    /// Lists the signals that had their default action before this program
-    /// added its own, the only ones it ends the program for.
-    had_default_action: Vec<c_int>,
-}
-
-const STOP_SIGNALS: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
-
-/// Says what a signal did before this program added its own action.
-#[derive(Clone, Copy, PartialEq)]
-enum EarlierAction {
-    Default,
-    Ignored,
-    /// A handler of the caller's, which signal-hook still runs first.
-    Handled,
-}
-
 fn signal_owner() -> &'static SignalOwner {
     static OWNER: OnceLock<SignalOwner> = OnceLock::new();
     OWNER.get_or_init(|| {
@@ -563,32 +589,6 @@ fn hold_stop_signals() -> HeldSignals {
     }
     *holds += 1;
     HeldSignals { owner }
-}
-
-impl HeldSignals {
-    fn was_caught(&self) -> bool {
-        self.owner.caught.load(Ordering::SeqCst) != 0
-    }
-
-    /// Ends this hold, and returns the stop signal that arrived during the
-    /// holds when no other hold remains.
-    fn release(self) -> Option<c_int> {
-        let mut holds = self
-            .owner
-            .holds
-            .lock()
-            .expect("no code panics while holding the count");
-        *holds -= 1;
-        if *holds > 0 {
-            return None;
-        }
-        // Set first, so a signal that arrives now acts at once instead of being lost.
-        self.owner.unheld.store(true, Ordering::SeqCst);
-        match self.owner.caught.swap(0, Ordering::SeqCst) {
-            0 => None,
-            signal => Some(signal as c_int),
-        }
-    }
 }
 
 /// Ends the program with a held signal's default action, unless the signal

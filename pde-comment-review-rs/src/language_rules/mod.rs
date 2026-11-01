@@ -1,5 +1,6 @@
-//! Picks a language's comment rules from a file's path. Only
-//! `shared/comments.rs` calls this.
+//! This module picks a language's comment rules from a file's path. Only
+//! `shared/comments.rs` calls it. Read the `LanguageRules` trait and the
+//! `find_rules_for(file)` function to understand the module.
 
 mod docstrings;
 mod go;
@@ -21,6 +22,14 @@ use tree_sitter::{Language, Node};
 use crate::shared::comments::{CommentStyle, Definition};
 use crate::shared::{Error, ErrorCode};
 
+/// Stops a formatter or check that runs longer, because step 7 holds the
+/// review's lock while one runs.
+const TOOL_TIME_LIMIT: Duration = Duration::from_secs(10);
+
+/// Limits the wait for a killed tool's output to close, which only a process
+/// that left the tool's group can keep open.
+const KILLED_TOOL_GRACE: Duration = Duration::from_secs(1);
+
 /// Tells which syntax tree nodes are comments in one language.
 pub trait LanguageRules {
     /// Returns the tree-sitter grammar.
@@ -41,8 +50,8 @@ pub trait LanguageRules {
     fn name_docstring_owner(&self, _definition: Node, _source: &str) -> Option<String> {
         None
     }
-    /// Returns the comment's words without its markers or quotes, or the
-    /// text as it is when the user cannot reword it.
+    /// Returns the comment's words without its markers or quotes. Text that
+    /// is not all marked lines, or one whole docstring, comes back as it is.
     fn to_plain_words(&self, text: &str) -> String;
     /// Returns the comment's paragraphs of prose, each on one line, leaving
     /// out examples, or none when the comment has no line markers or quotes.
@@ -69,12 +78,20 @@ pub trait LanguageRules {
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error>;
     /// Returns true for comment text a build or test tool reads, in any case
     /// or spacing, so a cut or reword would change what the tool does.
-    fn is_read_by_tools(&self, _file: &Path, _text: &str) -> bool {
-        false
-    }
+    fn is_read_by_tools(&self, file: &Path, text: &str) -> bool;
     /// Returns true for a comment node that a cut could turn into different
     /// code, such as one inside a macro call.
     fn is_keep_only(&self, comment: Node, source: &str) -> bool;
+}
+
+/// Returns the rules for the file's language, if supported.
+pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
+    match file.extension()?.to_str()? {
+        "go" => Some(&go::GoRules),
+        "py" => Some(&python::PythonRules),
+        "rs" => Some(&rust::RustRules),
+        _ => None,
+    }
 }
 
 /// Returns true when `node` sits inside a node of one of `kinds`.
@@ -109,14 +126,6 @@ fn format_if_old_is_formatted(
         message: format!("{} cannot format the new text. {reason}", command[0]),
     })
 }
-
-/// Stops a formatter or check that runs longer, because step 7 holds the
-/// review's lock while one runs.
-const TOOL_TIME_LIMIT: Duration = Duration::from_secs(10);
-
-/// Limits the wait for a killed tool's output to close, which only a process
-/// that left the tool's group can keep open.
-const KILLED_TOOL_GRACE: Duration = Duration::from_secs(1);
 
 /// Returns what `command` prints for `input`, or why it failed.
 fn run_with_input(command: &[&str], folder: &Path, input: &str) -> Result<String, String> {
@@ -241,16 +250,6 @@ fn stop_process_group(child: &mut Child) -> io::Result<()> {
     }
     child.wait()?;
     kill_error.map_or(Ok(()), Err)
-}
-
-/// Returns the rules for the file's language, if supported.
-pub fn find_rules_for(file: &Path) -> Option<&'static dyn LanguageRules> {
-    match file.extension()?.to_str()? {
-        "go" => Some(&go::GoRules),
-        "py" => Some(&python::PythonRules),
-        "rs" => Some(&rust::RustRules),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

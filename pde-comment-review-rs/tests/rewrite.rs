@@ -10,7 +10,7 @@ use pde_comment_review::shared::{Error, ErrorCode};
 /// Saves `source` as `file` in a new folder, beside a `rustfmt.toml` holding
 /// `rustfmt_settings`, and rewrites it. Each edit names a comment by words in
 /// its text and gives that comment's new text.
-fn rewrite_file(
+fn rewrite_in_new_folder(
     file: &str,
     source: &str,
     rustfmt_settings: &str,
@@ -36,17 +36,18 @@ fn rewrite_file(
     rewrite(folder.path(), &edits)
 }
 
+/// Rewrites `source` with no formatter settings and returns its new contents.
 fn rewrite_to_text(file: &str, source: &str, edits: &[(&str, Option<&str>)]) -> String {
-    let rewritten = rewrite_file(file, source, "", edits).unwrap();
+    let rewritten = rewrite_in_new_folder(file, source, "", edits).unwrap();
     assert_eq!(rewritten.len(), 1, "{file}");
     assert_eq!(rewritten[0].path, Path::new(file));
     rewritten[0].new_contents.clone()
 }
 
-/// Without it, a cut comment that shares its line with code could take the
-/// code, or a reword could land in the wrong place.
+/// `rewrite` must put each new comment text in its comment's place and cut a comment without the code on its line.
+/// Otherwise an edit could land in the wrong place, or a cut could take the code beside the comment.
 #[test]
-fn splices_rewords_and_cuts_but_keeps_code() {
+fn rewrite_changes_only_the_edited_comments() {
     let cases = [
         (
             "save.go",
@@ -96,10 +97,10 @@ fn splices_rewords_and_cuts_but_keeps_code() {
     }
 }
 
-/// Without it, an answer could change the program or how tools read it, or
-/// reword a comment that can only be kept or cut.
+/// `rewrite` must refuse an edit that changes the code, changes what a tool reads, or writes text the user did not choose.
+/// Otherwise User Feedback on one comment could change how the program builds or runs.
 #[test]
-fn refuses_edits_it_cannot_write_safely() {
+fn rewrite_refuses_edits_it_cannot_write_safely() {
     let cases = [
         (
             "reword adds code",
@@ -142,6 +143,16 @@ fn refuses_edits_it_cannot_write_safely() {
             "// Saves it.\nfn save() {}\n",
             "",
             ("Saves it", Some("/// Saves it.\n")),
+        ),
+        (
+            "new backslash in a file Python cannot compile",
+            "save.py",
+            "def save():\n    \"\"\"Saves it.\"\"\"\nreturn 1\n",
+            "",
+            (
+                "Saves it",
+                Some("    \"\"\"Saves \\N{NOT A NAME} it.\"\"\"\n"),
+            ),
         ),
         (
             "reword gives a docstring an f prefix",
@@ -277,7 +288,7 @@ fn refuses_edits_it_cannot_write_safely() {
             ("Output", None),
         ),
         (
-            "formatter changes the answered comment",
+            "formatter changes the edited comment",
             "save.go",
             "package main\n\n// Saves it.\nfunc save() {}\n",
             "",
@@ -300,7 +311,7 @@ fn refuses_edits_it_cannot_write_safely() {
     ];
 
     for (case, file, source, rustfmt_settings, edit) in cases {
-        let error = rewrite_file(file, source, rustfmt_settings, &[edit]).unwrap_err();
+        let error = rewrite_in_new_folder(file, source, rustfmt_settings, &[edit]).unwrap_err();
 
         assert_eq!(
             error.code,
@@ -311,17 +322,15 @@ fn refuses_edits_it_cannot_write_safely() {
     }
 }
 
-/// Without it, answering one comment could reformat code the user wrote, or
-/// be refused for a Python warning the file already had.
+/// `rewrite` must run the formatter only on a file the formatter would leave as it is.
+/// Otherwise User Feedback on one comment could reformat code the user wrote.
 #[test]
-fn formats_only_formatted_files_allowing_old_warnings() {
+fn rewrite_formats_only_already_formatted_files() {
     let formatted = "package main\n\nfunc save() {\n\ta := 1          // one\n\tbbbbbbbbbb := 2 // two\n\t_, _ = a, bbbbbbbbbb\n}\n";
     let unformatted = "package main\n\nfunc save() {\n\ta := 1          // one\n\tbbbbbbbbbb := 2 // two\n\t_,_ = a,bbbbbbbbbb\n}\n";
-    let warned = "DIGIT = \"\\d\"\n# Saves it.\nanswer = 1\n";
 
     let from_formatted = rewrite_to_text("save.go", formatted, &[("two", None)]);
     let from_unformatted = rewrite_to_text("save.go", unformatted, &[("two", None)]);
-    let from_warned = rewrite_to_text("save.py", warned, &[("Saves it", None)]);
 
     assert_eq!(
         from_formatted,
@@ -331,5 +340,48 @@ fn formats_only_formatted_files_allowing_old_warnings() {
         from_unformatted,
         "package main\n\nfunc save() {\n\ta := 1          // one\n\tbbbbbbbbbb := 2\n\t_,_ = a,bbbbbbbbbb\n}\n"
     );
+}
+
+/// `rewrite` must allow a Python warning the file already had before the edit.
+/// Otherwise every edit to a comment in that file would be refused.
+#[test]
+fn rewrite_allows_warnings_file_already_had() {
+    let warned = "DIGIT = \"\\d\"\n# Saves it.\nanswer = 1\n";
+
+    let from_warned = rewrite_to_text("save.py", warned, &[("Saves it", None)]);
+
     assert_eq!(from_warned, "DIGIT = \"\\d\"\nanswer = 1\n");
+}
+
+/// `rewrite` must still edit a Python file that this machine's Python cannot compile, such as one that needs a newer Python.
+/// Otherwise the user could not change any comment in that file.
+#[test]
+fn rewrite_edits_files_python_cannot_compile() {
+    let not_compiled = "# Saves it.\nanswer = 1\nreturn answer\n";
+
+    let new_contents = rewrite_to_text("save.py", not_compiled, &[("Saves it", None)]);
+
+    assert_eq!(new_contents, "answer = 1\nreturn answer\n");
+}
+
+/// `rewrite` must refuse an edit whose comment no longer matches the file.
+/// Otherwise it could cut or write over text the user never saw.
+#[test]
+fn rewrite_refuses_comment_changed_since_read() {
+    let folder = TempFolder::new();
+    let read_source = "package main\n\n// Saves it.\nfunc save() {}\n";
+    let comment = find_comments(Path::new("save.go"), read_source)
+        .unwrap()
+        .remove(0);
+    // Another edit changes the comment after the review read it.
+    let changed_source = "package main\n\n// Saves it twice.\nfunc save() {}\n";
+    fs::write(folder.path().join("save.go"), changed_source).unwrap();
+    let edit = CommentEdit {
+        comment,
+        new_text: None,
+    };
+
+    let error = rewrite(folder.path(), &[edit]).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::TextChanged, "{}", error.message);
 }

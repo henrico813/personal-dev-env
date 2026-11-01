@@ -1,36 +1,13 @@
-//! Turns a Python docstring into plain words and back, as today's comment
-//! checker does. Section entries, such as one argument under `Args:`, stay
-//! one line each, and examples keep their lines.
+//! This module turns a Python docstring into plain words and back, as
+//! today's comment checker does. Section entries, such as one argument under
+//! `Args:`, stay one line each, and examples keep their lines. Read the
+//! `to_plain_words(text)` and `lay_out_plain_words(words, old_text)` functions
+//! to understand the module.
 
 use super::line_comments::{LINE_WIDTH, wrap_words};
 
 /// Lists the headings whose lines are examples, kept as written.
 const EXAMPLE_HEADINGS: [&str; 2] = ["Example:", "Examples:"];
-
-/// Holds the parts of a docstring around its words.
-struct Quotes<'text> {
-    indent: &'text str,
-    prefix: &'text str,
-    quotes: &'text str,
-}
-
-/// Holds one line of a docstring's plain words.
-#[derive(Clone, Copy, PartialEq)]
-enum PartKind {
-    Paragraph,
-    /// Holds a section heading, such as `Args:`.
-    Heading,
-    /// Holds one line of a section, such as an argument.
-    Entry,
-    /// Holds a line kept as written, such as an example.
-    Kept,
-    Blank,
-}
-
-struct Part {
-    kind: PartKind,
-    text: String,
-}
 
 /// Returns the docstring's words without quotes, or the text as it is when
 /// it is not one whole docstring.
@@ -77,6 +54,31 @@ pub(super) fn lay_out_plain_words(words: &str, old_text: &str) -> String {
         }
     };
     write_docstring(&read_plain_parts(words), &quotes)
+}
+
+/// Holds the parts of a docstring around its words.
+struct Quotes<'text> {
+    indent: &'text str,
+    prefix: &'text str,
+    quotes: &'text str,
+}
+
+/// Holds one line of a docstring's plain words.
+#[derive(Clone, Copy, PartialEq)]
+enum PartKind {
+    Paragraph,
+    /// Holds a section heading, such as `Args:`.
+    Heading,
+    /// Holds one line of a section, such as an argument.
+    Entry,
+    /// Holds a line kept as written, such as an example.
+    Kept,
+    Blank,
+}
+
+struct Part {
+    kind: PartKind,
+    text: String,
 }
 
 /// Splits a whole docstring into its quotes and the words between them.
@@ -160,40 +162,6 @@ fn read_docstring_parts(body: &str, indent: &str) -> Vec<Part> {
     trim_blank_parts(parts)
 }
 
-/// Returns the parts of plain words the user or agent edited.
-fn read_plain_parts(words: &str) -> Vec<Part> {
-    let mut parts: Vec<Part> = Vec::new();
-    let mut in_section = false;
-    let mut in_doctest = false;
-    for line in words.split('\n') {
-        let stripped = line.trim();
-        let joined = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
-        in_doctest = !stripped.is_empty() && (in_doctest || stripped.starts_with(">>>"));
-        if stripped.is_empty() {
-            in_section = false;
-            parts.push(make_part(PartKind::Blank, ""));
-        } else if line.starts_with('\t')
-            || line.starts_with("  ")
-            || in_doctest
-            || is_kept_line(line)
-        {
-            parts.push(make_part(PartKind::Kept, line.trim_end()));
-        } else if is_section_heading(stripped) {
-            parts.push(make_part(PartKind::Heading, stripped));
-            in_section = !EXAMPLE_HEADINGS.contains(&stripped);
-        } else if in_section {
-            parts.push(make_part(PartKind::Entry, &joined));
-        } else if let Some(last) = parts.last_mut()
-            && last.kind == PartKind::Paragraph
-        {
-            last.text = format!("{} {joined}", last.text);
-        } else {
-            parts.push(make_part(PartKind::Paragraph, &joined));
-        }
-    }
-    trim_blank_parts(parts)
-}
-
 fn make_part(kind: PartKind, text: &str) -> Part {
     Part {
         kind,
@@ -263,6 +231,40 @@ fn write_plain_parts(parts: &[Part]) -> String {
         .iter()
         .map(|part| format!("{}\n", part.text))
         .collect()
+}
+
+/// Returns the parts of plain words the user or agent edited.
+fn read_plain_parts(words: &str) -> Vec<Part> {
+    let mut parts: Vec<Part> = Vec::new();
+    let mut in_section = false;
+    let mut in_doctest = false;
+    for line in words.split('\n') {
+        let stripped = line.trim();
+        let joined = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
+        in_doctest = !stripped.is_empty() && (in_doctest || stripped.starts_with(">>>"));
+        if stripped.is_empty() {
+            in_section = false;
+            parts.push(make_part(PartKind::Blank, ""));
+        } else if line.starts_with('\t')
+            || line.starts_with("  ")
+            || in_doctest
+            || is_kept_line(line)
+        {
+            parts.push(make_part(PartKind::Kept, line.trim_end()));
+        } else if is_section_heading(stripped) {
+            parts.push(make_part(PartKind::Heading, stripped));
+            in_section = !EXAMPLE_HEADINGS.contains(&stripped);
+        } else if in_section {
+            parts.push(make_part(PartKind::Entry, &joined));
+        } else if let Some(last) = parts.last_mut()
+            && last.kind == PartKind::Paragraph
+        {
+            last.text = format!("{} {joined}", last.text);
+        } else {
+            parts.push(make_part(PartKind::Paragraph, &joined));
+        }
+    }
+    trim_blank_parts(parts)
 }
 
 /// Returns `parts` as a docstring. Paragraphs wrap, and section entries are

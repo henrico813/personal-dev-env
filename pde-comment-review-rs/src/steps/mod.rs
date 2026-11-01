@@ -18,6 +18,6 @@ pub enum NextStep {
     CheckComments,
     MakeFeedbackRequestList,
     SendAgentSuggestions,
-    /// Tells the user to press Ctrl+b e, then waits, since only the user can answer.
+    /// Tells the user what to do, then waits, since only the user can act.
     TellUserAndWait,
 }
