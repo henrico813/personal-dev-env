@@ -129,7 +129,9 @@ config with an extended regular expression, as used by `grep -E`:
 git config pde.branchPattern '^[A-Z]+-[0-9]+-[a-z0-9-]+$'
 ```
 
-The pattern replaces the plan-key rule too, so it alone decides the branch name.
+Under a pattern, the branch still starts with the ticket key the plan
+names, in the form the pattern asks for; agents ask the user when the
+plan names none. Vibe keys and run folders keep using `planner key`.
 
 `~/.zshenv` points Worktrunk at `~/.config/pde/worktrunk.toml`, and
 `~/.config/worktrunk/config.toml` can override it. Do not use `wt merge` or

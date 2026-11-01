@@ -99,8 +99,9 @@ Before every implementation step:
   ownership, and cleanliness. Omit `--base`; Vibe rejects it for existing state.
 - For non-Vibe execution, select the target worktree first, or create
   one with `wt switch --create <branch> --no-cd --format=json` and work
-  in the `path` it prints. Name a new branch from `planner key`, as the
-  branch rule in your instructions shows.
+  in the `path` it prints. Name a new branch as the branch rule in
+  your instructions shows, which may use `planner key` or, under a
+  pattern, the plan's own ticket key.
 - In that checkout, verify proposed hunk context, affected files, directly
   affected callers, relevant tests, and configuration.
 - Reuse prior evidence as context, not proof of freshness.
