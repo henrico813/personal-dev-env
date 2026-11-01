@@ -104,6 +104,8 @@ Vibe binaries plus repo-managed AI config.
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
+| Status updates | `ai/skills/status-updates/` | `~/.agents/skills/status-updates/` | Status updates and recaps a new reader understands on a phone |
+| Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
@@ -180,7 +182,8 @@ The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
 `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
-`behavior-focused-testing`, and `delegate`; every other skill is full-only.
+`behavior-focused-testing`, `delegate`, `skill-lessons` and
+`status-updates`; every other skill is full-only.
 
 ## Requirements
 

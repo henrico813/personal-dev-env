@@ -10,41 +10,6 @@ import (
 	"pde-installer/internal/run"
 )
 
-func TestPackageSet(t *testing.T) {
-	tests := map[string]struct {
-		profile profile.Profile
-		want    []string
-	}{
-		"full":     {profile: profile.Full, want: []string{"build-essential", "bzip2", "ca-certificates", "curl", "file", "fontconfig", "gawk", "git", "gzip", "make", "patch", "python3", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
-		"terminal": {profile: profile.Terminal, want: []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}},
-		"client": {
-			profile: profile.Client,
-			want: []string{
-				"ca-certificates",
-				"curl",
-				"file",
-				"git",
-				"gzip",
-				"tar",
-				"unzip",
-				"xclip",
-				"xz-utils",
-				"zsh",
-				"fontconfig",
-				"python3",
-			},
-		},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			got := packages(test.profile)
-			if strings.Join(got, " ") != strings.Join(test.want, " ") {
-				t.Fatalf("packages = %v, want %v", got, test.want)
-			}
-		})
-	}
-}
-
 func TestValidateRejectsInvalidProfile(t *testing.T) {
 	manager := New(profile.Profile("desktop"), run.Runner{})
 	if err := manager.Validate(); err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
@@ -98,8 +63,8 @@ func TestReconcileInstallsMissingTogether(t *testing.T) {
 }
 
 func TestReconcileSkipsCurrentPackages(t *testing.T) {
-	installed := make(map[string]string, len(packages(profile.Full)))
-	for _, name := range packages(profile.Full) {
+	installed := make(map[string]string, len(profile.Profile("full").Packages()))
+	for _, name := range profile.Profile("full").Packages() {
 		installed[name] = "ii"
 	}
 	manager, log := fixtureManager(t, installed, false)
@@ -153,14 +118,14 @@ func fixtureManager(t *testing.T, installed map[string]string, dryRun bool) (Man
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	release := filepath.Join(root, "os-release")
 	writeFixture(t, release, "ID=ubuntu\nVERSION_ID=24.04\n", 0o644)
-	manager := New(profile.Full, run.Runner{DryRun: dryRun, Stdout: &strings.Builder{}, Stderr: &strings.Builder{}})
+	manager := New("full", run.Runner{DryRun: dryRun, Stdout: &strings.Builder{}, Stderr: &strings.Builder{}})
 	manager.osReleasePath = release
 	return manager, log
 }
 
 func missingExcept(current string) []string {
-	missing := make([]string, 0, len(packages(profile.Full))-1)
-	for _, name := range packages(profile.Full) {
+	missing := make([]string, 0, len(profile.Profile("full").Packages())-1)
+	for _, name := range profile.Profile("full").Packages() {
 		if name != current {
 			missing = append(missing, name)
 		}

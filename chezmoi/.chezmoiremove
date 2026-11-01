@@ -2,16 +2,16 @@
 .config/systemd/user/opencode-web.service
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
-{{ if ne (env "PDE_PROFILE") "full" }}
+{{ if not (has "development" .pde.tiers) }}
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
 .local/bin/pde-comment-checker
 {{ end }}
-{{ if ne (env "PDE_PROFILE") "terminal" }}
+{{ if has "workstation" .pde.tiers }}
 .config/opencode/plugins/pde-approval-session.js
 .config/opencode/commands/document_codebase.md
 {{ end }}
-{{ if eq (env "PDE_PROFILE") "client" }}
+{{ if and (has "workstation" .pde.tiers) (not (has "development" .pde.tiers)) }}
 # Only full installs these, so client removes what a full install left.
 .agents/skills/cleanup-plan
 .agents/skills/code-documentation
@@ -39,7 +39,7 @@
 .config/opencode/agents/plan-bug-reviewer.md
 .config/opencode/agents/plan-completeness-reviewer.md
 {{ end }}
-{{ if eq (env "PDE_PROFILE") "full" }}
+{{ if has "development" .pde.tiers }}
 Projects/CLAUDE.md
 .codex/skills/behavior-focused-testing
 .codex/skills/code-documentation

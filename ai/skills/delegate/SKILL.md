@@ -39,36 +39,18 @@ bring it to the user.
 - When the work changes code comments, bring the comments to the user
   for review last, after behavior and names are done.
 - Make minor decisions yourself and say so. Ask only about real ones.
-- Keep updates short; put detail in files, not chat.
+- Write each update and the final summary by the `status-updates`
+  skill.
 
 ## Remembering corrections
 
-Here "the user" is the human who asked for the work, not a parent
-agent. Follow every lesson in the Lessons section below. Each is a
-correction the user made, so a lesson wins when it disagrees with the
-text above, except that you still stop for the user before anything
-public or hard to undo. If the section is empty and `skill-lessons` is
-installed, run `skill-lessons render` once, since an install can reset
-this file, and read the section again.
-
-When the user corrects how you brief, check or review a subagent's
-work, still save it to memory as your instructions say. If
-`skill-lessons` is installed, also offer once, in your next summary,
-to save it here as a lesson. When the user says "remember", save it at
-once and show the one line it prints:
-
-    jq -n --rawfile text /dev/stdin \
-      '{skill: "delegate", text: ($text | rtrimstr("\n"))}' \
-      <<'EOF' | skill-lessons add -
-    <rule>
-    EOF
-
-The rule goes on its own line, so apostrophes, quotes, backticks and
-`$` are saved as written. If the user corrects a lesson again, add
-`repeat_of: "L<n>"` inside the braces, with the ID from the end of that
-lesson. If `skill-lessons` is not installed, say so once and save no
-lesson. Lessons become rules in this text only through a pull request
-the user asks for.
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that you still stop for the user before anything public or hard
+to undo. When the user corrects how you brief, check or review a
+subagent's work, follow [skill-lessons](../skill-lessons/SKILL.md) with
+the skill name `delegate`, and offer once, in your next summary, to
+save the correction as a lesson.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->

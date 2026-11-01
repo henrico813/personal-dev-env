@@ -150,8 +150,7 @@ parent's final commit and run `planner check` again.
 
 ## Keeping the user informed
 
-- Write each chat update so a reader with no context can follow it.
-  Lead with what changed and anything the user must decide.
+- Write each chat update by the `status-updates` skill.
 - Keep one bullet per PR on the roadmap page current. Detail belongs
   in the plans, not in chat.
 - Write each PR's status line from the output of build.md's status
@@ -187,32 +186,14 @@ End with one message:
 
 ## Remembering corrections
 
-Here "the user" is the human who asked for the run, not a parent
-agent. Follow every lesson in the Lessons section below. Each is a
-correction the user made, so a lesson wins when it disagrees with the
-text above, except that the Never list still holds. If the section is
-empty and `skill-lessons` is installed, run `skill-lessons render`
-once, since an install can reset this file, and read the section
-again.
-
-When the user corrects how you plan, build, review, ship or report a
-run, still save it to memory as your instructions say. If
-`skill-lessons` is installed, also offer once, in your next summary,
-to save it here as a lesson. When the user says "remember", save it at
-once and show the one line it prints:
-
-    jq -n --rawfile text /dev/stdin \
-      '{skill: "roadmap-run", text: ($text | rtrimstr("\n"))}' \
-      <<'EOF' | skill-lessons add -
-    <rule>
-    EOF
-
-The rule goes on its own line, so apostrophes, quotes, backticks and
-`$` are saved as written. If the user corrects a lesson again, add
-`repeat_of: "L<n>"` inside the braces, with the ID from the end of that
-lesson. If `skill-lessons` is not installed, say so once and save no
-lesson. Lessons become rules in this text only through a pull request
-the user asks for.
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that the Never list still holds. Here "the user" is the human
+who asked for the run, not a parent agent. When the user corrects how
+you plan, build, review, ship or report a run, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`roadmap-run`, and offer once, in your next summary, to save the
+correction as a lesson.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
