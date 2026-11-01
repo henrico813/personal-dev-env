@@ -86,15 +86,29 @@ impl LanguageRules for PythonRules {
             if body.kind() == "module" {
                 return Some("<module>".to_string());
             }
-            return find_dotted_name(body.parent()?, source);
+            return self.name_docstring_owner(body.parent()?, source);
         }
-        let statement = find_named_statement(code_below?)?;
+        self.name_code_below(code_below?, source)
+    }
+
+    fn name_code_below(&self, code: Node, source: &str) -> Option<String> {
+        let statement = find_named_statement(code)?;
         let mut outer = successors(statement.parent(), Node::parent);
         // A comment in a function body describes no one item.
         if outer.any(|node| node.kind() == "function_definition") {
             return None;
         }
         Some(format!("# {}", find_dotted_name(statement, source)?))
+    }
+
+    fn name_docstring_owner(&self, definition: Node, source: &str) -> Option<String> {
+        if !matches!(
+            definition.kind(),
+            "function_definition" | "class_definition"
+        ) {
+            return None;
+        }
+        find_dotted_name(definition, source)
     }
 
     fn to_plain_words(&self, text: &str) -> String {

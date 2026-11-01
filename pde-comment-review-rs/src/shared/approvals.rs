@@ -2,7 +2,7 @@
 //! `add(dir, new_approvals)`, and `Approvals::compare(comment)` functions to
 //! understand the module.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -73,6 +73,14 @@ impl Approvals {
             }
             Some(_) => DecisionMatch::DiffersFromApproved,
         }
+    }
+
+    /// Returns each file that holds a decision, approved or cut.
+    pub(crate) fn files(&self) -> BTreeSet<&Path> {
+        self.approved
+            .iter()
+            .map(|decision| decision.file.as_path())
+            .collect()
     }
 }
 
