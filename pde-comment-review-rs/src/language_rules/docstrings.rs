@@ -18,6 +18,25 @@ pub(super) fn to_plain_words(text: &str) -> String {
     }
 }
 
+/// Returns the docstring's paragraphs and section entries, each on one line,
+/// or none when it is not one whole docstring.
+pub(super) fn to_paragraphs(text: &str) -> Vec<String> {
+    let Some((quotes, body)) = split_docstring(text) else {
+        return Vec::new();
+    };
+    read_docstring_parts(body, quotes.indent)
+        .into_iter()
+        .filter(|part| matches!(part.kind, PartKind::Paragraph | PartKind::Entry))
+        .map(|part| part.text)
+        .collect()
+}
+
+/// Returns the text between a string's quotes, or `None` when it is not one
+/// whole string.
+pub(super) fn read_string_body(text: &str) -> Option<&str> {
+    split_docstring(text).map(|(_, body)| body)
+}
+
 /// Returns `words` as a docstring with the indentation, prefix and quotes of
 /// `old_text`, or an empty text when `words` has none.
 pub(super) fn lay_out_plain_words(words: &str, old_text: &str) -> String {
