@@ -129,6 +129,17 @@ jobs:
       - name: terminal installation
         run: ./pde-installer/test/run-tests.sh terminal
 
+  # The desktop files are checked with the i3 and shellcheck that Ubuntu
+  # 24.04, the desktops' oldest release, ships.
+  pde-installer-desktop-files:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install checkers
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends i3-wm shellcheck
+      - name: check desktop files
+        run: ./pde-installer/test/check-desktop-files.sh
+
   vibe:
     runs-on: ubuntu-latest
     defaults:

@@ -55,8 +55,8 @@ link_herdr_plugins.sh
 .config/dunst
 .config/dunst/**
 .config/gtk-3.0/settings.ini
-# On Xubuntu, the desktop hides this autostart entry so notifyd leaves
-# notifications to dunst.
+# This entry sets Hidden=true, so Xubuntu's xfce4-notifyd does not start
+# and dunst shows notifications.
 .config/autostart/xfce4-notifyd.desktop
 {{- end }}
 {{- if ne .pde.desktop "i3" }}
