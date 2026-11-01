@@ -20,4 +20,7 @@ pub enum ErrorCode {
     TextChanged,
     LateUserFeedback,
     WouldNotWrite,
+    CheckFailed,
+    WaitingForUserFeedback,
+    WriteNotFinished,
 }
