@@ -19,19 +19,22 @@ const (
 	Chezmoi Backend = "chezmoi"
 )
 
-// Holds a managed item's owner, requested version and tier. A computer
-// installs the items whose tier its profile has.
+// Holds a managed item's owner, requested version, tier and desktop. A
+// computer installs the items whose tier its profile has, except items for a
+// desktop it does not have.
 type Item struct {
 	Name, Version string
 	Owner         Backend
 	Tier          profile.Tier
+	Desktop       profile.Desktop // Set when only that desktop's machines get the item.
 }
 
-// ItemsFor returns items selected by the installation profile.
-func ItemsFor(selected profile.Profile) []Item {
+// Returns the items whose tier the profile has, leaving out items for other
+// desktops.
+func ItemsFor(selected profile.Profile, desktop profile.Desktop) []Item {
 	var result []Item
 	for _, item := range Items() {
-		if selected.Has(item.Tier) {
+		if selected.Has(item.Tier) && (item.Desktop == "" || item.Desktop == desktop) {
 			result = append(result, item)
 		}
 	}
@@ -41,7 +44,9 @@ func ItemsFor(selected profile.Profile) []Item {
 // ByOwnerFor returns selected items assigned to one backend.
 func ByOwnerFor(selected profile.Profile, owner Backend) []Item {
 	var result []Item
-	for _, item := range ItemsFor(selected) {
+	// The backends that call this own no desktop items. Apt installs those
+	// from profiles.yaml.
+	for _, item := range ItemsFor(selected, "") {
 		if item.Owner == owner {
 			result = append(result, item)
 		}
@@ -69,6 +74,8 @@ func Items() []Item {
 			Owner: Ubuntu,
 			Tier:  profile.Workstation,
 		},
+		{Name: "i3-wm", Owner: Ubuntu, Tier: profile.Terminal, Desktop: "i3"},
+		{Name: "sway", Owner: Ubuntu, Tier: profile.Terminal, Desktop: "sway"},
 		{Name: "tmux", Version: "3.7b", Owner: Direct, Tier: profile.Terminal},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "fzf", Version: "0.36.0", Owner: Aqua, Tier: profile.Terminal},

@@ -38,48 +38,91 @@ func TestIgnoreListMatchesEachProfile(t *testing.T) {
 		"link_herdr_plugins.sh",
 		".config/opencode/bin/planner",
 	}
+	terminalIgnores := []string{
+		".config/alacritty",
+		".config/alacritty/**",
+		".config/wezterm",
+		".config/wezterm/**",
+		".config/nvim",
+		".config/nvim/**",
+		".config/opencode",
+		".config/opencode/**",
+		".local/bin/opencode",
+		".config/herdr",
+		".config/herdr/**",
+		".agents",
+		".agents/**",
+	}
+	fullIgnores := []string{
+		"README.md",
+		".config/nvim/pack/plugins/start/opencode-inline.nvim",
+		".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
+		".config/aquaproj-aqua/aqua-terminal.yaml",
+		".config/aquaproj-aqua/aqua-terminal-checksums.json",
+		".config/nvim/pack/plugins/start/blink.cmp",
+		".config/nvim/pack/plugins/start/blink.cmp/**",
+	}
+	sharedDesktopIgnores := []string{
+		".config/pde-desktop",
+		".config/pde-desktop/**",
+		".config/rofi",
+		".config/rofi/**",
+		".config/dunst",
+		".config/dunst/**",
+		".config/gtk-3.0/settings.ini",
+		".config/autostart/xfce4-notifyd.desktop",
+	}
+	i3Ignores := []string{
+		".config/i3",
+		".config/i3/**",
+		".config/polybar",
+		".config/polybar/**",
+		".config/cava",
+		".config/cava/**",
+	}
+	swayIgnores := []string{
+		".config/sway",
+		".config/sway/**",
+		".config/waybar",
+		".config/waybar/**",
+	}
+	join := func(lists ...[]string) []string {
+		var joined []string
+		for _, list := range lists {
+			joined = append(joined, list...)
+		}
+		return joined
+	}
 	tests := []struct {
-		profile string
-		want    []string
+		profile, desktop string
+		want             []string
 	}{
 		{
 			profile: "terminal",
-			want: append(slices.Clone(clientIgnores),
-				".config/alacritty",
-				".config/alacritty/**",
-				".config/wezterm",
-				".config/wezterm/**",
-				".config/nvim",
-				".config/nvim/**",
-				".config/opencode",
-				".config/opencode/**",
-				".local/bin/opencode",
-				".config/herdr",
-				".config/herdr/**",
-				".agents",
-				".agents/**",
-			),
+			want:    join(clientIgnores, terminalIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
 		},
 		{
 			profile: "client",
-			want:    clientIgnores,
+			want:    join(clientIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
 		},
 		{
 			profile: "full",
-			want: []string{
-				"README.md",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
-				".config/aquaproj-aqua/aqua-terminal.yaml",
-				".config/aquaproj-aqua/aqua-terminal-checksums.json",
-				".config/nvim/pack/plugins/start/blink.cmp",
-				".config/nvim/pack/plugins/start/blink.cmp/**",
-			},
+			want:    join(fullIgnores, sharedDesktopIgnores, i3Ignores, swayIgnores),
+		},
+		{
+			profile: "client",
+			desktop: "sway",
+			want:    join(clientIgnores, i3Ignores),
+		},
+		{
+			profile: "full",
+			desktop: "i3",
+			want:    join(fullIgnores, swayIgnores),
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.profile, func(t *testing.T) {
-			got := renderPathList(t, ".chezmoiignore.tmpl", test.profile)
+		t.Run(test.profile+" "+test.desktop, func(t *testing.T) {
+			got := renderPathList(t, ".chezmoiignore.tmpl", test.profile, test.desktop)
 
 			if !slices.Equal(got, test.want) {
 				t.Fatalf("ignore list =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(test.want, "\n"))
@@ -183,7 +226,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.profile, func(t *testing.T) {
-			got := renderPathList(t, ".chezmoiremove", test.profile)
+			got := renderPathList(t, ".chezmoiremove", test.profile, "")
 			slices.Sort(got)
 
 			if !slices.Equal(got, test.want) {
@@ -194,10 +237,15 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 }
 
 // Returns the rendered lines that name paths, without blanks and comments.
-func renderPathList(t *testing.T, name, profile string) []string {
+func renderPathList(t *testing.T, name, profileName, desktop string) []string {
 	t.Helper()
+	data := encodeTemplateData(profile.Profile(profileName), profile.Desktop(desktop))
+	text, err := renderTemplateWithData(t, name, data, "tokyo-night", repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var paths []string
-	for _, line := range strings.Split(renderProfileTemplate(t, name, profile), "\n") {
+	for _, line := range strings.Split(text, "\n") {
 		if line != "" && !strings.HasPrefix(line, "#") {
 			paths = append(paths, line)
 		}
@@ -846,13 +894,19 @@ func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) 
 
 func renderTemplateForCheckout(t *testing.T, name, profileName, colorProfile, checkout string) (string, error) {
 	t.Helper()
+	return renderTemplateWithData(t, name, encodeTemplateData(profile.Profile(profileName), ""), colorProfile, checkout)
+}
+
+// Renders a template with pdeData, the installer's --override-data JSON.
+func renderTemplateWithData(t *testing.T, name, pdeData, colorProfile, checkout string) (string, error) {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", name))
 	if err != nil {
 		t.Fatal(err)
 	}
 	values := loadTemplateData(t)
 	// Decoding the installer's JSON gives .pde the types chezmoi gives it.
-	if err := json.Unmarshal([]byte(encodeTemplateData(profile.Profile(profileName))), &values); err != nil {
+	if err := json.Unmarshal([]byte(pdeData), &values); err != nil {
 		t.Fatal(err)
 	}
 	functions := template.FuncMap{

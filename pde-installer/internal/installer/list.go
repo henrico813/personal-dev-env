@@ -21,7 +21,7 @@ func list(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
-	ubuntuManager := ubuntu.New(config.Profile, runner)
+	ubuntuManager := ubuntu.New(config.Profile, config.Desktop, runner)
 	tmuxManager := tmux.New(config.Home, runner)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
@@ -42,14 +42,14 @@ func list(config config, runner run.Runner) error {
 		}
 		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 	}
-	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Probe()
+	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
 	}
 	if _, err := fmt.Fprintln(runner.Out(), "OWNER\tITEM\tREQUESTED\tINSTALLED\tSTATUS"); err != nil {
 		return fmt.Errorf("write list heading: %w", err)
 	}
-	for _, item := range manifest.ItemsFor(config.Profile) {
+	for _, item := range manifest.ItemsFor(config.Profile, config.Desktop) {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
 		case manifest.Ubuntu:
