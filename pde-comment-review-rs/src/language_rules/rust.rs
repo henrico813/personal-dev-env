@@ -11,6 +11,7 @@ use super::{
 };
 use crate::shared::Error;
 use crate::shared::comments::CommentStyle;
+use crate::shared::style_rules::Rule;
 
 /// Words that start a comment line a tool reads, in any case.
 const TOOL_MARKS: [&str; 1] = ["safety:"];
@@ -20,6 +21,10 @@ pub struct RustRules;
 impl LanguageRules for RustRules {
     fn grammar(&self) -> Language {
         tree_sitter_rust::LANGUAGE.into()
+    }
+
+    fn name(&self) -> &'static str {
+        "rust"
     }
 
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle> {
@@ -69,6 +74,15 @@ impl LanguageRules for RustRules {
 
     fn to_paragraphs(&self, text: &str) -> Vec<String> {
         line_comments::to_paragraphs(text, find_line_marker(text))
+    }
+
+    fn style_rules(&self) -> &'static [Rule] {
+        &[
+            Rule::Filler,
+            Rule::AvoidedWord,
+            Rule::RestatedName,
+            Rule::StartsWithName,
+        ]
     }
 
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {

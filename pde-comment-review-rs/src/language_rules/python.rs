@@ -14,6 +14,7 @@ use super::{
     LanguageRules, docstrings, is_inside, line_comments, nodes_starting_at, run_with_input,
 };
 use crate::shared::comments::{CommentStyle, Definition, DocstringFacts, NameCheck};
+use crate::shared::style_rules::Rule;
 use crate::shared::{Error, ErrorCode};
 
 /// Words that start a Python tool comment, just after its `#`.
@@ -80,6 +81,10 @@ pub struct PythonRules;
 impl LanguageRules for PythonRules {
     fn grammar(&self) -> Language {
         tree_sitter_python::LANGUAGE.into()
+    }
+
+    fn name(&self) -> &'static str {
+        "python"
     }
 
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle> {
@@ -195,6 +200,23 @@ impl LanguageRules for PythonRules {
 
     fn is_generated(&self, source: &str) -> bool {
         GENERATED_MARKER.is_match(source)
+    }
+
+    fn style_rules(&self) -> &'static [Rule] {
+        &[
+            Rule::Filler,
+            Rule::AvoidedWord,
+            Rule::RestatedName,
+            Rule::StartsWithName,
+            Rule::CommentLength,
+            Rule::CommentColon,
+            Rule::SevenWords,
+            Rule::VerbFirst,
+            Rule::Docstring,
+            Rule::SummaryLine,
+            Rule::TestWhy,
+            Rule::SectionHeading,
+        ]
     }
 
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {

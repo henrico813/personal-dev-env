@@ -10,8 +10,8 @@ use common::{
     store_source, write_store,
 };
 use pde_comment_review::shared::ErrorCode;
-use pde_comment_review::shared::comment_rules::{Finding, ReportNote, Rule};
 use pde_comment_review::shared::git::resolve_commit;
+use pde_comment_review::shared::style_rules::{Finding, Outcome, ReportNote, Rule};
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::check_comments::check_comments;
 
@@ -77,7 +77,7 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
 }
 
 /// Returns the findings `check_comments` gives a new file holding `source`, failures first.
-fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Option<ReportNote>, String)> {
+fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Outcome, String)> {
     let repo = make_repo();
     let dir = repo.path();
     add_avoided_word(dir);
@@ -93,18 +93,15 @@ fn add_avoided_word(dir: &Path) {
     fs::write(dir.join(".git/pde/code-comments.json"), approvals).unwrap();
 }
 
-/// Returns each finding's rule, note and detail, failures first.
-fn list_rules(
-    failures: Vec<Finding>,
-    reported: Vec<Finding>,
-) -> Vec<(Rule, Option<ReportNote>, String)> {
+/// Returns each finding's rule, outcome and detail, failures first.
+fn list_rules(failures: Vec<Finding>, reported: Vec<Finding>) -> Vec<(Rule, Outcome, String)> {
     failures
         .into_iter()
         .chain(reported)
         .map(|finding| {
             (
                 finding.rule,
-                finding.note,
+                finding.outcome,
                 finding.detail.unwrap_or_default(),
             )
         })
@@ -163,7 +160,7 @@ fn fails_reworded_approved_comment() {
             name: Some("SaveAnswer".to_owned()),
             line: 3,
             rule: Rule::Approved,
-            note: None,
+            outcome: Outcome::Fails,
             detail: None,
         };
         assert_eq!(output.result.failures, [failure], "{case}");
@@ -262,7 +259,7 @@ fn fails_removed_approved_comment_while_code_stays() {
             name: Some(name.to_owned()),
             line,
             rule: Rule::ApprovedRemoved,
-            note: None,
+            outcome: Outcome::Fails,
             detail: None,
         };
         assert_eq!(failures, [failure], "{case}");
@@ -446,13 +443,13 @@ fn finds_each_style_rule_break() {
             "filler",
             "answer.go",
             go("// This facilitates saving.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
+            vec![(Rule::Filler, Outcome::Fails, "\"facilitates\"".to_owned())],
         ),
         (
             "avoided-word",
             "answer.go",
             go("// Saves the blob.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::AvoidedWord, None, "\"blob\": say file".to_owned())],
+            vec![(Rule::AvoidedWord, Outcome::Fails, "\"blob\": say file".to_owned())],
         ),
         (
             "restated-name",
@@ -460,7 +457,7 @@ fn finds_each_style_rule_break() {
             go("// Writes the answer, as SaveAnswer says.\nfunc SaveAnswer() {}\n"),
             vec![(
                 Rule::RestatedName,
-                Some(ReportNote::ReportOnly),
+                Outcome::Reported(ReportNote::ReportOnly),
                 String::new(),
             )],
         ),
@@ -469,10 +466,10 @@ fn finds_each_style_rule_break() {
             "answer.go",
             go("// SaveAnswer writes it.\nfunc SaveAnswer() {}\n"),
             vec![
-                (Rule::StartsWithName, None, String::new()),
+                (Rule::StartsWithName, Outcome::Fails, String::new()),
                 (
                     Rule::RestatedName,
-                    Some(ReportNote::ReportOnly),
+                    Outcome::Reported(ReportNote::ReportOnly),
                     String::new(),
                 ),
             ],
@@ -481,25 +478,25 @@ fn finds_each_style_rule_break() {
             "comment-length",
             "answer.go",
             go("// Saves it. Locks it. Logs it.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::CommentLength, None, "3 sentences".to_owned())],
+            vec![(Rule::CommentLength, Outcome::Fails, "3 sentences".to_owned())],
         ),
         (
             "comment-colon",
             "answer.go",
             go("// Saves it: now.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::CommentColon, None, String::new())],
+            vec![(Rule::CommentColon, Outcome::Fails, String::new())],
         ),
         (
             "comment-colon-inside-function",
             "answer.go",
             go("func SaveAnswer() {\n\t// Saves it: now.\n}\n"),
-            vec![(Rule::CommentColon, None, String::new())],
+            vec![(Rule::CommentColon, Outcome::Fails, String::new())],
         ),
         (
             "seven-words",
             "answer.go",
             go("func SaveTheAnswerToTheStoreRightNow() {}\n"),
-            vec![(Rule::SevenWords, None, "8 words".to_owned())],
+            vec![(Rule::SevenWords, Outcome::Fails, "8 words".to_owned())],
         ),
         (
             "verb-first",
@@ -507,7 +504,7 @@ fn finds_each_style_rule_break() {
             go("func Total() {}\n"),
             vec![(
                 Rule::VerbFirst,
-                Some(ReportNote::ReportOnly),
+                Outcome::Reported(ReportNote::ReportOnly),
                 "\"Total\" is not in the checker's verbs".to_owned(),
             )],
         ),
@@ -515,14 +512,14 @@ fn finds_each_style_rule_break() {
             "docstring",
             "answer.py",
             "def save_answer():\n    return 1\n".to_owned(),
-            vec![(Rule::Docstring, None, String::new())],
+            vec![(Rule::Docstring, Outcome::Fails, String::new())],
         ),
         (
             "docstring-on-init",
             "answer.py",
             "class Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        pass\n"
                 .to_owned(),
-            vec![(Rule::Docstring, None, String::new())],
+            vec![(Rule::Docstring, Outcome::Fails, String::new())],
         ),
         (
             "summary-line",
@@ -530,7 +527,7 @@ fn finds_each_style_rule_break() {
             "def save_answer():\n    \"\"\"Saves\n    the answer.\"\"\"\n".to_owned(),
             vec![(
                 Rule::SummaryLine,
-                None,
+                Outcome::Fails,
                 "summary runs onto a second line".to_owned(),
             )],
         ),
@@ -538,29 +535,62 @@ fn finds_each_style_rule_break() {
             "test-why",
             "answer.py",
             "def test_saves_answer():\n    \"\"\"Saves the answer.\"\"\"\n".to_owned(),
-            vec![(Rule::TestWhy, None, String::new())],
+            vec![(Rule::TestWhy, Outcome::Fails, String::new())],
         ),
         (
             "section-heading",
             "answer.py",
             "def save_answer():\n    \"\"\"Saves the answer.\n\n    Why: it is lost.\n    \"\"\"\n"
                 .to_owned(),
-            vec![(Rule::SectionHeading, None, "\"Why:\"".to_owned())],
+            vec![(Rule::SectionHeading, Outcome::Fails, "\"Why:\"".to_owned())],
         ),
         (
             "python-comment-with-example",
             "answer.py",
             "# Saves it. Logs it.\n#\n#   example: 1\n#   example: 2\nLIMIT = 1\n".to_owned(),
             vec![
-                (Rule::CommentLength, None, "3 sentences".to_owned()),
-                (Rule::CommentColon, None, String::new()),
+                (Rule::CommentLength, Outcome::Fails, "3 sentences".to_owned()),
+                (Rule::CommentColon, Outcome::Fails, String::new()),
             ],
         ),
         (
             "rust-filler",
             "lib.rs",
             "/// This facilitates saving.\npub fn save_answer() {}\n".to_owned(),
-            vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
+            vec![(Rule::Filler, Outcome::Fails, "\"facilitates\"".to_owned())],
+        ),
+        (
+            "rust-avoided-word",
+            "lib.rs",
+            "/// Saves the blob.\npub fn save_answer() {}\n".to_owned(),
+            vec![(
+                Rule::AvoidedWord,
+                Outcome::Fails,
+                "\"blob\": say file".to_owned(),
+            )],
+        ),
+        (
+            "rust-restated-name",
+            "lib.rs",
+            "/// Writes the answer, as save_answer says.\npub fn save_answer() {}\n".to_owned(),
+            vec![(
+                Rule::RestatedName,
+                Outcome::Reported(ReportNote::ReportOnly),
+                String::new(),
+            )],
+        ),
+        (
+            "rust-starts-with-name",
+            "lib.rs",
+            "/// save_answer writes it.\npub fn save_answer() {}\n".to_owned(),
+            vec![
+                (Rule::StartsWithName, Outcome::Fails, String::new()),
+                (
+                    Rule::RestatedName,
+                    Outcome::Reported(ReportNote::ReportOnly),
+                    String::new(),
+                ),
+            ],
         ),
     ];
 
@@ -585,7 +615,7 @@ fn only_reports_approved_text_style_breaks() {
     let reported = list_rules(Vec::new(), output.result.reported);
     let expected = (
         Rule::Filler,
-        Some(ReportNote::Approved),
+        Outcome::Reported(ReportNote::Approved),
         "\"facilitates\"".to_owned(),
     );
     assert_eq!(reported, [expected]);
@@ -602,7 +632,7 @@ fn only_reports_old_or_license_style_breaks() {
             store_source("// This facilitates saving. It holds the lock.\n", ""),
             (
                 Rule::Filler,
-                Some(ReportNote::Existing),
+                Outcome::Reported(ReportNote::Existing),
                 "\"facilitates\"".to_owned(),
             ),
         ),
@@ -612,7 +642,7 @@ fn only_reports_old_or_license_style_breaks() {
             format!("// One. Two. Three.\n\n{}", store_source(APPROVED, "")),
             (
                 Rule::CommentLength,
-                Some(ReportNote::Header),
+                Outcome::Reported(ReportNote::Header),
                 "3 sentences".to_owned(),
             ),
         ),
@@ -648,7 +678,7 @@ fn passes_with_only_reported_findings() {
     let reported = list_rules(Vec::new(), output.result.reported);
     let expected = (
         Rule::RestatedName,
-        Some(ReportNote::ReportOnly),
+        Outcome::Reported(ReportNote::ReportOnly),
         String::new(),
     );
     assert_eq!(reported, [expected]);
@@ -671,7 +701,11 @@ fn fails_old_comment_made_too_long() {
     let failures = list_rules(output.result.failures, Vec::new());
     assert_eq!(
         failures,
-        [(Rule::CommentLength, None, "3 sentences".to_owned())]
+        [(
+            Rule::CommentLength,
+            Outcome::Fails,
+            "3 sentences".to_owned()
+        )]
     );
 }
 
@@ -776,7 +810,7 @@ fn fails_edited_old_function_without_docstring() {
     let output = check_comments(dir, Some(base)).unwrap();
 
     let failures = list_rules(output.result.failures, Vec::new());
-    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
 }
 
 /// `check_comments` must fail a missing docstring on a new function that shares its name with a function in a file that stays.
@@ -802,7 +836,7 @@ fn fails_new_same_named_function_without_docstring() {
     let output = check_comments(dir, Some(base)).unwrap();
 
     let failures = list_rules(output.result.failures, Vec::new());
-    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
 }
 
 /// `check_comments` must pass a file a generator wrote, whatever its comments say.
@@ -868,7 +902,11 @@ def database():
 "#;
     let not_a_verb = |word: &str| {
         let detail = format!("\"{word}\" is not in the checker's verbs");
-        vec![(Rule::VerbFirst, Some(ReportNote::ReportOnly), detail)]
+        vec![(
+            Rule::VerbFirst,
+            Outcome::Reported(ReportNote::ReportOnly),
+            detail,
+        )]
     };
     let cases = [
         (
