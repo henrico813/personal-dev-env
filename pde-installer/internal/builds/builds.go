@@ -712,6 +712,25 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			verifyArg:     "version",
 			pythonPackage: "comment_checker",
 		},
+		{
+			name:   "prs",
+			source: filepath.Join(m.RepoRoot, "prs"),
+			output: filepath.Join(stageRoot, "prs"),
+			command: run.Command{
+				Name: goBinary,
+				Args: []string{
+					"build",
+					"-mod=readonly",
+					"-o",
+					filepath.Join(stageRoot, "prs"),
+					"./main",
+				},
+				Dir: filepath.Join(m.RepoRoot, "prs"),
+				Env: environment,
+			},
+			// prs _keys prints the key help without calling GitHub.
+			verifyArg: "_keys",
+		},
 	}
 	wanted := map[string]bool{}
 	for _, item := range manifest.ByOwnerFor(selected, manifest.Local) {

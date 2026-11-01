@@ -118,6 +118,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"build and atomically activate pde-comment-review-next",
 				"build and atomically activate skill-lessons",
 				"build and atomically activate pde-comment-checker",
+				"build and atomically activate prs",
 				"migrate legacy PDE configuration",
 				"install and atomically activate opencode-inline.nvim",
 				"preview chezmoi changes",

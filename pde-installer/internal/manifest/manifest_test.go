@@ -127,6 +127,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 				"pde-comment-review",
 				"pde-comment-review-next",
 				"pde-comment-checker",
+				"prs",
 				"go",
 				"rust",
 				"keychain",
