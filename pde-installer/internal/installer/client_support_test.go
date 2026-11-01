@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"pde-installer/internal/direct"
-	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -16,7 +15,7 @@ import (
 // refuses.
 func TestClientInstallRefusesToDeleteReleases(t *testing.T) {
 	cfg := terminalTestConfig(t)
-	cfg.Profile = profile.Client
+	cfg.Profile = "client"
 	statePath := filepath.Join(
 		direct.New(cfg.Home, run.Runner{}).ToolsRoot(),
 		".pde-state.json",

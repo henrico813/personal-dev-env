@@ -6,7 +6,8 @@ each item. It is not an uninstall list.
 
 | Component | Primary metadata |
 |---|---|
-| Ubuntu dependencies | `internal/ubuntu/ubuntu.go` |
+| Profiles | apt groups and tiers in `internal/profile/profiles.yaml`; each manifest item's tier |
+| Ubuntu dependencies | apt groups in `internal/profile/profiles.yaml` |
 | tmux | Existing amd64-only direct 3.7b binary from `mjakob-gh/build-static-tmux` and checksum in `internal/tmux/tmux.go`; manifest version |
 | Aqua | `internal/aqua/aqua.go`; manifest version and architecture checksums |
 | Aqua tools | `../chezmoi/dot_config/aquaproj-aqua/`, manifest versions, and the chezmoi version in `internal/chezmoi/apply.go` |

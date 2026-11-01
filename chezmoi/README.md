@@ -2,9 +2,11 @@
 
 This directory owns PDE home configuration and checksummed external content.
 Every `pde-installer install` applies it during reconciliation. The installer
-passes `PDE_PROFILE=terminal|client|full` and `PDE_COLOR_PROFILE` while
-rendering it; apply through the installer so component and visual selections
-match.
+passes the profile's tiers as `.pde.tiers` with `--override-data`, and
+`PDE_COLOR_PROFILE` in the environment; apply through the installer so
+component and visual selections match. Templates test a tier, such as
+`{{ if has "workstation" .pde.tiers }}`, instead of a profile name. The
+profiles and their tiers are in `pde-installer/internal/profile/profiles.yaml`.
 
 Edit files here using chezmoi source names. Add remote archives to
 `.chezmoiexternal.toml.tmpl` with a SHA-256 checksum.

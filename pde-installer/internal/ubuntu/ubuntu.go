@@ -12,27 +12,6 @@ import (
 	"pde-installer/internal/run"
 )
 
-func packages(selected profile.Profile) []string {
-	switch selected {
-	case profile.Terminal:
-		return []string{"ca-certificates", "curl", "file", "git", "gzip", "tar", "unzip", "xclip", "xz-utils", "zsh"}
-	case profile.Client:
-		// fontconfig provides fc-cache for the fonts, and python3 runs the packed
-		// skill-lessons.
-		return append(
-			packages(profile.Terminal),
-			"fontconfig",
-			"python3",
-		)
-	}
-	return []string{
-		"build-essential", "bzip2", "ca-certificates", "curl", "file",
-		"fontconfig", "gawk", "git", "gzip", "make", "patch", "python3",
-		"tar", "unzip", "xclip",
-		"xz-utils", "zsh",
-	}
-}
-
 type Manager struct {
 	profile       profile.Profile
 	runner        run.Runner
@@ -68,7 +47,7 @@ func (m Manager) Reconcile() error {
 		return err
 	}
 
-	packageNames := packages(m.profile)
+	packageNames := m.profile.Packages()
 	missing := make([]string, 0, len(packageNames))
 	for _, name := range packageNames {
 		output, err := m.runner.Query("inspect Ubuntu package "+name, run.Command{

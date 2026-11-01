@@ -162,16 +162,18 @@ func TestFullApplyPreservesTerminalFiles(t *testing.T) {
 set -eu
 source_dir=
 destination=
+data=
 command=
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--source) source_dir=$2; shift 2 ;;
 		--destination) destination=$2; shift 2 ;;
+		--override-data) data=$2; shift 2 ;;
 		status|apply) command=$1; shift ;;
 		*) shift ;;
 	esac
 done
-[ "$PDE_PROFILE" = full ]
+[ "$data" = '{"pde":{"tiers":["terminal","workstation","development"]}}' ]
 [ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
 [ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
 target="$destination/.config/full-only"
@@ -185,7 +187,7 @@ case "$command" in
 		;;
 esac
 `)
-	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, profile.Full, colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
+	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, "full", colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
 	journal, err := fixture.manager.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -198,8 +200,8 @@ esac
 	assertApplyFile(t, fullTarget, "managed by full\n")
 }
 
-func TestApplySetsProfileEnvironment(t *testing.T) {
-	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
+func TestApplyPassesProfileTiersToChezmoi(t *testing.T) {
+	for _, selected := range []profile.Profile{"full", "terminal"} {
 		t.Run(string(selected), func(t *testing.T) {
 			fixture := newApplyFixtureForProfile(t, "unchanged", selected)
 			if _, err := fixture.manager.Apply(); err != nil {
@@ -252,10 +254,10 @@ func TestApplyRejectsMissingAquaInputs(t *testing.T) {
 		profile  profile.Profile
 		filename string
 	}{
-		{name: "full manifest", profile: profile.Full, filename: "aqua.yaml"},
-		{name: "full checksums", profile: profile.Full, filename: "aqua-checksums.json"},
-		{name: "terminal manifest", profile: profile.Terminal, filename: "aqua-terminal.yaml"},
-		{name: "terminal checksums", profile: profile.Terminal, filename: "aqua-terminal-checksums.json"},
+		{name: "full manifest", profile: "full", filename: "aqua.yaml"},
+		{name: "full checksums", profile: "full", filename: "aqua-checksums.json"},
+		{name: "terminal manifest", profile: "terminal", filename: "aqua-terminal.yaml"},
+		{name: "terminal checksums", profile: "terminal", filename: "aqua-terminal-checksums.json"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -275,7 +277,7 @@ func TestApplyRejectsMissingAquaInputs(t *testing.T) {
 }
 
 func TestApplyRejectsInvalidProfile(t *testing.T) {
-	fixture := newApplyFixtureForProfile(t, "success", profile.Profile("desktop"))
+	fixture := newApplyFixtureForProfile(t, "success", "desktop")
 	if _, err := fixture.manager.Apply(); err == nil || !strings.Contains(err.Error(), `invalid profile "desktop"`) {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -341,7 +343,7 @@ checksum.sha256 = "hash"`,
 }
 
 func newApplyFixture(t *testing.T, mode string) applyFixture {
-	return newApplyFixtureForProfile(t, mode, profile.Full)
+	return newApplyFixtureForProfile(t, mode, "full")
 }
 
 func newApplyFixtureForProfile(t *testing.T, mode string, selected profile.Profile) applyFixture {
@@ -379,6 +381,7 @@ set -eu
 source_dir=
 destination=
 state=
+data=
 command=
 force=false
 while [ "$#" -gt 0 ]; do
@@ -386,6 +389,7 @@ while [ "$#" -gt 0 ]; do
 		--source) source_dir=$2; shift 2 ;;
 		--destination) destination=$2; shift 2 ;;
 		--persistent-state) state=$2; shift 2 ;;
+		--override-data) data=$2; shift 2 ;;
 		--force) force=true; shift ;;
 		status|apply) command=$1; shift ;;
 		*) shift ;;
@@ -394,13 +398,17 @@ done
 : "${AQUA_ROOT_DIR:?}"
 expected_profile=$(cat "$source_dir/test-profile")
 expected_color_profile=$(cat "$source_dir/test-color-profile")
-[ "$PDE_PROFILE" = "$expected_profile" ]
 [ "$PDE_COLOR_PROFILE" = "$expected_color_profile" ]
 case "$expected_profile" in
-	full) aqua_name=aqua ; checksums_name=aqua-checksums ;;
-	terminal) aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums ;;
+	full)
+		aqua_name=aqua ; checksums_name=aqua-checksums
+		expected_data='{"pde":{"tiers":["terminal","workstation","development"]}}' ;;
+	terminal)
+		aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums
+		expected_data='{"pde":{"tiers":["terminal"]}}' ;;
 	*) exit 8 ;;
 esac
+[ "$data" = "$expected_data" ]
 [ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/$aqua_name.yaml" ]
 [ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/$checksums_name.json" ]
 mode=$(cat "$source_dir/test-mode")

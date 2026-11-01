@@ -19,24 +19,19 @@ const (
 	Chezmoi Backend = "chezmoi"
 )
 
-// Holds a managed item's owner and requested version. Every profile installs
-// Terminal items, client also installs Client items, and full installs
-// everything.
+// Holds a managed item's owner, requested version and tier. A computer
+// installs the items whose tier its profile has.
 type Item struct {
 	Name, Version string
 	Owner         Backend
-	Terminal      bool
-	Client        bool
+	Tier          profile.Tier
 }
 
 // ItemsFor returns items selected by the installation profile.
 func ItemsFor(selected profile.Profile) []Item {
-	if selected != profile.Terminal && selected != profile.Client {
-		return Items()
-	}
 	var result []Item
 	for _, item := range Items() {
-		if item.Terminal || (selected == profile.Client && item.Client) {
+		if selected.Has(item.Tier) {
 			result = append(result, item)
 		}
 	}
@@ -67,136 +62,136 @@ func Find(name string, owner Backend) (Item, bool) {
 // Items returns every item managed by the installer.
 func Items() []Item {
 	return []Item{
-		{Name: "zsh", Owner: Ubuntu, Terminal: true}, {Name: "git", Owner: Ubuntu, Terminal: true},
-		{Name: "xclip", Owner: Ubuntu, Terminal: true}, {Name: "unzip", Owner: Ubuntu, Terminal: true},
+		{Name: "zsh", Owner: Ubuntu, Tier: profile.Terminal}, {Name: "git", Owner: Ubuntu, Tier: profile.Terminal},
+		{Name: "xclip", Owner: Ubuntu, Tier: profile.Terminal}, {Name: "unzip", Owner: Ubuntu, Tier: profile.Terminal},
 		{
-			Name:   "fontconfig",
-			Owner:  Ubuntu,
-			Client: true,
+			Name:  "fontconfig",
+			Owner: Ubuntu,
+			Tier:  profile.Workstation,
 		},
-		{Name: "tmux", Version: "3.7b", Owner: Direct, Terminal: true},
-		{Name: "aqua", Version: "v2.60.1", Owner: Aqua, Terminal: true},
-		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Terminal: true}, {Name: "fzf", Version: "0.36.0", Owner: Aqua, Terminal: true},
-		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua, Terminal: true}, {Name: "bat", Version: "v0.19.0", Owner: Aqua, Terminal: true},
-		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua, Terminal: true},
-		{Name: "gh", Version: "v2.101.0", Owner: Aqua, Terminal: true},
-		{Name: "delta", Version: "0.19.2", Owner: Aqua, Terminal: true},
-		{Name: "wt", Version: "v0.81.0", Owner: Aqua, Terminal: true},
-		{Name: "chezmoi", Version: "v2.72.0", Owner: Aqua, Terminal: true},
-		{Name: "eza", Version: "v0.23.4", Owner: Aqua, Terminal: true}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua, Terminal: true},
-		{Name: "bottom", Version: "0.11.4", Owner: Aqua, Terminal: true}, {Name: "yq", Version: "v4.53.3", Owner: Aqua, Terminal: true},
-		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Terminal: true}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Terminal: true},
-		{Name: "gopls", Version: "v0.23.0", Owner: Aqua},
-		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua},
+		{Name: "tmux", Version: "3.7b", Owner: Direct, Tier: profile.Terminal},
+		{Name: "aqua", Version: "v2.60.1", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "fzf", Version: "0.36.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "bat", Version: "v0.19.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "gh", Version: "v2.101.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "delta", Version: "0.19.2", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "wt", Version: "v0.81.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "chezmoi", Version: "v2.72.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "eza", Version: "v0.23.4", Owner: Aqua, Tier: profile.Terminal}, {Name: "zoxide", Version: "v0.9.8", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "bottom", Version: "0.11.4", Owner: Aqua, Tier: profile.Terminal}, {Name: "yq", Version: "v4.53.3", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "yazi", Version: "v25.5.31", Owner: Aqua, Tier: profile.Terminal}, {Name: "ya", Version: "v25.5.31", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "gopls", Version: "v0.23.0", Owner: Aqua, Tier: profile.Development},
+		{Name: "lua-language-server", Version: "3.19.1", Owner: Aqua, Tier: profile.Development},
 		{
 			Name:    "@opencode/cli",
 			Version: "2.0.26",
 			Owner:   NPM,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "@openai/codex",
 			Version: "0.157.0",
 			Owner:   NPM,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "@earendil-works/pi-coding-agent",
 			Version: "0.85.1",
 			Owner:   NPM,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "obsidian-headless",
 			Version: "0.0.14",
 			Owner:   NPM,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "@anthropic-ai/claude-code",
 			Version: "2.1.283",
 			Owner:   NPM,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
-		{Name: "planner", Owner: Local}, {Name: "pde-gh-write", Owner: Local}, {Name: "opencode-inline-shim", Owner: Local},
-		{Name: "vibe", Owner: Local}, {Name: "blink.cmp", Owner: Local},
-		{Name: "pde-comment-review", Owner: Local},
-		{Name: "pde-comment-review-next", Owner: Local},
+		{Name: "planner", Owner: Local, Tier: profile.Development}, {Name: "pde-gh-write", Owner: Local, Tier: profile.Development}, {Name: "opencode-inline-shim", Owner: Local, Tier: profile.Development},
+		{Name: "vibe", Owner: Local, Tier: profile.Development}, {Name: "blink.cmp", Owner: Local, Tier: profile.Development},
+		{Name: "pde-comment-review", Owner: Local, Tier: profile.Development},
+		{Name: "pde-comment-review-next", Owner: Local, Tier: profile.Development},
 		{
-			Name:   "skill-lessons",
-			Owner:  Local,
-			Client: true,
+			Name:  "skill-lessons",
+			Owner: Local,
+			Tier:  profile.Workstation,
 		},
-		{Name: "pde-comment-checker", Owner: Local},
+		{Name: "pde-comment-checker", Owner: Local, Tier: profile.Development},
 		{
 			Name:    "FiraCode",
 			Version: "v3.2.1",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "JetBrainsMono",
 			Version: "v3.2.1",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "neovim",
 			Version: "0.12.3",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
-		{Name: "go", Version: "1.26.4", Owner: Direct},
-		{Name: "rust", Version: "1.96.0", Owner: Direct},
+		{Name: "go", Version: "1.26.4", Owner: Direct, Tier: profile.Development},
+		{Name: "rust", Version: "1.96.0", Owner: Direct, Tier: profile.Development},
 		{
 			Name:    "node",
 			Version: "24.16.0",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
-		{Name: "keychain", Version: "2.9.8", Owner: Direct},
-		{Name: "moshi-hook", Version: "v0.4.20", Owner: Direct},
+		{Name: "keychain", Version: "2.9.8", Owner: Direct, Tier: profile.Development},
+		{Name: "moshi-hook", Version: "v0.4.20", Owner: Direct, Tier: profile.Development},
 		{
 			Name:    "herdr",
 			Version: "v0.9.1",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
 		{
 			Name:    "nobs",
 			Version: "v0.3.3",
 			Owner:   Direct,
-			Client:  true,
+			Tier:    profile.Workstation,
 		},
-		{Name: "repository-config", Owner: Chezmoi, Terminal: true}, {Name: "antidote", Owner: Chezmoi, Terminal: true},
+		{Name: "repository-config", Owner: Chezmoi, Tier: profile.Terminal}, {Name: "antidote", Owner: Chezmoi, Tier: profile.Terminal},
 		{
-			Name:     "tpm",
-			Owner:    Chezmoi,
-			Terminal: true,
-		},
-		{
-			Name:   "obsidian.nvim",
-			Owner:  Chezmoi,
-			Client: true,
+			Name:  "tpm",
+			Owner: Chezmoi,
+			Tier:  profile.Terminal,
 		},
 		{
-			Name:   "neovim-plugins",
-			Owner:  Chezmoi,
-			Client: true,
+			Name:  "obsidian.nvim",
+			Owner: Chezmoi,
+			Tier:  profile.Workstation,
 		},
 		{
-			Name:     "ohmyzsh",
-			Owner:    Chezmoi,
-			Terminal: true,
+			Name:  "neovim-plugins",
+			Owner: Chezmoi,
+			Tier:  profile.Workstation,
 		},
-		{Name: "powerlevel10k", Owner: Chezmoi, Terminal: true}, {Name: "zsh-z", Owner: Chezmoi, Terminal: true},
-		{Name: "zsh-autosuggestions", Owner: Chezmoi, Terminal: true}, {Name: "zsh-completions", Owner: Chezmoi, Terminal: true},
-		{Name: "zsh-syntax-highlighting", Owner: Chezmoi, Terminal: true}, {Name: "zsh-history-substring-search", Owner: Chezmoi, Terminal: true},
-		{Name: "tmux-sensible", Owner: Chezmoi, Terminal: true}, {Name: "tmux-resurrect", Owner: Chezmoi, Terminal: true},
 		{
-			Name:   "ai-config",
-			Owner:  Chezmoi,
-			Client: true,
+			Name:  "ohmyzsh",
+			Owner: Chezmoi,
+			Tier:  profile.Terminal,
+		},
+		{Name: "powerlevel10k", Owner: Chezmoi, Tier: profile.Terminal}, {Name: "zsh-z", Owner: Chezmoi, Tier: profile.Terminal},
+		{Name: "zsh-autosuggestions", Owner: Chezmoi, Tier: profile.Terminal}, {Name: "zsh-completions", Owner: Chezmoi, Tier: profile.Terminal},
+		{Name: "zsh-syntax-highlighting", Owner: Chezmoi, Tier: profile.Terminal}, {Name: "zsh-history-substring-search", Owner: Chezmoi, Tier: profile.Terminal},
+		{Name: "tmux-sensible", Owner: Chezmoi, Tier: profile.Terminal}, {Name: "tmux-resurrect", Owner: Chezmoi, Tier: profile.Terminal},
+		{
+			Name:  "ai-config",
+			Owner: Chezmoi,
+			Tier:  profile.Workstation,
 		},
 	}
 }
@@ -211,6 +206,9 @@ func Validate() error {
 		seen[item.Name] = item.Owner
 		if (item.Owner == NPM || item.Owner == Aqua || item.Owner == Direct) && item.Version == "" {
 			return fmt.Errorf("%s is not pinned", item.Name)
+		}
+		if item.Tier == "" {
+			return fmt.Errorf("%s has no tier", item.Name)
 		}
 	}
 	return nil

@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"pde-installer/internal/profile"
@@ -73,7 +74,7 @@ func TestTerminalInventory(t *testing.T) {
 			want = append(want, inventoryItem{name: name, owner: group.owner})
 		}
 	}
-	items := ItemsFor(profile.Terminal)
+	items := ItemsFor("terminal")
 	got := make([]inventoryItem, 0, len(items))
 	for _, item := range items {
 		got = append(got, inventoryItem{name: item.Name, owner: item.Owner})
@@ -83,9 +84,98 @@ func TestTerminalInventory(t *testing.T) {
 	}
 }
 
-func TestInvalidProfileUsesFullInventory(t *testing.T) {
-	if got, want := ItemsFor(profile.Profile("desktop")), Items(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("invalid profile items = %v, want full inventory", got)
+// Client adds its items to terminal's, and full adds the rest. A wrongly
+// tagged item would install on, or vanish from, every machine of a profile.
+func TestEachProfileAddsRecordedItems(t *testing.T) {
+	tests := []struct {
+		profile, smaller profile.Profile
+		adds             []string
+	}{
+		{
+			profile: "client",
+			smaller: "terminal",
+			adds: []string{
+				"fontconfig",
+				"@opencode/cli",
+				"@openai/codex",
+				"@earendil-works/pi-coding-agent",
+				"obsidian-headless",
+				"@anthropic-ai/claude-code",
+				"skill-lessons",
+				"FiraCode",
+				"JetBrainsMono",
+				"neovim",
+				"node",
+				"herdr",
+				"nobs",
+				"obsidian.nvim",
+				"neovim-plugins",
+				"ai-config",
+			},
+		},
+		{
+			profile: "full",
+			smaller: "client",
+			adds: []string{
+				"gopls",
+				"lua-language-server",
+				"planner",
+				"pde-gh-write",
+				"opencode-inline-shim",
+				"vibe",
+				"blink.cmp",
+				"pde-comment-review",
+				"pde-comment-review-next",
+				"pde-comment-checker",
+				"go",
+				"rust",
+				"keychain",
+				"moshi-hook",
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(string(test.profile), func(t *testing.T) {
+			smaller := map[string]bool{}
+			for _, item := range ItemsFor(test.smaller) {
+				smaller[item.Name] = true
+			}
+
+			var adds []string
+			for _, item := range ItemsFor(test.profile) {
+				if !smaller[item.Name] {
+					adds = append(adds, item.Name)
+				}
+			}
+
+			if !reflect.DeepEqual(adds, test.adds) {
+				t.Fatalf("%s adds %q, want %q", test.profile, adds, test.adds)
+			}
+		})
+	}
+}
+
+// pde-installer list shows the manifest's Ubuntu items, and apt installs the
+// profile's packages from profiles.yaml. Each listed package must install on
+// exactly the profiles whose apt groups contain it.
+func TestUbuntuItemsMatchProfilePackages(t *testing.T) {
+	for _, selected := range []profile.Profile{"terminal", "client", "full"} {
+		t.Run(string(selected), func(t *testing.T) {
+			listed := map[string]bool{}
+			for _, item := range ByOwnerFor(selected, Ubuntu) {
+				listed[item.Name] = true
+			}
+
+			for _, item := range Items() {
+				if item.Owner != Ubuntu {
+					continue
+				}
+				installed := slices.Contains(selected.Packages(), item.Name)
+				if installed != listed[item.Name] {
+					t.Errorf("%s: apt installs it = %t, list shows it = %t", item.Name, installed, listed[item.Name])
+				}
+			}
+		})
 	}
 }
 

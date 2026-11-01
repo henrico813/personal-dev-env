@@ -4,9 +4,12 @@ Ubuntu dependencies and tmux have separate metadata.
 
 ## Ubuntu Dependencies
 
-1. Edit the package list in `internal/ubuntu/ubuntu.go`.
+1. Edit the apt groups in `internal/profile/profiles.yaml`. Each profile
+   lists the groups it installs.
 2. Keep the inventory entries in `internal/manifest/manifest.go` aligned with
-   packages that should appear in `pde-installer list`.
+   packages that should appear in `pde-installer list`. Give each entry the
+   tier that first installs it, such as `workstation` for a package client
+   adds to terminal.
 3. Run the tests and preview:
 
    ```bash
@@ -14,7 +17,8 @@ Ubuntu dependencies and tmux have separate metadata.
    go run . install --dry-run --repo-root ..
    ```
 
-The selected profile determines the Ubuntu package set. The backend checks
+The selected profile's apt groups determine the Ubuntu package set, which the
+installer sorts. The backend checks
 `dpkg-query`. If any required package is missing, it runs
 `sudo apt-get update` and one `sudo apt-get install -y --no-install-recommends`
 command. It does not upgrade a package that is already installed.
