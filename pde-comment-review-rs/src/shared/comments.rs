@@ -404,6 +404,9 @@ pub struct CommentEdit {
 #[derive(Debug)]
 pub struct RewrittenFile {
     pub path: PathBuf,
+    /// The contents the rewrite started from, so a write can refuse a file
+    /// that changed since.
+    pub(crate) old_contents: String,
     pub new_contents: String,
 }
 
@@ -431,18 +434,19 @@ pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, 
     }
     let mut rewritten = Vec::new();
     for (file, file_edits) in edits_by_file {
-        if let Some(new_contents) = rewrite_file(dir, file, &file_edits)? {
-            rewritten.push(RewrittenFile {
-                path: file.to_path_buf(),
-                new_contents,
-            });
+        if let Some(rewritten_file) = rewrite_file(dir, file, &file_edits)? {
+            rewritten.push(rewritten_file);
         }
     }
     Ok(rewritten)
 }
 
 /// Returns one file's new contents, or `None` when its edits change nothing.
-fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Option<String>, Error> {
+fn rewrite_file(
+    dir: &Path,
+    file: &Path,
+    edits: &[&CommentEdit],
+) -> Result<Option<RewrittenFile>, Error> {
     let path = dir.join(file);
     let source = fs::read_to_string(&path).map_err(|error| refuse_unreadable(file, error))?;
     let comments = find_comments(file, &source).map_err(|error| refuse_unreadable(file, error))?;
@@ -531,7 +535,11 @@ fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Optio
     if new_code != old_code {
         return Err(would_change_code());
     }
-    Ok(Some(finished))
+    Ok(Some(RewrittenFile {
+        path: file.to_path_buf(),
+        old_contents: source,
+        new_contents: finished,
+    }))
 }
 
 /// Refuses a reword of a comment the user can only keep or cut, and text
@@ -557,12 +565,12 @@ fn check_reword(
             "A tool would read the new text.",
         ));
     }
-    // Python reads a carriage return as a line end, and Rust rejects one in a doc comment.
-    if new_text.contains(['\r', '\0']) {
+    // Python reads a lone carriage return as a line end, and Rust rejects one in a doc comment.
+    if new_text.replace("\r\n", "\n").contains(['\r', '\0']) {
         return Err(refuse(
             ErrorCode::WouldNotWrite,
             file,
-            "The new text holds a carriage return or a NUL.",
+            "The new text holds a carriage return outside a line end, or a NUL.",
         ));
     }
     // rustc rejects these in a comment, since they make code read unlike how it runs.

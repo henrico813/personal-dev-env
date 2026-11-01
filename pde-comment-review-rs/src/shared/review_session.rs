@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::git::{self, CommitId};
-use super::user_feedback::UserFeedback;
+use super::user_feedback::{UserAnswer, UserFeedback};
 use super::{Error, ErrorCode};
 
 const REVIEW_FILE: &str = "review.json";
@@ -100,6 +100,12 @@ pub fn load(dir: &Path) -> Result<Option<ReviewSession>, Error> {
 }
 
 impl ReviewSessionLock {
+    /// Returns the folder that holds `review.json`, in the worktree's own Git
+    /// folder.
+    pub(crate) fn folder(&self) -> &Path {
+        &self.folder
+    }
+
     /// Returns the Review Session to change, or `None` when there is none.
     pub fn review_session_mut(&mut self) -> Option<&mut ReviewSession> {
         self.review_session.as_mut()
@@ -142,6 +148,24 @@ impl ReviewSession {
         }
         newest.into_values().collect()
     }
+
+    /// Returns every Feedback Request in its newest version with its answer,
+    /// or `None` while any request has no answer.
+    pub(crate) fn answered_requests(&self) -> Option<Vec<AnsweredRequest<'_>>> {
+        self.newest_requests()
+            .into_iter()
+            .map(|request| match self.feedback.get(&request.id) {
+                Some(UserFeedback::Answer(answer)) => Some(AnsweredRequest { request, answer }),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// Pairs a Feedback Request in its newest version with the user's answer.
+pub(crate) struct AnsweredRequest<'review> {
+    pub(crate) request: &'review FeedbackRequest,
+    pub(crate) answer: &'review UserAnswer,
 }
 
 /// Says where the Review Session is.
