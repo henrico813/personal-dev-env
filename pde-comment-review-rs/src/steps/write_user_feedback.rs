@@ -649,7 +649,7 @@ mod write_every_file {
 
         let written = write_every_file(&mut backup, &signals);
 
-        // Put back what was written, as step 7 does after a failed write.
+        // Put back what was written, as `write_user_feedback` does after a failed write.
         let caught = signals.release();
         let error = backup.undo(written.unwrap_err());
         let contents = ["a.go", "b.go"].map(|name| fs::read_to_string(folder.join(name)).unwrap());

@@ -198,7 +198,7 @@ pub struct Finding {
     pub name: Option<String>,
     pub line: usize,
     pub rule: Rule,
-    /// Says why the finding is only reported, or `None` when it fails step 2.
+    /// Says why the finding is only reported, or `None` when it fails `check_comments`.
     pub note: Option<ReportNote>,
     /// Names what to fix where the rule alone does not, such as the filler
     /// phrase, or `None`.

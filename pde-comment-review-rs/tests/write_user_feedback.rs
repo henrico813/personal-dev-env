@@ -81,8 +81,8 @@ fn find_review_file(repo: &Path) -> PathBuf {
         .join("pde/review.json")
 }
 
-/// Returns where step 7 saves each file's original, in the worktree's own Git
-/// folder.
+/// Returns where `write_user_feedback` saves each file's original, in the
+/// worktree's own Git folder.
 fn find_backup_folder(repo: &Path) -> PathBuf {
     find_worktree_git_folder(repo)
         .unwrap()
@@ -153,14 +153,14 @@ fn make_reworded_review(files: &[(&str, &str)]) -> (TempFolder, Value) {
     (repo, review)
 }
 
-/// Runs step 7 on two reworded files and edits the first file while the
-/// approvals save waits, then makes that save fail, so the first file cannot go
-/// back.
+/// Runs `write_user_feedback` on two reworded files and edits the first file
+/// while the approvals save waits, then makes that save fail, so the first file
+/// cannot go back.
 fn write_while_first_file_is_edited() -> (TempFolder, Value, Error) {
     let (repo, review) = make_reworded_review(&[("a.go", SAVE), ("b.go", SAVE)]);
     let approvals_folder = find_shared_git_folder(repo.path()).unwrap().join("pde");
     fs::create_dir_all(&approvals_folder).unwrap();
-    // The held approvals lock stops step 7 once it has written both files.
+    // The held approvals lock stops `write_user_feedback` once it has written both files.
     let approvals_lock = File::create(approvals_folder.join("code-comments.json.lock")).unwrap();
     approvals_lock.lock().unwrap();
     let error = thread::scope(|scope| {
@@ -275,7 +275,7 @@ mod write_user_feedback {
     }
 
     /// `write_user_feedback` must refuse to write when a comment changed after the user answered it, and keep the User Feedback.
-    /// Otherwise step 7 would write over the agent's new text, or lose the user's work.
+    /// Otherwise the write would replace the agent's new text, or lose the user's work.
     #[test]
     fn reworded_comment_refuses_write_and_keeps_feedback() {
         let (repo, _) = make_reworded_review(&[("a.go", SAVE), ("b.go", SAVE)]);
@@ -394,7 +394,7 @@ mod write_user_feedback {
     /// `write_user_feedback` must write nothing for a Review Session whose last write did not finish, or that has a Feedback Request with no answer.
     /// Otherwise a write could hide what a crashed write left behind, or mark a Review Session done with comments unanswered.
     #[test]
-    fn unfinished_or_unanswered_review_writes_nothing() {
+    fn unfinished_or_unanswered_review_session_writes_nothing() {
         let requests = [make_request(1, "a.go", Some("Save"), "// Saves it.\n", 3)];
         let cases = [
             (
