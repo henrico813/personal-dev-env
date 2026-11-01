@@ -68,7 +68,7 @@ render_opencode_cli() {
 		--destination "$cli_home" \
 		--persistent-state "$cli_home/chezmoi.boltdb" \
 		--color false \
-		--override-data '{"pde":{"tiers":["terminal","workstation","development"]}}' \
+		--override-data '{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}' \
 		--refresh-externals=never \
 		cat "$cli_home/.config/opencode/cli.json"
 }
