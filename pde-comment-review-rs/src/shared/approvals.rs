@@ -1,6 +1,6 @@
-//! Reads and adds the user's answers in one approvals file that every
-//! worktree of the clone shares. Answers are only added, so the last one
-//! for a file and name is the newest.
+//! This module loads, adds, and compares comments. Read the `load(dir)`,
+//! `add(dir, new_approvals)`, and `Approvals::compare(comment)` functions to
+//! understand the module.
 
 use std::collections::BTreeMap;
 use std::fmt::Display;
