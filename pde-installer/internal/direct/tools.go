@@ -34,9 +34,9 @@ type Tool struct {
 	VersionArgs                         []string
 	Kind                                toolKind
 	RootBinary                          bool
-	// Release folder of a tool that updates itself, so it has no pin. pde
-	// installs the newest release when missing and never replaces it after.
-	LatestURL string
+	// CDN folder that holds every release. Setting it leaves the tool unpinned,
+	// because old releases disappear from the CDN and the tool updates itself.
+	ReleasesURL string
 }
 
 type toolState struct {
@@ -107,7 +107,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		{Name: "rust", Version: rustVersion, Archive: rustArchive, URL: "https://static.rust-lang.org/dist/" + rustArchive, SHA256: checksums["rust"], Directory: "rust", Binary: "rustc", VersionPrefix: "rustc ", Target: rustArch + "-unknown-linux-gnu", Links: []string{"cargo", "rustc", "rustdoc"}, VersionArgs: []string{"--version"}, Kind: rustTool},
 		{Name: "node", Version: nodeVersion, Archive: nodeArchive, URL: "https://nodejs.org/dist/v" + nodeVersion + "/" + nodeArchive, SHA256: checksums["node"], Directory: "node", Binary: "node", VersionPrefix: "v", Links: []string{"corepack", "node", "npm", "npx"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "keychain", Version: version("keychain"), Archive: "keychain-2.9.8", URL: "https://github.com/danielrobbins/keychain/releases/download/2.9.8/keychain", SHA256: "f8b4e8a2a630907bb81737d455a2dec2cb8308e3210840665239ef9c49bbeadb", Directory: "keychain", Binary: "keychain", VersionPrefix: "keychain ", Links: []string{"keychain"}, VersionArgs: []string{"--version"}, Kind: fileTool},
-		{Name: "moshi-hook", Archive: moshiArchive, LatestURL: "https://cdn.getmoshi.app/hook", Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
+		{Name: "moshi-hook", Archive: moshiArchive, ReleasesURL: "https://cdn.getmoshi.app/hook", Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
 		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
 		{Name: "nobs", Version: nobsVersion, Archive: nobsAsset, URL: "https://github.com/henrico813/nobs/releases/download/" + nobsVersion + "/" + nobsAsset, SHA256: checksums["nobs"], Directory: "nobs", Binary: "nobs", Links: []string{"nobs"}, Kind: fileTool},
 	}, nil
@@ -206,11 +206,14 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	}
 	if m.Runner.DryRun {
 		for _, tool := range tools {
-			plan := "download and verify " + tool.URL + " sha256=" + tool.SHA256
-			if tool.LatestURL != "" && m.verifyTools(m.ToolsRoot(), []Tool{tool}) == nil {
+			var plan string
+			switch {
+			case tool.ReleasesURL == "":
+				plan = "download and verify " + tool.URL + " sha256=" + tool.SHA256
+			case m.verifyTools(m.ToolsRoot(), []Tool{tool}) == nil:
 				plan = "keep the installed " + tool.Name + ", which updates itself"
-			} else if tool.LatestURL != "" {
-				plan = "download and verify " + tool.LatestURL + "/latest against that release's checksums.txt"
+			default:
+				plan = "download and verify " + tool.ReleasesURL + "/latest against that release's checksums.txt"
 			}
 			if err := m.Runner.Plan(plan, nil); err != nil {
 				return nil, err
@@ -256,9 +259,9 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	}
 	tools = append([]Tool(nil), tools...)
 	for i, tool := range tools {
-		if tool.LatestURL != "" && m.verifyTools(root, []Tool{tool}) == nil {
+		if tool.ReleasesURL != "" && m.verifyTools(root, []Tool{tool}) == nil {
 			// Activation replaces the whole folder, so carry over the copy the
-			// tool may have updated itself.
+			// tool may have updated itself. One that does not run is reinstalled.
 			if err := fsutil.CopyTree(filepath.Join(root, tool.Directory), filepath.Join(stage, tool.Directory)); err != nil {
 				return nil, fmt.Errorf("keep %s: %w", tool.Name, err)
 			}
@@ -267,16 +270,18 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 			}
 			continue
 		}
-		if tool.LatestURL != "" {
+		if tool.ReleasesURL != "" {
+			var resolved Tool
 			if err := m.Runner.Retry("resolve newest "+tool.Name, 3, func() error {
-				tool, err = resolveLatest(tool)
-				return err
+				var resolveErr error
+				resolved, resolveErr = resolveLatest(tool)
+				return resolveErr
 			}); err != nil {
 				return nil, fmt.Errorf("resolve %s: %w", tool.Name, err)
 			}
-			tools[i] = tool
+			tools[i] = resolved
 		}
-		if err := m.installTool(workspace, stage, tool); err != nil {
+		if err := m.installTool(workspace, stage, tools[i]); err != nil {
 			return nil, fmt.Errorf("install %s: %w", tool.Name, err)
 		}
 	}
@@ -439,7 +444,8 @@ func (m Manager) toolsCurrent(tools []Tool) (bool, error) {
 	}
 	for _, tool := range tools {
 		installed, ok := state.Tools[tool.Name]
-		if !ok || tool.LatestURL == "" && (installed.Version != tool.Version || installed.SHA256 != tool.SHA256) {
+		// An unpinned tool's version changes when it updates itself, so only that it runs is checked.
+		if !ok || tool.ReleasesURL == "" && (installed.Version != tool.Version || installed.SHA256 != tool.SHA256) {
 			return false, nil
 		}
 		launchersCurrent, err := m.toolLaunchersCurrent(tool)
@@ -466,10 +472,6 @@ func (m Manager) verifyTools(root string, tools []Tool) error {
 				return fmt.Errorf("direct tool executable is invalid: %s", path)
 			}
 		}
-		// A self-updating tool has no version to check until one is resolved.
-		if tool.Version == "" {
-			continue
-		}
 		if tool.Kind == fileTool {
 			digest, err := fsutil.FileSHA256(filepath.Join(root, tool.Directory, "bin", tool.Binary))
 			if err != nil {
@@ -484,7 +486,8 @@ func (m Manager) verifyTools(root string, tools []Tool) error {
 		if err != nil {
 			return err
 		}
-		if !hasToolVersion(string(output), tool) {
+		// A kept unpinned tool's version changes when it updates itself, so it only has to run.
+		if tool.Version != "" && !hasToolVersion(string(output), tool) {
 			return fmt.Errorf("%s version check returned %q, want %s", tool.Name, strings.TrimSpace(string(output)), tool.Version)
 		}
 	}
@@ -534,7 +537,8 @@ func (m Manager) ToolProbe(name string) (string, string, error) {
 			return "", "broken", err
 		}
 		installed := strings.TrimSpace(strings.SplitN(string(output), "\n", 2)[0])
-		if tool.LatestURL != "" {
+		// An unpinned tool's version changes when it updates itself, so whatever runs is current.
+		if tool.ReleasesURL != "" {
 			return strings.TrimPrefix(installed, tool.VersionPrefix), "current", nil
 		}
 		if hasToolVersion(string(output), tool) {
@@ -566,10 +570,10 @@ func (m Manager) toolLaunchersCurrent(tool Tool) (bool, error) {
 	return true, nil
 }
 
-// Returns tool set to the release named by LatestURL/latest/version.txt, with
+// Returns tool set to the release named by ReleasesURL/latest/version.txt, with
 // the checksum that release lists in its checksums.txt.
 func resolveLatest(tool Tool) (Tool, error) {
-	tag, err := fetchText(tool.LatestURL + "/latest/version.txt")
+	tag, err := fetchText(tool.ReleasesURL + "/latest/version.txt")
 	if err != nil {
 		return tool, err
 	}
@@ -577,14 +581,14 @@ func resolveLatest(tool Tool) (Tool, error) {
 	if tag == "" || strings.ContainsAny(tag, "/ \t\n") {
 		return tool, fmt.Errorf("unexpected latest version %q", tag)
 	}
-	sums, err := fetchText(tool.LatestURL + "/" + tag + "/checksums.txt")
+	sums, err := fetchText(tool.ReleasesURL + "/" + tag + "/checksums.txt")
 	if err != nil {
 		return tool, err
 	}
 	for _, line := range strings.Split(sums, "\n") {
 		if fields := strings.Fields(line); len(fields) == 2 && fields[1] == tool.Archive {
 			tool.Version = strings.TrimPrefix(tag, "v")
-			tool.URL = tool.LatestURL + "/" + tag + "/" + tool.Archive
+			tool.URL = tool.ReleasesURL + "/" + tag + "/" + tool.Archive
 			tool.SHA256 = fields[0]
 			return tool, nil
 		}
