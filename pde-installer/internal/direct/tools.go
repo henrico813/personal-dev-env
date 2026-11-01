@@ -63,7 +63,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 			"go":         "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
 			"rust":       "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
 			"node":       "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
-			"moshi-hook": "2500dad1e771562648db984229269490064aab092ca2987cde0b42d611d3efef",
+			"moshi-hook": "4e9cb3613fde0eabd6f5188375004667deabb4a9a22ae43a2d34cb9207bb968d",
 			"herdr":      "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
 			"nobs":       "555a1925094e08e5efc239e96acdf279615cad4b4848a5b4f40e7e7aa2a8be01",
 		}
@@ -74,7 +74,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 			"go":         "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
 			"rust":       "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
 			"node":       "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
-			"moshi-hook": "a878e335b1b7eee411cb2cbbc51b33dc9a6303f8088c2267e8831c102f31ebdc",
+			"moshi-hook": "aced436d36ea2684280830000692409a57910b1fd0058e4286713f75cef20e25",
 			"herdr":      "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
 			"nobs":       "9e8887d28b9727d984725a6eb146998b16d6e1d3f787f89f67922395290b7dd2",
 		}
