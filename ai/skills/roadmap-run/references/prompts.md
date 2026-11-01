@@ -96,6 +96,11 @@ change description and its own focus:
   To delete a test, name it and the test that still covers its
   behavior.
 
+The `code-documentation` and `behavior-focused-testing` reviewers
+count as their skills' fresh checks only if they never see the plan
+or the design. Leave `Plan: <path>` out of their briefs. Give the
+`behavior-focused-testing` reviewer the task in two sentences instead.
+
 ## Revision message
 
 Send to the planner's session once every reviewer has reported:
