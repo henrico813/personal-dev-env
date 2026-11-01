@@ -1,4 +1,4 @@
-//! Carries Git and saved-file failures as a code and a message.
+//! Carries each failure or refusal as a code and a message.
 
 /// Carries a failure code and a message for the caller.
 #[derive(Debug)]
@@ -16,4 +16,6 @@ pub enum ErrorCode {
     SavedFileUnreadable,
     UnknownSavedField,
     SaveFailed,
+    RequestChanged,
+    LateUserFeedback,
 }
