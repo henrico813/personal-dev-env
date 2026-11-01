@@ -53,6 +53,16 @@ jobs:
       - run: go vet ./...
       - run: test -z "$(gofmt -l .)"
 
+  pde-comment-review-rs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pde-comment-review-rs
+    steps:
+      - uses: actions/checkout@v4
+      - name: check
+        run: make check
+
   opencode-inline-nvim:
     runs-on: ubuntu-latest
     defaults:
