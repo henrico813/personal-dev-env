@@ -15,67 +15,194 @@ import (
 	"text/template"
 
 	"pde-installer/internal/colorprofile"
+	"pde-installer/internal/profile"
 )
 
-func TestIgnoreTemplateProfiles(t *testing.T) {
-	tests := map[string]struct {
+// Each profile's whole ignore list. A path missing here installs on a machine
+// that should not get it.
+func TestIgnoreListMatchesEachProfile(t *testing.T) {
+	clientIgnores := []string{
+		"README.md",
+		".config/nvim/pack/plugins/start/opencode-inline.nvim",
+		".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
+		".config/aquaproj-aqua/aqua.yaml",
+		".config/aquaproj-aqua/aqua-checksums.json",
+		".claude",
+		".claude/**",
+		".codex",
+		".codex/**",
+		".pi",
+		".pi/**",
+		".local/share/pde/herdr-plugins",
+		".local/share/pde/herdr-plugins/**",
+		"link_herdr_plugins.sh",
+		".config/opencode/bin/planner",
+	}
+	tests := []struct {
 		profile string
 		want    []string
-		omit    []string
 	}{
-		"terminal": {
+		{
 			profile: "terminal",
-			want: []string{
-				".config/aquaproj-aqua/aqua.yaml",
-				".config/aquaproj-aqua/aqua-checksums.json",
+			want: append(slices.Clone(clientIgnores),
 				".config/alacritty",
+				".config/alacritty/**",
 				".config/wezterm",
+				".config/wezterm/**",
 				".config/nvim",
 				".config/nvim/**",
 				".config/opencode",
+				".config/opencode/**",
+				".local/bin/opencode",
 				".config/herdr",
-				".claude",
-				".codex",
+				".config/herdr/**",
 				".agents",
-				".pi",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
-			},
+				".agents/**",
+			),
 		},
-		"client": {
+		{
 			profile: "client",
-			want: []string{
-				".config/aquaproj-aqua/aqua.yaml",
-				".claude",
-				".config/opencode/bin/planner",
-				"link_herdr_plugins.sh",
-			},
-			omit: []string{
-				".config/nvim",
-				".agents",
-			},
+			want:    clientIgnores,
 		},
-		"full": {
+		{
 			profile: "full",
 			want: []string{
+				"README.md",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim",
+				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
 				".config/aquaproj-aqua/aqua-terminal.yaml",
 				".config/aquaproj-aqua/aqua-terminal-checksums.json",
 				".config/nvim/pack/plugins/start/blink.cmp",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim",
-				".config/nvim/pack/plugins/start/opencode-inline.nvim/**",
-			},
-			omit: []string{
-				".config/alacritty",
-				".config/wezterm",
-				".config/nvim",
-				".config/nvim/**",
-				".config/opencode",
-				".config/herdr",
-				".claude",
+				".config/nvim/pack/plugins/start/blink.cmp/**",
 			},
 		},
 	}
-	assertProfileTemplateLines(t, ".chezmoiignore.tmpl", tests)
+	for _, test := range tests {
+		t.Run(test.profile, func(t *testing.T) {
+			got := renderPathList(t, ".chezmoiignore.tmpl", test.profile)
+
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("ignore list =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(test.want, "\n"))
+			}
+		})
+	}
+}
+
+// Each profile's remove list. chezmoi deletes these targets on every apply, so
+// a tool listed for a profile that installs it, such as pde-gh-write on full,
+// disappears after each install.
+func TestRemoveListMatchesEachProfile(t *testing.T) {
+	everyProfile := []string{
+		".config/pde/paths.env",
+		".config/systemd/user/opencode-web.service",
+		".config/systemd/user/opencode-web-health.service",
+		".config/systemd/user/opencode-web-health.timer",
+		".local/bin/surveil",
+		".local/state/surveil",
+	}
+	approvalTools := []string{
+		".local/bin/pde-gh-write",
+		".local/bin/pde-pr-approve",
+		".local/bin/pde-comment-checker",
+	}
+	retiredAgentFiles := []string{
+		".config/opencode/plugins/pde-approval-session.js",
+		".config/opencode/commands/document_codebase.md",
+	}
+	fullOnlyFiles := []string{
+		".agents/skills/cleanup-plan",
+		".agents/skills/code-documentation",
+		".agents/skills/comment-review",
+		".agents/skills/create-plan",
+		".agents/skills/design-doc",
+		".agents/skills/git-messages",
+		".agents/skills/go-development",
+		".agents/skills/implement-plan",
+		".agents/skills/promote-memory",
+		".agents/skills/pull-request",
+		".agents/skills/python-development",
+		".agents/skills/research-codebase",
+		".agents/skills/review-plan",
+		".agents/skills/roadmap-run",
+		".agents/skills/rust-development",
+		".agents/skills/typescript-development",
+		".config/opencode/commands/cleanup_plan.md",
+		".config/opencode/commands/create_plan.md",
+		".config/opencode/commands/design_doc.md",
+		".config/opencode/commands/implement_plan.md",
+		".config/opencode/commands/research_codebase.md",
+		".config/opencode/commands/review_plan.md",
+		".config/opencode/agents/plan-architecture-reviewer.md",
+		".config/opencode/agents/plan-bug-reviewer.md",
+		".config/opencode/agents/plan-completeness-reviewer.md",
+	}
+	retiredFullFiles := []string{
+		"Projects/CLAUDE.md",
+		".codex/skills/behavior-focused-testing",
+		".codex/skills/code-documentation",
+		".codex/skills/git-messages",
+		".codex/skills/go-development",
+		".codex/skills/obsidian-zettel",
+		".codex/skills/promote-memory",
+		".codex/skills/python-development",
+		".codex/skills/rust-development",
+		".codex/skills/document-codebase",
+		".codex/skills/create-plan",
+		".codex/skills/review-plan",
+		".codex/skills/implement-plan",
+		".codex/skills/cleanup-plan",
+		".codex/skills/design-doc",
+		".codex/skills/research-codebase",
+		".claude/commands/create_plan.md",
+		".claude/commands/review_plan.md",
+		".claude/commands/implement_plan.md",
+		".claude/commands/cleanup_plan.md",
+		".claude/commands/design_doc.md",
+		".claude/commands/research_codebase.md",
+		".claude/commands/document_codebase.md",
+		".claude/commands/README.md",
+		".agents/skills/git-messages/scripts/check-message",
+		".agents/skills/code-search",
+		".agents/skills/code-documentation/scripts/comment_checker",
+	}
+	join := func(lists ...[]string) []string {
+		var result []string
+		for _, list := range lists {
+			result = append(result, list...)
+		}
+		slices.Sort(result)
+		return result
+	}
+	tests := []struct {
+		profile string
+		want    []string
+	}{
+		{profile: "terminal", want: join(everyProfile, approvalTools)},
+		{profile: "client", want: join(everyProfile, approvalTools, retiredAgentFiles, fullOnlyFiles)},
+		{profile: "full", want: join(everyProfile, retiredAgentFiles, retiredFullFiles)},
+	}
+	for _, test := range tests {
+		t.Run(test.profile, func(t *testing.T) {
+			got := renderPathList(t, ".chezmoiremove", test.profile)
+			slices.Sort(got)
+
+			if !slices.Equal(got, test.want) {
+				t.Fatalf("remove list =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(test.want, "\n"))
+			}
+		})
+	}
+}
+
+// Returns the rendered lines that name paths, without blanks and comments.
+func renderPathList(t *testing.T, name, profile string) []string {
+	t.Helper()
+	var paths []string
+	for _, line := range strings.Split(renderProfileTemplate(t, name, profile), "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			paths = append(paths, line)
+		}
+	}
+	return paths
 }
 
 func TestExternalTemplateProfiles(t *testing.T) {
@@ -438,16 +565,6 @@ func TestTmuxTemplateProfiles(t *testing.T) {
 	assertProfileTemplates(t, "dot_tmux.conf.tmpl", tests)
 }
 
-func TestTemplatesRejectInvalidProfiles(t *testing.T) {
-	for name, selected := range map[string]string{"missing": "", "unknown": "desktop"} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := renderTemplate(t, ".chezmoiignore.tmpl", selected); err == nil {
-				t.Fatal("render succeeded")
-			}
-		})
-	}
-}
-
 func TestTemplatesRejectInvalidColors(t *testing.T) {
 	if _, err := renderConfiguredTemplate(t, ".chezmoiignore.tmpl", "full", "nord"); err == nil {
 		t.Fatal("render succeeded")
@@ -630,29 +747,6 @@ func assertProfileTemplates(t *testing.T, templateName string, tests map[string]
 	}
 }
 
-func assertProfileTemplateLines(t *testing.T, templateName string, tests map[string]struct {
-	profile string
-	want    []string
-	omit    []string
-}) {
-	t.Helper()
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			text := renderProfileTemplate(t, templateName, test.profile)
-			for _, value := range test.want {
-				if !containsLine(text, value) {
-					t.Errorf("%s omits line %q", templateName, value)
-				}
-			}
-			for _, value := range test.omit {
-				if containsLine(text, value) {
-					t.Errorf("%s contains line %q", templateName, value)
-				}
-			}
-		})
-	}
-}
-
 func containsLine(text, want string) bool {
 	for _, line := range strings.Split(text, "\n") {
 		if line == want {
@@ -747,17 +841,19 @@ func renderConfiguredTemplate(t *testing.T, name, profile, colorProfile string) 
 	return renderTemplateForCheckout(t, name, profile, colorProfile, repoRoot(t))
 }
 
-func renderTemplateForCheckout(t *testing.T, name, profile, colorProfile, checkout string) (string, error) {
+func renderTemplateForCheckout(t *testing.T, name, profileName, colorProfile, checkout string) (string, error) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), "chezmoi", name))
 	if err != nil {
 		t.Fatal(err)
 	}
+	values := loadTemplateData(t)
+	// Decoding the installer's JSON gives .pde the types chezmoi gives it.
+	if err := json.Unmarshal([]byte(encodeTemplateData(profile.Profile(profileName))), &values); err != nil {
+		t.Fatal(err)
+	}
 	functions := template.FuncMap{
 		"env": func(key string) string {
-			if key == "PDE_PROFILE" {
-				return profile
-			}
 			if key == "PDE_REPO_ROOT" {
 				return checkout
 			}
@@ -772,13 +868,14 @@ func renderTemplateForCheckout(t *testing.T, name, profile, colorProfile, checko
 			return string(output), err
 		},
 		"splitList": func(separator, text string) []string { return strings.Split(text, separator) },
+		"has":       func(needle any, list []any) bool { return slices.Contains(list, needle) },
 	}
 	tmpl, err := template.New(name).Option("missingkey=error").Funcs(functions).Parse(string(data))
 	if err != nil {
 		return "", err
 	}
 	var output bytes.Buffer
-	if err := tmpl.Execute(&output, loadTemplateData(t)); err != nil {
+	if err := tmpl.Execute(&output, values); err != nil {
 		return "", err
 	}
 	return output.String(), nil
