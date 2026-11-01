@@ -52,13 +52,18 @@ Run every step for one PR before its child PR starts building. The
 prompts are in [references/prompts.md](references/prompts.md) and the
 commands in [references/build.md](references/build.md).
 
-1. **Plan.** Delegate the plan with `create-plan`. A child of an
-   unbuilt parent is written against a commit of the parent's planned
-   tree, made as build.md says.
+1. **Plan.** Delegate the plan with `create-plan`. The planner reads
+   the design's index note, its Dictionary, every part its PR touches
+   and the design-edits section, or all of a design kept in one note.
+   The plan lists each place it differs from the design under
+   `### Design edits to apply` in its `## Notes for agents`. A child
+   of an unbuilt parent is written against a commit of the parent's
+   planned tree, made as build.md says.
 2. **Fresh plan review.** A new agent reviews the plan with
-   `review-plan` and the domain skills. Send its findings, with your
-   decision on each optional item, back to the planner's session in
-   one message.
+   `review-plan` and the domain skills, and reads the same design
+   notes as the planner. Send its findings, with your decision on each
+   optional item, back to the planner's session in one message. Then
+   run the design check below on the revised plan before you build.
 3. **Build.** Export each plan step's tree and commit it with
    `git commit-tree` on the step before, starting at the plan's base.
    Make the PR's worktree with `wt` and move it to the last commit. A
@@ -69,10 +74,10 @@ commands in [references/build.md](references/build.md).
    `review-plan`, each language skill, `code-documentation` and
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
-   optional items, and send one message to the planner. Commit the
-   revised plan's tree as one fix commit. A test may be deleted only
-   when a reviewer's finding names it and names the test that still
-   covers its behavior.
+   optional items, and send one message to the planner. Run the design
+   check on the revised plan, then commit its tree as one fix commit.
+   A test may be deleted only when a reviewer's finding names it and
+   names the test that still covers its behavior.
 6. **Final pass.** Run the tests, linters, comment checker and any
    comparison script the plan names. Put back two bugs the reviewers
    found, one at a time, and check that a test fails for each. For
@@ -97,8 +102,9 @@ parent's final commit and run `planner check` again.
 
 - Every later change, whether a fix, a quality pass or a parent's new
   commit, goes through the same loop: the planner revises the plan, a
-  fresh agent reviews it, you commit the plan's tree from
-  `planner export` as a new commit, push it, and update the PR text.
+  fresh agent reviews it, you run the design check, commit the plan's
+  tree from `planner export` as a new commit, push it, and update the
+  PR text.
 - A parent's new commit reaches its children in stack order, with
   build.md's "Carry a parent's commit to a child". If the child's plan
   does not apply on the new parent, park the child and its children
@@ -111,6 +117,44 @@ parent's final commit and run `planner check` again.
   run against that list, and fix what it finds through the loop above
   before the user reviews those PRs. Add the list to every later
   planner and reviewer brief.
+
+## Design check
+
+A design is one note, or an index note that links its part notes. You
+check each plan against the design yourself, after its fresh review
+and after every revision, before you commit its tree. The PR is built
+from the plan, so the check before Ship is the PR's design check.
+
+1. Read the whole design before your first check, and again after
+   each summary of your context. At every check, reread the
+   design-edits section and the parts the PR touches. A rule can sit
+   in any part, not only in the parts the plan cites.
+2. Search the whole design with `rg -n` for each file, type,
+   function, command, flag and error code the plan adds or changes.
+   Read every passage that names one.
+3. Send each difference to the planner as a fix. When the plan is
+   better than the design and the difference is minor, have the
+   planner add it to `### Design edits to apply` instead, with the
+   design text it replaces and the new text. A difference in what the
+   user sees, or in a promise the design makes, is never minor. For
+   one of those, the plan keeps the design's version, and you put the
+   difference on the roadmap page as "your call". When the design's
+   version cannot work, park the PR and ask there as a blocking
+   question.
+4. Record each difference in the plan's notes, and whether it became
+   a fix, an `orchestrator-proposed` design edit or a question.
+5. When no fix is left to send, copy the plan's design edits into the
+   design-edits section, as below.
+
+The design-edits section is its own part note, which the index tells
+every agent to read, or the last section of a design kept in one
+note. Add it if the design has none, and back up the design before
+every edit. Each entry names the PR, the design text it replaces and
+the new text, and the replaced text gets a short pointer to the
+entry. An entry replaces the text it names; the rest of the design
+stays as approved. A later check of the same plan updates its
+entries. When a PR is parked or its request declined, mark its
+entries parked.
 
 ## Deciding things yourself
 
