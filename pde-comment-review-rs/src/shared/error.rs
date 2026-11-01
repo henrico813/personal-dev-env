@@ -16,6 +16,6 @@ pub enum ErrorCode {
     SavedFileUnreadable,
     UnknownSavedField,
     SaveFailed,
-    TextChanged,
+    RequestChanged,
     LateUserFeedback,
 }

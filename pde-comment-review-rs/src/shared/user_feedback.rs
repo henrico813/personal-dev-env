@@ -1,4 +1,4 @@
-//! Holds the user's answers and notes on Feedback Requests.
+//! Holds the kinds of User Feedback, an answer or a User Note.
 
 use serde::{Deserialize, Serialize};
 
