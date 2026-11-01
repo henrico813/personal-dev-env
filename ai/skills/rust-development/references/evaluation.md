@@ -4,6 +4,15 @@ Use these cases when installing or revising the skill, not during every Rust
 change. Run them in the intended agent and inspect both activation and output.
 These are proposed acceptance cases, not evidence of completed agent tests.
 
+## Contents
+
+- [Existing everyday behavior](#existing-everyday-behavior)
+- [Added coverage and reference-loading checks](#added-coverage-and-reference-loading-checks)
+- [Unused public items and simple errors](#unused-public-items-and-simple-errors)
+- [Negative and constraint cases](#negative-and-constraint-cases)
+- [Educational behavior and example use](#educational-behavior-and-example-use)
+- [Validate the package and examples](#validate-the-package-and-examples)
+
 ## Existing everyday behavior
 
 | Request | Expected behavior |
@@ -33,6 +42,15 @@ These are proposed acceptance cases, not evidence of completed agent tests.
 | Wrap this C API in safe Rust. | Unsafe and FFI, errors and resources | Reviews ABI, pointer and ownership requirements, error paths, cleanup, and supported validation. |
 | Speed this up with unchecked indexing. | Unsafe and FFI | Requires a concrete need and measurements, considers safe alternatives, and supplies a safety argument. |
 | Simplify this Rust API for a beginner. | API design | Explains useful Rust concepts instead of deleting necessary types, guarantees, or error information. |
+
+## Unused public items and simple errors
+
+| Request | Expected behavior |
+| --- | --- |
+| Review this change. It adds public types, enum variants and methods that nothing in it uses. | Lists each new public item with the code that uses it. Flags each item that nothing uses or that only its own tests use. Says to cut each one or move it to the change that needs it. |
+| Add the data types from the design doc now, so later work can start early. | Adds only the types this change uses. Leaves the rest for the change that first needs them. |
+| Add an error type to this command-line tool. Its errors become an exit code and a JSON message. | Uses a struct that derives only `Debug` and writes the cause into the message. Does not implement `Display`, `Error` or `source()`. Does not add constructors that nothing calls. |
+| Add a public parsing API to this library for other crates to call. | Keeps the requested public items. Says in the handoff that they are for other crates. Implements `Display` and `Error` on the returned error, with `source()` returning any underlying error. Does not cut the API as unused. |
 
 ## Negative and constraint cases
 
