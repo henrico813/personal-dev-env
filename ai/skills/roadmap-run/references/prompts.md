@@ -5,9 +5,8 @@ and you load them too. Add the user's style rules that apply, from
 their notes or memory, such as comment length or call layout. Once
 the user has given feedback on one PR, also add that feedback list
 from the roadmap page. `<design notes>` stands for the paths of the
-design's index note, the notes holding its Dictionary and its
-design-edits section, and every part the PR touches, or the path of a
-design kept in one note.
+design's index note, the note holding its Dictionary and every part
+the PR touches, or the path of a design kept in one note.
 
 ## Contents
 
@@ -43,9 +42,9 @@ Reviewers also get:
 
     Base: <branch> at <full commit>; for a child of an unbuilt
     parent, the commit of the parent's planned tree. Read: <roadmap>,
-    <parent plans>, <design notes>. Use the words the design's
-    Dictionary defines in names and comments. Scope: <what this PR
-    does and does not do>.
+    <parent plans>, <design notes>, and each design-edits entry those
+    notes point to. Use the words the design's Dictionary defines in
+    names and comments. Scope: <what this PR does and does not do>.
 
     Decisions, each labeled user-decided, orchestrator-proposed or
     inferred from code: <list>.
@@ -68,7 +67,7 @@ so it keeps its context.
     code-documentation, behavior-focused-testing.
 
     Plan: <path> (base on its `Base commit:` line).
-    Design: <design notes>.
+    Design: <design notes>, and each design-edits entry they point to.
     What it does: <two sentences>. Check especially: <the ways it
     could lose the user's data or do the wrong thing>.
 
