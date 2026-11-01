@@ -104,7 +104,8 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		}
 	}()
 	cargoTargets := map[string]string{
-		"vibe": filepath.Join(stageRoot, "vibe-target"),
+		"vibe":                    filepath.Join(stageRoot, "vibe-target"),
+		"pde-comment-review-next": filepath.Join(stageRoot, "comment-review-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -482,6 +483,19 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-comment-review"), ".",
 				},
 				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
+			},
+			verifyArg: "help",
+		},
+		{
+			name:   "pde-comment-review-next",
+			source: filepath.Join(m.RepoRoot, "pde-comment-review-rs"),
+			output: filepath.Join(stageRoot, "comment-review-target", "release", "pde-comment-review-next"),
+			command: run.Command{
+				Name: cargo,
+				Args: []string{
+					"build", "--locked", "--release", "--bin", "pde-comment-review-next", "--target-dir", filepath.Join(stageRoot, "comment-review-target"),
+				},
+				Dir: filepath.Join(m.RepoRoot, "pde-comment-review-rs"), Env: environment,
 			},
 			verifyArg: "help",
 		},
