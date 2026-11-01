@@ -141,7 +141,7 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
     repo
 }
 
-/// Saves a review in `status` that sent each of `lists` from HEAD, with `feedback` by request ID.
+/// Saves a Review Session in `status` that sent each of `lists` from HEAD, with `feedback` by request ID.
 fn save_review(dir: &Path, status: &str, lists: &[Value], feedback: Value) {
     let base = resolve_commit(dir, "HEAD").unwrap();
     let lists: Vec<Value> = lists
@@ -158,13 +158,14 @@ fn save_review(dir: &Path, status: &str, lists: &[Value], feedback: Value) {
     fs::write(dir.join(".git/pde/review.json"), review.to_string()).unwrap();
 }
 
-/// Returns the saved review's modified time and bytes, or `None` when it is missing.
+/// Returns the saved Review Session's modified time and bytes, or `None` when it is missing.
 fn read_review_file(dir: &Path) -> Option<(SystemTime, Vec<u8>)> {
     let path = dir.join(".git/pde/review.json");
     let bytes = fs::read(&path).ok()?;
     Some((fs::metadata(&path).unwrap().modified().unwrap(), bytes))
 }
 
+/// Returns a sent Feedback Request for the store file, with reason `new` and a keep Agent Suggestion.
 fn request_json(id: u32, name: Option<&str>, text: &str, line: usize) -> Value {
     json!({
         "id": id,
@@ -184,6 +185,16 @@ fn describe(request: &FeedbackRequest) -> String {
     let reason = serde_json::to_value(request.reason).unwrap();
     let reason = reason.as_str().unwrap();
     format!("{} {name} {reason}", request.file.display())
+}
+
+/// Describes a request by its ID and line, then as `describe` does.
+fn describe_with_id(request: &FeedbackRequest) -> String {
+    format!(
+        "{} {} {}",
+        json!(request.id),
+        request.line,
+        describe(request)
+    )
 }
 
 /// `check_comments` must fail a reworded approved comment from any folder, whether the reword is committed, staged, on disk, hidden from Git or behind a restored copy.
@@ -503,463 +514,649 @@ fn refused_check_leaves_repository_files_unchanged() {
     assert_eq!(read_every_file(dir), before);
 }
 
-mod make_feedback_request_list {
-    use super::*;
+/// `make_feedback_request_list` must list a cut comment that is back, a comment that differs from its approval, and a new comment, and nothing else.
+/// Otherwise the user would miss a decision made in another worktree, or answer comments nobody changed.
+#[test]
+fn list_holds_only_new_or_conflicting_comments() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let store_before = "package review\n\n// Saves the answer under the lock.\nfunc SaveAnswer() {}\n\n// Loads every answer.\nfunc LoadAnswers() {}\n\nfunc CountAnswers() {}\n";
+    let store_after = "package review\n\n// Saves the answer under the lock.\nfunc SaveAnswer() {}\n\n// Loads each saved answer.\nfunc LoadAnswers() {}\n\n// Counts the answers.\nfunc CountAnswers() {}\n\n// Deletes an answer.\nfunc DeleteAnswer() {}\n";
+    let file = "package review\n\n// Opens the review file.\nfunc OpenReview() {}\n\n// Closes the review file.\nfunc CloseReview() {}\n";
+    fs::write(dir.join(STORE), store_before).unwrap();
+    fs::write(dir.join("review_file.go"), file).unwrap();
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    fs::write(dir.join(STORE), store_after).unwrap();
+    add_decision(dir, STORE, "LoadAnswers", "");
+    add_decision(dir, STORE, "DeleteAnswer", "// Deletes an answer.\n");
+    add_decision(dir, "review_file.go", "OpenReview", "");
+    add_decision(
+        dir,
+        "review_file.go",
+        "CloseReview",
+        "// Closes the file.\n",
+    );
 
-    /// Without it, the user would miss a cut comment that came back or a decision made in another worktree, or would answer comments nobody changed.
-    #[test]
-    fn lists_only_new_and_conflicting_comments() {
+    let output = make_feedback_request_list(dir, Some(base), &[]).unwrap();
+
+    let listed: Vec<String> = output.result.list.requests.iter().map(describe).collect();
+    assert_eq!(
+        listed,
+        [
+            "review_file.go OpenReview was_cut",
+            "review_file.go CloseReview differs_from_approved",
+            "review_store.go LoadAnswers was_cut",
+            "review_store.go CountAnswers new",
+        ]
+    );
+}
+
+/// `make_feedback_request_list` must refuse while step 2 still fails.
+/// Otherwise an agent could put its reword of approved text on the list, and keeping it would approve the reword.
+#[test]
+fn failed_check_refuses_list() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", APPROVED);
+    write_store(dir, REWORDED, "");
+    let change_request = ChangeRequest {
+        file: PathBuf::from(STORE),
+        name: "SaveAnswer".to_owned(),
+    };
+
+    // The change request would refuse with another code if step 2 did not refuse first.
+    let error = make_feedback_request_list(dir, None, &[change_request]).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::CheckFailed);
+}
+
+/// `make_feedback_request_list` must list a change request once, with the approved text from disk.
+/// Otherwise the user could see text other than what they approved, or two pieces of User Feedback would be written into one comment.
+#[test]
+fn change_request_lists_approved_comment_once() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", APPROVED);
+    let change_request = || ChangeRequest {
+        file: PathBuf::from(STORE),
+        name: "SaveAnswer".to_owned(),
+    };
+
+    let output = make_feedback_request_list(dir, None, &[change_request(), change_request()]);
+
+    let requests = output.unwrap().result.list.requests;
+    let listed: Vec<String> = requests.iter().map(describe).collect();
+    assert_eq!(listed, ["review_store.go SaveAnswer agent_wants_change"]);
+    assert_eq!(requests[0].text, APPROVED);
+}
+
+/// `make_feedback_request_list` must number a new list's requests from 1 in file and line order.
+/// Otherwise two requests could share an ID and one's User Feedback would be lost.
+#[test]
+fn new_list_numbers_requests_from_one() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", APPROVED);
+    let source = format!(
+        "{}\n// Counts the answers.\nfunc CountAnswers() {{}}\n",
+        store_source(APPROVED, "")
+    );
+    fs::write(dir.join(STORE), source).unwrap();
+    let change_request = ChangeRequest {
+        file: PathBuf::from(STORE),
+        name: "SaveAnswer".to_owned(),
+    };
+
+    let output = make_feedback_request_list(dir, None, &[change_request]).unwrap();
+
+    let listed: Vec<String> = output
+        .result
+        .list
+        .requests
+        .iter()
+        .map(describe_with_id)
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "1 3 review_store.go SaveAnswer agent_wants_change",
+            "2 6 review_store.go CountAnswers new",
+        ]
+    );
+}
+
+/// `make_feedback_request_list` must refuse a change request unless it names an approved comment the user can reword.
+/// Otherwise a misspelled request would vanish, or the user would be asked to reword a comment they cut or can only keep or cut.
+#[test]
+fn change_request_needs_approved_rewordable_comment() {
+    let block = "/* Saves the answer. */\n";
+    let cases = [
+        ("misspelled-name", APPROVED, APPROVED, "SaveAnswers"),
+        ("cut-comment", APPROVED, "", "SaveAnswer"),
+        ("keep-or-cut-only-comment", block, block, "SaveAnswer"),
+    ];
+
+    for (case, comment, decision, name) in cases {
         let repo = make_repo();
         let dir = repo.path();
-        let store_before = "package review\n\n// Saves the answer under the lock.\nfunc SaveAnswer() {}\n\n// Loads every answer.\nfunc LoadAnswers() {}\n\nfunc CountAnswers() {}\n";
-        let store_after = "package review\n\n// Saves the answer under the lock.\nfunc SaveAnswer() {}\n\n// Loads each saved answer.\nfunc LoadAnswers() {}\n\n// Counts the answers.\nfunc CountAnswers() {}\n\n// Deletes an answer.\nfunc DeleteAnswer() {}\n";
-        let file = "package review\n\n// Opens the review file.\nfunc OpenReview() {}\n\n// Closes the review file.\nfunc CloseReview() {}\n";
-        fs::write(dir.join(STORE), store_before).unwrap();
-        fs::write(dir.join("review_file.go"), file).unwrap();
-        commit_all(dir);
-        let base = resolve_commit(dir, "HEAD").unwrap();
-        fs::write(dir.join(STORE), store_after).unwrap();
-        add_decision(dir, STORE, "LoadAnswers", "");
-        add_decision(dir, STORE, "DeleteAnswer", "// Deletes an answer.\n");
-        add_decision(dir, "review_file.go", "OpenReview", "");
-        add_decision(
-            dir,
-            "review_file.go",
-            "CloseReview",
-            "// Closes the file.\n",
-        );
-
-        let output = make_feedback_request_list(dir, Some(base), &[]).unwrap();
-
-        let listed: Vec<String> = output.result.list.requests.iter().map(describe).collect();
-        assert_eq!(
-            listed,
-            [
-                "review_file.go OpenReview was_cut",
-                "review_file.go CloseReview differs_from_approved",
-                "review_store.go LoadAnswers was_cut",
-                "review_store.go CountAnswers new",
-            ]
-        );
-    }
-
-    /// Without it, an agent could skip step 2 and slip its reword of approved text onto the list, where keeping it approves the reword.
-    #[test]
-    fn refuses_list_when_check_fails() {
-        let repo = make_repo();
-        let dir = repo.path();
-        add_decision(dir, STORE, "SaveAnswer", APPROVED);
-        write_store(dir, REWORDED, "");
+        write_store(dir, comment, "");
+        add_decision(dir, STORE, "SaveAnswer", decision);
         let change_request = ChangeRequest {
             file: PathBuf::from(STORE),
-            name: "SaveAnswer".to_owned(),
+            name: name.to_owned(),
         };
 
         let error = make_feedback_request_list(dir, None, &[change_request]).unwrap_err();
 
-        assert_eq!(error.code, ErrorCode::CheckFailed);
-    }
-
-    /// Without it, a change request could show the user text other than what they approved, or leave two answers to write into one comment.
-    #[test]
-    fn change_request_lists_approved_comment_once() {
-        let repo = make_repo();
-        let dir = repo.path();
-        add_decision(dir, STORE, "SaveAnswer", APPROVED);
-        let change_request = || ChangeRequest {
-            file: PathBuf::from(STORE),
-            name: "SaveAnswer".to_owned(),
-        };
-
-        let output = make_feedback_request_list(dir, None, &[change_request(), change_request()]);
-
-        let requests = output.unwrap().result.list.requests;
-        let listed: Vec<String> = requests.iter().map(describe).collect();
-        assert_eq!(listed, ["review_store.go SaveAnswer agent_wants_change"]);
-        assert_eq!(requests[0].text, APPROVED);
-    }
-
-    /// Without it, a misspelled change request would vanish, and the user would never see the change the agent promised.
-    #[test]
-    fn refuses_change_request_for_unknown_name() {
-        let repo = make_repo();
-        let dir = repo.path();
-        add_decision(dir, STORE, "SaveAnswer", APPROVED);
-        let misspelled = ChangeRequest {
-            file: PathBuf::from(STORE),
-            name: "SaveAnswers".to_owned(),
-        };
-
-        let error = make_feedback_request_list(dir, None, &[misspelled]).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::BadInput);
-    }
-
-    /// Without it, a new list could replace one the user is still answering, or run over a write that did not finish.
-    #[test]
-    fn refuses_list_while_review_waits_or_writes() {
-        let cases = [
-            (
-                "waiting_for_user_feedback",
-                ErrorCode::WaitingForUserFeedback,
-            ),
-            ("writing_user_feedback", ErrorCode::WriteNotFinished),
-        ];
-
-        for (status, code) in cases {
-            let repo = make_repo();
-            let dir = repo.path();
-            let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
-            save_review(dir, status, &[requests], json!({"1": {"answer": "cut"}}));
-
-            let error = make_feedback_request_list(dir, None, &[]).unwrap_err();
-
-            assert_eq!(error.code, code, "{status}");
-        }
-    }
-
-    /// Without it, building or refusing a list could rewrite or start the saved review and lose the user's answers.
-    #[test]
-    fn list_never_writes_saved_review() {
-        let cases = [
-            (None, false),
-            (Some("waiting_for_user_feedback"), true),
-            (Some("writing_user_feedback"), true),
-            (Some("user_notes_waiting"), false),
-            (Some("done"), false),
-        ];
-
-        for (status, refuses) in cases {
-            let repo = make_repo();
-            let dir = repo.path();
-            write_store(dir, REWORDED, "");
-            if let Some(status) = status {
-                let requests = json!([request_json(1, Some("SaveAnswer"), REWORDED, 3)]);
-                save_review(
-                    dir,
-                    status,
-                    &[requests],
-                    json!({"1": {"note": "Say which lock."}}),
-                );
-                let review_file = File::options()
-                    .write(true)
-                    .open(dir.join(".git/pde/review.json"));
-                review_file.unwrap().set_modified(UNIX_EPOCH).unwrap();
-            }
-            let before = read_review_file(dir);
-
-            let result = make_feedback_request_list(dir, None, &[]);
-
-            assert_eq!(result.is_err(), refuses, "{status:?}");
-            assert_eq!(read_review_file(dir), before, "{status:?}");
-        }
-    }
-
-    /// Without it, noted comments could come back with old text, new IDs, another comment's place or one comment twice, and new or reworded comments could skip the user or come from a parent branch.
-    #[test]
-    fn resends_noted_requests_and_changed_comments() {
-        let repo = make_repo();
-        let dir = repo.path();
-        let parent = "package review\n\n// Lists every review.\nfunc ListReviews() {}\n";
-        fs::write(dir.join(STORE), parent).unwrap();
-        commit_all(dir);
-        let first_list = json!([
-            request_json(1, Some("SaveAnswer"), "// Saves the answer.\n", 13),
-            request_json(2, None, "\t// Takes the lock.\n", 15),
-            request_json(3, Some("LoadAnswers"), "// Loads every answer.\n", 24),
-            request_json(4, Some("CountAnswers"), "// Counts the answers.\n", 27),
-            request_json(5, None, "\t// Writes the answer.\n", 7),
-            request_json(6, None, "\t// Unlocks the store.\n", 9),
-            request_json(7, None, "\t// Closes the store.\n", 17),
-            request_json(8, None, "\t// Flushes the store.\n", 20),
-            request_json(9, None, "\t// Retries once.\n", 31),
-            request_json(10, None, "\t// Retries once.\n", 33),
-            request_json(11, None, "\t/* Takes it. */", 38),
-            request_json(12, None, "\t// Reads the list.\n", 41),
-        ]);
-        let second_list = json!([request_json(2, None, "\t// Holds the lock.\n", 15)]);
-        let note = json!({"note": "Say which lock."});
-        let keep = json!({"answer": "keep"});
-        let feedback = json!({
-            "1": note, "2": note, "3": keep, "4": note,
-            "5": note, "6": keep, "7": note, "8": keep,
-            "9": note, "10": note, "11": keep, "12": keep,
-        });
-        save_review(
-            dir,
-            "user_notes_waiting",
-            &[first_list, second_list],
-            feedback,
-        );
-        let reworded = "// Saves the answer under the review lock.\n";
-        let current = concat!(
-            "package review\n",
-            "\n",
-            "// Lists every review.\n",
-            "func ListReviews() {}\n",
-            "\n",
-            "func WriteAnswer() {\n",
-            "\t// Unlocks the store.\n",
-            "\twrite()\n",
-            "\t// Unlocks the store.\n",
-            "\tunlock()\n",
-            "}\n",
-            "\n",
-            "// Saves the answer under the review lock.\n",
-            "func SaveAnswer() {\n",
-            "\tdefer unlock()\n",
-            "\t// Holds the lock.\n",
-            "\tlock()\n",
-            "\t// Flushes the store.\n",
-            "\tclose()\n",
-            "\tflush()\n",
-            "\t// Flushes the store.\n",
-            "\tflush()\n",
-            "}\n",
-            "\n",
-            "// Loads every answer and deletes every backup.\n",
-            "func LoadAnswers() {}\n",
-            "\n",
-            "func CountAnswers() {}\n",
-            "\n",
-            "// Deletes an answer.\n",
-            "func DeleteAnswer() {}\n",
-            "\n",
-            "func RetryAnswer() {\n",
-            "\t// Retries once.\n",
-            "\tretry()\n",
-            "\tretry()\n",
-            "}\n",
-            "\n",
-            "func HoldLock() {\n",
-            "\t/* Takes it. */ lock() // Never unlocks.\n",
-            "\t// Reads and clears the list.\n",
-            "\tread()\n",
-            "}\n",
-        );
-        fs::write(dir.join(STORE), current).unwrap();
-
-        let output = make_feedback_request_list(dir, None, &[]).unwrap();
-
-        let requests = output.result.list.requests;
-        let listed: Vec<String> = requests
-            .iter()
-            .map(|request| {
-                format!(
-                    "{} {} {}",
-                    json!(request.id),
-                    request.line,
-                    describe(request)
-                )
-            })
-            .collect();
-        assert_eq!(
-            listed,
-            [
-                "5 7 review_store.go (unnamed) new",
-                "1 13 review_store.go SaveAnswer new",
-                "2 16 review_store.go (unnamed) new",
-                "13 18 review_store.go (unnamed) new",
-                "14 25 review_store.go LoadAnswers new",
-                "15 30 review_store.go DeleteAnswer new",
-                "9 34 review_store.go (unnamed) new",
-                "16 40 review_store.go (unnamed) new",
-                "17 41 review_store.go (unnamed) new",
-            ]
-        );
-        assert_eq!(requests[0].text, "\t// Unlocks the store.\n");
-        assert_eq!(requests[1].text, reworded);
-    }
-
-    /// Without it, a comment the user must answer could ship unasked from a commit or the index, even in a file with no decision, or an older committed wording would block the list.
-    #[test]
-    fn refuses_committed_or_staged_comment_disk_skips() {
-        fn stage_only(dir: &Path) {
-            write_store(dir, "", "");
-            commit_all(dir);
-            write_store(dir, APPROVED, "return");
-            run_git(dir, &["add", STORE]);
-            run_git(
-                dir,
-                &["restore", "--source=HEAD", "--worktree", "--", STORE],
-            );
-        }
-        fn commit_only(dir: &Path) {
-            write_store(dir, APPROVED, "return");
-            commit_all(dir);
-            write_store(dir, "", "return");
-            run_git(dir, &["add", STORE]);
-        }
-        fn reword_on_disk(dir: &Path) {
-            write_store(dir, APPROVED, "return");
-            commit_all(dir);
-            write_store(dir, REWORDED, "return");
-        }
-        fn reword_unnamed_on_disk(dir: &Path) {
-            write_store(dir, "", "\n\t// Holds the lock.\n\treturn\n");
-            commit_all(dir);
-            write_store(dir, "", "\n\t// Holds the store lock.\n\treturn\n");
-        }
-        fn stage_then_delete_new_file(dir: &Path) {
-            let source = "package review\n\n// Counts the answers.\nfunc CountAnswers() {}\n";
-            fs::write(dir.join("other.go"), source).unwrap();
-            run_git(dir, &["add", "other.go"]);
-            fs::remove_file(dir.join("other.go")).unwrap();
-        }
-        fn commit_then_remove_new_file(dir: &Path) {
-            let source = "package review\n\n// Counts the answers.\nfunc CountAnswers() {}\n";
-            fs::write(dir.join("other.go"), source).unwrap();
-            commit_all(dir);
-            run_git(dir, &["rm", "--quiet", "other.go"]);
-        }
-        let cases = [
-            (
-                "only-in-the-index",
-                stage_only as fn(&Path),
-                STORE,
-                Err((ErrorCode::BadInput, true)),
-            ),
-            (
-                "only-in-head",
-                commit_only,
-                STORE,
-                Err((ErrorCode::BadInput, true)),
-            ),
-            ("older-wording-in-head", reword_on_disk, STORE, Ok(1)),
-            (
-                "unnamed-older-wording-in-head",
-                reword_unnamed_on_disk,
-                STORE,
-                Err((ErrorCode::BadInput, true)),
-            ),
-            (
-                "file-with-no-decision-only-in-the-index",
-                stage_then_delete_new_file,
-                "other.go",
-                Err((ErrorCode::BadInput, true)),
-            ),
-            (
-                "file-with-no-decision-only-in-head",
-                commit_then_remove_new_file,
-                "other.go",
-                Err((ErrorCode::BadInput, true)),
-            ),
-        ];
-
-        for (case, change_copies, named_file, expected) in cases {
-            let repo = make_repo();
-            let dir = repo.path();
-            add_decision(dir, STORE, "SaveAnswer", "");
-            change_copies(dir);
-
-            let result = make_feedback_request_list(dir, None, &[]);
-
-            let result = result
-                .map(|output| output.result.list.requests.len())
-                .map_err(|error| (error.code, error.message.contains(named_file)));
-            assert_eq!(result, expected, "{case}");
-        }
-    }
-
-    /// Without it, a cut decided in another worktree could hide in an approved file that no longer parses, and the list would come back empty.
-    #[test]
-    fn refuses_approved_file_that_does_not_parse() {
-        let repo = make_repo();
-        let dir = repo.path();
-        let broken = format!("package review\n\n{APPROVED}func SaveAnswer( {{}}\n");
-        fs::write(dir.join("old_broken.go"), broken).unwrap();
-        commit_all(dir);
-        add_decision(dir, "old_broken.go", "SaveAnswer", "");
-        let base = resolve_commit(dir, "HEAD").unwrap();
-
-        let error = make_feedback_request_list(dir, Some(base), &[]).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::FileUnreadable);
-        assert!(error.message.contains("old_broken.go"), "{}", error.message);
-    }
-
-    /// Without it, a notes round given a later base could skip a comment committed during the round.
-    #[test]
-    fn refuses_notes_round_with_another_base() {
-        let repo = make_repo();
-        let dir = repo.path();
-        let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
-        save_review(
-            dir,
-            "user_notes_waiting",
-            &[requests],
-            json!({"1": {"note": "Say which lock."}}),
-        );
-        write_store(dir, REWORDED, "");
-        commit_all(dir);
-        let later = resolve_commit(dir, "HEAD").unwrap();
-
-        let error = make_feedback_request_list(dir, Some(later), &[]).unwrap_err();
-
-        assert_eq!(error.code, ErrorCode::BadInput);
+        assert_eq!(error.code, ErrorCode::BadInput, "{case}");
     }
 }
 
-mod show_status {
-    use super::*;
+/// `make_feedback_request_list` must refuse while a Feedback Request List waits for the user or a write did not finish.
+/// Otherwise a new list could replace one the user is still answering, or run over an unfinished write.
+#[test]
+fn waiting_or_writing_review_session_refuses_list() {
+    let cases = [
+        (
+            "waiting_for_user_feedback",
+            ErrorCode::WaitingForUserFeedback,
+        ),
+        ("writing_user_feedback", ErrorCode::WriteNotFinished),
+    ];
 
-    /// Without it, an agent could call the wrong step next, or miss the requests and notes the review waits on.
-    #[test]
-    fn names_next_step_and_what_waits() {
-        let requests = || {
-            json!([
-                request_json(1, Some("SaveAnswer"), APPROVED, 3),
-                request_json(2, None, "\t// Holds the lock.\n", 5),
-            ])
-        };
-        let keep = || json!({"answer": "keep"});
-        let cases = [
-            ("no-review", None, NextStep::CheckComments, json!(null)),
-            (
-                "waiting",
-                Some(("waiting_for_user_feedback", json!({"1": keep()}))),
-                NextStep::TellUserAndWait,
-                json!([2]),
-            ),
-            (
-                "notes",
-                Some((
-                    "user_notes_waiting",
-                    json!({"1": {"note": "Say which lock."}, "2": keep()}),
-                )),
-                NextStep::MakeFeedbackRequestList,
-                json!({"1": "Say which lock."}),
-            ),
-            (
-                "writing",
-                Some(("writing_user_feedback", json!({"1": keep(), "2": keep()}))),
-                NextStep::TellUserAndWait,
-                json!(null),
-            ),
-            (
-                "done",
-                Some(("done", json!({"1": keep(), "2": keep()}))),
-                NextStep::CheckComments,
-                json!(null),
-            ),
-        ];
+    for (status, code) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+        save_review(dir, status, &[requests], json!({"1": {"answer": "cut"}}));
 
-        for (case, review, next, waiting) in cases {
-            let repo = make_repo();
-            let dir = repo.path();
-            if let Some((status, feedback)) = review {
-                save_review(dir, status, &[requests()], feedback);
-            }
+        let error = make_feedback_request_list(dir, None, &[]).unwrap_err();
 
-            let output = show_status(dir).unwrap();
+        assert_eq!(error.code, code, "{status}");
+    }
+}
 
-            let shown = match output.result.waiting {
-                Waiting::Nothing => json!(null),
-                Waiting::FeedbackRequests(ids) => json!(ids),
-                Waiting::UserNotes(notes) => json!(notes),
-            };
-            assert_eq!(output.next, next, "{case}");
-            assert_eq!(shown, waiting, "{case}");
+/// `make_feedback_request_list` must leave the saved Review Session's bytes and modified time as they were, and a missing one missing.
+/// Otherwise building or refusing a list could rewrite or start the Review Session and lose User Feedback.
+#[test]
+fn make_feedback_request_list_leaves_review_session() {
+    let cases = [
+        None,
+        Some("waiting_for_user_feedback"),
+        Some("writing_user_feedback"),
+        Some("user_notes_waiting"),
+        Some("done"),
+    ];
+
+    for status in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        write_store(dir, REWORDED, "");
+        if let Some(status) = status {
+            let requests = json!([request_json(1, Some("SaveAnswer"), REWORDED, 3)]);
+            save_review(
+                dir,
+                status,
+                &[requests],
+                json!({"1": {"note": "Say which lock."}}),
+            );
+            let review_file = File::options()
+                .write(true)
+                .open(dir.join(".git/pde/review.json"));
+            review_file.unwrap().set_modified(UNIX_EPOCH).unwrap();
         }
+        let before = read_review_file(dir);
+
+        let _ = make_feedback_request_list(dir, None, &[]);
+
+        assert_eq!(read_review_file(dir), before, "{status:?}");
+    }
+}
+
+/// `make_feedback_request_list` must resend each noted request whose comment is still there once, under its ID with the comment's current text.
+/// Otherwise the user would answer a User Note's request with old text, under a new ID, or twice.
+#[test]
+fn noted_requests_keep_ids_with_current_text() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let first_list = json!([
+        request_json(1, Some("SaveAnswer"), "// Saves the answer.\n", 3),
+        request_json(2, None, "\t// Takes the lock.\n", 5),
+        request_json(3, None, "\t// Writes the answer.\n", 8),
+        request_json(4, None, "\t// Unlocks the store.\n", 10),
+        request_json(5, Some("CountAnswers"), "// Counts the answers.\n", 14),
+        request_json(6, None, "\t// Retries once.\n", 17),
+        request_json(7, None, "\t// Retries once.\n", 19),
+    ]);
+    // The second list sent one noted request again with new text.
+    let second_list = json!([request_json(2, None, "\t// Holds the lock.\n", 5)]);
+    let note = json!({"note": "Say which lock."});
+    let feedback = json!({
+        "1": note, "2": note, "3": note, "4": {"answer": "keep"},
+        "5": note, "6": note, "7": note,
+    });
+    save_review(
+        dir,
+        "user_notes_waiting",
+        &[first_list, second_list],
+        feedback,
+    );
+    let current = concat!(
+        "package review\n",
+        "\n",
+        "// Saves the answer under the review lock.\n",
+        "func SaveAnswer() {\n",
+        // A new line above moves the noted comment down by one.
+        "\tdefer unlock()\n",
+        "\t// Holds the lock.\n",
+        "\tlock()\n",
+        // A noted comment reworded in place to the kept comment's text.
+        "\t// Unlocks the store.\n",
+        "\twrite()\n",
+        "\t// Unlocks the store.\n",
+        "\tunlock()\n",
+        "}\n",
+        "\n",
+        "func CountAnswers() {}\n",
+        "\n",
+        // Two noted comments with equal text, after the agent deleted one copy.
+        "func RetryAnswer() {\n",
+        "\t// Retries once.\n",
+        "\tretry()\n",
+        "\tretry()\n",
+        "}\n",
+    );
+    fs::write(dir.join(STORE), current).unwrap();
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let requests = output.result.list.requests;
+    let listed: Vec<String> = requests.iter().map(describe_with_id).collect();
+    assert_eq!(
+        listed,
+        [
+            "1 3 review_store.go SaveAnswer new",
+            "2 6 review_store.go (unnamed) new",
+            "3 8 review_store.go (unnamed) new",
+            "6 17 review_store.go (unnamed) new",
+        ]
+    );
+    assert_eq!(
+        requests[0].text,
+        "// Saves the answer under the review lock.\n"
+    );
+    assert_eq!(requests[2].text, "\t// Unlocks the store.\n");
+}
+
+/// `make_feedback_request_list` must list each comment written while User Notes wait under a new ID after the highest one.
+/// Otherwise a comment the agent wrote while answering User Notes would skip the user, or take an ID already used.
+#[test]
+fn comments_written_during_user_notes_get_ids() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([
+        request_json(1, Some("SaveAnswer"), APPROVED, 3),
+        request_json(2, None, "\t/* Takes it. */", 5),
+        request_json(3, None, "\t// Flushes the store.\n", 6),
+    ]);
+    let keep = json!({"answer": "keep"});
+    let feedback = json!({"1": {"note": "Say which lock."}, "2": keep, "3": keep});
+    save_review(dir, "user_notes_waiting", &[requests], feedback);
+    let current = concat!(
+        "package review\n",
+        "\n",
+        "// Saves the answer under the lock.\n",
+        "func SaveAnswer() {\n",
+        // A new comment on the same line as a kept one.
+        "\t/* Takes it. */ lock() // Never unlocks.\n",
+        "\t// Flushes the store.\n",
+        "\tflush()\n",
+        // A new copy of the kept comment's text.
+        "\t// Flushes the store.\n",
+        "\tflush()\n",
+        "}\n",
+        "\n",
+        "// Deletes an answer.\n",
+        "func DeleteAnswer() {}\n",
+    );
+    fs::write(dir.join(STORE), current).unwrap();
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let listed: Vec<String> = output
+        .result
+        .list
+        .requests
+        .iter()
+        .map(describe_with_id)
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "1 3 review_store.go SaveAnswer new",
+            "4 5 review_store.go (unnamed) new",
+            "5 8 review_store.go (unnamed) new",
+            "6 12 review_store.go DeleteAnswer new",
+        ]
+    );
+}
+
+/// `make_feedback_request_list` must ask again about an answered comment reworded since, and not about one left as it was.
+/// Otherwise User Feedback on the old text would be written over the new text, or the user would answer one comment twice.
+#[test]
+fn only_reworded_answered_comments_are_asked_again() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([
+        request_json(1, Some("SaveAnswer"), APPROVED, 3),
+        request_json(2, Some("CountAnswers"), "// Counts the answers.\n", 6),
+        request_json(3, Some("LoadAnswers"), "// Loads every answer.\n", 9),
+        request_json(4, None, "\t// Reads the list.\n", 13),
+    ]);
+    let keep = json!({"answer": "keep"});
+    let feedback = json!({"1": {"note": "Say which lock."}, "2": keep, "3": keep, "4": keep});
+    save_review(dir, "user_notes_waiting", &[requests], feedback);
+    let current = concat!(
+        "package review\n",
+        "\n",
+        "// Saves the answer under the lock.\n",
+        "func SaveAnswer() {}\n",
+        "\n",
+        "// Counts the answers.\n",
+        "func CountAnswers() {}\n",
+        "\n",
+        // Two kept comments reworded since the list was sent.
+        "// Loads every answer and deletes every backup.\n",
+        "func LoadAnswers() {}\n",
+        "\n",
+        "func ReadList() {\n",
+        "\t// Reads and clears the list.\n",
+        "\tread()\n",
+        "}\n",
+    );
+    fs::write(dir.join(STORE), current).unwrap();
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let listed: Vec<String> = output
+        .result
+        .list
+        .requests
+        .iter()
+        .map(describe_with_id)
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "1 3 review_store.go SaveAnswer new",
+            "5 9 review_store.go LoadAnswers new",
+            "6 13 review_store.go (unnamed) new",
+        ]
+    );
+}
+
+/// `make_feedback_request_list` must keep a resent list in file and line order, with noted and new requests mixed.
+/// Otherwise the user would get the comments out of file order.
+#[test]
+fn resent_list_keeps_file_and_line_order() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+    save_review(
+        dir,
+        "user_notes_waiting",
+        &[requests],
+        json!({"1": {"note": "Say which lock."}}),
+    );
+    let source = format!(
+        "package review\n\n// Deletes an answer.\nfunc DeleteAnswer() {{}}\n\n{APPROVED}func SaveAnswer() {{}}\n"
+    );
+    fs::write(dir.join(STORE), source).unwrap();
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let listed: Vec<String> = output
+        .result
+        .list
+        .requests
+        .iter()
+        .map(describe_with_id)
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "2 3 review_store.go DeleteAnswer new",
+            "1 6 review_store.go SaveAnswer new",
+        ]
+    );
+}
+
+/// `make_feedback_request_list` must use the Review Session's saved base when User Notes wait and no base is given.
+/// Otherwise a stacked branch would be checked from the branch start and list its parent's comments.
+#[test]
+fn no_base_given_uses_saved_review_base() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let parent = format!(
+        "{}\n// Lists every review.\nfunc ListReviews() {{}}\n",
+        store_source(APPROVED, "")
+    );
+    fs::write(dir.join(STORE), parent).unwrap();
+    commit_all(dir);
+    let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+    save_review(
+        dir,
+        "user_notes_waiting",
+        &[requests],
+        json!({"1": {"note": "Say which lock."}}),
+    );
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let listed: Vec<String> = output
+        .result
+        .list
+        .requests
+        .iter()
+        .map(describe_with_id)
+        .collect();
+    assert_eq!(listed, ["1 3 review_store.go SaveAnswer new"]);
+}
+
+/// `make_feedback_request_list` must refuse a base other than the saved one while User Notes wait.
+/// Otherwise a later base could hide a comment committed after the list was sent.
+#[test]
+fn other_base_during_user_notes_refuses_list() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+    save_review(
+        dir,
+        "user_notes_waiting",
+        &[requests],
+        json!({"1": {"note": "Say which lock."}}),
+    );
+    write_store(dir, REWORDED, "");
+    commit_all(dir);
+    let later = resolve_commit(dir, "HEAD").unwrap();
+
+    let error = make_feedback_request_list(dir, Some(later), &[]).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::BadInput);
+}
+
+/// `make_feedback_request_list` must refuse, naming the file, when a commit or the index holds a comment it would ask about that the disk copy does not.
+/// Otherwise that comment could ship without User Feedback, even from a file with no decision.
+#[test]
+fn unasked_committed_or_staged_comment_refuses_list() {
+    /// Puts the cut comment only in the index.
+    fn stage_only(dir: &Path) {
+        write_store(dir, "", "");
+        commit_all(dir);
+        write_store(dir, APPROVED, "return");
+        run_git(dir, &["add", STORE]);
+        run_git(
+            dir,
+            &["restore", "--source=HEAD", "--worktree", "--", STORE],
+        );
+    }
+    /// Puts the cut comment only in HEAD.
+    fn commit_only(dir: &Path) {
+        write_store(dir, APPROVED, "return");
+        commit_all(dir);
+        write_store(dir, "", "return");
+        run_git(dir, &["add", STORE]);
+    }
+    /// Commits a new unnamed comment, then rewords it on disk only.
+    fn reword_unnamed_on_disk(dir: &Path) {
+        write_store(dir, "", "\n\t// Holds the lock.\n\treturn\n");
+        commit_all(dir);
+        write_store(dir, "", "\n\t// Holds the store lock.\n\treturn\n");
+    }
+    /// Stages a new file with a comment, then deletes it from disk.
+    fn stage_then_delete_new_file(dir: &Path) {
+        let source = "package review\n\n// Counts the answers.\nfunc CountAnswers() {}\n";
+        fs::write(dir.join("other.go"), source).unwrap();
+        run_git(dir, &["add", "other.go"]);
+        fs::remove_file(dir.join("other.go")).unwrap();
+    }
+    /// Commits a new file with a comment, then removes it from the index and disk.
+    fn commit_then_remove_new_file(dir: &Path) {
+        let source = "package review\n\n// Counts the answers.\nfunc CountAnswers() {}\n";
+        fs::write(dir.join("other.go"), source).unwrap();
+        commit_all(dir);
+        run_git(dir, &["rm", "--quiet", "other.go"]);
+    }
+    let cases = [
+        ("only-in-the-index", stage_only as fn(&Path), STORE),
+        ("only-in-head", commit_only, STORE),
+        (
+            "unnamed-older-wording-in-head",
+            reword_unnamed_on_disk,
+            STORE,
+        ),
+        (
+            "file-with-no-decision-only-in-the-index",
+            stage_then_delete_new_file,
+            "other.go",
+        ),
+        (
+            "file-with-no-decision-only-in-head",
+            commit_then_remove_new_file,
+            "other.go",
+        ),
+    ];
+
+    for (case, change_copies, named_file) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        add_decision(dir, STORE, "SaveAnswer", "");
+        change_copies(dir);
+
+        let error = make_feedback_request_list(dir, None, &[]).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::BadInput, "{case}");
+        assert!(
+            error.message.contains(named_file),
+            "{case}: {}",
+            error.message
+        );
+    }
+}
+
+/// `make_feedback_request_list` must list a named comment the disk copy asks about even when HEAD holds an older wording.
+/// Otherwise an agent would have to commit before each list whenever it rewords a committed comment.
+#[test]
+fn older_committed_wording_still_lists_named_comment() {
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", "");
+    write_store(dir, APPROVED, "return");
+    commit_all(dir);
+    write_store(dir, REWORDED, "return");
+
+    let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+    let listed: Vec<String> = output.result.list.requests.iter().map(describe).collect();
+    assert_eq!(listed, ["review_store.go SaveAnswer was_cut"]);
+}
+
+/// `make_feedback_request_list` must refuse a file with a decision that does not parse, naming the file, even when the branch never changed it.
+/// Otherwise a cut decided in another worktree could hide in it, and the list would come back empty.
+#[test]
+fn unparsable_approved_file_refuses_list() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let broken = format!("package review\n\n{APPROVED}func SaveAnswer( {{}}\n");
+    fs::write(dir.join("old_broken.go"), broken).unwrap();
+    commit_all(dir);
+    add_decision(dir, "old_broken.go", "SaveAnswer", "");
+    let base = resolve_commit(dir, "HEAD").unwrap();
+
+    let error = make_feedback_request_list(dir, Some(base), &[]).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::FileUnreadable);
+    assert!(error.message.contains("old_broken.go"), "{}", error.message);
+}
+
+/// `show_status` must name the next step and the requests or User Notes the Review Session waits on.
+/// Otherwise an agent could call the wrong step next, or miss what the user waits for.
+#[test]
+fn show_status_tells_agent_what_comes_next() {
+    let requests = || {
+        json!([
+            request_json(1, Some("SaveAnswer"), APPROVED, 3),
+            request_json(2, None, "\t// Holds the lock.\n", 5),
+        ])
+    };
+    let keep = || json!({"answer": "keep"});
+    let cases = [
+        ("no-review", None, NextStep::CheckComments, json!(null)),
+        (
+            "waiting",
+            Some(("waiting_for_user_feedback", json!({"1": keep()}))),
+            NextStep::TellUserAndWait,
+            json!([2]),
+        ),
+        (
+            "notes",
+            Some((
+                "user_notes_waiting",
+                json!({"1": {"note": "Say which lock."}, "2": keep()}),
+            )),
+            NextStep::MakeFeedbackRequestList,
+            json!({"1": "Say which lock."}),
+        ),
+        (
+            "writing",
+            Some(("writing_user_feedback", json!({"1": keep(), "2": keep()}))),
+            NextStep::TellUserAndWait,
+            json!(null),
+        ),
+        (
+            "done",
+            Some(("done", json!({"1": keep(), "2": keep()}))),
+            NextStep::CheckComments,
+            json!(null),
+        ),
+    ];
+
+    for (case, review, next, waiting) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        if let Some((status, feedback)) = review {
+            save_review(dir, status, &[requests()], feedback);
+        }
+
+        let output = show_status(dir).unwrap();
+
+        let shown = match output.result.waiting {
+            Waiting::Nothing => json!(null),
+            Waiting::FeedbackRequests(ids) => json!(ids),
+            Waiting::UserNotes(notes) => json!(notes),
+        };
+        assert_eq!(output.next, next, "{case}");
+        assert_eq!(shown, waiting, "{case}");
     }
 }

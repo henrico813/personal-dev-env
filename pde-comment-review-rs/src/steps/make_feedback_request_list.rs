@@ -1,6 +1,10 @@
-//! Runs step 3, which builds the list of Feedback Requests the user answers.
-//! It saves nothing, so a later step that sends the agent's suggestions can
-//! build the list again to see whether the code changed.
+//! This module runs step 3, which builds the Feedback Request List. It saves
+//! nothing, so a later step that sends the Agent Suggestions can build the
+//! list again to see whether the code changed. Read the
+//! `make_feedback_request_list(dir, base, change_requests)`,
+//! `find_requests(dir, root, base, change_requests)`, and
+//! `resend_noted_requests(root, review, found)` functions to understand the
+//! module.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -17,25 +21,10 @@ use crate::shared::review_session::{
 use crate::shared::user_feedback::UserFeedback;
 use crate::shared::{Error, ErrorCode};
 
-/// Names an approved comment the agent wants the user to reword. It holds no
-/// text, so the request always shows the approved text from disk.
-#[derive(Debug)]
-pub struct ChangeRequest {
-    pub file: PathBuf,
-    pub name: String,
-}
-
-/// Holds step 3's list and the changed files no language rule reads.
-#[derive(Debug)]
-pub struct FeedbackRequestListResult {
-    pub list: FeedbackRequestList,
-    pub unsupported: Vec<PathBuf>,
-}
-
-/// Returns the requests for changes since `base`, or the noted ones again
-/// while User Notes wait. Refuses while a list waits, a write is unfinished,
-/// step 2 fails or a committed or staged comment goes unasked, and for a change
-/// request that names no approved comment the user can reword.
+/// Returns the Feedback Requests for changed or conflicting comments and change
+/// requests, and resends noted ones with their IDs while User Notes wait.
+/// Refuses while a list waits, a write is unfinished, step 2 fails, or a
+/// committed or staged comment goes unasked.
 pub fn make_feedback_request_list(
     dir: &Path,
     base: Option<CommitId>,
@@ -60,7 +49,8 @@ pub fn make_feedback_request_list(
         _ => {}
     }
     let noted_review = review.filter(|review| review.status == ReviewStatus::UserNotesWaiting);
-    // A notes round keeps its task's base, so a stacked branch is not checked against its parent.
+    // While User Notes wait, the Review Session keeps its task's base, so a
+    // stacked branch is not checked against its parent.
     let saved_base = noted_review
         .as_ref()
         .and_then(|review| review.lists.last())
@@ -92,7 +82,8 @@ pub fn make_feedback_request_list(
     let found = find_requests(dir, &root, &base, change_requests)?;
     let requests = match noted_review {
         Some(review) => resend_noted_requests(&root, &review, found)?,
-        // A new review starts at 1, since a finished one's answers never carry over.
+        // A new Review Session numbers from 1, since a finished one's User
+        // Feedback never carries over.
         None => number_requests(found.into_iter().map(|found| found.request).collect(), 1),
     };
     Ok(StepOutput {
@@ -104,14 +95,7 @@ pub fn make_feedback_request_list(
     })
 }
 
-/// Holds a request and the byte where its comment starts on disk, which tells
-/// two comments on one line apart.
-struct FoundRequest {
-    request: FeedbackRequest,
-    start: usize,
-}
-
-/// Returns a request for each comment that is new since `base` or goes against
+/// Returns a request for each comment that is changed since `base` or goes against
 /// a decision, and for each change request. Their IDs are not set yet.
 fn find_requests(
     dir: &Path,
@@ -142,7 +126,7 @@ fn find_requests(
                 });
             }
         }
-        // Commits and the index ship too, but the user's answers are written into the disk copy.
+        // Commits and the index ship too, but User Feedback is written into the disk copy.
         for version in git::read_changed_versions(root, base, file)? {
             let place = version.place;
             let shipped = comments::read_version_comments(file, version)?;
@@ -156,7 +140,7 @@ fn find_requests(
                 return Err(Error {
                     code: ErrorCode::BadInput,
                     message: format!(
-                        "{} {place} holds a comment the user must answer, but the disk copy does not ask about it. Make the committed, staged and disk copies agree, then call again.",
+                        "{} {place} holds a comment that needs User Feedback, but the disk copy does not ask about it. Make the committed, staged and disk copies agree, then call again.",
                         file.display()
                     ),
                 });
@@ -166,7 +150,7 @@ fn find_requests(
     }
     for change_request in change_requests {
         let change = to_change_request(root, &approvals, change_request)?;
-        // Two requests for one comment would leave two answers to write into it.
+        // Two requests for one comment would leave two pieces of User Feedback to write into it.
         if !found.iter().any(|listed| {
             listed.request.file == change.request.file && listed.request.name == change.request.name
         }) {
@@ -176,60 +160,8 @@ fn find_requests(
     Ok(found)
 }
 
-/// Returns true when the request asks about the comment's name, or about its
-/// text when it has no name.
-fn is_asked_as(request: &FeedbackRequest, comment: &Comment) -> bool {
-    request.name == comment.name && (comment.name.is_some() || request.text == comment.text)
-}
-
-/// Returns why the user must answer the comment, or `None` when they need not.
-fn find_reason(
-    approvals: &Approvals,
-    before: &FileComments,
-    comment: &Comment,
-) -> Option<RequestReason> {
-    match approvals.compare(comment) {
-        DecisionMatch::Undecided if !before.has_same(comment) => Some(RequestReason::New),
-        DecisionMatch::Undecided | DecisionMatch::Approved => None,
-        DecisionMatch::WasCut => Some(RequestReason::WasCut),
-        // A changed comment would already have failed step 2, so this one has not changed.
-        DecisionMatch::DiffersFromApproved => Some(RequestReason::DiffersFromApproved),
-    }
-}
-
-fn to_change_request(
-    root: &Path,
-    approvals: &Approvals,
-    change_request: &ChangeRequest,
-) -> Result<FoundRequest, Error> {
-    let now = comments::read_comments_on_disk(root, &change_request.file)?;
-    let comment = now
-        .comments
-        .iter()
-        .find(|comment| comment.name.as_ref() == Some(&change_request.name));
-    match comment {
-        Some(comment)
-            if approvals.compare(comment) == DecisionMatch::Approved
-                && comment.style.can_reword() =>
-        {
-            Ok(FoundRequest {
-                request: to_request(comment, RequestReason::AgentWantsChange),
-                start: comment.byte_range.start,
-            })
-        }
-        _ => Err(Error {
-            code: ErrorCode::BadInput,
-            message: format!(
-                "Ask to change only an approved comment the user can reword. {} in {} is not one.",
-                change_request.name,
-                change_request.file.display()
-            ),
-        }),
-    }
-}
-
 /// Returns each noted request read again from the code, keeping its ID, and
-/// each found request whose comment no request in the review still holds,
+/// each found request whose comment no request in the Review Session holds,
 /// under new IDs.
 fn resend_noted_requests(
     root: &Path,
@@ -262,13 +194,14 @@ fn resend_noted_requests(
                     ..to_request(comment, request.reason)
                 });
             }
-            // An answer covers only the text the user saw, so a comment reworded since is asked again.
+            // User Feedback covers only the text the user saw, so a comment
+            // reworded since is asked again.
             if is_noted || comment.text == request.text {
                 held.insert((file, comment.byte_range.start));
             }
         }
     }
-    // A comment the agent wrote while answering notes must still reach the user.
+    // A comment the agent wrote while answering User Notes must still reach the user.
     let unsent: Vec<FeedbackRequest> = found
         .into_iter()
         .filter(|found| !held.contains(&(found.request.file.as_path(), found.start)))
@@ -278,6 +211,82 @@ fn resend_noted_requests(
     requests.extend(number_requests(unsent, next_id));
     requests.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
     Ok(requests)
+}
+
+/// Names an approved comment the agent wants the user to reword. It holds no
+/// text, so the request always shows the approved text from disk.
+#[derive(Debug)]
+pub struct ChangeRequest {
+    pub file: PathBuf,
+    pub name: String,
+}
+
+/// Holds step 3's Feedback Request List and the changed files no language
+/// rule reads.
+#[derive(Debug)]
+pub struct FeedbackRequestListResult {
+    pub list: FeedbackRequestList,
+    pub unsupported: Vec<PathBuf>,
+}
+
+/// Holds a request and the byte where its comment starts on disk, which tells
+/// two comments on one line apart.
+struct FoundRequest {
+    request: FeedbackRequest,
+    start: usize,
+}
+
+/// Returns true when the request asks about the comment's name, or about its
+/// text when it has no name.
+fn is_asked_as(request: &FeedbackRequest, comment: &Comment) -> bool {
+    request.name == comment.name && (comment.name.is_some() || request.text == comment.text)
+}
+
+/// Returns why the comment needs User Feedback, or `None` when it does not.
+fn find_reason(
+    approvals: &Approvals,
+    before: &FileComments,
+    comment: &Comment,
+) -> Option<RequestReason> {
+    match approvals.compare(comment) {
+        DecisionMatch::Undecided if !before.has_same(comment) => Some(RequestReason::New),
+        DecisionMatch::Undecided | DecisionMatch::Approved => None,
+        DecisionMatch::WasCut => Some(RequestReason::WasCut),
+        // A changed comment would already have failed step 2, so this one has not changed.
+        DecisionMatch::DiffersFromApproved => Some(RequestReason::DiffersFromApproved),
+    }
+}
+
+/// Returns the request for an approved comment the user can reword, or refuses with `BadInput`.
+fn to_change_request(
+    root: &Path,
+    approvals: &Approvals,
+    change_request: &ChangeRequest,
+) -> Result<FoundRequest, Error> {
+    let now = comments::read_comments_on_disk(root, &change_request.file)?;
+    let comment = now
+        .comments
+        .iter()
+        .find(|comment| comment.name.as_ref() == Some(&change_request.name));
+    match comment {
+        Some(comment)
+            if approvals.compare(comment) == DecisionMatch::Approved
+                && comment.style.can_reword() =>
+        {
+            Ok(FoundRequest {
+                request: to_request(comment, RequestReason::AgentWantsChange),
+                start: comment.byte_range.start,
+            })
+        }
+        _ => Err(Error {
+            code: ErrorCode::BadInput,
+            message: format!(
+                "Ask to change only an approved comment the user can reword. {} in {} is not one.",
+                change_request.name,
+                change_request.file.display()
+            ),
+        }),
+    }
 }
 
 /// Sorts requests in file and line order and numbers them from `first`, so
