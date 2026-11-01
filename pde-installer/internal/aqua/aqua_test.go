@@ -23,11 +23,11 @@ func TestAquaProbeReturnsCommandErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeExecutable(t, binary, "#!/bin/sh\nexit 9\n")
-	_, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).Probe()
+	_, status, err := New(home, t.TempDir(), "full", run.Runner{}).Probe()
 	if err == nil || status != "" || !strings.Contains(err.Error(), "exit status 9") {
 		t.Fatalf("Probe() = _, %q, %v", status, err)
 	}
-	if _, status := New(home, t.TempDir(), profile.Full, run.Runner{}).Status(); status != "error" {
+	if _, status := New(home, t.TempDir(), "full", run.Runner{}).Status(); status != "error" {
 		t.Fatalf("Status() state = %q", status)
 	}
 }
@@ -62,7 +62,7 @@ func writeExecutable(t *testing.T, path, content string) {
 // Missing Aqua tools must not be reported as current.
 func TestAquaProbeReportsMissingTool(t *testing.T) {
 	t.Parallel()
-	_, status, err := New(t.TempDir(), t.TempDir(), profile.Full, run.Runner{}).ToolProbe("fd", "v8.3.1")
+	_, status, err := New(t.TempDir(), t.TempDir(), "full", run.Runner{}).ToolProbe("fd", "v8.3.1")
 	if err != nil || status != "missing" {
 		t.Fatalf("ToolProbe() = _, %q, %v", status, err)
 	}
@@ -76,8 +76,9 @@ func TestAquaRejectsInvalidProfile(t *testing.T) {
 }
 
 func TestProfileAquaPackages(t *testing.T) {
-	for _, selected := range []profile.Profile{profile.Full, profile.Client, profile.Terminal} {
-		t.Run(string(selected), func(t *testing.T) {
+	for _, name := range []profile.Profile{"full", "client", "terminal"} {
+		t.Run(string(name), func(t *testing.T) {
+			selected := name
 			configName, _ := selected.AquaFiles()
 			configPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", configName)
 			configData, err := os.ReadFile(configPath)
@@ -107,8 +108,9 @@ func TestProfileAquaPackages(t *testing.T) {
 }
 
 func TestProfileAquaChecksums(t *testing.T) {
-	for _, selected := range []profile.Profile{profile.Full, profile.Terminal} {
-		t.Run(string(selected), func(t *testing.T) {
+	for _, name := range []profile.Profile{"full", "terminal"} {
+		t.Run(string(name), func(t *testing.T) {
+			selected := name
 			_, checksumsName := selected.AquaFiles()
 			checksumsPath := filepath.Join("..", "..", "..", "chezmoi", "dot_config", "aquaproj-aqua", checksumsName)
 			ids := readChecksumIDs(t, checksumsPath)
@@ -191,7 +193,7 @@ func checksumContains(ids []string, fragment string) bool {
 }
 
 func TestYaziProvidesYaExecutable(t *testing.T) {
-	candidates := tools(profile.Terminal)
+	candidates := tools("terminal")
 	count := 0
 	for _, candidate := range candidates {
 		if candidate.name == "ya" {
@@ -238,7 +240,7 @@ func TestToolProbeUsesPackageBinaries(t *testing.T) {
 			}
 			script := "#!/bin/sh\n[ \"$1\" = \"" + test.argument + "\" ] || exit 9\nprintf '%s\\n' '" + test.output + "'\n"
 			writeExecutable(t, binary, script)
-			installed, status, err := New(home, t.TempDir(), profile.Full, run.Runner{}).ToolProbe(test.name, test.version)
+			installed, status, err := New(home, t.TempDir(), "full", run.Runner{}).ToolProbe(test.name, test.version)
 			if err != nil || status != "current" || !strings.Contains(installed, test.output) {
 				t.Fatalf("ToolProbe() = %q, %q, %v", installed, status, err)
 			}
