@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"pde-installer/internal/fsutil"
+	"pde-installer/internal/profile"
 	"pde-installer/internal/run"
 )
 
@@ -104,7 +105,7 @@ func migrateLegacyConfig(config config) (*fsutil.Journal, error) {
 		}
 		removeStage = false
 	}
-	if config.Profile.HasWorkstationTools() {
+	if config.Profile.Has(profile.Workstation) {
 		if err := migrateLegacyNvim(config.Home, journal); err != nil {
 			return nil, journal.Revert(err)
 		}

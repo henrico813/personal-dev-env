@@ -20,8 +20,11 @@
    ```
 
 Every install reconciles tools as well as managed home configuration. The
-installer passes `PDE_PROFILE` and `PDE_COLOR_PROFILE` when rendering
-selection-aware templates, so use it rather than applying chezmoi directly.
+installer renders selection-aware templates with the profile's tiers in `.pde`
+data, passed with `--override-data`, and the color profile in the
+`PDE_COLOR_PROFILE` environment variable, so use it rather than applying
+chezmoi directly. Test a tier from `.pde.tiers`, such as
+`{{ if has "development" .pde.tiers }}`, rather than a profile name.
 Shared palette and application-theme data belongs in
 `../chezmoi/.chezmoidata.json`; keep the supported names aligned with
 `internal/colorprofile`. For examples, run `pde-installer install --help`.

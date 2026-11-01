@@ -38,7 +38,11 @@ agent, unless the linking skill names someone else.
    memory as your instructions say.
 2. If `skill-lessons` is installed, also offer to save it in that skill
    as a lesson, once and at the time the skill names.
-3. When the user says "remember", save it at once and show the one line
+3. Offer a lesson only for a rule an agent would apply correctly in
+   another repository or task. Write it without facts true only of
+   this task, such as its PR numbers, option labels, models on trial
+   or one-time slips. If no such rule is left, offer no lesson.
+4. When the user says "remember", save it at once and show the one line
    the command prints. Replace `<skill>` with the skill's name and
    `<rule>` with the rule:
 
@@ -50,7 +54,7 @@ agent, unless the linking skill names someone else.
 
    The rule goes on its own line, so apostrophes, quotes, backticks and
    `$` are saved as written.
-4. If the user corrects a lesson again, add `repeat_of: "L<n>"` inside
+5. If the user corrects a lesson again, add `repeat_of: "L<n>"` inside
    the braces, with the ID from the end of that lesson. For lesson L3:
 
        '{skill: "<skill>", repeat_of: "L3", text: ($text | rtrimstr("\n"))}'

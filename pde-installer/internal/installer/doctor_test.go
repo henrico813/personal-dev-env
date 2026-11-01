@@ -72,7 +72,7 @@ func copilotReportCases() []copilotReportCase {
 	return []copilotReportCase{
 		{
 			name:        "full report finds installed files",
-			profile:     profile.Full,
+			profile:     "full",
 			mode:        preflightReport,
 			createFiles: true,
 			wantCopilot: "status  GitHub Copilot plugin: installed\n" +
@@ -80,19 +80,19 @@ func copilotReportCases() []copilotReportCase {
 		},
 		{
 			name:    "full report warns about missing files",
-			profile: profile.Full,
+			profile: "full",
 			mode:    preflightReport,
 			wantCopilot: "warning GitHub Copilot plugin: missing; run pde-installer install\n" +
 				"warning GitHub Copilot credentials: missing; run :Copilot auth in Neovim\n",
 		},
 		{
 			name:    "full quiet mode omits Copilot",
-			profile: profile.Full,
+			profile: "full",
 			mode:    preflightQuiet,
 		},
 		{
 			name:    "terminal report omits Copilot",
-			profile: profile.Terminal,
+			profile: "terminal",
 			mode:    preflightReport,
 		},
 	}
