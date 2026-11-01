@@ -52,16 +52,13 @@ Run every step for one PR before its child PR starts building. The
 prompts are in [references/prompts.md](references/prompts.md) and the
 commands in [references/build.md](references/build.md).
 
-1. **Plan.** Delegate the plan with `create-plan`. Point the planner
-   to only the design sections its PR needs, by heading, and always to
-   the design's Dictionary section, so names and comments use its
-   words. The planner may read another section when its plan depends
-   on it. A child of an unbuilt parent is written against a commit of
-   the parent's planned tree, made as build.md says.
+1. **Plan.** Delegate the plan with `create-plan`. A child of an
+   unbuilt parent is written against a commit of the parent's planned
+   tree, made as build.md says.
 2. **Fresh plan review.** A new agent reviews the plan with
-   `review-plan` and the domain skills, given the same design sections
-   as the planner. Send its findings, with your decision on each
-   optional item, back to the planner's session in one message.
+   `review-plan` and the domain skills. Send its findings, with your
+   decision on each optional item, back to the planner's session in
+   one message.
 3. **Build.** Export each plan step's tree and commit it with
    `git commit-tree` on the step before, starting at the plan's base.
    Make the PR's worktree with `wt` and move it to the last commit. A

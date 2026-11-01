@@ -39,11 +39,9 @@ Reviewers also get:
     vault before writing there.
 
     Base: <branch> at <full commit>; for a child of an unbuilt
-    parent, the commit of the parent's planned tree. Read: <roadmap>,
-    <parent plans>, and these sections of <design>: Dictionary,
-    <headings this PR needs>. Read another design section only when
-    your plan depends on it. Use the Dictionary's words in names and
-    comments. Scope: <what this PR does and does not do>.
+    parent, the commit of the parent's planned tree. Read: <design>,
+    <roadmap>, <parent plans>. Scope: <what this PR does and does not
+    do>.
 
     Decisions, each labeled user-decided, orchestrator-proposed or
     inferred from code: <list>.
@@ -61,9 +59,7 @@ so it keeps its context.
     Applicable skills: review-plan, <domain skills>,
     code-documentation, behavior-focused-testing.
 
-    Plan: <path> (base on its `Base commit:` line). Design: <path>,
-    sections Dictionary and <the planner's headings>. Read another
-    design section only when the plan depends on it.
+    Plan: <path> (base on its `Base commit:` line). Design: <path>.
     What it does: <two sentences>. Check especially: <the ways it
     could lose the user's data or do the wrong thing>.
 
