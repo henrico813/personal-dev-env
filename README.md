@@ -104,13 +104,13 @@ Vibe binaries plus repo-managed AI config.
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
+| Skill lessons skill | `ai/skills/skill-lessons/` | `~/.agents/skills/skill-lessons/` | How to follow and save the lessons in a skill's Lessons section |
 | Comment review skill | `ai/skills/comment-review/` | `~/.agents/skills/comment-review/` | Saves code comments as a review you answer one per screen |
 | Go development | `ai/skills/go-development/` | `~/.agents/skills/go-development/` | Shared Go development guidance |
 | Python development | `ai/skills/python-development/` | `~/.agents/skills/python-development/` | Shared Python development guidance |
 | Rust development | `ai/skills/rust-development/` | `~/.agents/skills/rust-development/` | Shared Rust development guidance |
 | TypeScript development | `ai/skills/typescript-development/` | `~/.agents/skills/typescript-development/` | Shared JavaScript and TypeScript development guidance |
 | Pull request | `ai/skills/pull-request/` | `~/.agents/skills/pull-request/` | Pull-request procedure |
-| Skill lessons | `ai/skills/lessons.md` | `~/.agents/skills/lessons.md` | What makes a skill lesson worth saving |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
 | Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
@@ -181,7 +181,8 @@ The skills are installed to `~/.agents/skills/`, and the installer copies the
 shared `AGENTS.md` into `~/.codex/` and `~/.claude/` so the workflow defaults
 stay aligned with the rest of the tree. `install client` installs only
 `obsidian-zettel`, `obsidian-daily-note`, `plain-direct-english`,
-`behavior-focused-testing`, and `delegate`; every other skill is full-only.
+`behavior-focused-testing`, `delegate` and `skill-lessons`; every other
+skill is full-only.
 
 ## Requirements
 

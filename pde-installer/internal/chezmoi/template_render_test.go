@@ -144,10 +144,10 @@ func TestClientGetsOnlyAllowedSkills(t *testing.T) {
 	want := []string{
 		"behavior-focused-testing",
 		"delegate",
-		"lessons.md",
 		"obsidian-daily-note",
 		"obsidian-zettel",
 		"plain-direct-english",
+		"skill-lessons",
 	}
 	if !slices.Equal(skills, want) {
 		t.Fatalf("client skills = %q, want %q", skills, want)
