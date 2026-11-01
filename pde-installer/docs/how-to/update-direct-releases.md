@@ -9,9 +9,7 @@ installs skip them all.
 1. Change the version in `internal/manifest/manifest.go`.
 2. Update architecture checksums in `internal/direct/tools.go`. Keychain uses
    one architecture-independent checksum. For nobs, copy both values
-   from the release's `checksums.txt`. The Moshi CDN deletes older
-   moshi-hook releases. When the pinned one returns 404, move to the
-   version in `https://cdn.getmoshi.app/hook/latest/version.txt`.
+   from the release's `checksums.txt`.
 3. If the upstream archive name, URL, directory layout, or version output
    changed, update its `Tool` entry there too.
 4. Run:
@@ -28,7 +26,7 @@ installs skip them all.
 2. Update archive names and checksums in `internal/direct/direct.go`.
 3. Run the tests and preview above.
 
-After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>` and run `moshi-hook install`; do not run `moshi-hook update`, which would be replaced by the pinned installer version.
+After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>` and run `moshi-hook install`. moshi-hook has no pin: pde-installer installs the newest release when it is missing, and after that moshi-hook updates itself and pde-installer leaves it alone.
 
 After a nobs upgrade, each vault's broker keeps running the old image
 until `nobs vault set` runs again for that vault, or until a stopped
