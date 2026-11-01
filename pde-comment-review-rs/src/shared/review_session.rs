@@ -1,7 +1,7 @@
-//! Loads and saves each worktree's Review Session in `review.json`. Every
-//! change takes the lock and reads the file again, so two screens saving at
-//! once lose no User Feedback. Later versions may only add fields and values,
-//! or an older program moves their file aside.
+//! This module loads and saves each worktree's Review Session under a lock,
+//! so two screens lose no User Feedback. Read the
+//! `save_user_feedback(dir, shown_request, feedback)`, `lock(dir)`, and
+//! `load(dir)` functions to understand the module.
 
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -20,7 +20,109 @@ const LOCK_FILE: &str = "review.json.lock";
 const TEMP_FILE: &str = "review.json.tmp";
 const UNREADABLE_FILE: &str = "review.json.unreadable";
 
-/// Holds one worktree's review, saved in its own Git folder.
+/// Saves User Feedback unless the Review Session stopped waiting for it or the
+/// Feedback Request changed since the screen showed it. Sets
+/// `user_notes_waiting` once every Feedback Request has User Feedback and any
+/// of it is a User Note.
+pub fn save_user_feedback(
+    dir: &Path,
+    shown_request: &FeedbackRequest,
+    feedback: UserFeedback,
+) -> Result<ReviewStatus, Error> {
+    let mut lock = lock(dir)?;
+    let Some(review_session) = lock.review_session_mut() else {
+        return Err(late_error("No Review Session takes User Feedback here."));
+    };
+    if review_session.status != ReviewStatus::WaitingForUserFeedback {
+        return Err(late_error(
+            "This Review Session no longer takes User Feedback.",
+        ));
+    }
+    // A screen left open may still show an older version of this Feedback Request.
+    let newest_request = review_session
+        .lists
+        .iter()
+        .rev()
+        .flat_map(|list| &list.requests)
+        .find(|request| request.id == shown_request.id);
+    if newest_request != Some(shown_request) {
+        return Err(Error {
+            code: ErrorCode::RequestChanged,
+            message: "The Feedback Request changed after the screen showed it.".to_owned(),
+        });
+    }
+    review_session.feedback.insert(shown_request.id, feedback);
+    let every_request_has_feedback = review_session
+        .lists
+        .iter()
+        .flat_map(|list| &list.requests)
+        .all(|request| review_session.feedback.contains_key(&request.id));
+    let any_note = review_session
+        .feedback
+        .values()
+        .any(|feedback| matches!(feedback, UserFeedback::Note(_)));
+    if every_request_has_feedback && any_note {
+        review_session.status = ReviewStatus::UserNotesWaiting;
+    }
+    let status = review_session.status;
+    lock.save()?;
+    Ok(status)
+}
+
+/// Takes the lock and reads `review.json` again under it. Waits while any
+/// other holder has the lock, even one in this process.
+pub fn lock(dir: &Path) -> Result<ReviewSessionLock, Error> {
+    let folder = git::find_worktree_git_folder(dir)?.join("pde");
+    fs::create_dir_all(&folder).map_err(|error| save_error(&folder, error))?;
+    // Each save renames over review.json, so the lock sits on a file that stays.
+    let lock_path = folder.join(LOCK_FILE);
+    let lock_file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|error| save_error(&lock_path, error))?;
+    lock_file
+        .lock()
+        .map_err(|error| save_error(&lock_path, error))?;
+    let review_session = read_review_session(&folder)?;
+    Ok(ReviewSessionLock {
+        _lock_file: lock_file,
+        folder,
+        review_session,
+    })
+}
+
+/// Returns the saved Review Session, or `None` when there is none. Moves an
+/// unreadable file aside, but leaves a newer version's file in place.
+pub fn load(dir: &Path) -> Result<Option<ReviewSession>, Error> {
+    Ok(lock(dir)?.review_session)
+}
+
+impl ReviewSessionLock {
+    /// Returns the Review Session to change, or `None` when there is none.
+    pub fn review_session_mut(&mut self) -> Option<&mut ReviewSession> {
+        self.review_session.as_mut()
+    }
+
+    /// Saves through a temporary file, so a crash leaves the old file whole.
+    /// Saves nothing when there is no Review Session.
+    pub fn save(&self) -> Result<(), Error> {
+        let Some(review_session) = &self.review_session else {
+            return Ok(());
+        };
+        let path = self.folder.join(REVIEW_FILE);
+        let mut text =
+            serde_json::to_vec_pretty(review_session).map_err(|error| save_error(&path, error))?;
+        text.push(b'\n');
+        // Only the lock holder writes this file, so one fixed name is enough.
+        let temp_path = self.folder.join(TEMP_FILE);
+        write_and_sync(&temp_path, &text).map_err(|error| save_error(&temp_path, error))?;
+        fs::rename(&temp_path, &path).map_err(|error| save_error(&path, error))
+    }
+}
+
+/// Holds one worktree's Review Session, saved in its own Git folder.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewSession {
@@ -41,7 +143,7 @@ pub enum ReviewStatus {
     Done,
 }
 
-/// Names the repository, branch and agent session the review came from.
+/// Names the repository, branch and agent session the Review Session came from.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewOrigin {
@@ -70,12 +172,12 @@ pub struct FeedbackRequest {
     pub reason: RequestReason,
     pub text: String,
     pub can_reword: bool,
-    /// Finds an unnamed comment again when its request is sent back.
+    /// Finds an unnamed comment again when its Feedback Request is sent back.
     pub line: usize,
     pub suggestion: Option<AgentSuggestion>,
 }
 
-/// Numbers a Feedback Request the same way in every list.
+/// Numbers a Feedback Request the same way in every Feedback Request List.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RequestId(u32);
 
@@ -110,110 +212,11 @@ pub enum SuggestionKind {
     Reword { text: String },
 }
 
-/// Holds the review's lock until dropped, with the Review Session read under it.
+/// Holds the lock until dropped, with the Review Session read under it.
 pub struct ReviewSessionLock {
     _lock_file: File,
     folder: PathBuf,
     review_session: Option<ReviewSession>,
-}
-
-impl ReviewSessionLock {
-    /// Returns the Review Session to change, or `None` when there is none.
-    pub fn review_session_mut(&mut self) -> Option<&mut ReviewSession> {
-        self.review_session.as_mut()
-    }
-
-    /// Saves through a temporary file, so a crash leaves the old file whole.
-    /// Saves nothing when there is no Review Session.
-    pub fn save(&self) -> Result<(), Error> {
-        let Some(review_session) = &self.review_session else {
-            return Ok(());
-        };
-        let path = self.folder.join(REVIEW_FILE);
-        let mut text =
-            serde_json::to_vec_pretty(review_session).map_err(|error| save_error(&path, error))?;
-        text.push(b'\n');
-        // Only the lock holder writes this file, so one fixed name is enough.
-        let temp_path = self.folder.join(TEMP_FILE);
-        write_and_sync(&temp_path, &text).map_err(|error| save_error(&temp_path, error))?;
-        fs::rename(&temp_path, &path).map_err(|error| save_error(&path, error))
-    }
-}
-
-/// Returns the saved Review Session, or `None` when there is none. Moves an
-/// unreadable file aside, but leaves a newer version's file in place.
-pub fn load(dir: &Path) -> Result<Option<ReviewSession>, Error> {
-    Ok(lock(dir)?.review_session)
-}
-
-/// Takes the lock and reads `review.json` again under it. Waits while any
-/// other holder has the lock, even one in this process.
-pub fn lock(dir: &Path) -> Result<ReviewSessionLock, Error> {
-    let folder = git::find_worktree_git_folder(dir)?.join("pde");
-    fs::create_dir_all(&folder).map_err(|error| save_error(&folder, error))?;
-    // Each save renames over review.json, so the lock sits on a file that stays.
-    let lock_path = folder.join(LOCK_FILE);
-    let lock_file = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|error| save_error(&lock_path, error))?;
-    lock_file
-        .lock()
-        .map_err(|error| save_error(&lock_path, error))?;
-    let review_session = read_review_session(&folder)?;
-    Ok(ReviewSessionLock {
-        _lock_file: lock_file,
-        folder,
-        review_session,
-    })
-}
-
-/// Saves User Feedback on a request as the screen showed it, and refuses once the
-/// request changed or the review moved on. Sets `user_notes_waiting` once every
-/// request has feedback and any is a note.
-pub fn save_user_feedback(
-    dir: &Path,
-    shown_request: &FeedbackRequest,
-    feedback: UserFeedback,
-) -> Result<ReviewStatus, Error> {
-    let mut lock = lock(dir)?;
-    let Some(review_session) = lock.review_session_mut() else {
-        return Err(late_error("No review takes User Feedback here."));
-    };
-    if review_session.status != ReviewStatus::WaitingForUserFeedback {
-        return Err(late_error("This review no longer takes User Feedback."));
-    }
-    // A screen left open may still show an older version of this request.
-    let newest_request = review_session
-        .lists
-        .iter()
-        .rev()
-        .flat_map(|list| &list.requests)
-        .find(|request| request.id == shown_request.id);
-    if newest_request != Some(shown_request) {
-        return Err(Error {
-            code: ErrorCode::TextChanged,
-            message: "The Feedback Request changed after the screen showed it.".to_owned(),
-        });
-    }
-    review_session.feedback.insert(shown_request.id, feedback);
-    let every_request_has_feedback = review_session
-        .lists
-        .iter()
-        .flat_map(|list| &list.requests)
-        .all(|request| review_session.feedback.contains_key(&request.id));
-    let any_note = review_session
-        .feedback
-        .values()
-        .any(|feedback| matches!(feedback, UserFeedback::Note(_)));
-    if every_request_has_feedback && any_note {
-        review_session.status = ReviewStatus::UserNotesWaiting;
-    }
-    let status = review_session.status;
-    lock.save()?;
-    Ok(status)
 }
 
 fn read_review_session(folder: &Path) -> Result<Option<ReviewSession>, Error> {
@@ -227,7 +230,7 @@ fn read_review_session(folder: &Path) -> Result<Option<ReviewSession>, Error> {
         Ok(review_session) => return Ok(Some(review_session)),
         Err(error) => error,
     };
-    // Moving a newer version's file aside would lose its review.
+    // Moving a newer version's file aside would lose its Review Session.
     if is_from_newer_version(&error) {
         return Err(Error {
             code: ErrorCode::UnknownSavedField,
@@ -245,6 +248,8 @@ fn read_review_session(folder: &Path) -> Result<Option<ReviewSession>, Error> {
     ))
 }
 
+/// Treats an unknown field or value as a newer version's file. A later version
+/// may only add those, or this version moves its file aside as damaged.
 fn is_from_newer_version(error: &serde_json::Error) -> bool {
     // serde_json gives these errors no kind of their own, so this reads the message.
     let message = error.to_string();
@@ -272,14 +277,20 @@ fn write_and_sync(path: &Path, contents: &[u8]) -> io::Result<()> {
 fn read_error(path: &Path, error: impl Display) -> Error {
     Error {
         code: ErrorCode::SavedFileUnreadable,
-        message: format!("Cannot read the review in {}. {error}", path.display()),
+        message: format!(
+            "Cannot read the Review Session in {}. {error}",
+            path.display()
+        ),
     }
 }
 
 fn save_error(path: &Path, error: impl Display) -> Error {
     Error {
         code: ErrorCode::SaveFailed,
-        message: format!("Cannot save the review in {}. {error}", path.display()),
+        message: format!(
+            "Cannot save the Review Session in {}. {error}",
+            path.display()
+        ),
     }
 }
 

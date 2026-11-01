@@ -19,6 +19,10 @@ const SETTLE: Duration = Duration::from_millis(600);
 pub(super) const HEADER_ROWS: usize = 2;
 pub(super) const KEY_HELP_ROWS: usize = 2;
 
+/// Shows for every refused answer. The reasons rewrite gives are written for
+/// agents, so the screen leaves them out.
+const REFUSED: &str = "That change can't be made to this comment.";
+
 /// What the screen does after a key.
 #[derive(Debug, PartialEq)]
 pub(super) enum AfterKey {
@@ -207,10 +211,10 @@ impl<'a> View<'a> {
     }
 
     /// Keeps the answer and shows the next request without User Feedback, or
-    /// says why the answer cannot be written and keeps nothing.
+    /// says why the answer was refused and keeps nothing.
     fn answer(&mut self, answer: UserAnswer) -> AfterKey {
-        if let Err(reason) = self.check_answer_writes(&answer) {
-            self.notice = reason;
+        if !self.can_write_answer(&answer) {
+            self.notice = REFUSED.to_owned();
             return AfterKey::Stay;
         }
         let id = self.requests[self.index].id;
@@ -226,24 +230,21 @@ impl<'a> View<'a> {
 
     /// Rewrites the comment's file in memory, so a cut or reword the code
     /// cannot take is refused now rather than after the last answer.
-    fn check_answer_writes(&self, answer: &UserAnswer) -> Result<(), String> {
+    fn can_write_answer(&self, answer: &UserAnswer) -> bool {
         let request = self.requests[self.index];
         let new_text = choose_new_text(request, answer);
         if new_text.as_deref() == Some(request.text.as_str()) {
-            return Ok(());
+            return true;
         }
-        let code = self
-            .code
-            .as_ref()
-            .map_err(|reason| format!("Cannot check this answer. {reason}"))?;
+        // rewrite needs the comment as found in its file.
+        let Ok(code) = &self.code else {
+            return false;
+        };
         let edit = CommentEdit {
             comment: code.comment.clone(),
             new_text,
         };
-        match rewrite(self.repo, &[edit]) {
-            Ok(_) => Ok(()),
-            Err(error) => Err(format!("This answer cannot be written. {}", error.message)),
-        }
+        rewrite(self.repo, &[edit]).is_ok()
     }
 
     /// Returns the next request after the shown one, wrapping around, that
@@ -326,32 +327,30 @@ mod tests {
         assert_eq!(view.notice, "One moment, then press again.");
     }
 
-    /// Without it, the user could cut a comment the code needs, and learn only
-    /// after the last answer that nothing can be written.
+    /// Without it, a cut or reword the code cannot take would be kept, or the
+    /// user would read a reason written for agents.
     #[test]
-    fn cut_refused_when_code_needs_the_comment() {
-        let mut review_session = make_review_session(&[(
-            "notes.py",
-            "        \"\"\"Forgets every note.\"\"\"\n",
-            25,
-            json!("cut"),
-        )]);
-        let start = Instant::now();
-        let mut view = View::new(samples(), &mut review_session, PHONE)
-            .expect("the request waits for User Feedback");
-        view.start_wait(start);
+    fn refused_answer_shows_one_plain_message() {
+        let cases = [
+            ("comment must stay", "store.go", "/* the saved name */", 32),
+            ("file is gone", "missing.go", "// Gone.\n", 1),
+        ];
 
-        let after_cut = view.press_key(Key::Char('c'), after(start, 700));
-        let after_accept = view.press_key(Key::Char('a'), after(start, 800));
+        for (case, file, text, line) in cases {
+            let mut review_session = make_review_session(&[(file, text, line, json!("cut"))]);
+            let start = Instant::now();
+            let mut view = View::new(samples(), &mut review_session, PHONE)
+                .expect("the request waits for User Feedback");
+            view.start_wait(start);
 
-        assert_eq!(after_cut, AfterKey::Stay);
-        assert_eq!(after_accept, AfterKey::Stay);
-        assert!(view.feedback.is_empty());
-        assert!(
-            view.notice.contains("Python cannot compile"),
-            "{}",
-            view.notice
-        );
+            view.press_key(Key::Char('c'), after(start, 700));
+
+            assert!(view.feedback.is_empty(), "{case}");
+            assert_eq!(
+                view.notice, "That change can't be made to this comment.",
+                "{case}"
+            );
+        }
     }
 
     /// Without it, Enter alone on a saved note would erase it, and a note with

@@ -30,11 +30,38 @@ Application error wrappers suit failures mainly enriched with context and report
 Keep the project's established approach instead of adding another error crate
 for one function.
 
-Implement `Debug`, `Display`, and `Error` for custom errors. Store an underlying
-error and expose it through `source()` when it caused this error. Do not replace
-it with `to_string()` merely to simplify the type. `From` or an established derive
-can support propagation with `?`; use a contextual conversion when the operation
-or resource must also be recorded.
+Derive `Debug` on every error type, because `unwrap` and `expect` need
+it. Implement `Display` and `Error` when something prints the error for
+people, another crate receives it, or another error wraps it. In those
+cases, return the underlying error from `source()` when there is one.
+Do not replace the underlying error with `to_string()` merely to
+simplify the type.
+
+Some errors end up only as a code and a message, such as a command's
+JSON reply. Such an error can be a struct that derives only `Debug`.
+Write the cause into the message, because nothing will read `source()`.
+This fragment assumes an `ErrorCode` enum defined elsewhere:
+
+```rust
+#[derive(Debug)]
+pub struct Failure {
+    pub code: ErrorCode,
+    pub message: String,
+}
+
+let output = Command::new("git").output().map_err(|error| Failure {
+    code: ErrorCode::Git,
+    message: format!("Cannot run Git: {error}"),
+})?;
+```
+
+A message such as "Cannot run Git." without `{error}` loses the reason.
+Still use an enum or separate types when callers handle failures
+differently.
+
+`From` or an established derive can support propagation with `?`; use a
+contextual conversion when the operation or resource must also be
+recorded.
 
 Describe the failed operation and useful safe context, such as an allowed path or
 record identifier. Do not include passwords, tokens, or sensitive payloads. Report
