@@ -1,7 +1,3 @@
-{{- $profile := env "PDE_PROFILE" -}}
-{{- if not (or (eq $profile "full") (eq $profile "client") (eq $profile "terminal")) -}}
-{{ fail "PDE_PROFILE must be exactly terminal, client, or full" }}
-{{- end }}
 {{- $colorProfile := env "PDE_COLOR_PROFILE" -}}
 {{- if not (index .colorProfiles $colorProfile) -}}
 {{ fail "PDE_COLOR_PROFILE must select a defined color profile" }}
@@ -10,7 +6,7 @@
 README.md
 .config/nvim/pack/plugins/start/opencode-inline.nvim
 .config/nvim/pack/plugins/start/opencode-inline.nvim/**
-{{- if ne $profile "full" }}
+{{- if not (has "development" .pde.tiers) }}
 .config/aquaproj-aqua/aqua.yaml
 .config/aquaproj-aqua/aqua-checksums.json
 .claude
@@ -27,7 +23,7 @@ README.md
 link_herdr_plugins.sh
 # The planner link points at a build that only full installs.
 .config/opencode/bin/planner
-{{- if eq $profile "terminal" }}
+{{- if not (has "workstation" .pde.tiers) }}
 # Terminal VMs have no editor or agents, so they skip these files.
 .config/alacritty
 .config/alacritty/**

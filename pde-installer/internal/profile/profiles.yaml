@@ -1,0 +1,28 @@
+# What each profile installs. Code asks Profile methods such as Has, in
+# profile.go, instead of comparing these names.
+apt_groups:
+  base: [ca-certificates, curl, file, git, gzip,
+         tar, unzip, xclip, xz-utils, zsh]
+  # fontconfig provides fc-cache for the fonts.
+  fonts: [fontconfig]
+  # The packed skill-lessons runs with /usr/bin/python3.
+  python: [python3]
+  dev: [build-essential, bzip2, gawk, make, patch]
+
+# Tiers say what a profile is for, and profile.go describes each one.
+# The manifest tags every item with the tier that installs it.
+profiles:
+  # Installs the shell, tmux and command-line tools for headless
+  # homelab VMs.
+  terminal: {apt: [base], tiers: [terminal]}
+  # Installs Neovim, OpenCode, herdr and fonts for a laptop that
+  # compiles nothing. It leaves out Go, Rust, the approval tools and
+  # every local build but skill-lessons.
+  client:
+    apt: [base, fonts, python]
+    tiers: [terminal, workstation]
+  # Installs everything for dev machines, including Go, Rust and local
+  # builds.
+  full:
+    apt: [base, fonts, python, dev]
+    tiers: [terminal, workstation, development]

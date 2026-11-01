@@ -11,7 +11,7 @@ import (
 
 func TestFreshReadsUseFull(t *testing.T) {
 	got, err := resolveProfile(t.TempDir(), "", readProfile)
-	if err != nil || got != profile.Full {
+	if err != nil || got != "full" {
 		t.Fatalf("resolveProfile() = %q, %v", got, err)
 	}
 }
@@ -25,7 +25,7 @@ func TestFreshInstallRequiresSelection(t *testing.T) {
 
 func TestExplicitProfileIsSelected(t *testing.T) {
 	got, err := resolveProfile(t.TempDir(), "terminal", installProfile)
-	if err != nil || got != profile.Terminal {
+	if err != nil || got != "terminal" {
 		t.Fatalf("resolveProfile() = %q, %v", got, err)
 	}
 }
@@ -33,7 +33,7 @@ func TestExplicitProfileIsSelected(t *testing.T) {
 func TestSavedProfileIsLoaded(t *testing.T) {
 	home := profileHome(t, `{"profile":"terminal"}`)
 	got, err := resolveProfile(home, "", installProfile)
-	if err != nil || got != profile.Terminal {
+	if err != nil || got != "terminal" {
 		t.Fatalf("resolveProfile() = %q, %v", got, err)
 	}
 }
@@ -57,7 +57,7 @@ func TestLegacyInstallsUseFull(t *testing.T) {
 	for name, setup := range tests {
 		t.Run(name, func(t *testing.T) {
 			got, err := resolveProfile(setup(t), "", installProfile)
-			if err != nil || got != profile.Full {
+			if err != nil || got != "full" {
 				t.Fatalf("resolveProfile() = %q, %v", got, err)
 			}
 		})
@@ -84,9 +84,9 @@ func TestExplicitSelectionsOverrideSaved(t *testing.T) {
 		saved, request string
 		want           profile.Profile
 	}{
-		"same profile":     {saved: "full", request: "full", want: profile.Full},
-		"terminal expands": {saved: "terminal", request: "full", want: profile.Full},
-		"full narrows":     {saved: "full", request: "terminal", want: profile.Terminal},
+		"same profile":     {saved: "full", request: "full", want: "full"},
+		"terminal expands": {saved: "terminal", request: "full", want: "full"},
+		"full narrows":     {saved: "full", request: "terminal", want: "terminal"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
