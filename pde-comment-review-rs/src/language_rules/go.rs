@@ -2,10 +2,17 @@
 //! skips `/* */`. Other comments keep that checker's text, except around
 //! a tool line, so older approvals still match.
 
+use std::path::Path;
+
 use tree_sitter::{Language, Node};
 
-use super::LanguageRules;
+use super::{LanguageRules, format_if_old_is_formatted, line_comments};
+use crate::shared::Error;
 use crate::shared::comments::CommentStyle;
+
+/// Words that mark a comment a Go linter reads, wherever they sit in it, in
+/// any case.
+const LINTER_MARKS: [&str; 3] = ["nolint", "#nosec", "lint:ignore"];
 
 pub struct GoRules;
 
@@ -51,6 +58,35 @@ impl LanguageRules for GoRules {
                 Some(format!("{outer}.{word}"))
             }
         }
+    }
+
+    fn to_plain_words(&self, text: &str) -> String {
+        line_comments::to_plain_words(text, "//")
+    }
+
+    fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {
+        line_comments::lay_out_plain_words(words, old_text, "//")
+    }
+
+    fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
+        format_if_old_is_formatted(&["gofmt"], folder, old, new)
+    }
+
+    /// Returns true for a directive or `+build` line, a linter's mark such as
+    /// `nolint`, and the expected output of a test file's example.
+    fn is_read_by_tools(&self, file: &Path, text: &str) -> bool {
+        let lowercase = text.to_lowercase();
+        let is_test_file = file.to_string_lossy().ends_with("_test.go");
+        let first = read_lowercase_words(text.lines().next().unwrap_or(""));
+        text.lines().any(is_directive)
+            || LINTER_MARKS.iter().any(|mark| lowercase.contains(mark))
+            || (is_test_file
+                && (first.starts_with("output:") || first.starts_with("unordered output:")))
+    }
+
+    /// Returns true for a `/* */` comment and a cgo preamble.
+    fn is_keep_only(&self, comment: Node, source: &str) -> bool {
+        source[comment.byte_range()].starts_with("/*") || is_cgo_preamble(comment, source)
     }
 }
 
@@ -145,4 +181,53 @@ fn is_tool_line(comment: &str) -> bool {
     };
     let is_word_char = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
     !tool.is_empty() && tool.chars().all(is_word_char) && after.starts_with(is_word_char)
+}
+
+/// Returns a comment line without its `//`, lowercased, with single spaces
+/// between words.
+fn read_lowercase_words(line: &str) -> String {
+    let words = line.trim_start().trim_start_matches("//");
+    words
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// Returns true for a line in Go's directive form, with no space after `//`,
+/// such as `//nolint` or `//go:generate`, and for a `+build` line.
+fn is_directive(line: &str) -> bool {
+    let Some(rest) = line.trim_start().strip_prefix("//") else {
+        return false;
+    };
+    rest.starts_with(|c: char| !c.is_whitespace())
+        || rest.trim_start().to_lowercase().starts_with("+build")
+}
+
+/// Returns true for a comment just above `import "C"`, alone or in a list,
+/// which cgo compiles as C.
+fn is_cgo_preamble(comment: Node, source: &str) -> bool {
+    let mut next = comment.next_sibling();
+    while let Some(node) = next
+        && node.kind() == "comment"
+    {
+        next = node.next_sibling();
+    }
+    let Some(code) = next else {
+        return false;
+    };
+    let imports_c = |spec: Node| {
+        spec.child_by_field_name("path")
+            .is_some_and(|path| source[path.byte_range()].trim_matches(['"', '`']) == "C")
+    };
+    let mut cursor = code.walk();
+    match code.kind() {
+        "import_spec" => imports_c(code),
+        // `import "C"` holds one spec, and `import (...)` holds a list of them.
+        "import_declaration" => code.named_children(&mut cursor).any(|child| {
+            let mut list_cursor = child.walk();
+            imports_c(child) || child.named_children(&mut list_cursor).any(imports_c)
+        }),
+        _ => false,
+    }
 }

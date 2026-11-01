@@ -213,6 +213,8 @@ fn worktrees_share_the_newest_answer() {
         end_line: 1,
         style: CommentStyle::Line,
         text: text.to_owned(),
+        byte_range: 0..text.len(),
+        can_cut: true,
     };
     let approvals = approvals::load(repo.path()).unwrap();
     assert_eq!(approvals.compare(&saved), DecisionMatch::Approved);
