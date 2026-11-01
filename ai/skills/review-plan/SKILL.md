@@ -73,9 +73,13 @@ Always assess:
   covered where relevant.
 - Documentation quality: changed comments, docstrings, and test explanations
   remain accurate and proportional, important behavior is not left needlessly
-  implicit, and obvious code does not receive mandatory prose.
+  implicit, and obvious code does not receive mandatory prose (test
+  docs excepted).
   For a plan that changes comments, check that comments come after
   behavior and names, and that the owner's comment review comes last.
+- New reader: when reviewing code a new reader must understand, such
+  as before the owner reads a PR, run the checks in
+  [references/new-reader-checklist.md](references/new-reader-checklist.md).
 - Plan layout: for a plan, check create-plan's Plan Layout and its
   one-line-per-paragraph rule: owner-facing sections on top, agent-only
   detail in a final `## Notes for agents`, and no Decisions summary on

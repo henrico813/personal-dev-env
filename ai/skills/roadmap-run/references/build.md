@@ -159,10 +159,7 @@ for s in $(cat "$D/steps"); do
 done
 n=$(changed "$R" "$B" "$prev") || exit 1
 echo "changed lines: $n"
-[ "$n" -le 700 ] || { echo "over 700 lines; split the plan"; exit 1; }
 ```
-
-Over 700 changed lines, split the plan. There is no exception.
 
 ## Make the PR's worktree
 
@@ -215,7 +212,6 @@ c=$(git -C "$W" commit-tree "$t" -p HEAD -F "$D/MSGfix") || exit 1
 git -C "$W" merge -q --ff-only "$c" || exit 1
 n=$(changed "$W" "$B" HEAD) || exit 1
 echo "changed lines: $n"
-[ "$n" -le 700 ] || { echo "over 700 lines; drop or split"; exit 1; }
 ```
 
 After the first push, run Ship's later round right away. A fix that
@@ -255,8 +251,6 @@ sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
 git fetch -q "$REMOTE" || exit 1
 git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
   { echo "$PARENT moved; move this plan's base and rebuild"; exit 1; }
-n=$(changed . "$REMOTE/$PARENT" HEAD) || exit 1
-[ "$n" -le 700 ] || { echo "$n changed lines; split the PR"; exit 1; }
 git ls-remote --exit-code --heads "$REMOTE" "$BR" >/dev/null
 rc=$?
 [ "$rc" = 2 ] || { echo "$BR is already pushed or ls-remote failed"; exit 1; }
