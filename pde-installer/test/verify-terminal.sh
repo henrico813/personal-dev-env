@@ -58,7 +58,6 @@ cat >"$cli_home/.config/opencode/cli.json" <<'EOF'
 EOF
 render_opencode_cli() {
 	local profile="$1"
-	PDE_PROFILE=full \
 	PDE_COLOR_PROFILE="$profile" \
 	PDE_REPO_ROOT="$REPO_ROOT" \
 	PATH="$git_stub:$PATH" \
@@ -69,6 +68,7 @@ render_opencode_cli() {
 		--destination "$cli_home" \
 		--persistent-state "$cli_home/chezmoi.boltdb" \
 		--color false \
+		--override-data '{"pde":{"tiers":["terminal","workstation","development"]}}' \
 		--refresh-externals=never \
 		cat "$cli_home/.config/opencode/cli.json"
 }

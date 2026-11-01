@@ -1,5 +1,5 @@
 {{- /* Renders empty outside full, which alone has pde-gh-write, so chezmoi removes the guard there. */ -}}
-{{- if eq (env "PDE_PROFILE") "full" -}}
+{{- if has "development" .pde.tiers -}}
 #!/usr/bin/env bash
 # Block raw pull-request writes. Only pde-gh-write sets PDE_GH_WRITE=1 after approval.
 set -euo pipefail
