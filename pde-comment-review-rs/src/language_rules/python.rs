@@ -129,6 +129,10 @@ impl LanguageRules for PythonRules {
 
     /// Refuses new text that Python cannot compile or that adds a warning,
     /// such as an invalid escape. Warnings already in the file stay allowed.
+    ///
+    /// When this machine's Python cannot compile the old file, such as one
+    /// that needs a newer Python, only a new backslash is refused, since a
+    /// backslash could start an escape that no Python compiles.
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
         if read_file_header(old) != read_file_header(new) {
             return Err(Error {
@@ -136,10 +140,17 @@ impl LanguageRules for PythonRules {
                 message: "The new text changes the encoding or `#!` line Python reads.".to_owned(),
             });
         }
-        let mut old_warnings = list_compile_warnings(folder, old).map_err(|reason| Error {
-            code: ErrorCode::FileUnreadable,
-            message: format!("Python cannot compile the file. {reason}"),
-        })?;
+        let Ok(mut old_warnings) = list_compile_warnings(folder, old) else {
+            if new.matches('\\').count() > old.matches('\\').count() {
+                return Err(Error {
+                    code: ErrorCode::WouldNotWrite,
+                    message:
+                        "This Python cannot compile the file, so it cannot check a new backslash."
+                            .to_owned(),
+                });
+            }
+            return Ok(new.to_owned());
+        };
         let new_warnings = list_compile_warnings(folder, new).map_err(|reason| Error {
             code: ErrorCode::WouldNotWrite,
             message: format!("Python cannot compile the new text. {reason}"),

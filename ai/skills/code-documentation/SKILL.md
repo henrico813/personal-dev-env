@@ -404,3 +404,16 @@ Before declaring source or test work complete, check:
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that you still never edit a comment the owner approved or
+`.code-comments.json`. When the user corrects how you write or review
+code comments, docstrings or function names, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`code-documentation`, and offer once to save the correction as a lesson.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
