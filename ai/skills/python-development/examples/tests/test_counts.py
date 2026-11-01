@@ -18,7 +18,9 @@ from python_skill_examples.counts import (
         pytest.param("32", 32, id="maximum"),
     ],
 )
-def test_parses_supported_counts(text: str, expected: int) -> None:
+def test_parse_worker_count_accepts_supported_counts(
+    text: str, expected: int
+) -> None:
     assert parse_worker_count(text) == expected
 
 
@@ -30,7 +32,7 @@ def test_parses_supported_counts(text: str, expected: int) -> None:
         pytest.param("many", id="not-integer"),
     ],
 )
-def test_rejects_unsupported_counts(text: str) -> None:
+def test_parse_worker_count_rejects_unsupported_counts(text: str) -> None:
     with pytest.raises(ValueError):
         parse_worker_count(text)
 

@@ -78,6 +78,11 @@ one run."
   the `comment-review` skill.
 - Rewrite only the text the user asked about. A typo fix is just the
   fix.
+- When the user gives you wording for a comment, doc or PR text, use
+  it as written. Change it only to fix a factual error, such as a
+  wrong parameter name, or to pass a checker, and tell the user each
+  change. If it breaks a rule no checker enforces, keep it and name
+  the rule once. If it can be read two ways, ask.
 - Make no grammar claim the reference pages do not support. Call a
   choice that is about readability a readability choice.
 

@@ -45,7 +45,9 @@ Excerpt from [test_counts.py](../examples/tests/test_counts.py):
         pytest.param("32", 32, id="maximum"),
     ],
 )
-def test_parses_supported_counts(text: str, expected: int) -> None:
+def test_parse_worker_count_accepts_supported_counts(
+    text: str, expected: int
+) -> None:
     assert parse_worker_count(text) == expected
 ```
 
