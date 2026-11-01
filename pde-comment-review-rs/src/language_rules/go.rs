@@ -41,7 +41,10 @@ impl LanguageRules for GoRules {
         code_below: Option<Node>,
         source: &str,
     ) -> Option<String> {
-        let code = code_below?;
+        self.name_code_below(code_below?, source)
+    }
+
+    fn name_code_below(&self, code: Node, source: &str) -> Option<String> {
         let line = read_line_from(source, code.start_byte());
         if code.start_position().column == 0 {
             return name_top_level_line(code, line, source);
