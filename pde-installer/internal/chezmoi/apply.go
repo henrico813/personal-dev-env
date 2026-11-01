@@ -1,6 +1,7 @@
 package chezmoi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -205,7 +206,20 @@ func (m Manager) readOnlyBinary() (string, error) {
 }
 
 func (m Manager) arguments() []string {
-	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false"}
+	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false", "--override-data", encodeTemplateData(m.Profile)}
+}
+
+// Returns the --override-data JSON that templates read as .pde, such as
+// `{"pde":{"tiers":["terminal"]}}`.
+func encodeTemplateData(selected profile.Profile) string {
+	data, err := json.Marshal(map[string]map[string]any{
+		"pde": {"tiers": selected.Tiers()},
+	})
+	if err != nil {
+		// Strings and string slices always encode.
+		panic(err)
+	}
+	return string(data)
 }
 
 func (m Manager) environment() []string {
@@ -216,7 +230,6 @@ func (m Manager) environment() []string {
 		"AQUA_ROOT_DIR=" + m.AquaRoot,
 		"AQUA_GLOBAL_CONFIG=" + filepath.Join(aquaConfig, configName),
 		"AQUA_CHECKSUMS_PATH=" + filepath.Join(aquaConfig, checksumsName),
-		"PDE_PROFILE=" + string(m.Profile),
 		"PDE_COLOR_PROFILE=" + string(m.ColorProfile),
 		"PDE_REPO_ROOT=" + m.RepoRoot,
 		"HOME=" + m.Home,
@@ -248,7 +261,7 @@ func (m Manager) Validate() error {
 		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", configName),
 		filepath.Join(m.Source(), "dot_config", "aquaproj-aqua", checksumsName),
 	}
-	if m.Profile.HasWorkstationTools() {
+	if m.Profile.Has(profile.Workstation) {
 		required = append(required,
 			filepath.Join(m.Source(), "dot_config", "alacritty", "alacritty.toml.tmpl"),
 			filepath.Join(m.Source(), "dot_config", "wezterm", "wezterm.lua.tmpl"),
