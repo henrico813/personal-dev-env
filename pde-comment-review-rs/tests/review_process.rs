@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use common::TempFolder;
 use pde_comment_review::shared::ErrorCode;
 use pde_comment_review::shared::approvals::{self, Approval};
-use pde_comment_review::shared::comment_rules::{Finding, Rule};
+use pde_comment_review::shared::comment_rules::{Finding, ReportNote, Rule};
 use pde_comment_review::shared::git::resolve_commit;
 use pde_comment_review::shared::review_session::FeedbackRequest;
 use pde_comment_review::steps::NextStep;
@@ -210,6 +210,8 @@ fn changed_approved_text_fails_check() {
             name: Some("SaveAnswer".to_owned()),
             line: 3,
             rule: Rule::Approved,
+            note: None,
+            detail: None,
         };
         assert_eq!(output.result.failures, [failure], "{case}");
         assert_eq!(output.next, NextStep::CheckComments, "{case}");
@@ -294,6 +296,8 @@ fn removed_approved_comment_fails_while_code_stays() {
             name: Some(name.to_owned()),
             line,
             rule: Rule::ApprovedRemoved,
+            note: None,
+            detail: None,
         };
         assert_eq!(failures, [failure], "{case}");
     }
@@ -895,6 +899,332 @@ mod show_status {
             };
             assert_eq!(output.next, next, "{case}");
             assert_eq!(shown, waiting, "{case}");
+        }
+    }
+}
+
+/// Runs step 2's style rules on files a branch adds or changes.
+mod style_rules {
+    use super::*;
+
+    /// Writes `source` to a file the branch adds, with `blob` on the avoid list.
+    /// Returns step 2's failures and reported findings as rules and notes.
+    fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Option<ReportNote>, String)> {
+        let repo = make_repo();
+        let dir = repo.path();
+        add_avoided_word(dir);
+        fs::write(dir.join(file), source).unwrap();
+        let output = check_comments(dir, None).unwrap();
+        list_rules(output.result.failures, output.result.reported)
+    }
+
+    fn add_avoided_word(dir: &Path) {
+        fs::create_dir_all(dir.join(".git/pde")).unwrap();
+        let approvals = r#"{"approved": [], "avoid": {"blob": "say file"}}"#;
+        fs::write(dir.join(".git/pde/code-comments.json"), approvals).unwrap();
+    }
+
+    fn list_rules(
+        failures: Vec<Finding>,
+        reported: Vec<Finding>,
+    ) -> Vec<(Rule, Option<ReportNote>, String)> {
+        failures
+            .into_iter()
+            .chain(reported)
+            .map(|finding| {
+                (
+                    finding.rule,
+                    finding.note,
+                    finding.detail.unwrap_or_default(),
+                )
+            })
+            .collect()
+    }
+
+    /// Without it, filler, long comments or unclear names an agent writes would reach the user unflagged.
+    #[test]
+    fn each_style_rule_flags_its_bad_sample() {
+        let go = |code: &str| format!("package review\n\n{code}");
+        let cases = [
+            (
+                "filler",
+                "answer.go",
+                go("// This facilitates saving.\nfunc SaveAnswer() {}\n"),
+                vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
+            ),
+            (
+                "avoided-word",
+                "answer.go",
+                go("// Saves the blob.\nfunc SaveAnswer() {}\n"),
+                vec![(Rule::AvoidedWord, None, "\"blob\": say file".to_owned())],
+            ),
+            (
+                "restated-name",
+                "answer.go",
+                go("// Writes the answer, as SaveAnswer says.\nfunc SaveAnswer() {}\n"),
+                vec![(
+                    Rule::RestatedName,
+                    Some(ReportNote::ReportOnly),
+                    String::new(),
+                )],
+            ),
+            (
+                "starts-with-name",
+                "answer.go",
+                go("// SaveAnswer writes it.\nfunc SaveAnswer() {}\n"),
+                vec![
+                    (Rule::StartsWithName, None, String::new()),
+                    (
+                        Rule::RestatedName,
+                        Some(ReportNote::ReportOnly),
+                        String::new(),
+                    ),
+                ],
+            ),
+            (
+                "comment-length",
+                "answer.go",
+                go("// Saves it. Locks it. Logs it.\nfunc SaveAnswer() {}\n"),
+                vec![(Rule::CommentLength, None, "3 sentences".to_owned())],
+            ),
+            (
+                "comment-colon",
+                "answer.go",
+                go("// Saves it: now.\nfunc SaveAnswer() {}\n"),
+                vec![(Rule::CommentColon, None, String::new())],
+            ),
+            (
+                "seven-words",
+                "answer.go",
+                go("func SaveTheAnswerToTheStoreRightNow() {}\n"),
+                vec![(Rule::SevenWords, None, "8 words".to_owned())],
+            ),
+            (
+                "verb-first",
+                "answer.go",
+                go("func Total() {}\n"),
+                vec![(
+                    Rule::VerbFirst,
+                    Some(ReportNote::ReportOnly),
+                    "\"Total\" is not in the checker's verbs".to_owned(),
+                )],
+            ),
+            (
+                "docstring",
+                "answer.py",
+                "def save_answer():\n    return 1\n".to_owned(),
+                vec![(Rule::Docstring, None, String::new())],
+            ),
+            (
+                "summary-line",
+                "answer.py",
+                "def save_answer():\n    \"\"\"Saves\n    the answer.\"\"\"\n".to_owned(),
+                vec![(
+                    Rule::SummaryLine,
+                    None,
+                    "summary runs onto a second line".to_owned(),
+                )],
+            ),
+            (
+                "test-why",
+                "answer.py",
+                "def test_saves_answer():\n    \"\"\"Saves the answer.\"\"\"\n".to_owned(),
+                vec![(Rule::TestWhy, None, String::new())],
+            ),
+            (
+                "section-heading",
+                "answer.py",
+                "def save_answer():\n    \"\"\"Saves the answer.\n\n    Why: it is lost.\n    \"\"\"\n"
+                    .to_owned(),
+                vec![(Rule::SectionHeading, None, "\"Why:\"".to_owned())],
+            ),
+            (
+                "python-comment-with-example",
+                "answer.py",
+                "# Saves it. Logs it.\n#\n#   example: 1\n#   example: 2\nLIMIT = 1\n".to_owned(),
+                vec![
+                    (Rule::CommentLength, None, "3 sentences".to_owned()),
+                    (Rule::CommentColon, None, String::new()),
+                ],
+            ),
+            (
+                "rust-filler",
+                "lib.rs",
+                "/// This facilitates saving.\npub fn save_answer() {}\n".to_owned(),
+                vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
+            ),
+        ];
+
+        for (case, file, source, expected) in cases {
+            assert_eq!(check_new_file(file, &source), expected, "{case}");
+        }
+    }
+
+    /// Without it, an agent would be blocked by text it may not change, the user's, an earlier author's or a license's.
+    #[test]
+    fn report_notes_mark_approved_old_and_header_text() {
+        let filler = "// This facilitates saving.\n";
+        let cases = [
+            (
+                "approved-text",
+                APPROVED,
+                store_source(filler, ""),
+                filler,
+                (
+                    Rule::Filler,
+                    Some(ReportNote::Approved),
+                    "\"facilitates\"".to_owned(),
+                ),
+            ),
+            (
+                "sentence-at-base",
+                filler,
+                store_source("// This facilitates saving. It holds the lock.\n", ""),
+                "",
+                (
+                    Rule::Filler,
+                    Some(ReportNote::Existing),
+                    "\"facilitates\"".to_owned(),
+                ),
+            ),
+            (
+                "license-header",
+                APPROVED,
+                format!("// One. Two. Three.\n\n{}", store_source(APPROVED, "")),
+                "",
+                (
+                    Rule::CommentLength,
+                    Some(ReportNote::Header),
+                    "3 sentences".to_owned(),
+                ),
+            ),
+        ];
+
+        for (case, base_comment, source, decision, expected) in cases {
+            let repo = make_repo();
+            let dir = repo.path();
+            write_store(dir, base_comment, "");
+            commit_all(dir);
+            let base = resolve_commit(dir, "HEAD").unwrap();
+            if !decision.is_empty() {
+                add_decision(dir, STORE, "SaveAnswer", decision);
+            }
+            fs::write(dir.join(STORE), source).unwrap();
+
+            let output = check_comments(dir, Some(base)).unwrap();
+
+            assert_eq!(output.result.failures, [], "{case}");
+            let reported = list_rules(Vec::new(), output.result.reported);
+            assert_eq!(reported, [expected], "{case}");
+            assert_eq!(output.next, NextStep::MakeFeedbackRequestList, "{case}");
+        }
+    }
+
+    /// Without it, touching or moving an old file would wrongly flag its untouched comments and names. The same holds for generated code and a `# noqa` mark the agent must keep.
+    #[test]
+    fn unchanged_moved_generated_or_noqa_text_passes() {
+        let old_comment = "// This facilitates saving.\n";
+        let long_name = "package review\n\n// This facilitates saving.\nfunc SaveTheAnswerToTheStoreRightNow() {}\n";
+        let generated = "// Code generated by protoc. DO NOT EDIT.\n\npackage review\n\n// This facilitates saving.\nfunc SaveAnswer() {}\n";
+        let cases = [
+            (
+                "old-comment-body-changed",
+                STORE,
+                store_source(old_comment, ""),
+                STORE,
+                store_source(old_comment, "return"),
+            ),
+            (
+                "old-name-body-changed",
+                STORE,
+                long_name.to_owned(),
+                STORE,
+                long_name.replace("{}", "{ return }"),
+            ),
+            (
+                "moved-to-another-file",
+                "old_answer.go",
+                long_name.to_owned(),
+                "answer.go",
+                long_name.to_owned(),
+            ),
+            (
+                "generated-file",
+                "",
+                String::new(),
+                "answer.go",
+                generated.to_owned(),
+            ),
+            (
+                "python-noqa-after-prose",
+                "",
+                String::new(),
+                "answer.py",
+                "LIMIT = 1  # Counts it.  # noqa: E501\n".to_owned(),
+            ),
+        ];
+
+        for (case, old_file, before, file, after) in cases {
+            let repo = make_repo();
+            let dir = repo.path();
+            if !old_file.is_empty() {
+                fs::write(dir.join(old_file), before).unwrap();
+                commit_all(dir);
+                fs::remove_file(dir.join(old_file)).unwrap();
+            }
+            let base = resolve_commit(dir, "HEAD").unwrap();
+            fs::write(dir.join(file), after).unwrap();
+
+            let output = check_comments(dir, Some(base)).unwrap();
+
+            assert_eq!(output.result.failures, [], "{case}");
+        }
+    }
+
+    /// Without it, a test, getter, constructor or framework method would be told to start with a verb it must not have.
+    #[test]
+    fn verb_first_skips_names_a_language_requires() {
+        let go = |code: &str| format!("package review\n\n{code}");
+        let python = "import pytest\nfrom typing import override\n\n\nclass Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        \"\"\"Starts empty.\"\"\"\n\n    def setUp(self):\n        \"\"\"Prepares it.\"\"\"\n\n    def tearDown(self):\n        \"\"\"Cleans up.\"\"\"\n\n    @property\n    def total(self):\n        \"\"\"Counts answers.\"\"\"\n\n    @override\n    def ledger(self):\n        \"\"\"Lists answers.\"\"\"\n\n\n@pytest.fixture\ndef database():\n    \"\"\"Opens an empty one.\"\"\"\n";
+        let not_a_verb = |word: &str| {
+            let detail = format!("\"{word}\" is not in the checker's verbs");
+            vec![(Rule::VerbFirst, Some(ReportNote::ReportOnly), detail)]
+        };
+        let cases = [
+            (
+                "go-constructor",
+                "answer.go",
+                go("func NewStore() {}\n"),
+                vec![],
+            ),
+            (
+                "go-getter",
+                "answer.go",
+                go("type Store struct{}\n\nfunc (s Store) Total() int { return 0 }\n"),
+                vec![],
+            ),
+            (
+                "go-test-and-benchmark",
+                "answer_test.go",
+                go("func TestSave(t *testing.T) {}\n\nfunc BenchmarkSave(b *testing.B) {}\n"),
+                vec![],
+            ),
+            (
+                "go-testify-needs-verb",
+                "answer_test.go",
+                go("func Testify() {}\n"),
+                not_a_verb("Testify"),
+            ),
+            (
+                "python-framework-names",
+                "answer.py",
+                python.to_owned(),
+                vec![],
+            ),
+        ];
+
+        for (case, file, source, expected) in cases {
+            assert_eq!(check_new_file(file, &source), expected, "{case}");
         }
     }
 }

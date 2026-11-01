@@ -14,7 +14,7 @@ use std::process::{Command, Stdio};
 
 use tree_sitter::{Language, Node};
 
-use crate::shared::comments::CommentStyle;
+use crate::shared::comments::{CommentStyle, Definition};
 use crate::shared::{Error, ErrorCode};
 
 /// Tells which syntax tree nodes are comments in one language.
@@ -40,6 +40,23 @@ pub trait LanguageRules {
     /// Returns the comment's words without its markers or quotes, or the
     /// text as it is when the user cannot reword it.
     fn to_plain_words(&self, text: &str) -> String;
+    /// Returns the comment's paragraphs of prose, each on one line, leaving
+    /// out examples, or none when the comment has no line markers or quotes.
+    fn to_paragraphs(&self, text: &str) -> Vec<String>;
+    /// Returns every line of a comment, examples included, joined into one
+    /// line, for a language whose length and colon rules read them all.
+    fn join_unfiltered_lines(&self, _text: &str) -> Option<String> {
+        None
+    }
+    /// Returns the functions, methods and classes whose names and docstrings
+    /// the style rules check, in file order.
+    fn list_definitions(&self, _file: &Path, _root: Node, _source: &str) -> Vec<Definition> {
+        Vec::new()
+    }
+    /// Returns true for a file with the marker its generator writes.
+    fn is_generated(&self, _source: &str) -> bool {
+        false
+    }
     /// Returns `words` laid out like `old_text`, with its markers and
     /// indentation, or an empty text when `words` has none.
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String;

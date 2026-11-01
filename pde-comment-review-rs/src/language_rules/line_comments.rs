@@ -39,6 +39,25 @@ pub(super) fn to_plain_words(text: &str, marker: &str) -> String {
     blocks.join("\n\n") + "\n"
 }
 
+/// Returns the comment's paragraphs of sentences, each on one line, or none
+/// when a line does not start with `marker`.
+pub(super) fn to_paragraphs(text: &str, marker: &str) -> Vec<String> {
+    let mut bodies = Vec::new();
+    for line in text.lines() {
+        let Some(body) = line.trim_start().strip_prefix(marker) else {
+            return Vec::new();
+        };
+        bodies.push(body);
+    }
+    group_blocks(&bodies)
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::Words(words) => Some(words),
+            Block::Example(_) | Block::Fence(_) => None,
+        })
+        .collect()
+}
+
 /// Returns `words` as comment lines with the indentation of `old_text`, or
 /// an empty text when `words` has none.
 pub(super) fn lay_out_plain_words(words: &str, old_text: &str, marker: &str) -> String {

@@ -29,7 +29,10 @@ pub fn load(dir: &Path) -> Result<Approvals, Error> {
         .into_iter()
         .map(|entry| entry.approval)
         .collect();
-    Ok(Approvals { approved })
+    Ok(Approvals {
+        approved,
+        avoid: saved.avoid,
+    })
 }
 
 /// Adds decisions after the stored ones and keeps the rest of the file.
@@ -75,6 +78,11 @@ impl Approvals {
         }
     }
 
+    /// Returns each word agents should not use, with what to say instead.
+    pub(crate) fn avoided_words(&self) -> &BTreeMap<String, String> {
+        &self.avoid
+    }
+
     /// Returns each file that holds a decision, approved or cut.
     pub(crate) fn files(&self) -> BTreeSet<&Path> {
         self.approved
@@ -95,6 +103,7 @@ pub struct Approval {
 /// Holds every decision in the approvals file, oldest first.
 pub struct Approvals {
     approved: Vec<Approval>,
+    avoid: BTreeMap<String, String>,
 }
 
 /// Says how one comment stands against the user's decisions.
@@ -248,6 +257,7 @@ mod tests {
                     "// Saves the answer safely.\n",
                 ),
             ],
+            avoid: BTreeMap::new(),
         };
 
         // Either approved text in the code passes.
@@ -290,6 +300,7 @@ mod tests {
         for (case, decisions, expected) in cases {
             let approvals = Approvals {
                 approved: decisions,
+                avoid: BTreeMap::new(),
             };
             let in_code = comment("review_store.go", "SaveAnswer", "// Saves the answer.\n");
             assert_eq!(approvals.compare(&in_code), expected, "{case}");
@@ -302,6 +313,7 @@ mod tests {
     fn a_decision_counts_only_in_its_own_file() {
         let approvals = Approvals {
             approved: vec![approval("review.rs", "<module>", "//! Reads the review.\n")],
+            avoid: BTreeMap::new(),
         };
 
         let other_file = comment("approvals.rs", "<module>", "//! Reads the approvals.\n");

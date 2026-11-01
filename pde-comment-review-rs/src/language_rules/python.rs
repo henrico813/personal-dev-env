@@ -2,15 +2,18 @@
 //! today's comment checker gives it, except around a tool line, so older
 //! approvals still match.
 
+use std::collections::BTreeSet;
 use std::iter::successors;
 use std::path::Path;
+use std::sync::LazyLock;
 
+use regex::Regex;
 use tree_sitter::{Language, Node};
 
 use super::{
     LanguageRules, docstrings, is_inside, line_comments, nodes_starting_at, run_with_input,
 };
-use crate::shared::comments::CommentStyle;
+use crate::shared::comments::{CommentStyle, Definition, DocstringFacts, NameCheck};
 use crate::shared::{Error, ErrorCode};
 
 /// Words that start a Python tool comment, just after its `#`.
@@ -49,6 +52,28 @@ const TOOL_MARKS: [&str; 11] = [
     "noqa", "type:", "pragma", "pyre-", "pylint:", "mypy:", "nosec", "fmt:", "isort:", "pyright:",
     "pyrefly:",
 ];
+
+/// Lists the decorators that mark a property, whose name needs no verb.
+const PROPERTY_DECORATORS: [&str; 5] =
+    ["cached_property", "deleter", "getter", "property", "setter"];
+
+/// Matches a name Python, unittest, http.server or pytest requires, and `main`.
+static FRAMEWORK_NAME: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^(?:__\w+__|main|setUp\w*|tearDown\w*|asyncSetUp|asyncTearDown|do_[A-Z]+|pytest_\w+)$",
+    )
+    .expect("the pattern is valid")
+});
+
+static GENERATED_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^# (?:Code generated .* DO NOT EDIT\.$|@generated\b)")
+        .expect("the pattern is valid")
+});
+
+/// Matches a tool comment such as `# noqa` after prose in the same comment.
+static TRAILING_TOOL_COMMENT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\s*#\s*(?:noqa\b|type:|pragma:).*").expect("the pattern is valid")
+});
 
 pub struct PythonRules;
 
@@ -119,6 +144,59 @@ impl LanguageRules for PythonRules {
         }
     }
 
+    fn to_paragraphs(&self, text: &str) -> Vec<String> {
+        if !text.trim_start().starts_with('#') {
+            return docstrings::to_paragraphs(text);
+        }
+        let lines: Vec<String> = text
+            .lines()
+            .map(|line| match line.split_once('#') {
+                Some((indent, words)) => {
+                    format!("{indent}#{}", TRAILING_TOOL_COMMENT.replace(words, ""))
+                }
+                None => line.to_owned(),
+            })
+            .collect();
+        line_comments::to_paragraphs(&lines.join("\n"), "#")
+    }
+
+    /// Returns a `#` comment's lines joined as today's checker joins them for
+    /// its length and colon rules, examples included, or `None` for a docstring.
+    fn join_unfiltered_lines(&self, text: &str) -> Option<String> {
+        if !text.trim_start().starts_with('#') {
+            return None;
+        }
+        let words: Vec<String> = text
+            .lines()
+            .map(|line| {
+                let words = line.trim_start().strip_prefix('#').unwrap_or(line);
+                TRAILING_TOOL_COMMENT.replace(words, "").trim().to_owned()
+            })
+            .collect();
+        Some(words.join(" "))
+    }
+
+    /// Returns each function and class, with the lines that belong to it alone.
+    fn list_definitions(&self, _file: &Path, root: Node, source: &str) -> Vec<Definition> {
+        let mut definitions = Vec::new();
+        let mut nodes = vec![root];
+        while let Some(node) = nodes.pop() {
+            if matches!(node.kind(), "function_definition" | "class_definition")
+                && let Some(definition) = read_definition(node, source)
+            {
+                definitions.push(definition);
+            }
+            let mut cursor = node.walk();
+            let children: Vec<Node> = node.named_children(&mut cursor).collect();
+            nodes.extend(children.into_iter().rev());
+        }
+        definitions
+    }
+
+    fn is_generated(&self, source: &str) -> bool {
+        GENERATED_MARKER.is_match(source)
+    }
+
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {
         if old_text.trim_start().starts_with('#') {
             line_comments::lay_out_plain_words(words, old_text, "#")
@@ -179,6 +257,109 @@ fn find_named_statement(code: Node) -> Option<Node> {
         "assignment" if is_one_name_assignment(node) => Some(node),
         _ => None,
     })
+}
+
+/// Returns a function or class with its name rules and docstring facts.
+fn read_definition(node: Node, source: &str) -> Option<Definition> {
+    let name = find_dotted_name(node, source)?;
+    let bare_name = read_name(node, source)?;
+    let decorated = node
+        .parent()
+        .filter(|parent| parent.kind() == "decorated_definition");
+    let decorators = decorated.map_or_else(Vec::new, |outer| list_decorator_names(outer, source));
+    let is_function = node.kind() == "function_definition";
+    let is_test = is_function && bare_name.starts_with("test");
+    let name_check =
+        if !is_function || FRAMEWORK_NAME.is_match(bare_name) || decorators.contains(&"override") {
+            NameCheck::Skip
+        } else if is_test
+            || decorators
+                .iter()
+                .any(|decorator| *decorator == "fixture" || PROPERTY_DECORATORS.contains(decorator))
+        {
+            NameCheck::WordCount
+        } else {
+            NameCheck::WordCountAndVerb
+        };
+    let is_dunder = bare_name.starts_with("__") && bare_name.ends_with("__");
+    Some(Definition {
+        line: node.start_position().row + 1,
+        name_check,
+        docstring: Some(DocstringFacts {
+            text: read_docstring_text(node, source),
+            own_lines: list_own_lines(decorated.unwrap_or(node), node),
+            is_required: !is_dunder || bare_name == "__init__",
+            is_test,
+        }),
+        name,
+    })
+}
+
+/// Returns the last part of each decorator, such as `fixture` for
+/// `@pytest.fixture(scope="module")`.
+fn list_decorator_names<'source>(decorated: Node, source: &'source str) -> Vec<&'source str> {
+    let mut cursor = decorated.walk();
+    decorated
+        .named_children(&mut cursor)
+        .filter(|child| child.kind() == "decorator")
+        .filter_map(|decorator| {
+            let mut expression = decorator.named_child(0)?;
+            if expression.kind() == "call" {
+                expression = expression.child_by_field_name("function")?;
+            }
+            let name = match expression.kind() {
+                "attribute" => expression.child_by_field_name("attribute")?,
+                "identifier" => expression,
+                _ => return None,
+            };
+            Some(&source[name.byte_range()])
+        })
+        .collect()
+}
+
+/// Returns the text between a definition's docstring quotes, or `None` when
+/// it has no docstring.
+fn read_docstring_text(definition: Node, source: &str) -> Option<String> {
+    let body = definition.child_by_field_name("body")?;
+    let mut cursor = body.walk();
+    let first = body
+        .named_children(&mut cursor)
+        .find(|child| child.kind() != "comment")?;
+    let mut expression = first.named_child(0)?;
+    if !is_docstring(expression, source) {
+        return None;
+    }
+    while expression.kind() == "parenthesized_expression" {
+        expression = expression.named_child(0)?;
+    }
+    docstrings::read_string_body(&source[expression.byte_range()]).map(str::to_owned)
+}
+
+/// Returns the lines from a definition's first decorator to its end, leaving
+/// out the definitions inside it, so a change there counts for them alone.
+fn list_own_lines(decorated: Node, definition: Node) -> BTreeSet<usize> {
+    let mut lines = list_lines(decorated);
+    let mut cursor = definition.walk();
+    let mut nodes: Vec<Node> = definition.named_children(&mut cursor).collect();
+    while let Some(node) = nodes.pop() {
+        if matches!(
+            node.kind(),
+            "function_definition" | "class_definition" | "decorated_definition"
+        ) {
+            for line in list_lines(node) {
+                lines.remove(&line);
+            }
+            continue;
+        }
+        let mut cursor = node.walk();
+        nodes.extend(node.named_children(&mut cursor));
+    }
+    lines
+}
+
+/// Returns the lines a node spans, counting from 1.
+fn list_lines(node: Node) -> BTreeSet<usize> {
+    (node.start_position().row + 1..=node.end_position().row + 1).collect()
 }
 
 /// Returns true for an assignment to one plain name, as today's comment
