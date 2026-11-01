@@ -52,17 +52,18 @@ Run every step for one PR before its child PR starts building. The
 prompts are in [references/prompts.md](references/prompts.md) and the
 commands in [references/build.md](references/build.md).
 
-1. **Plan.** Delegate the plan with `create-plan`. A plan over 700
-   changed lines splits into two PRs, each with its own plan. A child
-   of an unbuilt parent is written against a commit of the parent's
-   planned tree, made as build.md says.
+1. **Plan.** Delegate the plan with `create-plan`. Point the planner
+   to only the design sections its PR needs, by heading, and always to
+   the design's Dictionary section, so names and comments use its
+   words. The planner may read another section when its plan depends
+   on it. A child of an unbuilt parent is written against a commit of
+   the parent's planned tree, made as build.md says.
 2. **Fresh plan review.** A new agent reviews the plan with
-   `review-plan` and the domain skills. Send its findings, with your
-   decision on each optional item, back to the planner's session in
-   one message.
+   `review-plan` and the domain skills, given the same design sections
+   as the planner. Send its findings, with your decision on each
+   optional item, back to the planner's session in one message.
 3. **Build.** Export each plan step's tree and commit it with
    `git commit-tree` on the step before, starting at the plan's base.
-   Over 700 changed lines, build.md's snippet stops; split the plan.
    Make the PR's worktree with `wt` and move it to the last commit. A
    failed build command means a stale plan or a broken tool: stop
    this PR and its children, put the error on the roadmap page as a
@@ -72,20 +73,19 @@ commands in [references/build.md](references/build.md).
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
    optional items, and send one message to the planner. Commit the
-   revised plan's tree as one fix commit. Over 700 changed lines, the
-   snippet stops; drop as below, or split the PR. A test may be
-   deleted only when a reviewer's finding names it and names the test
-   that still covers its behavior.
+   revised plan's tree as one fix commit. A test may be deleted only
+   when a reviewer's finding names it and names the test that still
+   covers its behavior.
 6. **Final pass.** Run the tests, linters, comment checker and any
    comparison script the plan names. Put back two bugs the reviewers
    found, one at a time, and check that a test fails for each. For
    each deleted test, plant the bug it caught and check that the
    named test fails.
 7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
-   failed check, the wrong branch, a parent that moved, over 700
-   changed lines or a branch already pushed; it squashes onto the
-   parent and pushes. Then save and run the PR request script, which
-   calls `pde-gh-write pr create --base <parent branch>`.
+   failed check, the wrong branch, a parent that moved or a branch
+   already pushed; it squashes onto the parent and pushes. Then save
+   and run the PR request script, which calls
+   `pde-gh-write pr create --base <parent branch>`.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `draft`, your `set` rewords,
    `submit`, and `add` for an approved comment the draft did not
@@ -109,6 +109,11 @@ parent's final commit and run `planner check` again.
   resolve a conflict by hand.
 - A feature the roadmap does not list needs the user's approval and
   its own PR.
+- When the user gives feedback on one PR, write it as a list on the
+  roadmap page. Have a fresh agent check every other open PR in the
+  run against that list, and fix what it finds through the loop above
+  before the user reviews those PRs. Add the list to every later
+  planner and reviewer brief.
 
 ## Deciding things yourself
 
@@ -117,14 +122,8 @@ parent's final commit and run `planner check` again.
   failed check and a declined request are never minor.
 - When reviewers disagree, pick one, and tell the planner which and
   why.
-- A PR has at most 700 changed lines, with no exception. When fixes
-  push it over, keep fixes that protect the user's data, then tests for
-  likely and costly bugs, then names and comments. Drop or move
-  optional features first. If it is still over, split the PR. Never
-  leave a doc or skill false to save lines.
 - Each test checks only what its name says, in the PR that owns the
-  behavior. At the line cap, split the PR or drop a feature; never
-  move a test into a child PR.
+  behavior. Never move a test into a child PR.
 - A question that blocks one PR parks only that PR; keep building the
   others. Put non-blocking questions in the roadmap page as "your
   call".
@@ -136,7 +135,6 @@ parent's final commit and run `planner check` again.
 - Edit a comment the user approved. Send the new wording as a reword
   in that PR's comment review.
 - Amend or squash a branch after its first push; add a commit instead.
-- Keep a PR over 700 changed lines.
 - Make a commit on a PR branch that you do not push, or deploy or hand
   the user a commit that is not pushed.
 - Delete a test without a reviewer's finding that names the test still

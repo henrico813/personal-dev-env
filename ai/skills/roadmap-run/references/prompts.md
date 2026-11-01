@@ -2,7 +2,9 @@
 
 Fill each `<...>`. Every brief names the skills the agent must load,
 and you load them too. Add the user's style rules that apply, from
-their notes or memory, such as comment length or call layout.
+their notes or memory, such as comment length or call layout. Once
+the user has given feedback on one PR, also add that feedback list
+from the roadmap page.
 
 ## Contents
 
@@ -37,15 +39,14 @@ Reviewers also get:
     vault before writing there.
 
     Base: <branch> at <full commit>; for a child of an unbuilt
-    parent, the commit of the parent's planned tree. Read: <design>,
-    <roadmap>, <parent plans>. Scope: <what this PR does and does
-    not do>.
+    parent, the commit of the parent's planned tree. Read: <roadmap>,
+    <parent plans>, and these sections of <design>: Dictionary,
+    <headings this PR needs>. Read another design section only when
+    your plan depends on it. Use the Dictionary's words in names and
+    comments. Scope: <what this PR does and does not do>.
 
     Decisions, each labeled user-decided, orchestrator-proposed or
     inferred from code: <list>.
-
-    At most 700 changed lines; split into two plans if needed, each
-    with its own `planner new`.
 
     Report: plan paths, `planner check` result, changed lines (code,
     tests, other), choices you made, and anything that contradicts the
@@ -60,7 +61,9 @@ so it keeps its context.
     Applicable skills: review-plan, <domain skills>,
     code-documentation, behavior-focused-testing.
 
-    Plan: <path> (base on its `Base commit:` line). Design: <path>.
+    Plan: <path> (base on its `Base commit:` line). Design: <path>,
+    sections Dictionary and <the planner's headings>. Read another
+    design section only when the plan depends on it.
     What it does: <two sentences>. Check especially: <the ways it
     could lose the user's data or do the wrong thing>.
 
@@ -107,13 +110,12 @@ Send to the planner's session once every reviewer has reported:
 
     <Plan> is built: branch <branch>, HEAD <commit>. <N> reviewers
     asked for changes. Revise the plan only; `planner check` must
-    pass; rerun the tests and the affected mutations; at most 700
-    changed lines. Do not touch the worktree.
+    pass; rerun the tests and the affected mutations. Do not touch
+    the worktree.
 
     Required: <numbered, each with evidence and the fix>.
     Decided: <optional items you chose, and how reviewers' conflicts
     were settled>.
-    If it does not fit: <what to drop or move first>.
 
     Report: new size, tests, mutations, `planner check` result, and
     anything not applied and why.

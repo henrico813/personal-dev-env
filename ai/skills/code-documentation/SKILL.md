@@ -39,6 +39,7 @@ Look more closely when code has:
 
 Function length is only a signal to inspect more carefully. Do not use line
 thresholds, comment quotas, or mandatory docstrings for private helpers.
+Test helpers and fixtures are the exception; see Tests.
 
 A short function with dangerous side effects may need more explanation than a
 long but straightforward function.
@@ -96,6 +97,12 @@ Technical terms are fine when they are the clearest words. Explain
 project-specific terms when a new contributor would not know them. Do not repeat
 type information that is already obvious from the signature.
 
+When the project has a dictionary of terms, such as the glossary in
+its design doc, use its words with its meanings in the names, error
+codes, test names, comments and PR text you write. Do not give a
+dictionary word another meaning, and do not coin a new word for an
+idea it already names.
+
 When writing or reviewing comments, check each one against
 [references/comments-readers-reject.md](
 references/comments-readers-reject.md),
@@ -123,7 +130,15 @@ Do not start a doc comment with the name it documents, such as
 `// Total returns ...`, in any language; the one exception is a Go
 package comment, which starts with `Package <name>`.
 
+When a module you add or change has a main flow through a few public
+functions or methods, and a reader cannot tell where it starts, name
+them in the module or package doc as the ones to read first. Put them
+before their helpers in their file. Keep any ordering rule of the
+language's style guide or the repository, such as a Go style that puts
+types first.
+
 Private functions do not need docstrings merely because they exist.
+Test helpers and fixtures are the exception; see Tests.
 
 Use inline comments for local context such as:
 
@@ -149,6 +164,12 @@ Useful:
 if wrote_any_bytes:
     return PARTIAL_WRITE
 ```
+
+In Rust and TypeScript, use no colon in a comment, doc comments
+included, except inside code or a URL. Go and Python have the same
+rule below. A Rust `// SAFETY:` comment keeps its colon, because
+Clippy looks for it. The comment checker does not read these
+languages, so check them yourself.
 
 ## Function names
 
@@ -192,12 +213,27 @@ Make a test understandable from its name, visible inputs, and assertions first.
 
 Add a test docstring or comment only when a developer still would not know what
 behavior the test protects or why breaking it matters.
+This covers comments and longer docstrings beyond the short doc below.
 
 Do not describe obvious Arrange, Act, or Assert steps. Do not claim more
 protection than the assertions establish. Explain shared suite context once
 instead of repeating it above every test.
 
+A test long enough that its steps are not obvious, such as one that
+starts threads or fake processes, gets a comment before each step.
+Each comment is one short sentence on what the step sets up or checks.
+
 If the test is already clear without prose, no docstring is required.
+Here that means its short doc is enough.
+
+Every test gets a short doc, even a clear one. The doc says what
+must stay true and what a user or caller loses if it breaks, beyond
+what the test's name already says. Keep the language's docstring form,
+such as Python's summary line and paragraph.
+
+Give every test helper and fixture, private ones included, a one-line
+doc that says what it stands for, such as "A config file with no
+version line."
 
 ## Editing and review
 
@@ -270,6 +306,8 @@ the user explicitly asks for fixes.
 When a subagent checks whether terms make sense to a new contributor,
 give it only the code and tests, not the design doc or plan. Check
 claims against requirements yourself.
+To check the words against the project's dictionary, use a second
+subagent that also gets the dictionary, so the first stays code-only.
 
 If a documentation issue reveals unclear requirements or a possible code bug,
 report it instead of hiding it with prose.
@@ -396,6 +434,8 @@ Before declaring source or test work complete, check:
 - new prose does not merely repeat the code
 - stated reasons are supported
 - test explanations match what the assertions prove
+- every test has a short doc, and every test helper and fixture a
+  one-line doc
 - the amount of documentation fits the code's complexity and risk
 - for Go or Python files, the comment checker exits 0, or fails only
   on renamed, moved or deleted approved comments that you reported
