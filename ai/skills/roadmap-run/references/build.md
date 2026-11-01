@@ -55,9 +55,10 @@ branch, its worktree and the run folder. `BR` is this PR's branch,
 lowercase words joined by hyphens, at most 48 characters after the
 type. Words after the key are required: `feat/abc-12-approvals-file`,
 never `feat/abc-12`. When the repository sets `pde.branchPattern`,
-set `BR` to the ticket key the plan names, in the form the pattern
-asks for, and ask the user when the plan names none; `K` and the run
-folder still come from `planner key`. `CHECK` is the plan's test and
+set `BR` to a branch that starts with the ticket key the plan names,
+in the form the pattern asks for, with words after it, and ask the
+user when the plan names none; `K` and the run folder still come
+from `planner key`. `CHECK` is the plan's test and
 lint command. Keep each value in single quotes, since vault paths
 have spaces; use double quotes for a value that holds a single quote
 or `$K`.
