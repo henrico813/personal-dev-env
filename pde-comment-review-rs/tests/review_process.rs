@@ -197,8 +197,7 @@ fn describe_with_id(request: &FeedbackRequest) -> String {
     )
 }
 
-/// Writes `source` to a file the branch adds, with `blob` on the avoid list.
-/// Returns step 2's failures and reported findings as rules and notes.
+/// Returns step 2's findings, failures first, for a new file holding `source`.
 fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Option<ReportNote>, String)> {
     let repo = make_repo();
     let dir = repo.path();
@@ -208,12 +207,14 @@ fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Option<ReportNote>, St
     list_rules(output.result.failures, output.result.reported)
 }
 
+/// Writes an approvals file with no decisions and one word on the avoid list.
 fn add_avoided_word(dir: &Path) {
     fs::create_dir_all(dir.join(".git/pde")).unwrap();
     let approvals = r#"{"approved": [], "avoid": {"blob": "say file"}}"#;
     fs::write(dir.join(".git/pde/code-comments.json"), approvals).unwrap();
 }
 
+/// Returns each finding's rule, note and detail, failures first.
 fn list_rules(
     failures: Vec<Finding>,
     reported: Vec<Finding>,
@@ -552,7 +553,8 @@ fn refused_check_leaves_repository_files_unchanged() {
     assert_eq!(read_every_file(dir), before);
 }
 
-/// Without it, filler, long comments or unclear names an agent writes would reach the user unflagged.
+/// `check_comments` must flag each style rule's bad sample and say what to fix.
+/// Otherwise filler, long comments or unclear names an agent writes would reach the user unflagged.
 #[test]
 fn each_style_rule_flags_its_bad_sample() {
     let go = |code: &str| format!("package review\n\n{code}");
@@ -605,6 +607,12 @@ fn each_style_rule_flags_its_bad_sample() {
             vec![(Rule::CommentColon, None, String::new())],
         ),
         (
+            "comment-colon-inside-function",
+            "answer.go",
+            go("func SaveAnswer() {\n\t// Saves it: now.\n}\n"),
+            vec![(Rule::CommentColon, None, String::new())],
+        ),
+        (
             "seven-words",
             "answer.go",
             go("func SaveTheAnswerToTheStoreRightNow() {}\n"),
@@ -624,6 +632,13 @@ fn each_style_rule_flags_its_bad_sample() {
             "docstring",
             "answer.py",
             "def save_answer():\n    return 1\n".to_owned(),
+            vec![(Rule::Docstring, None, String::new())],
+        ),
+        (
+            "docstring-on-init",
+            "answer.py",
+            "class Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        pass\n"
+                .to_owned(),
             vec![(Rule::Docstring, None, String::new())],
         ),
         (
@@ -671,27 +686,37 @@ fn each_style_rule_flags_its_bad_sample() {
     }
 }
 
-/// Without it, an agent would be blocked by text it may not change, the user's, an earlier author's or a license's.
+/// `check_comments` must only report a style break in a comment that matches the user's approval.
+/// Otherwise an agent would be stuck on text it may not change.
 #[test]
-fn report_notes_mark_approved_old_and_header_text() {
+fn approved_text_style_break_is_only_reported() {
     let filler = "// This facilitates saving.\n";
+    let repo = make_repo();
+    let dir = repo.path();
+    add_decision(dir, STORE, "SaveAnswer", filler);
+    write_store(dir, filler, "");
+
+    let output = check_comments(dir, None).unwrap();
+
+    assert_eq!(output.result.failures, []);
+    let reported = list_rules(Vec::new(), output.result.reported);
+    let expected = (
+        Rule::Filler,
+        Some(ReportNote::Approved),
+        "\"facilitates\"".to_owned(),
+    );
+    assert_eq!(reported, [expected]);
+}
+
+/// `check_comments` must only report a style break in a sentence already there at `base` or in a license header.
+/// Otherwise an agent would be stuck on an earlier author's text or a license it may not change.
+#[test]
+fn old_or_header_style_break_is_only_reported() {
     let cases = [
         (
-            "approved-text",
-            APPROVED,
-            store_source(filler, ""),
-            filler,
-            (
-                Rule::Filler,
-                Some(ReportNote::Approved),
-                "\"facilitates\"".to_owned(),
-            ),
-        ),
-        (
             "sentence-at-base",
-            filler,
+            "// This facilitates saving.\n",
             store_source("// This facilitates saving. It holds the lock.\n", ""),
-            "",
             (
                 Rule::Filler,
                 Some(ReportNote::Existing),
@@ -702,7 +727,6 @@ fn report_notes_mark_approved_old_and_header_text() {
             "license-header",
             APPROVED,
             format!("// One. Two. Three.\n\n{}", store_source(APPROVED, "")),
-            "",
             (
                 Rule::CommentLength,
                 Some(ReportNote::Header),
@@ -711,15 +735,12 @@ fn report_notes_mark_approved_old_and_header_text() {
         ),
     ];
 
-    for (case, base_comment, source, decision, expected) in cases {
+    for (case, base_comment, source, expected) in cases {
         let repo = make_repo();
         let dir = repo.path();
         write_store(dir, base_comment, "");
         commit_all(dir);
         let base = resolve_commit(dir, "HEAD").unwrap();
-        if !decision.is_empty() {
-            add_decision(dir, STORE, "SaveAnswer", decision);
-        }
         fs::write(dir.join(STORE), source).unwrap();
 
         let output = check_comments(dir, Some(base)).unwrap();
@@ -727,16 +748,59 @@ fn report_notes_mark_approved_old_and_header_text() {
         assert_eq!(output.result.failures, [], "{case}");
         let reported = list_rules(Vec::new(), output.result.reported);
         assert_eq!(reported, [expected], "{case}");
-        assert_eq!(output.next, NextStep::MakeFeedbackRequestList, "{case}");
     }
 }
 
-/// Without it, touching or moving an old file would wrongly flag its untouched comments and names. The same holds for generated code and a `# noqa` mark the agent must keep.
+/// `check_comments` must send a branch whose findings are all reported on to step 3.
+/// Otherwise an agent with only reported findings would be stuck at step 2.
 #[test]
-fn unchanged_moved_generated_or_noqa_text_passes() {
+fn reported_findings_still_lead_to_step_3() {
+    let repo = make_repo();
+    let dir = repo.path();
+    write_store(dir, "// Writes the answer, as SaveAnswer says.\n", "");
+
+    let output = check_comments(dir, None).unwrap();
+
+    assert_eq!(output.result.failures, []);
+    let reported = list_rules(Vec::new(), output.result.reported);
+    let expected = (
+        Rule::RestatedName,
+        Some(ReportNote::ReportOnly),
+        String::new(),
+    );
+    assert_eq!(reported, [expected]);
+    assert_eq!(output.next, NextStep::MakeFeedbackRequestList);
+}
+
+/// `check_comments` must fail a style break when a sentence that breaks it is new since `base`.
+/// Otherwise an agent could add sentences to an old comment until it is too long, and step 2 would pass it.
+#[test]
+fn old_comment_with_new_sentences_fails_check() {
+    let repo = make_repo();
+    let dir = repo.path();
+    write_store(dir, "// Saves it.\n", "");
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    write_store(dir, "// Saves it. Locks it. Logs it.\n", "");
+
+    let output = check_comments(dir, Some(base)).unwrap();
+
+    let failures = list_rules(output.result.failures, Vec::new());
+    assert_eq!(
+        failures,
+        [(Rule::CommentLength, None, "3 sentences".to_owned())]
+    );
+}
+
+/// `check_comments` must pass old comments and names in a changed or moved file when only the code around them changed.
+/// Otherwise touching or moving an old file would fail its untouched comments and names.
+#[test]
+fn old_or_moved_text_passes_check() {
     let old_comment = "// This facilitates saving.\n";
     let long_name = "package review\n\n// This facilitates saving.\nfunc SaveTheAnswerToTheStoreRightNow() {}\n";
-    let generated = "// Code generated by protoc. DO NOT EDIT.\n\npackage review\n\n// This facilitates saving.\nfunc SaveAnswer() {}\n";
+    let python_without_docstring = "def save_answer():\n    return 1\n";
+    let python_class =
+        "class Store:\n    def save(self):\n        \"\"\"Saves it.\"\"\"\n        return 1\n";
     let cases = [
         (
             "old-comment-body-changed",
@@ -753,6 +817,13 @@ fn unchanged_moved_generated_or_noqa_text_passes() {
             long_name.replace("{}", "{ return }"),
         ),
         (
+            "old-class-method-body-changed",
+            "answer.py",
+            python_class.to_owned(),
+            "answer.py",
+            python_class.replace("return 1", "return 2"),
+        ),
+        (
             "moved-to-another-file",
             "old_answer.go",
             long_name.to_owned(),
@@ -760,29 +831,20 @@ fn unchanged_moved_generated_or_noqa_text_passes() {
             long_name.to_owned(),
         ),
         (
-            "generated-file",
-            "",
-            String::new(),
-            "answer.go",
-            generated.to_owned(),
-        ),
-        (
-            "python-noqa-after-prose",
-            "",
-            String::new(),
+            "moved-python-without-docstring",
+            "old_answer.py",
+            python_without_docstring.to_owned(),
             "answer.py",
-            "LIMIT = 1  # Counts it.  # noqa: E501\n".to_owned(),
+            python_without_docstring.to_owned(),
         ),
     ];
 
     for (case, old_file, before, file, after) in cases {
         let repo = make_repo();
         let dir = repo.path();
-        if !old_file.is_empty() {
-            fs::write(dir.join(old_file), before).unwrap();
-            commit_all(dir);
-            fs::remove_file(dir.join(old_file)).unwrap();
-        }
+        fs::write(dir.join(old_file), before).unwrap();
+        commit_all(dir);
+        fs::remove_file(dir.join(old_file)).unwrap();
         let base = resolve_commit(dir, "HEAD").unwrap();
         fs::write(dir.join(file), after).unwrap();
 
@@ -792,11 +854,113 @@ fn unchanged_moved_generated_or_noqa_text_passes() {
     }
 }
 
-/// Without it, a test, getter, constructor or framework method would be told to start with a verb it must not have.
+/// `check_comments` must fail a missing docstring on an old function the branch edits, even when a deleted file held the same name.
+/// Otherwise an agent could change an old function and never give it the docstring the skill asks for.
+#[test]
+fn old_function_edit_needs_docstring_check() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let old_function = "def save():\n    return 1\n";
+    fs::write(dir.join("answer.py"), old_function).unwrap();
+    fs::write(dir.join("old_answer.py"), old_function).unwrap();
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    fs::remove_file(dir.join("old_answer.py")).unwrap();
+    fs::write(dir.join("answer.py"), "def save():\n    return 2\n").unwrap();
+
+    let output = check_comments(dir, Some(base)).unwrap();
+
+    let failures = list_rules(output.result.failures, Vec::new());
+    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
+}
+
+/// `check_comments` must fail a missing docstring on a new function that shares its name with a function in a file that stays.
+/// Otherwise a new function with a common name, such as `save`, would never need a docstring.
+#[test]
+fn same_named_new_function_needs_docstring_check() {
+    let repo = make_repo();
+    let dir = repo.path();
+    fs::write(
+        dir.join("answer.py"),
+        "def save():\n    \"\"\"Saves it.\"\"\"\n    return 1\n",
+    )
+    .unwrap();
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    fs::write(
+        dir.join("answer.py"),
+        "def save():\n    \"\"\"Saves it.\"\"\"\n    return 2\n",
+    )
+    .unwrap();
+    fs::write(dir.join("store.py"), "def save():\n    return 1\n").unwrap();
+
+    let output = check_comments(dir, Some(base)).unwrap();
+
+    let failures = list_rules(output.result.failures, Vec::new());
+    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
+}
+
+/// `check_comments` must pass a file a generator wrote, whatever its comments say.
+/// Otherwise an agent would be told to fix comments that the next run of the generator writes back.
+#[test]
+fn generated_file_passes_check() {
+    let generated = "// Code generated by protoc. DO NOT EDIT.\n\npackage review\n\n// This facilitates saving.\nfunc SaveAnswer() {}\n";
+
+    assert_eq!(check_new_file("answer.go", generated), []);
+}
+
+/// `check_comments` must read a Python comment without the `# noqa` mark after it.
+/// Otherwise an agent would be told to fix the colon in a mark that a linter reads.
+#[test]
+fn noqa_mark_after_comment_passes_check() {
+    let source = "LIMIT = 1  # Counts it.  # noqa: E501\n";
+
+    assert_eq!(check_new_file("answer.py", source), []);
+}
+
+/// `check_comments` must not run the length and colon rules on Rust comments, which this version checks only in Go and Python.
+/// Otherwise a Rust comment of three sentences or with a colon would fail step 2.
+#[test]
+fn rust_comments_skip_length_and_colon_rules() {
+    let source = "// Saves it: now. Locks it. Logs it.\npub fn save_answer() {}\n";
+
+    assert_eq!(check_new_file("lib.rs", source), []);
+}
+
+/// `check_comments` must not ask for a verb at the start of a test, getter, constructor or framework method name.
+/// Otherwise an agent would be told to put a verb on a name that must not have one.
 #[test]
 fn verb_first_skips_names_a_language_requires() {
     let go = |code: &str| format!("package review\n\n{code}");
-    let python = "import pytest\nfrom typing import override\n\n\nclass Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        \"\"\"Starts empty.\"\"\"\n\n    def setUp(self):\n        \"\"\"Prepares it.\"\"\"\n\n    def tearDown(self):\n        \"\"\"Cleans up.\"\"\"\n\n    @property\n    def total(self):\n        \"\"\"Counts answers.\"\"\"\n\n    @override\n    def ledger(self):\n        \"\"\"Lists answers.\"\"\"\n\n\n@pytest.fixture\ndef database():\n    \"\"\"Opens an empty one.\"\"\"\n";
+    let python = r#"import pytest
+from typing import override
+
+
+class Store:
+    """Holds answers."""
+
+    def __init__(self):
+        """Starts empty."""
+
+    def setUp(self):
+        """Prepares it."""
+
+    def tearDown(self):
+        """Cleans up."""
+
+    @property
+    def total(self):
+        """Counts answers."""
+
+    @override
+    def ledger(self):
+        """Lists answers."""
+
+
+@pytest.fixture
+def database():
+    """Opens an empty one."""
+"#;
     let not_a_verb = |word: &str| {
         let detail = format!("\"{word}\" is not in the checker's verbs");
         vec![(Rule::VerbFirst, Some(ReportNote::ReportOnly), detail)]
