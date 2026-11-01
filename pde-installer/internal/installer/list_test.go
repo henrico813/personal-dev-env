@@ -2,6 +2,8 @@ package installer
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,6 +25,29 @@ func TestListSkipsFullMetadata(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "@opencode/cli") || strings.Contains(output.String(), "opencode-inline-shim") || strings.Contains(output.String(), "@anthropic-ai/claude-code") || strings.Contains(output.String(), "neovim") {
 		t.Fatalf("list output includes full-only item: %s", output.String())
+	}
+}
+
+// Terminal builds no tools of its own, but a desktop still builds its player
+// into HOME.
+func TestListShowsTerminalDesktopsWallpaperPlayer(t *testing.T) {
+	t.Setenv("PATH", terminalProbeBin(t, ""))
+	cfg := terminalTestConfig(t)
+	cfg.Desktop = "i3"
+	if err := os.MkdirAll(cfg.LocalBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.LocalBin, "xwinwrap"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+
+	if err := list(cfg, run.Runner{Stdout: &output, Stderr: &bytes.Buffer{}}); err != nil {
+		t.Fatalf("list() error = %v", err)
+	}
+
+	if !strings.Contains(output.String(), "local\txwinwrap\t\t\tinstalled\n") {
+		t.Fatalf("list output omits installed xwinwrap: %s", output.String())
 	}
 }
 

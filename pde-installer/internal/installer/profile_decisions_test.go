@@ -7,6 +7,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"pde-installer/internal/profile"
+	"pde-installer/internal/run"
+	"pde-installer/internal/ubuntu"
 )
 
 // Each profile's dry-run stages, apt packages and the chezmoi data its
@@ -45,7 +49,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"tiers":["terminal"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal"]}}`,
 		},
 		{
 			profile: "client",
@@ -86,7 +90,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"tiers":["terminal","workstation"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation"]}}`,
 		},
 		{
 			profile: "full",
@@ -141,7 +145,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"xz-utils",
 				"zsh",
 			},
-			chezmoiData: `{"pde":{"tiers":["terminal","workstation","development"]}}`,
+			chezmoiData: `{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}`,
 		},
 	}
 	for _, test := range tests {
@@ -170,6 +174,153 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A desktop on a saved profile keeps that profile's stages and packages, adds
+// its own packages, player build and chezmoi data, and calls sudo only for apt.
+// Any other sudo call would break the installer's rule of changing nothing
+// outside HOME.
+func TestDryRunAddsDesktopToProfile(t *testing.T) {
+	tests := []struct {
+		profile, desktop, player string
+		addedPackages            []string
+		chezmoiData              string
+	}{
+		{
+			profile: "client",
+			desktop: "sway",
+			player:  "mpvpaper",
+			addedPackages: []string{
+				"blueman",
+				"brightnessctl",
+				"build-essential",
+				"dunst",
+				"fonts-noto-color-emoji",
+				"grim",
+				"grimshot",
+				"jq",
+				"libegl-dev",
+				"libmpv-dev",
+				"libwayland-dev",
+				"lxpolkit",
+				"meson",
+				"mpv",
+				"network-manager-gnome",
+				"ninja-build",
+				"papirus-icon-theme",
+				"pavucontrol",
+				"pkg-config",
+				"playerctl",
+				"psmisc",
+				"pulseaudio-utils",
+				"rofi",
+				"slurp",
+				"sway",
+				"swaybg",
+				"swayidle",
+				"swaylock",
+				"ubuntu-wallpapers",
+				"waybar",
+				"wayland-protocols",
+				"wl-clipboard",
+				"xdg-desktop-portal-wlr",
+				"xwayland",
+			},
+			chezmoiData: `{"pde":{"desktop":"sway","tiers":["terminal","workstation"]}}`,
+		},
+		{
+			profile: "full",
+			desktop: "i3",
+			player:  "xwinwrap",
+			addedPackages: []string{
+				"arandr",
+				"autorandr",
+				"blueman",
+				"brightnessctl",
+				"cava",
+				"dex",
+				"dunst",
+				"feh",
+				"fonts-noto-color-emoji",
+				"i3-wm",
+				"i3lock",
+				"libx11-dev",
+				"libxext-dev",
+				"libxrender-dev",
+				"lxappearance",
+				"lxpolkit",
+				"mpv",
+				"network-manager-gnome",
+				"papirus-icon-theme",
+				"pavucontrol",
+				"picom",
+				"playerctl",
+				"polybar",
+				"psmisc",
+				"pulseaudio-utils",
+				"rofi",
+				"ubuntu-wallpapers",
+				"xautolock",
+				"xfce4-power-manager",
+				"xss-lock",
+			},
+			chezmoiData: `{"pde":{"desktop":"i3","tiers":["terminal","workstation","development"]}}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.profile+" "+test.desktop, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("PATH", writeMissingPackagesBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
+			// Desktops need a newer release than the tool profiles, and the
+			// command reads this host's.
+			if err := ubuntu.New("full", profile.Desktop(test.desktop), run.Runner{}).Validate(); err != nil {
+				t.Skipf("host cannot install %s: %v", test.desktop, err)
+			}
+			writeCommandTestFile(t, filepath.Join(home, ".config", "pde", "config.json"), `{"profile":"`+test.profile+`"}`)
+			profileStages, profilePackages := readDryRun(runInstallDryRun(t, test.profile), home)
+
+			output := runInstallDryRun(t, test.desktop)
+
+			stages, packages := readDryRun(output, home)
+			wantStages := slices.Clone(profileStages)
+			migrate := slices.Index(wantStages, "migrate legacy PDE configuration")
+			wantStages = slices.Insert(wantStages, migrate, "download and verify", "build and atomically activate "+test.player)
+			if !slices.Equal(stages, wantStages) {
+				t.Errorf("stages =\n%s\nwant\n%s", strings.Join(stages, "\n"), strings.Join(wantStages, "\n"))
+			}
+			added := slices.DeleteFunc(slices.Clone(packages), func(name string) bool {
+				return slices.Contains(profilePackages, name)
+			})
+			if !slices.Equal(added, test.addedPackages) || len(packages)-len(added) != len(profilePackages) {
+				t.Errorf("apt packages = %q, want the profile's %q plus %q", packages, profilePackages, test.addedPackages)
+			}
+			if data := readChezmoiData(output); data != test.chezmoiData {
+				t.Errorf("chezmoi data = %s, want %s", data, test.chezmoiData)
+			}
+			var sudo []string
+			for _, line := range strings.Split(output, "\n") {
+				if command, found := strings.CutPrefix(line, "  sudo "); found {
+					sudo = append(sudo, strings.Join(strings.Fields(command)[:2], " "))
+				}
+			}
+			if want := []string{"apt-get update", "apt-get install"}; !slices.Equal(sudo, want) {
+				t.Errorf("sudo commands = %q, want %q", sudo, want)
+			}
+		})
+	}
+}
+
+func runInstallDryRun(t *testing.T, argument string) string {
+	t.Helper()
+	var output bytes.Buffer
+	command := NewCommand()
+	command.SetOut(&output)
+	command.SetArgs([]string{"install", argument, "--dry-run", "--repo-root", testRepositoryRoot(t)})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("install %s --dry-run: %v\n%s", argument, err, output.String())
+	}
+	return output.String()
 }
 
 // Returns a PATH folder where dpkg-query reports every package missing, so the

@@ -21,7 +21,7 @@ func list(config config, runner run.Runner) error {
 	if err := config.validate(); err != nil {
 		return err
 	}
-	ubuntuManager := ubuntu.New(config.Profile, runner)
+	ubuntuManager := ubuntu.New(config.Profile, config.Desktop, runner)
 	tmuxManager := tmux.New(config.Home, runner)
 	aquaManager := aqua.New(config.Home, config.RepoRoot, config.Profile, runner)
 	aquaInstalled, aquaState, err := aquaManager.Probe()
@@ -31,7 +31,8 @@ func list(config config, runner run.Runner) error {
 	var npmManager npm.Manager
 	var directManager direct.Manager
 	var directTools []direct.Tool
-	var buildManager builds.Manager
+	// A desktop's wallpaper player is a local build on every profile.
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	if config.Profile.Has(profile.Workstation) {
 		npmManager = npm.New(config.Home, config.RepoRoot, runner)
 		directManager = direct.New(config.Home, runner)
@@ -40,16 +41,15 @@ func list(config config, runner run.Runner) error {
 		if directToolsErr != nil {
 			return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 		}
-		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 	}
-	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Probe()
+	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Probe()
 	if err != nil {
 		return fmt.Errorf("read chezmoi status: %w", err)
 	}
 	if _, err := fmt.Fprintln(runner.Out(), "OWNER\tITEM\tREQUESTED\tINSTALLED\tSTATUS"); err != nil {
 		return fmt.Errorf("write list heading: %w", err)
 	}
-	for _, item := range manifest.ItemsFor(config.Profile) {
+	for _, item := range manifest.ItemsFor(config.Profile, config.Desktop) {
 		requested, installed, state := item.Version, "", "missing"
 		switch item.Owner {
 		case manifest.Ubuntu:

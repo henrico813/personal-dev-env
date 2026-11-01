@@ -18,13 +18,14 @@ import (
 type Manager struct {
 	Home, RepoRoot, AquaRoot string
 	Profile                  profile.Profile
+	Desktop                  profile.Desktop
 	ColorProfile             colorprofile.Profile
 	Runner                   run.Runner
 }
 
 // New returns a chezmoi manager for the supplied installation roots.
-func New(home, repoRoot, aquaRoot string, selected profile.Profile, color colorprofile.Profile, runner run.Runner) Manager {
-	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, ColorProfile: color, Runner: runner}
+func New(home, repoRoot, aquaRoot string, selected profile.Profile, desktop profile.Desktop, color colorprofile.Profile, runner run.Runner) Manager {
+	return Manager{Home: home, RepoRoot: repoRoot, AquaRoot: aquaRoot, Profile: selected, Desktop: desktop, ColorProfile: color, Runner: runner}
 }
 
 // Source returns the repository's chezmoi source directory.
@@ -206,14 +207,15 @@ func (m Manager) readOnlyBinary() (string, error) {
 }
 
 func (m Manager) arguments() []string {
-	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false", "--override-data", encodeTemplateData(m.Profile)}
+	return []string{"--config", "/dev/null", "--config-format", "toml", "--source", m.Source(), "--destination", m.Home, "--persistent-state", filepath.Join(m.Home, ".local", "state", "pde", "chezmoi.boltdb"), "--color", "false", "--override-data", encodeTemplateData(m.Profile, m.Desktop)}
 }
 
 // Returns the --override-data JSON that templates read as .pde, such as
-// `{"pde":{"tiers":["terminal"]}}`.
-func encodeTemplateData(selected profile.Profile) string {
+// `{"pde":{"desktop":"","tiers":["terminal"]}}`.
+func encodeTemplateData(selected profile.Profile, desktop profile.Desktop) string {
+	// chezmoi stops on a missing key, so a machine with no desktop gets "".
 	data, err := json.Marshal(map[string]map[string]any{
-		"pde": {"tiers": selected.Tiers()},
+		"pde": {"tiers": selected.Tiers(), "desktop": string(desktop)},
 	})
 	if err != nil {
 		// Strings and string slices always encode.
