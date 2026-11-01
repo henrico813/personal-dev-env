@@ -183,3 +183,16 @@ Give only the matching verdict line: Plan for a plan, Code for code.
 5. Reward the smallest set of edits needed for a sound change.
 6. Preserve user-approved decisions unless new evidence invalidates them.
 7. Read enough complete context to avoid partial-file errors.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that a review still changes no files unless the user asks for a
+review artifact. When the user corrects how you review a plan, pull
+request, commit or diff, other than its tests or code comments, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`review-plan`, and offer once to save the correction as a lesson.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
