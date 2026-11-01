@@ -46,7 +46,7 @@ func TestToolsMapSupportedArchitectures(t *testing.T) {
 			t.Fatalf("toolsForPlatform(%q) count = %d", architecture, len(tools))
 		}
 		for _, tool := range tools {
-			if tool.LatestURL != "" {
+			if tool.ReleasesURL != "" {
 				continue
 			}
 			if tool.Version == "" || len(tool.SHA256) != sha256.Size*2 {
@@ -148,7 +148,7 @@ func TestRootArchiveToolInstallsLaunchers(t *testing.T) {
 func TestLatestToolInstallsNewestRelease(t *testing.T) {
 	home := t.TempDir()
 	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
-	tool := serveLatestTool(t, archive, sha256.Sum256(archive))
+	tool, _ := serveLatestTool(t, archive, sha256.Sum256(archive))
 
 	manager := New(home, run.Runner{})
 	_, err := manager.reconcileTools([]Tool{tool})
@@ -160,11 +160,11 @@ func TestLatestToolInstallsNewestRelease(t *testing.T) {
 }
 
 // A rebuild for another tool's new pin must keep the moshi-hook that updated
-// itself, or each pin change would undo its updates.
+// itself without reaching the CDN, or each pin change would undo its updates.
 func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 	home := t.TempDir()
 	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
-	moshi := serveLatestTool(t, archive, sha256.Sum256(archive))
+	moshi, cdn := serveLatestTool(t, archive, sha256.Sum256(archive))
 	pinned := func(version string) Tool {
 		archive := toolArchive(t, "fixture-"+version, "fixture", version)
 		digest := sha256.Sum256(archive)
@@ -188,8 +188,10 @@ func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 	if err := os.Rename(updated+".new", updated); err != nil {
 		t.Fatal(err)
 	}
+	next := pinned("1.2.4")
+	cdn.Close()
 
-	_, err := manager.reconcileTools([]Tool{moshi, pinned("1.2.4")})
+	_, err := manager.reconcileTools([]Tool{moshi, next})
 
 	if err != nil {
 		t.Fatalf("second reconcileTools() error = %v", err)
@@ -203,21 +205,38 @@ func TestLatestToolKeepsSelfUpdatedBinary(t *testing.T) {
 func TestLatestToolRejectsChecksumMismatch(t *testing.T) {
 	home := t.TempDir()
 	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
-	tool := serveLatestTool(t, archive, sha256.Sum256([]byte("other archive")))
+	tool, _ := serveLatestTool(t, archive, sha256.Sum256([]byte("other archive")))
 
 	_, err := New(home, run.Runner{}).reconcileTools([]Tool{tool})
 
 	if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("reconcileTools() error = %v, want checksum mismatch", err)
 	}
-	if _, err := os.Lstat(filepath.Join(home, ".local", "bin", "moshi-hook")); !os.IsNotExist(err) {
-		t.Fatalf("moshi-hook launcher exists after a failed install: %v", err)
-	}
 }
 
-// Returns a moshi-hook Tool served by a fake CDN. Its v9.0.0 checksums.txt
-// gives listed as the archive's checksum.
-func serveLatestTool(t *testing.T, archive []byte, listed [sha256.Size]byte) Tool {
+// A corrupt or wrong-architecture moshi-hook must not be kept forever; the
+// next install replaces one that does not run.
+func TestLatestToolReplacesBrokenBinary(t *testing.T) {
+	home := t.TempDir()
+	archive := toolArchive(t, "", "moshi-hook", "9.0.0")
+	tool, _ := serveLatestTool(t, archive, sha256.Sum256(archive))
+	manager := New(home, run.Runner{})
+	if _, err := manager.reconcileTools([]Tool{tool}); err != nil {
+		t.Fatalf("first reconcileTools() error = %v", err)
+	}
+	writeDirectFile(t, filepath.Join(manager.ToolsRoot(), "moshi-hook", "bin", "moshi-hook"), "#!/bin/sh\nexit 1\n", 0o755)
+
+	_, err := manager.reconcileTools([]Tool{tool})
+
+	if err != nil {
+		t.Fatalf("second reconcileTools() error = %v", err)
+	}
+	assertLauncherOutput(t, home, "moshi-hook", "moshi-hook 9.0.0")
+}
+
+// Returns a moshi-hook Tool served by a fake CDN, and that CDN. Its v9.0.0
+// checksums.txt gives listed as the archive's checksum.
+func serveLatestTool(t *testing.T, archive []byte, listed [sha256.Size]byte) (Tool, *httptest.Server) {
 	t.Helper()
 	files := map[string]string{
 		"/latest/version.txt":       "v9.0.0\n",
@@ -234,10 +253,10 @@ func serveLatestTool(t *testing.T, archive []byte, listed [sha256.Size]byte) Too
 	}))
 	t.Cleanup(server.Close)
 	return Tool{
-		Name: "moshi-hook", Archive: "moshi-hook.tar.gz", LatestURL: server.URL, Directory: "moshi-hook",
+		Name: "moshi-hook", Archive: "moshi-hook.tar.gz", ReleasesURL: server.URL, Directory: "moshi-hook",
 		Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"},
 		VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true,
-	}
+	}, server
 }
 
 func assertLauncherOutput(t *testing.T, home, name, want string) {

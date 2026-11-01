@@ -26,7 +26,9 @@ installs skip them all.
 2. Update archive names and checksums in `internal/direct/direct.go`.
 3. Run the tests and preview above.
 
-After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>` and run `moshi-hook install`. moshi-hook has no pin: pde-installer installs the newest release when it is missing, and after that moshi-hook updates itself and pde-installer leaves it alone.
+After `pde-installer` installs moshi-hook, pair once with `moshi-hook pair --token <token>`, run `moshi-hook install` to add the agent hooks, and run `moshi-hook service install` to start the background service.
+
+moshi-hook has no pin. Its background service updates it by default, and `moshi-hook update` does the same by hand. pde-installer installs the newest release only when moshi-hook is missing or does not run, and checks it against that release's own `checksums.txt`.
 
 After a nobs upgrade, each vault's broker keeps running the old image
 until `nobs vault set` runs again for that vault, or until a stopped

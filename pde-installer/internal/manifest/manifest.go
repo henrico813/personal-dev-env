@@ -150,6 +150,7 @@ func Items() []Item {
 			Tier:    profile.Workstation,
 		},
 		{Name: "keychain", Version: "2.9.8", Owner: Direct, Tier: profile.Development},
+		// moshi-hook has no pin, and list shows "latest" as its wanted version.
 		{Name: "moshi-hook", Version: "latest", Owner: Direct, Tier: profile.Development},
 		{
 			Name:    "herdr",
