@@ -36,6 +36,7 @@ pub fn check_comments(
         None => git::find_branch_start(dir)?,
     };
     let approvals = approvals::load(dir)?;
+    let root = git::find_root(dir)?;
     let changed: BTreeSet<PathBuf> = git::list_changed_files(dir, &base)?.into_iter().collect();
     let files: BTreeSet<&Path> = changed
         .iter()
@@ -52,11 +53,11 @@ pub fn check_comments(
             continue;
         }
         // Commits and the index ship too, so each version that differs from `base` is checked.
-        let versions = git::read_changed_versions(dir, &base, file)?;
+        let versions = git::read_changed_versions(&root, &base, file)?;
         if versions.is_empty() {
             continue;
         }
-        let before = comments::read_comments_at_commit(dir, &base, file)?;
+        let before = comments::read_comments_at_commit(&root, &base, file)?;
         for version in versions {
             let now = comments::read_version_comments(file, version)?;
             let found = find_changed_approved_texts(&approvals, &now, &before)

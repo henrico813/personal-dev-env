@@ -3,88 +3,29 @@ mod common;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use common::TempFolder;
+use common::{
+    APPROVED, REWORDED, STORE, TempFolder, add_decision, commit_all, make_repo, run_git,
+    store_source, write_store,
+};
 use pde_comment_review::shared::ErrorCode;
-use pde_comment_review::shared::approvals::{self, Approval};
 use pde_comment_review::shared::comment_rules::{Finding, Rule};
 use pde_comment_review::shared::git::resolve_commit;
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::check_comments::check_comments;
 
-/// Names the Go file most tests change.
-const STORE: &str = "review_store.go";
-/// Holds the comment text the user approved.
-const APPROVED: &str = "// Saves the answer under the lock.\n";
-/// Holds an agent's new wording of the approved comment.
-const REWORDED: &str = "// Writes the answer while holding the lock.\n";
 /// Holds Go source that does not parse.
 const BROKEN_GO: &str = "package review\n\nfunc SaveAnswer( {}\n";
 /// Holds a Review Session waiting for User Feedback.
 const WAITING_REVIEW_SESSION: &str = r#"{"status": "waiting_for_user_feedback", "origin": {"repo": "personal-dev-env", "branch": "review-comments", "agent_session": "ses_123"}, "lists": [], "feedback": {}}"#;
 
-/// Runs Git without the test machine's own settings, so they cannot change the result.
-fn run_git(dir: &Path, args: &[&str]) {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_AUTHOR_NAME", "Review Test")
-        .env("GIT_AUTHOR_EMAIL", "review@example.invalid")
-        .env("GIT_COMMITTER_NAME", "Review Test")
-        .env("GIT_COMMITTER_EMAIL", "review@example.invalid")
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "{:?}: {:?}", args, output);
-}
-
-/// Makes main hold one Go file with one comment, then starts a branch from it.
-fn make_repo() -> TempFolder {
-    let folder = TempFolder::new();
-    let dir = folder.path();
-    run_git(dir, &["init", "-b", "main"]);
-    write_store(dir, APPROVED, "");
-    commit_all(dir);
-    run_git(dir, &["checkout", "-b", "review-comments"]);
-    folder
-}
-
-/// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
-fn store_source(comment: &str, body: &str) -> String {
-    format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
-}
-
-/// Writes `store_source(comment, body)` to the store file on disk.
-fn write_store(dir: &Path, comment: &str, body: &str) {
-    fs::write(dir.join(STORE), store_source(comment, body)).unwrap();
-}
-
-/// Commits every change, or makes an empty commit when nothing changed.
-fn commit_all(dir: &Path) {
-    run_git(dir, &["add", "--all"]);
-    run_git(dir, &["commit", "--allow-empty", "-m", "Change the store"]);
-}
-
-/// Saves the user's approval of `text` for `name`, or a cut when `text` is empty.
-fn add_decision(dir: &Path, file: &str, name: &str, text: &str) {
-    let decision = Approval {
-        file: PathBuf::from(file),
-        name: name.to_owned(),
-        text: text.to_owned(),
-    };
-    approvals::add(dir, &[decision]).unwrap();
-}
-
-/// Commits `before` in a file, adds the decision on `name` if one is given,
-/// writes `after`, and returns step 2's failures.
+/// Commits `before` in a file, adds each of `decisions` on `name`, writes
+/// `after`, and returns the failures `check_comments` finds.
 fn check_removal(
     file: &str,
     name: &str,
-    decision: Option<&str>,
+    decisions: &[&str],
     before: &str,
     after: &str,
 ) -> Vec<Finding> {
@@ -93,7 +34,7 @@ fn check_removal(
     fs::write(dir.join(file), before).unwrap();
     commit_all(dir);
     let base = resolve_commit(dir, "HEAD").unwrap();
-    if let Some(decision) = decision {
+    for decision in decisions {
         add_decision(dir, file, name, decision);
     }
     fs::write(dir.join(file), after).unwrap();
@@ -126,7 +67,7 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
     let repo = make_repo();
     let dir = repo.path();
     add_decision(dir, STORE, "SaveAnswer", APPROVED);
-    // A reword staged and then undone on disk makes step 2 read the index too.
+    // A reword staged and then undone on disk makes `check_comments` read the index too.
     write_store(dir, REWORDED, "");
     run_git(dir, &["add", STORE]);
     write_store(dir, APPROVED, "");
@@ -138,7 +79,7 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
 /// `check_comments` must fail a reworded approved comment from any folder, whether the reword is committed, staged, on disk, hidden from Git or behind a restored copy.
 /// Otherwise an agent could change text the user approved.
 #[test]
-fn changed_approved_text_fails_check() {
+fn fails_reworded_approved_comment() {
     let commit: &[&str] = &["commit", "--all", "-m", "Reword the store"];
     let restore_disk: &[&str] = &["restore", "--source=main", "--worktree", "--", STORE];
     let restore_disk_and_index: &[&str] = &[
@@ -194,10 +135,10 @@ fn changed_approved_text_fails_check() {
 }
 
 /// `check_comments` must pass a comment the branch did not change, even one approved with other text, and a changed comment on a name the user cut.
-/// Otherwise the agent would be stuck on comments that step 3 asks the user about.
+/// Otherwise the agent would be stuck on comments that `make_feedback_request_list` asks the user about.
 #[test]
-fn unchanged_or_cut_name_comments_pass_check() {
-    // Each branch changes the file, so step 2 reads it.
+fn passes_unchanged_or_cut_comments() {
+    // Each branch changes the file, so `check_comments` reads it.
     let cases = [
         (
             "approved-elsewhere-unchanged",
@@ -223,7 +164,7 @@ fn unchanged_or_cut_name_comments_pass_check() {
 /// `check_comments` must read an approved comment in a file with `\r\n` line ends as unchanged.
 /// Otherwise every approved comment in a checkout with `\r\n` line ends would fail.
 #[test]
-fn crlf_checkout_passes_unchanged_approved_comment() {
+fn passes_approved_comment_with_crlf_line_ends() {
     let repo = make_repo();
     let dir = repo.path();
     add_decision(dir, STORE, "SaveAnswer", APPROVED);
@@ -239,7 +180,7 @@ fn crlf_checkout_passes_unchanged_approved_comment() {
 /// `check_comments` must fail an approved comment, docstring or module comment that the branch removed while the code it describes stays.
 /// Otherwise an agent could delete text the user approved.
 #[test]
-fn removed_approved_comment_fails_while_code_stays() {
+fn fails_removed_approved_comment_while_code_stays() {
     let docstring = "        \"\"\"Saves the answer.\"\"\"\n";
     let python_before =
         format!("class Review:\n    def save(self):\n{docstring}        return 1\n");
@@ -251,7 +192,7 @@ fn removed_approved_comment_fails_while_code_stays() {
             "go-comment-removed",
             STORE,
             "SaveAnswer",
-            Some(APPROVED),
+            &[APPROVED],
             store_source(APPROVED, ""),
             store_source("", ""),
             3,
@@ -260,7 +201,7 @@ fn removed_approved_comment_fails_while_code_stays() {
             "python-docstring-removed",
             "review.py",
             "Review.save",
-            Some(docstring),
+            &[docstring],
             python_before,
             python_after.to_owned(),
             2,
@@ -269,15 +210,15 @@ fn removed_approved_comment_fails_while_code_stays() {
             "rust-module-comment-removed",
             "lib.rs",
             "<module>",
-            Some(module_comment),
+            &[module_comment],
             rust_before,
             "pub mod shared;\n".to_owned(),
             1,
         ),
     ];
 
-    for (case, file, name, decision, before, after, line) in cases {
-        let failures = check_removal(file, name, decision, &before, &after);
+    for (case, file, name, decisions, before, after, line) in cases {
+        let failures = check_removal(file, name, decisions, &before, &after);
 
         let failure = Finding {
             file: PathBuf::from(file),
@@ -292,22 +233,22 @@ fn removed_approved_comment_fails_while_code_stays() {
 /// `check_comments` must pass a removed comment whose code went too, or that the user cut or never decided on.
 /// Otherwise an agent would be stuck after deleting a function, or a comment the user did not approve.
 #[test]
-fn deleted_code_or_unapproved_comment_passes_check() {
-    let cases = [
+fn passes_removed_comment_without_code_or_approval() {
+    let cases: [(&str, &[&str], String); 3] = [
         (
             "code-removed-too",
-            Some(APPROVED),
+            &[APPROVED],
             "package review\n".to_owned(),
         ),
-        ("cut-comment-removed", Some(""), store_source("", "")),
-        ("undecided-comment-removed", None, store_source("", "")),
+        ("cut-comment-removed", &[""], store_source("", "")),
+        ("undecided-comment-removed", &[], store_source("", "")),
     ];
 
-    for (case, decision, after) in cases {
+    for (case, decisions, after) in cases {
         let failures = check_removal(
             STORE,
             "SaveAnswer",
-            decision,
+            decisions,
             &store_source(APPROVED, ""),
             &after,
         );
@@ -319,7 +260,7 @@ fn deleted_code_or_unapproved_comment_passes_check() {
 /// `check_comments` must check only the changes since the `base` it is given.
 /// Otherwise a branch made from another would fail on its parent's changes, which its agent must not undo.
 #[test]
-fn stacked_branch_checks_only_its_own_changes() {
+fn checks_only_changes_since_given_base() {
     let repo = make_repo();
     let dir = repo.path();
     add_decision(dir, STORE, "SaveAnswer", APPROVED);
@@ -338,7 +279,7 @@ fn stacked_branch_checks_only_its_own_changes() {
 /// `check_comments` must refuse a `base` that HEAD does not build on.
 /// Otherwise a base from a sibling branch that already holds the branch's reword would hide it.
 #[test]
-fn non_ancestor_base_refuses_check() {
+fn refuses_base_outside_head_history() {
     let repo = make_repo();
     let dir = repo.path();
     add_decision(dir, STORE, "SaveAnswer", APPROVED);
@@ -357,7 +298,7 @@ fn non_ancestor_base_refuses_check() {
 /// `check_comments` must list a changed file that no language rule reads, instead of refusing the check.
 /// Otherwise a Markdown change would block the branch, or the agent would not know its comments went unchecked.
 #[test]
-fn unsupported_changed_file_is_listed_unchecked() {
+fn lists_unsupported_changed_file_as_unchecked() {
     let repo = make_repo();
     let dir = repo.path();
     fs::write(dir.join("README.md"), "Notes on the store.\n").unwrap();
@@ -370,7 +311,7 @@ fn unsupported_changed_file_is_listed_unchecked() {
 /// `check_comments` must refuse a changed file that does not parse, naming the file.
 /// Otherwise a broken file could hide a changed approved comment.
 #[test]
-fn unparsable_changed_file_refuses_check() {
+fn refuses_unparsable_changed_file() {
     let repo = make_repo();
     let dir = repo.path();
     fs::write(dir.join("broken.go"), BROKEN_GO).unwrap();
@@ -384,7 +325,7 @@ fn unparsable_changed_file_refuses_check() {
 /// `check_comments` must pass an approved file the branch never changed, even one that does not parse, after its time stamp or line ends change.
 /// Otherwise an old broken file would block a branch that never touched it.
 #[test]
-fn unchanged_broken_approved_file_passes_check() {
+fn passes_unchanged_unparsable_approved_file() {
     /// Sets the broken file's modified time to 1970 without changing its bytes.
     fn change_time_stamp(dir: &Path) {
         let file = File::options().write(true).open(dir.join("old_broken.go"));
@@ -416,38 +357,42 @@ fn unchanged_broken_approved_file_passes_check() {
     }
 }
 
-/// `check_comments` must leave every file in the clone as it was, beside a waiting or damaged Review Session.
-/// Otherwise a check could change the user's decisions, the Review Session or the code it reads.
+/// `check_comments` must leave every file in the clone as it was, beside a waiting or damaged Review Session, even when it refuses a file that does not parse.
+/// Otherwise a check could change the user's decisions, the code it reads or the Review Session, even by moving a damaged one aside.
 #[test]
-fn check_comments_leaves_repository_files_unchanged() {
+fn writes_no_file_even_when_refusing() {
+    let damaged = "{\"status\": ";
     let cases = [
-        ("waiting-review-session", WAITING_REVIEW_SESSION),
-        ("damaged-review-session", "{\"status\": "),
+        (
+            "passes-beside-waiting-review-session",
+            WAITING_REVIEW_SESSION,
+            "package review\n",
+            Ok(()),
+        ),
+        (
+            "passes-beside-damaged-review-session",
+            damaged,
+            "package review\n",
+            Ok(()),
+        ),
+        (
+            "refuses-beside-damaged-review-session",
+            damaged,
+            BROKEN_GO,
+            Err(ErrorCode::FileUnreadable),
+        ),
     ];
 
-    for (case, review_session) in cases {
+    for (case, review_session, new_go_file, expected) in cases {
         let repo = make_repo_with_review_session(review_session);
         let dir = repo.path();
+        fs::write(dir.join("new.go"), new_go_file).unwrap();
         let before = read_every_file(dir);
 
         let result = check_comments(dir, None);
 
-        assert!(result.is_ok(), "{case}");
+        let result = result.map(|_| ()).map_err(|error| error.code);
+        assert_eq!(result, expected, "{case}");
         assert_eq!(read_every_file(dir), before, "{case}");
     }
-}
-
-/// `check_comments` must leave every file in the clone as it was when it refuses a file that does not parse.
-/// Otherwise a refused check could move a damaged Review Session aside.
-#[test]
-fn refused_check_leaves_repository_files_unchanged() {
-    let repo = make_repo_with_review_session("{\"status\": ");
-    let dir = repo.path();
-    fs::write(dir.join("broken.go"), BROKEN_GO).unwrap();
-    let before = read_every_file(dir);
-
-    let result = check_comments(dir, None);
-
-    assert!(result.is_err());
-    assert_eq!(read_every_file(dir), before);
 }
