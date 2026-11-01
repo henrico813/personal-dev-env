@@ -87,8 +87,8 @@ func TestCommandsRecoverProfiles(t *testing.T) {
 			if err := command.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if got != profile.Full {
-				t.Fatalf("recovered profile = %q, want %q", got, profile.Full)
+			if got != "full" {
+				t.Fatalf("recovered profile = %q, want full", got)
 			}
 			if gotColor != colorprofile.EverforestDark {
 				t.Fatalf("recovered color profile = %q, want %q", gotColor, colorprofile.EverforestDark)
