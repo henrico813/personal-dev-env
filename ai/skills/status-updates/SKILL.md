@@ -127,15 +127,25 @@ For a progress update rewritten from an agent's shorthand, read
 [references/evaluation.md](references/evaluation.md) only when testing
 or revising this skill.
 
-## Final checks
+## Review before sending
 
-- A reader who saw no earlier message understands every label.
-- The user's actions come early, numbered, each with its link, path
-  or command.
-- Every number was checked, and unchecked things are named.
-- No side item that an earlier message raised.
-- Nothing from the filler list is left.
-- It fits a phone screen without a wall of text.
+Never send a first draft. Reread the whole draft as a reader who saw
+no earlier message, and fix it before you send it:
+
+1. Check each sentence against the Final checks of
+   `plain-direct-english`, and load that skill if it is not loaded.
+   Rewrite each sentence that fails, such as one that packs several
+   conditions onto one claim or leaves out who acts.
+2. Check the whole update against this list, and fix each miss:
+   - A reader who saw no earlier message understands every label.
+   - The user's actions come early, numbered, each with its link,
+     path or command.
+   - Every number was checked, and unchecked things are named.
+   - No side item that an earlier message raised.
+   - Nothing from the filler list is left.
+   - It fits a phone screen without a wall of text.
+3. Read the fixed draft once more. Send it only when every check
+   passes.
 
 ## Remembering corrections
 
