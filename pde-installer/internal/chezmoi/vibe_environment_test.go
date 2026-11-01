@@ -159,7 +159,7 @@ func TestVibeEnvironmentPublishesOneConcurrentFile(t *testing.T) {
 		exec.Command("sh", script),
 	}
 	for _, command := range commands {
-		command.Env = append(os.Environ(), "HOME="+home, "PDE_PROFILE=full")
+		command.Env = append(os.Environ(), "HOME="+home)
 		if err := command.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +190,7 @@ func runVibeEnvironment(t *testing.T, home, profile string, environment []string
 		t.Fatal(err)
 	}
 	command := exec.Command("sh", script)
-	command.Env = append(os.Environ(), "HOME="+home, "PDE_PROFILE="+profile)
+	command.Env = append(os.Environ(), "HOME="+home)
 	command.Env = append(command.Env, environment...)
 	return command.CombinedOutput()
 }
