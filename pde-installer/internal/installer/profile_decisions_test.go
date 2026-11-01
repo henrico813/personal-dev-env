@@ -177,30 +177,39 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 }
 
 // A desktop on a saved profile keeps that profile's stages and packages, adds
-// its own packages and chezmoi data, and calls sudo only for apt. Any other
-// sudo call would break the installer's rule of changing nothing outside HOME.
+// its own packages, player build and chezmoi data, and calls sudo only for apt.
+// Any other sudo call would break the installer's rule of changing nothing
+// outside HOME.
 func TestDryRunAddsDesktopToProfile(t *testing.T) {
 	tests := []struct {
-		profile, desktop string
-		addedPackages    []string
-		chezmoiData      string
+		profile, desktop, player string
+		addedPackages            []string
+		chezmoiData              string
 	}{
 		{
 			profile: "client",
 			desktop: "sway",
+			player:  "mpvpaper",
 			addedPackages: []string{
 				"blueman",
 				"brightnessctl",
+				"build-essential",
 				"dunst",
 				"fonts-noto-color-emoji",
 				"grim",
 				"grimshot",
 				"jq",
+				"libegl-dev",
+				"libmpv-dev",
+				"libwayland-dev",
 				"lxpolkit",
+				"meson",
 				"mpv",
 				"network-manager-gnome",
+				"ninja-build",
 				"papirus-icon-theme",
 				"pavucontrol",
+				"pkg-config",
 				"playerctl",
 				"psmisc",
 				"pulseaudio-utils",
@@ -212,6 +221,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"swaylock",
 				"ubuntu-wallpapers",
 				"waybar",
+				"wayland-protocols",
 				"wl-clipboard",
 				"xdg-desktop-portal-wlr",
 				"xwayland",
@@ -221,6 +231,7 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 		{
 			profile: "full",
 			desktop: "i3",
+			player:  "xwinwrap",
 			addedPackages: []string{
 				"arandr",
 				"autorandr",
@@ -233,6 +244,9 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 				"fonts-noto-color-emoji",
 				"i3-wm",
 				"i3lock",
+				"libx11-dev",
+				"libxext-dev",
+				"libxrender-dev",
 				"lxappearance",
 				"lxpolkit",
 				"mpv",
@@ -269,8 +283,11 @@ func TestDryRunAddsDesktopToProfile(t *testing.T) {
 			output := runInstallDryRun(t, test.desktop)
 
 			stages, packages := readDryRun(output, home)
-			if !slices.Equal(stages, profileStages) {
-				t.Errorf("stages =\n%s\nwant the profile's\n%s", strings.Join(stages, "\n"), strings.Join(profileStages, "\n"))
+			wantStages := slices.Clone(profileStages)
+			migrate := slices.Index(wantStages, "migrate legacy PDE configuration")
+			wantStages = slices.Insert(wantStages, migrate, "download and verify", "build and atomically activate "+test.player)
+			if !slices.Equal(stages, wantStages) {
+				t.Errorf("stages =\n%s\nwant\n%s", strings.Join(stages, "\n"), strings.Join(wantStages, "\n"))
 			}
 			added := slices.DeleteFunc(slices.Clone(packages), func(name string) bool {
 				return slices.Contains(profilePackages, name)
