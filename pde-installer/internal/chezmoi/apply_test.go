@@ -173,7 +173,7 @@ while [ "$#" -gt 0 ]; do
 		*) shift ;;
 	esac
 done
-[ "$data" = '{"pde":{"tiers":["terminal","workstation","development"]}}' ]
+[ "$data" = '{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}' ]
 [ "$AQUA_GLOBAL_CONFIG" = "$source_dir/dot_config/aquaproj-aqua/aqua.yaml" ]
 [ "$AQUA_CHECKSUMS_PATH" = "$source_dir/dot_config/aquaproj-aqua/aqua-checksums.json" ]
 target="$destination/.config/full-only"
@@ -187,7 +187,7 @@ case "$command" in
 		;;
 esac
 `)
-	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, "full", colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
+	fixture.manager = New(fixture.manager.Home, fixture.manager.RepoRoot, fixture.manager.AquaRoot, "full", "", colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard})
 	journal, err := fixture.manager.Apply()
 	if err != nil {
 		t.Fatal(err)
@@ -402,10 +402,10 @@ expected_color_profile=$(cat "$source_dir/test-color-profile")
 case "$expected_profile" in
 	full)
 		aqua_name=aqua ; checksums_name=aqua-checksums
-		expected_data='{"pde":{"tiers":["terminal","workstation","development"]}}' ;;
+		expected_data='{"pde":{"desktop":"","tiers":["terminal","workstation","development"]}}' ;;
 	terminal)
 		aqua_name=aqua-terminal ; checksums_name=aqua-terminal-checksums
-		expected_data='{"pde":{"tiers":["terminal"]}}' ;;
+		expected_data='{"pde":{"desktop":"","tiers":["terminal"]}}' ;;
 	*) exit 8 ;;
 esac
 [ "$data" = "$expected_data" ]
@@ -439,7 +439,7 @@ case "$command" in
 
 	state := filepath.Join(home, ".local", "state", "pde", "chezmoi.boltdb")
 	return applyFixture{
-		manager: New(home, repoRoot, aquaRoot, selected, colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
+		manager: New(home, repoRoot, aquaRoot, selected, "", colorprofile.TokyoNight, run.Runner{Stdout: io.Discard, Stderr: io.Discard}),
 		target:  filepath.Join(home, ".config", "tool"),
 		state:   state,
 	}

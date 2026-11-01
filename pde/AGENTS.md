@@ -12,8 +12,10 @@ PDE configuration is stored in `chezmoi/`; installation is owned by the
 
 ## Working Rules
 
-- Keep only `install [terminal|client|full]`, bare `install`, `doctor`, and
-  `list`; do not add aliases for removed commands or `--profile`.
+- Keep only `install [terminal|client|full|i3|sway]`, bare `install`, `doctor`,
+  and `list`; do not add aliases for removed commands, `--profile` or
+  `--desktop`. Profiles and desktops are defined in
+  `pde-installer/internal/profile/profiles.yaml`.
 - Reject UID 0 for mutations.
 - Use apt for Ubuntu dependencies and sudo only for apt.
 - Keep other installer destinations under HOME.

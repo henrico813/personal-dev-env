@@ -89,10 +89,10 @@ func hostPreflight(config config, runner run.Runner, mode preflightMode) error {
 	if err := manifest.Validate(); err != nil {
 		failures = append(failures, "ownership: "+err.Error())
 	}
-	if err := ubuntu.New(config.Profile, runner).Validate(); err != nil {
+	if err := ubuntu.New(config.Profile, config.Desktop, runner).Validate(); err != nil {
 		failures = append(failures, "Ubuntu release: "+err.Error())
 	}
-	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Validate(); err != nil {
+	if err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Validate(); err != nil {
 		failures = append(failures, "chezmoi source: "+err.Error())
 	}
 	if config.Profile.Has(profile.Workstation) {

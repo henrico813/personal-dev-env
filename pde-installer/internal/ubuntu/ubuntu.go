@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,12 +15,16 @@ import (
 
 type Manager struct {
 	profile       profile.Profile
+	desktop       profile.Desktop
 	runner        run.Runner
 	osReleasePath string
 }
 
-func New(selected profile.Profile, runner run.Runner) Manager {
-	return Manager{profile: selected, runner: runner, osReleasePath: "/etc/os-release"}
+// Tool profiles support this release. A desktop may need a newer one.
+const minimumRelease = "22.04"
+
+func New(selected profile.Profile, desktop profile.Desktop, runner run.Runner) Manager {
+	return Manager{profile: selected, desktop: desktop, runner: runner, osReleasePath: "/etc/os-release"}
 }
 
 // Validate checks whether the host can install Ubuntu packages.
@@ -31,8 +36,13 @@ func (m Manager) Validate() error {
 			profile.ValidValues,
 		)
 	}
-	if err := validateRelease(m.osReleasePath); err != nil {
+	if err := validateRelease(m.osReleasePath, minimumRelease); err != nil {
 		return err
+	}
+	if m.desktop != "" {
+		if err := validateRelease(m.osReleasePath, m.desktop.MinUbuntu()); err != nil {
+			return fmt.Errorf("%s desktop: %w", m.desktop, err)
+		}
 	}
 	for _, name := range []string{"apt-get", "dpkg-query", "sudo"} {
 		if _, err := run.LookPath(name, os.Getenv("PATH")); err != nil {
@@ -47,7 +57,9 @@ func (m Manager) Reconcile() error {
 		return err
 	}
 
-	packageNames := m.profile.Packages()
+	packageNames := append(m.profile.Packages(), m.desktop.Packages()...)
+	slices.Sort(packageNames)
+	packageNames = slices.Compact(packageNames)
 	missing := make([]string, 0, len(packageNames))
 	for _, name := range packageNames {
 		output, err := m.runner.Query("inspect Ubuntu package "+name, run.Command{
@@ -96,7 +108,10 @@ func (m Manager) Probe(name string) (string, string, error) {
 	return installed, "installed", nil
 }
 
-func validateRelease(path string) error {
+func validateRelease(path, minimum string) error {
+	// A bad minimum would let every release pass. The profiles.yaml loader
+	// and minimumRelease give a valid one.
+	floor, _ := parseVersion(minimum)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("read Ubuntu release: %w", err)
@@ -106,18 +121,24 @@ func validateRelease(path string) error {
 		return err
 	}
 	if values["ID"] != "ubuntu" {
-		return fmt.Errorf("unsupported operating system %q: Ubuntu 22.04 or newer required", values["ID"])
+		return fmt.Errorf("unsupported operating system %q: Ubuntu %s or newer required", values["ID"], minimum)
 	}
-	parts := strings.Split(values["VERSION_ID"], ".")
+	version, ok := parseVersion(values["VERSION_ID"])
+	if !ok || slices.Compare(version, floor) < 0 {
+		return fmt.Errorf("unsupported Ubuntu version %q: Ubuntu %s or newer required", values["VERSION_ID"], minimum)
+	}
+	return nil
+}
+
+// Returns the major and minor numbers of a version such as "24.04".
+func parseVersion(value string) ([]int, bool) {
+	parts := strings.Split(value, ".")
 	if len(parts) < 2 {
-		return fmt.Errorf("unsupported Ubuntu version %q: Ubuntu 22.04 or newer required", values["VERSION_ID"])
+		return nil, false
 	}
 	major, majorErr := strconv.Atoi(parts[0])
 	minor, minorErr := strconv.Atoi(parts[1])
-	if majorErr != nil || minorErr != nil || major < 22 || major == 22 && minor < 4 {
-		return fmt.Errorf("unsupported Ubuntu version %q: Ubuntu 22.04 or newer required", values["VERSION_ID"])
-	}
-	return nil
+	return []int{major, minor}, majorErr == nil && minorErr == nil
 }
 
 func parseRelease(contents string) (map[string]string, error) {

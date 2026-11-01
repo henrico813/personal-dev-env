@@ -14,6 +14,7 @@ import (
 type config struct {
 	Home, RepoRoot, LocalBin, AquaRoot string
 	Profile                            profile.Profile
+	Desktop                            profile.Desktop
 	ColorProfile                       colorprofile.Profile
 }
 

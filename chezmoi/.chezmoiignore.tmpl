@@ -46,3 +46,30 @@ link_herdr_plugins.sh
 .config/nvim/pack/plugins/start/blink.cmp
 .config/nvim/pack/plugins/start/blink.cmp/**
 {{- end }}
+{{- if not .pde.desktop }}
+# Machines without a desktop get no desktop config.
+.config/pde-desktop
+.config/pde-desktop/**
+.config/rofi
+.config/rofi/**
+.config/dunst
+.config/dunst/**
+.config/gtk-3.0/settings.ini
+# On Xubuntu, the desktop hides this autostart entry so notifyd leaves
+# notifications to dunst.
+.config/autostart/xfce4-notifyd.desktop
+{{- end }}
+{{- if ne .pde.desktop "i3" }}
+.config/i3
+.config/i3/**
+.config/polybar
+.config/polybar/**
+.config/cava
+.config/cava/**
+{{- end }}
+{{- if ne .pde.desktop "sway" }}
+.config/sway
+.config/sway/**
+.config/waybar
+.config/waybar/**
+{{- end }}

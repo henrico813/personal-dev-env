@@ -59,6 +59,23 @@ func TestLegacyConfigMigratesSafely(t *testing.T) {
 	}
 }
 
+// A desktop that is not saved disappears at the next bare install.
+func TestMigrationSavesSelectedDesktop(t *testing.T) {
+	home := profileHome(t, `{"profile":"full"}`+"\n")
+
+	journal, err := migrateLegacyConfig(config{Home: home, RepoRoot: "/repo", Profile: "full", Desktop: "i3", ColorProfile: colorprofile.TokyoNight})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if desktop, err := loadDesktop(home); err != nil || desktop != "i3" {
+		t.Fatalf("saved desktop = %q, %v; want i3", desktop, err)
+	}
+}
+
 func TestLegacyConfigPersistsFullProfile(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, ".config", "pde", "config.json")

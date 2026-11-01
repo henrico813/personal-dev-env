@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -14,6 +16,9 @@ type Profile string
 
 // Lists the profiles for error and setup messages.
 const ValidValues = "terminal, client, or full"
+
+// Lists the desktops for error messages.
+const ValidDesktops = "i3 or sway"
 
 func Parse(value string) (Profile, error) {
 	selected := Profile(value)
@@ -57,13 +62,19 @@ var profilesYAML []byte
 var profiles = loadOrPanic(profilesYAML)
 
 type catalog struct {
-	AptGroups map[string][]string `yaml:"apt_groups"`
-	Profiles  map[Profile]entry   `yaml:"profiles"`
+	AptGroups map[string][]string      `yaml:"apt_groups"`
+	Profiles  map[Profile]entry        `yaml:"profiles"`
+	Desktops  map[Desktop]desktopEntry `yaml:"desktops"`
 }
 
 type entry struct {
 	Apt   []string `yaml:"apt"`
 	Tiers []Tier   `yaml:"tiers"`
+}
+
+type desktopEntry struct {
+	MinUbuntu string   `yaml:"min_ubuntu"`
+	Apt       []string `yaml:"apt"`
 }
 
 // Reports whether profiles.yaml lists the tier for this profile. An unknown
@@ -81,12 +92,7 @@ func (selected Profile) Tiers() []Tier {
 // Returns the sorted Ubuntu packages of the profile's apt groups in
 // profiles.yaml. Each package appears once.
 func (selected Profile) Packages() []string {
-	var packages []string
-	for _, group := range profiles.Profiles[selected].Apt {
-		packages = append(packages, profiles.AptGroups[group]...)
-	}
-	slices.Sort(packages)
-	return slices.Compact(packages)
+	return groupPackages(profiles.Profiles[selected].Apt)
 }
 
 // Returns the Aqua config and checksums file names. Only profiles with the
@@ -96,6 +102,43 @@ func (selected Profile) AquaFiles() (string, string) {
 		return "aqua.yaml", "aqua-checksums.json"
 	}
 	return "aqua-terminal.yaml", "aqua-terminal-checksums.json"
+}
+
+// A window manager setup that install i3 or install sway saves next to the
+// machine's profile. The empty Desktop means the machine has none.
+type Desktop string
+
+func ParseDesktop(value string) (Desktop, error) {
+	selected := Desktop(value)
+	if !selected.Valid() {
+		return "", fmt.Errorf("invalid desktop %q; use %s", value, ValidDesktops)
+	}
+	return selected, nil
+}
+
+func (selected Desktop) Valid() bool {
+	_, ok := profiles.Desktops[selected]
+	return ok
+}
+
+// Returns the sorted Ubuntu packages of the desktop's apt groups in
+// profiles.yaml, or none for the empty Desktop.
+func (selected Desktop) Packages() []string {
+	return groupPackages(profiles.Desktops[selected].Apt)
+}
+
+// Returns the oldest Ubuntu release the desktop supports, such as "24.04".
+func (selected Desktop) MinUbuntu() string {
+	return profiles.Desktops[selected].MinUbuntu
+}
+
+func groupPackages(groups []string) []string {
+	var packages []string
+	for _, group := range groups {
+		packages = append(packages, profiles.AptGroups[group]...)
+	}
+	slices.Sort(packages)
+	return slices.Compact(packages)
 }
 
 func load(data []byte) (catalog, error) {
@@ -117,7 +160,25 @@ func load(data []byte) (catalog, error) {
 			}
 		}
 	}
+	for name, entry := range loaded.Desktops {
+		if !isUbuntuRelease(entry.MinUbuntu) {
+			return catalog{}, fmt.Errorf("desktop %s has invalid min_ubuntu %q", name, entry.MinUbuntu)
+		}
+		for _, group := range entry.Apt {
+			if _, ok := loaded.AptGroups[group]; !ok {
+				return catalog{}, fmt.Errorf("desktop %s uses unknown apt group %q", name, group)
+			}
+		}
+	}
 	return loaded, nil
+}
+
+// Reports whether value is an Ubuntu release such as "24.04".
+func isUbuntuRelease(value string) bool {
+	major, minor, ok := strings.Cut(value, ".")
+	_, majorErr := strconv.Atoi(major)
+	_, minorErr := strconv.Atoi(minor)
+	return ok && majorErr == nil && minorErr == nil
 }
 
 func loadOrPanic(data []byte) catalog {
