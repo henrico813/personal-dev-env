@@ -1,7 +1,7 @@
-//! Runs step 2, which fails each changed comment whose name has approved
-//! texts, none equal to its text, each approved comment removed from code
-//! that stays, and each style rule broken on a changed line. It reads files
-//! and writes none.
+//! This module runs step 2, which fails a branch that rewords an approved
+//! comment, removes one whose code stays, or breaks a style rule on a changed
+//! line, and writes no file. Read the `check_comments(dir, base)` function to
+//! understand the module.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -13,19 +13,10 @@ use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
 use crate::shared::{Error, ErrorCode};
 
-/// Holds what step 2 found.
-#[derive(Debug)]
-pub struct CheckResult {
-    pub failures: Vec<Finding>,
-    /// Lists the style findings the agent reports but need not fix.
-    pub reported: Vec<Finding>,
-    /// Lists changed files no language rule reads, whose comments go unchecked.
-    pub unsupported: Vec<PathBuf>,
-}
-
-/// Returns step 2's failures for changes since `base`, or since the branch
-/// start when it is `None`. Refuses a `base` that HEAD does not build on, and
-/// a changed file that does not parse now or at `base`, naming the file.
+/// Returns step 2's failures and reported findings for changes since `base`,
+/// or since the branch start when it is `None`. Refuses a `base` that HEAD
+/// does not build on, and a changed file that does not parse now or at
+/// `base`, naming the file.
 pub fn check_comments(
     dir: &Path,
     base: Option<CommitId>,
@@ -72,7 +63,7 @@ pub fn check_comments(
             continue;
         }
         let before = comments::read_comments_at_commit(&root, &base, file)?;
-        old_text.add(&before);
+        old_text.add(&before, !root.join(file).exists());
         changed_files.push((file, versions, before));
     }
     for (file, versions, before) in changed_files {
@@ -115,6 +106,16 @@ pub fn check_comments(
         },
         next,
     })
+}
+
+/// Holds what step 2 found.
+#[derive(Debug)]
+pub struct CheckResult {
+    pub failures: Vec<Finding>,
+    /// Lists the style findings the agent reports but need not fix.
+    pub reported: Vec<Finding>,
+    /// Lists changed files no language rule reads, whose comments go unchecked.
+    pub unsupported: Vec<PathBuf>,
 }
 
 fn find_changed_approved_texts(

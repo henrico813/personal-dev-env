@@ -3,10 +3,13 @@ package direct
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"pde-installer/internal/fsutil"
 	"pde-installer/internal/manifest"
@@ -31,6 +34,9 @@ type Tool struct {
 	VersionArgs                         []string
 	Kind                                toolKind
 	RootBinary                          bool
+	// CDN folder that holds every release. Setting it leaves the tool unpinned,
+	// because old releases disappear from the CDN and the tool updates itself.
+	ReleasesURL string
 }
 
 type toolState struct {
@@ -59,24 +65,22 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	case "amd64":
 		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "x86_64", "x86_64", "x64", "x86_64", "x86_64"
 		checksums = map[string]string{
-			"neovim":     "c441b547142860bf01bcce39e36cbed185c41112813e15443b16e5237750724d",
-			"go":         "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
-			"rust":       "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
-			"node":       "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
-			"moshi-hook": "2500dad1e771562648db984229269490064aab092ca2987cde0b42d611d3efef",
-			"herdr":      "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
-			"nobs":       "555a1925094e08e5efc239e96acdf279615cad4b4848a5b4f40e7e7aa2a8be01",
+			"neovim": "c441b547142860bf01bcce39e36cbed185c41112813e15443b16e5237750724d",
+			"go":     "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
+			"rust":   "c295047583a56238ea06b43f849f4b877fa12bfd4c7103f8d9a74c94c9c4e108",
+			"node":   "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9",
+			"herdr":  "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
+			"nobs":   "555a1925094e08e5efc239e96acdf279615cad4b4848a5b4f40e7e7aa2a8be01",
 		}
 	case "arm64":
 		nvimArch, rustArch, nodeArch, moshiArch, herdrArch = "arm64", "aarch64", "arm64", "arm64", "aarch64"
 		checksums = map[string]string{
-			"neovim":     "e055af73fa9c72b37456da8d204fa5c09850bc07e80e9176fe3b87d4afb7a3fc",
-			"go":         "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
-			"rust":       "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
-			"node":       "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
-			"moshi-hook": "a878e335b1b7eee411cb2cbbc51b33dc9a6303f8088c2267e8831c102f31ebdc",
-			"herdr":      "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
-			"nobs":       "9e8887d28b9727d984725a6eb146998b16d6e1d3f787f89f67922395290b7dd2",
+			"neovim": "e055af73fa9c72b37456da8d204fa5c09850bc07e80e9176fe3b87d4afb7a3fc",
+			"go":     "ef758ae7c6cf9267c9c0ef080b8965f453d89ab2d25d9eb22de4405925238768",
+			"rust":   "371eadcca97062219cbd8593628eb5d2802bc370515d085fedce1b56b2baed57",
+			"node":   "524659219d6a207a7400f2bde15d19ba060ffbe0d32a8643319ad67e3bb64c78",
+			"herdr":  "f4ccf4de745f2cb9a39a983e9ba3703dad50ec2a58dea83026ceab721bbd8d9e",
+			"nobs":   "9e8887d28b9727d984725a6eb146998b16d6e1d3f787f89f67922395290b7dd2",
 		}
 	default:
 		return nil, fmt.Errorf("direct tools do not support %s/%s", goos, goarch)
@@ -88,8 +92,6 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 	}
 	nvimVersion, goVersion := version("neovim"), version("go")
 	rustVersion, nodeVersion := version("rust"), version("node")
-	moshiTag := version("moshi-hook")
-	moshiVersion := strings.TrimPrefix(moshiTag, "v")
 	herdrVersion := version("herdr")
 	nobsVersion := version("nobs")
 	nvimArchive := "nvim-linux-" + nvimArch + ".tar.gz"
@@ -105,7 +107,7 @@ func toolsForPlatform(goos, goarch string) ([]Tool, error) {
 		{Name: "rust", Version: rustVersion, Archive: rustArchive, URL: "https://static.rust-lang.org/dist/" + rustArchive, SHA256: checksums["rust"], Directory: "rust", Binary: "rustc", VersionPrefix: "rustc ", Target: rustArch + "-unknown-linux-gnu", Links: []string{"cargo", "rustc", "rustdoc"}, VersionArgs: []string{"--version"}, Kind: rustTool},
 		{Name: "node", Version: nodeVersion, Archive: nodeArchive, URL: "https://nodejs.org/dist/v" + nodeVersion + "/" + nodeArchive, SHA256: checksums["node"], Directory: "node", Binary: "node", VersionPrefix: "v", Links: []string{"corepack", "node", "npm", "npx"}, VersionArgs: []string{"--version"}, Kind: archiveTool},
 		{Name: "keychain", Version: version("keychain"), Archive: "keychain-2.9.8", URL: "https://github.com/danielrobbins/keychain/releases/download/2.9.8/keychain", SHA256: "f8b4e8a2a630907bb81737d455a2dec2cb8308e3210840665239ef9c49bbeadb", Directory: "keychain", Binary: "keychain", VersionPrefix: "keychain ", Links: []string{"keychain"}, VersionArgs: []string{"--version"}, Kind: fileTool},
-		{Name: "moshi-hook", Version: moshiVersion, Archive: moshiArchive, URL: "https://cdn.getmoshi.app/hook/" + moshiTag + "/" + moshiArchive, SHA256: checksums["moshi-hook"], Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
+		{Name: "moshi-hook", Archive: moshiArchive, ReleasesURL: "https://cdn.getmoshi.app/hook", Directory: "moshi-hook", Binary: "moshi-hook", VersionPrefix: "moshi-hook ", Links: []string{"moshi-hook", "moshi"}, VersionArgs: []string{"version"}, Kind: archiveTool, RootBinary: true},
 		{Name: "herdr", Version: herdrVersion, Archive: herdrArchive, URL: "https://github.com/herdrdev/herdr/releases/download/" + herdrVersion + "/" + herdrArchive, SHA256: checksums["herdr"], Directory: "herdr", Binary: "herdr", Links: []string{"herdr"}, Kind: fileTool},
 		{Name: "nobs", Version: nobsVersion, Archive: nobsAsset, URL: "https://github.com/henrico813/nobs/releases/download/" + nobsVersion + "/" + nobsAsset, SHA256: checksums["nobs"], Directory: "nobs", Binary: "nobs", Links: []string{"nobs"}, Kind: fileTool},
 	}, nil
@@ -204,7 +206,16 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	}
 	if m.Runner.DryRun {
 		for _, tool := range tools {
-			if err := m.Runner.Plan("download and verify "+tool.URL+" sha256="+tool.SHA256, nil); err != nil {
+			var plan string
+			switch {
+			case tool.ReleasesURL == "":
+				plan = "download and verify " + tool.URL + " sha256=" + tool.SHA256
+			case m.verifyTools(m.ToolsRoot(), []Tool{tool}) == nil:
+				plan = "keep the installed " + tool.Name + ", which updates itself"
+			default:
+				plan = "download and verify " + tool.ReleasesURL + "/latest against that release's checksums.txt"
+			}
+			if err := m.Runner.Plan(plan, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -246,8 +257,31 @@ func (m Manager) reconcileTools(tools []Tool) (*fsutil.Journal, error) {
 	if err := os.MkdirAll(filepath.Join(stage, "bin"), 0o755); err != nil {
 		return nil, err
 	}
-	for _, tool := range tools {
-		if err := m.installTool(workspace, stage, tool); err != nil {
+	tools = append([]Tool(nil), tools...)
+	for i, tool := range tools {
+		if tool.ReleasesURL != "" && m.verifyTools(root, []Tool{tool}) == nil {
+			// Activation replaces the whole folder, so carry over the copy the
+			// tool may have updated itself. One that does not run is reinstalled.
+			if err := fsutil.CopyTree(filepath.Join(root, tool.Directory), filepath.Join(stage, tool.Directory)); err != nil {
+				return nil, fmt.Errorf("keep %s: %w", tool.Name, err)
+			}
+			if err := createStagedLinks(stage, tool); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if tool.ReleasesURL != "" {
+			var resolved Tool
+			if err := m.Runner.Retry("resolve newest "+tool.Name, 3, func() error {
+				var resolveErr error
+				resolved, resolveErr = resolveLatest(tool)
+				return resolveErr
+			}); err != nil {
+				return nil, fmt.Errorf("resolve %s: %w", tool.Name, err)
+			}
+			tools[i] = resolved
+		}
+		if err := m.installTool(workspace, stage, tools[i]); err != nil {
 			return nil, fmt.Errorf("install %s: %w", tool.Name, err)
 		}
 	}
@@ -355,6 +389,10 @@ func (m Manager) installTool(workspace, stage string, tool Tool) error {
 	default:
 		return fmt.Errorf("unsupported direct tool kind %d", tool.Kind)
 	}
+	return createStagedLinks(stage, tool)
+}
+
+func createStagedLinks(stage string, tool Tool) error {
 	for _, name := range tool.Links {
 		target := filepath.Join("..", tool.Directory, "bin", name)
 		if err := os.Symlink(target, filepath.Join(stage, "bin", name)); err != nil {
@@ -405,8 +443,9 @@ func (m Manager) toolsCurrent(tools []Tool) (bool, error) {
 		return false, nil
 	}
 	for _, tool := range tools {
-		installed := state.Tools[tool.Name]
-		if installed.Version != tool.Version || installed.SHA256 != tool.SHA256 {
+		installed, ok := state.Tools[tool.Name]
+		// An unpinned tool's version changes when it updates itself, so only that it runs is checked.
+		if !ok || tool.ReleasesURL == "" && (installed.Version != tool.Version || installed.SHA256 != tool.SHA256) {
 			return false, nil
 		}
 		launchersCurrent, err := m.toolLaunchersCurrent(tool)
@@ -447,7 +486,8 @@ func (m Manager) verifyTools(root string, tools []Tool) error {
 		if err != nil {
 			return err
 		}
-		if !hasToolVersion(string(output), tool) {
+		// A kept unpinned tool's version changes when it updates itself, so it only has to run.
+		if tool.Version != "" && !hasToolVersion(string(output), tool) {
 			return fmt.Errorf("%s version check returned %q, want %s", tool.Name, strings.TrimSpace(string(output)), tool.Version)
 		}
 	}
@@ -497,6 +537,10 @@ func (m Manager) ToolProbe(name string) (string, string, error) {
 			return "", "broken", err
 		}
 		installed := strings.TrimSpace(strings.SplitN(string(output), "\n", 2)[0])
+		// An unpinned tool's version changes when it updates itself, so whatever runs is current.
+		if tool.ReleasesURL != "" {
+			return strings.TrimPrefix(installed, tool.VersionPrefix), "current", nil
+		}
 		if hasToolVersion(string(output), tool) {
 			return tool.Version, "current", nil
 		}
@@ -524,6 +568,46 @@ func (m Manager) toolLaunchersCurrent(tool Tool) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// Returns tool set to the release named by ReleasesURL/latest/version.txt, with
+// the checksum that release lists in its checksums.txt.
+func resolveLatest(tool Tool) (Tool, error) {
+	tag, err := fetchText(tool.ReleasesURL + "/latest/version.txt")
+	if err != nil {
+		return tool, err
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" || strings.ContainsAny(tag, "/ \t\n") {
+		return tool, fmt.Errorf("unexpected latest version %q", tag)
+	}
+	sums, err := fetchText(tool.ReleasesURL + "/" + tag + "/checksums.txt")
+	if err != nil {
+		return tool, err
+	}
+	for _, line := range strings.Split(sums, "\n") {
+		if fields := strings.Fields(line); len(fields) == 2 && fields[1] == tool.Archive {
+			tool.Version = strings.TrimPrefix(tag, "v")
+			tool.URL = tool.ReleasesURL + "/" + tag + "/" + tool.Archive
+			tool.SHA256 = fields[0]
+			return tool, nil
+		}
+	}
+	return tool, fmt.Errorf("%s checksums.txt has no entry for %s", tag, tool.Archive)
+}
+
+func fetchText(url string) (string, error) {
+	client := &http.Client{Timeout: time.Minute}
+	response, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("download %s: HTTP %s", url, response.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	return string(data), err
 }
 
 func hasToolVersion(output string, tool Tool) bool {
