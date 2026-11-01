@@ -2,7 +2,9 @@
 
 Fill each `<...>`. Every brief names the skills the agent must load,
 and you load them too. Add the user's style rules that apply, from
-their notes or memory, such as comment length or call layout.
+their notes or memory, such as comment length or call layout. Once
+the user has given feedback on one PR, also add that feedback list
+from the roadmap page.
 
 ## Contents
 
@@ -43,9 +45,6 @@ Reviewers also get:
 
     Decisions, each labeled user-decided, orchestrator-proposed or
     inferred from code: <list>.
-
-    At most 700 changed lines; split into two plans if needed, each
-    with its own `planner new`.
 
     Report: plan paths, `planner check` result, changed lines (code,
     tests, other), choices you made, and anything that contradicts the
@@ -107,13 +106,12 @@ Send to the planner's session once every reviewer has reported:
 
     <Plan> is built: branch <branch>, HEAD <commit>. <N> reviewers
     asked for changes. Revise the plan only; `planner check` must
-    pass; rerun the tests and the affected mutations; at most 700
-    changed lines. Do not touch the worktree.
+    pass; rerun the tests and the affected mutations. Do not touch
+    the worktree.
 
     Required: <numbered, each with evidence and the fix>.
     Decided: <optional items you chose, and how reviewers' conflicts
     were settled>.
-    If it does not fit: <what to drop or move first>.
 
     Report: new size, tests, mutations, `planner check` result, and
     anything not applied and why.
