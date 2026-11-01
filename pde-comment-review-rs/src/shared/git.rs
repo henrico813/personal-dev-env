@@ -200,6 +200,9 @@ pub(crate) fn read_file_at_commit_from_root(
     read_text(output).map(Some)
 }
 
+/// Names the version of a file on disk.
+pub(crate) const ON_DISK: &str = "on disk";
+
 /// Holds one version of a root-relative file.
 pub(crate) struct FileVersion {
     /// Says where the version is, such as `in HEAD`, for messages.
@@ -236,7 +239,7 @@ pub(crate) fn read_changed_versions(
     let mut seen = vec![find_tree_blob(root, base.as_str(), file)?];
     let mut versions = Vec::new();
     if !seen.contains(&disk_id) {
-        versions.push(to_version(file, "on disk", disk)?);
+        versions.push(to_version(file, ON_DISK, disk)?);
         seen.push(disk_id);
     }
     let staged_id = find_staged_blob(root, file)?;
@@ -260,7 +263,7 @@ pub(crate) fn read_changed_versions(
 pub(crate) fn read_file_on_disk(root: &Path, file: &Path) -> Result<FileVersion, Error> {
     validate_file(file)?;
     let bytes = read_disk_copy(root, file)?;
-    to_version(file, "on disk", bytes)
+    to_version(file, ON_DISK, bytes)
 }
 
 /// Returns true when `commit` is HEAD or one of its ancestors.
@@ -351,7 +354,7 @@ fn read_disk_copy(root: &Path, file: &Path) -> Result<Option<Vec<u8>>, Error> {
     match fs::read(root.join(file)) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(unreadable_version(file, "on disk", error)),
+        Err(error) => Err(unreadable_version(file, ON_DISK, error)),
     }
 }
 

@@ -10,8 +10,8 @@ use common::{
     store_source, write_store,
 };
 use pde_comment_review::shared::ErrorCode;
-use pde_comment_review::shared::comment_rules::{Finding, Rule};
 use pde_comment_review::shared::git::resolve_commit;
+use pde_comment_review::shared::style_rules::{Finding, Outcome, ReportNote, Rule};
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::check_comments::check_comments;
 
@@ -76,6 +76,20 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
     repo
 }
 
+/// Returns each finding's rule, outcome and detail.
+fn list_rules(findings: Vec<Finding>) -> Vec<(Rule, Outcome, String)> {
+    findings
+        .into_iter()
+        .map(|finding| {
+            (
+                finding.rule,
+                finding.outcome,
+                finding.detail.unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
 /// `check_comments` must fail a reworded approved comment from any folder, whether the reword is committed, staged, on disk, hidden from Git or behind a restored copy.
 /// Otherwise an agent could change text the user approved.
 #[test]
@@ -128,6 +142,8 @@ fn fails_reworded_approved_comment() {
             name: Some("SaveAnswer".to_owned()),
             line: 3,
             rule: Rule::Approved,
+            outcome: Outcome::Fails,
+            detail: None,
         };
         assert_eq!(output.result.failures, [failure], "{case}");
         assert_eq!(output.next, NextStep::CheckComments, "{case}");
@@ -225,6 +241,8 @@ fn fails_removed_approved_comment_while_code_stays() {
             name: Some(name.to_owned()),
             line,
             rule: Rule::ApprovedRemoved,
+            outcome: Outcome::Fails,
+            detail: None,
         };
         assert_eq!(failures, [failure], "{case}");
     }
@@ -395,4 +413,157 @@ fn writes_no_file_even_when_refusing() {
         assert_eq!(result, expected, "{case}");
         assert_eq!(read_every_file(dir), before, "{case}");
     }
+}
+
+/// `check_comments` must pass a branch, and name `make_feedback_request_list` next, when every finding is only reported, such as filler the user approved.
+/// Otherwise an agent with only reported findings could never ask the user about its comments.
+#[test]
+fn passes_with_only_reported_findings() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let filler = "// This facilitates saving.\n";
+    add_decision(dir, STORE, "SaveAnswer", filler);
+    write_store(dir, filler, "");
+
+    let output = check_comments(dir, None).unwrap();
+
+    assert_eq!(output.result.failures, []);
+    let reported = list_rules(output.result.reported);
+    let expected = (
+        Rule::Filler,
+        Outcome::Reported(ReportNote::Approved),
+        "\"facilitates\"".to_owned(),
+    );
+    assert_eq!(reported, [expected]);
+    assert_eq!(output.next, NextStep::MakeFeedbackRequestList);
+}
+
+/// `check_comments` must pass old Go comments and names in a changed or moved file when only the code around them changed.
+/// Otherwise touching or moving an old file would fail its untouched comments and names.
+#[test]
+fn passes_old_or_moved_comments_and_names() {
+    let old_comment = "// This facilitates saving.\n";
+    let long_name = "package review\n\n// This facilitates saving.\nfunc SaveTheAnswerToTheStoreRightNow() {}\n";
+    let cases = [
+        (
+            "old-comment-body-changed",
+            STORE,
+            store_source(old_comment, ""),
+            STORE,
+            store_source(old_comment, "return"),
+        ),
+        (
+            "old-name-body-changed",
+            STORE,
+            long_name.to_owned(),
+            STORE,
+            long_name.replace("{}", "{ return }"),
+        ),
+        (
+            "moved-to-another-file",
+            "old_answer.go",
+            long_name.to_owned(),
+            "answer.go",
+            long_name.to_owned(),
+        ),
+    ];
+
+    for (case, old_file, before, file, after) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        fs::write(dir.join(old_file), before).unwrap();
+        commit_all(dir);
+        fs::remove_file(dir.join(old_file)).unwrap();
+        let base = resolve_commit(dir, "HEAD").unwrap();
+        fs::write(dir.join(file), after).unwrap();
+
+        let output = check_comments(dir, Some(base)).unwrap();
+
+        assert_eq!(output.result.failures, [], "{case}");
+    }
+}
+
+/// `check_comments` must not ask for a docstring on a function moved from a deleted file, or on an old class when only one of its methods changed.
+/// Otherwise moving a file or editing one method would ask for docstrings on code the branch did not write.
+#[test]
+fn skips_docstring_on_moved_or_untouched_definitions() {
+    let python_without_docstring = "def save_answer():\n    return 1\n";
+    let python_class =
+        "class Store:\n    def save(self):\n        \"\"\"Saves it.\"\"\"\n        return 1\n";
+    let cases = [
+        (
+            "old-class-method-body-changed",
+            "answer.py",
+            python_class.to_owned(),
+            "answer.py",
+            python_class.replace("return 1", "return 2"),
+        ),
+        (
+            "moved-python-without-docstring",
+            "old_answer.py",
+            python_without_docstring.to_owned(),
+            "answer.py",
+            python_without_docstring.to_owned(),
+        ),
+    ];
+
+    for (case, old_file, before, file, after) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        fs::write(dir.join(old_file), before).unwrap();
+        commit_all(dir);
+        fs::remove_file(dir.join(old_file)).unwrap();
+        let base = resolve_commit(dir, "HEAD").unwrap();
+        fs::write(dir.join(file), after).unwrap();
+
+        let output = check_comments(dir, Some(base)).unwrap();
+
+        assert_eq!(output.result.failures, [], "{case}");
+    }
+}
+
+/// `check_comments` must fail a missing docstring on an old function the branch edits, even when a deleted file held the same name.
+/// Otherwise an agent could change an old function and never give it the docstring the skill asks for.
+#[test]
+fn fails_edited_old_function_without_docstring() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let old_function = "def save():\n    return 1\n";
+    fs::write(dir.join("answer.py"), old_function).unwrap();
+    fs::write(dir.join("old_answer.py"), old_function).unwrap();
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    fs::remove_file(dir.join("old_answer.py")).unwrap();
+    fs::write(dir.join("answer.py"), "def save():\n    return 2\n").unwrap();
+
+    let output = check_comments(dir, Some(base)).unwrap();
+
+    let failures = list_rules(output.result.failures);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
+}
+
+/// `check_comments` must fail a missing docstring on a new function that shares its name with a function in a file that stays.
+/// Otherwise a new function with a common name, such as `save`, would never need a docstring.
+#[test]
+fn fails_new_same_named_function_without_docstring() {
+    let repo = make_repo();
+    let dir = repo.path();
+    fs::write(
+        dir.join("answer.py"),
+        "def save():\n    \"\"\"Saves it.\"\"\"\n    return 1\n",
+    )
+    .unwrap();
+    commit_all(dir);
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    fs::write(
+        dir.join("answer.py"),
+        "def save():\n    \"\"\"Saves it.\"\"\"\n    return 2\n",
+    )
+    .unwrap();
+    fs::write(dir.join("store.py"), "def save():\n    return 1\n").unwrap();
+
+    let output = check_comments(dir, Some(base)).unwrap();
+
+    let failures = list_rules(output.result.failures);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
 }
