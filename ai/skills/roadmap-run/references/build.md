@@ -53,11 +53,14 @@ run folder's name and `BR`, so one search for the key finds the
 branch, its worktree and the run folder. `BR` is this PR's branch,
 `<type>/$K-<words>`: a `git-messages` commit type, the key, then
 lowercase words joined by hyphens, at most 48 characters after the
-type. When the repository sets `pde.branchPattern`, set `BR` to a
-name that matches the pattern instead; the run folder keeps the key.
-`CHECK` is the plan's test and lint command. Keep each value in
-single quotes, since vault paths have spaces; use double quotes for a
-value that holds a single quote or `$K`.
+type. Words after the key are required: `feat/abc-12-approvals-file`,
+never `feat/abc-12`. When the repository sets `pde.branchPattern`,
+set `BR` to the ticket key the plan names, in the form the pattern
+asks for, and ask the user when the plan names none; `K` and the run
+folder still come from `planner key`. `CHECK` is the plan's test and
+lint command. Keep each value in single quotes, since vault paths
+have spaces; use double quotes for a value that holds a single quote
+or `$K`.
 
 ```sh
 S=${XDG_STATE_HOME:-$HOME/.local/state}
