@@ -2,11 +2,18 @@
 //! tools read attributes, so no Rust comment is a tool line.
 
 use std::iter::successors;
+use std::path::Path;
 
 use tree_sitter::{Language, Node};
 
-use super::{LanguageRules, nodes_starting_at};
+use super::{
+    LanguageRules, format_if_old_is_formatted, is_inside, line_comments, nodes_starting_at,
+};
+use crate::shared::Error;
 use crate::shared::comments::CommentStyle;
+
+/// Words that start a comment line a tool reads, in any case.
+const TOOL_MARKS: [&str; 1] = ["safety:"];
 
 pub struct RustRules;
 
@@ -50,6 +57,40 @@ impl LanguageRules for RustRules {
         }
         names.reverse();
         Some(names.join("::"))
+    }
+
+    fn to_plain_words(&self, text: &str) -> String {
+        line_comments::to_plain_words(text, find_line_marker(text))
+    }
+
+    fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String {
+        line_comments::lay_out_plain_words(words, old_text, find_line_marker(old_text))
+    }
+
+    fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
+        // Without an edition, rustfmt cannot parse 2024 syntax such as let chains.
+        format_if_old_is_formatted(&["rustfmt", "--edition", "2024"], folder, old, new)
+    }
+
+    /// Returns true for a `/* */` comment and for any comment inside a macro
+    /// call or definition, where a macro can read a `///` line as code.
+    fn is_keep_only(&self, comment: Node, _source: &str) -> bool {
+        comment.kind() == "block_comment"
+            || is_inside(comment, &["token_tree", "token_tree_pattern"])
+    }
+
+    /// Returns true when a line starts with a mark a tool reads, such as
+    /// `SAFETY:` above an unsafe block.
+    fn is_read_by_tools(&self, _file: &Path, text: &str) -> bool {
+        text.lines().any(|line| {
+            let words = line
+                .trim_start()
+                .trim_start_matches(['/', '!'])
+                .trim_start();
+            TOOL_MARKS
+                .iter()
+                .any(|mark| words.to_lowercase().starts_with(mark))
+        })
     }
 }
 
@@ -122,4 +163,16 @@ fn is_doc_attribute(attribute_item: Node, source: &str) -> bool {
         return false;
     };
     &source[path.byte_range()] == "doc" && attribute.child_by_field_name("value").is_some()
+}
+
+/// Returns the marker that starts each line of a line comment.
+fn find_line_marker(text: &str) -> &'static str {
+    let text = text.trim_start();
+    if text.starts_with("//!") {
+        "//!"
+    } else if text.starts_with("///") {
+        "///"
+    } else {
+        "//"
+    }
 }

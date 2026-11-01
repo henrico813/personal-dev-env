@@ -13,3 +13,16 @@ def load_approvals():
 
 def save_approvals():
     ("""Write every approval entry, newest last.""")
+
+
+def shout():
+    f"{print('side effect')}"
+    return 1
+
+
+def read_bytes():
+    b"""Not a docstring, since Python skips bytes."""
+
+
+def template():
+    t"""Not a docstring, since Python skips template strings."""

@@ -18,4 +18,5 @@ pub enum ErrorCode {
     SaveFailed,
     TextChanged,
     LateUserFeedback,
+    WouldNotWrite,
 }
