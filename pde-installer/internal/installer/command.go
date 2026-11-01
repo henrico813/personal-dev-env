@@ -31,7 +31,7 @@ func NewCommand() *cobra.Command {
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentFlags().StringVar(&repoRoot, "repo-root", "", "personal-dev-env checkout")
-	root.AddCommand(mutatingCommand("install [terminal|client|full]", "Install pinned PDE components", &repoRoot, reconcile))
+	root.AddCommand(mutatingCommand("install [terminal|client|full|i3|sway]", "Install pinned PDE components", &repoRoot, reconcile))
 	root.AddCommand(readCommand("doctor", "Check host prerequisites and managed paths", &repoRoot, doctor))
 	root.AddCommand(readCommand("list", "List ownership and installed state", &repoRoot, list))
 	return root
@@ -62,11 +62,7 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 				if pending {
 					return fmt.Errorf("pending filesystem recovery; rerun without --dry-run")
 				}
-				config.Profile, err = resolveInstallArgument(config.Home, args)
-				if err != nil {
-					return err
-				}
-				config.ColorProfile, err = resolveColorProfile(config.Home, requestedColorProfile)
+				config, err = resolveInstallSelections(config, args, requestedColorProfile)
 				if err != nil {
 					return err
 				}
@@ -79,11 +75,7 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 			if err := fsutil.RecoverJournals(fsutil.JournalConfig{Home: config.Home}); err != nil {
 				return errors.Join(err, lock.Close())
 			}
-			config.Profile, err = resolveInstallArgument(config.Home, args)
-			if err != nil {
-				return errors.Join(err, lock.Close())
-			}
-			config.ColorProfile, err = resolveColorProfile(config.Home, requestedColorProfile)
+			config, err = resolveInstallSelections(config, args, requestedColorProfile)
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
@@ -93,6 +85,22 @@ func mutatingCommand(use, description string, repoRoot *string, action func(conf
 	command.Flags().BoolVar(&dryRun, "dry-run", false, "preview ordered actions without making changes")
 	command.Flags().StringVar(&requestedColorProfile, "color-profile", "", "color profile: "+colorprofile.ValidValues)
 	return command
+}
+
+// Returns cfg with the profile, desktop and color profile that install's
+// argument and flag select. config.json supplies what they leave out.
+func resolveInstallSelections(cfg config, args []string, requestedColorProfile string) (config, error) {
+	var err error
+	if cfg.Profile, err = resolveInstallArgument(cfg.Home, args); err != nil {
+		return config{}, err
+	}
+	if cfg.Desktop, err = resolveInstallDesktop(cfg.Home, args); err != nil {
+		return config{}, err
+	}
+	if cfg.ColorProfile, err = resolveColorProfile(cfg.Home, requestedColorProfile); err != nil {
+		return config{}, err
+	}
+	return cfg, nil
 }
 
 func rejectUID(uid int, command string) error {
@@ -121,6 +129,10 @@ func readCommand(name, description string, repoRoot *string, action func(config,
 			if err != nil {
 				return errors.Join(err, lock.Close())
 			}
+			config.Desktop, err = loadDesktop(config.Home)
+			if err != nil {
+				return errors.Join(err, lock.Close())
+			}
 			config.ColorProfile, err = resolveColorProfile(config.Home, "")
 			if err != nil {
 				return errors.Join(err, lock.Close())
@@ -141,7 +153,7 @@ func reconcile(config config, runner run.Runner) error {
 		}
 	}
 	// APT owns system dependencies. Later stages journal changes below HOME.
-	if err := ubuntu.New(config.Profile, runner).Reconcile(); err != nil {
+	if err := ubuntu.New(config.Profile, config.Desktop, runner).Reconcile(); err != nil {
 		return fmt.Errorf("Ubuntu packages: %w", err)
 	}
 	if err := hostPreflight(config, runner, preflightQuiet); err != nil {
@@ -165,7 +177,7 @@ func reconcile(config config, runner run.Runner) error {
 	journals = append(journals, tmuxJournal)
 	// Order matters: runtimes precede their package tools, and config precedes
 	// builds that use files installed by chezmoi.
-	var buildManager builds.Manager
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	var directManager direct.Manager
 	if config.Profile.Has(profile.Workstation) {
 		directManager = direct.New(config.Home, runner)
@@ -192,12 +204,19 @@ func reconcile(config config, runner run.Runner) error {
 			return fail("direct artifacts", err)
 		}
 		journals = append(journals, directJournal)
-		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 		buildJournal, err := buildManager.Reconcile(config.Profile)
 		if err != nil {
 			return fail("local builds", err)
 		}
 		journals = append(journals, buildJournal)
+	}
+	// The player's build packages came from the apt stage above.
+	if config.Desktop != "" {
+		playerJournal, err := buildManager.BuildWallpaperPlayer(config.Desktop)
+		if err != nil {
+			return fail("wallpaper player", err)
+		}
+		journals = append(journals, playerJournal)
 	}
 	migrationJournal, err := prepareLegacyConfig(config, runner)
 	if err != nil {
@@ -211,7 +230,7 @@ func reconcile(config config, runner run.Runner) error {
 		}
 		journals = append(journals, pluginJournal)
 	}
-	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.ColorProfile, runner).Apply()
+	chezmoiJournal, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Apply()
 	if err != nil {
 		return fail("chezmoi", err)
 	}
