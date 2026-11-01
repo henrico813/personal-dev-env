@@ -19,79 +19,6 @@ const APPROVALS_FILE: &str = "code-comments.json";
 const LOCK_FILE: &str = "code-comments.json.lock";
 const TEMP_FILE: &str = "code-comments.json.tmp";
 
-/// Holds one answer. An empty text means the user cut the comment.
-#[derive(Clone, Deserialize, Serialize)]
-pub struct Approval {
-    pub file: PathBuf,
-    pub name: String,
-    pub text: String,
-}
-
-/// Holds every answer in the approvals file, oldest first.
-pub struct Approvals {
-    approved: Vec<Approval>,
-}
-
-/// Says how one comment stands against the user's answers.
-#[derive(Debug, PartialEq)]
-pub enum DecisionMatch {
-    /// No answer has the comment's file and name.
-    Undecided,
-    /// An approved text equals the comment's text, and the newest answer
-    /// is not a cut.
-    Approved,
-    /// The newest answer for the comment's file and name is a cut.
-    WasCut,
-    /// The comment's name has approved texts, and none equals its text.
-    DiffersFromApproved,
-}
-
-impl Approvals {
-    /// Checks the comment against the answers for its file and name. A
-    /// comment with no name is always undecided.
-    pub fn compare(&self, comment: &Comment) -> DecisionMatch {
-        let Some(name) = &comment.name else {
-            return DecisionMatch::Undecided;
-        };
-        let answers: Vec<&Approval> = self
-            .approved
-            .iter()
-            .filter(|answer| answer.file == comment.file && &answer.name == name)
-            .collect();
-        match answers.last() {
-            None => DecisionMatch::Undecided,
-            Some(newest) if newest.text.is_empty() => DecisionMatch::WasCut,
-            Some(_) if answers.iter().any(|answer| answer.text == comment.text) => {
-                DecisionMatch::Approved
-            }
-            Some(_) => DecisionMatch::DiffersFromApproved,
-        }
-    }
-}
-
-/// Holds the approvals file in the format today's checker writes.
-#[derive(Default, Deserialize, Serialize)]
-struct SavedFile {
-    #[serde(default)]
-    approved: Vec<SavedApproval>,
-    /// Maps each word agents should not use to what to say instead.
-    #[serde(default)]
-    avoid: BTreeMap<String, String>,
-    /// Collects fields this program does not know, so reading can refuse
-    /// them.
-    #[serde(flatten)]
-    unknown_fields: BTreeMap<String, Value>,
-}
-
-/// Holds one saved answer and any fields this program does not know.
-#[derive(Deserialize, Serialize)]
-struct SavedApproval {
-    #[serde(flatten)]
-    approval: Approval,
-    #[serde(flatten)]
-    unknown_fields: BTreeMap<String, Value>,
-}
-
 /// Loads the answers, or none when the file is missing. Refuses a field
 /// it does not know, so an older program cannot drop it on save.
 pub fn load(dir: &Path) -> Result<Approvals, Error> {
@@ -120,6 +47,79 @@ pub fn add(dir: &Path, new_approvals: &[Approval]) -> Result<(), Error> {
         });
     }
     write_saved_file(&folder, &saved).map_err(|error| save_error(&path, error))
+}
+
+impl Approvals {
+    /// Checks the comment against the answers for its file and name. A
+    /// comment with no name is always undecided.
+    pub fn compare(&self, comment: &Comment) -> DecisionMatch {
+        let Some(name) = &comment.name else {
+            return DecisionMatch::Undecided;
+        };
+        let answers: Vec<&Approval> = self
+            .approved
+            .iter()
+            .filter(|answer| answer.file == comment.file && &answer.name == name)
+            .collect();
+        match answers.last() {
+            None => DecisionMatch::Undecided,
+            Some(newest) if newest.text.is_empty() => DecisionMatch::WasCut,
+            Some(_) if answers.iter().any(|answer| answer.text == comment.text) => {
+                DecisionMatch::Approved
+            }
+            Some(_) => DecisionMatch::DiffersFromApproved,
+        }
+    }
+}
+
+/// Holds one answer. An empty text means the user cut the comment.
+#[derive(Clone, Deserialize, Serialize)]
+pub struct Approval {
+    pub file: PathBuf,
+    pub name: String,
+    pub text: String,
+}
+
+/// Holds every answer in the approvals file, oldest first.
+pub struct Approvals {
+    approved: Vec<Approval>,
+}
+
+/// Says how one comment stands against the user's answers.
+#[derive(Debug, PartialEq)]
+pub enum DecisionMatch {
+    /// No answer has the comment's file and name.
+    Undecided,
+    /// An approved text equals the comment's text, and the newest answer
+    /// is not a cut.
+    Approved,
+    /// The newest answer for the comment's file and name is a cut.
+    WasCut,
+    /// The comment's name has approved texts, and none equals its text.
+    DiffersFromApproved,
+}
+
+/// Holds the approvals file in the format today's checker writes.
+#[derive(Default, Deserialize, Serialize)]
+struct SavedFile {
+    #[serde(default)]
+    approved: Vec<SavedApproval>,
+    /// Maps each word agents should not use to what to say instead.
+    #[serde(default)]
+    avoid: BTreeMap<String, String>,
+    /// Collects fields this program does not know, so reading can refuse
+    /// them.
+    #[serde(flatten)]
+    unknown_fields: BTreeMap<String, Value>,
+}
+
+/// Holds one saved answer and any fields this program does not know.
+#[derive(Deserialize, Serialize)]
+struct SavedApproval {
+    #[serde(flatten)]
+    approval: Approval,
+    #[serde(flatten)]
+    unknown_fields: BTreeMap<String, Value>,
 }
 
 /// Returns the folder that holds the approvals, in the Git folder every
