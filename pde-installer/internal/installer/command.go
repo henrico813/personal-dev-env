@@ -177,7 +177,7 @@ func reconcile(config config, runner run.Runner) error {
 	journals = append(journals, tmuxJournal)
 	// Order matters: runtimes precede their package tools, and config precedes
 	// builds that use files installed by chezmoi.
-	var buildManager builds.Manager
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	var directManager direct.Manager
 	if config.Profile.Has(profile.Workstation) {
 		directManager = direct.New(config.Home, runner)
@@ -204,12 +204,19 @@ func reconcile(config config, runner run.Runner) error {
 			return fail("direct artifacts", err)
 		}
 		journals = append(journals, directJournal)
-		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 		buildJournal, err := buildManager.Reconcile(config.Profile)
 		if err != nil {
 			return fail("local builds", err)
 		}
 		journals = append(journals, buildJournal)
+	}
+	// The player's build packages came from the apt stage above.
+	if config.Desktop != "" {
+		playerJournal, err := buildManager.BuildWallpaperPlayer(config.Desktop)
+		if err != nil {
+			return fail("wallpaper player", err)
+		}
+		journals = append(journals, playerJournal)
 	}
 	migrationJournal, err := prepareLegacyConfig(config, runner)
 	if err != nil {

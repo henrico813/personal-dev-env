@@ -31,7 +31,8 @@ func list(config config, runner run.Runner) error {
 	var npmManager npm.Manager
 	var directManager direct.Manager
 	var directTools []direct.Tool
-	var buildManager builds.Manager
+	// A desktop's wallpaper player is a local build on every profile.
+	buildManager := builds.New(config.Home, config.RepoRoot, runner)
 	if config.Profile.Has(profile.Workstation) {
 		npmManager = npm.New(config.Home, config.RepoRoot, runner)
 		directManager = direct.New(config.Home, runner)
@@ -40,7 +41,6 @@ func list(config config, runner run.Runner) error {
 		if directToolsErr != nil {
 			return fmt.Errorf("read direct tool metadata: %w", directToolsErr)
 		}
-		buildManager = builds.New(config.Home, config.RepoRoot, runner)
 	}
 	chezmoiState, err := chezmoibackend.New(config.Home, config.RepoRoot, config.AquaRoot, config.Profile, config.Desktop, config.ColorProfile, runner).Probe()
 	if err != nil {
