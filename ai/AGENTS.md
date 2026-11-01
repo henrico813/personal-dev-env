@@ -131,11 +131,29 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   `git config --local --get-regexp '^(msg|pde)\.'`. It prints nothing
   when the repository sets neither. A `pde.branchPattern` value
   replaces the branch rule below, and `msg.titlePrefix` allows a prefix
-  before the commit type.
+  before the commit type. Under a pattern, the branch starts with the
+  ticket key the plan names, in the form the pattern asks for, and
+  agents ask the user when the plan names none. Vibe keys and run
+  folders still use `planner key`.
 - Name a new branch `<type>/<words>`: a `git-messages` commit type or
   `vibe`, then lowercase letters and digits joined by single hyphens,
-  at most 48 characters, issue key first when there is one, such as
-  `fix/abc-12-login-timeout`.
+  at most 48 characters.
+- When the work has a plan, start the words with the key that
+  `planner key` prints, never one you type, and keep real words
+  after it: `feat/abc-12-approvals-file`, never `feat/abc-12`. Run
+  both lines in one shell call, so a file with no key stops before
+  the branch exists:
+
+  ```sh
+  K=$(planner key "<plan file>") || exit 1
+  wt switch --create "<type>/$K-<words>" --no-cd --format=json
+  ```
+
+  For plan `ABC-12 Approvals file.md` this makes
+  `feat/abc-12-approvals-file`. The worktree folder and the pull
+  request's branch then carry the key, so `rg`, `wt list` and
+  `gh pr list` find all three. Keep the key out of pull request text.
+  Without a plan, use plain words, such as `fix/login-timeout`.
 - Create a worktree only with
   `wt switch --create <branch> --no-cd --format=json`, and work in the
   `path` it prints. `--create` starts from the default branch, so a
