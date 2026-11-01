@@ -150,7 +150,7 @@ func Items() []Item {
 			Tier:    profile.Workstation,
 		},
 		{Name: "keychain", Version: "2.9.8", Owner: Direct, Tier: profile.Development},
-		{Name: "moshi-hook", Version: "v0.4.44", Owner: Direct, Tier: profile.Development},
+		{Name: "moshi-hook", Version: "latest", Owner: Direct, Tier: profile.Development},
 		{
 			Name:    "herdr",
 			Version: "v0.9.1",
