@@ -75,7 +75,7 @@ exact = true
 stripComponents = 1
 checksum.sha256 = "9f1dda18554291ee7f8a0f499e2af90bbadc2ebceb7a995bb13b76529fe0c5c9"
 
-{{ if ne (env "PDE_PROFILE") "terminal" }}
+{{ if has "workstation" .pde.tiers }}
 [".config/nvim/pack/plugins/start/obsidian.nvim"]
 type = "archive"
 url = "https://github.com/obsidian-nvim/obsidian.nvim/archive/50be6d70988af31b71cd4d8675ca928e6194c4fb.tar.gz"
@@ -139,7 +139,7 @@ exact = true
 stripComponents = 1
 checksum.sha256 = "d37b203d9687dbdfd078ffe6ca8f5201e831f63301fe2d0af1de85703ef69522"
 {{- /* Full builds blink.cmp with its Rust matcher instead, so only client gets it here. */}}
-{{- if ne (env "PDE_PROFILE") "full" }}
+{{- if not (has "development" .pde.tiers) }}
 
 [".config/nvim/pack/plugins/start/blink.cmp"]
 type = "archive"
@@ -279,7 +279,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/docs-writer.md'
 [".config/opencode/agents/inline.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/nvim-plugins/opencode-inline.nvim/agents/inline.md'
-{{- if eq (env "PDE_PROFILE") "full" }}
+{{- if has "development" .pde.tiers }}
 
 [".config/opencode/agents/plan-architecture-reviewer.md"]
 type = "file"
@@ -301,7 +301,7 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/README.md'
 [".config/opencode/agents/web-search-researcher.md"]
 type = "file"
 url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/opencode/agents/web-search-researcher.md'
-{{- if eq (env "PDE_PROFILE") "full" }}
+{{- if has "development" .pde.tiers }}
 
 [".config/opencode/commands/cleanup_plan.md"]
 type = "file"
@@ -340,12 +340,11 @@ url = 'file://{{ env "PDE_REPO_ROOT" }}/ai/AGENTS.md'
 # installs once it is added to Git, with no entry here. Untracked and
 # ignored files, such as Rust build output, are skipped.
 {{- $repoRoot := env "PDE_REPO_ROOT" }}
-{{- $profile := env "PDE_PROFILE" }}
 {{- range splitList "\x00" (output "git" "-C" (print $repoRoot "/ai") "ls-files" "-z" "--" "skills") }}
 {{- if . }}
 {{- $skill := index (splitList "/" .) 1 }}
 {{- /* Client gets only these skills, so a new skill reaches it only when added here. */}}
-{{- if or (eq $profile "full") (eq $skill "behavior-focused-testing" "delegate" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english") }}
+{{- if or (has "development" $.pde.tiers) (eq $skill "behavior-focused-testing" "delegate" "obsidian-daily-note" "obsidian-zettel" "plain-direct-english" "skill-lessons") }}
 
 [".agents/{{ . }}"]
 type = "file"
@@ -353,7 +352,7 @@ url = 'file://{{ $repoRoot }}/ai/{{ . }}'
 {{- end }}
 {{- end }}
 {{- end }}
-{{- if eq (env "PDE_PROFILE") "full" }}
+{{- if has "development" .pde.tiers }}
 
 [".pi/agent/AGENTS.md"]
 type = "file"

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"pde-installer/internal/colorprofile"
-	"pde-installer/internal/profile"
 )
 
 func writeInvalidFullMetadata(t *testing.T, cfg config) {
@@ -75,7 +74,7 @@ func terminalTestConfig(t *testing.T) config {
 			t.Fatal(err)
 		}
 	}
-	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: profile.Terminal, ColorProfile: colorprofile.TokyoNight}
+	return config{Home: home, RepoRoot: repoRoot, LocalBin: filepath.Join(home, ".local", "bin"), AquaRoot: filepath.Join(home, ".local", "share", "aquaproj-aqua"), Profile: "terminal", ColorProfile: colorprofile.TokyoNight}
 }
 
 func terminalProbeBin(t *testing.T, missing string) string {
