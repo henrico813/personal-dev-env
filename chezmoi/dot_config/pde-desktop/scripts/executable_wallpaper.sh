@@ -35,7 +35,7 @@ play_on_x() {
             mpv -wid WID --loop --no-audio --no-osc --panscan=1.0 \
             --no-cache --hwdec=auto \
             --demuxer-max-bytes=50MiB --demuxer-max-back-bytes=10MiB \
-            "$video"
+            "$video" &
     done
 }
 
