@@ -1,0 +1,3 @@
+# Hidden=true keeps Xubuntu's xfce4-notifyd from starting, so dunst notifies.
+[Desktop Entry]
+Hidden=true

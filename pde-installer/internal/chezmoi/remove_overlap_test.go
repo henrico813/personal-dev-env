@@ -84,7 +84,7 @@ func translateSourceName(name string) string {
 	if strings.HasPrefix(name, "dot_") {
 		name = "." + strings.TrimPrefix(name, "dot_")
 	} else {
-		for _, prefix := range []string{"symlink_", "private_", "executable_"} {
+		for _, prefix := range []string{"create_", "symlink_", "private_", "executable_"} {
 			if strings.HasPrefix(name, prefix) {
 				name = strings.TrimPrefix(name, prefix)
 				break
