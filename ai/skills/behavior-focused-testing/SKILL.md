@@ -42,10 +42,22 @@ Apply DAMP: Descriptive And Meaningful Phrases to names and test bodies. Google
 
 Every test function name must contain at most seven words, including test or Test. Count snake_case and camelCase/PascalCase word boundaries; an acronym counts as one word. Do not evade the limit through obscure abbreviations or concatenation.
 
-Default pattern: test_<behavior>_when_<condition>. Omit the condition or when when unnecessary. Preserve framework discovery rules and language casing. An existing method–scenario–outcome convention is acceptable within the limit. Microsoft pytest
+Default pattern: test_<subject>_<behavior>_when_<condition>. Omit
+the condition or when when unnecessary. Preserve framework discovery
+rules and language casing. An existing method–scenario–outcome
+convention is acceptable within the limit. Microsoft pytest
+
+Start each name with what is under test, as the code names it, such
+as a function, type or input. Then say the result a user of that code
+relies on, as in `test_parser_rejects_duplicate_keys`. Any prefix the
+framework needs, such as `test_` or `Test`, comes first. Leave the
+subject out only when the enclosing class, `describe` block, submodule
+or test function names that one subject. A file or `mod tests` that
+tests several things does not count. An action word such as `saving`
+is not a subject unless the code uses it as a name.
 
 test_invalid_checksum_prevents_device_writes
-test_retries_when_connection_times_out
+test_client_retries_when_connection_times_out
 test_save_preserves_model_fields
 TestSavePreservesModelFields
 

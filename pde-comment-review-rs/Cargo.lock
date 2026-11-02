@@ -186,6 +186,7 @@ name = "pde-comment-review"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "regex",
  "serde",
  "serde_json",
  "tree-sitter",

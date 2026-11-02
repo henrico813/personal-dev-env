@@ -15,13 +15,16 @@ use std::process::{Command, Stdio};
 
 use tree_sitter::{Language, Node};
 
-use crate::shared::comments::CommentStyle;
+use crate::shared::comments::{CommentStyle, Definition};
+use crate::shared::style_rules::Rule;
 use crate::shared::{Error, ErrorCode};
 
 /// Tells which syntax tree nodes are comments in one language.
 pub trait LanguageRules {
     /// Returns the tree-sitter grammar.
     fn grammar(&self) -> Language;
+    /// Returns the language's name, such as "go", so old text is matched by language.
+    fn name(&self) -> &'static str;
     /// Returns a comment node's style, or `None` for other nodes and
     /// tool lines.
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle>;
@@ -41,6 +44,30 @@ pub trait LanguageRules {
     /// Returns the comment's words without its markers or quotes. Text that
     /// is not all marked lines, or one whole docstring, comes back as it is.
     fn to_plain_words(&self, text: &str) -> String;
+    /// Returns the comment's paragraphs of prose, each on one line, leaving
+    /// out examples, or none when the comment has no line markers or quotes.
+    fn to_paragraphs(&self, text: &str) -> Vec<String>;
+    /// Returns every line of a comment, examples included, joined into one
+    /// line, for a language whose length and colon rules read them all.
+    fn join_unfiltered_lines(&self, _text: &str) -> Option<String> {
+        None
+    }
+    /// Returns the functions, methods and classes whose names and docstrings
+    /// the style rules check, in file order.
+    fn list_definitions(&self, _file: &Path, _root: Node, _source: &str) -> Vec<Definition> {
+        Vec::new()
+    }
+    /// Returns true for a file with the marker its generator writes.
+    fn is_generated(&self, _source: &str) -> bool {
+        false
+    }
+    /// Returns the style rules this language's comments and names must follow.
+    fn style_rules(&self) -> &'static [Rule];
+    /// Returns true for a note, such as Go's `Deprecated:` paragraph, that may
+    /// keep its colon and length.
+    fn is_exempt_note(&self, _paragraph: &str) -> bool {
+        false
+    }
     /// Returns `words` laid out like `old_text`, with its markers and
     /// indentation, or an empty text when `words` has none.
     fn lay_out_plain_words(&self, words: &str, old_text: &str) -> String;

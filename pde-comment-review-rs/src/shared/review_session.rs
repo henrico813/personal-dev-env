@@ -132,6 +132,18 @@ pub struct ReviewSession {
     pub feedback: BTreeMap<RequestId, UserFeedback>,
 }
 
+impl ReviewSession {
+    /// Returns the newest version of each Feedback Request, in ID order.
+    pub(crate) fn newest_requests(&self) -> Vec<&FeedbackRequest> {
+        let mut newest = BTreeMap::new();
+        // Lists are kept in the order they were sent, so a later version replaces an older one.
+        for request in self.lists.iter().flat_map(|list| &list.requests) {
+            newest.insert(request.id, request);
+        }
+        newest.into_values().collect()
+    }
+}
+
 /// Says where the Review Session is.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -179,10 +191,10 @@ pub struct FeedbackRequest {
 
 /// Numbers a Feedback Request the same way in every Feedback Request List.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RequestId(u32);
+pub struct RequestId(pub(crate) u32);
 
 /// Says why the comment needs User Feedback.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestReason {
     New,
