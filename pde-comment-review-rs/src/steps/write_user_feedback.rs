@@ -37,7 +37,7 @@ const STOP_SIGNALS: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 
 /// Holds the program's User Note for each Feedback Request in a file where a
 /// comment changed after the agent sent the list.
-const TEXT_CHANGED_NOTE: &str = "The comment changed after you sent it.";
+const TEXT_CHANGED_NOTE: &str = "A comment in this file changed after you sent the list, so nothing was written. Build the list again to send this Feedback Request back to the user.";
 
 /// Writes every Answered Request into its file and saves the decisions, or puts
 /// every file back.
