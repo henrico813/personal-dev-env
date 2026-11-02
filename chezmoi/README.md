@@ -55,18 +55,36 @@ gh pr diff 123 --color=never |
   delta --side-by-side --line-numbers --navigate
 ```
 
-On a phone, run `prs` to pick from the open pull requests that involve you in
-any repository. The selected one's repository, state, review, and checks show
-below the list, in color; set `NO_COLOR` to turn colors off. The keys follow
-vim: `j` and `k` move, `g` and `G` jump to the first and last, `Ctrl-D` and
-`Ctrl-U` move half a page, and `J` and `K` scroll the preview. Press `l` or
-Enter, or double-tap, for the full view, which adds the files, description,
-comments, reviews, and code threads. Open threads come first with their code;
-resolved ones take one line each. Press `c` for only the comments, `d` for the
-diff, `p` to hide the preview, `r` to reload, and `q` to quit. Press `/` to
-search the list, and Esc to clear the search and get the keys back. `prs` only
-reads from GitHub. To show one pull request without the list, give its number
-inside its repository, or its repository and number from anywhere:
+On a phone, run `prs` to see the open pull requests that involve you in any
+repository. It has four screens, and each has a help text row naming its main
+keys. On the PR list screen, the comments screen and the file picker, a tap on
+a word in that row runs it. The keys follow vim, such as `j`
+and `k` to move, `l` to open and `h` to go back, and `?` lists them;
+[the keys page](../prs/docs/reference/keys.md) has them all.
+
+- The PR list screen shows the selected pull request's details below the list
+  on a phone, or beside it on a wide screen. With the phone's keyboard up,
+  below 30 rows, the details shrink to a three-row status strip. Press `l` or
+  Enter for the PR summary screen, `c` for the comments screen, `d` for the
+  diff screen, and `r` to refresh the list.
+- The PR summary screen shows the details, a line such as
+  `5 comments, 2 open threads`, the changed files, and the description.
+- The comments screen lists open code threads first, then the comments and
+  reviews, oldest first, then resolved threads. The side pane shows the
+  selected one with its code, and `l` shows it full screen.
+- The diff screen shows one file's diff at a time, with long lines wrapped
+  under their code. Press `L` and `H` for the next and previous file, `d` and
+  `u` for half a page, and `r` to draw it again after turning the phone. Press
+  `o` for the file picker, where `j` and `k` choose a file, `l` opens it, and
+  `o` or `h` goes back to the file you were reading.
+
+`prs` saves what it fetches in `~/.cache/prs`, so moving around and opening a
+screen does not wait on GitHub. It shows the saved list at once and refreshes
+it in place, and while it refreshes the prompt shows the list's age, such as
+`updated 5s ago`. Set `NO_COLOR` to turn colors off. `prs` reads from GitHub
+and never writes to it. `pde-installer` builds it from `prs/` on full installs.
+To show one pull request's summary without the list, give its number inside its
+repository, or its repository and number from anywhere:
 
 ```bash
 prs 123
