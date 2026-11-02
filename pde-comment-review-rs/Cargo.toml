@@ -22,3 +22,11 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
+
+[features]
+# Lets this crate's tests keep the waiting list in a folder of their own.
+test-util = []
+
+[dev-dependencies]
+# Turns test-util on for this crate's own tests only, never for `cargo build`.
+pde-comment-review = { path = ".", features = ["test-util"] }
