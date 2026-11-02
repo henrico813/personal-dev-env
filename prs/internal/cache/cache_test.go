@@ -10,6 +10,27 @@ import (
 	"prs/internal/github"
 )
 
+// Returns a store in a new cache folder for the rest of the test, with the
+// folder made, as a store has after its first write.
+func openStore(t *testing.T) Store {
+	t.Helper()
+	t.Setenv(
+		"XDG_CACHE_HOME",
+		t.TempDir(),
+	)
+	store, err := Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(
+		store.dir,
+		0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
 // Returns a pull request of example/repo updated at the given hour of
 // 2026-10-31 UTC.
 func makePullRequest(
@@ -36,14 +57,7 @@ func makePullRequest(
 // cache, or the diff screen shows code that is no longer in the pull
 // request.
 func TestReadDiffMissesAfterUpdate(t *testing.T) {
-	t.Setenv(
-		"XDG_CACHE_HOME",
-		t.TempDir(),
-	)
-	store, err := Open()
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openStore(t)
 	if err := store.WriteDiff(
 		makePullRequest(
 			12,
@@ -76,14 +90,7 @@ func TestReadDiffMissesAfterUpdate(t *testing.T) {
 // cache grows with every push. Entries at listed update times and the list
 // itself must stay, or the next start fetches everything again.
 func TestRemoveUnlistedKeepsOnlyListedVersions(t *testing.T) {
-	t.Setenv(
-		"XDG_CACHE_HOME",
-		t.TempDir(),
-	)
-	store, err := Open()
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openStore(t)
 	listed := makePullRequest(
 		12,
 		10,
@@ -140,14 +147,7 @@ func TestRemoveUnlistedKeepsOnlyListedVersions(t *testing.T) {
 // update. If a field's name in the files changes, every saved list and
 // entry reads as empty until each pull request changes again.
 func TestStoreReadsCacheFromEarlierBuild(t *testing.T) {
-	t.Setenv(
-		"XDG_CACHE_HOME",
-		t.TempDir(),
-	)
-	store, err := Open()
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openStore(t)
 	pr := makePullRequest(
 		12,
 		10,

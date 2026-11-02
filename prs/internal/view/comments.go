@@ -9,8 +9,8 @@ import (
 	"prs/internal/github"
 )
 
-// Holds one row of the comments screen, which is either a conversation
-// post or a code thread.
+// Holds one row of the comments screen, which is either a comment or review
+// or a code thread.
 type Item struct {
 	post   post
 	thread *github.Thread
@@ -44,46 +44,37 @@ var (
 // they are what needs a reply, then the conversation oldest first, then the
 // resolved threads.
 func CollectItems(f github.Feedback) []Item {
-	items := collectThreads(
-		f,
-		false,
-	)
+	var open, resolved []Item
+	for i := range f.Threads {
+		item := Item{thread: &f.Threads[i]}
+		if f.Threads[i].IsResolved {
+			resolved = append(
+				resolved,
+				item,
+			)
+		} else {
+			open = append(
+				open,
+				item,
+			)
+		}
+	}
 	for _, post := range collectConversation(f) {
-		items = append(
-			items,
+		open = append(
+			open,
 			Item{post: post},
 		)
 	}
 	return append(
-		items,
-		collectThreads(
-			f,
-			true,
-		)...,
+		open,
+		resolved...,
 	)
-}
-
-// Returns the code threads that are resolved, or the open ones.
-func collectThreads(
-	f github.Feedback,
-	resolved bool,
-) []Item {
-	var items []Item
-	for i := range f.Threads {
-		if f.Threads[i].IsResolved == resolved {
-			items = append(
-				items,
-				Item{thread: &f.Threads[i]},
-			)
-		}
-	}
-	return items
 }
 
 // Returns one row per item for fzf, the item's index first and hidden,
 // then its kind or thread state, age and author, which come first since a
 // phone cuts the row's end. A thread's row ends with its file and line, and
-// a post's row with the start of its text.
+// a comment's or review's row with the start of its text.
 func RenderItemRows(
 	items []Item,
 	s Style,
@@ -123,20 +114,15 @@ func RenderItemRows(
 				" ",
 			) + dot + s.paintGray(age) + dot + s.paintCyan(who) + dot + thread.Path + ":" + strconv.Itoa(findLine(*thread))
 		}
-		// A tab or newline in a row would break fzf's row.
-		shown = strings.NewReplacer(
-			"\t",
-			" ",
-			"\n",
-			" ",
-		).Replace(shown)
+		shown = rowBreaks.Replace(shown)
 		out.WriteString(strconv.Itoa(i) + "\t" + shown + "\n")
 	}
 	return out.String()
 }
 
-// Returns an item in full. A post shows its byline and text, and a thread
-// shows its file and line, the last lines of its code and every comment.
+// Returns an item in full. A comment or review shows its byline and text,
+// and a thread shows its file and line, the last lines of its code and every
+// comment.
 func RenderItem(
 	item Item,
 	s Style,
@@ -184,8 +170,8 @@ func RenderItem(
 const NoComments = "No comments"
 
 // Returns the PR summary screen's line about the comments, such as
-// "5 comments, 2 open threads". Comments counts the conversation's posts
-// and every comment in a code thread.
+// "5 comments, 2 open threads". Comments counts the conversation's comments
+// and reviews, and every comment in a code thread.
 func FormatCommentCount(f github.Feedback) string {
 	comments := len(collectConversation(f))
 	open := 0

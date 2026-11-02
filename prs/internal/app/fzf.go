@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"errors"
 	"maps"
 	"os"
@@ -24,6 +23,24 @@ const (
 	// first row.
 	firstGFile = "g"
 )
+
+// The actions every fzf screen binds, besides its own.
+var sharedActions = map[string]string{
+	"j":      "down",
+	"k":      "up",
+	"G":      "last",
+	"ctrl-d": "half-page-down",
+	"ctrl-u": "half-page-up",
+	"J":      "preview-half-page-down",
+	"K":      "preview-half-page-up",
+}
+
+// The screens that share _pane_layout and BuildPaneKeys, by the name their
+// hidden commands pass.
+var paneScreens = map[string]layout.Screen{
+	"comments": layout.CommentsScreen,
+	"picker":   layout.FilePicker,
+}
 
 // Runs fzf on rows with the shared flags, one binding per action and the
 // extra flags. Returns what fzf printed, and false only when fzf itself
@@ -55,9 +72,12 @@ func (a *prsApp) runFzf(
 		"--track",
 		`--info-command=echo "$FZF_MATCH_COUNT/$FZF_TOTAL_COUNT"`,
 		"--footer-border=none",
-		"--bind=j:down,k:up,G:last",
-		"--bind=ctrl-d:half-page-down,ctrl-u:half-page-up",
-		"--bind=J:preview-half-page-down,K:preview-half-page-up",
+	}
+	for _, key := range slices.Sorted(maps.Keys(sharedActions)) {
+		args = append(
+			args,
+			"--bind="+key+":"+sharedActions[key],
+		)
 	}
 	for _, key := range slices.Sorted(maps.Keys(actions)) {
 		args = append(
@@ -65,7 +85,6 @@ func (a *prsApp) runFzf(
 			"--bind="+key+":"+actions[key],
 		)
 	}
-	var out bytes.Buffer
 	cmd := exec.Command(
 		"fzf",
 		append(
@@ -74,9 +93,8 @@ func (a *prsApp) runFzf(
 		)...,
 	)
 	cmd.Stdin = strings.NewReader(rows)
-	cmd.Stdout = &out
 	cmd.Stderr = a.stderr
-	err := cmd.Run()
+	out, err := cmd.Output()
 	var exit *exec.ExitError
 	// fzf ends with 1 when a key accepts while nothing matches, and with 130
 	// on an abort, such as from q or Ctrl-C.
@@ -84,21 +102,48 @@ func (a *prsApp) runFzf(
 		err,
 		&exit,
 	) && (exit.ExitCode() == 1 || exit.ExitCode() == 130) {
-		return out.String(), true
+		return string(out), true
 	}
 	if err != nil {
 		a.printError("prs: fzf failed: " + err.Error())
 		return "", false
 	}
-	return out.String(), true
+	return string(out), true
 }
 
-// Returns the fzf actions that open a search, where letters type text
-// until Esc. show-input brings back an input row that FZF_DEFAULT_OPTS may
-// hide.
-func buildSearchStart(letters string) string {
-	return "unbind(" + letters + ")+show-input+change-prompt(" + layout.SearchPrompt + ")+change-footer(" +
+// Returns actions with / and Esc added. / frees every one-letter key the
+// screen binds for typing until Esc binds them again, and onEsc runs after
+// Esc.
+func addSearchKeys(
+	actions map[string]string,
+	prompt,
+	onEsc string,
+) map[string]string {
+	actions["/"] = ""
+	var letters []string
+	for _, bound := range []map[string]string{
+		sharedActions,
+		actions,
+	} {
+		for key := range bound {
+			if len(key) == 1 {
+				letters = append(
+					letters,
+					key,
+				)
+			}
+		}
+	}
+	slices.Sort(letters)
+	list := strings.Join(
+		letters,
+		",",
+	)
+	// show-input brings back an input row that FZF_DEFAULT_OPTS may hide.
+	actions["/"] = "unbind(" + list + ")+show-input+change-prompt(" + layout.SearchPrompt + ")+change-footer(" +
 		layout.SearchKeys + ")"
+	actions["esc"] = "clear-query+rebind(" + list + ")+change-prompt(" + prompt + ")+" + onEsc
+	return actions
 }
 
 // fzf's names for the keys that the help text rows write capitalized.
@@ -107,21 +152,66 @@ var tappedKeyNames = map[string]string{
 	"Esc":   "esc",
 }
 
-// Prints the action of the help text row word that a tap hit, if any.
-func (a *prsApp) printTappedAction(
-	keys string,
-	actions map[string]string,
-) {
+// Prints fzf's action that runs the key of the help text row word that a
+// tap hit, as _tap SCREEN DIR, where SCREEN is list, comments or picker.
+func (a *prsApp) printTapAction(args []string) int {
+	state := layout.ReadFzfState()
+	keys := buildListKeys(
+		state,
+		args[1],
+	)
+	if screen, ok := paneScreens[args[0]]; ok {
+		keys = layout.BuildPaneKeys(
+			state,
+			screen,
+		)
+	}
 	key := layout.FindTappedKey(
 		keys,
-		layout.ReadFzfState().ClickColumn,
+		state.ClickColumn,
 	)
 	if name, ok := tappedKeyNames[key]; ok {
 		key = name
+	} else if len(key) != 1 {
+		// A word that is not a key, such as GitHub in "GitHub failed", runs
+		// nothing.
+		return 0
 	}
-	if action, ok := actions[key]; ok {
-		a.printLine(action)
+	a.printLine("trigger(" + key + ")")
+	return 0
+}
+
+// Prints fzf actions that fit the comments screen or the file picker to the
+// screen, as _pane_layout SCREEN DIR [toggle|refresh]. toggle opens or
+// closes the side pane, and refresh runs it again after a resize.
+func (a *prsApp) printPaneLayout(args []string) int {
+	screen, dir, event := paneScreens[args[0]], args[1], args[2]
+	if event == "toggle" {
+		togglePaneClosed(dir)
 	}
+	state := layout.ReadFzfState()
+	actions := []string{
+		layout.ChoosePaneWindow(
+			state,
+			screen,
+			isPaneClosed(dir),
+		),
+		"change-footer(" + layout.BuildPaneKeys(
+			state,
+			screen,
+		) + ")",
+	}
+	if event == "refresh" {
+		actions = append(
+			actions,
+			"refresh-preview",
+		)
+	}
+	a.printLine(strings.Join(
+		actions,
+		"+",
+	))
+	return 0
 }
 
 // Prints fzf's first action when this g comes within a second of the one
@@ -152,7 +242,8 @@ func (a *prsApp) printFirstOnSecondG(args []string) int {
 	return 0
 }
 
-// Opens the side pane in dir when o closed it, and closes it otherwise.
+// Creates pane-closed in dir when it is missing and removes it otherwise,
+// so the next layout closes or opens the side pane.
 func togglePaneClosed(dir string) {
 	marker := filepath.Join(
 		dir,

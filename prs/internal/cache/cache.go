@@ -31,6 +31,7 @@ type Store struct {
 }
 
 // Returns the store in $XDG_CACHE_HOME/prs, which is usually ~/.cache/prs.
+// The folder is made when the store first writes to it.
 func Open() (
 	Store,
 	error,
@@ -39,14 +40,10 @@ func Open() (
 	if err != nil {
 		return Store{}, err
 	}
-	dir := filepath.Join(
+	return Store{dir: filepath.Join(
 		base,
 		"prs",
-	)
-	return Store{dir: dir}, os.MkdirAll(
-		dir,
-		0o700,
-	)
+	)}, nil
 }
 
 // Returns the saved PR list, or an error when there is none.
@@ -165,8 +162,9 @@ func (s Store) RemoveUnlisted(prs []github.PullRequest) {
 		if keep[name] {
 			continue
 		}
-		if strings.Contains(
-			name,
+		// writeFile names a file it is writing NAME.tmpRANDOM.
+		if strings.HasPrefix(
+			filepath.Ext(name),
 			".tmp",
 		) {
 			info, err := entry.Info()
@@ -239,6 +237,12 @@ func (s Store) writeFile(
 	name string,
 	data []byte,
 ) error {
+	if err := os.MkdirAll(
+		s.dir,
+		0o700,
+	); err != nil {
+		return err
+	}
 	file, err := os.CreateTemp(
 		s.dir,
 		name+".tmp*",

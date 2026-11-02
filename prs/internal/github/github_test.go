@@ -22,21 +22,9 @@ const searchReply = `{"data": {"search": {"nodes": [{"number": 12, "title": "Fix
 // nesting is lost, every pull request shows no checks and looks safe to
 // merge.
 func TestListPullRequestsReadsNestedFields(t *testing.T) {
-	// The fake gh prints the search reply for any call.
-	bin := t.TempDir()
-	if err := os.WriteFile(
-		filepath.Join(
-			bin,
-			"gh",
-		),
-		[]byte("#!/bin/sh\necho '"+searchReply+"'\n"),
-		0o755,
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(
-		"PATH",
-		bin+":"+os.Getenv("PATH"),
+	useGHReply(
+		t,
+		searchReply,
 	)
 
 	prs, err := ListPullRequests(context.Background())
@@ -79,21 +67,9 @@ const extrasReply = `{"data": {"repository": {"pullRequest": {"body": "Fixes log
 // own. If the shadowing breaks, every thread on the comments screen shows
 // no comments, and the cache saves them empty.
 func TestFetchExtrasReadsThreadComments(t *testing.T) {
-	// The fake gh prints that reply for any call.
-	bin := t.TempDir()
-	if err := os.WriteFile(
-		filepath.Join(
-			bin,
-			"gh",
-		),
-		[]byte("#!/bin/sh\necho '"+extrasReply+"'\n"),
-		0o755,
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(
-		"PATH",
-		bin+":"+os.Getenv("PATH"),
+	useGHReply(
+		t,
+		extrasReply,
 	)
 
 	extras, err := FetchExtras(
@@ -120,4 +96,28 @@ func TestFetchExtrasReadsThreadComments(t *testing.T) {
 			got,
 		)
 	}
+}
+
+// Puts a gh first on PATH for the rest of the test that prints reply for
+// any call.
+func useGHReply(
+	t *testing.T,
+	reply string,
+) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(
+			bin,
+			"gh",
+		),
+		[]byte("#!/bin/sh\necho '"+reply+"'\n"),
+		0o755,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(
+		"PATH",
+		bin+":"+os.Getenv("PATH"),
+	)
 }

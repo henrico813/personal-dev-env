@@ -8,16 +8,15 @@ import (
 	"prs/internal/github"
 )
 
-// Returns the PR summary screen's list of files and the heading of the
-// description that follows it. Long paths are cut from the left so the
-// file name shows.
+// Returns the PR summary screen's list of files under its heading. Long
+// paths are cut from the left so the file name shows.
 func RenderFileSummary(
 	pr github.PullRequest,
 	extras github.Extras,
 	s Style,
 ) string {
 	var out strings.Builder
-	out.WriteString("\n" + s.formatHeading("Files") + "\n")
+	out.WriteString("\n" + s.FormatHeading("Files") + "\n")
 	for _, file := range extras.Files {
 		added := "+" + strconv.Itoa(file.Additions)
 		removed := "-" + strconv.Itoa(file.Deletions)
@@ -31,11 +30,11 @@ func RenderFileSummary(
 	if more := pr.ChangedFiles - len(extras.Files); more > 0 {
 		out.WriteString(s.paintGray("and "+strconv.Itoa(more)+" more files") + "\n")
 	}
-	out.WriteString("\n" + s.formatHeading("Description") + "\n")
 	return out.String()
 }
 
-func (s Style) formatHeading(title string) string {
+// Returns a section heading of the PR summary screen, such as "== Files ==".
+func (s Style) FormatHeading(title string) string {
 	return s.paint(
 		blue,
 		"== "+title+" ==",

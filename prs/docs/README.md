@@ -7,8 +7,6 @@ Pick the page for what you need:
 
 - Look up what a key does on a screen, or what a help text row says:
   [Keys and help text rows](reference/keys.md).
-- Find the code behind a hidden command such as `prs _layout`:
-  [Hidden commands](reference/hidden-commands.md).
 - Look up a file in `~/.cache/prs` or in a screen's temporary folder:
   [Cache and temporary files](reference/files.md).
 - Understand how fzf, less and `prs` take turns on the screen:
@@ -16,5 +14,4 @@ Pick the page for what you need:
 - Understand why the screens open without waiting on GitHub:
   [How the cache and the refresh work](explanation/cache.md).
 
-Pages in `reference/` are facts to look up, and pages in `explanation/` give
-the reasons. Paths that start with `internal/` are inside `prs/`.
+Paths that start with `internal/` are inside `prs/`.

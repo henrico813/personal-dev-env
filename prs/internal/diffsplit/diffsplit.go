@@ -5,9 +5,9 @@ package diffsplit
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -39,7 +39,7 @@ func WriteFiles(
 		if err := os.WriteFile(
 			filepath.Join(
 				dir,
-				fmt.Sprint(file.Number)+".diff",
+				strconv.Itoa(file.Number)+".diff",
 			),
 			file.Text,
 			0o600,
@@ -148,17 +148,25 @@ func (f *File) addTag(tag string) {
 // with odd characters. A rename's paths differ, and its "rename to" line
 // replaces this one.
 func findSamePath(rest string) string {
+	// Both paths are the same, so the first half of the line is a/PATH.
+	half := rest[:len(rest)/2]
 	quote := ""
 	if strings.HasPrefix(
-		rest,
+		half,
 		`"`,
 	) {
 		quote = `"`
+		half = strings.Trim(
+			half,
+			`"`,
+		)
 	}
-	// The line is quote, a/, PATH, quote, space, quote, b/, PATH and quote.
-	size := (len(rest) - 5 - 4*len(quote)) / 2
-	if size < 1 {
+	path := strings.TrimPrefix(
+		half,
+		"a/",
+	)
+	if path == "" {
 		return rest
 	}
-	return quote + rest[len(quote)+2:len(quote)+2+size] + quote
+	return quote + path + quote
 }

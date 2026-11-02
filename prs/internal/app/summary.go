@@ -1,13 +1,11 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"os/exec"
 	"strconv"
 	"strings"
 
-	"prs/internal/cache"
 	"prs/internal/codewrap"
 	"prs/internal/github"
 	"prs/internal/view"
@@ -131,6 +129,7 @@ func (a *prsApp) renderSummary(
 		extras,
 		style,
 	))
+	out.WriteString("\n" + style.FormatHeading("Description") + "\n")
 	out.WriteString(a.highlightMarkdown(view.WrapProse(
 		extras.Body,
 		width,
@@ -149,17 +148,12 @@ func (a *prsApp) loadPullRequest(
 	github.Extras,
 	error,
 ) {
-	store, storeErr := cache.Open()
-	var pr github.PullRequest
-	listed := false
-	if storeErr == nil {
-		pr, listed = store.FindPullRequest(
-			repo,
-			number,
-		)
-	}
+	pr, listed := a.store.FindPullRequest(
+		repo,
+		number,
+	)
 	if listed {
-		if extras, ok := store.ReadExtras(pr); ok {
+		if extras, ok := a.store.ReadExtras(pr); ok {
 			return pr, extras, nil
 		}
 	}
@@ -179,8 +173,8 @@ func (a *prsApp) loadPullRequest(
 			number,
 		)
 	}
-	if err == nil && storeErr == nil {
-		_ = store.WriteExtras(
+	if err == nil {
+		_ = a.store.WriteExtras(
 			pr,
 			extras,
 		)
@@ -195,7 +189,6 @@ func (a *prsApp) highlightMarkdown(text string) string {
 	if !a.color {
 		return text
 	}
-	var out bytes.Buffer
 	cmd := exec.Command(
 		"bat",
 		"--language=md",
@@ -205,9 +198,9 @@ func (a *prsApp) highlightMarkdown(text string) string {
 		"--paging=never",
 	)
 	cmd.Stdin = strings.NewReader(text)
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	out, err := cmd.Output()
+	if err != nil {
 		return text
 	}
-	return out.String()
+	return string(out)
 }

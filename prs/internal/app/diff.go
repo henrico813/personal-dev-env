@@ -10,17 +10,12 @@ import (
 	"strconv"
 	"strings"
 
-	"prs/internal/cache"
 	"prs/internal/codewrap"
 	"prs/internal/diffsplit"
 	"prs/internal/github"
 	"prs/internal/layout"
 	"prs/internal/view"
 )
-
-// The file picker's bound letters, freed for typing while a search is
-// open.
-const filePickerLetters = "j,k,g,G,l,o,h,q,J,K,/,?"
 
 // The diff view's own keys, besides h and q. r quits so prs can draw the
 // diff again at a new width.
@@ -54,13 +49,11 @@ func (a *prsApp) openDiff(args []string) int {
 		Number:     number,
 		Repository: github.Repository{NameWithOwner: repo},
 	}
-	if store, err := cache.Open(); err == nil {
-		if listed, ok := store.FindPullRequest(
-			repo,
-			number,
-		); ok {
-			pr = listed
-		}
+	if listed, ok := a.store.FindPullRequest(
+		repo,
+		number,
+	); ok {
+		pr = listed
 	}
 	a.showDiff(pr)
 	return 0
@@ -94,28 +87,10 @@ func (a *prsApp) showDiff(pr github.PullRequest) {
 				a.waitForKey(clearScreen + "#" + number + " changes no files.")
 				return 0
 			}
-			current, pickerOpen := 0, false
+			current := 0
 			for {
-				if pickerOpen {
-					key, chosen := a.pickFile(
-						dir,
-						number,
-						files,
-						current,
-					)
-					switch key {
-					case "l":
-						current = chosen
-					case "o":
-					default:
-						return 0
-					}
-					pickerOpen = false
-					continue
-				}
 				switch a.showFileDiff(
 					dir,
-					number,
 					files,
 					current,
 				) {
@@ -130,7 +105,19 @@ func (a *prsApp) showDiff(pr github.PullRequest) {
 						0,
 					)
 				case 'o':
-					pickerOpen = true
+					key, chosen := a.pickFile(
+						dir,
+						number,
+						files,
+						current,
+					)
+					switch key {
+					case "l":
+						current = chosen
+					case "o":
+					default:
+						return 0
+					}
 				case 'r':
 				case '?':
 					a.showHelpPage(diffViewHelp)
@@ -143,15 +130,15 @@ func (a *prsApp) showDiff(pr github.PullRequest) {
 }
 
 // Returns the diff from the cache, or fetches and saves it with a loading
-// line. A pull request without an update time is never cached.
+// line. A pull request without an update time is never cached, since its
+// file name would hold the zero time and a newer diff could never replace it.
 func (a *prsApp) loadDiff(pr github.PullRequest) (
 	[]byte,
 	error,
 ) {
-	store, storeErr := cache.Open()
-	cached := storeErr == nil && !pr.UpdatedAt.IsZero()
+	cached := !pr.UpdatedAt.IsZero()
 	if cached {
-		if diff, ok := store.ReadDiff(pr); ok {
+		if diff, ok := a.store.ReadDiff(pr); ok {
 			return diff, nil
 		}
 	}
@@ -162,7 +149,7 @@ func (a *prsApp) loadDiff(pr github.PullRequest) (
 		pr.Number,
 	)
 	if err == nil && cached {
-		_ = store.WriteDiff(
+		_ = a.store.WriteDiff(
 			pr,
 			diff,
 		)
@@ -170,11 +157,10 @@ func (a *prsApp) loadDiff(pr github.PullRequest) (
 	return diff, err
 }
 
-// Shows file index current full screen in less, as the diff view, and
-// returns the key that closed it.
+// Shows the current file full screen in less, as the diff view, and returns
+// the key that closed it.
 func (a *prsApp) showFileDiff(
-	dir,
-	number string,
+	dir string,
 	files []diffsplit.File,
 	current int,
 ) byte {
@@ -196,9 +182,9 @@ func (a *prsApp) showFileDiff(
 	)
 }
 
-// Shows the file picker with file index current selected and its diff in
-// the side pane. Returns the key that closed it, l, o or q, and the index
-// of the file selected then.
+// Shows the file picker on the current file, with its diff in the side
+// pane. Returns the key that closed it, l, o, q or "" for Ctrl-C, which the
+// caller treats as q, and the index of the file selected then.
 func (a *prsApp) pickFile(
 	dir,
 	number string,
@@ -208,7 +194,7 @@ func (a *prsApp) pickFile(
 	string,
 	int,
 ) {
-	layoutCommand := a.self + " _picker_layout " + quoteShell(dir)
+	layoutCommand := a.self + " _pane_layout picker " + quoteShell(dir)
 	// --freeze-left keeps the counts in view, and --keep-right keeps a long
 	// path's file name in view while the query is empty. fzf drops the
 	// space after the counts when it cuts a path, so the ellipsis brings it
@@ -234,9 +220,9 @@ func (a *prsApp) pickFile(
 		"--preview-window=down,50%,border-top,nowrap",
 		// pos waits for load, since at start fzf may not have read the rows.
 		"--bind=load:pos("+strconv.Itoa(current+1)+")",
-		"--bind=start,result:transform("+layoutCommand+")",
+		"--bind=start,result:transform("+layoutCommand+" result)",
 		"--bind=resize:transform("+layoutCommand+" refresh)",
-		"--bind=click-footer:transform("+a.self+" _picker_tap "+quoteShell(dir)+" "+number+")",
+		"--bind=click-footer:transform("+a.self+" _tap picker "+quoteShell(dir)+")",
 	)
 	// fzf prints the key's name, then the selected row, whose first field
 	// is the file's number.
@@ -261,61 +247,24 @@ func (a *prsApp) buildFilePickerActions(
 	dir,
 	number string,
 ) map[string]string {
-	return map[string]string{
-		"l":            "print(l)+accept",
-		"enter":        "print(l)+accept",
-		"double-click": "print(l)+accept",
-		"o":            "print(o)+accept",
-		"h":            "print(o)+accept",
-		"q":            "print(q)+accept",
-		"g":            "transform(" + a.self + " _g " + quoteShell(dir) + ")",
-		"/":            buildSearchStart(filePickerLetters),
-		"?":            "transform(" + a.self + " _help picker)",
-		"esc": "clear-query+rebind(" + filePickerLetters + ")+change-prompt(" + buildFilePickerPrompt(number) + ")+transform(" +
-			a.self + " _picker_layout " + quoteShell(dir) + ")",
-	}
+	return addSearchKeys(
+		map[string]string{
+			"l":            "print(l)+accept",
+			"enter":        "print(l)+accept",
+			"double-click": "print(l)+accept",
+			"o":            "print(o)+accept",
+			"h":            "print(o)+accept",
+			"q":            "print(q)+accept",
+			"g":            "transform(" + a.self + " _g " + quoteShell(dir) + ")",
+			"?":            "transform(" + a.self + " _help picker)",
+		},
+		buildFilePickerPrompt(number),
+		"transform("+a.self+" _pane_layout picker "+quoteShell(dir)+" result)",
+	)
 }
 
 func buildFilePickerPrompt(number string) string {
 	return "#" + number + " files "
-}
-
-// Prints fzf actions that fit the file picker to the screen, as
-// _picker_layout DIR [refresh].
-func (a *prsApp) printFilePickerLayout(args []string) int {
-	state := layout.ReadFzfState()
-	actions := []string{
-		layout.ChoosePaneWindow(
-			state,
-			layout.FilePicker,
-			false,
-		),
-		"change-footer(" + layout.BuildFilePickerKeys(state) + ")",
-	}
-	if args[1] == "refresh" {
-		actions = append(
-			actions,
-			"refresh-preview",
-		)
-	}
-	a.printLine(strings.Join(
-		actions,
-		"+",
-	))
-	return 0
-}
-
-// Prints the fzf action for a tap on the file picker's help text row, as
-// _picker_tap DIR NUMBER.
-func (a *prsApp) printFilePickerTapAction(args []string) int {
-	a.printTappedAction(
-		layout.BuildFilePickerKeys(layout.ReadFzfState()),
-		a.buildFilePickerActions(
-			args[0],
-			args[1],
-		),
-	)
-	return 0
 }
 
 // Prints file N of the split diff, as _file DIR N, for the side pane.
@@ -395,19 +344,18 @@ func runDelta(
 			"--hunk-header-style=syntax",
 		)
 	}
-	var out bytes.Buffer
 	cmd := exec.Command(
 		"delta",
 		args...,
 	)
 	cmd.Stdin = bytes.NewReader(diff)
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	out, err := cmd.Output()
+	if err != nil {
 		return "", err
 	}
 	// The empty first line goes, since a phone has few rows to spare.
 	text := strings.TrimPrefix(
-		out.String(),
+		string(out),
 		"\n",
 	)
 	if width >= 140 {

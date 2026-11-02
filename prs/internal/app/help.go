@@ -31,20 +31,19 @@ func (a *prsApp) printHelpAction(args []string) int {
 	if lines >= helpRows {
 		a.printLine("preview(" + a.self + " _keys " + args[0] + ")")
 	} else {
-		a.printLine("execute(" + a.self + " _keys_page " + args[0] + ")")
+		a.printLine("execute(" + a.self + " _keys " + args[0] + " page)")
 	}
 	return 0
 }
 
-// Prints an fzf screen's help for the side pane, as _keys SCREEN.
+// Prints an fzf screen's help for the side pane, as _keys SCREEN, or shows
+// it full screen in less, as _keys SCREEN page.
 func (a *prsApp) printHelp(args []string) int {
+	if args[1] == "page" {
+		a.showHelpPage(chooseHelp(args[0]))
+		return 0
+	}
 	a.printText(chooseHelp(args[0]))
-	return 0
-}
-
-// Shows an fzf screen's help in less, as _keys_page SCREEN.
-func (a *prsApp) openHelpPage(args []string) int {
-	a.showHelpPage(chooseHelp(args[0]))
 	return 0
 }
 
