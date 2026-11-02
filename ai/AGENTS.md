@@ -46,6 +46,8 @@
   `roadmap-run` skill.
 - When writing a status update, progress report, recap or handoff
   message to the user, load and follow the `status-updates` skill.
+- When asked to hand work to a new session in Herdr, load and follow
+  the `herdr-handoff` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
