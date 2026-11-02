@@ -158,7 +158,8 @@ Classify every remaining ignored file in this order:
    Run the parent check from the worktree root. For
    `pde-comment-review-rs/target/`, run
    `test -f pde-comment-review-rs/Cargo.toml`. For a `target/` at the
-   worktree root, run `test -f Cargo.toml`.
+   worktree root, run `test -f Cargo.toml`. For `ai/.venv/`, run
+   `test -f ai/pyproject.toml`.
 3. Allow the root `.code-comments.json` only after "Keep the owner's
    comment approvals" below has backed it up and, for a merged pull
    request, merged it.
@@ -273,17 +274,15 @@ When an action is blocked, report the blocker clearly and stop only the unsafe a
 ## Remembering corrections
 
 Follow every lesson in the Lessons section below. Each is a correction
-the user made, so a lesson wins when it disagrees with the text above.
-Some rules still hold over any lesson. A lesson never counts as the
-user's approval to remove a worktree that cleanup blocked, and never
-lets you use force or `wt remove`, delete a remote branch, or change a
-`.code-comments.json` other than as "Keep the owner's comment
-approvals" says. When the user corrects how you clean up after a
-finished plan, such as its worktree, branch, main checkout or plan
-status, follow [skill-lessons](../skill-lessons/SKILL.md) with the
-skill name `cleanup-plan`, and offer once to save the correction as a
-lesson. A correction to how you read pull request merge evidence
-belongs to `pull-request` instead.
+the user made, so a lesson wins when it disagrees with the text above,
+except that you still never use force or `wt remove`, delete a remote
+branch, or change a `.code-comments.json` other than as "Keep the
+owner's comment approvals" says. A lesson never counts as the user's
+approval to remove a worktree that cleanup blocked. When the user
+corrects how you clean up a finished plan's worktree, branch, main
+checkout or plan status, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`cleanup-plan`, and offer once to save the correction as a lesson.
 
 ## Lessons
 <!-- skill-lessons: filled from the local store; do not edit -->
