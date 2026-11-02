@@ -1,14 +1,14 @@
 #!/bin/bash
 # Plays the first .mp4, then the first .webm, in ~/.config/wallpapers as the
-# wallpaper on every output: mpvpaper on Sway, xwinwrap with mpv on i3. Without
-# a video, or without the player pde-installer built and installed in
-# ~/.local/bin, it shows Ubuntu's default image.
+# wallpaper on every output: mpvpaper on Sway, xwinwrap with mpv on i3.
+# Without a video it shows Ubuntu's default image.
 
 WALLPAPER_DIR="$HOME/.config/wallpapers"
 FALLBACK_IMAGE=/usr/share/backgrounds/warty-final-ubuntu.png
-# The session PATH may lack ~/.local/bin, so the players are called by path.
+# mpvpaper is called by path because the session PATH may lack ~/.local/bin;
+# xwinwrap is looked up on PATH.
 MPVPAPER="$HOME/.local/bin/mpvpaper"
-XWINWRAP="$HOME/.local/bin/xwinwrap"
+XWINWRAP="xwinwrap"
 
 find_video() {
     local file
@@ -60,7 +60,7 @@ else
     pkill -x xwinwrap
     # The image stays visible if mpv fails over it.
     feh --bg-fill "$FALLBACK_IMAGE"
-    if [[ -n "$video" && -x "$XWINWRAP" ]]; then
+    if [[ -n "$video" ]] && command -v "$XWINWRAP" >/dev/null; then
         play_on_x "$video"
     else
         warn_missing "$video" "$XWINWRAP"
