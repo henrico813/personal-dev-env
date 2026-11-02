@@ -30,25 +30,6 @@ THIS_EPIC = re.compile(r"\bthis epic\b", re.IGNORECASE)
 THIS_EPIC_OR_TICKET = re.compile(r"\bthis (epic|ticket)\b", re.IGNORECASE)
 # Placeholders such as KEY-<n> do not match.
 TICKET_KEY = re.compile(r"\b[A-Z][A-Z0-9]+-[0-9]+\b")
-# C#10 and HTML entities such as &#39; do not match. URL anchors such as
-# doc#1 still do.
-ISSUE_NUMBER = re.compile(
-    r"(?<![&A-Z])#[0-9]+\b"
-    r"|(?i:\b(?:PR|pull request|issue)\s+#?[0-9]+\b)"
-)
-# Standard names such as UTF-8 look like ticket keys.
-STANDARD_PREFIXES = ("UTF-", "SHA-", "ISO-", "RFC-", "IEEE-")
-# A path starts with /, ~/, ./, ../ or a .name/ folder, or has a / and ends
-# in a file extension. URLs, $VAR/ paths and placeholders such as
-# <repo>/AGENTS.md do not match.
-FILE_PATH = re.compile(
-    r"(?<![\w.:/~<>$-])"
-    r"(?:(?:~|\.\.?|\.\w[\w.-]*)?/[\w.][\w./-]*\w"
-    r"|\w[\w.-]*/[\w./-]*\.[A-Za-z]+\b)"
-)
-# Paths such as /dev/null hold on every machine.
-SHARED_PATH = re.compile(r"/(?:dev|tmp|usr)(?:/|$)")
-MAX_LESSON_WORDS = 60
 WORD = re.compile(r"[a-z0-9']+")
 COPIED_WORDS = 5
 
@@ -253,67 +234,20 @@ def read_request(file: str) -> dict:
     return request
 
 
-def check_lesson_text(text: str) -> None:
-    """Refuse new lesson text that fits only the task it came from.
-
-    A lesson must hold in any task, so it may not name a PR or issue
-    number, a ticket key or a file path. Text over ``MAX_LESSON_WORDS``
-    usually packs several rules, so it is refused too.
-
-    Args:
-        text: The lesson text from the request.
-
-    Raises:
-        LessonError: The text breaks one of these rules, with one line
-            per problem.
-    """
-    problems = []
-    for number in dict.fromkeys(ISSUE_NUMBER.findall(text)):
-        problems.append(
-            f"The lesson names the PR or issue number {number}; "
-            "state the rule without it."
-        )
-    for key in dict.fromkeys(TICKET_KEY.findall(text)):
-        if key.startswith(STANDARD_PREFIXES):
-            continue
-        problems.append(
-            f"The lesson names {key}, which looks like a ticket key; "
-            "state the rule without it."
-        )
-    for path in dict.fromkeys(FILE_PATH.findall(text)):
-        if SHARED_PATH.match(path):
-            continue
-        problems.append(
-            f"The lesson names the file path {path}; "
-            "say what the file is for instead."
-        )
-    words = len(text.split())
-    if words > MAX_LESSON_WORDS:
-        problems.append(
-            f"The lesson has {words} words; cut it to {MAX_LESSON_WORDS} "
-            "or fewer, or save each rule as its own lesson."
-        )
-    if problems:
-        raise LessonError("\n".join(problems))
-
-
 def add(file: str) -> str:
     """Save the lesson in ``file`` and re-render its skill.
 
     With ``repeat_of``, the existing lesson's repeat count goes up by
-    one, and any given text or scope replaces the old value. A repeat
-    whose text matches the saved lesson is not checked, so it is never
-    refused.
+    one, and any given text or scope replaces the old value.
 
     Returns:
         A one-line result for the user.
 
     Raises:
-        LessonError: The request is invalid, the text fails
-            ``check_lesson_text`` or says "this epic" with no ``epic``
-            set, the skill is not installed or has no marker,
-            ``repeat_of`` names no lesson, or its store is not valid
-            JSON.
+        LessonError: The request is invalid, the skill is not installed
+            or has no marker, ``repeat_of`` names no lesson, the text
+            says "this epic" with no ``epic`` set, or its store is not
+            valid JSON.
     """
     request = read_request(file)
     skill = request["skill"]
@@ -322,8 +256,6 @@ def add(file: str) -> str:
     scope = {key: request[key] for key in SCOPE_KEYS if request.get(key)}
     if request.get("repeat_of"):
         lesson = find_lesson(store, skill, request["repeat_of"])
-        if request["text"] and request["text"] != lesson["text"]:
-            check_lesson_text(request["text"])
         lesson["repeats"] += 1
         lesson.update(scope)
         if request["text"]:
@@ -333,7 +265,6 @@ def add(file: str) -> str:
             f"its repeat count is now {lesson['repeats']}."
         )
     else:
-        check_lesson_text(request["text"])
         lesson = {
             "id": f"L{store['next_id']}",
             "text": request["text"],

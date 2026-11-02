@@ -38,13 +38,7 @@ skill-lessons promote-check SKILL --checkout PATH [--growth-reason TEXT]
 `FILE` holds a JSON object; `-` reads it from standard input. `skill` is
 required, and `text` is required unless `repeat_of` is set. `project`,
 `epic` and `repo` set an optional scope. Unknown keys are refused, and
-so is text that says "this epic" with no `epic` set. New text is also
-refused when it names a PR or issue number such as `#12` or `PR 12`, a
-ticket key such as `ABC-12` or a file path such as `~/notes` or
-`ai/demo/SKILL.md`, or runs over 60 words. Names that start with
-`UTF-`, `SHA-`, `ISO-`, `RFC-` or `IEEE-`, such as `UTF-8`, and paths
-under `/dev/`, `/tmp` and `/usr/` or starting with `$VAR/` are allowed.
-A repeat that sends the saved text unchanged is not checked.
+so is text that says "this epic" with no `epic` set.
 
 ```json
 {"skill": "demo", "epic": "ABC-12", "text": "Children are Tasks; match the siblings' type."}
