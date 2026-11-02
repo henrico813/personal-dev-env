@@ -37,7 +37,7 @@ const (
 type Screen int
 
 const (
-	// The zero Screen is no screen, so a Screen left unset never passes as one.
+	// An unset Screen is never taken for the PR list screen.
 	prListScreen Screen = iota + 1
 	FilePicker
 	CommentsScreen
@@ -228,15 +228,18 @@ func BuildListKeys(
 // Returns the help text row of the comments screen or the file picker,
 // whose short form drops / find. The file picker's h closes it as o does,
 // so its row names o and leaves h out.
-func BuildPaneKeys(
+func BuildCommentsOrPickerKeys(
 	s FzfState,
 	screen Screen,
 ) string {
 	if s.IsSearching() {
 		return SearchKeys
 	}
-	long := CommentsKeys
-	if screen == FilePicker {
+	var long string
+	switch screen {
+	case CommentsScreen:
+		long = CommentsKeys
+	case FilePicker:
 		long = FilePickerKeys
 	}
 	return chooseFittingKeys(
@@ -251,8 +254,8 @@ func BuildPaneKeys(
 	)
 }
 
-// Returns the key of the help text row word that a tap on column col hit,
-// or "" for none. A tap on a gap counts for the nearer word, since a
+// Returns the first word of the tapped help text row item, such as l, or
+// "" for none. A tap on a gap counts for the nearer word, since a
 // fingertip covers several columns.
 func FindTappedKey(
 	keys string,

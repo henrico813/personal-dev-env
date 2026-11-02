@@ -9,8 +9,8 @@ import (
 	"prs/internal/github"
 )
 
-// Holds one row of the comments screen, which is either a comment or review
-// or a code thread.
+// Holds one row of the comments screen, which is a comment, a review or a
+// code thread.
 type Item struct {
 	post   post
 	thread *github.Thread

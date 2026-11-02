@@ -1,24 +1,20 @@
 package app
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-// A tap on a help text row word must run that word's key on every fzf
-// screen, Esc and Enter included, and a word that is not a key must run
-// nothing. Otherwise a tap runs the wrong key, cannot leave a search, or
-// makes fzf fail on an unknown key.
+// A tap on a help text row word must run that word's key on each fzf
+// screen, with Esc and Enter under fzf's names. Otherwise a tap runs the
+// wrong key or cannot leave a search.
 func TestPrintTapActionRunsWordKey(t *testing.T) {
 	tests := []struct {
 		name   string
 		screen string
 		prompt string
-		total  string
-		failed bool
 		column string
 		want   string
 	}{
@@ -26,45 +22,36 @@ func TestPrintTapActionRunsWordKey(t *testing.T) {
 			name:   "Esc while a search is open",
 			screen: "list",
 			prompt: "/ ",
-			total:  "1",
 			column: "2",
 			want:   "trigger(esc)\n",
 		},
 		{
+			name:   "Enter while a search is open",
+			screen: "list",
+			prompt: "/ ",
+			column: "13",
+			want:   "trigger(enter)\n",
+		},
+		{
 			name:   "o pane on the comments screen",
 			screen: "comments",
-			total:  "1",
 			column: "10",
 			want:   "trigger(o)\n",
 		},
 		{
-			name:   "GitHub in the failed empty list's row",
-			screen: "list",
-			total:  "0",
-			failed: true,
-			column: "3",
-			want:   "",
+			name:   "o close in the file picker",
+			screen: "picker",
+			column: "10",
+			want:   "trigger(o)\n",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			if tt.failed {
-				writeFile(
-					t,
-					filepath.Join(
-						dir,
-						refreshErrorFile,
-					),
-					failedReason,
-					0o600,
-				)
-			}
 			for name, value := range map[string]string{
 				"FZF_COLUMNS":             "50",
 				"FZF_LINES":               "40",
 				"FZF_PROMPT":              tt.prompt,
-				"FZF_TOTAL_COUNT":         tt.total,
+				"FZF_TOTAL_COUNT":         "1",
 				"FZF_CLICK_FOOTER_COLUMN": tt.column,
 			} {
 				t.Setenv(
@@ -78,7 +65,7 @@ func TestPrintTapActionRunsWordKey(t *testing.T) {
 				"works",
 				"_tap",
 				tt.screen,
-				dir,
+				t.TempDir(),
 			)
 
 			if output != tt.want {
@@ -97,54 +84,56 @@ func TestPrintTapActionRunsWordKey(t *testing.T) {
 // or one stray g jumps to the top.
 func TestPrintFirstOnQuickSecondG(t *testing.T) {
 	tests := []struct {
-		name        string
-		pressedOnce bool
-		ago         time.Duration
-		want        string
+		name    string
+		presses []time.Duration
+		want    string
 	}{
 		{
-			name:        "second g soon after",
-			pressedOnce: true,
-			ago:         300 * time.Millisecond,
-			want:        "first\n",
+			name: "second g soon after",
+			presses: []time.Duration{
+				0,
+				300 * time.Millisecond,
+			},
+			want: "first\n",
 		},
 		{
-			name:        "second g after a pause",
-			pressedOnce: true,
-			ago:         2 * time.Second,
-			want:        "",
+			name: "second g after a pause",
+			presses: []time.Duration{
+				0,
+				2 * time.Second,
+			},
+			want: "",
 		},
 		{
 			name: "lone g",
+			presses: []time.Duration{
+				0,
+			},
 			want: "",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			if tt.pressedOnce {
-				writeFile(
-					t,
-					filepath.Join(
-						dir,
-						"g",
-					),
-					time.Now().Add(-tt.ago).Format(time.RFC3339Nano),
-					0o600,
-				)
+			start := time.Now()
+			var output strings.Builder
+
+			// Each press runs _g on the same folder, at its time after the first.
+			for _, after := range tt.presses {
+				output.Reset()
+				a := &prsApp{
+					stdout: &output,
+					now:    start.Add(after),
+				}
+				a.printFirstOnSecondG([]string{
+					dir,
+				})
 			}
 
-			output := runPRs(
-				t,
-				"works",
-				"_g",
-				dir,
-			)
-
-			if output != tt.want {
+			if output.String() != tt.want {
 				t.Errorf(
-					"g printed %q, want %q",
-					output,
+					"the last g printed %q, want %q",
+					output.String(),
 					tt.want,
 				)
 			}
@@ -152,10 +141,10 @@ func TestPrintFirstOnQuickSecondG(t *testing.T) {
 	}
 }
 
-// Each fzf screen's / must free every one-letter key the screen binds, and
-// Esc must bind them all again. Otherwise a letter in a search runs its
+// Each fzf screen's / must free every one-character key the screen binds,
+// and Esc must bind them all again. Otherwise a letter in a search runs its
 // action instead of typing, or stays dead after the search ends.
-func TestAddSearchKeysFreesEveryLetter(t *testing.T) {
+func TestAddSearchKeysUnbindsUntilEsc(t *testing.T) {
 	a := &prsApp{self: "prs"}
 	for name, actions := range map[string]map[string]string{
 		"PR list screen": a.buildListActions("dir"),

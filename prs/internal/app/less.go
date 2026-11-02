@@ -8,11 +8,18 @@ import (
 	"unicode/utf8"
 )
 
-// The lines of a lesskey file, less's own list of keys and their actions,
-// that every less screen shares. h and q quit with their letter's character
-// code as the exit status, l does nothing, J and K scroll half a page, and
-// Esc cancels a search at the cost of the arrow keys there.
-const lessKeys = "#line-edit\n\\e abort\n#command\nh quit h\nq quit q\nl noaction\nJ forw-scroll\nK back-scroll\n"
+// The lesskey lines, in less's key file format, that every less screen
+// shares. Esc cancels a search, at the cost of the arrow keys there, which
+// start with Esc.
+const lessKeys = `#line-edit
+\e abort
+#command
+h quit h
+q quit q
+l noaction
+J forw-scroll
+K back-scroll
+`
 
 // Shows text in less with prompt as its help text row, and returns the
 // key that closed it, or 'q' for less's own ways out such as ZZ. keys holds

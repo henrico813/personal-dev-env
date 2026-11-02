@@ -6,7 +6,7 @@ import "testing"
 // screen sizes its side pane by rows, wide screens put it beside the list,
 // and a side pane closed with o stays closed. A wrong choice hides the
 // checks, leaves rows empty or reopens the closed side pane.
-func TestChooseListWindowFitsScreen(t *testing.T) {
+func TestChooseListWindowPlacesSidePane(t *testing.T) {
 	tests := []struct {
 		name    string
 		columns int
@@ -216,9 +216,9 @@ func TestBuildListKeysShowsUsableKeys(t *testing.T) {
 	}
 }
 
-// The file picker keeps its list small so the side pane below gets the
-// rows, 5 of them or 3 below 30 rows. A wrong size hides either the files
-// or the diff.
+// The file picker keeps its list to 5 rows, or 3 below 30 rows, so the
+// side pane below gets the rest. A wrong size hides either the files or the
+// diff.
 func TestChoosePaneWindowSizesPane(t *testing.T) {
 	tests := []struct {
 		name  string

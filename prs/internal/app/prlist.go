@@ -125,8 +125,8 @@ func (a *prsApp) pickPullRequest() int {
 					time.Now(),
 				),
 				"--footer="+layout.ListKeys,
-				// The side pane reads the selected row from FZF_CURRENT_ITEM,
-				// so it still runs when the list is empty.
+				// The side pane's command names no field such as {1}, so fzf
+				// runs it on an empty list too.
 				"--preview="+a.self+" _meta "+quoteShell(dir),
 				"--preview-window=down,50%,border-top,wrap-word",
 				"--bind=start:transform("+layoutCommand+" start)",
@@ -146,8 +146,6 @@ func (a *prsApp) pickPullRequest() int {
 	)
 }
 
-// Returns the fzf action of each key in the PR list screen. A tap on the
-// help text row runs the same action as the key.
 func (a *prsApp) buildListActions(dir string) map[string]string {
 	summary := "execute(" + a.self + " _summary {1} {2})"
 	return addSearchKeys(
@@ -157,7 +155,8 @@ func (a *prsApp) buildListActions(dir string) map[string]string {
 			"double-click": summary,
 			"c":            "execute(" + a.self + " _comments {1} {2})",
 			"d":            "execute(" + a.self + " _diff {1} {2})",
-			// The refresher in this process refreshes the list on SIGUSR1.
+			// Only the main prs process may build this table, because r
+			// signals os.Getpid().
 			"r": "execute-silent(kill -USR1 " + strconv.Itoa(os.Getpid()) + ")",
 			"o": "transform(" + a.self + " _layout " + quoteShell(dir) + " toggle)",
 			"g": "transform(" + a.self + " _g " + quoteShell(dir) + ")",
@@ -183,8 +182,8 @@ func (a *prsApp) printListRows([]string) int {
 }
 
 // Prints the selected pull request's details from the saved list, as
-// _meta DIR, under the error of a failed refresh. It prints the 3-row status
-// strip when the side pane has 3 rows or fewer.
+// _meta DIR, under the error of a failed refresh. A side pane of 3 rows or
+// fewer gets the 3-row status strip, without the error.
 func (a *prsApp) printDetails(args []string) int {
 	dir := args[0]
 	detail := view.Long
@@ -198,7 +197,8 @@ func (a *prsApp) printDetails(args []string) int {
 		a.printLine(a.paintRed("Could not refresh the list."))
 		a.printText(string(failure))
 	}
-	// fzf leaves FZF_CURRENT_ITEM unset when the list is empty.
+	// fzf sets FZF_CURRENT_ITEM only while a row is selected, and runFzf
+	// keeps an older one out of fzf's environment.
 	item, ok := os.LookupEnv("FZF_CURRENT_ITEM")
 	if !ok {
 		return 0
@@ -262,8 +262,8 @@ func (a *prsApp) printListLayout(args []string) int {
 	return 0
 }
 
-// Returns the PR list screen's help text row for the screen and the
-// refresh's state in dir.
+// Returns the PR list screen's help text row for fzf's width and whether
+// the last refresh failed.
 func buildListKeys(
 	state layout.FzfState,
 	dir string,

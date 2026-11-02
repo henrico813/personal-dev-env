@@ -47,8 +47,8 @@ var mergeWords = map[string]coloredWords{
 type Detail int
 
 const (
-	// The 3-row status strip, for a side pane of 3 rows or fewer. The zero
-	// Detail is no length, so a Detail left unset never passes as one.
+	// The 3-row status strip, for a side pane of 3 rows or fewer. An unset
+	// Detail is never taken for the status strip.
 	Strip Detail = iota + 1
 	// The details for a side pane taller than 3 rows.
 	Long
@@ -65,11 +65,7 @@ func RenderDetails(
 	s Style,
 ) string {
 	dot := " " + s.paintGray("·") + " "
-	status := s.paintBold("#"+strconv.Itoa(pr.Number)) + " " + s.paintState(pr.State)
-	if pr.IsDraft {
-		status += " " + s.paintGray("draft")
-	}
-	status += dot + s.formatReview(pr.ReviewDecision) + dot + s.formatMerge(pr.MergeStateStatus)
+	status := s.formatStatusRow(pr)
 	checks := s.formatCheckCounts(pr.StatusCheckRollup)
 	where := s.formatWhereRow(
 		pr.Repo(),
@@ -195,6 +191,46 @@ func (s Style) formatCheckCounts(checks []github.Check) string {
 	return "checks: " + strings.Join(
 		parts,
 		", ",
+	)
+}
+
+// Returns the number, state, review and merge state, dropping an OPEN state
+// and then the review when the row is too narrow, so the merge state stays.
+func (s Style) formatStatusRow(pr github.PullRequest) string {
+	plain := s
+	plain.Color = false
+	rows := s.listStatusRows(pr)
+	for i, row := range plain.listStatusRows(pr) {
+		if utf8.RuneCountInString(row) <= s.Width {
+			return rows[i]
+		}
+	}
+	return rows[len(rows)-1]
+}
+
+// Returns the status rows from longest to shortest. The PR list holds only
+// open pull requests, so OPEN is the first word to go.
+func (s Style) listStatusRows(pr github.PullRequest) []string {
+	dot := " " + s.paintGray("·") + " "
+	number := s.paintBold("#" + strconv.Itoa(pr.Number))
+	draft := ""
+	if pr.IsDraft {
+		draft = " " + s.paintGray("draft")
+	}
+	review := s.formatReview(pr.ReviewDecision)
+	merge := s.formatMerge(pr.MergeStateStatus)
+	rows := []string{
+		number + " " + s.paintState(pr.State) + draft + dot + review + dot + merge,
+	}
+	if pr.State == "OPEN" {
+		rows = append(
+			rows,
+			number+draft+dot+review+dot+merge,
+		)
+	}
+	return append(
+		rows,
+		number+draft+dot+merge,
 	)
 }
 

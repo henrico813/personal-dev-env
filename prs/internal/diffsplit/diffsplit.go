@@ -156,8 +156,11 @@ func findSamePath(rest string) string {
 		`"`,
 	) {
 		quote = `"`
-		half = strings.Trim(
-			half,
+		half = strings.TrimSuffix(
+			strings.TrimPrefix(
+				half,
+				`"`,
+			),
 			`"`,
 		)
 	}

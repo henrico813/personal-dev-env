@@ -1,9 +1,6 @@
 package app
 
 import (
-	"bytes"
-	"os"
-	"os/signal"
 	"strings"
 	"testing"
 )
@@ -106,34 +103,31 @@ func TestRunSaysWhatFailedAndWhy(t *testing.T) {
 	}
 }
 
-// The installer checks each new build of prs by running prs _keys. If it
-// needs gh or fails, every install rolls back all the tools it built.
-func TestRunPrintsKeysWithoutGH(t *testing.T) {
-	t.Setenv(
-		"PATH",
-		t.TempDir(),
-	)
-	var output bytes.Buffer
+// The installer checks each new build of prs by running prs _keys, which
+// must work with no gh, HOME or cache folder. If it fails, every install
+// rolls back all the tools it built.
+func TestRunPrintsKeysInBareEnvironment(t *testing.T) {
+	for name, value := range map[string]string{
+		"PATH":           t.TempDir(),
+		"HOME":           "",
+		"XDG_CACHE_HOME": "",
+	} {
+		t.Setenv(
+			name,
+			value,
+		)
+	}
 
-	// Run catches Ctrl-C, and the reset lets Ctrl-C stop go test again.
-	defer signal.Reset(os.Interrupt)
-	code := Run(
-		[]string{
-			"_keys",
-		},
-		strings.NewReader(""),
-		&output,
-		&output,
-	)
+	code, output := runInProcess("_keys")
 
 	if code != 0 || !strings.Contains(
-		output.String(),
+		output,
 		"PR summary screen",
 	) {
 		t.Errorf(
 			"prs _keys exited %d and printed\n%s\nwant 0 and the PR list screen's help",
 			code,
-			output.String(),
+			output,
 		)
 	}
 }

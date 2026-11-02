@@ -7,8 +7,8 @@ import (
 )
 
 // A diff with a deleted, new, renamed, binary, mode change and modified
-// file. The last hunk has lines that look like file headers, which count
-// as changes.
+// file. The mode change's path ends in a quote, which git escapes, and the
+// last hunk has lines that look like file headers, which count as changes.
 const sixKindsDiff = `diff --git a/old.sh b/old.sh
 deleted file mode 100755
 index 1111111..0000000
@@ -43,7 +43,7 @@ diff --git a/shot.png b/shot.png
 new file mode 100644
 index 0000000..5555555
 Binary files /dev/null and b/shot.png differ
-diff --git a/run.sh b/run.sh
+diff --git "a/say \"hi\"" "b/say \"hi\""
 old mode 100644
 new mode 100755
 diff --git a/edit.go b/edit.go
@@ -80,7 +80,7 @@ func TestSplitCountsTagsAndPaths(t *testing.T) {
 		"3 +0 -0 renamed new/same.py\n" +
 		"4 +1 -1 renamed new/test.py\n" +
 		"5 +0 -0 new,binary shot.png\n" +
-		"6 +0 -0 mode run.sh\n" +
+		"6 +0 -0 mode \"say \\\"hi\\\"\"\n" +
 		"7 +1 -1  edit.go\n"
 	if rows.String() != want {
 		t.Errorf(

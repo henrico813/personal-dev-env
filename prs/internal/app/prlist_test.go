@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -34,7 +33,7 @@ func TestPrintDetailsFitsSidePaneRows(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			saveList(
+			store := saveList(
 				t,
 				cache.List{
 					PullRequests: []github.PullRequest{
@@ -50,10 +49,6 @@ func TestPrintDetailsFitsSidePaneRows(t *testing.T) {
 				"FZF_PREVIEW_COLUMNS",
 				"50",
 			)
-			store, err := cache.Open()
-			if err != nil {
-				t.Fatal(err)
-			}
 			a := &prsApp{
 				self:  "prs",
 				now:   listedPR.UpdatedAt.Add(2 * time.Hour),
@@ -87,19 +82,23 @@ func TestPrintDetailsFitsSidePaneRows(t *testing.T) {
 }
 
 // Waits in place of the PR list screen's fzf, after writing the path of
-// its --listen socket to READY.
+// its --listen socket to READY, and runs its r binding's command once the
+// PRESS file exists.
 const listeningFzf = `#!/bin/sh
 for arg; do
   case "$arg" in
   --listen=*) echo "${arg#--listen=}" > "$READY.tmp" && mv "$READY.tmp" "$READY" ;;
+  --bind=r:execute-silent\(*\)) r=${arg#--bind=r:execute-silent\(}; r=${r%\)} ;;
   esac
 done
+while [ ! -e "$PRESS" ]; do sleep 0.01; done
+sh -c "$r"
 exec sleep 30
 `
 
 // The PR list screen must refresh a saved list at start, and again on each
-// SIGUSR1, which the r key sends. Otherwise the list stays as old as the
-// last run, and r does nothing.
+// press of r, whose binding sends prs a refresh request. Otherwise the list
+// stays as old as the last run, and r does nothing.
 func TestPickPullRequestRefreshesOnSignal(t *testing.T) {
 	bin := writeScripts(
 		t,
@@ -111,6 +110,10 @@ func TestPickPullRequestRefreshesOnSignal(t *testing.T) {
 	ready := filepath.Join(
 		bin,
 		"ready",
+	)
+	press := filepath.Join(
+		bin,
+		"press",
 	)
 	ghLog := filepath.Join(
 		bin,
@@ -125,9 +128,11 @@ func TestPickPullRequestRefreshesOnSignal(t *testing.T) {
 			},
 		},
 	)
-	prs, _ := startPRs(
+	// prs starts with the fake fzf as its PR list screen.
+	startPRs(
 		t,
 		"READY="+ready,
+		"PRESS="+press,
 		"GH_ANSWER=works",
 		"GH_LOG="+ghLog,
 		"TMPDIR="+t.TempDir(),
@@ -146,31 +151,32 @@ func TestPickPullRequestRefreshesOnSignal(t *testing.T) {
 		t,
 		filepath.Dir(strings.TrimSpace(string(socket))),
 	)
-
-	refreshedAtStart := waitForLog(
+	// The saved list refreshes at start, so a second list query can only
+	// come from r.
+	if !waitForLog(
 		t,
 		ghLog,
 		"list",
 		1,
-	)
-	if err := syscall.Kill(
-		prs.Process.Pid,
-		syscall.SIGUSR1,
-	); err != nil {
-		t.Fatal(err)
+	) {
+		t.Fatal("prs did not refresh the saved list at start")
 	}
-	refreshedOnSignal := waitForLog(
+
+	// The fake fzf runs the r binding's command, as a press of r does.
+	writeFile(
+		t,
+		press,
+		"",
+		0o600,
+	)
+	refreshed := waitForLog(
 		t,
 		ghLog,
 		"list",
 		2,
 	)
 
-	if !refreshedAtStart || !refreshedOnSignal {
-		t.Errorf(
-			"list queried at start %v and after SIGUSR1 %v, want both",
-			refreshedAtStart,
-			refreshedOnSignal,
-		)
+	if !refreshed {
+		t.Error("r did not start a second list query")
 	}
 }

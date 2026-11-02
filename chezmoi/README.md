@@ -56,9 +56,9 @@ gh pr diff 123 --color=never |
 ```
 
 On a phone, run `prs` to see the open pull requests that involve you in any
-repository. It has four screens, and each has a help text row that names its
-main keys, under the list on the PR list screen, the comments screen and the
-file picker, where a tap on a word runs it. The keys follow vim, such as `j`
+repository. It has four screens, and each has a help text row naming its main
+keys. On the PR list screen, the comments screen and the file picker, a tap on
+a word in that row runs it. The keys follow vim, such as `j`
 and `k` to move, `l` to open and `h` to go back, and `?` lists them;
 [the keys page](../prs/docs/reference/keys.md) has them all.
 

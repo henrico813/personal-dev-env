@@ -5,7 +5,7 @@ How to use `prs` is in the `prs` part of
 
 Pick the page for what you need:
 
-- Look up what a key does on a screen, or what a help text row says:
+- Look up what a key does on a screen:
   [Keys and help text rows](reference/keys.md).
 - Look up a file in `~/.cache/prs` or in a screen's temporary folder:
   [Cache and temporary files](reference/files.md).
