@@ -88,7 +88,9 @@ commands in [references/build.md](references/build.md).
    failed check, the wrong branch, a parent that moved or a branch
    already pushed; it squashes onto the parent and pushes. Then save
    and run the PR request script, which calls
-   `pde-gh-write pr create --base <parent branch>`.
+   `pde-gh-write pr create --base <parent branch>`. A child PR that
+   cannot run until its parent merges waits under pull-request
+   Guardrail 4; do not open it untested.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `draft`, your `set` rewords,
    `submit`, and `add` for an approved comment the draft did not
