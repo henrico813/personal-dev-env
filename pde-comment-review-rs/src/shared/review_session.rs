@@ -1,10 +1,11 @@
 //! This module loads and saves each worktree's Review Session under a lock,
 //! so two screens lose no User Feedback, and it keeps the waiting list that
-//! Ctrl+b e reads. Read the `save_user_feedback(dir, shown_request, feedback)`,
-//! `lock(dir)`, `load(dir)`, `add_to_waiting_list(dir)`, and
-//! `read_waiting_list()` functions to understand the module.
+//! Ctrl+b e reads. Read the `add_list(dir, list)`,
+//! `save_user_feedback(dir, shown_request, feedback)`, `lock(dir)`,
+//! `load(dir)`, `add_to_waiting_list(dir)`, and `read_waiting_list()`
+//! functions to understand the module.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fmt::Display;
 use std::fs::{self, File};
@@ -14,6 +15,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
+use super::comments;
 use super::git::{self, CommitId};
 use super::user_feedback::{UserAnswer, UserFeedback};
 use super::{Error, ErrorCode};
@@ -28,6 +30,89 @@ const WAITING_LIST_TEMP_FILE: &str = "waiting-list.json.tmp";
 
 /// Holds the folder that tests give the waiting list in place of the user's own.
 static TEST_WAITING_LIST_FOLDER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Saves a sent Feedback Request List and sets `waiting_for_user_feedback`,
+/// under the lock, then returns the list's number from 1. A new Review Session
+/// starts unless one waits for User Notes, so a finished one's User Feedback
+/// never answers the new request 1.
+///
+/// # Errors
+///
+/// Refuses with `WaitingForUserFeedback` while a list waits for the user, and
+/// with `WriteNotFinished` while a write is unfinished. Refuses with
+/// `ListChanged` when the Review Session is no longer as `seen`, such as after
+/// another call sent a list.
+pub(crate) fn add_list(
+    dir: &Path,
+    list: FeedbackRequestList,
+    seen: SeenReviewSession,
+) -> Result<usize, Error> {
+    let root = git::find_root(dir)?;
+    let mut lock = lock(&root)?;
+    let status = lock
+        .review_session
+        .as_ref()
+        .map(|review_session| review_session.status);
+    if let Some(status) = status {
+        refuse_busy_status(status)?;
+    }
+    // A list built before another call changed the Review Session could drop User Feedback given since.
+    if SeenReviewSession::of(lock.review_session.as_ref()) != seen {
+        return Err(Error {
+            code: ErrorCode::ListChanged,
+            message: "The Review Session changed after this list was built, such as when another call sent a list. Build the list again.".to_owned(),
+        });
+    }
+    let list_number = if status == Some(ReviewStatus::UserNotesWaiting) {
+        let review_session = lock
+            .review_session
+            .as_mut()
+            .expect("the status came from the Review Session");
+        add_list_after_user_notes(&root, review_session, list)?;
+        review_session.lists.len()
+    } else {
+        // Past the refusal above, there is no Review Session or only a done one.
+        lock.review_session = Some(ReviewSession {
+            status: ReviewStatus::WaitingForUserFeedback,
+            origin: find_review_origin(&root)?,
+            lists: vec![list],
+            feedback: BTreeMap::new(),
+            write_error: None,
+        });
+        1
+    };
+    lock.save()?;
+    Ok(list_number)
+}
+
+/// Returns the status and list count of the Review Session, for step 5 to
+/// pass to `add_list` after it builds the list again.
+pub(crate) fn see_review_session(dir: &Path) -> Result<SeenReviewSession, Error> {
+    Ok(SeenReviewSession::of(load(dir)?.as_ref()))
+}
+
+/// Refuses to build or send a Feedback Request List while one waits for the
+/// user or a write did not finish. Steps 3 and 5 share it.
+///
+/// # Errors
+///
+/// Refuses with `WaitingForUserFeedback` or `WriteNotFinished`.
+pub(crate) fn refuse_busy_status(status: ReviewStatus) -> Result<(), Error> {
+    match status {
+        ReviewStatus::WaitingForUserFeedback => Err(Error {
+            code: ErrorCode::WaitingForUserFeedback,
+            message:
+                "A Feedback Request List waits for the user. Tell them to press Ctrl+b e, then wait."
+                    .to_owned(),
+        }),
+        ReviewStatus::WritingUserFeedback => Err(Error {
+            code: ErrorCode::WriteNotFinished,
+            message: "A write into the code did not finish. Ask the user to check git status."
+                .to_owned(),
+        }),
+        ReviewStatus::UserNotesWaiting | ReviewStatus::Done => Ok(()),
+    }
+}
 
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
 /// Feedback Request changed since the screen showed it. Once every Feedback
@@ -397,6 +482,132 @@ fn late_error(message: &str) -> Error {
         code: ErrorCode::LateUserFeedback,
         message: message.to_owned(),
     }
+}
+
+/// Adds the agent's list to a Review Session that waited for User Notes. Each
+/// request the list sends again loses its User Note, each earlier request
+/// whose User Feedback no longer fits its comment leaves every list, and each
+/// kept one takes its comment's line now.
+fn add_list_after_user_notes(
+    root: &Path,
+    review_session: &mut ReviewSession,
+    list: FeedbackRequestList,
+) -> Result<(), Error> {
+    let left_out = match_left_out_requests(root, review_session, &list)?;
+    for earlier in &mut review_session.lists {
+        earlier
+            .requests
+            .retain(|request| left_out.get(&request.id) != Some(&LeftOut::Dropped));
+        for request in &mut earlier.requests {
+            // Step 7 finds a comment with no name only at its saved line, so a kept answer moves with its comment.
+            if let Some(LeftOut::Kept { line }) = left_out.get(&request.id) {
+                request.line = *line;
+            }
+        }
+    }
+    for (id, outcome) in &left_out {
+        if *outcome == LeftOut::Dropped {
+            review_session.feedback.remove(id);
+        }
+    }
+    for request in &list.requests {
+        review_session.feedback.remove(&request.id);
+    }
+    review_session.lists.push(list);
+    review_session.status = ReviewStatus::WaitingForUserFeedback;
+    Ok(())
+}
+
+/// Returns what happens to each earlier request that `list` leaves out. Step 3
+/// leaves out a noted request only when its comment is gone, and an answered
+/// request keeps its answer while its comment holds the text the user answered.
+fn match_left_out_requests(
+    root: &Path,
+    review_session: &ReviewSession,
+    list: &FeedbackRequestList,
+) -> Result<BTreeMap<RequestId, LeftOut>, Error> {
+    let sent: BTreeSet<RequestId> = list.requests.iter().map(|request| request.id).collect();
+    let newest = review_session.newest_requests();
+    let files: BTreeSet<&Path> = newest
+        .iter()
+        .filter(|request| !sent.contains(&request.id))
+        .map(|request| request.file.as_path())
+        .collect();
+    let mut left_out = BTreeMap::new();
+    for file in files {
+        // Matching every request in the file, as step 3 does, gives each one the comment step 3 gave it.
+        let in_file: Vec<&FeedbackRequest> = newest
+            .iter()
+            .copied()
+            .filter(|request| request.file == file)
+            .collect();
+        let now = comments::read_comments_on_disk(root, file)?;
+        for (request, comment) in in_file.iter().zip(now.match_requests(&in_file)) {
+            if sent.contains(&request.id) {
+                continue;
+            }
+            let is_answered = matches!(
+                review_session.feedback.get(&request.id),
+                Some(UserFeedback::Answer(_))
+            );
+            let outcome = match comment {
+                Some(comment) if is_answered && comment.text == request.text => {
+                    LeftOut::Kept { line: comment.line }
+                }
+                _ => LeftOut::Dropped,
+            };
+            left_out.insert(request.id, outcome);
+        }
+    }
+    Ok(left_out)
+}
+
+/// Holds the status and list count step 5 saw before it built the list again,
+/// which every list `add_list` saves changes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SeenReviewSession {
+    status: Option<ReviewStatus>,
+    list_count: usize,
+}
+
+impl SeenReviewSession {
+    /// Returns what the Review Session, or `None` for none, shows now.
+    fn of(review_session: Option<&ReviewSession>) -> Self {
+        Self {
+            status: review_session.map(|review_session| review_session.status),
+            list_count: review_session.map_or(0, |review_session| review_session.lists.len()),
+        }
+    }
+}
+
+/// Says what `add_list` does with an earlier request the new list leaves out.
+#[derive(Debug, PartialEq)]
+enum LeftOut {
+    /// Keeps its answer, with the line its comment starts at now.
+    Kept { line: usize },
+    /// Leaves every list with its User Feedback, which no longer fits its comment.
+    Dropped,
+}
+
+/// Returns the Review Session's origin from Git and the agent's environment.
+/// The repository takes its main checkout's folder name, and the agent session
+/// is `OPENCODE_SESSION_ID`, empty when unset.
+fn find_review_origin(root: &Path) -> Result<ReviewOrigin, Error> {
+    let shared = git::find_shared_git_folder(root)?;
+    // A worktree's folder is often named after its branch, so the main checkout names the repository.
+    let main_checkout = shared
+        .parent()
+        .filter(|_| shared.ends_with(".git"))
+        .unwrap_or(root);
+    let repo = main_checkout
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(ReviewOrigin {
+        repo,
+        branch: git::read_current_branch(root)?,
+        agent_session: env::var("OPENCODE_SESSION_ID").unwrap_or_default(),
+    })
 }
 
 /// Holds the worktrees on the waiting list, saved in `waiting-list.json`.
