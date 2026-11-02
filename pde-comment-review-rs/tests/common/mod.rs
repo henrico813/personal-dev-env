@@ -7,6 +7,7 @@ use std::process::Command;
 
 use pde_comment_review::shared::approvals::{self, Approval};
 use pde_comment_review::shared::git::resolve_commit;
+use pde_comment_review::shared::review_session::set_test_waiting_list_folder;
 use serde_json::{Value, json};
 
 /// Names the Go file most tests change.
@@ -36,6 +37,13 @@ impl Drop for TempFolder {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// Keeps this test process's waiting list in a folder of its own in the build's temporary folder, never the user's own.
+/// The folder is set once per test process, but any test may run first, so every test that reaches the waiting list calls this.
+pub fn use_test_waiting_list() {
+    let folder = format!("waiting-list-{}", std::process::id());
+    set_test_waiting_list_folder(&Path::new(env!("CARGO_TARGET_TMPDIR")).join(folder));
 }
 
 /// Runs Git without the test machine's own settings, so they cannot change the result.
