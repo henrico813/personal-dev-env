@@ -1,12 +1,13 @@
-//! Shows a Review Session one Feedback Request at a time, sized for a 40x16
-//! phone popup. Answers change the Review Session in memory and nothing is
-//! saved.
+//! This module shows a Review Session one Feedback Request at a time, sized
+//! for a 40x16 phone popup. Answers change the Review Session in memory and
+//! nothing is saved. Read the `show_review_screen(repo, review_session)`
+//! function to understand the module.
 
-mod code_around;
 mod draw;
 mod fit;
 mod keys;
-mod view;
+mod screen;
+mod surrounding_code;
 
 use std::io::{self, Write};
 use std::path::Path;
@@ -18,11 +19,12 @@ use crossterm::terminal::{self, Clear, ClearType, EnterAlternateScreen, LeaveAlt
 use crossterm::{execute, queue};
 
 use crate::shared::review_session::ReviewSession;
-use view::{AfterKey, View};
+use screen::{AfterKey, ReviewScreen};
 
 /// Turns on mouse reports for taps and wheel turns only, sent as text such as
 /// `\x1b[<65;20;5M`. A phone app sends a swipe as wheel turns.
 const MOUSE_ON: &str = "\x1b[?1000h\x1b[?1006h";
+/// Turns off the mouse reports `MOUSE_ON` turned on.
 const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1000l";
 
 /// Shows each Feedback Request until the user quits or every request has User
@@ -31,19 +33,19 @@ const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1000l";
 /// # Errors
 ///
 /// Fails when the terminal cannot be read or drawn on.
-pub fn run_review_screen(repo: &Path, review_session: &mut ReviewSession) -> io::Result<()> {
+pub fn show_review_screen(repo: &Path, review_session: &mut ReviewSession) -> io::Result<()> {
     let (cols, rows) = terminal::size()?;
     let size = (usize::from(cols), usize::from(rows));
-    let Some(mut view) = View::new(repo, review_session, size) else {
+    let Some(mut screen) = ReviewScreen::new(repo, review_session, size) else {
         return Ok(());
     };
     let mut out = io::stdout();
     let _terminal = RawTerminal::start(&mut out)?;
     loop {
         let (cols, rows) = terminal::size()?;
-        view.set_size(usize::from(cols), usize::from(rows));
-        draw(&mut out, &view)?;
-        if view.is_waiting_for_draw() {
+        screen.set_size(usize::from(cols), usize::from(rows));
+        draw(&mut out, &screen)?;
+        if screen.is_waiting_for_draw() {
             // Drops keys pressed before this request showed, such as a second
             // tap read while the last answer was checked, but not Ctrl-C.
             while event::poll(Duration::ZERO)? {
@@ -51,18 +53,23 @@ pub fn run_review_screen(repo: &Path, review_session: &mut ReviewSession) -> io:
                     return Ok(());
                 }
             }
-            view.start_wait(Instant::now());
+            screen.start_wait(Instant::now());
         }
         if let Some(key) = keys::read_key(&event::read()?)
-            && view.press_key(key, Instant::now()) == AfterKey::Quit
+            && screen.press_key(key, Instant::now()) == AfterKey::Quit
         {
             return Ok(());
         }
     }
 }
 
-fn draw(out: &mut impl Write, view: &View) -> io::Result<()> {
-    let lines: Vec<String> = view.build_screen().iter().map(draw::Row::to_ansi).collect();
+/// Draws every row of the screen over the last ones.
+fn draw(out: &mut impl Write, screen: &ReviewScreen) -> io::Result<()> {
+    let lines: Vec<String> = screen
+        .build_screen()
+        .iter()
+        .map(draw::Row::to_ansi)
+        .collect();
     queue!(out, MoveTo(0, 0), Clear(ClearType::All))?;
     out.write_all(lines.join("\r\n").as_bytes())?;
     out.flush()
@@ -73,6 +80,7 @@ fn draw(out: &mut impl Write, view: &View) -> io::Result<()> {
 struct RawTerminal;
 
 impl RawTerminal {
+    /// Turns on raw mode, the alternate screen and mouse reports.
     fn start(out: &mut impl Write) -> io::Result<Self> {
         terminal::enable_raw_mode()?;
         let raw_terminal = RawTerminal;

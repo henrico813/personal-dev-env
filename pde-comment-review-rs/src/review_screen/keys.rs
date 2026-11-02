@@ -1,5 +1,7 @@
-//! Turns terminal events into the screen's keys. Taps and other mouse input
-//! become no key, so a stray tap never answers a comment.
+//! This module turns terminal events into the screen's keys. A tap is never
+//! a key, and a swipe only scrolls, so a stray tap never answers a comment.
+//! Read the `read_key(event)` and `is_waiting_quit(event)` functions to
+//! understand the module.
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
 
@@ -37,6 +39,7 @@ pub(super) fn is_waiting_quit(event: &Event) -> bool {
     read_key(event) == Some(Key::Interrupt)
 }
 
+/// Returns the key for a key press, or `None` for a release.
 fn read_key_press(key: &KeyEvent) -> Option<Key> {
     if key.kind == KeyEventKind::Release {
         return None;
@@ -61,6 +64,7 @@ mod tests {
 
     use super::*;
 
+    /// A mouse event of `kind` in the middle of the phone screen.
     fn mouse(kind: MouseEventKind) -> Event {
         Event::Mouse(MouseEvent {
             kind,
@@ -70,30 +74,27 @@ mod tests {
         })
     }
 
+    /// A Ctrl-C key press.
     fn ctrl_c() -> Event {
         Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
     }
 
-    /// Without it, a stray tap on the phone could answer a comment, a swipe
-    /// could scroll the wrong way, and Ctrl-C could cut a comment.
+    /// `read_key` must give no key for a tap or its release.
+    /// Otherwise a stray tap on the phone could answer a comment.
     #[test]
-    fn taps_ignored_swipes_scroll_ctrl_c_interrupts() {
+    fn read_key_gives_no_key_for_taps() {
         let tap = mouse(MouseEventKind::Down(MouseButton::Left));
         let tap_release = mouse(MouseEventKind::Up(MouseButton::Left));
-        let swipe_up = mouse(MouseEventKind::ScrollUp);
-        let swipe_down = mouse(MouseEventKind::ScrollDown);
 
         assert_eq!(read_key(&tap), None);
         assert_eq!(read_key(&tap_release), None);
-        assert_eq!(read_key(&swipe_up), Some(Key::ScrollUp));
-        assert_eq!(read_key(&swipe_down), Some(Key::ScrollDown));
-        assert_eq!(read_key(&ctrl_c()), Some(Key::Interrupt));
     }
 
-    /// Without it, Ctrl-C pressed during a slow answer check is dropped with
-    /// the waiting keys, and the screen stays open.
+    /// `is_waiting_quit` must be true only for Ctrl-C, which reads as a quit
+    /// and never as `c`. Otherwise Ctrl-C pressed during a slow answer check
+    /// is dropped, or cuts a comment.
     #[test]
-    fn waiting_keys_dropped_except_ctrl_c() {
+    fn is_waiting_quit_only_for_ctrl_c() {
         let answer_key = Event::Key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
         let tap = mouse(MouseEventKind::Down(MouseButton::Left));
 

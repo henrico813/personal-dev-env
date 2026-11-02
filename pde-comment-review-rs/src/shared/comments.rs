@@ -70,6 +70,60 @@ pub fn to_plain_words(file: &Path, text: &str) -> String {
     }
 }
 
+/// Returns the `def` or `class` line a docstring describes, as `source` has
+/// it, or `None` for any other comment, such as a module docstring.
+pub(crate) fn find_function_definition_line<'a>(
+    comment: &Comment,
+    source: &'a str,
+) -> Option<&'a str> {
+    let rules = find_rules_for(&comment.file)?;
+    let tree = parse_source(rules, source);
+    let (definition, _) = find_docstring_owner(rules, tree.root_node(), comment, source)?;
+    source.lines().nth(definition.start_position().row)
+}
+
+/// Returns true for a docstring that is the only statement in its block, so
+/// cutting it would leave its definition with no body.
+pub(crate) fn is_only_statement_in_block(comment: &Comment, source: &str) -> bool {
+    let Some(rules) = find_rules_for(&comment.file) else {
+        return false;
+    };
+    let tree = parse_source(rules, source);
+    let Some((_, body)) = find_docstring_owner(rules, tree.root_node(), comment, source) else {
+        return false;
+    };
+    let mut cursor = body.walk();
+    // A comment beside the docstring is an extra node, not a statement.
+    body.named_children(&mut cursor)
+        .filter(|child| !child.is_extra())
+        .count()
+        == 1
+}
+
+/// Returns the definition a docstring sits in, and the definition's child
+/// that holds the docstring, which is its body.
+fn find_docstring_owner<'tree>(
+    rules: &dyn LanguageRules,
+    root: Node<'tree>,
+    comment: &Comment,
+    source: &str,
+) -> Option<(Node<'tree>, Node<'tree>)> {
+    if comment.style != CommentStyle::Docstring {
+        return None;
+    }
+    // A docstring's text starts at its line, so its quotes start after the indent.
+    let indent = comment.text.len() - comment.text.trim_start().len();
+    let quotes = comment.byte_range.start + indent;
+    let mut child = root.named_descendant_for_byte_range(quotes, quotes)?;
+    while let Some(parent) = child.parent() {
+        if rules.name_docstring_owner(parent, source).is_some() {
+            return Some((parent, child));
+        }
+        child = parent;
+    }
+    None
+}
+
 /// Returns `words` as comment lines laid out like `old_text`, with its
 /// markers and indentation, or an empty text when `words` has none.
 pub(crate) fn lay_out_plain_words(file: &Path, words: &str, old_text: &str) -> String {
@@ -1392,6 +1446,31 @@ mod tests {
 
             assert_eq!(plain_words, words, "{text}");
             assert_eq!(laid_out, text, "{text}");
+        }
+    }
+
+    /// `find_function_definition_line` must return the `def` or `class` line holding the docstring.
+    /// Otherwise the Review Screen names the wrong function, such as a method's class.
+    #[test]
+    fn find_function_definition_line_names_docstring_owner() {
+        let source = "\"\"\"Keeps notes.\"\"\"\n\n\n@dataclass\nclass NoteBook:\n    \"\"\"Holds notes.\"\"\"\n\n    async def save(\n        self,\n    ):\n        # Writes them.\n        \"\"\"Writes every note.\"\"\"\n        write(self)\n";
+        let comments = find_comments(Path::new("notes.py"), source).expect("the sample parses");
+        let cases = [
+            ("module", "Keeps notes", None),
+            ("class", "Holds notes", Some("class NoteBook:")),
+            ("method", "Writes every", Some("    async def save(")),
+            ("not a docstring", "Writes them", None),
+        ];
+
+        for (case, words, expected) in cases {
+            let comment = comments
+                .iter()
+                .find(|comment| comment.text.contains(words))
+                .expect("each case's comment is in the source");
+
+            let definition_line = find_function_definition_line(comment, source);
+
+            assert_eq!(definition_line, expected, "{case}");
         }
     }
 }
