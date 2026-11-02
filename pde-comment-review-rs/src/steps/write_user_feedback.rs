@@ -1,7 +1,9 @@
 //! This module runs step 7, which writes each Answered Request into its file
-//! and saves a decision for each named comment. A stop signal waits until every
-//! file is written or back and the Review Session is saved, so one after the
-//! last file still ends with all User Feedback written. Read the
+//! and saves a decision for each named comment. A comment that changed since
+//! the user answered it sends every Feedback Request in its file back to the
+//! agent instead. A stop signal waits until every file is written or back and
+//! the Review Session is saved, so one after the last file still ends with all
+//! User Feedback written. Read the
 //! `write_user_feedback(dir)`,
 //! `write_files_and_decisions(lock, root, backup_folder, files, decisions, signals)`,
 //! and `write_every_file(backup, signals)` functions to understand the module.
@@ -22,9 +24,9 @@ use crate::shared::approvals::{self, Approval};
 use crate::shared::comments::{self, CommentEdit, RewrittenFile};
 use crate::shared::git;
 use crate::shared::review_session::{
-    self, AnsweredRequest, FeedbackRequest, ReviewSessionLock, ReviewStatus,
+    self, AnsweredRequest, FeedbackRequest, RequestId, ReviewSessionLock, ReviewStatus, WriteError,
 };
-use crate::shared::user_feedback::choose_new_text;
+use crate::shared::user_feedback::{UserFeedback, UserNote, choose_new_text};
 use crate::shared::{Error, ErrorCode};
 
 /// Names the folder beside `review.json` that holds each file's original while
@@ -33,10 +35,25 @@ const BACKUP_FOLDER: &str = "write-backup";
 
 const STOP_SIGNALS: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 
+/// Holds the program's User Note for each Feedback Request in a file where a
+/// comment changed after the agent sent the list.
+const TEXT_CHANGED_NOTE: &str = "The comment changed after you sent it.";
+
 /// Writes every Answered Request into its file and saves the decisions, or puts
-/// every file back and keeps the User Feedback. When a file cannot go back, it
-/// refuses with `WriteNotFinished`; when only the save of `done` fails, it
-/// returns `SaveFailed` with everything written.
+/// every file back.
+///
+/// # Errors
+///
+/// Refuses with `NothingToWrite` when nothing waits to be written, and passes
+/// on `FileUnreadable` or `WouldNotWrite` when a file cannot be rewritten.
+/// Errors from finding the repository and loading the Review Session pass
+/// through unchanged. Refuses with `TextChanged` when an answered comment is
+/// gone or holds other text, after giving every Feedback Request in its file
+/// the program's User Note. Refuses with `WriteFailed`, and saves why for the
+/// user, when a file changed while it was read or once every file is back after
+/// a failed write. Refuses with `WriteNotFinished` when a file cannot go back. Returns
+/// `SaveFailed` with everything written when only the save of `done` fails. A
+/// waiting-list error comes only after the Review Session is saved.
 pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
     let root = git::find_root(dir)?;
     let mut lock = review_session::lock(&root)?;
@@ -65,7 +82,15 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
             "Some Feedback Requests have no answer yet.",
         ));
     };
-    let files = rewrite_answered_requests(&root, &answered)?;
+    let files = match rewrite_answered_requests(&root, &answered) {
+        Ok(RewriteOutcome::Files(files)) => files,
+        // Only the agent can send the changed file's Feedback Requests to the user again.
+        Ok(RewriteOutcome::CommentChanged(file)) => {
+            return return_requests_to_agent(&mut lock, &root, &file);
+        }
+        // Nothing is written yet, so every answer stays, and a `WriteFailed` also saves why.
+        Err(error) => return refuse_after_write(&mut lock, error),
+    };
     let decisions = list_decisions(&answered);
     let signals = hold_stop_signals();
     let result =
@@ -87,7 +112,7 @@ fn write_files_and_decisions(
     signals: &HeldSignals,
 ) -> Result<WriteResult, Error> {
     // A crash after this save leaves the status, so the screen tells the user to check git status.
-    save_status(lock, ReviewStatus::WritingUserFeedback)?;
+    save_status(lock, ReviewStatus::WritingUserFeedback, None)?;
     let mut backup = match FileBackup::save(root, backup_folder, files) {
         Ok(backup) => backup,
         Err(error) => return refuse_after_write(lock, error),
@@ -98,7 +123,7 @@ fn write_files_and_decisions(
     if let Err(error) = approvals::add(root, decisions) {
         return refuse_after_write(lock, backup.undo(error.message));
     }
-    save_status(lock, ReviewStatus::Done).map_err(|error| Error {
+    save_status(lock, ReviewStatus::Done, None).map_err(|error| Error {
         code: error.code,
         message: format!(
             "All User Feedback and every decision was written, but the Review Session could not be marked done. Do not put back the originals in {}. {}",
@@ -112,6 +137,14 @@ fn write_files_and_decisions(
         .map(|file| file.rewritten.path.clone())
         .collect();
     backup.remove();
+    // The Review Session is saved as done first, so a failed change to the waiting list loses no User Feedback.
+    review_session::remove_from_waiting_list(root).map_err(|error| Error {
+        code: error.code,
+        message: format!(
+            "All User Feedback and every decision was written. {}",
+            error.message
+        ),
+    })?;
     Ok(WriteResult::Written {
         files,
         decisions: decisions.len(),
@@ -356,13 +389,13 @@ impl HeldSignals {
     }
 }
 
-/// Returns each file the Answered Requests change, in memory, once every
-/// answered comment still holds the text the user answered. A file whose User
+/// Returns each file the Answered Requests change, in memory, or the first file
+/// whose answered comment is gone or holds other text. A file whose User
 /// Feedback keeps every text is left out.
 fn rewrite_answered_requests(
     root: &Path,
     answered: &[AnsweredRequest],
-) -> Result<Vec<RewrittenFile>, Error> {
+) -> Result<RewriteOutcome, Error> {
     let mut answered_by_file: BTreeMap<&Path, Vec<&AnsweredRequest>> = BTreeMap::new();
     for answered_request in answered {
         answered_by_file
@@ -380,20 +413,43 @@ fn rewrite_answered_requests(
         for (answered_request, comment) in answered_requests.into_iter().zip(matched) {
             let request = answered_request.request;
             let Some(comment) = comment else {
-                return Err(Error {
-                    code: ErrorCode::TextChanged,
-                    message: format!(
-                        "A comment in {} changed after the user answered it.",
-                        file.display()
-                    ),
-                });
+                return Ok(RewriteOutcome::CommentChanged(file.to_owned()));
             };
             let new_text = choose_new_text(request, answered_request.answer)
                 .map(|new_text| comments::match_line_ends(new_text, request, &comment));
             edits.push(CommentEdit { comment, new_text });
         }
     }
-    comments::rewrite(root, &edits)
+    rewrite_matched_comments(root, &edits).map(RewriteOutcome::Files)
+}
+
+/// Returns each file the edits change, in memory. A comment that moved after
+/// its file was matched refuses as `WriteFailed`, since its text still fits
+/// the user's answer and trying again can work.
+fn rewrite_matched_comments(
+    root: &Path,
+    edits: &[CommentEdit],
+) -> Result<Vec<RewrittenFile>, Error> {
+    comments::rewrite(root, edits).map_err(|error| {
+        if error.code != ErrorCode::TextChanged {
+            return error;
+        }
+        Error {
+            code: ErrorCode::WriteFailed,
+            message: format!(
+                "Nothing was written, since a file changed while it was read. Try again. {}",
+                error.message
+            ),
+        }
+    })
+}
+
+/// Says what the Answered Requests do to the code, before any file is written.
+enum RewriteOutcome {
+    /// Holds each file the Answered Requests change, in memory.
+    Files(Vec<RewrittenFile>),
+    /// Names a file whose answered comment is gone or holds other text.
+    CommentChanged(PathBuf),
 }
 
 /// Returns the decision each named Answered Request saves, with an empty text
@@ -414,12 +470,21 @@ fn list_decisions(answered: &[AnsweredRequest]) -> Vec<Approval> {
         .collect()
 }
 
-/// Returns the write's error, and lets the user try again when every file went
-/// back.
+/// Returns the write's error. When every file went back, the Review Session
+/// waits for the user again and saves why.
 fn refuse_after_write(lock: &mut ReviewSessionLock, error: Error) -> Result<WriteResult, Error> {
     // The status only goes back to waiting once every file is restored.
     if error.code == ErrorCode::WriteFailed {
-        save_status(lock, ReviewStatus::WaitingForUserFeedback).map_err(|save_error| Error {
+        let write_error = WriteError {
+            code: ErrorCode::WriteFailed,
+            detail: error.message.clone(),
+        };
+        save_status(
+            lock,
+            ReviewStatus::WaitingForUserFeedback,
+            Some(write_error),
+        )
+        .map_err(|save_error| Error {
             code: save_error.code,
             message: format!("{} {}", error.message, save_error.message),
         })?;
@@ -427,9 +492,60 @@ fn refuse_after_write(lock: &mut ReviewSessionLock, error: Error) -> Result<Writ
     Err(error)
 }
 
-fn save_status(lock: &mut ReviewSessionLock, status: ReviewStatus) -> Result<(), Error> {
+/// Gives every Feedback Request in `file` the program's User Note in place of
+/// its answer, hands the Review Session to the agent and takes the worktree off
+/// the waiting list, then refuses with `TextChanged`. Answers in other files
+/// stay.
+fn return_requests_to_agent(
+    lock: &mut ReviewSessionLock,
+    root: &Path,
+    file: &Path,
+) -> Result<WriteResult, Error> {
+    let error = Error {
+        code: ErrorCode::TextChanged,
+        message: format!(
+            "A comment in {} changed after the user answered it.",
+            file.display()
+        ),
+    };
+    let review_session = lock
+        .review_session_mut()
+        .expect("write_user_feedback returns before rewriting when there is no Review Session");
+    let noted: Vec<RequestId> = review_session
+        .newest_requests()
+        .into_iter()
+        .filter(|request| request.file == file)
+        .map(|request| request.id)
+        .collect();
+    for id in noted {
+        let note = UserNote(TEXT_CHANGED_NOTE.to_owned());
+        review_session.feedback.insert(id, UserFeedback::Note(note));
+    }
+    save_status(lock, ReviewStatus::UserNotesWaiting, None).map_err(|save_error| Error {
+        code: save_error.code,
+        message: format!("{} {}", error.message, save_error.message),
+    })?;
+    // Saving first means a failed change to the waiting list loses no User Note.
+    review_session::remove_from_waiting_list(root).map_err(|list_error| Error {
+        code: list_error.code,
+        message: format!(
+            "{} The User Notes were saved. {}",
+            error.message, list_error.message
+        ),
+    })?;
+    Err(error)
+}
+
+/// Sets the status and why the last write failed, then saves the Review
+/// Session.
+fn save_status(
+    lock: &mut ReviewSessionLock,
+    status: ReviewStatus,
+    write_error: Option<WriteError>,
+) -> Result<(), Error> {
     if let Some(review_session) = lock.review_session_mut() {
         review_session.status = status;
+        review_session.write_error = write_error;
     }
     lock.save()
 }
@@ -670,5 +786,35 @@ mod hold_stop_signals {
         assert_eq!(first_release, None);
         assert!(caught_by_second);
         assert_eq!(second_release, Some(SIGINT));
+    }
+}
+
+#[cfg(test)]
+mod rewrite_matched_comments {
+    use std::process::Command;
+
+    use super::*;
+
+    /// `rewrite_matched_comments` must refuse a comment that moved after it was matched as `WriteFailed`.
+    /// Otherwise step 7 would replace the user's answers with User Notes, though trying again would have worked.
+    #[test]
+    fn moved_comment_refuses_as_write_failed() {
+        let output = Command::new("mktemp").arg("-d").output().unwrap();
+        let folder = PathBuf::from(String::from_utf8(output.stdout).unwrap().trim_end());
+        let source = "package store\n\n// Saves it.\nfunc Save() {}\n";
+        // The comment is matched in one version of the file, and a blank line above it is added on disk.
+        let comment = comments::find_comments(Path::new("a.go"), source)
+            .unwrap()
+            .remove(0);
+        fs::write(folder.join("a.go"), source.replace("\n\n", "\n\n\n")).unwrap();
+        let edits = [CommentEdit {
+            comment,
+            new_text: Some("// Saves the answer.\n".to_owned()),
+        }];
+
+        let error = rewrite_matched_comments(&folder, &edits).unwrap_err();
+
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(error.code, ErrorCode::WriteFailed, "{}", error.message);
     }
 }
