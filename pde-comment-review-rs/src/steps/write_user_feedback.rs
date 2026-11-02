@@ -19,7 +19,7 @@ use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM, SIGXFSZ};
 use signal_hook::{flag, low_level};
 
 use crate::shared::approvals::{self, Approval};
-use crate::shared::comments::{self, Comment, CommentEdit, RewrittenFile};
+use crate::shared::comments::{self, CommentEdit, RewrittenFile};
 use crate::shared::git;
 use crate::shared::review_session::{
     self, AnsweredRequest, FeedbackRequest, ReviewSessionLock, ReviewStatus,
@@ -55,8 +55,10 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
                 ),
             });
         }
-        // Waiting User Notes leave Feedback Requests unanswered, so the next check refuses the write.
-        ReviewStatus::WaitingForUserFeedback | ReviewStatus::UserNotesWaiting => {}
+        ReviewStatus::UserNotesWaiting => {
+            return Err(nothing_to_write("User Notes wait for the agent."));
+        }
+        ReviewStatus::WaitingForUserFeedback => {}
     }
     let Some(answered) = review_session.answered_requests() else {
         return Err(nothing_to_write(
@@ -112,7 +114,7 @@ fn write_files_and_decisions(
     backup.remove();
     Ok(WriteResult::Written {
         files,
-        approved: decisions.len(),
+        decisions: decisions.len(),
     })
 }
 
@@ -151,7 +153,7 @@ pub enum WriteResult {
     /// decisions saved.
     Written {
         files: Vec<PathBuf>,
-        approved: usize,
+        decisions: usize,
     },
     /// Says an earlier call, such as one from a second screen, wrote the User
     /// Feedback.
@@ -370,10 +372,14 @@ fn rewrite_answered_requests(
     }
     let mut edits = Vec::new();
     for (file, answered_requests) in answered_by_file {
-        let mut comments = read_comments_as_written(root, file)?;
-        for answered_request in answered_requests {
+        let requests: Vec<&FeedbackRequest> = answered_requests
+            .iter()
+            .map(|answered_request| answered_request.request)
+            .collect();
+        let matched = comments::match_requests_on_disk(root, file, &requests)?;
+        for (answered_request, comment) in answered_requests.into_iter().zip(matched) {
             let request = answered_request.request;
-            let Some(comment) = take_answered_comment(&mut comments, request) else {
+            let Some(comment) = comment else {
                 return Err(Error {
                     code: ErrorCode::TextChanged,
                     message: format!(
@@ -383,57 +389,11 @@ fn rewrite_answered_requests(
                 });
             };
             let new_text = choose_new_text(request, answered_request.answer)
-                .map(|new_text| match_line_ends(new_text, request, &comment));
+                .map(|new_text| comments::match_line_ends(new_text, request, &comment));
             edits.push(CommentEdit { comment, new_text });
         }
     }
     comments::rewrite(root, &edits)
-}
-
-/// Returns the comments in the file as it is on disk, with its own line ends
-/// so their byte ranges fit the file, or none when the file is gone.
-fn read_comments_as_written(root: &Path, file: &Path) -> Result<Vec<Comment>, Error> {
-    let Some(source) = git::read_file_on_disk(root, file)?.text else {
-        // A gone file holds no answered comment, so its requests count as changed.
-        return Ok(Vec::new());
-    };
-    comments::find_comments(file, &source).map_err(|error| Error {
-        code: ErrorCode::FileUnreadable,
-        message: format!(
-            "Cannot read the comments in {}, since {error}.",
-            file.display()
-        ),
-    })
-}
-
-/// Takes out the comment a request asked about, if it still holds the text the
-/// user answered. A named comment is found by its name, an unnamed one by its
-/// line.
-fn take_answered_comment(
-    comments: &mut Vec<Comment>,
-    request: &FeedbackRequest,
-) -> Option<Comment> {
-    let index = comments.iter().position(|comment| {
-        let same_comment = match &request.name {
-            Some(_) => comment.name == request.name,
-            None => comment.name.is_none() && comment.line == request.line,
-        };
-        // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
-        same_comment && comment.text.replace("\r\n", "\n") == request.text
-    })?;
-    Some(comments.swap_remove(index))
-}
-
-/// Returns the new text with `\r\n` line ends when the old comment had any, or
-/// the old text as it is when the words did not change.
-fn match_line_ends(new_text: String, request: &FeedbackRequest, comment: &Comment) -> String {
-    if new_text == request.text {
-        comment.text.clone()
-    } else if comment.text.contains("\r\n") {
-        new_text.replace('\n', "\r\n")
-    } else {
-        new_text
-    }
 }
 
 /// Returns the decision each named Answered Request saves, with an empty text
