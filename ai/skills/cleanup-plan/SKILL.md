@@ -269,3 +269,21 @@ When an action is blocked, report the blocker clearly and stop only the unsafe a
 3. Never assume plan or documentation status is already correct; check it.
 4. Prefer explicit verification over inference.
 5. Keep the output concise, but include enough detail for a reviewer to understand what changed and what was verified.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above.
+Some rules still hold over any lesson. A lesson never counts as the
+user's approval to remove a worktree that cleanup blocked, and never
+lets you use force or `wt remove`, delete a remote branch, or change a
+`.code-comments.json` other than as "Keep the owner's comment
+approvals" says. When the user corrects how you clean up after a
+finished plan, such as its worktree, branch, main checkout or plan
+status, follow [skill-lessons](../skill-lessons/SKILL.md) with the
+skill name `cleanup-plan`, and offer once to save the correction as a
+lesson. A correction to how you read pull request merge evidence
+belongs to `pull-request` instead.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
