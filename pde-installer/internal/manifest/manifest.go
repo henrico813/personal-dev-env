@@ -78,7 +78,7 @@ func Items() []Item {
 		{Name: "sway", Owner: Ubuntu, Tier: profile.Terminal, Desktop: "sway"},
 		{Name: "tmux", Version: "3.7b", Owner: Direct, Tier: profile.Terminal},
 		{Name: "aqua", Version: "v2.60.1", Owner: Aqua, Tier: profile.Terminal},
-		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "fzf", Version: "0.36.0", Owner: Aqua, Tier: profile.Terminal},
+		{Name: "fd", Version: "v8.3.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "fzf", Version: "v0.74.5", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "ripgrep", Version: "14.1.1", Owner: Aqua, Tier: profile.Terminal}, {Name: "bat", Version: "v0.19.0", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "jq", Version: "jq-1.7.1", Owner: Aqua, Tier: profile.Terminal},
 		{Name: "gh", Version: "v2.101.0", Owner: Aqua, Tier: profile.Terminal},

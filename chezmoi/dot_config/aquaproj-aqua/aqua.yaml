@@ -8,7 +8,7 @@ checksum:
 
 packages:
   - name: sharkdp/fd@v8.3.1
-  - name: junegunn/fzf@0.36.0
+  - name: junegunn/fzf@v0.74.5
   - name: BurntSushi/ripgrep@14.1.1
   - name: sharkdp/bat@v0.19.0
   - name: jqlang/jq@jq-1.7.1
