@@ -58,11 +58,11 @@ if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
     fi
 else
     pkill -x xwinwrap
-    # The image stays visible if mpv fails over it.
-    feh --bg-fill "$FALLBACK_IMAGE"
     if [[ -n "$video" ]] && command -v "$XWINWRAP" >/dev/null; then
         play_on_x "$video"
     else
+        # No video to play, or no xwinwrap: show the image instead.
         warn_missing "$video" "$XWINWRAP"
+        feh --bg-fill "$FALLBACK_IMAGE"
     fi
 fi
