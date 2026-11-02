@@ -13,6 +13,8 @@ The cache is `$XDG_CACHE_HOME/prs`, which is `~/.cache/prs` when
 | `OWNER+REPO#NUMBER@UPDATED.diff` | That pull request's whole diff, as `gh pr diff --color=never` prints it                      | The background fetch, or the diff screen when it found it missing |
 | `NAME.tmp*`                      | A file being written, renamed to `NAME` when complete                                        | Any of the above                                                  |
 
+UPDATED is the pull request's last-update time in Unix seconds.
+
 ## Temporary Folders
 
 Each fzf screen's `prs` process makes a folder named `prs-*` in `$TMPDIR`,

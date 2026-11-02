@@ -5,12 +5,6 @@ phone screen. It reads from GitHub through `gh` and never writes. How to use
 it is in the `prs` part of
 [GitHub Pull Request Reviews](../chezmoi/README.md#github-pull-request-reviews).
 
-```bash
-prs                 # the PR list screen
-prs 123             # one PR's summary screen, from this folder's repo
-prs OWNER/REPO 123  # the same from anywhere
-```
-
 `pde-installer` builds it on full installs. It runs `gh`, `fzf` 0.74.5 or
 newer and `less` 590 or newer. `delta` colors the diffs and `bat` the
 descriptions; without them, `prs` shows the plain diff and an uncolored
@@ -23,9 +17,7 @@ Each package does one job:
 - `internal/github`: types for gh's JSON and the gh calls.
 - `internal/cache`: the saved list, and each pull request's description,
   files, comments and diff.
-- `internal/view`: the text of each screen, in a file named like the
-  screen's file in `app`, with the colors and wrapping they share in
-  `view.go`.
+- `internal/view`: the text of each screen.
 - `internal/layout`: side panes and help text rows for a screen size.
 - `internal/diffsplit`: splits a diff into one file per changed file, in the
   temporary folder the diff screen reads.

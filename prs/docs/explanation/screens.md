@@ -3,9 +3,8 @@
 `prs` has four screens, and none of them is drawn by `prs` itself. fzf draws
 the PR list screen, the comments screen and the file picker. less draws the
 PR summary screen, the diff view, a comment shown full screen, and the help
-of every less screen, and of an fzf screen whose side pane is too short for
-it. `prs` decides what each one shows and which screen comes next. This page
-explains how the programs take turns and why.
+that opens full screen. `prs` decides what each one shows and which screen
+comes next. This page explains how the programs take turns and why.
 
 ```text
 prs                     (your command)
@@ -31,7 +30,7 @@ fzf can run a command on a key or an event and act on what it prints. `prs`
 uses that for almost everything in an fzf screen. When the phone's keyboard
 comes up, fzf sends a `resize` event, runs `prs _layout DIR resize`, and
 `prs` prints actions such as
-`change-preview-window(down,3,border-top,nowrap,noinfo)+change-footer(...)`.
+`change-preview-window(down,3,border-top,nowrap,noinfo)+change-footer(...)+refresh-preview`.
 The PR list screen's side pane runs `prs _meta DIR`, which reads the
 selected row from `$FZF_CURRENT_ITEM`. A tap on the help text row runs
 `prs _tap SCREEN DIR`, which reads the tapped column from
@@ -45,20 +44,19 @@ temporary folder. [Cache and temporary files](../reference/files.md) lists
 them.
 
 Each fzf screen keeps one table of key actions, such as `buildListActions`
-in `internal/app/prlist.go`, which gives fzf its `--bind` flags. Letters are
-commands, as in vim, so `/` unbinds every one-letter key of the table for
-typing and changes the help text row to `Esc cancel  Enter open`. Esc binds
-them again.
+in `internal/app/prlist.go`, and the keys every screen shares come from
+`sharedActions` in `internal/app/fzf.go`. Together they give fzf its
+`--bind` flags. Letters are commands, as in vim, so `/` unbinds every
+one-character key of the tables for typing and changes the help text row to
+`Esc cancel  Enter open`. Esc binds them again.
 
 ## less Says Which Key Ended It
 
 less has no way to run a command on a key and keep going. It can quit with a
-chosen exit status, through a lesskey file. `openInLess` in
-`internal/app/less.go` gives less a key file on descriptor 3, through a
-pipe, so no file is written. In it, each screen key is `X quit X`, so less
-exits with the letter's character code as its status. When less ends, `prs`
-reads the status and opens the next screen. `h` and `q` quit, so `prs` goes
-back.
+chosen exit status, through a lesskey file. In it, each screen key is
+`X quit X`, so less exits with the letter's character code as its status.
+When less ends, `prs` reads the status and opens the next screen. `h` and
+`q` quit, so `prs` goes back.
 
 That is why the less screens are loops in `prs`. The PR summary screen runs
 less, and when you press `c`, `prs` runs the comments screen and then less

@@ -98,8 +98,8 @@ func TestFetchExtrasReadsThreadComments(t *testing.T) {
 	}
 }
 
-// Puts a gh first on PATH for the rest of the test that prints reply for
-// any call.
+// Puts a fake gh first on PATH for the rest of the test, which prints
+// reply for any call.
 func useGHReply(
 	t *testing.T,
 	reply string,

@@ -1,8 +1,8 @@
 // Package app runs prs, starting at Run, then pickPullRequest for the PR
-// list screen and showSummary, showComments and showDiff for the others. A
-// screen's flow, keys and help are in its file here, such as comments.go,
-// its text is in the file of the same name in view, and its side pane and
-// help text row are in layout.
+// list screen and showSummary, showComments and showDiff for the others.
+// Each screen's flow, keys and help are in its file here, such as
+// comments.go, and fzf.go holds the layout and tap commands that the fzf
+// screens share.
 package app
 
 import (
@@ -36,21 +36,36 @@ type prsApp struct {
 // The hidden commands that fzf runs again as prs, on screen events and most
 // keys in an fzf screen. Each handler's comment shows its arguments.
 var hiddenCommands = map[string]func(*prsApp, []string) int{
-	"_rows":        (*prsApp).printListRows,
-	"_layout":      (*prsApp).printListLayout,
-	"_meta":        (*prsApp).printDetails,
-	"_prompt":      (*prsApp).printListPrompt,
-	"_summary":     (*prsApp).openSummary,
-	"_comments":    (*prsApp).openComments,
-	"_item":        (*prsApp).printItem,
-	"_item_page":   (*prsApp).openItem,
-	"_diff":        (*prsApp).openDiff,
-	"_file":        (*prsApp).printFileDiff,
-	"_pane_layout": (*prsApp).printPaneLayout,
-	"_tap":         (*prsApp).printTapAction,
-	"_g":           (*prsApp).printFirstOnSecondG,
-	"_help":        (*prsApp).printHelpAction,
-	"_keys":        (*prsApp).printHelp,
+	"_rows":                      (*prsApp).printListRows,
+	"_layout":                    (*prsApp).printListLayout,
+	"_meta":                      (*prsApp).printDetails,
+	"_prompt":                    (*prsApp).printListPrompt,
+	"_summary":                   (*prsApp).openSummary,
+	"_comments":                  (*prsApp).openComments,
+	"_item":                      (*prsApp).printItem,
+	"_item_page":                 (*prsApp).openItem,
+	"_diff":                      (*prsApp).openDiff,
+	"_file":                      (*prsApp).printFileDiff,
+	"_comments_or_picker_layout": (*prsApp).printCommentsOrPickerLayout,
+	"_tap":                       (*prsApp).printTapAction,
+	"_g":                         (*prsApp).printFirstOnSecondG,
+	"_help":                      (*prsApp).printHelpAction,
+	"_keys":                      (*prsApp).printHelp,
+}
+
+// The hidden commands that never read the cache, so Run does not open it
+// for them and prs _keys works without HOME.
+var cachelessCommands = map[string]bool{
+	"_layout":                    true,
+	"_prompt":                    true,
+	"_item":                      true,
+	"_item_page":                 true,
+	"_file":                      true,
+	"_comments_or_picker_layout": true,
+	"_tap":                       true,
+	"_g":                         true,
+	"_help":                      true,
+	"_keys":                      true,
 }
 
 var numberPattern = regexp.MustCompile(`^[0-9]+$`)
@@ -90,15 +105,6 @@ func Run(
 		)
 		return 1
 	}
-	store, err := cache.Open()
-	if err != nil {
-		_, _ = fmt.Fprintln(
-			stderr,
-			"prs:",
-			err,
-		)
-		return 1
-	}
 	a := &prsApp{
 		self:   quoteShell(self),
 		color:  os.Getenv("NO_COLOR") == "",
@@ -106,7 +112,13 @@ func Run(
 		stdout: stdout,
 		stderr: stderr,
 		now:    time.Now(),
-		store:  store,
+	}
+	if len(args) == 0 || !cachelessCommands[args[0]] {
+		a.store, err = cache.Open()
+		if err != nil {
+			a.printError("prs: " + err.Error())
+			return 1
+		}
 	}
 	if len(args) == 0 {
 		return a.pickPullRequest()

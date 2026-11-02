@@ -76,7 +76,7 @@ func (a *prsApp) showComments(
 				a.waitForKey("Could not save the comments of #" + number + ".")
 				return 0
 			}
-			layoutCommand := a.self + " _pane_layout comments " + quoteShell(dir)
+			layoutCommand := a.self + " _comments_or_picker_layout comments " + quoteShell(dir)
 			a.runFzf(
 				view.RenderItemRows(
 					items,
@@ -102,7 +102,6 @@ func (a *prsApp) showComments(
 	)
 }
 
-// Returns the fzf action of each key in the comments screen.
 func (a *prsApp) buildCommentActions(
 	dir,
 	number string,
@@ -113,14 +112,14 @@ func (a *prsApp) buildCommentActions(
 			"l":            open,
 			"enter":        open,
 			"double-click": open,
-			"o":            "transform(" + a.self + " _pane_layout comments " + quoteShell(dir) + " toggle)",
+			"o":            "transform(" + a.self + " _comments_or_picker_layout comments " + quoteShell(dir) + " toggle)",
 			"g":            "transform(" + a.self + " _g " + quoteShell(dir) + ")",
 			"h":            "abort",
 			"q":            "abort",
 			"?":            "transform(" + a.self + " _help comments)",
 		},
 		buildCommentsPrompt(number),
-		"transform("+a.self+" _pane_layout comments "+quoteShell(dir)+" result)",
+		"transform("+a.self+" _comments_or_picker_layout comments "+quoteShell(dir)+" result)",
 	)
 }
 

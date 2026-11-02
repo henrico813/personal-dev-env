@@ -70,8 +70,6 @@ func (r *refresher) run(
 	}()
 	defer workers.Wait()
 	defer close(queue)
-	// fzf's starting prompt already shows the list's age, so the first
-	// refresh asks GitHub without waiting for fzf's socket.
 	if refreshFirst {
 		list = r.refreshList(
 			ctx,
@@ -92,10 +90,9 @@ func (r *refresher) run(
 			case <-requests:
 			}
 		}
-		r.writeState(list.FetchedAt)
-		r.send(
+		r.showListAge(
 			ctx,
-			r.buildPromptAction(),
+			list.FetchedAt,
 		)
 		list = r.refreshList(
 			ctx,
@@ -230,8 +227,18 @@ func (r *refresher) tickPrompt(ctx context.Context) {
 	}
 }
 
-// Saves the time of the list on screen, which the prompt shows as the
-// list's age.
+// Puts the list's age in the prompt before a refresh that r asked for.
+func (r *refresher) showListAge(
+	ctx context.Context,
+	fetchedAt time.Time,
+) {
+	r.writeState(fetchedAt)
+	r.send(
+		ctx,
+		r.buildPromptAction(),
+	)
+}
+
 func (r *refresher) writeState(fetchedAt time.Time) {
 	replaceFile(
 		filepath.Join(
@@ -267,14 +274,15 @@ func (r *refresher) send(
 			socket,
 		)
 		if err == nil {
-			_ = conn.SetDeadline(time.Now().Add(time.Second))
+			_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 			_, err = io.WriteString(
 				conn,
 				request,
 			)
 			if err == nil {
-				// Reading until fzf closes waits for fzf to take the actions.
-				// Once they are written they are never sent twice.
+				// fzf answers within 2 seconds, so waiting for its answer
+				// sends one request at a time. Actions once written are never
+				// sent twice.
 				_, _ = io.ReadAll(conn)
 			}
 			_ = conn.Close()
@@ -292,20 +300,29 @@ func (r *refresher) send(
 
 // Writes data to path through a temporary file and a rename, so a reader
 // in another prs process sees the old file or the new one, never half of
-// one. The refresher is the one writer of the files it replaces.
+// one.
 func replaceFile(
 	path string,
 	data []byte,
 ) {
-	temporary := path + ".tmp"
-	if os.WriteFile(
-		temporary,
-		data,
-		0o600,
-	) == nil {
-		_ = os.Rename(
-			temporary,
+	file, err := os.CreateTemp(
+		filepath.Dir(path),
+		filepath.Base(path)+".tmp*",
+	)
+	if err != nil {
+		return
+	}
+	_, err = file.Write(data)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(
+			file.Name(),
 			path,
 		)
+	}
+	if err != nil {
+		_ = os.Remove(file.Name())
 	}
 }

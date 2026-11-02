@@ -33,8 +33,7 @@ The exceptions:
 
 - `l` does nothing in a less screen, which has nothing to open.
 - `h` does nothing on the PR list screen, which has no level above it.
-- `o` opens the file picker from the diff view and closes it in the picker.
-  The PR summary screen has no `o`.
+- The PR summary screen has no `o`.
 - fzf binds single keys, so `gg` is two presses of `g` within a second. In
   less one `g` goes to the top.
 
@@ -64,9 +63,8 @@ The exceptions:
 
 ## Help Text Rows
 
-Each row has a long form and a short form. When the long form does not fit,
-the short form drops `/ find` from an fzf row, or `J K page` or `d u page`
-from a less row. The file picker's long form fits 37 columns.
+Most rows have a short form that drops `/ find`, `J K page` or `d u page`
+when the long form does not fit.
 
 ## Taps
 
@@ -87,6 +85,4 @@ that word's key, since a fingertip covers several columns.
 
 In an fzf screen, `?` shows the help in the side pane when the side pane has
 at least as many rows as the longest fzf screen's help, and full screen in
-less otherwise. In a less screen, `?` shows the help in less. Each help fits
-35 columns, so it fits the 37x14 popup of Herdr, the terminal workspace used
-on the phone.
+less otherwise. In a less screen, `?` shows the help in less.

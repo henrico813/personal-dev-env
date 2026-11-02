@@ -89,7 +89,7 @@ func TestReadDiffMissesAfterUpdate(t *testing.T) {
 // Entries for closed pull requests and older update times must go, or the
 // cache grows with every push. Entries at listed update times and the list
 // itself must stay, or the next start fetches everything again.
-func TestRemoveUnlistedKeepsOnlyListedVersions(t *testing.T) {
+func TestRemoveUnlistedKeepsOnlyCurrentFiles(t *testing.T) {
 	store := openStore(t)
 	listed := makePullRequest(
 		12,

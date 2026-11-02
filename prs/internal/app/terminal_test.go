@@ -94,6 +94,7 @@ func TestRunCleansUpWhenStopped(t *testing.T) {
 					},
 				)
 			}
+			// prs starts with every gh call hanging.
 			prs, exited := startPRs(
 				t,
 				"PRS="+os.Args[0],
@@ -110,6 +111,7 @@ func TestRunCleansUpWhenStopped(t *testing.T) {
 					ready,
 				)
 			}
+			// The slow gh has started, for the refresh or the first fetch.
 			waitForFile(
 				t,
 				ghPID,

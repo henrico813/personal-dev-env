@@ -35,9 +35,9 @@ var sharedActions = map[string]string{
 	"K":      "preview-half-page-up",
 }
 
-// The screens that share _pane_layout and BuildPaneKeys, by the name their
+// The screens that share _comments_or_picker_layout and BuildCommentsOrPickerKeys, by the name their
 // hidden commands pass.
-var paneScreens = map[string]layout.Screen{
+var commentsOrPickerScreens = map[string]layout.Screen{
 	"comments": layout.CommentsScreen,
 	"picker":   layout.FilePicker,
 }
@@ -92,6 +92,17 @@ func (a *prsApp) runFzf(
 			extra...,
 		)...,
 	)
+	// fzf passes its own environment on, so an FZF_CURRENT_ITEM from a prs
+	// started in another fzf would reach the side pane of an empty list.
+	cmd.Env = slices.DeleteFunc(
+		os.Environ(),
+		func(variable string) bool {
+			return strings.HasPrefix(
+				variable,
+				"FZF_CURRENT_ITEM=",
+			)
+		},
+	)
 	cmd.Stdin = strings.NewReader(rows)
 	cmd.Stderr = a.stderr
 	out, err := cmd.Output()
@@ -111,7 +122,7 @@ func (a *prsApp) runFzf(
 	return string(out), true
 }
 
-// Returns actions with / and Esc added. / frees every one-letter key the
+// Returns actions with / and Esc added. / frees every one-character key the
 // screen binds for typing until Esc binds them again, and onEsc runs after
 // Esc.
 func addSearchKeys(
@@ -119,8 +130,9 @@ func addSearchKeys(
 	prompt,
 	onEsc string,
 ) map[string]string {
-	actions["/"] = ""
-	var letters []string
+	letters := []string{
+		"/",
+	}
 	for _, bound := range []map[string]string{
 		sharedActions,
 		actions,
@@ -146,33 +158,31 @@ func addSearchKeys(
 	return actions
 }
 
-// fzf's names for the keys that the help text rows write capitalized.
-var tappedKeyNames = map[string]string{
-	"Enter": "enter",
-	"Esc":   "esc",
-}
-
-// Prints fzf's action that runs the key of the help text row word that a
-// tap hit, as _tap SCREEN DIR, where SCREEN is list, comments or picker.
+// Prints trigger(KEY) for the help text row word under a tap, as _tap
+// SCREEN DIR, so fzf runs that key's own binding. SCREEN is list, comments
+// or picker.
 func (a *prsApp) printTapAction(args []string) int {
 	state := layout.ReadFzfState()
-	keys := buildListKeys(
-		state,
-		args[1],
-	)
-	if screen, ok := paneScreens[args[0]]; ok {
-		keys = layout.BuildPaneKeys(
+	var keys string
+	if screen, ok := commentsOrPickerScreens[args[0]]; ok {
+		keys = layout.BuildCommentsOrPickerKeys(
 			state,
 			screen,
+		)
+	} else {
+		keys = buildListKeys(
+			state,
+			args[1],
 		)
 	}
 	key := layout.FindTappedKey(
 		keys,
 		state.ClickColumn,
 	)
-	if name, ok := tappedKeyNames[key]; ok {
-		key = name
-	} else if len(key) != 1 {
+	switch {
+	case key == "Esc" || key == "Enter":
+		key = strings.ToLower(key)
+	case len(key) != 1:
 		// A word that is not a key, such as GitHub in "GitHub failed", runs
 		// nothing.
 		return 0
@@ -182,10 +192,11 @@ func (a *prsApp) printTapAction(args []string) int {
 }
 
 // Prints fzf actions that fit the comments screen or the file picker to the
-// screen, as _pane_layout SCREEN DIR [toggle|refresh]. toggle opens or
-// closes the side pane, and refresh runs it again after a resize.
-func (a *prsApp) printPaneLayout(args []string) int {
-	screen, dir, event := paneScreens[args[0]], args[1], args[2]
+// screen, as _comments_or_picker_layout SCREEN DIR EVENT. Start, result and
+// Esc pass result, toggle opens or closes the side pane, and refresh reruns
+// it after a resize.
+func (a *prsApp) printCommentsOrPickerLayout(args []string) int {
+	screen, dir, event := commentsOrPickerScreens[args[0]], args[1], args[2]
 	if event == "toggle" {
 		togglePaneClosed(dir)
 	}
@@ -196,7 +207,7 @@ func (a *prsApp) printPaneLayout(args []string) int {
 			screen,
 			isPaneClosed(dir),
 		),
-		"change-footer(" + layout.BuildPaneKeys(
+		"change-footer(" + layout.BuildCommentsOrPickerKeys(
 			state,
 			screen,
 		) + ")",
@@ -215,8 +226,7 @@ func (a *prsApp) printPaneLayout(args []string) int {
 }
 
 // Prints fzf's first action when this g comes within a second of the one
-// before, as _g DIR. fzf binds single keys, not sequences, so DIR/g keeps
-// the time of the first g.
+// before, as _g DIR.
 func (a *prsApp) printFirstOnSecondG(args []string) int {
 	marker := filepath.Join(
 		args[0],

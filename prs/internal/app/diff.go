@@ -130,8 +130,8 @@ func (a *prsApp) showDiff(pr github.PullRequest) {
 }
 
 // Returns the diff from the cache, or fetches and saves it with a loading
-// line. A pull request without an update time is never cached, since its
-// file name would hold the zero time and a newer diff could never replace it.
+// line. A pull request without an update time is never cached, since a
+// name without the update time cannot tell an old diff from a new one.
 func (a *prsApp) loadDiff(pr github.PullRequest) (
 	[]byte,
 	error,
@@ -183,8 +183,8 @@ func (a *prsApp) showFileDiff(
 }
 
 // Shows the file picker on the current file, with its diff in the side
-// pane. Returns the key that closed it, l, o, q or "" for Ctrl-C, which the
-// caller treats as q, and the index of the file selected then.
+// pane. Returns the key that closed it, l, o or q, and the index of the file
+// selected then.
 func (a *prsApp) pickFile(
 	dir,
 	number string,
@@ -194,7 +194,7 @@ func (a *prsApp) pickFile(
 	string,
 	int,
 ) {
-	layoutCommand := a.self + " _pane_layout picker " + quoteShell(dir)
+	layoutCommand := a.self + " _comments_or_picker_layout picker " + quoteShell(dir)
 	// --freeze-left keeps the counts in view, and --keep-right keeps a long
 	// path's file name in view while the query is empty. fzf drops the
 	// space after the counts when it cuts a path, so the ellipsis brings it
@@ -230,6 +230,10 @@ func (a *prsApp) pickFile(
 		out,
 		"\n",
 	)
+	// Ctrl-C ends fzf without printing a key, and leaves as q does.
+	if key == "" {
+		key = "q"
+	}
 	field, _, _ := strings.Cut(
 		row,
 		"\t",
@@ -259,7 +263,7 @@ func (a *prsApp) buildFilePickerActions(
 			"?":            "transform(" + a.self + " _help picker)",
 		},
 		buildFilePickerPrompt(number),
-		"transform("+a.self+" _pane_layout picker "+quoteShell(dir)+" result)",
+		"transform("+a.self+" _comments_or_picker_layout picker "+quoteShell(dir)+" result)",
 	)
 }
 

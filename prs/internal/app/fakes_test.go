@@ -301,19 +301,6 @@ func listenAsFzf(
 	}
 }
 
-// Returns what work printed through a's stdout.
-func captureOutput(
-	a *prsApp,
-	work func(),
-) string {
-	var out bytes.Buffer
-	saved := a.stdout
-	a.stdout = &out
-	defer func() { a.stdout = saved }()
-	work()
-	return out.String()
-}
-
 // Returns the ID of the fake gh's sleep that wrote its ID to ghPID, or 0
 // once it has ended. The ID counts only while that sleep has ghPID in its
 // environment, so a reused process ID or an unrelated sleep never does.
@@ -362,6 +349,7 @@ func waitForEmptyDir(
 	}
 }
 
+// Fails the test unless the file appears within 10 seconds.
 func waitForFile(
 	t *testing.T,
 	path string,
@@ -379,8 +367,8 @@ func waitForFile(
 	)
 }
 
-// Returns whether the log at path gets count lines reading line within 5
-// seconds.
+// Returns whether the fake gh's log holds at least that many lines of one
+// call, such as list, within 5 seconds.
 func waitForLog(
 	t *testing.T,
 	path,
@@ -443,16 +431,25 @@ func runPRs(
 		t.TempDir(),
 	)
 
+	_, output := runInProcess(args...)
+	return output
+}
+
+// Runs prs in this process and returns its exit code and what it printed.
+func runInProcess(args ...string) (
+	int,
+	string,
+) {
 	// Run catches Ctrl-C, and the reset lets Ctrl-C stop go test again.
 	defer signal.Reset(os.Interrupt)
 	var output bytes.Buffer
-	Run(
+	code := Run(
 		args,
 		strings.NewReader(""),
 		&output,
 		&output,
 	)
-	return output.String()
+	return code, output.String()
 }
 
 // Runs printDetails as fzf's side pane does, with item as the selected row,
@@ -471,16 +468,17 @@ func printDetailsFor(
 	if item == "" {
 		_ = os.Unsetenv("FZF_CURRENT_ITEM")
 	}
-	return captureOutput(
-		a,
-		func() {
-			a.printDetails([]string{
-				dir,
-			})
-		},
-	)
+	var out bytes.Buffer
+	saved := a.stdout
+	a.stdout = &out
+	defer func() { a.stdout = saved }()
+	a.printDetails([]string{
+		dir,
+	})
+	return out.String()
 }
 
+// Writes a file or fails the test.
 func writeFile(
 	t *testing.T,
 	path,
