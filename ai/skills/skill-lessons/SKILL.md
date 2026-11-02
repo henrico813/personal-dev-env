@@ -39,18 +39,19 @@ agent, unless the linking skill names someone else.
 2. If `skill-lessons` is installed, check the rule a correction teaches
    before you offer it as a lesson. Offer it only if all three hold:
    - True everywhere: it holds in every language, repository and task,
-     with no "unless", and the skill does not already say it. For a
-     language skill, it only has to hold in every project in that
-     language.
-   - Readable cold: someone who missed the task can follow it. Use
-     plain words, no project names or task details such as PR numbers
-     or file paths, and at most 60 words.
+     with no exceptions. For a language skill, it only has to hold in
+     every project in that language. A rule for one project, epic or
+     repo is saved only when the user words it, with that scope set.
+   - Readable without the task: someone who missed the task can follow
+     it. Use plain words, no project names or task details such as PR
+     numbers or file paths, and at most 60 words.
    - Checked by someone else: an agent that did not write it has
-     checked it, given only the lesson and the skill's text, not the
-     task. If you can't start another agent, check it yourself and say
-     so.
+     checked it against the first two rules and against the skill's
+     text. That agent sees the lesson and the skill, not the task. If
+     you can't start another agent, check it yourself and say so.
 
-   When you check several corrections at once, expect most to fail.
+   Offer no lesson the skill already says. When you check several
+   corrections at once, expect most to fail.
 3. Offer each lesson that passes, once, at the time the skill names.
 4. When the user says "remember", save it at once and show the one line
    the command prints. Replace `<skill>` with the skill's name and
@@ -63,8 +64,14 @@ agent, unless the linking skill names someone else.
        EOF
 
    The rule goes on its own line, so apostrophes, quotes, backticks and
-   `$` are saved as written. The user's own rule skips the checks in
-   step 2, and you reword it only if `add` refuses it.
+   `$` are saved as written. A rule the user words themselves skips the
+   checks in step 2. If `add` refuses it, do what its message says.
+
+   For a lesson about one epic, add `epic: "KEY"` inside the braces,
+   with the epic's key. For epic ABC-12:
+
+       '{skill: "<skill>", epic: "ABC-12", text: ($text | rtrimstr("\n"))}'
+
 5. If the user corrects a lesson again, add `repeat_of: "L<n>"` inside
    the braces, with the ID from the end of that lesson. For lesson L3:
 
