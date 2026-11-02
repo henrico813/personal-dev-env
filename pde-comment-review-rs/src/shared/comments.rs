@@ -93,6 +93,58 @@ pub(crate) fn read_comments_on_disk(root: &Path, file: &Path) -> Result<FileComm
     read_version_comments(file, git::read_file_on_disk(root, file)?)
 }
 
+/// Reads a root-relative file as it is on disk and takes the comment each
+/// request asked about. The file keeps its own line ends, so each comment's
+/// byte range fits it. A named request takes the comment with its name. An
+/// unnamed one takes only the unnamed comment now at its saved line, never a
+/// same-text comment elsewhere. A request gets `None` when that comment is gone
+/// or its text, with `\r\n` read as `\n`, differs, and step 7 then refuses.
+/// Refuses with `FileUnreadable` when the file does not parse.
+pub(crate) fn match_requests_on_disk(
+    root: &Path,
+    file: &Path,
+    requests: &[&FeedbackRequest],
+) -> Result<Vec<Option<Comment>>, Error> {
+    let Some(source) = git::read_file_on_disk(root, file)?.text else {
+        // A gone file holds no answered comment, so its requests count as changed.
+        return Ok(requests.iter().map(|_| None).collect());
+    };
+    let found = find_comments(file, &source).map_err(|error| Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!(
+            "Cannot read the comments in {}, since {error}.",
+            file.display()
+        ),
+    })?;
+    let matched = match_at_saved_line(&found, requests);
+    let mut comments: Vec<Option<Comment>> = found.into_iter().map(Some).collect();
+    Ok(matched
+        .into_iter()
+        .zip(requests)
+        .map(|(slot, request)| {
+            let comment = comments[slot?].take()?;
+            // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
+            (comment.text.replace("\r\n", "\n") == request.text).then_some(comment)
+        })
+        .collect())
+}
+
+/// Returns the new text with `\r\n` line ends when the old comment had any, or
+/// the old text as it is when the words did not change.
+pub(crate) fn match_line_ends(
+    new_text: String,
+    request: &FeedbackRequest,
+    comment: &Comment,
+) -> String {
+    if new_text == request.text {
+        comment.text.clone()
+    } else if comment.text.contains("\r\n") {
+        new_text.replace('\n', "\r\n")
+    } else {
+        new_text
+    }
+}
+
 /// Finds the comments in a root-relative file as it was at `commit`, or none
 /// for a file added since. Refuses with `FileUnreadable`, naming the file, when
 /// that version does not parse.
@@ -278,6 +330,7 @@ impl FileComments {
                         && comment.name == request.name
                         && (request.name.is_some() || comment.text == request.text)
                 })
+                // Of two equally near comments, the earlier one wins.
                 .min_by_key(|(_, comment)| comment.line.abs_diff(request.line));
             if let Some((index, _)) = nearest {
                 taken[index] = true;
@@ -816,6 +869,25 @@ fn read_code_shape<'source>(
         nodes.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
     }
     Ok(shape)
+}
+
+/// Returns the index of the comment each request matches, by name or, for an
+/// unnamed request, only the unnamed comment at its saved line. No comment goes
+/// to two requests.
+fn match_at_saved_line(comments: &[Comment], requests: &[&FeedbackRequest]) -> Vec<Option<usize>> {
+    let mut taken = vec![false; comments.len()];
+    requests
+        .iter()
+        .map(|request| {
+            let index = comments.iter().enumerate().position(|(index, comment)| {
+                !taken[index]
+                    && comment.name == request.name
+                    && (request.name.is_some() || comment.line == request.line)
+            })?;
+            taken[index] = true;
+            Some(index)
+        })
+        .collect()
 }
 
 fn find_file_comments(

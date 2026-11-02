@@ -236,7 +236,7 @@ mod write_user_feedback {
 
         let result = write_user_feedback(repo.path()).unwrap();
 
-        assert!(matches!(result, WriteResult::Written { approved: 5, .. }));
+        assert!(matches!(result, WriteResult::Written { decisions: 5, .. }));
         let saved: Value =
             serde_json::from_slice(&fs::read(find_approvals_file(repo.path())).unwrap()).unwrap();
         assert_eq!(
@@ -329,6 +329,33 @@ mod write_user_feedback {
         assert_eq!(
             fs::read_to_string(repo.path().join("a.go")).unwrap(),
             "package store\n\nfunc Run() {\n\t// Runs it.\n}\n\nfunc Rerun() {\n\t// Runs it again.\n}\n"
+        );
+    }
+
+    /// `write_user_feedback` must refuse to write when the agent rewords a comment without a name after the user answered it, even beside a twin with the old text.
+    /// Otherwise the user's words would land on the twin, a comment the user never reviewed.
+    #[test]
+    fn unnamed_reword_next_to_twin_refuses_write() {
+        let source =
+            "package store\n\nfunc Run() {\n\t// Runs it.\n}\n\nfunc Rerun() {\n\t// Runs it.\n}\n";
+        let repo = make_repo(&[("a.go", source)]);
+        let requests = [make_request(1, "a.go", None, "\t// Runs it.\n", 8)];
+        let feedback = json!({ "1": { "answer": { "edited": { "text": "Runs it again." } } } });
+        write_review(
+            repo.path(),
+            "waiting_for_user_feedback",
+            &[&requests],
+            feedback,
+        );
+        let reworded = source.replace("Rerun() {\n\t// Runs it.", "Rerun() {\n\t// Runs it twice.");
+        fs::write(repo.path().join("a.go"), &reworded).unwrap();
+
+        let error = write_user_feedback(repo.path()).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::TextChanged, "{}", error.message);
+        assert_eq!(
+            fs::read_to_string(repo.path().join("a.go")).unwrap(),
+            reworded
         );
     }
 
