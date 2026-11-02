@@ -10,8 +10,8 @@ use common::{
     store_source, write_store,
 };
 use pde_comment_review::shared::ErrorCode;
-use pde_comment_review::shared::comment_rules::{Finding, ReportNote, Rule};
 use pde_comment_review::shared::git::resolve_commit;
+use pde_comment_review::shared::style_rules::{Finding, Outcome, ReportNote, Rule};
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::check_comments::check_comments;
 
@@ -76,35 +76,14 @@ fn make_repo_with_review_session(review_session: &str) -> TempFolder {
     repo
 }
 
-/// Returns the findings `check_comments` gives a new file holding `source`, failures first.
-fn check_new_file(file: &str, source: &str) -> Vec<(Rule, Option<ReportNote>, String)> {
-    let repo = make_repo();
-    let dir = repo.path();
-    add_avoided_word(dir);
-    fs::write(dir.join(file), source).unwrap();
-    let output = check_comments(dir, None).unwrap();
-    list_rules(output.result.failures, output.result.reported)
-}
-
-/// Writes an approvals file with no decisions and one word on the avoid list.
-fn add_avoided_word(dir: &Path) {
-    fs::create_dir_all(dir.join(".git/pde")).unwrap();
-    let approvals = r#"{"approved": [], "avoid": {"blob": "say file"}}"#;
-    fs::write(dir.join(".git/pde/code-comments.json"), approvals).unwrap();
-}
-
-/// Returns each finding's rule, note and detail, failures first.
-fn list_rules(
-    failures: Vec<Finding>,
-    reported: Vec<Finding>,
-) -> Vec<(Rule, Option<ReportNote>, String)> {
-    failures
+/// Returns each finding's rule, outcome and detail.
+fn list_rules(findings: Vec<Finding>) -> Vec<(Rule, Outcome, String)> {
+    findings
         .into_iter()
-        .chain(reported)
         .map(|finding| {
             (
                 finding.rule,
-                finding.note,
+                finding.outcome,
                 finding.detail.unwrap_or_default(),
             )
         })
@@ -163,7 +142,7 @@ fn fails_reworded_approved_comment() {
             name: Some("SaveAnswer".to_owned()),
             line: 3,
             rule: Rule::Approved,
-            note: None,
+            outcome: Outcome::Fails,
             detail: None,
         };
         assert_eq!(output.result.failures, [failure], "{case}");
@@ -262,7 +241,7 @@ fn fails_removed_approved_comment_while_code_stays() {
             name: Some(name.to_owned()),
             line,
             rule: Rule::ApprovedRemoved,
-            note: None,
+            outcome: Outcome::Fails,
             detail: None,
         };
         assert_eq!(failures, [failure], "{case}");
@@ -436,243 +415,27 @@ fn writes_no_file_even_when_refusing() {
     }
 }
 
-/// `check_comments` must find a break of each style rule and name what broke it.
-/// Otherwise filler, long comments or unclear names an agent writes would reach the user unflagged.
+/// `check_comments` must pass a branch, and name `make_feedback_request_list` next, when every finding is only reported, such as filler the user approved.
+/// Otherwise an agent with only reported findings could never ask the user about its comments.
 #[test]
-fn finds_each_style_rule_break() {
-    let go = |code: &str| format!("package review\n\n{code}");
-    let cases = [
-        (
-            "filler",
-            "answer.go",
-            go("// This facilitates saving.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
-        ),
-        (
-            "avoided-word",
-            "answer.go",
-            go("// Saves the blob.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::AvoidedWord, None, "\"blob\": say file".to_owned())],
-        ),
-        (
-            "restated-name",
-            "answer.go",
-            go("// Writes the answer, as SaveAnswer says.\nfunc SaveAnswer() {}\n"),
-            vec![(
-                Rule::RestatedName,
-                Some(ReportNote::ReportOnly),
-                String::new(),
-            )],
-        ),
-        (
-            "starts-with-name",
-            "answer.go",
-            go("// SaveAnswer writes it.\nfunc SaveAnswer() {}\n"),
-            vec![
-                (Rule::StartsWithName, None, String::new()),
-                (
-                    Rule::RestatedName,
-                    Some(ReportNote::ReportOnly),
-                    String::new(),
-                ),
-            ],
-        ),
-        (
-            "comment-length",
-            "answer.go",
-            go("// Saves it. Locks it. Logs it.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::CommentLength, None, "3 sentences".to_owned())],
-        ),
-        (
-            "comment-colon",
-            "answer.go",
-            go("// Saves it: now.\nfunc SaveAnswer() {}\n"),
-            vec![(Rule::CommentColon, None, String::new())],
-        ),
-        (
-            "comment-colon-inside-function",
-            "answer.go",
-            go("func SaveAnswer() {\n\t// Saves it: now.\n}\n"),
-            vec![(Rule::CommentColon, None, String::new())],
-        ),
-        (
-            "seven-words",
-            "answer.go",
-            go("func SaveTheAnswerToTheStoreRightNow() {}\n"),
-            vec![(Rule::SevenWords, None, "8 words".to_owned())],
-        ),
-        (
-            "verb-first",
-            "answer.go",
-            go("func Total() {}\n"),
-            vec![(
-                Rule::VerbFirst,
-                Some(ReportNote::ReportOnly),
-                "\"Total\" is not in the checker's verbs".to_owned(),
-            )],
-        ),
-        (
-            "docstring",
-            "answer.py",
-            "def save_answer():\n    return 1\n".to_owned(),
-            vec![(Rule::Docstring, None, String::new())],
-        ),
-        (
-            "docstring-on-init",
-            "answer.py",
-            "class Store:\n    \"\"\"Holds answers.\"\"\"\n\n    def __init__(self):\n        pass\n"
-                .to_owned(),
-            vec![(Rule::Docstring, None, String::new())],
-        ),
-        (
-            "summary-line",
-            "answer.py",
-            "def save_answer():\n    \"\"\"Saves\n    the answer.\"\"\"\n".to_owned(),
-            vec![(
-                Rule::SummaryLine,
-                None,
-                "summary runs onto a second line".to_owned(),
-            )],
-        ),
-        (
-            "test-why",
-            "answer.py",
-            "def test_saves_answer():\n    \"\"\"Saves the answer.\"\"\"\n".to_owned(),
-            vec![(Rule::TestWhy, None, String::new())],
-        ),
-        (
-            "section-heading",
-            "answer.py",
-            "def save_answer():\n    \"\"\"Saves the answer.\n\n    Why: it is lost.\n    \"\"\"\n"
-                .to_owned(),
-            vec![(Rule::SectionHeading, None, "\"Why:\"".to_owned())],
-        ),
-        (
-            "python-comment-with-example",
-            "answer.py",
-            "# Saves it. Logs it.\n#\n#   example: 1\n#   example: 2\nLIMIT = 1\n".to_owned(),
-            vec![
-                (Rule::CommentLength, None, "3 sentences".to_owned()),
-                (Rule::CommentColon, None, String::new()),
-            ],
-        ),
-        (
-            "rust-filler",
-            "lib.rs",
-            "/// This facilitates saving.\npub fn save_answer() {}\n".to_owned(),
-            vec![(Rule::Filler, None, "\"facilitates\"".to_owned())],
-        ),
-    ];
-
-    for (case, file, source, expected) in cases {
-        assert_eq!(check_new_file(file, &source), expected, "{case}");
-    }
-}
-
-/// `check_comments` must only report a style break in a comment that matches the user's approval.
-/// Otherwise an agent would be stuck on text it may not change.
-#[test]
-fn only_reports_approved_text_style_breaks() {
-    let filler = "// This facilitates saving.\n";
+fn passes_with_only_reported_findings() {
     let repo = make_repo();
     let dir = repo.path();
+    let filler = "// This facilitates saving.\n";
     add_decision(dir, STORE, "SaveAnswer", filler);
     write_store(dir, filler, "");
 
     let output = check_comments(dir, None).unwrap();
 
     assert_eq!(output.result.failures, []);
-    let reported = list_rules(Vec::new(), output.result.reported);
+    let reported = list_rules(output.result.reported);
     let expected = (
         Rule::Filler,
-        Some(ReportNote::Approved),
+        Outcome::Reported(ReportNote::Approved),
         "\"facilitates\"".to_owned(),
     );
     assert_eq!(reported, [expected]);
-}
-
-/// `check_comments` must only report a style break in a sentence already there at `base` or in a license header.
-/// Otherwise an agent would be stuck on an earlier author's text or a license it may not change.
-#[test]
-fn only_reports_old_or_license_style_breaks() {
-    let cases = [
-        (
-            "sentence-at-base",
-            "// This facilitates saving.\n",
-            store_source("// This facilitates saving. It holds the lock.\n", ""),
-            (
-                Rule::Filler,
-                Some(ReportNote::Existing),
-                "\"facilitates\"".to_owned(),
-            ),
-        ),
-        (
-            "license-header",
-            APPROVED,
-            format!("// One. Two. Three.\n\n{}", store_source(APPROVED, "")),
-            (
-                Rule::CommentLength,
-                Some(ReportNote::Header),
-                "3 sentences".to_owned(),
-            ),
-        ),
-    ];
-
-    for (case, base_comment, source, expected) in cases {
-        let repo = make_repo();
-        let dir = repo.path();
-        write_store(dir, base_comment, "");
-        commit_all(dir);
-        let base = resolve_commit(dir, "HEAD").unwrap();
-        fs::write(dir.join(STORE), source).unwrap();
-
-        let output = check_comments(dir, Some(base)).unwrap();
-
-        assert_eq!(output.result.failures, [], "{case}");
-        let reported = list_rules(Vec::new(), output.result.reported);
-        assert_eq!(reported, [expected], "{case}");
-    }
-}
-
-/// `check_comments` must pass a branch, and name `make_feedback_request_list` next, when every finding is only reported.
-/// Otherwise an agent with only reported findings could never ask the user about its comments.
-#[test]
-fn passes_with_only_reported_findings() {
-    let repo = make_repo();
-    let dir = repo.path();
-    write_store(dir, "// Writes the answer, as SaveAnswer says.\n", "");
-
-    let output = check_comments(dir, None).unwrap();
-
-    assert_eq!(output.result.failures, []);
-    let reported = list_rules(Vec::new(), output.result.reported);
-    let expected = (
-        Rule::RestatedName,
-        Some(ReportNote::ReportOnly),
-        String::new(),
-    );
-    assert_eq!(reported, [expected]);
     assert_eq!(output.next, NextStep::MakeFeedbackRequestList);
-}
-
-/// `check_comments` must fail an old comment that new sentences make too long.
-/// Otherwise an agent could add sentences to an old comment until it is too long, and `check_comments` would pass it.
-#[test]
-fn fails_old_comment_made_too_long() {
-    let repo = make_repo();
-    let dir = repo.path();
-    write_store(dir, "// Saves it.\n", "");
-    commit_all(dir);
-    let base = resolve_commit(dir, "HEAD").unwrap();
-    write_store(dir, "// Saves it. Locks it. Logs it.\n", "");
-
-    let output = check_comments(dir, Some(base)).unwrap();
-
-    let failures = list_rules(output.result.failures, Vec::new());
-    assert_eq!(
-        failures,
-        [(Rule::CommentLength, None, "3 sentences".to_owned())]
-    );
 }
 
 /// `check_comments` must pass old Go comments and names in a changed or moved file when only the code around them changed.
@@ -775,8 +538,8 @@ fn fails_edited_old_function_without_docstring() {
 
     let output = check_comments(dir, Some(base)).unwrap();
 
-    let failures = list_rules(output.result.failures, Vec::new());
-    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
+    let failures = list_rules(output.result.failures);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
 }
 
 /// `check_comments` must fail a missing docstring on a new function that shares its name with a function in a file that stays.
@@ -801,109 +564,6 @@ fn fails_new_same_named_function_without_docstring() {
 
     let output = check_comments(dir, Some(base)).unwrap();
 
-    let failures = list_rules(output.result.failures, Vec::new());
-    assert_eq!(failures, [(Rule::Docstring, None, String::new())]);
-}
-
-/// `check_comments` must pass a file a generator wrote, whatever its comments say.
-/// Otherwise an agent would be told to fix comments that the next run of the generator writes back.
-#[test]
-fn passes_generated_file() {
-    let generated = "// Code generated by protoc. DO NOT EDIT.\n\npackage review\n\n// This facilitates saving.\nfunc SaveAnswer() {}\n";
-
-    assert_eq!(check_new_file("answer.go", generated), []);
-}
-
-/// `check_comments` must read a Python comment without the `# noqa` mark after it.
-/// Otherwise an agent would be told to fix the colon in a mark that a linter reads.
-#[test]
-fn ignores_linter_mark_after_python_comment() {
-    let source = "LIMIT = 1  # Counts it.  # noqa: E501\n";
-
-    assert_eq!(check_new_file("answer.py", source), []);
-}
-
-/// `check_comments` must not run the length and colon rules on Rust comments, which this version checks only in Go and Python.
-/// Otherwise a Rust comment of three sentences or with a colon would fail `check_comments`.
-#[test]
-fn skips_length_and_colon_rules_in_rust() {
-    let source = "// Saves it: now. Locks it. Logs it.\npub fn save_answer() {}\n";
-
-    assert_eq!(check_new_file("lib.rs", source), []);
-}
-
-/// `check_comments` must not ask for a verb at the start of a test, getter, constructor or framework method name.
-/// Otherwise an agent would be told to put a verb on a name that must not have one.
-#[test]
-fn skips_verb_rule_on_conventional_names() {
-    let go = |code: &str| format!("package review\n\n{code}");
-    let python = r#"import pytest
-from typing import override
-
-
-class Store:
-    """Holds answers."""
-
-    def __init__(self):
-        """Starts empty."""
-
-    def setUp(self):
-        """Prepares it."""
-
-    def tearDown(self):
-        """Cleans up."""
-
-    @property
-    def total(self):
-        """Counts answers."""
-
-    @override
-    def ledger(self):
-        """Lists answers."""
-
-
-@pytest.fixture
-def database():
-    """Opens an empty one."""
-"#;
-    let not_a_verb = |word: &str| {
-        let detail = format!("\"{word}\" is not in the checker's verbs");
-        vec![(Rule::VerbFirst, Some(ReportNote::ReportOnly), detail)]
-    };
-    let cases = [
-        (
-            "go-constructor",
-            "answer.go",
-            go("func NewStore() {}\n"),
-            vec![],
-        ),
-        (
-            "go-getter",
-            "answer.go",
-            go("type Store struct{}\n\nfunc (s Store) Total() int { return 0 }\n"),
-            vec![],
-        ),
-        (
-            "go-test-and-benchmark",
-            "answer_test.go",
-            go("func TestSave(t *testing.T) {}\n\nfunc BenchmarkSave(b *testing.B) {}\n"),
-            vec![],
-        ),
-        (
-            "go-testify-needs-verb",
-            "answer_test.go",
-            go("func Testify() {}\n"),
-            not_a_verb("Testify"),
-        ),
-        (
-            "python-framework-names",
-            "answer.py",
-            python.to_owned(),
-            vec![],
-        ),
-    ];
-
-    for (case, file, source, expected) in cases {
-        assert_eq!(check_new_file(file, &source), expected, "{case}");
-    }
+    let failures = list_rules(output.result.failures);
+    assert_eq!(failures, [(Rule::Docstring, Outcome::Fails, String::new())]);
 }

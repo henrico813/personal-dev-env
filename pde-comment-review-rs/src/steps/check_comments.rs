@@ -1,16 +1,17 @@
 //! This module runs step 2, which fails a branch that rewords an approved
 //! comment, removes one whose code stays, or breaks a style rule on a changed
-//! line, and writes no file. Read the `check_comments(dir, base)` function to
-//! understand the module.
+//! line, and writes no file. Each language's differences live in
+//! `language_rules`, reached only through `comments`. Read the
+//! `check_comments(dir, base)` function to understand the module.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use super::{NextStep, StepOutput};
 use crate::shared::approvals::{self, Approvals, DecisionMatch};
-use crate::shared::comment_rules::{self, Finding, OldText, Rule};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
+use crate::shared::style_rules::{Finding, Outcome, Rule, StyleCheck, TextAtBase};
 use crate::shared::{Error, ErrorCode};
 
 /// Returns step 2's failures and reported findings for changes since `base`,
@@ -49,7 +50,7 @@ pub fn check_comments(
     let mut reported = Vec::new();
     let mut unsupported = Vec::new();
     let mut changed_files = Vec::new();
-    let mut old_text = OldText::default();
+    let mut at_base = TextAtBase::default();
     for file in files {
         if !comments::is_supported(file) {
             if changed.contains(file) {
@@ -63,9 +64,10 @@ pub fn check_comments(
             continue;
         }
         let before = comments::read_comments_at_commit(&root, &base, file)?;
-        old_text.add(&before, !root.join(file).exists());
+        at_base.add(&before, !root.join(file).exists());
         changed_files.push((file, versions, before));
     }
+    let style_check = StyleCheck::new(&approvals, at_base);
     for (file, versions, before) in changed_files {
         for version in versions {
             let is_on_disk = version.place == git::ON_DISK;
@@ -81,13 +83,10 @@ pub fn check_comments(
             // Git's diff numbers only the disk copy's lines, and agents edit that copy.
             if is_on_disk {
                 let changed_lines = git::list_changed_lines(dir, &base, file)?;
-                for finding in
-                    comment_rules::check_file(&now, &old_text, &changed_lines, &approvals)
-                {
-                    if finding.note.is_none() {
-                        failures.push(finding);
-                    } else {
-                        reported.push(finding);
+                for finding in style_check.find_file_style_issues(&now, &changed_lines) {
+                    match finding.outcome {
+                        Outcome::Fails => failures.push(finding),
+                        Outcome::Reported(_) => reported.push(finding),
                     }
                 }
             }
@@ -136,7 +135,7 @@ fn find_changed_approved_texts(
                 name: comment.name.clone(),
                 line: comment.line,
                 rule: Rule::Approved,
-                note: None,
+                outcome: Outcome::Fails,
                 detail: None,
             });
         }
@@ -168,7 +167,7 @@ fn find_removed_approved_comments(
                 name: Some(name.clone()),
                 line,
                 rule: Rule::ApprovedRemoved,
-                note: None,
+                outcome: Outcome::Fails,
                 detail: None,
             });
         }

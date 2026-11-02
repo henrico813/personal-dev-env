@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 use tree_sitter::{Language, Node};
 
 use crate::shared::comments::{CommentStyle, Definition};
+use crate::shared::style_rules::Rule;
 use crate::shared::{Error, ErrorCode};
 
 /// Stops a formatter or check that runs longer, because step 7 holds the Review
@@ -37,6 +38,8 @@ const KILLED_TOOL_GRACE: Duration = Duration::from_secs(1);
 pub trait LanguageRules {
     /// Returns the tree-sitter grammar.
     fn grammar(&self) -> Language;
+    /// Returns the language's name, such as "go", so old text is matched by language.
+    fn name(&self) -> &'static str;
     /// Returns a comment node's style, or `None` for other nodes and
     /// tool lines.
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle>;
@@ -71,6 +74,13 @@ pub trait LanguageRules {
     }
     /// Returns true for a file with the marker its generator writes.
     fn is_generated(&self, _source: &str) -> bool {
+        false
+    }
+    /// Returns the style rules this language's comments and names must follow.
+    fn style_rules(&self) -> &'static [Rule];
+    /// Returns true for a note, such as Go's `Deprecated:` paragraph, that may
+    /// keep its colon and length.
+    fn is_exempt_note(&self, _paragraph: &str) -> bool {
         false
     }
     /// Returns `words` laid out like `old_text`, with its markers and

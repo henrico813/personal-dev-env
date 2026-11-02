@@ -11,6 +11,7 @@ use tree_sitter::{Language, Node};
 use super::{LanguageRules, format_if_old_is_formatted, line_comments};
 use crate::shared::Error;
 use crate::shared::comments::{CommentStyle, Definition, NameCheck};
+use crate::shared::style_rules::Rule;
 
 /// Words that mark a comment a Go linter reads, wherever they sit in it, in
 /// any case.
@@ -18,6 +19,10 @@ const LINTER_MARKS: [&str; 3] = ["nolint", "#nosec", "lint:ignore"];
 
 /// Lists the words that start a function `go test` runs, such as `TestTotal`.
 const TEST_PREFIXES: [&str; 4] = ["Test", "Benchmark", "Fuzz", "Example"];
+
+/// Matches a Go paragraph that Go's tools read, whose colon and length stay.
+static DOC_NOTE_MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:Deprecated|BUG\([^)]*\)):").expect("the pattern is valid"));
 
 static GENERATED_MARKER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^// Code generated .* DO NOT EDIT\.$").expect("the pattern is valid")
@@ -28,6 +33,10 @@ pub struct GoRules;
 impl LanguageRules for GoRules {
     fn grammar(&self) -> Language {
         tree_sitter_go::LANGUAGE.into()
+    }
+
+    fn name(&self) -> &'static str {
+        "go"
     }
 
     fn classify_node(&self, node: Node, source: &str) -> Option<CommentStyle> {
@@ -129,6 +138,23 @@ impl LanguageRules for GoRules {
 
     fn is_generated(&self, source: &str) -> bool {
         GENERATED_MARKER.is_match(source)
+    }
+
+    fn style_rules(&self) -> &'static [Rule] {
+        &[
+            Rule::Filler,
+            Rule::AvoidedWord,
+            Rule::RestatedName,
+            Rule::StartsWithName,
+            Rule::CommentLength,
+            Rule::CommentColon,
+            Rule::SevenWords,
+            Rule::VerbFirst,
+        ]
+    }
+
+    fn is_exempt_note(&self, paragraph: &str) -> bool {
+        DOC_NOTE_MARKER.is_match(paragraph)
     }
 
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {

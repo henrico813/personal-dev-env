@@ -15,6 +15,7 @@ use tree_sitter::{Node, Parser, Tree};
 
 use super::git::{self, CommitId, FileVersion};
 use super::review_session::FeedbackRequest;
+use super::style_rules::Rule;
 use super::{Error, ErrorCode};
 use crate::language_rules::{LanguageRules, find_rules_for};
 
@@ -108,6 +109,23 @@ pub(crate) fn read_comments_at_commit(
 /// Returns true when a language rule reads the file.
 pub(crate) fn is_supported(file: &Path) -> bool {
     find_rules_for(file).is_some()
+}
+
+/// Returns the style rules the file's language uses, or none for an unsupported file.
+pub(crate) fn find_style_rules(file: &Path) -> &'static [Rule] {
+    find_rules_for(file).map_or(&[], |rules| rules.style_rules())
+}
+
+/// Returns true when the file's language lets the paragraph keep its colon
+/// and length, such as Go's `Deprecated:` note.
+pub(crate) fn is_exempt_note(file: &Path, paragraph: &str) -> bool {
+    find_rules_for(file).is_some_and(|rules| rules.is_exempt_note(paragraph))
+}
+
+/// Returns the file's language name, such as "go", or `None` for an
+/// unsupported file. `TextAtBase` groups old text by it.
+pub(crate) fn find_language_name(file: &Path) -> Option<&'static str> {
+    find_rules_for(file).map(|rules| rules.name())
 }
 
 /// Returns every line of a comment joined into one line, examples included,
