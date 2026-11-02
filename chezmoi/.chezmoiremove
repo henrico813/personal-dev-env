@@ -6,6 +6,7 @@
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
 .local/bin/pde-comment-checker
+.local/bin/prs
 {{ end }}
 {{ if has "workstation" .pde.tiers }}
 .config/opencode/plugins/pde-approval-session.js
