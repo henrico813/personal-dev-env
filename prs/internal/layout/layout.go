@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Holds what fzf tells a command about its screen in FZF_ variables.
@@ -224,28 +225,29 @@ func BuildListKeys(
 	)
 }
 
-// Returns the file picker's help text row. h closes the picker as o does,
-// so the row names o and leaves h out.
-func BuildFilePickerKeys(s FzfState) string {
+// Returns the help text row of the comments screen or the file picker,
+// whose short form drops / find. The file picker's h closes it as o does,
+// so its row names o and leaves h out.
+func BuildPaneKeys(
+	s FzfState,
+	screen Screen,
+) string {
 	if s.IsSearching() {
 		return SearchKeys
 	}
-	return chooseFittingKeys(
-		s.measureListWidth(FilePicker),
-		FilePickerKeys,
-		"l open  o close  ? help",
-	)
-}
-
-// Returns the comments screen's help text row.
-func BuildCommentsKeys(s FzfState) string {
-	if s.IsSearching() {
-		return SearchKeys
+	long := CommentsKeys
+	if screen == FilePicker {
+		long = FilePickerKeys
 	}
 	return chooseFittingKeys(
-		s.measureListWidth(CommentsScreen),
-		CommentsKeys,
-		"l open  o pane  h back  ? help",
+		s.measureListWidth(screen),
+		long,
+		strings.Replace(
+			long,
+			"  / find",
+			"",
+			1,
+		),
 	)
 }
 
@@ -264,7 +266,7 @@ func FindTappedKey(
 		keys,
 		"  ",
 	) {
-		end := start + len([]rune(item)) - 1
+		end := start + utf8.RuneCountInString(item) - 1
 		if col <= end+1 {
 			key, _, _ := strings.Cut(
 				item,
@@ -284,7 +286,7 @@ func chooseFittingKeys(
 	long,
 	short string,
 ) string {
-	if width >= len([]rune(long))+2 {
+	if width >= utf8.RuneCountInString(long)+2 {
 		return long
 	}
 	return short

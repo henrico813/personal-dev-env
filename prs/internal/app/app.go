@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"prs/internal/cache"
 	"prs/internal/github"
 	"prs/internal/view"
 )
@@ -29,31 +30,27 @@ type prsApp struct {
 	stdout io.Writer
 	stderr io.Writer
 	now    time.Time
+	store  cache.Store
 }
 
 // The hidden commands that fzf runs again as prs, on screen events and most
 // keys in an fzf screen. Each handler's comment shows its arguments.
 var hiddenCommands = map[string]func(*prsApp, []string) int{
-	"_rows":            (*prsApp).printListRows,
-	"_layout":          (*prsApp).printListLayout,
-	"_tap":             (*prsApp).printListTapAction,
-	"_meta":            (*prsApp).printDetails,
-	"_prompt":          (*prsApp).printListPrompt,
-	"_refresh":         (*prsApp).requestListRefresh,
-	"_summary":         (*prsApp).openSummary,
-	"_comments":        (*prsApp).openComments,
-	"_comments_layout": (*prsApp).printCommentsLayout,
-	"_comments_tap":    (*prsApp).printCommentsTapAction,
-	"_item":            (*prsApp).printItem,
-	"_item_page":       (*prsApp).openItem,
-	"_diff":            (*prsApp).openDiff,
-	"_picker_layout":   (*prsApp).printFilePickerLayout,
-	"_picker_tap":      (*prsApp).printFilePickerTapAction,
-	"_file":            (*prsApp).printFileDiff,
-	"_g":               (*prsApp).printFirstOnSecondG,
-	"_help":            (*prsApp).printHelpAction,
-	"_keys":            (*prsApp).printHelp,
-	"_keys_page":       (*prsApp).openHelpPage,
+	"_rows":        (*prsApp).printListRows,
+	"_layout":      (*prsApp).printListLayout,
+	"_meta":        (*prsApp).printDetails,
+	"_prompt":      (*prsApp).printListPrompt,
+	"_summary":     (*prsApp).openSummary,
+	"_comments":    (*prsApp).openComments,
+	"_item":        (*prsApp).printItem,
+	"_item_page":   (*prsApp).openItem,
+	"_diff":        (*prsApp).openDiff,
+	"_file":        (*prsApp).printFileDiff,
+	"_pane_layout": (*prsApp).printPaneLayout,
+	"_tap":         (*prsApp).printTapAction,
+	"_g":           (*prsApp).printFirstOnSecondG,
+	"_help":        (*prsApp).printHelpAction,
+	"_keys":        (*prsApp).printHelp,
 }
 
 var numberPattern = regexp.MustCompile(`^[0-9]+$`)
@@ -93,6 +90,15 @@ func Run(
 		)
 		return 1
 	}
+	store, err := cache.Open()
+	if err != nil {
+		_, _ = fmt.Fprintln(
+			stderr,
+			"prs:",
+			err,
+		)
+		return 1
+	}
 	a := &prsApp{
 		self:   quoteShell(self),
 		color:  os.Getenv("NO_COLOR") == "",
@@ -100,6 +106,7 @@ func Run(
 		stdout: stdout,
 		stderr: stderr,
 		now:    time.Now(),
+		store:  store,
 	}
 	if len(args) == 0 {
 		return a.pickPullRequest()

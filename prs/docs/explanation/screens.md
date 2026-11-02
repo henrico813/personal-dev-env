@@ -3,8 +3,9 @@
 `prs` has four screens, and none of them is drawn by `prs` itself. fzf draws
 the PR list screen, the comments screen and the file picker. less draws the
 PR summary screen, the diff view, a comment shown full screen, and the help
-on a short screen. `prs` decides what each one shows and which screen comes
-next. This page explains how the programs take turns and why.
+of every less screen, and of an fzf screen whose side pane is too short for
+it. `prs` decides what each one shows and which screen comes next. This page
+explains how the programs take turns and why.
 
 ```text
 prs                     (your command)
@@ -31,9 +32,11 @@ uses that for almost everything in an fzf screen. When the phone's keyboard
 comes up, fzf sends a `resize` event, runs `prs _layout DIR resize`, and
 `prs` prints actions such as
 `change-preview-window(down,3,border-top,nowrap,noinfo)+change-footer(...)`.
-The side pane runs `prs _meta DIR REPO NUMBER` for the selected row. A tap
-on the help text row runs `prs _tap DIR`, which reads the tapped column from
-`$FZF_CLICK_FOOTER_COLUMN` and prints the action of the word under it.
+The PR list screen's side pane runs `prs _meta DIR`, which reads the
+selected row from `$FZF_CURRENT_ITEM`. A tap on the help text row runs
+`prs _tap SCREEN DIR`, which reads the tapped column from
+`$FZF_CLICK_FOOTER_COLUMN` and prints `trigger(KEY)` for the word under it,
+so fzf runs that key's own binding.
 
 Each of these is a new, short `prs` process, so nothing is kept in memory
 between them. Anything that has to last, such as whether `o` closed the side
@@ -42,15 +45,10 @@ temporary folder. [Cache and temporary files](../reference/files.md) lists
 them.
 
 Each fzf screen keeps one table of key actions, such as `buildListActions`
-in `internal/app/prlist.go`. The same table gives fzf its `--bind` flags and
-answers taps. A tap therefore always does what its key does.
-
-Letters are commands, as in vim, so `/` unbinds them for typing and changes
-the help text row to `Esc cancel  Enter open`. Esc binds them again.
-
-fzf binds single keys, not sequences, so `gg` is two `g` presses.
-`prs _g DIR` writes the time of the first `g`, and a second `g` within a
-second prints fzf's `first` action.
+in `internal/app/prlist.go`, which gives fzf its `--bind` flags. Letters are
+commands, as in vim, so `/` unbinds every one-letter key of the table for
+typing and changes the help text row to `Esc cancel  Enter open`. Esc binds
+them again.
 
 ## less Says Which Key Ended It
 
@@ -89,16 +87,6 @@ and closing it brings that file back.
 fzf cannot hide its own list, so a diff below the file list never gets the
 whole screen. That is why reading happens in the diff view, and the picker
 is where you choose.
-
-## Wrapping Under the Code
-
-At 50 columns most code lines wrap. Left to themselves, less and fzf start
-wrapped rows at the left edge, under the line numbers. `internal/codewrap`
-rewraps each line before it is shown. Wrapped rows start 2 columns past the
-code's indentation and repeat the `+` or `-` mark. Rows break after the
-characters nvim breaks after by default, so a diff wraps where it would in
-nvim. The text is wrapped for one width, so after the phone turns, `r` in
-the diff view draws it again at the new width.
 
 ## Leaving Nothing Behind
 

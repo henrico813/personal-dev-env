@@ -13,24 +13,20 @@ func TestWrapLineHangsRowsUnderCode(t *testing.T) {
 	tests := []struct {
 		name string
 		line string
-		want []string
+		want string
 	}{
 		{
 			name: "added line with a tab",
 			line: "  49 +\tneeded := max(fenceLen, len(ChooseCodeFence(string(diff))))",
-			want: []string{
-				"  49 +  needed := max(fenceLen, ",
+			want: "  49 +  needed := max(fenceLen, \n" +
 				"     +    len(ChooseCodeFence(string(diff))))",
-			},
 		},
 		{
 			name: "unchanged line breaks after a dot",
 			line: "  46    if fenceLen < 3 || strings.TrimSpace(closing) != strings.Repeat(\"`\", fenceLen) {",
-			want: []string{
-				"  46    if fenceLen < 3 || strings.",
-				"          TrimSpace(closing) != strings.",
+			want: "  46    if fenceLen < 3 || strings.\n" +
+				"          TrimSpace(closing) != strings.\n" +
 				"          Repeat(\"`\", fenceLen) {",
-			},
 		},
 	}
 	for _, tt := range tests {
@@ -41,16 +37,13 @@ func TestWrapLineHangsRowsUnderCode(t *testing.T) {
 				6,
 			)
 
-			if strings.Join(
+			if joined := strings.Join(
 				got,
 				"\n",
-			) != strings.Join(
-				tt.want,
-				"\n",
-			) {
+			); joined != tt.want {
 				t.Errorf(
-					"wrapped to\n%q\nwant\n%q",
-					got,
+					"wrapped to\n%s\nwant\n%s",
+					joined,
 					tt.want,
 				)
 			}

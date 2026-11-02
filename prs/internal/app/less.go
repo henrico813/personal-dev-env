@@ -8,20 +8,11 @@ import (
 	"unicode/utf8"
 )
 
-// Lines of a lesskey file, less's own list of keys and their actions, that
-// make h and q quit with their letter's character code as less's exit
-// status.
-const lessBackKeys = "h quit h\nq quit q\n"
-
-// Makes l do nothing, since a less screen has nothing to open.
-const lessOpenKey = "l noaction\n"
-
-// Makes J and K scroll half a page, as they scroll the side pane in fzf.
-const lessPageKeys = "J forw-scroll\nK back-scroll\n"
-
-// Makes Esc cancel a search as in fzf, which costs the arrow keys inside the
-// search text, since they start with Esc.
-const lessSearchKeys = "#line-edit\n\\e abort\n"
+// The lines of a lesskey file, less's own list of keys and their actions,
+// that every less screen shares. h and q quit with their letter's character
+// code as the exit status, l does nothing, J and K scroll half a page, and
+// Esc cancels a search at the cost of the arrow keys there.
+const lessKeys = "#line-edit\n\\e abort\n#command\nh quit h\nq quit q\nl noaction\nJ forw-scroll\nK back-scroll\n"
 
 // Shows text in less with prompt as its help text row, and returns the
 // key that closed it, or 'q' for less's own ways out such as ZZ. keys holds
@@ -38,7 +29,7 @@ func (a *prsApp) openInLess(
 		return 'q'
 	}
 	defer func() { _ = keysRead.Close() }()
-	_, _ = keysWrite.WriteString("#command\n" + lessBackKeys + lessOpenKey + lessPageKeys + keys + lessSearchKeys)
+	_, _ = keysWrite.WriteString(lessKeys + keys)
 	_ = keysWrite.Close()
 	cmd := exec.Command(
 		"less",

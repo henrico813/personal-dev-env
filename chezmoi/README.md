@@ -56,13 +56,11 @@ gh pr diff 123 --color=never |
 ```
 
 On a phone, run `prs` to see the open pull requests that involve you in any
-repository. It has four screens, and each ends in a help text row that names
-its main keys. On the PR list screen, the comments screen and the file picker,
-a tap on a word runs it. The keys are the same on most screens: `j` and `k`
-move, `l` opens, `h` goes back, `q` goes back or quits from the PR list screen,
-`o` shows or hides the side pane, `gg` and `G` go to the first and last row,
-`J` and `K` scroll half a page, `/` finds and Esc cancels it, and `?` lists the
-keys. [The keys page](../prs/docs/reference/keys.md) lists the exceptions.
+repository. It has four screens, and each has a help text row that names its
+main keys, under the list on the PR list screen, the comments screen and the
+file picker, where a tap on a word runs it. The keys follow vim, such as `j`
+and `k` to move, `l` to open and `h` to go back, and `?` lists them;
+[the keys page](../prs/docs/reference/keys.md) has them all.
 
 - The PR list screen shows the selected pull request's details below the list
   on a phone, or beside it on a wide screen. With the phone's keyboard up,

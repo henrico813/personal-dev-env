@@ -3,14 +3,16 @@ package layout
 import "testing"
 
 // The phone keeps 50 columns when its keyboard comes up, so the PR list
-// screen sizes its side pane by rows, and wide screens put the side pane
-// beside the list. A wrong choice hides the checks or leaves rows empty.
+// screen sizes its side pane by rows, wide screens put it beside the list,
+// and a side pane closed with o stays closed. A wrong choice hides the
+// checks, leaves rows empty or reopens the closed side pane.
 func TestChooseListWindowFitsScreen(t *testing.T) {
 	tests := []struct {
 		name    string
 		columns int
 		lines   int
 		matches int
+		closed  bool
 		want    string
 	}{
 		{
@@ -55,6 +57,22 @@ func TestChooseListWindowFitsScreen(t *testing.T) {
 			matches: 18,
 			want:    "change-preview-window(right,50%,border-left,wrap-word)",
 		},
+		{
+			name:    "closed side pane stays closed below the list",
+			columns: 50,
+			lines:   40,
+			matches: 18,
+			closed:  true,
+			want:    "change-preview-window(down,19,border-top,wrap-word,hidden)",
+		},
+		{
+			name:    "closed side pane stays closed beside the list",
+			columns: 88,
+			lines:   15,
+			matches: 18,
+			closed:  true,
+			want:    "change-preview-window(right,45%,border-left,wrap-word,hidden)",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,54 +85,7 @@ func TestChooseListWindowFitsScreen(t *testing.T) {
 			got, _ := ChooseListWindow(
 				state,
 				Result,
-				false,
-			)
-
-			if got != tt.want {
-				t.Errorf(
-					"window is %q, want %q",
-					got,
-					tt.want,
-				)
-			}
-		})
-	}
-}
-
-// A side pane closed with o must stay closed when the keyboard comes up or
-// the phone turns. Otherwise it reopens over the list after each resize.
-func TestChooseListWindowStaysClosed(t *testing.T) {
-	tests := []struct {
-		name    string
-		columns int
-		lines   int
-		want    string
-	}{
-		{
-			name:    "upright, below the list",
-			columns: 50,
-			lines:   40,
-			want:    "change-preview-window(down,19,border-top,wrap-word,hidden)",
-		},
-		{
-			name:    "sideways, beside the list",
-			columns: 88,
-			lines:   15,
-			want:    "change-preview-window(right,45%,border-left,wrap-word,hidden)",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			state := FzfState{
-				Columns: tt.columns,
-				Lines:   tt.lines,
-				Matches: 18,
-			}
-
-			got, _ := ChooseListWindow(
-				state,
-				Resize,
-				true,
+				tt.closed,
 			)
 
 			if got != tt.want {

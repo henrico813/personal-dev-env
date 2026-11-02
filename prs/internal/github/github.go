@@ -4,7 +4,6 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -345,23 +344,14 @@ func FindCurrentRepo() (
 	string,
 	error,
 ) {
-	var repo struct {
-		NameWithOwner string `json:"nameWithOwner"`
-	}
 	out, err := runGH(
 		context.Background(),
 		"repo",
 		"view",
 		"--json=nameWithOwner",
+		"--jq=.nameWithOwner",
 	)
-	if err != nil {
-		return "", err
-	}
-	err = json.Unmarshal(
-		out,
-		&repo,
-	)
-	return repo.NameWithOwner, err
+	return strings.TrimSpace(string(out)), err
 }
 
 func fetchPullRequestNode(
@@ -431,22 +421,26 @@ func runGH(
 	[]byte,
 	error,
 ) {
-	var out, message bytes.Buffer
 	cmd := exec.CommandContext(
 		ctx,
 		"gh",
 		args...,
 	)
-	cmd.Stdout = &out
-	cmd.Stderr = &message
 	// Once ctx ends and gh is killed, a child of gh that still holds its
-	// output open cannot keep Run waiting past this.
+	// output open cannot keep Output waiting past this.
 	cmd.WaitDelay = time.Second
-	if err := cmd.Run(); err != nil {
-		if text := strings.TrimSpace(message.String()); text != "" {
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	if errors.As(
+		err,
+		&exit,
+	) {
+		if text := strings.TrimSpace(string(exit.Stderr)); text != "" {
 			return nil, errors.New(text)
 		}
+	}
+	if err != nil {
 		return nil, err
 	}
-	return out.Bytes(), nil
+	return out, nil
 }

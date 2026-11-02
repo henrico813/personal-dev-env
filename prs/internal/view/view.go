@@ -24,6 +24,15 @@ const (
 	blue    = "1;34"
 )
 
+// Turns each tab and newline into a space, since either would break an fzf
+// row.
+var rowBreaks = strings.NewReplacer(
+	"\t",
+	" ",
+	"\n",
+	" ",
+)
+
 // Holds plain words and the color they show in.
 type coloredWords struct {
 	words string

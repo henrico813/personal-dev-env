@@ -17,24 +17,16 @@ import (
 	"prs/internal/view"
 )
 
-// The PR list screen's bound letters, freed for typing while a search is
-// open.
-const listLetters = "j,k,g,G,l,d,c,o,r,h,q,J,K,/,?"
-
 // The PR list screen's prompt, which a refresh adds the list's age to.
 const listPrompt = "prs "
 
 // Files the PR list screen keeps in its temporary folder.
 const (
-	// The refresher's state, such as "running", then the saved list's
-	// time. It is gone while the list is fresh.
+	// The time of the list on screen while a refresh runs or after one
+	// failed, which the prompt shows as the list's age.
 	refreshStateFile = "refresh"
 	// The error from the last failed refresh, from gh or from saving the list.
 	refreshErrorFile = "error"
-	// Exists while the side pane shows that error.
-	showingErrorFile = "showing-error"
-	// The main prs process's ID, which the r key signals to refresh.
-	pidFile = "pid"
 	// fzf's socket, which the refresher sends actions to.
 	socketFile = "fzf.sock"
 )
@@ -56,11 +48,6 @@ Double tap a row to open it.
 // refreshes in place. Without a saved list it fetches before fzf starts,
 // so a GitHub failure shows as an error rather than as an empty list.
 func (a *prsApp) pickPullRequest() int {
-	store, err := cache.Open()
-	if err != nil {
-		a.printError("prs: " + err.Error())
-		return 1
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	// One count covers the first fetch and then the refresher, so stop
 	// waits for any gh that either one started.
@@ -73,7 +60,7 @@ func (a *prsApp) pickPullRequest() int {
 	return a.runInTempDir(
 		stop,
 		func(dir string) int {
-			list, err := store.ReadList()
+			list, err := a.store.ReadList()
 			saved := err == nil
 			if !saved {
 				a.printLine("Getting your pull requests")
@@ -84,17 +71,9 @@ func (a *prsApp) pickPullRequest() int {
 					a.printError("Could not get your pull requests from GitHub.")
 					return 1
 				}
-				_ = store.WriteList(list)
-				store.RemoveUnlisted(list.PullRequests)
+				_ = a.store.WriteList(list)
+				a.store.RemoveUnlisted(list.PullRequests)
 			}
-			_ = os.WriteFile(
-				filepath.Join(
-					dir,
-					pidFile,
-				),
-				[]byte(strconv.Itoa(os.Getpid())),
-				0o600,
-			)
 			requests := make(
 				chan os.Signal,
 				1,
@@ -107,15 +86,12 @@ func (a *prsApp) pickPullRequest() int {
 			r := newRefresher(
 				a.self,
 				dir,
-				store,
+				a.store,
 			)
 			if saved {
 				// The list's age shows from the first frame, since a refresh
 				// starts at once.
-				r.writeState(
-					"running",
-					list.FetchedAt,
-				)
+				r.writeState(list.FetchedAt)
 			}
 			go func() {
 				defer background.Done()
@@ -149,7 +125,9 @@ func (a *prsApp) pickPullRequest() int {
 					time.Now(),
 				),
 				"--footer="+layout.ListKeys,
-				"--preview="+a.self+" _meta "+quoteShell(dir)+" {1} {2}",
+				// The side pane reads the selected row from FZF_CURRENT_ITEM,
+				// so it still runs when the list is empty.
+				"--preview="+a.self+" _meta "+quoteShell(dir),
 				"--preview-window=down,50%,border-top,wrap-word",
 				"--bind=start:transform("+layoutCommand+" start)",
 				"--bind=result:transform("+layoutCommand+" result)",
@@ -157,7 +135,7 @@ func (a *prsApp) pickPullRequest() int {
 				// Each load, the refresher's reload included, sets the prompt
 				// again, which drops the list's age after a refresh that works.
 				"--bind=load:transform("+a.self+" _prompt "+quoteShell(dir)+")",
-				"--bind=click-footer:transform("+a.self+" _tap "+quoteShell(dir)+")",
+				"--bind=click-footer:transform("+a.self+" _tap list "+quoteShell(dir)+")",
 			)
 			stop()
 			if !ok {
@@ -172,34 +150,31 @@ func (a *prsApp) pickPullRequest() int {
 // help text row runs the same action as the key.
 func (a *prsApp) buildListActions(dir string) map[string]string {
 	summary := "execute(" + a.self + " _summary {1} {2})"
-	return map[string]string{
-		"l":            summary,
-		"enter":        summary,
-		"double-click": summary,
-		"c":            "execute(" + a.self + " _comments {1} {2})",
-		"d":            "execute(" + a.self + " _diff {1} {2})",
-		"r":            "execute-silent(" + a.self + " _refresh " + quoteShell(dir) + ")",
-		"o":            "transform(" + a.self + " _layout " + quoteShell(dir) + " toggle)",
-		"g":            "transform(" + a.self + " _g " + quoteShell(dir) + ")",
-		// h does nothing on the PR list screen, but stays bound so it does not
-		// type into the query.
-		"h": "ignore",
-		"q": "abort",
-		"/": buildSearchStart(listLetters),
-		"?": "transform(" + a.self + " _help list)",
-		"esc": "clear-query+rebind(" + listLetters + ")+change-prompt(" + listPrompt + ")+transform(" +
-			a.self + " _prompt " + quoteShell(dir) + ")+transform(" +
-			a.self + " _layout " + quoteShell(dir) + " result)",
-	}
+	return addSearchKeys(
+		map[string]string{
+			"l":            summary,
+			"enter":        summary,
+			"double-click": summary,
+			"c":            "execute(" + a.self + " _comments {1} {2})",
+			"d":            "execute(" + a.self + " _diff {1} {2})",
+			// The refresher in this process refreshes the list on SIGUSR1.
+			"r": "execute-silent(kill -USR1 " + strconv.Itoa(os.Getpid()) + ")",
+			"o": "transform(" + a.self + " _layout " + quoteShell(dir) + " toggle)",
+			"g": "transform(" + a.self + " _g " + quoteShell(dir) + ")",
+			// h does nothing on the PR list screen, but stays bound so it does
+			// not type into the query.
+			"h": "ignore",
+			"q": "abort",
+			"?": "transform(" + a.self + " _help list)",
+		},
+		listPrompt,
+		"transform("+a.self+" _prompt "+quoteShell(dir)+")+transform("+a.self+" _layout "+quoteShell(dir)+" result)",
+	)
 }
 
 // Prints the saved list's rows, as _rows, for the refresher's reload.
 func (a *prsApp) printListRows([]string) int {
-	store, err := cache.Open()
-	if err != nil {
-		return 0
-	}
-	list, _ := store.ReadList()
+	list, _ := a.store.ReadList()
 	a.printText(view.RenderListRows(
 		list.PullRequests,
 		a.makeStyle(0),
@@ -207,28 +182,14 @@ func (a *prsApp) printListRows([]string) int {
 	return 0
 }
 
-// Prints the details from the saved list, as _meta DIR REPO NUMBER. It
-// prints the 3-row status strip when the side pane has 3 rows or fewer,
-// and the longer details otherwise, under gh's error after a failed
-// refresh.
+// Prints the selected pull request's details from the saved list, as
+// _meta DIR, under the error of a failed refresh. It prints the 3-row status
+// strip when the side pane has 3 rows or fewer.
 func (a *prsApp) printDetails(args []string) int {
-	dir, repo, number := args[0], args[1], readNumber(args[2])
+	dir := args[0]
 	detail := view.Long
 	if lines, err := strconv.Atoi(os.Getenv("FZF_PREVIEW_LINES")); err == nil && lines <= 3 {
 		detail = view.Strip
-	}
-	store, err := cache.Open()
-	if err != nil {
-		a.printLine(err.Error())
-		return 0
-	}
-	pr, ok := store.FindPullRequest(
-		repo,
-		number,
-	)
-	if !ok {
-		a.printLine("#" + strconv.Itoa(number) + " is not in the saved list. Press r to refresh it.")
-		return 0
 	}
 	if failure, err := os.ReadFile(filepath.Join(
 		dir,
@@ -236,6 +197,28 @@ func (a *prsApp) printDetails(args []string) int {
 	)); err == nil && detail != view.Strip {
 		a.printLine(a.paintRed("Could not refresh the list."))
 		a.printText(string(failure))
+	}
+	// fzf leaves FZF_CURRENT_ITEM unset when the list is empty.
+	item, ok := os.LookupEnv("FZF_CURRENT_ITEM")
+	if !ok {
+		return 0
+	}
+	fields := strings.SplitN(
+		item,
+		"\t",
+		3,
+	)
+	if len(fields) < 2 {
+		return 0
+	}
+	number := readNumber(fields[1])
+	pr, found := a.store.FindPullRequest(
+		fields[0],
+		number,
+	)
+	if !found {
+		a.printLine("#" + strconv.Itoa(number) + " is not in the saved list. Press r to refresh it.")
+		return 0
 	}
 	a.printText(view.RenderDetails(
 		pr,
@@ -249,20 +232,9 @@ func (a *prsApp) printDetails(args []string) int {
 // _layout DIR EVENT. The toggle event opens or closes the side pane.
 func (a *prsApp) printListLayout(args []string) int {
 	dir, event := args[0], layout.Event(args[1])
-	toggle := event == "toggle"
-	if toggle {
-		event = layout.Resize
-	}
-	errorFile := filepath.Join(
-		dir,
-		refreshErrorFile,
-	)
-	showingError := filepath.Join(
-		dir,
-		showingErrorFile,
-	)
-	if toggle {
+	if event == "toggle" {
 		togglePaneClosed(dir)
+		event = layout.Resize
 	}
 	state := layout.ReadFzfState()
 	window, refresh := layout.ChooseListWindow(
@@ -272,33 +244,10 @@ func (a *prsApp) printListLayout(args []string) int {
 	)
 	actions := []string{
 		window,
-		"change-footer(" + layout.BuildListKeys(
+		"change-footer(" + buildListKeys(
 			state,
-			isPresent(errorFile),
+			dir,
 		) + ")",
-	}
-	// fzf skips a preview that reads a row, such as _meta DIR {1} {2}, when
-	// the list has no rows. So after a failed refresh the side pane shows
-	// the error file instead.
-	switch {
-	case state.Total == 0 && isPresent(errorFile):
-		_ = os.WriteFile(
-			showingError,
-			nil,
-			0o600,
-		)
-		actions = append(
-			actions,
-			"change-preview(cat "+quoteShell(errorFile)+")",
-		)
-		refresh = true
-	case isPresent(showingError):
-		_ = os.Remove(showingError)
-		actions = append(
-			actions,
-			"change-preview("+a.self+" _meta "+quoteShell(dir)+" {1} {2})",
-		)
-		refresh = true
 	}
 	if refresh {
 		actions = append(
@@ -313,22 +262,19 @@ func (a *prsApp) printListLayout(args []string) int {
 	return 0
 }
 
-// Prints the fzf action for a tap on the PR list screen's help text row,
-// as _tap DIR.
-func (a *prsApp) printListTapAction(args []string) int {
-	dir := args[0]
-	keys := layout.BuildListKeys(
-		layout.ReadFzfState(),
+// Returns the PR list screen's help text row for the screen and the
+// refresh's state in dir.
+func buildListKeys(
+	state layout.FzfState,
+	dir string,
+) string {
+	return layout.BuildListKeys(
+		state,
 		isPresent(filepath.Join(
 			dir,
 			refreshErrorFile,
 		)),
 	)
-	a.printTappedAction(
-		keys,
-		a.buildListActions(dir),
-	)
-	return 0
 }
 
 // Prints the action that sets the prompt, as _prompt DIR. While a search
@@ -341,24 +287,6 @@ func (a *prsApp) printListPrompt(args []string) int {
 		args[0],
 		a.now,
 	) + ")")
-	return 0
-}
-
-// Asks the main prs process to refresh the list, as _refresh DIR.
-func (a *prsApp) requestListRefresh(args []string) int {
-	saved, err := os.ReadFile(filepath.Join(
-		args[0],
-		pidFile,
-	))
-	if err != nil {
-		return 0
-	}
-	if pid, err := strconv.Atoi(string(saved)); err == nil {
-		_ = syscall.Kill(
-			pid,
-			syscall.SIGUSR1,
-		)
-	}
 	return 0
 }
 
@@ -375,13 +303,9 @@ func buildListPrompt(
 	if err != nil {
 		return listPrompt
 	}
-	_, stamp, _ := strings.Cut(
-		string(saved),
-		"\n",
-	)
 	fetched, err := time.Parse(
 		time.RFC3339Nano,
-		strings.TrimSpace(stamp),
+		strings.TrimSpace(string(saved)),
 	)
 	if err != nil {
 		return listPrompt

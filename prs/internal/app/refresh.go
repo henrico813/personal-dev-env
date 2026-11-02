@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
+	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,10 +23,9 @@ const fetchWorkers = 4
 // socket.
 type refresher struct {
 	// This binary's path, quoted for the shell, which the actions run.
-	self   string
-	dir    string
-	store  cache.Store
-	client *http.Client
+	self  string
+	dir   string
+	store cache.Store
 }
 
 func newRefresher(
@@ -34,33 +33,10 @@ func newRefresher(
 	dir string,
 	store cache.Store,
 ) *refresher {
-	socket := filepath.Join(
-		dir,
-		socketFile,
-	)
 	return &refresher{
 		self:  self,
 		dir:   dir,
 		store: store,
-		client: &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(
-					ctx context.Context,
-					_,
-					_ string,
-				) (
-					net.Conn,
-					error,
-				) {
-					var dialer net.Dialer
-					return dialer.DialContext(
-						ctx,
-						"unix",
-						socket,
-					)
-				},
-			},
-		},
 	}
 }
 
@@ -94,6 +70,8 @@ func (r *refresher) run(
 	}()
 	defer workers.Wait()
 	defer close(queue)
+	// fzf's starting prompt already shows the list's age, so the first
+	// refresh asks GitHub without waiting for fzf's socket.
 	if refreshFirst {
 		list = r.refreshList(
 			ctx,
@@ -114,6 +92,11 @@ func (r *refresher) run(
 			case <-requests:
 			}
 		}
+		r.writeState(list.FetchedAt)
+		r.send(
+			ctx,
+			r.buildPromptAction(),
+		)
 		list = r.refreshList(
 			ctx,
 			list,
@@ -128,14 +111,6 @@ func (r *refresher) refreshList(
 	ctx context.Context,
 	old cache.List,
 ) cache.List {
-	r.writeState(
-		"running",
-		old.FetchedAt,
-	)
-	r.send(
-		ctx,
-		r.buildPromptAction(),
-	)
 	list, err := fetchList(ctx)
 	if ctx.Err() != nil {
 		return old
@@ -144,17 +119,13 @@ func (r *refresher) refreshList(
 		err = r.store.WriteList(list)
 	}
 	if err != nil {
-		r.writeState(
-			"failed",
-			old.FetchedAt,
-		)
-		_ = os.WriteFile(
+		r.writeState(old.FetchedAt)
+		replaceFile(
 			filepath.Join(
 				r.dir,
 				refreshErrorFile,
 			),
 			[]byte(err.Error()+"\n"),
-			0o600,
 		)
 		r.send(
 			ctx,
@@ -259,19 +230,15 @@ func (r *refresher) tickPrompt(ctx context.Context) {
 	}
 }
 
-// Saves the refresher's state and the saved list's time, which the prompt
-// reads.
-func (r *refresher) writeState(
-	state string,
-	fetchedAt time.Time,
-) {
-	_ = os.WriteFile(
+// Saves the time of the list on screen, which the prompt shows as the
+// list's age.
+func (r *refresher) writeState(fetchedAt time.Time) {
+	replaceFile(
 		filepath.Join(
 			r.dir,
 			refreshStateFile,
 		),
-		[]byte(state+"\n"+fetchedAt.Format(time.RFC3339Nano)+"\n"),
-		0o600,
+		[]byte(fetchedAt.Format(time.RFC3339Nano)+"\n"),
 	)
 }
 
@@ -279,28 +246,40 @@ func (r *refresher) buildPromptAction() string {
 	return "transform(" + r.self + " _prompt " + quoteShell(r.dir) + ")"
 }
 
-// Sends fzf actions to fzf's socket. fzf may still be starting, so a send
-// that fails is tried again for up to 3 seconds.
+// Sends fzf actions to fzf's socket as an HTTP request, which fzf answers
+// and then closes. fzf may still be starting, so a send that fails is tried
+// again for up to 3 seconds.
 func (r *refresher) send(
 	ctx context.Context,
 	actions string,
 ) {
+	socket := filepath.Join(
+		r.dir,
+		socketFile,
+	)
+	request := "POST / HTTP/1.1\r\nHost: fzf\r\nConnection: close\r\nContent-Length: " +
+		strconv.Itoa(len(actions)) + "\r\n\r\n" + actions
 	for deadline := time.Now().Add(3 * time.Second); ; {
-		request, err := http.NewRequestWithContext(
+		var dialer net.Dialer
+		conn, err := dialer.DialContext(
 			ctx,
-			http.MethodPost,
-			"http://fzf/",
-			strings.NewReader(actions),
+			"unix",
+			socket,
 		)
-		if err != nil {
-			return
-		}
-		response, err := r.client.Do(request)
 		if err == nil {
-			_ = response.Body.Close()
-			return
+			_ = conn.SetDeadline(time.Now().Add(time.Second))
+			_, err = io.WriteString(
+				conn,
+				request,
+			)
+			if err == nil {
+				// Reading until fzf closes waits for fzf to take the actions.
+				// Once they are written they are never sent twice.
+				_, _ = io.ReadAll(conn)
+			}
+			_ = conn.Close()
 		}
-		if ctx.Err() != nil || time.Now().After(deadline) {
+		if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
 			return
 		}
 		select {
@@ -308,5 +287,25 @@ func (r *refresher) send(
 			return
 		case <-time.After(50 * time.Millisecond):
 		}
+	}
+}
+
+// Writes data to path through a temporary file and a rename, so a reader
+// in another prs process sees the old file or the new one, never half of
+// one. The refresher is the one writer of the files it replaces.
+func replaceFile(
+	path string,
+	data []byte,
+) {
+	temporary := path + ".tmp"
+	if os.WriteFile(
+		temporary,
+		data,
+		0o600,
+	) == nil {
+		_ = os.Rename(
+			temporary,
+			path,
+		)
 	}
 }

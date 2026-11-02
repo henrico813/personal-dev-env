@@ -47,8 +47,9 @@ var mergeWords = map[string]coloredWords{
 type Detail int
 
 const (
-	// The 3-row status strip, for a side pane of 3 rows or fewer.
-	Strip Detail = iota
+	// The 3-row status strip, for a side pane of 3 rows or fewer. The zero
+	// Detail is no length, so a Detail left unset never passes as one.
+	Strip Detail = iota + 1
 	// The details for a side pane taller than 3 rows.
 	Long
 	// The top of the PR summary screen, which adds the head branch.
@@ -123,13 +124,7 @@ func RenderListRows(
 	var out strings.Builder
 	for _, pr := range prs {
 		number := strconv.Itoa(pr.Number)
-		// A tab or newline in the title would break fzf's row.
-		title := strings.NewReplacer(
-			"\t",
-			" ",
-			"\n",
-			" ",
-		).Replace(pr.Title)
+		title := rowBreaks.Replace(pr.Title)
 		shown := s.paintYellow("#"+number) + " " + title
 		if pr.IsDraft {
 			shown += " " + s.paintGray("[draft]")
