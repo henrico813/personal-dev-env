@@ -12,10 +12,10 @@ fi
 options="  Lock\n  Logout\n  Suspend\n  Reboot\n  Shutdown"
 
 selected=$(echo -e "$options" | rofi -dmenu -i -p "󰐥" \
-    -theme-str 'window {width: 250px;} listview {lines: 5;}')
+    -theme-str 'window {width: 460px;} listview {lines: 5;}')
 
 confirm() {
-    echo -e "Yes\nNo" | rofi -dmenu -i -p "$1?" -theme-str 'window {width: 150px;}'
+    echo -e "Yes\nNo" | rofi -dmenu -i -p "$1?" -theme-str 'window {width: 460px;}'
 }
 
 case "$selected" in
