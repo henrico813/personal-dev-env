@@ -10,16 +10,21 @@ apt_groups:
   dev: [build-essential, bzip2, gawk, make, patch]
   # Both desktops list this group. Apt runs with --no-install-recommends, so
   # each package a desktop config calls is listed.
-  desktop: [rofi, lxpolkit, network-manager-gnome, pavucontrol,
+  desktop: [alacritty, rofi, lxpolkit, network-manager-gnome, pavucontrol,
             pulseaudio-utils, brightnessctl, playerctl, psmisc,
             papirus-icon-theme, fonts-noto-color-emoji, blueman, dunst,
-            mpv, ubuntu-wallpapers,
+            mpv, ubuntu-wallpapers, thunar, libnotify-bin, bluez,
+            greybird-gtk-theme,
+            # polypomo runs with python3, which the terminal profile does not
+            # install.
+            python3,
             # The installer builds each desktop's wallpaper player, which
             # no Ubuntu package provides.
             build-essential]
   # The X11 headers build xwinwrap.
   i3: [i3-wm, i3lock, polybar, feh, picom, autorandr, arandr,
-       xfce4-power-manager, xss-lock, xautolock, dex, lxappearance, cava,
+       xfce4-power-manager, xss-lock, dex, lxappearance, cava,
+       xfce4-screenshooter, x11-xserver-utils,
        libx11-dev, libxext-dev, libxrender-dev]
   # waybar's scripts run apt's jq, because the session PATH may lack
   # Aqua's. The build tools and the mpv, Wayland and EGL headers build

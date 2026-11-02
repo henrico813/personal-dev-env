@@ -1,0 +1,72 @@
+configuration {
+    modi: "drun,run,window";
+    show-icons: true;
+    drun-display-format: "{name}";
+    location: 0;
+    disable-history: false;
+    sidebar-mode: true;
+}
+
+* {
+    bg: #282a36;
+    fg: #f8f8f2;
+    accent: #bd93f9;
+    urgent: #ff5555;
+}
+
+window {
+    background-color: @bg;
+    border: 2px;
+    border-color: @accent;
+    border-radius: 8px;
+    padding: 20px;
+    width: 500px;
+}
+
+inputbar {
+    children: [prompt, entry];
+    background-color: @bg;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+prompt {
+    background-color: @accent;
+    padding: 8px 12px;
+    text-color: @bg;
+    border-radius: 4px;
+    margin: 0 8px 0 0;
+}
+
+entry {
+    padding: 8px;
+    text-color: @fg;
+    background-color: @bg;
+}
+
+listview {
+    lines: 8;
+    columns: 1;
+    fixed-height: true;
+    border: 0;
+    scrollbar: false;
+}
+
+element {
+    padding: 8px;
+    border-radius: 4px;
+}
+
+element selected {
+    background-color: @accent;
+    text-color: @bg;
+}
+
+element-text {
+    text-color: inherit;
+}
+
+element-icon {
+    size: 24px;
+    padding: 0 8px 0 0;
+}
