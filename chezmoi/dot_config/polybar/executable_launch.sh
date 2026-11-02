@@ -10,6 +10,7 @@ CONFIG="$HOME/.config/polybar/config.ini"
 
 # Auto-detect wireless interface
 WLAN_IFACE=$(ip link show | grep -oE 'wl[a-z0-9]+' | head -1)
+ETH_IFACE=$(ip -o link show | awk -F': ' '$2 ~ /^(en|eth)/ {print $2; exit}')
 
 # Find the battery and charger, whose names differ between machines
 BATTERY=""
@@ -29,7 +30,7 @@ PRIMARY=$(xrandr --query | grep " primary" | cut -d" " -f1)
 if [[ -z "$PRIMARY" ]]; then
     PRIMARY=$(xrandr --query | grep " connected" | head -1 | cut -d" " -f1)
 fi
-MONITOR=${PRIMARY} WLAN_IFACE=${WLAN_IFACE:-wlan0} \
+MONITOR=${PRIMARY} WLAN_IFACE=${WLAN_IFACE:-wlan0} ETH_IFACE=${ETH_IFACE:-eth0} \
     BATTERY=${BATTERY} ADAPTER=${ADAPTER} \
     polybar --reload --config="$CONFIG" main &
 disown
