@@ -36,13 +36,29 @@ agent, unless the linking skill names someone else.
 
 1. When the user makes a correction the skill counts, still save it to
    memory as your instructions say.
-2. If `skill-lessons` is installed, also offer to save it in that skill
-   as a lesson, once and at the time the skill names.
-3. Offer a lesson only for a rule an agent would apply correctly in
-   another repository or task. Write it without facts true only of
-   this task, such as its PR numbers, option labels, models on trial
-   or one-time slips. If no such rule is left, offer no lesson.
-4. When the user says "remember", save it at once and show the one line
+2. If `skill-lessons` is installed, check the rule a correction teaches
+   before you offer it as a lesson. Offer it only if every answer is
+   yes:
+   - Does the skill have a Lessons section? If not, save the correction
+     to memory only.
+   - Is the rule true in every language, repository and task, with no
+     "unless"? For a language skill, it only has to be true in every
+     project in that language.
+   - Is it new? The skill must not already say it.
+   - Could someone who missed the task follow it? Use plain words, no
+     project names, at most one short example and at most 60 words.
+   - Does it leave out this task's details, such as PR numbers, ticket
+     keys, file paths and one-time mistakes?
+
+   When you check several corrections at once, expect most to fail.
+3. Before the user sees a lesson, ask an agent that did not write it to
+   check it. Give that agent only the lesson and the skill's text, not
+   the task. It answers the questions in step 2, and says whether
+   someone who never saw the task would read the lesson as you meant it.
+   If you can't start another agent, check the lessons yourself and say
+   so.
+4. Offer each lesson that passes, once, at the time the skill names.
+5. When the user says "remember", save it at once and show the one line
    the command prints. Replace `<skill>` with the skill's name and
    `<rule>` with the rule:
 
@@ -53,8 +69,9 @@ agent, unless the linking skill names someone else.
        EOF
 
    The rule goes on its own line, so apostrophes, quotes, backticks and
-   `$` are saved as written.
-5. If the user corrects a lesson again, add `repeat_of: "L<n>"` inside
+   `$` are saved as written. If `add` refuses the text, reword it as the
+   error says and show the user the new wording.
+6. If the user corrects a lesson again, add `repeat_of: "L<n>"` inside
    the braces, with the ID from the end of that lesson. For lesson L3:
 
        '{skill: "<skill>", repeat_of: "L3", text: ($text | rtrimstr("\n"))}'

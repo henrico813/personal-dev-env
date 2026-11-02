@@ -243,6 +243,93 @@ class TestAdd:
         assert "epic" in result.stderr
         assert skill.read_text() == SOURCE
 
+    @pytest.mark.parametrize(
+        ("text", "problem"),
+        [
+            pytest.param(
+                "Link #123 first.",
+                "PR or issue number #123",
+                id="issue-number",
+            ),
+            pytest.param(
+                "As in pull request 409, ask first.",
+                "PR or issue number pull request 409",
+                id="pr-in-words",
+            ),
+            pytest.param(
+                "Plans follow DEMO-7.",
+                "DEMO-7, which looks like a ticket key",
+                id="ticket-key",
+            ),
+            pytest.param(
+                "Read `ai/skills/demo/SKILL.md` first.",
+                "file path ai/skills/demo/SKILL.md",
+                id="file-path",
+            ),
+            pytest.param(
+                "Edit `.github/workflows/ci.yml` first.",
+                "file path .github/workflows/ci.yml",
+                id="dot-folder-path",
+            ),
+            pytest.param(
+                "Ask first. " * 30 + "Always.",
+                "61 words",
+                id="too-long",
+            ),
+        ],
+    )
+    def test_add_refuses_lesson_text_failing_checks(
+        self, run: Run, skills: Path, text: str, problem: str
+    ) -> None:
+        """``add`` refuses task facts and overlong text, and saves nothing.
+
+        Agents tend to write lessons full of the task's own numbers,
+        keys and files, which mean nothing in the next task. Long text
+        is refused too, because one long lesson usually holds several
+        rules. The error must name the problem so the agent can reword
+        the lesson.
+        """
+        skill = install(skills, "demo", SOURCE)
+        lesson = {"skill": "demo", "text": text}
+
+        result = run("add", "-", stdin=json.dumps(lesson))
+
+        assert result.returncode == 1
+        assert problem in result.stderr
+        assert skill.read_text() == SOURCE
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            pytest.param(
+                "Read https://example.com/docs/a.html first.", id="url"
+            ),
+            pytest.param("Read `<repo>/AGENTS.md` first.", id="placeholder"),
+            pytest.param("Review on `openai/gpt-5.6-luna`.", id="model-id"),
+            pytest.param("Write files as UTF-8.", id="standard-name"),
+            pytest.param("Send output to `/dev/null`.", id="shared-path"),
+            pytest.param("Keep settings in `$HOME/.config`.", id="env-path"),
+            pytest.param("Ask first. " * 30, id="sixty-words"),
+        ],
+    )
+    def test_add_saves_text_passing_lesson_checks(
+        self, run: Run, skills: Path, text: str
+    ) -> None:
+        """``add`` saves look-alike task facts and text at the word limit.
+
+        URLs, placeholder paths, ``$VAR/`` paths, model IDs, standard
+        names and paths such as /dev/null hold in any task, and some
+        good lessons run to exactly 60 words. Refusing them would push
+        agents to drop useful detail.
+        """
+        skill = install(skills, "demo", SOURCE)
+        lesson = {"skill": "demo", "text": text}
+
+        result = run("add", "-", stdin=json.dumps(lesson))
+
+        assert result.returncode == 0, result.stderr
+        assert skill.read_text() == render(f"- {text.strip()} [L1]\n")
+
 
 class TestRetire:
     """Removing lessons with ``retire``."""
@@ -405,6 +492,66 @@ class TestStore:
                 }
             ],
         }
+
+    @pytest.mark.parametrize(
+        "resend_text",
+        [
+            pytest.param(False, id="no-text"),
+            pytest.param(True, id="same-text"),
+        ],
+    )
+    def test_repeat_counts_overlong_saved_lesson(
+        self, run: Run, skills: Path, resend_text: bool
+    ) -> None:
+        """A repeat of a saved lesson counts even past the word limit.
+
+        Lessons saved before the limit can be longer than it, and the
+        user can still repeat the correction; refusing the repeat would
+        lose that count. The skill sends the saved text with each repeat,
+        so the same text must pass too.
+        """
+        long_text = " ".join(["Ask first."] * 31)
+        store = write_store(
+            skills,
+            "demo",
+            {
+                "next_id": 2,
+                "lessons": [{"id": "L1", "text": long_text, "repeats": 0}],
+            },
+        )
+        install(skills, "demo", SOURCE)
+        repeat = {"skill": "demo", "repeat_of": "L1"}
+        if resend_text:
+            repeat["text"] = long_text
+
+        result = run("add", "-", stdin=json.dumps(repeat))
+
+        assert result.returncode == 0, result.stderr
+        assert json.loads(store.read_text())["lessons"][0]["repeats"] == 1
+
+    def test_repeat_refuses_new_text_failing_checks(
+        self, run: Run, skills: Path
+    ) -> None:
+        """A repeat that brings new wording must pass the lesson checks.
+
+        The new wording replaces the saved lesson, so an unchecked repeat
+        would let a ticket key into the skill. The saved lesson must stay
+        as it was.
+        """
+        saved = {"id": "L1", "text": "Ask before you link.", "repeats": 0}
+        store = write_store(skills, "demo", {"next_id": 2, "lessons": [saved]})
+        install(skills, "demo", SOURCE)
+        repeat = {
+            "skill": "demo",
+            "repeat_of": "L1",
+            "text": "Plans follow DEMO-7.",
+        }
+
+        result = run("add", "-", stdin=json.dumps(repeat))
+
+        assert result.returncode == 1
+        assert "DEMO-7, which looks like a ticket key" in result.stderr
+        assert json.loads(store.read_text())["lessons"] == [saved]
 
 
 class TestPromoteStart:
