@@ -2,6 +2,7 @@
 
 pub mod check_comments;
 pub mod make_feedback_request_list;
+pub mod send_agent_suggestions;
 pub mod show_status;
 pub mod write_user_feedback;
 

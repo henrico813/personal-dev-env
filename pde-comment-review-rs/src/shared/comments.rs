@@ -199,6 +199,54 @@ pub(crate) fn match_line_ends(
     }
 }
 
+/// Returns each code example in a comment that the file's language reads as
+/// code, such as a Rust doc test, or none.
+pub(crate) fn list_doc_tests(file: &Path, text: &str) -> Vec<String> {
+    find_rules_for(file).map_or_else(Vec::new, |rules| rules.list_doc_tests(text))
+}
+
+/// Returns the word that starts each note in a comment that the file's
+/// language's tools read, such as Go's `Deprecated:`, or none.
+pub(crate) fn list_tool_notes(file: &Path, text: &str) -> Vec<String> {
+    find_rules_for(file).map_or_else(Vec::new, |rules| rules.list_tool_notes(text))
+}
+
+/// Returns the file's comments with `new_text` in place of `comment`, and the
+/// reworded comment's index, so a reword is checked where it would sit. Runs
+/// no formatter and writes nothing.
+///
+/// # Errors
+///
+/// Refuses with `WouldNotWrite` when the text does not read back as a comment
+/// in that place.
+pub(crate) fn read_comments_with_reword(
+    now: &FileComments,
+    comment: &Comment,
+    new_text: &str,
+) -> Result<(FileComments, usize), Error> {
+    let would_not_write = || {
+        refuse(
+            ErrorCode::WouldNotWrite,
+            &now.file,
+            "The reword does not read back as a comment in its place.",
+        )
+    };
+    let Some(source) = &now.source else {
+        return Err(would_not_write());
+    };
+    let mut reworded_source = source.clone();
+    reworded_source.replace_range(comment.byte_range.clone(), new_text);
+    let file_label = now.file.display().to_string();
+    let reworded = find_file_comments(&now.file, Some(reworded_source), &file_label)
+        .map_err(|_| would_not_write())?;
+    let index = reworded
+        .comments
+        .iter()
+        .position(|found| found.byte_range.start == comment.byte_range.start)
+        .ok_or_else(would_not_write)?;
+    Ok((reworded, index))
+}
+
 /// Finds the comments in a root-relative file as it was at `commit`, or none
 /// for a file added since. Refuses with `FileUnreadable`, naming the file, when
 /// that version does not parse.
@@ -370,25 +418,29 @@ impl FileComments {
 
     /// Returns the comment each request matches, never reusing a comment for two
     /// requests. A named request matches by name; otherwise it takes the nearest
-    /// comment with the same text, or the unnamed comment at its line.
+    /// comment with the same text, closest pairs first, or the unnamed comment at
+    /// its line.
     pub(crate) fn match_requests(&self, requests: &[&FeedbackRequest]) -> Vec<Option<&Comment>> {
         let mut matched = vec![None; requests.len()];
         let mut taken = vec![false; self.comments.len()];
-        for (slot, request) in matched.iter_mut().zip(requests) {
-            let nearest = self
-                .comments
-                .iter()
-                .enumerate()
-                .filter(|(index, comment)| {
-                    !taken[*index]
-                        && comment.name == request.name
-                        && (request.name.is_some() || comment.text == request.text)
-                })
-                // Of two equally near comments, the earlier one wins.
-                .min_by_key(|(_, comment)| comment.line.abs_diff(request.line));
-            if let Some((index, _)) = nearest {
-                taken[index] = true;
-                *slot = Some(index);
+        let mut pairs = Vec::new();
+        for (request_index, request) in requests.iter().enumerate() {
+            for (comment_index, comment) in self.comments.iter().enumerate() {
+                if comment.name == request.name
+                    && (request.name.is_some() || comment.text == request.text)
+                {
+                    let distance = comment.line.abs_diff(request.line);
+                    pairs.push((distance, request_index, comment_index));
+                }
+            }
+        }
+        // Closest pairs go first, so an earlier request cannot take a later one's own comment.
+        // Of two equally near pairs, the earlier request, then the earlier comment, wins.
+        pairs.sort_unstable();
+        for (_, request_index, comment_index) in pairs {
+            if matched[request_index].is_none() && !taken[comment_index] {
+                taken[comment_index] = true;
+                matched[request_index] = Some(comment_index);
             }
         }
         // A comment reworded in place keeps its request, unless another request took it.
