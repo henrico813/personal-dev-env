@@ -6,11 +6,11 @@ use std::process::Command;
 use std::sync::Barrier;
 use std::thread;
 
-use common::{TempFolder, commit_all, run_git, use_test_waiting_list};
+use common::{TempFolder, commit_all, find_waiting_worktrees, run_git, use_test_waiting_list};
 use pde_comment_review::shared::ErrorCode;
 use pde_comment_review::shared::git::find_worktree_git_folder;
 use pde_comment_review::shared::review_session::{
-    FeedbackRequest, ReviewStatus, add_to_waiting_list, load, read_waiting_list, save_user_feedback,
+    FeedbackRequest, ReviewStatus, add_to_waiting_list, load, save_user_feedback,
 };
 use pde_comment_review::shared::user_feedback::{UserAnswer, UserFeedback, UserNote};
 use serde_json::{Value, json};
@@ -78,16 +78,6 @@ fn write_review_session(repo: &Path, saved_text: &str) {
 fn load_requests(repo: &Path) -> Vec<FeedbackRequest> {
     let mut review_session = load(repo).unwrap().unwrap();
     review_session.lists.remove(0).requests
-}
-
-/// Returns the worktrees on the waiting list inside `folder`, since tests that run at once share one waiting list.
-fn find_waiting_worktrees(folder: &Path) -> Vec<PathBuf> {
-    let folder = fs::canonicalize(folder).unwrap();
-    read_waiting_list()
-        .unwrap()
-        .into_iter()
-        .filter(|worktree| worktree.starts_with(&folder))
-        .collect()
 }
 
 /// `load` must refuse a file from a newer version and leave it where it is.
@@ -420,4 +410,24 @@ fn add_to_waiting_list_loses_no_worktree() {
     });
 
     assert_eq!(find_waiting_worktrees(folder.path()).len(), 40);
+}
+
+/// `save_user_feedback` must drop why the last write failed once a User Note hands the Review Session to the agent.
+/// Otherwise the user could later hear that a write failed for a list that was never written.
+#[test]
+fn user_note_drops_last_write_error() {
+    let repo = make_repo();
+    let mut failed_write = make_review_session("waiting_for_user_feedback", 1);
+    failed_write["feedback"] = json!({ "1": { "answer": "keep" } });
+    failed_write["write_error"] =
+        json!({ "code": "write_failed", "detail": "Cannot write src/lib.rs." });
+    write_review_session(repo.path(), &failed_write.to_string());
+    let requests = load_requests(repo.path());
+
+    let note = UserFeedback::Note(UserNote("Say why it locks.".to_owned()));
+    save_user_feedback(repo.path(), &requests[0], note).unwrap();
+
+    let review_session = load(repo.path()).unwrap().unwrap();
+    assert_eq!(review_session.status, ReviewStatus::UserNotesWaiting);
+    assert!(review_session.write_error.is_none());
 }
