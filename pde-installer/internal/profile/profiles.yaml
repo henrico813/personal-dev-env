@@ -21,10 +21,13 @@ apt_groups:
             # The installer builds each desktop's wallpaper player, which
             # no Ubuntu package provides.
             build-essential]
-  # The X11 headers build xwinwrap.
-  i3: [i3-wm, i3lock, polybar, feh, picom, autorandr, arandr,
+  # The X11 headers build xwinwrap. Super+q's tools open GNOME Settings
+  # and xfce4-settings' display tool, and show-when-drawn.sh runs xprop
+  # from x11-utils.
+  i3: [i3-wm, i3lock, polybar, feh, picom, autorandr,
        xfce4-power-manager, xss-lock, dex, lxappearance, cava,
        xfce4-screenshooter, x11-xserver-utils,
+       gnome-control-center, xfce4-settings, x11-utils,
        libx11-dev, libxext-dev, libxrender-dev]
   # waybar's scripts run apt's jq, because the session PATH may lack
   # Aqua's. The build tools and the mpv, Wayland and EGL headers build
