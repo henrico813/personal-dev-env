@@ -67,8 +67,8 @@ agent, unless the linking skill names someone else.
    `$` are saved as written. A rule the user words themselves skips the
    checks in step 2. If `add` refuses it, do what its message says.
 
-   For a lesson about one epic, add `epic: "KEY"` inside the braces,
-   with the epic's key. For epic ABC-12:
+   For a lesson about one project, epic or repo, add `project`, `epic`
+   or `repo` inside the braces with its name or key. For epic ABC-12:
 
        '{skill: "<skill>", epic: "ABC-12", text: ($text | rtrimstr("\n"))}'
 
