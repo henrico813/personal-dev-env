@@ -148,12 +148,17 @@ Classify every remaining ignored file in this order:
 1. Block sensitive paths before allowlisted output paths. A sensitive basename
    matches `*.key`, `*.pem`, `.env*`, `.sops`, or `secrets*`; the exact path
    `pde/user-config.yml` is also sensitive.
-2. Allow a non-sensitive file only when it is beneath rebuildable
-   build output: any `__pycache__/` or `.pytest_cache/` directory, a
-   `target/` directory next to a `Cargo.toml`, or a `.venv/` directory
-   next to a `pyproject.toml`. For `<dir>/target/` or `<dir>/.venv/`,
-   check from the worktree root with `test -f "<dir>/Cargo.toml"` or
-   `test -f "<dir>/pyproject.toml"`, using `.` for a root directory.
+2. Allow a non-sensitive file only when it is inside rebuildable build
+   output:
+   - any `__pycache__/` or `.pytest_cache/` directory
+   - a `target/` directory whose parent directory holds a `Cargo.toml`
+   - a `.venv/` directory whose parent directory holds a
+     `pyproject.toml`
+
+   Run the parent check from the worktree root. For
+   `pde-comment-review-rs/target/`, run
+   `test -f pde-comment-review-rs/Cargo.toml`. For a `target/` at the
+   worktree root, run `test -f Cargo.toml`.
 3. Allow the root `.code-comments.json` only after "Keep the owner's
    comment approvals" below has backed it up and, for a merged pull
    request, merged it.
