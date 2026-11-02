@@ -10,12 +10,12 @@ default_border pixel 2
 default_floating_border pixel 2
 hide_edge_borders smart
 
-# Colors (dracula-inspired)
+# Colors (pde everforest-dark)
 # class                 border  backgr. text    indicator child_border
-client.focused          #bd93f9 #bd93f9 #f8f8f2 #ff79c6   #bd93f9
-client.focused_inactive #44475a #44475a #f8f8f2 #44475a   #44475a
-client.unfocused        #282a36 #282a36 #bfbfbf #282a36   #282a36
-client.urgent           #ff5555 #ff5555 #f8f8f2 #ff5555   #ff5555
+client.focused          #7fbbb3 #7fbbb3 #2d353b #d699b6   #7fbbb3
+client.focused_inactive #475258 #475258 #d3c6aa #475258   #475258
+client.unfocused        #232a2e #232a2e #859289 #232a2e   #232a2e
+client.urgent           #e67e80 #e67e80 #2d353b #e67e80   #e67e80
 
 # ---------- WORKSPACE SWITCHING ----------
 bindsym $mod+1 workspace number 1
@@ -54,12 +54,20 @@ bindsym $mod+Ctrl+comma move container to output left
 bindsym $mod+Ctrl+period move container to output right
 
 # ---------- APPLICATIONS ----------
-bindsym $mod+q exec --no-startup-id rofi -show drun -show-icons
+# Super+q lists the apps and the four desktop tools; each tool also has a key.
+bindsym $mod+q exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh
 bindsym $mod+Tab exec --no-startup-id rofi -show window -show-icons
 bindsym $mod+e exec thunar
 bindsym $mod+Shift+s exec xfce4-screenshooter
-bindsym $mod+x exec --no-startup-id ~/.config/pde-desktop/scripts/powermenu.sh
-bindsym $mod+n exec --no-startup-id ~/.config/pde-desktop/scripts/wifi-menu.sh
+bindsym $mod+n exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh wifi
+bindsym $mod+b exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh bluetooth
+bindsym $mod+p exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh displays
+bindsym $mod+x exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh power
+# Notifications: close, close all, bring back the last one, open actions.
+bindsym $mod+d exec --no-startup-id dunstctl close
+bindsym $mod+Shift+d exec --no-startup-id dunstctl close-all
+bindsym $mod+u exec --no-startup-id dunstctl history-pop
+bindsym $mod+o exec --no-startup-id dunstctl context
 
 # ---------- WINDOW MANAGEMENT ----------
 bindsym $mod+Shift+q kill
@@ -90,8 +98,7 @@ bindsym $mod+Shift+Down move down
 bindsym $mod+Shift+Up move up
 bindsym $mod+Shift+Right move right
 
-# Split
-bindsym $mod+b split h
+# Split (Super+b opens Bluetooth, so split h has no key)
 bindsym $mod+v split v
 
 # Layout
@@ -166,7 +173,7 @@ exec --no-startup-id dunst
 exec --no-startup-id lxpolkit
 
 # Screen lock on idle
-exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock -c 282a36
+exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock -c 2d353b
 
 # ---------- WINDOW RULES ----------
 # Float specific windows
@@ -174,7 +181,12 @@ for_window [class="Thunar" title="File Operation Progress"] floating enable
 for_window [class="Pavucontrol"] floating enable
 for_window [class="Nm-connection-editor"] floating enable
 for_window [class="Xfce4-power-manager-settings"] floating enable
-for_window [class="Arandr"] floating enable
+for_window [class="Xfce4-display-settings"] floating enable
+# Hidden until their first draw; show-when-drawn.sh shows them. Their dialogs,
+# such as network details or "keep this setup?", open as usual.
+# Displays' title match is English-only.
+for_window [class="pde-displays" title="^Display$"] floating enable, move scratchpad
+for_window [class="(?i)gnome-control-center" window_type="normal"] floating enable, resize set 1000 px 700 px, move scratchpad
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="task_dialog"] floating enable
 

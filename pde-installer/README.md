@@ -107,8 +107,9 @@ terminal key. The installer writes that file once and never changes it.
 lxappearance stays. Edits to the other desktop files are lost on the next
 install.
 
-To join a Wi-Fi network, press Super+n or click the Wi-Fi status in polybar,
-then pick a network in rofi. A new network asks for its password.
+Super+q lists the apps and four desktop tools: Wi-Fi (Super+n), Bluetooth
+(Super+b), Displays (Super+p) and Power (Super+x). Wi-Fi and Bluetooth open
+GNOME Settings at that page, and Displays opens Xfce's display settings.
 
 To leave notifications to dunst, the installer hides xfce4-notifyd's autostart
 entry. That entry applies to every session, so the plain Xubuntu (Xfce) session
