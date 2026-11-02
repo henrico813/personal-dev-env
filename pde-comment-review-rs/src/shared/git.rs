@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::{Error, ErrorCode};
 
 /// Holds a resolved commit hash rather than a movable branch name.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommitId(String);
 
 impl CommitId {
@@ -50,8 +50,8 @@ pub fn find_branch_start(dir: &Path) -> Result<CommitId, Error> {
     Ok(CommitId(read_text(output)?.trim().to_owned()))
 }
 
-/// Lists changed paths relative to the repository root, including untracked files.
-/// Deleted, staged and unstaged paths count too.
+/// Lists paths that differ from `base` on disk, in the index or in HEAD,
+/// relative to the repository root, including untracked files.
 pub fn list_changed_files(dir: &Path, base: &CommitId) -> Result<Vec<PathBuf>, Error> {
     let root = find_root(dir)?;
     // Touched but unchanged files may be listed to keep the index read-only.
@@ -66,6 +66,31 @@ pub fn list_changed_files(dir: &Path, base: &CommitId) -> Result<Vec<PathBuf>, E
             "--",
         ],
     )?;
+    let staged = run_git(
+        &root,
+        &[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--cached",
+            base.as_str(),
+            "--",
+        ],
+    )?;
+    // A commit can hold a change that the disk copy and the index put back.
+    let committed = run_git(
+        &root,
+        &[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            base.as_str(),
+            "HEAD",
+            "--",
+        ],
+    )?;
     let untracked = run_git(
         &root,
         &[
@@ -77,7 +102,7 @@ pub fn list_changed_files(dir: &Path, base: &CommitId) -> Result<Vec<PathBuf>, E
         ],
     )?;
     let mut files = BTreeSet::new();
-    for output in [tracked, untracked] {
+    for output in [tracked, staged, committed, untracked] {
         for name in output
             .split(|byte| *byte == 0)
             .filter(|name| !name.is_empty())
@@ -146,10 +171,18 @@ pub fn read_file_at_commit(
     commit: &CommitId,
     file: &Path,
 ) -> Result<Option<String>, Error> {
-    let root = find_root(dir)?;
+    read_file_at_commit_from_root(&find_root(dir)?, commit, file)
+}
+
+/// Reads like [`read_file_at_commit`] from `root`, the worktree's top folder.
+pub(crate) fn read_file_at_commit_from_root(
+    root: &Path,
+    commit: &CommitId,
+    file: &Path,
+) -> Result<Option<String>, Error> {
     validate_file(file)?;
     let entry = run_git(
-        &root,
+        root,
         &[
             OsStr::new("ls-tree"),
             OsStr::new("-z"),
@@ -163,9 +196,12 @@ pub fn read_file_at_commit(
     }
     let mut object = OsString::from(format!("{}:", commit.as_str()));
     object.push(file);
-    let output = run_git(&root, &[OsStr::new("show"), &object])?;
+    let output = run_git(root, &[OsStr::new("show"), &object])?;
     read_text(output).map(Some)
 }
+
+/// Names the version of a file on disk.
+pub(crate) const ON_DISK: &str = "on disk";
 
 /// Holds one version of a root-relative file.
 pub(crate) struct FileVersion {
@@ -179,22 +215,17 @@ pub(crate) struct FileVersion {
 /// and in HEAD that Git would store differently from its version at `base`.
 /// Reads only, so the index is never refreshed.
 pub(crate) fn read_changed_versions(
-    dir: &Path,
+    root: &Path,
     base: &CommitId,
     file: &Path,
 ) -> Result<Vec<FileVersion>, Error> {
-    let root = find_root(dir)?;
     validate_file(file)?;
-    let disk = match fs::read(root.join(file)) {
-        Ok(bytes) => Some(bytes),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(error) => return Err(unreadable_version(file, "on disk", error)),
-    };
+    let disk = read_disk_copy(root, file)?;
     // hash-object applies the file's line-end rules, such as core.autocrlf, and saves nothing without -w.
     let disk_id = match disk {
         Some(_) => {
             let output = run_git(
-                &root,
+                root,
                 &[
                     OsStr::new("hash-object"),
                     OsStr::new("--"),
@@ -205,26 +236,34 @@ pub(crate) fn read_changed_versions(
         }
         None => None,
     };
-    let mut seen = vec![find_tree_blob(&root, base.as_str(), file)?];
+    let mut seen = vec![find_tree_blob(root, base.as_str(), file)?];
     let mut versions = Vec::new();
     if !seen.contains(&disk_id) {
-        versions.push(to_version(file, "on disk", disk)?);
+        versions.push(to_version(file, ON_DISK, disk)?);
         seen.push(disk_id);
     }
-    let staged_id = find_staged_blob(&root, file)?;
-    let head_id = find_tree_blob(&root, "HEAD", file)?;
+    let staged_id = find_staged_blob(root, file)?;
+    let head_id = find_tree_blob(root, "HEAD", file)?;
     for (place, id) in [("in the index", staged_id), ("in HEAD", head_id)] {
         if seen.contains(&id) {
             continue;
         }
         let bytes = match &id {
-            Some(id) => Some(run_git(&root, &["cat-file", "blob", id])?),
+            Some(id) => Some(run_git(root, &["cat-file", "blob", id])?),
             None => None,
         };
         versions.push(to_version(file, place, bytes)?);
         seen.push(id);
     }
     Ok(versions)
+}
+
+/// Reads the copy of a root-relative file on disk, where `root` is the
+/// worktree's top folder.
+pub(crate) fn read_file_on_disk(root: &Path, file: &Path) -> Result<FileVersion, Error> {
+    validate_file(file)?;
+    let bytes = read_disk_copy(root, file)?;
+    to_version(file, ON_DISK, bytes)
 }
 
 /// Returns true when `commit` is HEAD or one of its ancestors.
@@ -311,6 +350,14 @@ fn read_entries(output: &[u8], file: &Path) -> Vec<Vec<String>> {
         .collect()
 }
 
+fn read_disk_copy(root: &Path, file: &Path) -> Result<Option<Vec<u8>>, Error> {
+    match fs::read(root.join(file)) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(unreadable_version(file, ON_DISK, error)),
+    }
+}
+
 fn to_version(
     file: &Path,
     place: &'static str,
@@ -330,7 +377,8 @@ fn unreadable_version(file: &Path, place: &str, error: impl std::fmt::Display) -
     }
 }
 
-fn find_root(dir: &Path) -> Result<PathBuf, Error> {
+/// Returns the worktree's top folder, which the readers that take `root` need.
+pub(crate) fn find_root(dir: &Path) -> Result<PathBuf, Error> {
     let output = run_git(dir, &["rev-parse", "--show-toplevel"])?;
     Ok(read_path(output))
 }

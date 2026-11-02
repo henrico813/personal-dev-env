@@ -1,5 +1,7 @@
 //! This module runs step 2, which fails a branch that rewords an approved
-//! comment or removes one whose code stays, and writes no file. Read the
+//! comment, removes one whose code stays, or breaks a style rule on a changed
+//! line, and writes no file. Each language's differences live in
+//! `language_rules`, reached only through `comments`. Read the
 //! `check_comments(dir, base)` function to understand the module.
 
 use std::collections::BTreeSet;
@@ -7,14 +9,15 @@ use std::path::{Path, PathBuf};
 
 use super::{NextStep, StepOutput};
 use crate::shared::approvals::{self, Approvals, DecisionMatch};
-use crate::shared::comment_rules::{Finding, Rule};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
+use crate::shared::style_rules::{Finding, Outcome, Rule, StyleCheck, TextAtBase};
 use crate::shared::{Error, ErrorCode};
 
-/// Returns step 2's failures for changes since `base`, or since the branch
-/// start when it is `None`. Refuses a `base` that HEAD does not build on, and
-/// a changed file that does not parse now or at `base`, naming the file.
+/// Returns step 2's failures and reported findings for changes since `base`,
+/// or since the branch start when it is `None`. Refuses a `base` that HEAD
+/// does not build on, and a changed file that does not parse now or at
+/// `base`, naming the file.
 pub fn check_comments(
     dir: &Path,
     base: Option<CommitId>,
@@ -36,6 +39,7 @@ pub fn check_comments(
         None => git::find_branch_start(dir)?,
     };
     let approvals = approvals::load(dir)?;
+    let root = git::find_root(dir)?;
     let changed: BTreeSet<PathBuf> = git::list_changed_files(dir, &base)?.into_iter().collect();
     let files: BTreeSet<&Path> = changed
         .iter()
@@ -43,7 +47,10 @@ pub fn check_comments(
         .chain(approvals.files())
         .collect();
     let mut failures = Vec::new();
+    let mut reported = Vec::new();
     let mut unsupported = Vec::new();
+    let mut changed_files = Vec::new();
+    let mut at_base = TextAtBase::default();
     for file in files {
         if !comments::is_supported(file) {
             if changed.contains(file) {
@@ -52,12 +59,18 @@ pub fn check_comments(
             continue;
         }
         // Commits and the index ship too, so each version that differs from `base` is checked.
-        let versions = git::read_changed_versions(dir, &base, file)?;
+        let versions = git::read_changed_versions(&root, &base, file)?;
         if versions.is_empty() {
             continue;
         }
-        let before = comments::read_comments_at_commit(dir, &base, file)?;
+        let before = comments::read_comments_at_commit(&root, &base, file)?;
+        at_base.add(&before, !root.join(file).exists());
+        changed_files.push((file, versions, before));
+    }
+    let style_check = StyleCheck::new(&approvals, at_base);
+    for (file, versions, before) in changed_files {
         for version in versions {
+            let is_on_disk = version.place == git::ON_DISK;
             let now = comments::read_version_comments(file, version)?;
             let found = find_changed_approved_texts(&approvals, &now, &before)
                 .into_iter()
@@ -65,6 +78,16 @@ pub fn check_comments(
             for failure in found {
                 if !failures.contains(&failure) {
                     failures.push(failure);
+                }
+            }
+            // Git's diff numbers only the disk copy's lines, and agents edit that copy.
+            if is_on_disk {
+                let changed_lines = git::list_changed_lines(dir, &base, file)?;
+                for finding in style_check.find_file_style_issues(&now, &changed_lines) {
+                    match finding.outcome {
+                        Outcome::Fails => failures.push(finding),
+                        Outcome::Reported(_) => reported.push(finding),
+                    }
                 }
             }
         }
@@ -77,6 +100,7 @@ pub fn check_comments(
     Ok(StepOutput {
         result: CheckResult {
             failures,
+            reported,
             unsupported,
         },
         next,
@@ -87,6 +111,8 @@ pub fn check_comments(
 #[derive(Debug)]
 pub struct CheckResult {
     pub failures: Vec<Finding>,
+    /// Lists the style findings the agent reports but need not fix.
+    pub reported: Vec<Finding>,
     /// Lists changed files no language rule reads, whose comments go unchecked.
     pub unsupported: Vec<PathBuf>,
 }
@@ -109,6 +135,8 @@ fn find_changed_approved_texts(
                 name: comment.name.clone(),
                 line: comment.line,
                 rule: Rule::Approved,
+                outcome: Outcome::Fails,
+                detail: None,
             });
         }
     }
@@ -139,6 +167,8 @@ fn find_removed_approved_comments(
                 name: Some(name.clone()),
                 line,
                 rule: Rule::ApprovedRemoved,
+                outcome: Outcome::Fails,
+                detail: None,
             });
         }
     }
