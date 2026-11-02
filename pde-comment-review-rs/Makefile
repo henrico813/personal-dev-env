@@ -8,7 +8,7 @@ check:
 	cargo clippy --all-targets -- -D warnings
 	cargo test
 
-# Opens the review screen on a made-up review. It saves nothing.
+# Opens the Review Screen on a made-up Review Session. It saves nothing.
 screen:
 	cargo run --quiet --example made_up_review
 

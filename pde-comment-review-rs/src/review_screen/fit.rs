@@ -1,5 +1,7 @@
-//! Fits text to the screen's width. Text is measured and cut by what the
-//! terminal draws as one character, so 面 or ❤️ counts as two columns.
+//! This module fits text to the screen's width. Text is measured and cut by
+//! what the terminal draws as one character, so 面 or ❤️ counts as two
+//! columns. Read the `fold(line, width)` and `escape_control_characters(text)`
+//! functions to understand the module.
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -105,8 +107,9 @@ pub(super) fn escape_control_characters(text: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Without it, a long word, a wide character or code's spaces could run
-    /// past a 40-column phone screen or show text the file does not hold.
+    /// `fold` must keep every character, spaces included, in rows no wider
+    /// than the width. Otherwise a long word or a wide character runs past
+    /// the phone screen, or code shows text the file does not hold.
     #[test]
     fn fold_keeps_every_character_within_width() {
         let line =
@@ -127,17 +130,19 @@ mod tests {
         assert_eq!(joined, line);
     }
 
-    /// Without it, an agent's comment holding Esc codes could clear the screen
-    /// or show text the file does not hold.
+    /// `escape_control_characters` must write out Esc and text direction
+    /// characters. Otherwise an agent's comment could clear the screen or
+    /// reorder its text.
     #[test]
-    fn agent_text_cannot_send_terminal_codes() {
+    fn escape_control_characters_writes_out_terminal_codes() {
         let escaped = escape_control_characters("a\x1b[2Jb\u{202e}c\u{85}d\u{61c}e");
 
         assert_eq!(escaped, "a^[[2Jb\\u202ec\\u0085d\\u061ce");
     }
 
-    /// Without it, a heart drawn two columns wide counts as one, and a row of
-    /// them runs past the phone screen or splits a heart in two.
+    /// `fold` must count an emoji sequence as the two columns the terminal
+    /// draws. Otherwise a row of hearts runs past the phone screen or splits a
+    /// heart in two.
     #[test]
     fn fold_counts_emoji_sequences_as_drawn() {
         let heart = "\u{2764}\u{fe0f}";
