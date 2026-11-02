@@ -133,8 +133,9 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   replaces the branch rule below, and `msg.titlePrefix` allows a prefix
   before the commit type. Under a pattern, the branch starts with the
   ticket key the plan names, in the form the pattern asks for, and
-  agents ask the user when the plan names none. Vibe keys and run
-  folders still use `planner key`.
+  agents ask the user when the plan names none. The plan's own key is
+  never the ticket key. Vibe keys and run folders still use
+  `planner key`.
 - Name a new branch `<type>/<words>`: a `git-messages` commit type or
   `vibe`, then lowercase letters and digits joined by single hyphens,
   at most 48 characters.
