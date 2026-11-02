@@ -25,7 +25,8 @@ Follow the repository's documented style first. Otherwise use these defaults.
    Report only checks actually run.
 6. Leave out branch-only commit hashes, meaningless test counts, private
    tracker references, unexplained project terms, and AI attribution.
-7. Review all text for plain direct English and AI slop: would a new reader
+7. Follow [plain-direct-english](../plain-direct-english/SKILL.md) and
+   review all text for AI slop: would a new reader
    understand every term, does each sentence say something specific, are the
    results real, and can it be shorter?
 

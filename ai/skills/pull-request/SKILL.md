@@ -15,8 +15,9 @@ steps' defaults.
 1. Push or open/update only when the user asks. Merge only after explicit user
    approval of the shown squash message. Do not rewrite another person's commits.
    Never force push except `--force-with-lease`. Do not add AI attribution.
-2. Load `git-messages` before writing a title or description. Review generated
-   text for plain English and specific, real claims.
+2. Load `git-messages` before writing a title or description. Load and
+   follow [plain-direct-english](../plain-direct-english/SKILL.md) for
+   that text too, and review it for specific, real claims.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
    covering the change. If any fail, stop and report them; never call a failure
    expected or correct in PR text.
