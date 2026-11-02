@@ -23,4 +23,6 @@ pub enum ErrorCode {
     CheckFailed,
     WaitingForUserFeedback,
     WriteNotFinished,
+    NothingToWrite,
+    WriteFailed,
 }

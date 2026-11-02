@@ -186,9 +186,11 @@ name = "pde-comment-review"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "libc",
  "regex",
  "serde",
  "serde_json",
+ "signal-hook",
  "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-python",
