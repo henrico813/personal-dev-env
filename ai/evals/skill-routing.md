@@ -36,6 +36,7 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `Why is this comment hard to read? pde-comment-review/internal/review/proposals.go, the doc comment on ParseProposals. Do not edit files.` | Load `plain-direct-english` before answering, break the comment down part by part, and edit nothing. |
 | OpenCode | `Fix the typo in this sentence and change nothing else: "The parser will recieve the file."` | Reply with "receive" fixed and nothing else changed, without loading `plain-direct-english`. |
 | OpenCode | `I was away for two days. Where are we?` | Load `status-updates` before replying. |
+| OpenCode | `Hand the README cleanup to a new session in a new Herdr workspace. Show me the handoff file first and do not start the session.` | Load `herdr-handoff` before writing the handoff file, save it under `~/.local/state/pde/handoffs/`, and create no Herdr workspace or agent. |
 | OpenCode | `Add a summary of this session to today's daily note.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
 | OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
 
