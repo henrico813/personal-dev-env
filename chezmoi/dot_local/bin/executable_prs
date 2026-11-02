@@ -206,6 +206,7 @@ pick_pr() {
         --margin=0 \
         --padding=0 \
         --no-info \
+        --no-separator \
         --prompt='prs ' \
         --header=$'l open  d diff  c comments  / search\nJ/K preview  p hide  r reload  q quit' \
         --preview="$cmd _meta {1} {2}" \
