@@ -20,12 +20,15 @@ steps' defaults.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
    covering the change. If any fail, stop and report them; never call a failure
    expected or correct in PR text.
-4. Before opening a PR for review-ready work, and before Merge step 5, deploy
-   the change where it runs and check the changed behavior itself, not only
-   that nothing else broke. A deploy that never runs the changed files, such
-   as an install on a machine that does not use them, does not count. Send
-   the evidence, such as results or screenshots, with the request. If nothing
-   can run the change yet, say so in your report and do not send the request.
+4. Before opening a PR, and before Merge step 5, deploy the change where it
+   runs and check the changed behavior itself, not only that nothing else
+   broke. A deploy that never runs the changed files, such as an install on a
+   machine that does not use them, does not count. Send the evidence, such as
+   results or screenshots, with the request. A skill or prompt runs when an
+   agent follows it: install it and run it once. If the change only runs
+   after merge, such as CI config, or never runs, such as docs, say which in
+   Testing and how you checked it. If the change runs somewhere you cannot
+   reach yet, say so in your report and do not send the request.
 
 ## Discover
 
