@@ -50,11 +50,8 @@ pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, 
     }
     let mut rewritten = Vec::new();
     for (file, file_edits) in edits_by_file {
-        if let Some(new_contents) = rewrite_file(dir, file, &file_edits)? {
-            rewritten.push(RewrittenFile {
-                path: file.to_path_buf(),
-                new_contents,
-            });
+        if let Some(rewritten_file) = rewrite_file(dir, file, &file_edits)? {
+            rewritten.push(rewritten_file);
         }
     }
     Ok(rewritten)
@@ -148,6 +145,58 @@ pub(crate) fn read_version_comments(
 /// it is absent. `root` is the worktree's top folder.
 pub(crate) fn read_comments_on_disk(root: &Path, file: &Path) -> Result<FileComments, Error> {
     read_version_comments(file, git::read_file_on_disk(root, file)?)
+}
+
+/// Reads a root-relative file as it is on disk and takes the comment each
+/// request asked about. The file keeps its own line ends, so each comment's
+/// byte range fits it. A named request takes the comment with its name. An
+/// unnamed one takes only the unnamed comment now at its saved line, never a
+/// same-text comment elsewhere. A request gets `None` when that comment is gone
+/// or its text, with `\r\n` read as `\n`, differs, and step 7 then refuses.
+/// Refuses with `FileUnreadable` when the file does not parse.
+pub(crate) fn match_requests_on_disk(
+    root: &Path,
+    file: &Path,
+    requests: &[&FeedbackRequest],
+) -> Result<Vec<Option<Comment>>, Error> {
+    let Some(source) = git::read_file_on_disk(root, file)?.text else {
+        // A gone file holds no answered comment, so its requests count as changed.
+        return Ok(requests.iter().map(|_| None).collect());
+    };
+    let found = find_comments(file, &source).map_err(|error| Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!(
+            "Cannot read the comments in {}, since {error}.",
+            file.display()
+        ),
+    })?;
+    let matched = match_at_saved_line(&found, requests);
+    let mut comments: Vec<Option<Comment>> = found.into_iter().map(Some).collect();
+    Ok(matched
+        .into_iter()
+        .zip(requests)
+        .map(|(slot, request)| {
+            let comment = comments[slot?].take()?;
+            // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
+            (comment.text.replace("\r\n", "\n") == request.text).then_some(comment)
+        })
+        .collect())
+}
+
+/// Returns the new text with `\r\n` line ends when the old comment had any, or
+/// the old text as it is when the words did not change.
+pub(crate) fn match_line_ends(
+    new_text: String,
+    request: &FeedbackRequest,
+    comment: &Comment,
+) -> String {
+    if new_text == request.text {
+        comment.text.clone()
+    } else if comment.text.contains("\r\n") {
+        new_text.replace('\n', "\r\n")
+    } else {
+        new_text
+    }
 }
 
 /// Finds the comments in a root-relative file as it was at `commit`, or none
@@ -294,6 +343,9 @@ pub struct CommentEdit {
 #[derive(Debug)]
 pub struct RewrittenFile {
     pub path: PathBuf,
+    /// The contents the rewrite started from, so a write can refuse a file
+    /// that changed since.
+    pub(crate) old_contents: String,
     pub new_contents: String,
 }
 
@@ -332,6 +384,7 @@ impl FileComments {
                         && comment.name == request.name
                         && (request.name.is_some() || comment.text == request.text)
                 })
+                // Of two equally near comments, the earlier one wins.
                 .min_by_key(|(_, comment)| comment.line.abs_diff(request.line));
             if let Some((index, _)) = nearest {
                 taken[index] = true;
@@ -644,7 +697,11 @@ fn unname_shared_names(comments: &mut [Comment]) {
 }
 
 /// Returns one file's new contents, or `None` when its edits change nothing.
-fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Option<String>, Error> {
+fn rewrite_file(
+    dir: &Path,
+    file: &Path,
+    edits: &[&CommentEdit],
+) -> Result<Option<RewrittenFile>, Error> {
     let path = dir.join(file);
     let source = fs::read_to_string(&path).map_err(|error| refuse_unreadable(file, error))?;
     let comments = find_comments(file, &source).map_err(|error| refuse_unreadable(file, error))?;
@@ -733,7 +790,11 @@ fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Optio
     if new_code != old_code {
         return Err(would_change_code());
     }
-    Ok(Some(finished))
+    Ok(Some(RewrittenFile {
+        path: file.to_path_buf(),
+        old_contents: source,
+        new_contents: finished,
+    }))
 }
 
 fn refuse_unreadable(file: &Path, error: impl fmt::Display) -> Error {
@@ -769,12 +830,12 @@ fn check_reword(
             "A tool would read the new text.",
         ));
     }
-    // Python reads a carriage return as a line end, and Rust rejects one in a doc comment.
-    if new_text.contains(['\r', '\0']) {
+    // Python reads a lone carriage return as a line end, and Rust rejects one in a doc comment.
+    if new_text.replace("\r\n", "\n").contains(['\r', '\0']) {
         return Err(refuse(
             ErrorCode::WouldNotWrite,
             file,
-            "The new text holds a carriage return or a NUL.",
+            "The new text holds a carriage return outside a line end, or a NUL.",
         ));
     }
     // rustc rejects these in a comment, since they make code read unlike how it runs.
@@ -862,6 +923,25 @@ fn read_code_shape<'source>(
         nodes.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
     }
     Ok(shape)
+}
+
+/// Returns the index of the comment each request matches, by name or, for an
+/// unnamed request, only the unnamed comment at its saved line. No comment goes
+/// to two requests.
+fn match_at_saved_line(comments: &[Comment], requests: &[&FeedbackRequest]) -> Vec<Option<usize>> {
+    let mut taken = vec![false; comments.len()];
+    requests
+        .iter()
+        .map(|request| {
+            let index = comments.iter().enumerate().position(|(index, comment)| {
+                !taken[index]
+                    && comment.name == request.name
+                    && (request.name.is_some() || comment.line == request.line)
+            })?;
+            taken[index] = true;
+            Some(index)
+        })
+        .collect()
 }
 
 fn find_file_comments(
