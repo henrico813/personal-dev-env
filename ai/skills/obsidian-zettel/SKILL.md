@@ -54,3 +54,16 @@ structure.
 ## Completion Report
 
 Report the note path and one sentence summarizing what the note preserves.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that you still never change a vault note with a `nobs` command.
+When the user corrects how you pick the title or a topic, write the
+note or report the result, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`obsidian-zettel`, and offer once to save the correction as a lesson.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
