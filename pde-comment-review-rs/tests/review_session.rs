@@ -6,17 +6,18 @@ use std::process::Command;
 use std::sync::Barrier;
 use std::thread;
 
-use common::TempFolder;
+use common::{TempFolder, commit_all, run_git, use_test_waiting_list};
 use pde_comment_review::shared::ErrorCode;
 use pde_comment_review::shared::git::find_worktree_git_folder;
 use pde_comment_review::shared::review_session::{
-    FeedbackRequest, ReviewStatus, load, save_user_feedback,
+    FeedbackRequest, ReviewStatus, add_to_waiting_list, load, read_waiting_list, save_user_feedback,
 };
 use pde_comment_review::shared::user_feedback::{UserAnswer, UserFeedback, UserNote};
 use serde_json::{Value, json};
 
-/// Makes a new Git repository, standing in for the user's worktree.
+/// Makes a new Git repository, standing in for the user's worktree, and keeps the waiting list in the build folder.
 fn make_repo() -> TempFolder {
+    use_test_waiting_list();
     let folder = TempFolder::new();
     let output = Command::new("git")
         .args(["init", "--quiet"])
@@ -77,6 +78,16 @@ fn write_review_session(repo: &Path, saved_text: &str) {
 fn load_requests(repo: &Path) -> Vec<FeedbackRequest> {
     let mut review_session = load(repo).unwrap().unwrap();
     review_session.lists.remove(0).requests
+}
+
+/// Returns the worktrees on the waiting list inside `folder`, since tests that run at once share one waiting list.
+fn find_waiting_worktrees(folder: &Path) -> Vec<PathBuf> {
+    let folder = fs::canonicalize(folder).unwrap();
+    read_waiting_list()
+        .unwrap()
+        .into_iter()
+        .filter(|worktree| worktree.starts_with(&folder))
+        .collect()
 }
 
 /// `load` must refuse a file from a newer version and leave it where it is.
@@ -282,4 +293,131 @@ fn outdated_screen_cannot_answer_a_changed_request() {
         assert_eq!(error.code, ErrorCode::RequestChanged, "{case}");
         assert_eq!(fs::read(&review_file).unwrap(), saved_before, "{case}");
     }
+}
+
+/// `save_user_feedback` must take the worktree off the waiting list once every Feedback Request has User Feedback and any of it is a User Note, and not before.
+/// Otherwise Ctrl+b e would offer a Review Session the agent must act on, or lose one whose User Feedback step 7 has yet to write.
+#[test]
+fn last_user_note_takes_worktree_off_list() {
+    let cases = [
+        (
+            "user-note-first",
+            UserFeedback::Note(UserNote("Say why it locks.".to_owned())),
+            false,
+        ),
+        ("no-user-note", UserFeedback::Answer(UserAnswer::Cut), true),
+    ];
+    for (case, first_feedback, listed_after_last) in cases {
+        let repo = make_repo();
+        write_review_session(
+            repo.path(),
+            &make_review_session("waiting_for_user_feedback", 2).to_string(),
+        );
+        // Step 5 put the worktree on the waiting list when it sent the list.
+        add_to_waiting_list(repo.path()).unwrap();
+        let requests = load_requests(repo.path());
+
+        // The user gives User Feedback on the first of two Feedback Requests, then the last.
+        save_user_feedback(repo.path(), &requests[0], first_feedback).unwrap();
+        let listed_after_first = !find_waiting_worktrees(repo.path()).is_empty();
+        save_user_feedback(
+            repo.path(),
+            &requests[1],
+            UserFeedback::Answer(UserAnswer::Keep),
+        )
+        .unwrap();
+
+        assert!(listed_after_first, "{case}");
+        let listed = !find_waiting_worktrees(repo.path()).is_empty();
+        assert_eq!(listed, listed_after_last, "{case}");
+    }
+}
+
+/// `read_waiting_list` must skip a worktree the user removed while its Review Session waited.
+/// Otherwise Ctrl+b e would keep offering a Review Session that no command can drop.
+#[test]
+fn read_waiting_list_skips_removed_worktree() {
+    let repo = make_repo();
+    commit_all(repo.path());
+    run_git(repo.path(), &["worktree", "add", "--quiet", "linked"]);
+    let linked = repo.path().join("linked");
+    add_to_waiting_list(repo.path()).unwrap();
+    add_to_waiting_list(&linked).unwrap();
+
+    // The user removes the linked worktree while its Review Session waits.
+    run_git(repo.path(), &["worktree", "remove", "linked"]);
+
+    let root = fs::canonicalize(repo.path()).unwrap();
+    assert_eq!(find_waiting_worktrees(repo.path()), [root]);
+}
+
+/// `read_waiting_list` must return each worktree once, by its top folder, however often and from wherever it was added.
+/// Otherwise the Review Session Picker would offer one Review Session twice.
+#[test]
+fn read_waiting_list_returns_each_worktree_once() {
+    let repo = make_repo();
+    let subfolder = repo.path().join("src");
+    fs::create_dir(&subfolder).unwrap();
+
+    add_to_waiting_list(repo.path()).unwrap();
+    add_to_waiting_list(&subfolder).unwrap();
+
+    let root = fs::canonicalize(repo.path()).unwrap();
+    assert_eq!(find_waiting_worktrees(repo.path()), [root]);
+}
+
+/// `add_to_waiting_list` must keep a listed worktree it cannot reach while another worktree adds itself.
+/// Otherwise a worktree that was briefly out of reach, such as on a drive that is not mounted, would leave Ctrl+b e for good.
+#[test]
+fn add_to_waiting_list_keeps_unreachable_worktree() {
+    use_test_waiting_list();
+    let folder = TempFolder::new();
+    run_git(folder.path(), &["init", "--quiet", "first"]);
+    run_git(folder.path(), &["init", "--quiet", "second"]);
+    let first = folder.path().join("first");
+    add_to_waiting_list(&first).unwrap();
+
+    // The first worktree is out of reach while the second adds itself, then comes back.
+    let away = folder.path().join("away");
+    fs::rename(&first, &away).unwrap();
+    add_to_waiting_list(&folder.path().join("second")).unwrap();
+    fs::rename(&away, &first).unwrap();
+
+    let real_folder = fs::canonicalize(folder.path()).unwrap();
+    assert_eq!(
+        find_waiting_worktrees(folder.path()),
+        [real_folder.join("first"), real_folder.join("second")]
+    );
+}
+
+/// `add_to_waiting_list` must keep every worktree when several worktrees add to the waiting list at once.
+/// Otherwise Ctrl+b e would not offer a Review Session that waits for the user.
+#[test]
+fn add_to_waiting_list_loses_no_worktree() {
+    use_test_waiting_list();
+    let folder = TempFolder::new();
+    let worktrees: Vec<PathBuf> = (0..40)
+        .map(|number| {
+            let name = format!("worktree-{number}");
+            run_git(folder.path(), &["init", "--quiet", &name]);
+            folder.path().join(name)
+        })
+        .collect();
+    let start = Barrier::new(2);
+
+    // Each thread opens its own lock, which Linux treats like a second process.
+    // The two threads start together and each adds 20 worktrees.
+    thread::scope(|scope| {
+        for half in worktrees.chunks(20) {
+            let start = &start;
+            scope.spawn(move || {
+                start.wait();
+                for worktree in half {
+                    add_to_waiting_list(worktree).unwrap();
+                }
+            });
+        }
+    });
+
+    assert_eq!(find_waiting_worktrees(folder.path()).len(), 40);
 }
