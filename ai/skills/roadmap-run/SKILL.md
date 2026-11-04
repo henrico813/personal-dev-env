@@ -228,6 +228,9 @@ entries parked.
   Below it, keep at most 19 lines: agents running and their report
   files, results you have not read, and open questions. A new
   session resumes from that file, the plan and the rules file.
+- When your context grows past about 150k tokens, or after it is
+  summarized, use the `herdr-handoff` skill to offer the user a new
+  session. Offer once.
 
 ## When something goes wrong
 
@@ -236,6 +239,12 @@ duplicate agents after a restart, agents sharing a scratch folder, a
 lint failure that did not stop a script, a moved base commit, a
 stale approval that fails the comment checker, work done after the
 PRs opened, and a cloud model that hits a limit.
+
+Each of your turns re-reads your whole context. When you need more
+than two commands or file reads to find why something failed or
+changed, hand that search to a new agent. Brief it as prompts.md's
+opening says, and read only its report file. The checks this skill
+tells you to do yourself stay with you.
 
 ## Finishing
 
