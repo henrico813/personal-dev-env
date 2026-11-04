@@ -10,10 +10,11 @@ run the lines after a failed one by hand.
 ## Contents
 
 - Check the comment-review file
+- Write a design digest
 - Set up a PR's run folder
 - Build the PR
 - Apply a fix round
-- Plant a bug
+- Put back the bugs
 - Ship
 - Push a later round
 - Print a PR's status line
@@ -39,6 +40,49 @@ for r in '<repository root>'; do
 done
 exit $rc
 ```
+
+## Write a design digest
+
+Before a PR's first planner starts, write its design digest in the
+run's shared folder, beside `rules.md`. A script writes it, so it
+drops no passage that names a term. List every design note, the
+design-edits note among them, and each term the PR adds or changes,
+such as a file, type, function, command, flag or error code. Name
+each section to copy whole, such as the Dictionary:
+
+```sh
+G='<shared folder>/design-<PR name>.md'
+E='<design-edits note, or the one design note>'
+set -- '<design note>' '<design note>'
+printf '%s\n' '<term>' '<term>' > "$G.terms" || exit 1
+printf '%s\n' 'Dictionary' > "$G.sections" || exit 1
+rg -n -F -C 2 --heading -f "$G.terms" -- "$@" > "$G.passages" ||
+  { echo "no passage matched, or a note is missing"; exit 1; }
+# Copy each design-edits entry that a matched passage links to.
+link='\[\[([^]|#]*)#([^]|\\]+)'
+rg -o -N --no-filename -r '$1#$2' "$link" "$G.passages" |
+  awk -F '#' -v e="$(basename "$E" .md)" '$1 == e { print $2 }' \
+  >> "$G.sections"
+# Print each listed section and its subsections, with line numbers.
+awk '
+NR == FNR { want[$0]; next }
+FNR == 1 { lvl = 0 }
+/^#+ / {
+  n = index($0, " ") - 1
+  if (lvl && n <= lvl) lvl = 0
+  if (!lvl && (substr($0, n + 2) in want)) {
+    lvl = n
+    print "\n" FILENAME
+  }
+}
+lvl { print FNR ":" $0 }
+' "$G.sections" "$@" > "$G.whole" || exit 1
+cat "$G.whole" "$G.passages" > "$G" || exit 1
+wc -l "$G"
+```
+
+Each passage keeps its note and line number, so a reader can read
+around it with `sed -n`. To add a term, run the whole snippet again.
 
 ## Set up a PR's run folder
 
@@ -94,13 +138,14 @@ plan_tree() {
 }
 
 # Put back one bug, run the test command, and restore the file.
-# Fails when the test command passes, since no test caught the bug.
+# Returns 1 when the test command passes, since no test caught the
+# bug, and 2 when FILE is gone or OLD does not appear exactly once.
 plant() {
   local file=$1 old=$2 new=$3 backup rc
   shift 3
   backup=$(mktemp "$D/plant.XXXXXX") || return 1
-  cp "$file" "$backup" || return 1
-  python3 - "$file" "$old" "$new" <<'EOF' || { rm -f "$backup"; return 1; }
+  cp "$file" "$backup" || { rm "$backup"; return 2; }
+  python3 - "$file" "$old" "$new" <<'EOF' || { rm "$backup"; return 2; }
 import sys
 path, old, new = sys.argv[1:]
 text = open(path).read()
@@ -144,10 +189,18 @@ run_step() {
   esac
 }
 
-# Print the roadmap's status line for this PR, ending with NEXT.
+# Replace the first line of status.txt and print it.
+st() {
+  touch "$D/status.txt" &&
+    { printf '%s\n' "$1"; sed 1d "$D/status.txt"; } > "$D/status.new" &&
+    mv "$D/status.new" "$D/status.txt" && printf '%s\n' "$1"
+}
+
+# Print the roadmap's status line for this PR, ending with NEXT, and
+# write it as the first line of status.txt.
 status_line() (
   { [ -n "$W" ] && [ "$W" != null ]; } ||
-    { echo "$BR: not built; next: $NEXT"; exit 0; }
+    { st "$BR: not built; next: $NEXT"; exit $?; }
   cd "$W" || exit 1
   git fetch -q "$REMOTE" || exit 1
   head=$(git rev-parse HEAD) || exit 1
@@ -158,8 +211,9 @@ status_line() (
   mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
   n=$(changed . "$mb" HEAD) || exit 1
   req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
-  echo "$BR: pushed ${pushed:-none}; local equals pushed: $same;" \
-    "$n changed lines against $PARENT; request: $req; next: $NEXT"
+  line="$BR: pushed ${pushed:-none}; local equals pushed: $same;"
+  line="$line $n changed lines against $PARENT; request: $req"
+  st "$line; next: $NEXT"
 )
 FNS
 . "$D/env"
@@ -301,22 +355,51 @@ stays local is not done. The revised plan no longer matches the marks
 that build.sh and ship.sh left, so a later ship.sh run repeats every
 step.
 
-## Plant a bug
+## Put back the bugs
 
-Run one `plant` line from a reviewer's report as written. A test
-must fail, and the worktree must be clean after:
+This runs every `plant` line in the plan and in the run folder's
+reports, one at a time, and writes one `pass`, `FAIL` or `stale`
+line per `plant` line to `$D/plants.txt`, ending with `done`. Their
+output goes to `$D/plants.log`. A line that passed before is skipped,
+so a later round runs only new or changed lines:
 
 ```sh
 . <run folder>/env
 { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
   { echo "no worktree: '$W'"; exit 1; }
-plant internal/x.go 'if a {' 'if false && a {' go test ./internal/... || exit 1
-[ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
+rg -N --no-filename --sort path --max-depth 1 -g '*.md' '^plant ' \
+  "$P" "$D" > "$D/plants" || { echo "no plant lines found"; exit 1; }
+touch "$D/plants.passed" && : > "$D/plants.txt" || exit 1
+n=0
+while IFS= read -r line <&3; do
+  n=$((n + 1))
+  if grep -qxF -e "$line" "$D/plants.passed"; then
+    echo "skip $n: passed before" >> "$D/plants.txt"
+    continue
+  fi
+  echo "## $n: $line" >> "$D/plants.log"
+  eval "$line" < /dev/null >> "$D/plants.log" 2>&1
+  case $? in
+    0) r=pass ;;
+    2) r=stale ;;
+    *) r=FAIL ;;
+  esac
+  [ -z "$(git status --porcelain)" ] || {
+    echo "worktree not clean after line $n" >> "$D/plants.txt"
+    exit 1
+  }
+  echo "$r $n: $line" >> "$D/plants.txt"
+  [ "$r" != pass ] || printf '%s\n' "$line" >> "$D/plants.passed"
+done 3< "$D/plants"
+echo done >> "$D/plants.txt"
+cat "$D/plants.txt"
 ```
 
-Read the output: a build error also fails the command, but only a
-failed test proves the bug is caught. When the line's old text no
-longer appears once, because a fix round changed it, use another line.
+A `FAIL` line means no test caught that bug. A `stale` line means
+its file is gone or its old text no longer appears once, because a
+fix round changed it. When a `stale` line's bug still matters, write
+a new `plant` line for it in a `.md` file in the run folder. Send only
+`FAIL` lines to a planner.
 
 ## Ship
 
@@ -499,7 +582,9 @@ update its text once the PR opens. ship.sh's status line then names
 Write the roadmap's status line for a PR from this output, never by
 hand. Set NEXT to the PR's next step, such as `skill reviews` or
 `rerun request.sh`, so a new session can resume from the roadmap
-page:
+page. `status_line` also writes the line as the first line of
+`$D/status.txt` and keeps the lines below it, so the status line that
+ship.sh prints reaches the file too:
 
 ```sh
 . <run folder>/env
