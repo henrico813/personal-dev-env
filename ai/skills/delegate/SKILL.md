@@ -41,6 +41,9 @@ bring it to the user.
 - Make minor decisions yourself and say so. Ask only about real ones.
 - Write each update and the final summary by the `status-updates`
   skill.
+- When your context grows past about 150k tokens, or after it is
+  summarized, use the `herdr-handoff` skill to offer the user a new
+  session. Offer once.
 
 ## Remembering corrections
 
