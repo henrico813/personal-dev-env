@@ -288,7 +288,7 @@ fn outdated_screen_cannot_answer_a_changed_request() {
 /// `save_user_feedback` must take the worktree off the waiting list once every Feedback Request has User Feedback and any of it is a User Note, and not before.
 /// Otherwise Ctrl+b e would offer a Review Session the agent must act on, or lose one whose User Feedback step 7 has yet to write.
 #[test]
-fn last_user_note_takes_worktree_off_list() {
+fn user_notes_waiting_takes_worktree_off_list() {
     let cases = [
         (
             "user-note-first",
