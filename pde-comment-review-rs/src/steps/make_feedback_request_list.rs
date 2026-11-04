@@ -9,6 +9,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use super::check_comments::check_comments;
 use super::{NextStep, StepOutput};
 use crate::shared::approvals::{self, Approvals, DecisionMatch};
@@ -24,29 +26,17 @@ use crate::shared::{Error, ErrorCode};
 /// Returns the Feedback Requests for changed or conflicting comments and change
 /// requests, and resends noted ones with their IDs while User Notes wait.
 /// Refuses while a list waits, a write is unfinished, step 2 fails, or a
-/// committed or staged comment goes unasked.
+/// committed or staged comment goes unasked. An empty list goes to the user
+/// only while User Notes wait, so the review can move on to its write.
 pub fn make_feedback_request_list(
     dir: &Path,
     base: Option<CommitId>,
     change_requests: &[ChangeRequest],
 ) -> Result<StepOutput<FeedbackRequestListResult>, Error> {
     let review = review_session::load(dir)?;
-    match review.as_ref().map(|review| review.status) {
-        Some(ReviewStatus::WaitingForUserFeedback) => {
-            return Err(Error {
-                code: ErrorCode::WaitingForUserFeedback,
-                message: "A Feedback Request List waits for the user. Tell them to press Ctrl+b e, then wait."
-                    .to_owned(),
-            });
-        }
-        Some(ReviewStatus::WritingUserFeedback) => {
-            return Err(Error {
-                code: ErrorCode::WriteNotFinished,
-                message: "A write into the code did not finish. Ask the user to check git status."
-                    .to_owned(),
-            });
-        }
-        _ => {}
+    let status = review.as_ref().map(|review| review.status);
+    if let Some(review) = &review {
+        review_session::refuse_busy_status(review.status)?;
     }
     let noted_review = review.filter(|review| review.status == ReviewStatus::UserNotesWaiting);
     // While User Notes wait, the Review Session keeps its task's base, so a
@@ -80,18 +70,32 @@ pub fn make_feedback_request_list(
     }
     let root = git::find_root(dir)?;
     let found = find_requests(dir, &root, &base, change_requests)?;
-    let requests = match noted_review {
-        Some(review) => resend_noted_requests(&root, &review, found)?,
+    let (requests, next) = match noted_review {
+        Some(review) => (
+            resend_noted_requests(&root, &review, found)?,
+            NextStep::SendAgentSuggestions,
+        ),
         // A new Review Session numbers from 1, since a finished one's User
         // Feedback never carries over.
-        None => number_requests(found.into_iter().map(|found| found.request).collect(), 1),
+        None => {
+            let requests =
+                number_requests(found.into_iter().map(|found| found.request).collect(), 1);
+            // An empty list would show the user a review with nothing to answer.
+            let next = if requests.is_empty() {
+                NextStep::FinishWithoutFeedbackRequests
+            } else {
+                NextStep::SendAgentSuggestions
+            };
+            (requests, next)
+        }
     };
     Ok(StepOutput {
+        status,
         result: FeedbackRequestListResult {
             list: FeedbackRequestList { base, requests },
             unsupported: check.result.unsupported,
         },
-        next: NextStep::SendAgentSuggestions,
+        next,
     })
 }
 
@@ -215,7 +219,8 @@ fn resend_noted_requests(
 
 /// Names an approved comment the agent wants the user to reword. It holds no
 /// text, so the request always shows the approved text from disk.
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ChangeRequest {
     pub file: PathBuf,
     pub name: String,
@@ -223,7 +228,7 @@ pub struct ChangeRequest {
 
 /// Holds step 3's Feedback Request List and the changed files no language
 /// rule reads.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct FeedbackRequestListResult {
     pub list: FeedbackRequestList,
     pub unsupported: Vec<PathBuf>,
