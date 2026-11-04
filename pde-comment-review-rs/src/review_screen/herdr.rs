@@ -195,10 +195,9 @@ pub(super) fn open_from_herdr(
 /// Returns where the popup record lives, `$XDG_STATE_HOME/pde/pr-write/open-popup`.
 pub(super) fn find_popup_record_path() -> Option<PathBuf> {
     // Tests never open a real popup, so one that reaches here must not touch the user's record.
-    assert!(
-        !cfg!(feature = "test-util"),
-        "tests must pass their own popup record path"
-    );
+    if cfg!(feature = "test-util") {
+        panic!("tests must pass their own popup record path");
+    }
     let state = crate::shared::review_session::find_pde_state_folder().ok()?;
     Some(state.join("pr-write/open-popup"))
 }
