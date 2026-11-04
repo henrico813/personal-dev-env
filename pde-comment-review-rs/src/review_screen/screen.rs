@@ -1,16 +1,18 @@
 //! This module holds what the Review Screen shows and answers each key, with
 //! the Stray Tap Guards that stop a stray tap from giving User Feedback. Read
-//! the `ReviewScreen::new(repo, review_session, (cols, rows))` and
+//! the `ReviewScreen::new(root, review_session, (cols, rows))` and
 //! `ReviewScreen::press_key(key, now)` functions to understand the module.
+//! A key that gives User Feedback changes the Review Session in memory, and
+//! `ReviewScreen::save_given_feedback` in `saving.rs` then saves it.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use super::keys::Key;
+use super::result::ReviewResult;
 use super::surrounding_code::{CodeNotShown, SurroundingCode, read_surrounding_code};
 use crate::shared::comments::{CommentEdit, rewrite};
-use crate::shared::review_session::{FeedbackRequest, RequestId, ReviewOrigin, ReviewSession};
+use crate::shared::review_session::{FeedbackRequest, RequestId, ReviewSession};
 use crate::shared::user_feedback::{UserAnswer, UserFeedback, UserNote, choose_new_text};
 
 /// How long `a`, `o`, `c` and `m` wait after a request shows, so a double tap
@@ -24,25 +26,48 @@ pub(super) const KEY_HELP_ROWS: usize = 2;
 
 /// Shows for a refused answer. The reasons rewrite gives are written for
 /// agents, so the screen leaves them out.
-const REFUSED: &str =
+pub(super) const REFUSED: &str =
     "That change can't be made to this comment. Press o to keep it or m to ask the agent.";
 /// Shows for a refused cut of a docstring that Python needs as the body.
 const REFUSED_ONLY_STATEMENT: &str = "That change can't be made to this comment. This docstring is the only statement in its block. Press o to keep it or m to ask the agent.";
 
-/// What the screen does after a key.
+/// What the screen does after a key or a save.
 #[derive(Debug, PartialEq)]
 pub(super) enum AfterKey {
     Stay,
     Quit,
+    /// Saves the User Feedback this key gave the request in memory, or removes
+    /// its User Note when it has none.
+    Save(RequestId),
+    /// Opens the Comment Edit Page in nvim.
+    Edit,
+    /// Opens the request's file in nvim to read.
+    View,
+    /// Searches the repository for the typed text with `rg`.
+    Search(String),
+    /// Shows the Review Result Screen.
+    ShowResult(ReviewResult),
+    /// Shows the changes in the review's files, from the Review Result Screen.
+    Diff,
 }
 
-/// Shows one Feedback Request at a time and keeps each answer in the Review
-/// Session it borrows.
+/// Says what the user types at the Note and Search Prompt.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum PromptKind {
+    Note,
+    Search,
+}
+
+/// Holds the Note and Search Prompt while the user types.
+pub(super) struct Prompt {
+    pub(super) kind: PromptKind,
+    pub(super) typed: String,
+}
+
+/// Shows one Feedback Request at a time from the Review Session it borrows.
 pub(super) struct ReviewScreen<'a> {
-    repo: &'a Path,
-    pub(super) origin: &'a ReviewOrigin,
-    pub(super) requests: Vec<&'a FeedbackRequest>,
-    pub(super) feedback: &'a mut BTreeMap<RequestId, UserFeedback>,
+    pub(super) root: &'a Path,
+    pub(super) review_session: &'a mut ReviewSession,
     pub(super) index: usize,
     /// The shown request's comment and code, or why they cannot be shown.
     pub(super) code: Result<SurroundingCode, CodeNotShown>,
@@ -51,8 +76,8 @@ pub(super) struct ReviewScreen<'a> {
     pub(super) rows: usize,
     /// Says why a key did nothing, until the next key.
     pub(super) notice: String,
-    /// The note the user is typing, while the note prompt is open.
-    pub(super) typed_note: Option<String>,
+    /// Holds what the user types, while the Note and Search Prompt is open.
+    pub(super) prompt: Option<Prompt>,
     /// When the shown request was first drawn, or `None` until it is.
     drawn_at: Option<Instant>,
 }
@@ -60,31 +85,19 @@ pub(super) struct ReviewScreen<'a> {
 impl<'a> ReviewScreen<'a> {
     /// Returns a screen for the newest version of each request, showing the
     /// first one with no User Feedback, or `None` when every request has some.
+    /// Reads each request's file under `root`, the worktree's top folder.
     pub(super) fn new(
-        repo: &'a Path,
+        root: &'a Path,
         review_session: &'a mut ReviewSession,
         (cols, rows): (usize, usize),
     ) -> Option<Self> {
-        let ReviewSession {
-            origin,
-            lists,
-            feedback,
-            ..
-        } = review_session;
-        // A request sent again in a later list replaces its older version.
-        let mut newest = BTreeMap::new();
-        for request in lists.iter().flat_map(|list| &list.requests) {
-            newest.insert(request.id, request);
-        }
-        let requests: Vec<&FeedbackRequest> = newest.into_values().collect();
-        let first = requests
+        let first = review_session
+            .newest_requests()
             .iter()
-            .position(|request| !feedback.contains_key(&request.id))?;
+            .position(|request| !review_session.feedback.contains_key(&request.id))?;
         let mut screen = ReviewScreen {
-            repo,
-            origin,
-            requests,
-            feedback,
+            root,
+            review_session,
             index: first,
             // show below finds the first request's code.
             code: Err(CodeNotShown::CommentGone),
@@ -92,11 +105,21 @@ impl<'a> ReviewScreen<'a> {
             cols,
             rows,
             notice: String::new(),
-            typed_note: None,
+            prompt: None,
             drawn_at: None,
         };
         screen.show(first);
         Some(screen)
+    }
+
+    /// Returns the newest version of each request, in ID order.
+    pub(super) fn requests(&self) -> Vec<&FeedbackRequest> {
+        self.review_session.newest_requests()
+    }
+
+    /// Returns the request on screen.
+    pub(super) fn shown_request(&self) -> &FeedbackRequest {
+        self.requests()[self.index]
     }
 
     /// Sets the terminal's size and keeps the scroll within the new body.
@@ -130,13 +153,19 @@ impl<'a> ReviewScreen<'a> {
         self.drawn_at = Some(drawn_at);
     }
 
+    /// Makes the answer keys wait for the next draw again, as after nvim or
+    /// less closes, so keys typed into them answer nothing.
+    pub(super) fn wait_for_draw(&mut self) {
+        self.drawn_at = None;
+    }
+
     /// Shows request `index` scrolled to the agent's notes, past the code
     /// above. The answer keys wait until it is drawn.
-    fn show(&mut self, index: usize) {
+    pub(super) fn show(&mut self, index: usize) {
         self.index = index;
-        self.typed_note = None;
-        let request = self.requests[index];
-        self.code = read_surrounding_code(self.repo, request);
+        self.prompt = None;
+        let code = read_surrounding_code(self.root, self.shown_request());
+        self.code = code;
         self.scroll = self.build_body().details_start.min(self.find_max_scroll());
         self.drawn_at = None;
     }
@@ -147,10 +176,10 @@ impl<'a> ReviewScreen<'a> {
         if key == Key::Interrupt {
             return AfterKey::Quit;
         }
-        if self.typed_note.is_some() {
-            return self.type_note(key);
+        if self.prompt.is_some() {
+            return self.type_into_prompt(key);
         }
-        let count = self.requests.len();
+        let count = self.requests().len();
         match key {
             Key::Char('j') | Key::ScrollDown => {
                 self.scroll = (self.scroll + 1).min(self.find_max_scroll());
@@ -162,10 +191,30 @@ impl<'a> ReviewScreen<'a> {
             Key::Char('a' | 'o' | 'c' | 'm') if !self.has_waited(now) => {
                 self.notice = "One moment, then press again.".to_owned();
             }
-            Key::Char('m') => self.typed_note = Some(self.find_saved_note()),
+            Key::Char('m') => {
+                self.prompt = Some(Prompt {
+                    kind: PromptKind::Note,
+                    typed: self.find_saved_note(),
+                });
+            }
+            Key::Char('s') => {
+                self.prompt = Some(Prompt {
+                    kind: PromptKind::Search,
+                    typed: String::new(),
+                });
+            }
             Key::Char('a') => return self.answer(UserAnswer::Accept),
             Key::Char('o') => return self.answer(UserAnswer::Keep),
             Key::Char('c') => return self.answer(UserAnswer::Cut),
+            Key::Char('e') if !self.shown_request().can_reword => {
+                self.notice = REFUSED.to_owned();
+            }
+            Key::Char('e' | 'v') => match &self.code {
+                // nvim needs the comment in its file, for the edit page and for the line to open.
+                Err(not_shown) => self.notice = not_shown.message().to_owned(),
+                Ok(_) if key == Key::Char('e') => return AfterKey::Edit,
+                Ok(_) => return AfterKey::View,
+            },
             _ => {}
         }
         AfterKey::Stay
@@ -177,21 +226,26 @@ impl<'a> ReviewScreen<'a> {
             .is_some_and(|drawn_at| now.duration_since(drawn_at) >= SETTLE)
     }
 
-    /// Types into the note. A note starts as the saved one, so Enter alone
+    /// Types into the prompt. A note starts as the saved one, so Enter alone
     /// changes nothing, and an empty note removes it.
-    fn type_note(&mut self, key: Key) -> AfterKey {
-        let Some(typed) = &mut self.typed_note else {
+    fn type_into_prompt(&mut self, key: Key) -> AfterKey {
+        let Some(prompt) = &mut self.prompt else {
             return AfterKey::Stay;
         };
         match key {
-            Key::Char(character) => typed.push(character),
+            Key::Char(character) => prompt.typed.push(character),
             Key::Backspace => {
-                typed.pop();
+                prompt.typed.pop();
             }
             Key::Enter => {
-                let note = typed.trim().to_owned();
-                self.typed_note = None;
-                return self.save_note(note);
+                let typed = prompt.typed.trim().to_owned();
+                let kind = prompt.kind;
+                self.prompt = None;
+                return match kind {
+                    PromptKind::Note => self.give_note(typed),
+                    PromptKind::Search if typed.is_empty() => AfterKey::Stay,
+                    PromptKind::Search => AfterKey::Search(typed),
+                };
             }
             _ => {}
         }
@@ -200,50 +254,51 @@ impl<'a> ReviewScreen<'a> {
 
     /// Returns the shown request's saved User Note, or an empty one.
     fn find_saved_note(&self) -> String {
-        match self.feedback.get(&self.requests[self.index].id) {
+        match self.review_session.feedback.get(&self.shown_request().id) {
             Some(UserFeedback::Note(UserNote(note))) => note.clone(),
             _ => String::new(),
         }
     }
 
-    /// Saves the note and stays on its request, or closes the screen once
-    /// every request has User Feedback.
-    fn save_note(&mut self, note: String) -> AfterKey {
-        let id = self.requests[self.index].id;
+    /// Gives the shown request the note and stays on it, or removes its User
+    /// Note when the note is empty. A note left as it was saves nothing.
+    fn give_note(&mut self, note: String) -> AfterKey {
+        let saved_note = self.find_saved_note();
+        let id = self.shown_request().id;
+        let feedback = &mut self.review_session.feedback;
+        if note == saved_note {
+            return AfterKey::Stay;
+        }
         if !note.is_empty() {
-            self.feedback.insert(id, UserFeedback::Note(UserNote(note)));
-        } else if matches!(self.feedback.get(&id), Some(UserFeedback::Note(_))) {
-            self.feedback.remove(&id);
+            feedback.insert(id, UserFeedback::Note(UserNote(note)));
+        } else {
+            feedback.remove(&id);
         }
-        match self.find_next_without_feedback() {
-            Some(_) => AfterKey::Stay,
-            None => AfterKey::Quit,
-        }
+        AfterKey::Save(id)
     }
 
-    /// Keeps the answer and shows the next request without User Feedback, or
-    /// says why the answer was refused and keeps nothing.
-    fn answer(&mut self, answer: UserAnswer) -> AfterKey {
+    /// Gives the shown request the answer and shows the next request without
+    /// User Feedback, or says why the answer was refused and keeps nothing.
+    pub(super) fn answer(&mut self, answer: UserAnswer) -> AfterKey {
         if let Err(refusal) = self.check_answer(&answer) {
             self.notice = refusal.to_owned();
             return AfterKey::Stay;
         }
-        let id = self.requests[self.index].id;
-        self.feedback.insert(id, UserFeedback::Answer(answer));
-        match self.find_next_without_feedback() {
-            Some(next) => {
-                self.show(next);
-                AfterKey::Stay
-            }
-            None => AfterKey::Quit,
+        let id = self.shown_request().id;
+        self.review_session
+            .feedback
+            .insert(id, UserFeedback::Answer(answer));
+        if let Some(next) = self.find_next_without_feedback() {
+            self.show(next);
         }
+        AfterKey::Save(id)
     }
 
     /// Rewrites the comment's file in memory, so a cut or reword the code
     /// cannot take is refused now rather than after the last answer. A refusal
     /// holds the message the user reads.
     fn check_answer(&self, answer: &UserAnswer) -> Result<(), &'static str> {
-        let request = self.requests[self.index];
+        let request = self.shown_request();
         let new_text = choose_new_text(request, answer);
         if new_text.as_deref() == Some(request.text.as_str()) {
             return Ok(());
@@ -257,7 +312,7 @@ impl<'a> ReviewScreen<'a> {
             comment: code.comment.clone(),
             new_text,
         };
-        match rewrite(self.repo, &[edit]) {
+        match rewrite(self.root, &[edit]) {
             Ok(_) => Ok(()),
             Err(_) if is_cut && code.is_only_statement_in_block => Err(REFUSED_ONLY_STATEMENT),
             Err(_) => Err(REFUSED),
@@ -266,11 +321,17 @@ impl<'a> ReviewScreen<'a> {
 
     /// Returns the next request after the shown one, wrapping around, that
     /// has no User Feedback.
-    fn find_next_without_feedback(&self) -> Option<usize> {
-        let count = self.requests.len();
+    pub(super) fn find_next_without_feedback(&self) -> Option<usize> {
+        let requests = self.requests();
+        let count = requests.len();
         (1..=count)
             .map(|step| (self.index + step) % count)
-            .find(|&index| !self.feedback.contains_key(&self.requests[index].id))
+            .find(|&index| {
+                !self
+                    .review_session
+                    .feedback
+                    .contains_key(&requests[index].id)
+            })
     }
 }
 
@@ -323,7 +384,7 @@ mod tests {
 
     /// Returns the User Note saved for request `id`, or an empty text.
     fn find_note(screen: &ReviewScreen, id: RequestId) -> String {
-        match screen.feedback.get(&id) {
+        match screen.review_session.feedback.get(&id) {
             Some(UserFeedback::Note(UserNote(note))) => note.clone(),
             _ => String::new(),
         }
@@ -340,7 +401,10 @@ mod tests {
 
         screen.press_key(Key::Char('c'), after(start, 700));
 
-        (screen.notice.clone(), screen.feedback.is_empty())
+        (
+            screen.notice.clone(),
+            screen.review_session.feedback.is_empty(),
+        )
     }
 
     /// `press_key` must ignore answer keys for 600 ms after the next request
@@ -365,7 +429,7 @@ mod tests {
         screen.start_wait(after(start, 2000));
         screen.press_key(Key::Char('o'), after(start, 2100));
 
-        assert_eq!(screen.feedback.len(), 1);
+        assert_eq!(screen.review_session.feedback.len(), 1);
         assert_eq!(screen.index, 1);
         assert_eq!(screen.notice, "One moment, then press again.");
     }
@@ -451,7 +515,10 @@ mod tests {
             .map(|key| screen.press_key(key, after(start, 700)))
             .collect();
 
-        assert_eq!(after_keys, [AfterKey::Stay, AfterKey::Stay, AfterKey::Stay]);
+        assert_eq!(
+            after_keys,
+            [AfterKey::Stay, AfterKey::Stay, AfterKey::Save(first)]
+        );
         assert_eq!(find_note(&screen, first), "q");
     }
 

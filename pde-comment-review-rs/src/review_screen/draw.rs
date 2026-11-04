@@ -1,14 +1,15 @@
 //! This module lays out the Review Screen's rows, from the Review Screen
 //! Header and the Feedback Request Details down to the Surrounding Code and
-//! Key Help. Read the `ReviewScreen::build_screen()` and
+//! Key Help. The Review Result Screen and the Review Session Picker draw with
+//! its `Row`. Read the `ReviewScreen::build_screen()` and
 //! `ReviewScreen::build_body()` functions to understand the module.
 
 use std::ops::Range;
 
 use super::fit::{clip, cut_middle, display_width, escape_control_characters, fold, last_columns};
-use super::screen::{HEADER_ROWS, KEY_HELP_ROWS, ReviewScreen};
+use super::screen::{HEADER_ROWS, KEY_HELP_ROWS, PromptKind, ReviewScreen};
 use crate::shared::comments::to_plain_words;
-use crate::shared::review_session::{RequestReason, SuggestionKind};
+use crate::shared::review_session::{AgentSuggestion, RequestReason, ReviewOrigin, SuggestionKind};
 use crate::shared::user_feedback::{UserAnswer, UserFeedback, UserNote};
 
 /// Keeps a long repository name from pushing its branch off the first row.
@@ -16,7 +17,7 @@ const MAX_REPO_COLUMNS: usize = 20;
 
 /// How a piece of a row is colored.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Style {
+pub(super) enum Style {
     Plain,
     Title,
     Status,
@@ -44,11 +45,11 @@ impl Style {
 }
 
 /// Holds one screen row as pieces of text, each with a style.
-pub(super) struct Row(Vec<(Style, String)>);
+pub(super) struct Row(pub(super) Vec<(Style, String)>);
 
 impl Row {
     /// Returns a row of one piece of text in one style.
-    fn new(style: Style, text: String) -> Self {
+    pub(super) fn new(style: Style, text: String) -> Self {
         Row(vec![(style, text)])
     }
 
@@ -109,31 +110,11 @@ impl ReviewScreen<'_> {
         screen
     }
 
-    /// Returns "repo · branch", cutting the middle of a long branch so both
-    /// its ends stay readable.
-    fn build_label(&self) -> String {
-        let repo = escape_control_characters(&self.origin.repo);
-        let branch = self.origin.branch.rsplit('/').next().unwrap_or_default();
-        let branch = escape_control_characters(branch);
-        let label = format!("{repo} · {branch}");
-        if display_width(&label) <= self.cols {
-            return label;
-        }
-        let repo = if display_width(&repo) > MAX_REPO_COLUMNS {
-            format!("{}…", clip(&repo, MAX_REPO_COLUMNS - 1))
-        } else {
-            repo
-        };
-        let room = self.cols.saturating_sub(display_width(&repo) + 3);
-        let label = format!("{repo} · {}", cut_middle(&branch, room));
-        clip(&label, self.cols).to_owned()
-    }
-
     /// Returns the Review Screen Header. Its first row is the label, and its
     /// second has the request's number, suggestion and file, the rows scrolled
     /// past and the User Feedback so far.
     fn build_header(&self) -> [Row; HEADER_ROWS] {
-        let request = self.requests[self.index];
+        let request = self.shown_request();
         let suggestion = match request
             .suggestion
             .as_ref()
@@ -151,12 +132,12 @@ impl ReviewScreen<'_> {
         let mut title = format!(
             "{}/{} {suggestion}? {file_name}",
             self.index + 1,
-            self.requests.len()
+            self.requests().len()
         );
         if self.scroll > 0 {
             title.push_str(&format!(" ↑{}", self.scroll));
         }
-        let status = match self.feedback.get(&request.id) {
+        let status = match self.review_session.feedback.get(&request.id) {
             None => "?",
             Some(UserFeedback::Note(_)) => "note",
             Some(UserFeedback::Answer(UserAnswer::Keep)) => "kept",
@@ -169,7 +150,10 @@ impl ReviewScreen<'_> {
         let title = clip(&title, width);
         let padding = " ".repeat(width - display_width(title));
         [
-            Row::new(Style::Plain, self.build_label()),
+            Row::new(
+                Style::Plain,
+                fit_label(&self.review_session.origin, self.cols),
+            ),
             Row(vec![
                 (Style::Title, format!("{title}{padding}")),
                 (Style::Plain, " ".to_owned()),
@@ -181,24 +165,26 @@ impl ReviewScreen<'_> {
     /// Returns the key help, or the note prompt while the user types a note.
     fn build_key_help(&self) -> [Row; KEY_HELP_ROWS] {
         let hint = |keys: &str| Row::new(Style::Faded, clip(keys, self.cols).to_owned());
-        let Some(typed) = &self.typed_note else {
+        let Some(prompt) = &self.prompt else {
             return [
-                hint("a accept o keep c cut m note"),
-                hint("j k scroll l h next q quit"),
+                hint("a accept o keep c cut e edit"),
+                hint("m note v view s search q quit"),
             ];
         };
-        /// Starts the note prompt's row, before the typed note.
-        const PROMPT: &str = "note for AI: ";
+        let label = match prompt.kind {
+            PromptKind::Note => "note for AI: ",
+            PromptKind::Search => "search: ",
+        };
         // The end of a long note stays in view, so what was just typed shows.
-        let room = self.cols.saturating_sub(PROMPT.len()).max(1);
-        let typed = escape_control_characters(typed);
-        let prompt = format!("{PROMPT}{}", last_columns(&typed, room));
+        let room = self.cols.saturating_sub(label.len()).max(1);
+        let typed = escape_control_characters(&prompt.typed);
+        let prompt = format!("{label}{}", last_columns(&typed, room));
         [hint("type, then Enter"), Row::new(Style::Plain, prompt)]
     }
 
     /// Returns the request's rows with their Surrounding Code.
     pub(super) fn build_body(&self) -> Body {
-        let request = self.requests[self.index];
+        let request = self.shown_request();
         // One column holds the -, + or > mark.
         let mut body = BodyRows {
             rows: Vec::new(),
@@ -224,7 +210,8 @@ impl ReviewScreen<'_> {
         if let Some(warning) = warning {
             body.add(Style::Note, ">", warning);
         }
-        if let Some(UserFeedback::Note(UserNote(note))) = self.feedback.get(&request.id) {
+        let feedback = self.review_session.feedback.get(&request.id);
+        if let Some(UserFeedback::Note(UserNote(note))) = feedback {
             body.add(Style::UserNote, ">", &format!("note: {note}"));
         }
         if let Some(suggestion) = &request.suggestion {
@@ -247,23 +234,12 @@ impl ReviewScreen<'_> {
             }
         }
         let old_words = to_plain_words(&request.file, &request.text);
-        match request
-            .suggestion
-            .as_ref()
-            .map(|suggestion| &suggestion.kind)
-        {
-            Some(SuggestionKind::Reword { text }) => {
-                body.add_lines(Style::Old, "-", &old_words);
-                body.add_lines(Style::New, "+", text);
-            }
-            Some(SuggestionKind::Cut) => {
-                body.add_lines(Style::Old, "-", &old_words);
-                body.add(Style::New, "+", "(cut)");
-            }
-            Some(SuggestionKind::Keep) | None => {
-                body.add(Style::Note, ">", "no change proposed");
-                body.add_lines(Style::Plain, " ", &old_words);
-            }
+        // The user's own wording replaces the agent's, so going back to an edited request shows it.
+        if let Some(UserFeedback::Answer(UserAnswer::Edited { text })) = feedback {
+            body.add_lines(Style::Old, "-", &old_words);
+            body.add_lines(Style::New, "+", text);
+        } else {
+            add_agent_suggestion(&mut body, request.suggestion.as_ref(), &old_words);
         }
         for line in below {
             body.add(Style::Faded, " ", line);
@@ -274,6 +250,49 @@ impl ReviewScreen<'_> {
             repeated_definition_rows,
         }
     }
+}
+
+/// Adds the Old and New Comment rows for the Agent Suggestion, or the plain
+/// words once when it proposes no change.
+fn add_agent_suggestion(
+    body: &mut BodyRows,
+    suggestion: Option<&AgentSuggestion>,
+    old_words: &str,
+) {
+    match suggestion.map(|suggestion| &suggestion.kind) {
+        Some(SuggestionKind::Reword { text }) => {
+            body.add_lines(Style::Old, "-", old_words);
+            body.add_lines(Style::New, "+", text);
+        }
+        Some(SuggestionKind::Cut) => {
+            body.add_lines(Style::Old, "-", old_words);
+            body.add(Style::New, "+", "(cut)");
+        }
+        Some(SuggestionKind::Keep) | None => {
+            body.add(Style::Note, ">", "no change proposed");
+            body.add_lines(Style::Plain, " ", old_words);
+        }
+    }
+}
+
+/// Returns "repo · branch" in at most `cols` columns, cutting the middle of a
+/// long branch so both its ends stay readable.
+pub(super) fn fit_label(origin: &ReviewOrigin, cols: usize) -> String {
+    let repo = escape_control_characters(&origin.repo);
+    let branch = origin.branch.rsplit('/').next().unwrap_or_default();
+    let branch = escape_control_characters(branch);
+    let label = format!("{repo} · {branch}");
+    if display_width(&label) <= cols {
+        return label;
+    }
+    let repo = if display_width(&repo) > MAX_REPO_COLUMNS {
+        format!("{}…", clip(&repo, MAX_REPO_COLUMNS - 1))
+    } else {
+        repo
+    };
+    let room = cols.saturating_sub(display_width(&repo) + 3);
+    let label = format!("{repo} · {}", cut_middle(&branch, room));
+    clip(&label, cols).to_owned()
 }
 
 /// Holds the body's rows and where the screen opens on them.
@@ -322,7 +341,7 @@ mod tests {
 
     use super::*;
     use crate::review_screen::keys::Key;
-    use crate::shared::review_session::ReviewSession;
+    use crate::shared::review_session::{RequestId, ReviewSession};
 
     /// The 40x16 phone popup's columns and rows.
     const PHONE: (usize, usize) = (40, 16);
@@ -545,6 +564,43 @@ mod tests {
 
             assert_eq!(rows[rows.len() - 2..], expected, "{case}");
         }
+    }
+
+    /// `build_body` must show the user's own words after `+` once they edited
+    /// a request. Otherwise going back to it shows the agent's words, and the
+    /// user cannot check what they wrote.
+    #[test]
+    fn build_body_shows_edited_words() {
+        let reword = json!({"reword": {"text": "Saves it once."}});
+        let mut review_session = make_review_session(vec![make_request(
+            "missing.go",
+            "// Saves it.\n",
+            1,
+            reword,
+        )]);
+        let first = review_session.lists[0].requests[0].id;
+        let edited = UserAnswer::Edited {
+            text: "Saves it, then checks it.".to_owned(),
+        };
+        review_session
+            .feedback
+            .insert(first, UserFeedback::Answer(edited));
+        // A second request without User Feedback lets the screen open on the first one.
+        review_session.lists[0].requests.push(
+            serde_json::from_value(make_request("missing.go", "// Two.\n", 2, json!("keep")))
+                .unwrap(),
+        );
+        review_session.lists[0].requests[1].id = RequestId(2);
+        let mut screen = ReviewScreen::new(samples(), &mut review_session, WIDE)
+            .expect("the second request waits for User Feedback");
+        screen.press_key(Key::Char('h'), Instant::now());
+
+        let rows: Vec<String> = screen.build_body().rows.iter().map(row_text).collect();
+
+        assert_eq!(
+            rows[rows.len() - 2..],
+            ["-Saves it.", "+Saves it, then checks it."]
+        );
     }
 
     /// `build_body` must show a docstring's Function Definition Line just

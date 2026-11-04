@@ -9,6 +9,7 @@ use std::process::ExitCode;
 
 use pde_comment_review::commands::cli::{self, Command};
 use pde_comment_review::commands::{Reply, mcp, resolve_base};
+use pde_comment_review::review_screen::{StartFailure, run_open_command, run_screen_command};
 use pde_comment_review::steps::check_comments::check_comments;
 use pde_comment_review::steps::make_feedback_request_list::make_feedback_request_list;
 use pde_comment_review::steps::send_agent_suggestions::send_agent_suggestions;
@@ -41,6 +42,8 @@ fn main() -> ExitCode {
         Command::SendAgentSuggestions { file } => Reply::from_outcome(
             cli::read_list_file(&file).and_then(|list| send_agent_suggestions(dir, list)),
         ),
+        Command::Screen { kind } => return report_screen_outcome(run_screen_command(kind)),
+        Command::Open { name } => return report_screen_outcome(run_open_command(name.as_deref())),
         Command::ShowStatus => Reply::from_outcome(show_status(dir)),
         Command::Mcp => {
             return match mcp::serve_mcp() {
@@ -54,4 +57,16 @@ fn main() -> ExitCode {
         Command::Help => return cli::print_help(),
     };
     cli::print_reply(&reply)
+}
+
+/// Returns 0 once the screen closes, or prints why it could not open and
+/// returns 1.
+fn report_screen_outcome(shown: Result<(), StartFailure>) -> ExitCode {
+    match shown {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(StartFailure(message)) => {
+            eprintln!("{message}");
+            ExitCode::FAILURE
+        }
+    }
 }

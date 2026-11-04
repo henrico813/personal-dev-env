@@ -10,7 +10,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Args, FromArgMatches, Parser};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -47,9 +47,61 @@ pub enum Command {
     },
     ShowStatus,
     Mcp,
+    /// Shows the Review Screen in Herdr's popup or tab. The screen finds the
+    /// review itself, from the waiting list.
+    Screen {
+        #[command(flatten)]
+        kind: ScreenKind,
+    },
+    /// Shows the review of branch `name` in a plain terminal. With no `name`,
+    /// shows the Review Session Picker first.
+    Open {
+        name: Option<String>,
+    },
     /// Needs no Git checkout, Herdr or saved review, because the installer
     /// runs it to check each install.
     Help,
+}
+
+/// Says which Herdr window the screen runs in. Only the Review Popup writes
+/// the popup record, and only the Review Tab closes itself on quit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScreenKind {
+    Popup,
+    Tab,
+}
+
+/// Reads `--popup` or `--tab` into a `ScreenKind` by hand, since clap's derive
+/// cannot read flags into an enum.
+impl FromArgMatches for ScreenKind {
+    fn from_arg_matches(matches: &ArgMatches) -> Result<Self, clap::Error> {
+        // The group in `augment_args` lets exactly one flag through.
+        if matches.get_flag("popup") {
+            Ok(ScreenKind::Popup)
+        } else {
+            Ok(ScreenKind::Tab)
+        }
+    }
+
+    fn update_from_arg_matches(&mut self, matches: &ArgMatches) -> Result<(), clap::Error> {
+        *self = ScreenKind::from_arg_matches(matches)?;
+        Ok(())
+    }
+}
+
+/// Adds `--popup` and `--tab`, and refuses `screen` with neither or both, so
+/// `main` exits with 2.
+impl Args for ScreenKind {
+    fn augment_args(command: clap::Command) -> clap::Command {
+        command
+            .arg(Arg::new("popup").long("popup").action(ArgAction::SetTrue))
+            .arg(Arg::new("tab").long("tab").action(ArgAction::SetTrue))
+            .group(ArgGroup::new("kind").args(["popup", "tab"]).required(true))
+    }
+
+    fn augment_args_for_update(command: clap::Command) -> clap::Command {
+        ScreenKind::augment_args(command)
+    }
 }
 
 /// Holds clap's message for bad arguments, with the usage text.
@@ -131,4 +183,37 @@ fn read_json_file<T: DeserializeOwned>(file: &Path) -> Result<T, Error> {
     };
     let text = fs::read(file).map_err(|error| bad_input(&error))?;
     serde_json::from_slice(&text).map_err(|error| bad_input(&error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `parse_command` must read `--popup` and `--tab` into their `ScreenKind`, and refuse `screen` with neither or both.
+    /// Otherwise the Review Tab key would open the Review Popup, or a broken Herdr command would still open a screen.
+    #[test]
+    fn parse_command_reads_exactly_one_screen_kind() {
+        let cases = [
+            ("popup", vec!["screen", "--popup"], Some(ScreenKind::Popup)),
+            ("tab", vec!["screen", "--tab"], Some(ScreenKind::Tab)),
+            ("neither", vec!["screen"], None),
+            ("both", vec!["screen", "--popup", "--tab"], None),
+        ];
+
+        for (case, args, expected) in cases {
+            let args: Vec<OsString> = ["pde-comment-review-next"]
+                .into_iter()
+                .chain(args)
+                .map(OsString::from)
+                .collect();
+
+            let kind = match parse_command(&args) {
+                Ok(Command::Screen { kind }) => Some(kind),
+                Ok(other) => panic!("{case}: read as {other:?}"),
+                Err(_) => None,
+            };
+
+            assert_eq!(kind, expected, "{case}");
+        }
+    }
 }

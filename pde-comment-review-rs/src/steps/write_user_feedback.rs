@@ -786,9 +786,9 @@ fn nothing_to_write(reason: &str) -> Error {
 }
 
 /// Lets one test at a time hold stop signals, since every hold in the process
-/// shares one count.
+/// shares one count. The screen's tests that run step 7 take it too.
 #[cfg(test)]
-static SIGNAL_TESTS: Mutex<()> = Mutex::new(());
+pub(crate) static SIGNAL_TESTS: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
 mod write_every_file {
