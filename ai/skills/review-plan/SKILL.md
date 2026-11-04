@@ -187,3 +187,18 @@ Give only the matching verdict line: Plan for a plan, Code for code.
 5. Reward the smallest set of edits needed for a sound change.
 6. Preserve user-approved decisions unless new evidence invalidates them.
 7. Read enough complete context to avoid partial-file errors.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above.
+The one exception is Step 3's rule that a review stays read-only unless
+the user asks for a review artifact. When the user corrects how you
+review a change, follow [skill-lessons](../skill-lessons/SKILL.md) with
+the skill name `review-plan`, and offer once to save the correction as
+a lesson. A correction to how you review tests belongs to
+`behavior-focused-testing` instead. A correction to how you review code
+comments, docstrings or function names belongs to `code-documentation`.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->

@@ -22,6 +22,24 @@ jobs:
       - name: check
         run: make check
 
+  prs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: prs/go.mod
+          # prs has no dependencies and so no go.sum, which the cache is keyed on.
+          cache: false
+      - name: install golangci-lint
+        run: make init
+      - name: check
+        run: make check
+      - run: go test -race -count=3 ./...
+
   pdev2:
     runs-on: ubuntu-latest
     defaults:

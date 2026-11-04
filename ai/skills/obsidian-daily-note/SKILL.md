@@ -219,3 +219,17 @@ Never retry automatically. "Heading count" below is the last number of
 
 Report only the date and the result: added, not confirmed, or the failed
 step and reason. Do not quote the daily note.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above,
+except that you still never read, list, search or open anything under
+`300 Journal/`, and never edit a journal file directly. When the user
+corrects how you pick the heading, write the section, run the checks or
+report the result, follow [skill-lessons](../skill-lessons/SKILL.md)
+with the skill name `obsidian-daily-note`, and offer once to save the
+correction as a lesson.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->

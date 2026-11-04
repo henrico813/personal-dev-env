@@ -202,10 +202,11 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/surveil",
 		".local/state/surveil",
 	}
-	approvalTools := []string{
+	developmentTools := []string{
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
 		".local/bin/pde-comment-checker",
+		".local/bin/prs",
 	}
 	retiredAgentFiles := []string{
 		".config/opencode/plugins/pde-approval-session.js",
@@ -219,6 +220,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/design-doc",
 		".agents/skills/git-messages",
 		".agents/skills/go-development",
+		".agents/skills/herdr-handoff",
 		".agents/skills/implement-plan",
 		".agents/skills/promote-memory",
 		".agents/skills/pull-request",
@@ -279,8 +281,8 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		profile string
 		want    []string
 	}{
-		{profile: "terminal", want: join(everyProfile, approvalTools)},
-		{profile: "client", want: join(everyProfile, approvalTools, retiredAgentFiles, fullOnlyFiles)},
+		{profile: "terminal", want: join(everyProfile, developmentTools)},
+		{profile: "client", want: join(everyProfile, developmentTools, retiredAgentFiles, fullOnlyFiles)},
 		{profile: "full", want: join(everyProfile, retiredAgentFiles, retiredFullFiles)},
 	}
 	for _, test := range tests {

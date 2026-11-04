@@ -7,6 +7,9 @@ use std::process::Command;
 
 use pde_comment_review::shared::approvals::{self, Approval};
 use pde_comment_review::shared::git::resolve_commit;
+use pde_comment_review::shared::review_session::{
+    TEST_WAITING_LIST_VARIABLE, read_waiting_list, set_test_waiting_list_folder,
+};
 use serde_json::{Value, json};
 
 /// Names the Go file most tests change.
@@ -36,6 +39,45 @@ impl Drop for TempFolder {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// Keeps this test process's waiting list in a folder of its own in the build's temporary folder, never the user's own.
+/// The folder is set once per test process, but any test may run first, so every test that reaches the waiting list calls this.
+pub fn use_test_waiting_list() {
+    set_test_waiting_list_folder(&find_test_waiting_list_folder());
+}
+
+/// Returns this test process's waiting-list folder in the build's temporary folder.
+fn find_test_waiting_list_folder() -> PathBuf {
+    let folder = format!("waiting-list-{}", std::process::id());
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join(folder)
+}
+
+/// Returns a command that runs the program in `dir`, with this test process's waiting list, never the user's own.
+pub fn make_program_command(dir: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pde-comment-review-next"));
+    command
+        .current_dir(dir)
+        .env(TEST_WAITING_LIST_VARIABLE, find_test_waiting_list_folder());
+    command
+}
+
+/// Returns the worktrees on the waiting list inside `folder`, since tests that run at once share one waiting list.
+pub fn find_waiting_worktrees(folder: &Path) -> Vec<PathBuf> {
+    let folder = fs::canonicalize(folder).unwrap();
+    read_waiting_list()
+        .unwrap()
+        .into_iter()
+        .filter(|worktree| worktree.starts_with(&folder))
+        .collect()
+}
+
+/// Saves `write_error` in the Review Session, as a failed write leaves it.
+pub fn save_write_error(dir: &Path, write_error: Value) {
+    let review_file = dir.join(".git/pde/review.json");
+    let mut review: Value = serde_json::from_slice(&fs::read(&review_file).unwrap()).unwrap();
+    review["write_error"] = write_error;
+    fs::write(review_file, review.to_string()).unwrap();
 }
 
 /// Runs Git without the test machine's own settings, so they cannot change the result.

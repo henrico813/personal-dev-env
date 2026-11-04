@@ -6,6 +6,7 @@ who needs to keep the value after the operation finishes.
 
 ## Contents
 
+- [Syntax and ownership](#syntax-and-ownership)
 - [Borrow when inspecting a value](#borrow-when-inspecting-a-value)
 - [Take ownership when retaining a value](#take-ownership-when-retaining-a-value)
 - [Choose the method receiver](#choose-the-method-receiver)
@@ -13,6 +14,28 @@ who needs to keep the value after the operation finishes.
 - [Keep lifetime annotations tied to a real relationship](#keep-lifetime-annotations-tied-to-a-real-relationship)
 - [Use control flow the reader can follow](#use-control-flow-the-reader-can-follow)
 - [Choose a callback bound](#choose-a-callback-bound)
+
+## Syntax and ownership
+
+Use the project's Rust edition and supported syntax. Prefer `match`, `if let`,
+`let ... else`, and early returns where they clarify the flow. Let inference
+handle obvious types; add annotations when they explain intent or resolve
+ambiguity. Prefer named steps over deeply nested expressions and custom macros.
+
+Borrow with `&T` to share access without taking ownership; use `&mut T` for
+exclusive mutable access. Borrowing lets the original owner keep the value.
+A move transfers ownership; it is not a copy of the owned contents. For methods, choose `&self`, `&mut self`, or `self`
+according to whether the method borrows, mutates, or takes ownership. Prefer
+`&str`, `&[T]`, and `&Path` for inputs that only need borrowed views.
+
+Take ownership when the value must be retained or consumed. Keep ownership
+simple before adding explicit lifetimes, `Rc`, `Arc`, or locks. Cloning is valid
+when an independent value makes the design clearer and the cost is acceptable;
+do not clone blindly to silence the borrow checker. Lifetime annotations describe
+relationships between borrows; they do not extend a value's life.
+Use `Cell` or `RefCell` only when mutation through shared access serves a real
+need; they do not provide thread synchronization. Check the concurrency reference
+when adding them. Prefer checked numeric conversions when truncation is invalid.
 
 ## Borrow when inspecting a value
 
