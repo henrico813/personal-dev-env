@@ -43,14 +43,6 @@ const MOUSE_ON: &str = "\x1b[?1000h\x1b[?1006h";
 /// Turns off the mouse reports `MOUSE_ON` turned on.
 const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1000l";
 
-/// Says which Herdr window the screen runs in. Only the Review Popup writes
-/// the popup record, and only the Review Tab closes itself on quit.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ScreenKind {
-    Popup,
-    Tab,
-}
-
 /// Says why a command could not show the screen, in words for the user.
 #[derive(Debug)]
 pub struct StartFailure(pub String);

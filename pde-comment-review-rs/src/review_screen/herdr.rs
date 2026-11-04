@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use super::ScreenKind;
 use super::fit::{cut_middle, display_width, escape_control_characters};
+use crate::commands::cli::ScreenKind;
 use crate::shared::review_session::ReviewOrigin;
 
 /// Names the Herdr plugin whose panes run the screen. It must match the plugin

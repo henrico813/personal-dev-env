@@ -1,39 +1,68 @@
-//! Starts the review command, which prints its help or shows the Review Screen.
+//! This module sends each command to its step of the Review Process, in step
+//! order, so this one file shows the whole process. `commands/mcp.rs` must send
+//! each MCP tool to the same step, or MCP and the CLI give agents different
+//! replies. Read the `main()` function to understand the module.
 
-use std::io::{self, Write};
+use std::ffi::OsString;
+use std::path::Path;
 use std::process::ExitCode;
 
-use pde_comment_review::review_screen::{
-    ScreenKind, StartFailure, run_open_command, run_screen_command,
-};
+use pde_comment_review::commands::cli::{self, Command};
+use pde_comment_review::commands::{Reply, mcp, resolve_base};
+use pde_comment_review::review_screen::{StartFailure, run_open_command, run_screen_command};
+use pde_comment_review::steps::check_comments::check_comments;
+use pde_comment_review::steps::make_feedback_request_list::make_feedback_request_list;
+use pde_comment_review::steps::send_agent_suggestions::send_agent_suggestions;
+use pde_comment_review::steps::show_status::show_status;
 
-const HELP: &str = "pde-comment-review-next\n\nhelp           Show this help\nopen [NAME]    Show the review of branch NAME, or pick a waiting one\nscreen --popup Show the review in Herdr's popup, for Ctrl+b e\nscreen --tab   Show the review in a Herdr tab, for Ctrl+b E\n";
-
+/// Runs the command, which is usually one step of the Review Process.
 fn main() -> ExitCode {
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let args: Vec<_> = args.iter().map(|arg| arg.to_str()).collect();
-    let started = match args.as_slice() {
-        [Some("help")] => {
-            return match io::stdout().lock().write_all(HELP.as_bytes()) {
+    #[cfg(feature = "test-util")]
+    pde_comment_review::shared::review_session::use_test_waiting_list_from_environment();
+    let args: Vec<OsString> = std::env::args_os().collect();
+    let command = match cli::parse_command(&args) {
+        Ok(command) => command,
+        Err(usage) => {
+            eprint!("{usage}");
+            return ExitCode::from(2);
+        }
+    };
+    // The command line works on the folder it runs in.
+    let dir = Path::new(".");
+    let reply = match command {
+        Command::CheckComments { base } => Reply::from_outcome(
+            resolve_base(dir, base.as_deref()).and_then(|base| check_comments(dir, base)),
+        ),
+        Command::MakeFeedbackRequestList { base, input_file } => {
+            Reply::from_outcome(resolve_base(dir, base.as_deref()).and_then(|base| {
+                let change_requests = cli::read_change_requests(input_file.as_deref())?;
+                make_feedback_request_list(dir, base, &change_requests)
+            }))
+        }
+        Command::SendAgentSuggestions { file } => Reply::from_outcome(
+            cli::read_list_file(&file).and_then(|list| send_agent_suggestions(dir, list)),
+        ),
+        Command::Screen { kind } => return report_screen_outcome(run_screen_command(kind)),
+        Command::Open { name } => return report_screen_outcome(run_open_command(name.as_deref())),
+        Command::ShowStatus => Reply::from_outcome(show_status(dir)),
+        Command::Mcp => {
+            return match mcp::serve_mcp() {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(error) => {
-                    eprintln!("Cannot print help: {error}");
+                    eprintln!("The MCP server stopped. {error}");
                     ExitCode::FAILURE
                 }
             };
         }
-        [Some("screen"), Some("--popup")] => run_screen_command(ScreenKind::Popup),
-        [Some("screen"), Some("--tab")] => run_screen_command(ScreenKind::Tab),
-        [Some("open")] => run_open_command(None),
-        [Some("open"), Some(branch)] => run_open_command(Some(branch)),
-        _ => {
-            eprintln!(
-                "Usage: pde-comment-review-next help | open [NAME] | screen --popup | screen --tab"
-            );
-            return ExitCode::from(2);
-        }
+        Command::Help => return cli::print_help(),
     };
-    match started {
+    cli::print_reply(&reply)
+}
+
+/// Returns 0 once the screen closes, or prints why it could not open and
+/// returns 1.
+fn report_screen_outcome(shown: Result<(), StartFailure>) -> ExitCode {
+    match shown {
         Ok(()) => ExitCode::SUCCESS,
         Err(StartFailure(message)) => {
             eprintln!("{message}");

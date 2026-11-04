@@ -5,6 +5,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use serde::Serialize;
+
 use super::{NextStep, StepOutput};
 use crate::shared::Error;
 use crate::shared::review_session::{self, RequestId, ReviewStatus, WriteError};
@@ -14,6 +16,7 @@ use crate::shared::user_feedback::{UserFeedback, UserNote};
 /// and the step the agent runs next.
 pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
     let mut review = review_session::load(dir)?;
+    let status = review.as_ref().map(|saved| saved.status);
     let write_error = review.as_mut().and_then(|saved| saved.write_error.take());
     let (waiting, next) = match review {
         None => (Waiting::Nothing, NextStep::CheckComments),
@@ -47,6 +50,7 @@ pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
         },
     };
     Ok(StepOutput {
+        status,
         result: StatusResult {
             waiting,
             write_error,
@@ -56,7 +60,7 @@ pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
 }
 
 /// Holds what the review waits on, and why its last write failed.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct StatusResult {
     pub waiting: Waiting,
     /// Holds `None` unless the list waits for the user again after a failed
@@ -65,7 +69,8 @@ pub struct StatusResult {
 }
 
 /// Says who the review waits on, and for which requests.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Waiting {
     Nothing,
     /// Lists the requests the user has not answered yet.
