@@ -165,7 +165,7 @@ include ~/.config/i3/local.conf
 # include picom and xfce4-power-manager, so they have no exec line here.
 exec --no-startup-id dex --autostart --environment i3
 
-# Wallpaper (the video in ~/.config/wallpapers, or Ubuntu's default image)
+# Wallpaper (the video in ~/.config/wallpapers, or a plain dark background)
 exec_always --no-startup-id ~/.config/pde-desktop/scripts/wallpaper.sh
 
 # Notifications
