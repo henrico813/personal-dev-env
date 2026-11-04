@@ -58,6 +58,7 @@ pub enum Command {
     Open {
         name: Option<String>,
     },
+    MoveOldApprovals,
     /// Needs no Git checkout, Herdr or saved review, because the installer
     /// runs it to check each install.
     Help,

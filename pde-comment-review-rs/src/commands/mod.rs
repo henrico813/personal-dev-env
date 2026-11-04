@@ -16,6 +16,8 @@ use crate::steps::{NextStep, StepOutput};
 
 pub mod cli;
 pub mod mcp;
+pub mod move_old_approvals;
+mod old_reviews;
 
 /// Holds the reply every MCP tool and CLI command gives.
 #[derive(Debug, Serialize)]
@@ -110,6 +112,11 @@ pub fn list_commands() -> &'static [CommandInfo] {
             cli_usage: "mcp",
             mcp_name: None,
             description: "Serves the four MCP tools",
+        },
+        CommandInfo {
+            cli_usage: "move-old-approvals",
+            mcp_name: None,
+            description: "Moves today's approvals and open reviews in, once",
         },
         CommandInfo {
             cli_usage: "help",
