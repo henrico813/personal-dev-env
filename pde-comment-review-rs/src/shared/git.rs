@@ -295,6 +295,45 @@ pub fn read_current_branch(dir: &Path) -> Result<String, Error> {
     Ok(read_text(output)?.trim_end_matches('\n').to_owned())
 }
 
+/// Lists the top folder of every worktree of the clone, the main checkout
+/// first, as Git lists them. A worktree whose folder is gone is still listed.
+pub(crate) fn list_worktrees(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    let output = run_git(dir, &["worktree", "list", "--porcelain", "-z"])?;
+    Ok(output
+        .split(|byte| *byte == 0)
+        .filter_map(|field| field.strip_prefix(b"worktree "))
+        .map(|path| PathBuf::from(OsString::from_vec(path.to_vec())))
+        .collect())
+}
+
+/// Returns the top folder of each worktree of the clone that has `branch`
+/// checked out, which `open NAME` reads.
+pub(crate) fn find_worktrees_on_branch(dir: &Path, branch: &str) -> Result<Vec<PathBuf>, Error> {
+    let output = run_git(dir, &["worktree", "list", "--porcelain", "-z"])?;
+    // Each worktree is a `worktree PATH` field, then fields such as `branch refs/heads/NAME`.
+    let wanted = format!("branch refs/heads/{branch}");
+    let mut worktrees = Vec::new();
+    let mut worktree = None;
+    for field in output.split(|byte| *byte == 0) {
+        if let Some(path) = field.strip_prefix(b"worktree ") {
+            worktree = Some(PathBuf::from(OsString::from_vec(path.to_vec())));
+        } else if field == wanted.as_bytes()
+            && let Some(path) = worktree.take()
+        {
+            worktrees.push(path);
+        }
+    }
+    Ok(worktrees)
+}
+
+/// Returns the uncommitted changes in `files`, root-relative paths, as
+/// `git diff` prints them, for the Review Result Screen's `d`.
+pub(crate) fn read_diff_of_files(root: &Path, files: &[PathBuf]) -> Result<Vec<u8>, Error> {
+    let mut args = vec![OsStr::new("diff"), OsStr::new("--")];
+    args.extend(files.iter().map(|file| file.as_os_str()));
+    run_git(root, &args)
+}
+
 /// Returns the blob ID of `file` in a commit's tree, or `None` when no file is there.
 fn find_tree_blob(root: &Path, revision: &str, file: &Path) -> Result<Option<String>, Error> {
     let output = run_git(

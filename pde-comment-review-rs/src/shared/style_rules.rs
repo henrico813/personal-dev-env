@@ -1,15 +1,17 @@
-//! This module finds the style issues on a branch's changed lines, by the
-//! rules of the `code-documentation` skill. Each language lists its own
-//! rules, so this file never checks which language a file is in. Read the
-//! `StyleCheck::new(approvals, at_base)` and
-//! `StyleCheck::find_file_style_issues(now, changed)` functions to understand
-//! the module.
+//! This module finds the style issues on a branch's changed lines and in the
+//! agent's rewords, by the rules of the `code-documentation` skill. Each
+//! language lists its own rules, so this file never checks which language a
+//! file is in. Read the `StyleCheck::new(approvals, at_base)`,
+//! `StyleCheck::find_file_style_issues(now, changed)`, and
+//! `StyleCheck::find_reword_style_issues(now, reworded)` functions to
+//! understand the module.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
+use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 use super::approvals::{Approvals, DecisionMatch};
 use super::comments::{self, Comment, CommentStyle, Definition, FileComments, NameCheck};
@@ -48,7 +50,8 @@ impl<'a> StyleCheck<'a> {
         let mut findings = Vec::new();
         for comment in &now.comments {
             if (comment.line..=comment.end_line).any(|line| changed.contains(&line)) {
-                findings.extend(self.find_comment_style_issues(comment, now, rules));
+                let decision = self.approvals.compare(comment);
+                findings.extend(self.find_comment_style_issues(comment, decision, now, rules));
             }
         }
         for definition in &now.list_definitions() {
@@ -58,14 +61,55 @@ impl<'a> StyleCheck<'a> {
         findings
     }
 
-    /// Returns the findings in one changed comment.
+    /// Returns the style findings in a reword, read as a new comment the agent
+    /// wrote, where `now` holds the file with the reword in place. The approval
+    /// match is skipped, since the user has not seen the reword yet.
+    pub(crate) fn find_reword_style_issues(
+        &self,
+        now: &FileComments,
+        reworded: &Comment,
+    ) -> Vec<Finding> {
+        let rules = comments::find_style_rules(&now.file);
+        let mut findings =
+            self.find_comment_style_issues(reworded, DecisionMatch::Undecided, now, rules);
+        if reworded.style != CommentStyle::Docstring {
+            return findings;
+        }
+        // A docstring's own rules read it through the definition it sits in.
+        for definition in now.list_definitions() {
+            let Some(docstring) = &definition.docstring else {
+                continue;
+            };
+            let Some(text) = &docstring.text else {
+                continue;
+            };
+            if !docstring.own_lines.contains(&reworded.line) {
+                continue;
+            }
+            for (rule, detail) in find_docstring_rules(text, docstring.is_test) {
+                if rules.contains(&rule) {
+                    findings.push(Finding {
+                        file: now.file.clone(),
+                        name: Some(definition.name.clone()),
+                        line: definition.line,
+                        rule,
+                        outcome: Outcome::Fails,
+                        detail,
+                    });
+                }
+            }
+        }
+        findings
+    }
+
+    /// Returns the findings in one changed comment, given its decision.
     fn find_comment_style_issues(
         &self,
         comment: &Comment,
+        decision: DecisionMatch,
         now: &FileComments,
         rules: &[Rule],
     ) -> Vec<Finding> {
-        let decision = self.approvals.compare(comment);
         // Changed approved text already fails, and the agent must put it back as it was.
         if decision == DecisionMatch::DiffersFromApproved {
             return Vec::new();
@@ -228,8 +272,29 @@ pub struct Finding {
     pub detail: Option<String>,
 }
 
+/// Writes a finding as agents read it, with the skill sentence its rule checks.
+/// `note` says why a finding is only reported, and is null for a failure.
+impl Serialize for Finding {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let note = match self.outcome {
+            Outcome::Fails => None,
+            Outcome::Reported(note) => Some(note),
+        };
+        let mut finding = serializer.serialize_struct("Finding", 7)?;
+        finding.serialize_field("file", &self.file)?;
+        finding.serialize_field("name", &self.name)?;
+        finding.serialize_field("line", &self.line)?;
+        finding.serialize_field("rule", &self.rule)?;
+        finding.serialize_field("note", &note)?;
+        finding.serialize_field("detail", &self.detail)?;
+        finding.serialize_field("sentence", self.rule.sentence())?;
+        finding.end()
+    }
+}
+
 /// Names each rule a comment or name can break.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Rule {
     /// Marks a changed comment whose name has approved texts, none equal to its text.
     Approved,
@@ -295,7 +360,8 @@ pub enum Outcome {
 }
 
 /// Says why a finding is only reported.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReportNote {
     /// Marks text that matches an approval, which the agent may not change.
     Approved,
@@ -377,6 +443,7 @@ static ABBREVIATIONS: LazyLock<Regex> =
 
 /// Holds the sentences and names the changed files held at `base`, by
 /// language, so code moved from one file to another still counts as old.
+/// Step 5 uses an empty one.
 #[derive(Default)]
 pub(crate) struct TextAtBase {
     /// Holds each sentence with its file's language, since a rule's reach
@@ -1167,6 +1234,53 @@ def database():
         }
     }
 
+    mod find_reword_style_issues {
+        use super::*;
+
+        /// `find_reword_style_issues` must fail a reword that breaks a rule, even one that replaces approved text or is a Python docstring, and no other comment in its file.
+        /// Otherwise the user could accept a reword whose findings are only reported from then on, or the agent could not send a good one.
+        #[test]
+        fn fails_reword_as_new_comment() {
+            let none = load_approvals(json!({}));
+            let decision = json!({"file": STORE, "name": "SaveAnswer", "text": BASE_COMMENT});
+            let approved = load_approvals(json!({"approved": [decision], "avoid": {}}));
+            let docstring = "def save():\n    \"\"\"Writes the answer.\n\n    Why: it lasts.\n    \"\"\"\n\n\ndef load():\n    \"\"\"Reads\n    the answer.\"\"\"\n";
+            let filler = (Rule::Filler, Outcome::Fails, "\"facilitates\"".to_owned());
+            let cases = [
+                (
+                    "new-comment",
+                    &none,
+                    STORE,
+                    store_source("// This facilitates saving.\n", ""),
+                    vec![filler.clone()],
+                ),
+                (
+                    "approved-comment",
+                    &approved,
+                    STORE,
+                    store_source("// This facilitates saving.\n", ""),
+                    vec![filler],
+                ),
+                (
+                    "python-docstring",
+                    &none,
+                    "store.py",
+                    docstring.to_owned(),
+                    vec![(Rule::SectionHeading, Outcome::Fails, "\"Why:\"".to_owned())],
+                ),
+            ];
+
+            for (case, approvals, file, source, expected) in cases {
+                let check = StyleCheck::new(approvals, TextAtBase::default());
+                let now = read_source(file, &source);
+
+                let found = check.find_reword_style_issues(&now, &now.comments[0]);
+
+                assert_eq!(list_rules(found), expected, "{case}");
+            }
+        }
+    }
+
     /// `Rule::sentence` must quote the `code-documentation` skill word for word.
     /// Otherwise an agent could be told to follow a sentence the skill no longer says.
     #[test]
@@ -1200,5 +1314,34 @@ def database():
             .collect();
 
         assert_eq!(unquoted, []);
+    }
+
+    /// `Finding` must reach agents with its rule's name, why it is only reported, and its skill sentence.
+    /// Otherwise an agent could not tell a reported finding from a failure, or which rule it broke.
+    #[test]
+    fn finding_json_names_rule_note_and_sentence() {
+        let finding = Finding {
+            file: PathBuf::from("answer.go"),
+            name: Some("Total".to_owned()),
+            line: 3,
+            rule: Rule::VerbFirst,
+            outcome: Outcome::Reported(ReportNote::ReportOnly),
+            detail: None,
+        };
+
+        let written = serde_json::to_value(&finding).unwrap();
+
+        assert_eq!(
+            written,
+            json!({
+                "file": "answer.go",
+                "name": "Total",
+                "line": 3,
+                "rule": "verb-first",
+                "note": "report_only",
+                "detail": null,
+                "sentence": Rule::VerbFirst.sentence(),
+            })
+        );
     }
 }
