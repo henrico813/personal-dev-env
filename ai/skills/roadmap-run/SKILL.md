@@ -60,11 +60,17 @@ commands in [references/build.md](references/build.md).
    `### Design edits to apply` in its `## Notes for agents`. A child
    of an unbuilt parent is written against a commit of the parent's
    planned tree, made as build.md says.
+   Run build.md's Set up a PR's run folder as soon as the plan file
+   exists, since the setup reads the plan's key. Until then, the
+   first planner writes its report to a folder you make with
+   `mktemp -d`.
 2. **Fresh plan review.** A new agent reviews the plan with
    `review-plan` and the domain skills, and reads the same design
-   notes as the planner. Send its findings, with your decision on each
-   optional item, back to the planner's session in one message. Then
-   run the design check below on the revised plan before you build.
+   notes as the planner. When it asks for changes, start a new
+   planner with prompts.md's revision message, which names the plan,
+   the review's report file and your decision on each optional item.
+   Then run the design check below on the revised plan before you
+   build.
 3. **Build.** Export each plan step's tree and commit it with
    `git commit-tree` on the step before, starting at the plan's base.
    Make the PR's worktree with `wt` and move it to the last commit. A
@@ -75,15 +81,15 @@ commands in [references/build.md](references/build.md).
    `review-plan`, each language skill, `code-documentation` and
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
-   optional items, and send one message to the planner. Run the design
+   optional items, and start a new planner for the fixes. Run the design
    check on the revised plan, then commit its tree as one fix commit.
    A test may be deleted only when a reviewer's finding names it and
    names the test that still covers its behavior.
 6. **Final pass.** Run the tests, linters, comment checker and any
-   comparison script the plan names. Put back two bugs the reviewers
-   found, one at a time, and check that a test fails for each. For
-   each deleted test, plant the bug it caught and check that the
-   named test fails.
+   comparison script the plan names. Run two of the reviewers' `plant`
+   lines, one at a time, with build.md's Plant a bug, and check that a
+   test fails for each. For each deleted test, plant the bug it caught
+   and check that the named test fails.
 7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
    failed check, the wrong branch, a parent that moved or a branch
    already pushed; it squashes onto the parent and pushes. Then save
@@ -96,13 +102,14 @@ commands in [references/build.md](references/build.md).
    commands on the roadmap page, keep any proposals file in its run
    folder, and run them after the user answers the parent's review.
 
-Before a child PR builds, set its plan's `Base commit:` line to the
-parent's final commit and run `planner check` again.
+Before a child PR builds, run build.md's Move a child's base. It sets
+the plan's `Base commit:` line to the parent's final commit and runs
+`planner check` again.
 
 ## After a PR opens
 
 - Every later change, whether a fix, a quality pass or a parent's new
-  commit, goes through the same loop: the planner revises the plan, a
+  commit, goes through the same loop: a new planner revises the plan, a
   fresh agent reviews it, you run the design check, commit the plan's
   tree from `planner export` as a new commit, push it, and update the
   PR text.
@@ -195,7 +202,9 @@ entries parked.
 - Keep one bullet per PR on the roadmap page current. Detail belongs
   in the plans, not in chat.
 - Write each PR's status line from the output of build.md's status
-  line snippet, never by hand. Rerun it after every push.
+  line snippet, never by hand. Rerun it after every push and every
+  loop step, with NEXT set to the PR's next step, so a new session
+  can resume from the roadmap page.
 
 ## When something goes wrong
 

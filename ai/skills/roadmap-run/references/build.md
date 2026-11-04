@@ -232,8 +232,8 @@ stays local is not done.
 
 ## Plant a bug
 
-Put back one bug a reviewer found. A test must fail, and the
-worktree must be clean after:
+Run one `plant` line from a reviewer's report as written. A test
+must fail, and the worktree must be clean after:
 
 ```sh
 . <run folder>/env
@@ -244,7 +244,8 @@ plant internal/x.go 'if a {' 'if false && a {' go test ./internal/... || exit 1
 ```
 
 Read the output: a build error also fails the command, but only a
-failed test proves the bug is caught.
+failed test proves the bug is caught. When the line's old text no
+longer appears once, because a fix round changed it, use another line.
 
 ## Ship
 
@@ -314,11 +315,15 @@ after that files a fresh request.
 ## Print a PR's status line
 
 Write the roadmap's status line for a PR from this output, never by
-hand:
+hand. Set NEXT to the PR's next step, such as `skill reviews` or
+`rerun request.sh`, so a new session can resume from the roadmap
+page:
 
 ```sh
 . <run folder>/env
-{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "$BR: not built"; exit 0; }
+keep NEXT '<next step>'
+{ [ -n "$W" ] && [ "$W" != null ]; } ||
+  { echo "$BR: not built; next: $NEXT"; exit 0; }
 cd "$W" || exit 1
 git fetch -q "$REMOTE" || exit 1
 head=$(git rev-parse HEAD) || exit 1
@@ -330,7 +335,7 @@ mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
 n=$(changed . "$mb" HEAD) || exit 1
 req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
 echo "$BR: pushed ${pushed:-none}; local equals pushed: $same;" \
-  "$n changed lines against $PARENT; request: $req"
+  "$n changed lines against $PARENT; request: $req; next: $NEXT"
 ```
 
 `local equals pushed: no` means a commit is not pushed: push it
@@ -352,11 +357,25 @@ points at it, so `git gc` may delete it after two weeks.
 
 ## Move a child's base
 
-After the parent ships, set the child plan's `Base commit:` line to
-the parent's final commit and run `planner check`. If it passes, the
-child's diffs apply unchanged; save the commit with `keep B` in the
-child's run folder. If it fails, the parent changed after the child
-was written: send the errors to the child's planner.
+After the parent ships, run this in the child's run folder. It sets
+the child plan's `Base commit:` line to the parent's final commit,
+saves that commit, and runs `planner check`:
+
+```sh
+. <child's run folder>/env
+nb='<final commit of the parent>'
+nb=$(git -C "$R" rev-parse --verify "$nb^{commit}") || exit 1
+sed -i "0,/^Base commit: .*/s//Base commit: $nb/" "$P" || exit 1
+grep -qx "Base commit: $nb" "$P" ||
+  { echo "no Base commit: line in $P"; exit 1; }
+keep B "$nb"
+planner check "$P" --repo "$R" --json-errors >/dev/null ||
+  { echo "plan does not apply on $nb"; exit 1; }
+```
+
+If the check passes, the child's diffs apply unchanged. If it fails,
+the parent changed after the child was written: start a new planner
+for the child with the errors.
 
 ## Carry a parent's commit to a child
 
@@ -380,9 +399,11 @@ t=$(plan_tree "$P" "$R" "$nb" "$(tail -n 1 "$D/steps")") || exit 1
 c=$(git commit-tree "$t" -p HEAD -p "$nb" -m "chore: merge the parent branch") ||
   exit 1
 git merge -q --ff-only "$c" || exit 1
+sed -i "0,/^Base commit: .*/s//Base commit: $nb/" "$P" || exit 1
+grep -qx "Base commit: $nb" "$P" ||
+  { echo "no Base commit: line in $P"; exit 1; }
 keep B "$nb"
 ```
 
-Then set the plan's `Base commit:` line to `$nb`, run the plan's
-checks, and run Ship's later round. A failed `planner check` is a
-conflict: never resolve it by hand.
+Then run the plan's checks and Ship's later round. A failed
+`planner check` is a conflict: never resolve it by hand.

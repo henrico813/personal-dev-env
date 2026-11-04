@@ -7,6 +7,9 @@ the user has given feedback on one PR, also add that feedback list
 from the roadmap page. `<design notes>` stands for the paths of the
 design's index note, the note holding its Dictionary and every part
 the PR touches, or the path of a design kept in one note.
+`<report file>` stands for a new file in the PR's run folder, such as
+`<run folder>/plan-review-1.md`. The first planner starts before that
+folder exists, so give it a file in a folder you make with `mktemp -d`.
 
 ## Contents
 
@@ -22,14 +25,23 @@ Paste these into every brief:
 
     The user is away; decide minor things yourself and say so.
     Never edit or commit a real `.code-comments.json`. Work only in
-    folders you make with `mktemp -d`; never remove a fixed /tmp path
-    or use another agent's folder.
+    folders you make with `mktemp -d`, except that you write your full
+    report to <report file>; never remove a fixed /tmp path or use
+    another agent's folder. Read a skill's SKILL.md, then only
+    the references your step needs. Reply in at most 20 lines,
+    starting with the report's path.
 
 Reviewers also get:
 
     Read-only: do not edit the worktree, commit, push or install. You
     are a delegated reviewer: review directly and start no other
     agents. Report in review-plan's format with file:line evidence.
+    For each bug you want put back in the final pass, write a line to
+    run as is from the repository root:
+    `plant <file> '<old text>' '<new text>' <test command>`. The plant
+    function swaps the old text, which must appear once in the file,
+    for the new, runs the test command, and passes only when a test
+    fails.
 
 ## Planner
 
@@ -57,8 +69,9 @@ Reviewers also get:
     tests, other), choices you made, and anything that contradicts the
     design.
 
-Keep the planner's session ID. Every revision goes to that session,
-so it keeps its context.
+Every revision goes to a new planner, with the revision message
+below. The plan's `## Notes for agents` holds every decision, so the
+new planner needs no earlier session.
 
 ## Fresh plan review
 
@@ -110,16 +123,28 @@ or the design. Leave `Plan: <path>` out of their briefs. Give the
 
 ## Revision message
 
-Send to the planner's session once every reviewer has reported:
+Start a new planner with this whenever the plan needs changes, such
+as after a review round or a design check. Before the build, leave
+out the part in brackets.
 
-    <Plan> is built: branch <branch>, HEAD <commit>. <N> reviewers
-    asked for changes. Revise the plan only; `planner check` must
-    pass; rerun the tests and the affected mutations. Do not touch
-    the worktree.
+    Revise the implementation plan <plan path>.
+    Applicable skills: create-plan, <domain skills>,
+    code-documentation, behavior-focused-testing. Load each first and
+    report any that are unavailable. Follow create-plan's "When you
+    are a delegated agent" section. Read `Projects/AGENTS.md` in the
+    vault before writing there.
+
+    [<Plan> is built: branch <branch>, HEAD <commit>. Do not touch
+    the worktree.] Revise the plan only, and apply only the items
+    below; the reviewers' reports in <report files> give their
+    evidence. Design: <design notes>; read the parts a fix touches.
+    `planner check` must pass; rerun the tests and the affected
+    mutations.
 
     Required: <numbered, each with evidence and the fix>.
     Decided: <optional items you chose, and how reviewers' conflicts
-    were settled>.
+    were settled>. Record each decision in the plan's
+    `## Notes for agents`.
 
     Report: new size, tests, mutations, `planner check` result, and
     anything not applied and why.
