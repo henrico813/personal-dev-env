@@ -11,13 +11,11 @@ run the lines after a failed one by hand.
 
 - Check the comment-review file
 - Set up a PR's run folder
-- Write and lint the commit messages
-- Build the commits
-- Make the PR's worktree
+- Build the PR
 - Apply a fix round
 - Plant a bug
 - Ship
-- File the PR request
+- Push a later round
 - Print a PR's status line
 - Base a child on an unbuilt parent
 - Move a child's base
@@ -125,6 +123,44 @@ changed() {
   out=$(git -C "$1" diff --numstat "$2" "$3") || return 1
   printf '%s\n' "$out" | awk '{n += $1 + $2} END {print n + 0}'
 }
+
+# Run function step_NAME of build.sh or ship.sh in a subshell, with
+# its output added to LOG. The step's mark holds the plan's hash, so a
+# rerun skips it until the plan changes. A step that exits 3 ran but
+# leaves no mark. Any other failure prints one STOPPED line and ends
+# the script.
+run_step() {
+  local log=$1 name=$2 h rc
+  h=$(git hash-object "$P") ||
+    { echo "STOPPED at $name: cannot read $P"; exit 1; }
+  [ "$(cat "$D/done.$name" 2>/dev/null)" = "$h" ] && return 0
+  echo "== $name $(date -u +%FT%TZ)" >> "$log"
+  ( . "$D/env" && "step_$name" ) >> "$log" 2>&1
+  rc=$?
+  case $rc in
+    0) echo "$h" > "$D/done.$name" ;;
+    3) ;;
+    *) echo "STOPPED at $name: $(tail -n 1 "$log")"; exit 1 ;;
+  esac
+}
+
+# Print the roadmap's status line for this PR, ending with NEXT.
+status_line() (
+  { [ -n "$W" ] && [ "$W" != null ]; } ||
+    { echo "$BR: not built; next: $NEXT"; exit 0; }
+  cd "$W" || exit 1
+  git fetch -q "$REMOTE" || exit 1
+  head=$(git rev-parse HEAD) || exit 1
+  out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
+  pushed=$(printf '%s' "$out" | cut -f 1)
+  same=no
+  [ "$head" = "$pushed" ] && same=yes
+  mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
+  n=$(changed . "$mb" HEAD) || exit 1
+  req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
+  echo "$BR: pushed ${pushed:-none}; local equals pushed: $same;" \
+    "$n changed lines against $PARENT; request: $req; next: $NEXT"
+)
 FNS
 . "$D/env"
 keep R '<repository root>'
@@ -140,71 +176,104 @@ echo "run folder: $D"
 
 Write the run folder's path on the roadmap page next to the PR.
 
-## Write and lint the commit messages
+## Build the PR
 
 Write `$D/MSG<step>` for each `### <step>.` heading in the plan,
-following `git-messages`. Lint them before the build:
+following `git-messages`. Then run this block. It saves `build.sh` in
+the run folder and runs it:
 
 ```sh
 . <run folder>/env
-planner check "$P" --repo "$R" --json-errors >/dev/null || exit 1
-rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
-for s in $(cat "$D/steps"); do
-  [ -s "$D/MSG$s" ] || { echo "missing: $D/MSG$s"; exit 1; }
-  python3 "$M" fmt "$D/MSG$s" >/dev/null || exit 1
-  python3 "$M" lint "$D/MSG$s" || { echo "lint failed: step $s"; exit 1; }
-done
+cat > "$D/build.sh" <<'SH'
+# Check the plan, lint the commit messages, commit each step's tree on
+# the step before, make the worktree and run CHECK. Rerun to resume.
+. "$(dirname "$0")/env" || exit 1
+log=$D/build.log
+
+step_check() {
+  planner check "$P" --repo "$R" --json-errors >/dev/null ||
+    { echo "planner check failed; its errors are in build.log"
+      exit 1; }
+  rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
+}
+
+step_lint() {
+  for s in $(cat "$D/steps"); do
+    [ -s "$D/MSG$s" ] || { echo "missing: $D/MSG$s"; exit 1; }
+    python3 "$M" fmt "$D/MSG$s" >/dev/null || exit 1
+    python3 "$M" lint "$D/MSG$s" ||
+      { echo "lint failed: step $s"; exit 1; }
+  done
+}
+
+# Starts at $B on every run, since commit-tree makes new hashes.
+step_build() {
+  prev=$B
+  for s in $(cat "$D/steps"); do
+    t=$(plan_tree "$P" "$R" "$B" "$s") ||
+      { echo "export failed: step $s"; exit 1; }
+    echo "$t" > "$D/tree$s"
+    prev=$(git -C "$R" commit-tree "$t" -p "$prev" -F "$D/MSG$s") ||
+      exit 1
+    echo "$prev" > "$D/commit$s"
+  done
+}
+
+# Reuses the branch's worktree when an earlier run made it.
+step_worktree() {
+  last=$(tail -n 1 "$D/steps")
+  W=$(wt -C "$R" list --format=json | jq -r --arg b "$BR" \
+    '.items[] | select(.branch == $b) | .worktree.path // empty')
+  if [ -z "$W" ]; then
+    wt -C "$R" switch --create "$BR" --base "$B" --no-cd \
+      --format=json > "$D/wt.json" || exit 1
+    W=$(jq -r .path "$D/wt.json")
+  fi
+  { [ -n "$W" ] && [ "$W" != null ]; } ||
+    { echo "no worktree for $BR"; exit 1; }
+  keep W "$W"
+  git -C "$W" merge -q --ff-only "$(cat "$D/commit$last")" ||
+    { echo "$BR holds another build; use Apply a fix round"; exit 1; }
+  t=$(cat "$D/tree$last")
+  [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$t" ] ||
+    { echo "branch tree differs from the plan"; exit 1; }
+}
+
+# ship.sh runs CHECK again, after the fix commits.
+step_test() {
+  { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+    { echo "no worktree: '$W'"; exit 1; }
+  sh -c "$CHECK" || { echo "CHECK failed in $W"; exit 1; }
+}
+
+run_step "$log" check
+run_step "$log" lint
+run_step "$log" build
+run_step "$log" worktree
+run_step "$log" test
+. "$D/env"
+echo "built $BR in $W: $(changed "$W" "$B" HEAD) changed lines"
+SH
+bash "$D/build.sh"
 ```
 
-## Build the commits
+It prints `built <branch> in <worktree>: <n> changed lines`, or one
+line `STOPPED at <step>: <reason>`. The full output is in `build.log`
+in the run folder. To resume, fix the cause and run
+`bash <run folder>/build.sh`; it skips each step it finished for this
+version of the plan.
 
-Each step's commit has the tree `planner export` makes through that
-step, on the commit of the step before, starting at `$B`:
+- `check`: start a new planner with planner's errors from
+  `build.log`, then rerun.
+- `lint`: fix the message, then rerun.
+- Any other step means a stale plan or a broken tool. Do not retry or
+  edit files: stop this PR and its children, put the error on the
+  roadmap page as a blocking question, and keep building other
+  stacks.
 
-```sh
-. <run folder>/env
-prev=$B
-for s in $(cat "$D/steps"); do
-  t=$(plan_tree "$P" "$R" "$B" "$s") || { echo "export failed: step $s"; exit 1; }
-  echo "$t" > "$D/tree$s"
-  prev=$(git -C "$R" commit-tree "$t" -p "$prev" -F "$D/MSG$s") || exit 1
-  echo "$prev" > "$D/commit$s"
-done
-n=$(changed "$R" "$B" "$prev") || exit 1
-echo "changed lines: $n"
-```
-
-## Make the PR's worktree
-
-`wt` makes the branch `$BR` at `$B`; the merge then moves it to the
-last step's commit:
-
-```sh
-. <run folder>/env
-last=$(tail -n 1 "$D/steps")
-wt -C "$R" switch --create "$BR" --base "$B" --no-cd --format=json \
-  > "$D/wt.json" || exit 1
-W=$(jq -r .path "$D/wt.json")
-{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "no worktree in $D/wt.json"; exit 1; }
-keep W "$W"
-git -C "$W" merge -q --ff-only "$(cat "$D/commit$last")" || exit 1
-[ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$(cat "$D/tree$last")" ] ||
-  { echo "branch tree differs from the plan"; exit 1; }
-```
-
-Then run the plan's checks in `$W`, with Ship's worktree guard:
-
-```sh
-. <run folder>/env
-{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
-  { echo "no worktree: '$W'"; exit 1; }
-sh -c "$CHECK" || exit 1
-```
-
-A failed build command means a stale plan or a broken tool. Do not
-retry or edit files: stop this PR and its children, put the error on
-the roadmap page as a blocking question, and keep building other
-stacks.
+A revised plan makes build.sh repeat every step. Once the branch holds
+a build, build.sh stops at `worktree`; bring a revision in with Apply
+a fix round instead.
 
 ## Apply a fix round
 
@@ -227,8 +296,10 @@ n=$(changed "$W" "$B" HEAD) || exit 1
 echo "changed lines: $n"
 ```
 
-After the first push, run Ship's later round right away. A fix that
-stays local is not done.
+After the first push, run Push a later round right away. A fix that
+stays local is not done. The revised plan no longer matches the marks
+that build.sh and ship.sh left, so a later ship.sh run repeats every
+step.
 
 ## Plant a bug
 
@@ -249,68 +320,179 @@ longer appears once, because a fix round changed it, use another line.
 
 ## Ship
 
-Write the PR text to `$D/FILE` first. Squash only before the branch's
-first push; the script refuses a branch already on the remote:
+Run this after the final pass. Write the PR text to `$D/FILE` first,
+so it can give the final pass's real numbers. The block saves
+`ship.sh` in the run folder and runs it. ship.sh squashes only before
+the branch's first push:
 
 ```sh
 . <run folder>/env
-python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
-python3 "$M" lint --pr "$D/FILE" || exit 1
-{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
-  { echo "no worktree: '$W'"; exit 1; }
-[ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
-  { echo "not on $BR"; exit 1; }
-[ -z "$(git status --porcelain)" ] || { echo "worktree not clean"; exit 1; }
-sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
-git fetch -q "$REMOTE" || exit 1
-git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
-  { echo "$PARENT moved; move this plan's base and rebuild"; exit 1; }
-git ls-remote --exit-code --heads "$REMOTE" "$BR" >/dev/null
-rc=$?
-[ "$rc" = 2 ] || { echo "$BR is already pushed or ls-remote failed"; exit 1; }
-git reset -q --soft "$REMOTE/$PARENT" || exit 1
-git commit -q -F "$D/FILE" || exit 1
-git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/$BR" || exit 1
+cat > "$D/ship.sh" <<'SH'
+# Check that the branch holds the plan's tree, lint the PR text,
+# squash onto the parent, push, file the PR request and print the
+# status line. Rerun to resume or to read a waiting request.
+. "$(dirname "$0")/env" || exit 1
+log=$D/ship.log
+
+# Exits 3 when the trees match, so every run checks again.
+step_tree() {
+  { [ -n "$W" ] && [ "$W" != null ]; } ||
+    { echo "no worktree: '$W'"; exit 1; }
+  last=$(rg -o '^### ([0-9]+)\.' -r '$1' "$P" | tail -n 1)
+  t=$(plan_tree "$P" "$R" "$B" "$last") ||
+    { echo "export failed: step $last"; exit 1; }
+  [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$t" ] ||
+    { echo "branch tree differs from the plan"; exit 1; }
+  exit 3
+}
+
+# Exits 3 after a clean lint, so every run lints FILE again.
+step_text() {
+  python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
+  python3 "$M" lint --pr "$D/FILE" ||
+    { echo "lint failed: $D/FILE"; exit 1; }
+  exit 3
+}
+
+# A push that worked before its mark was written counts as done.
+# CHECK runs again, since fix commits came after build.sh.
+step_push() {
+  cd "$W" || exit 1
+  [ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
+    { echo "not on $BR"; exit 1; }
+  [ -z "$(git status --porcelain)" ] ||
+    { echo "worktree not clean"; exit 1; }
+  git fetch -q "$REMOTE" || exit 1
+  out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
+  pushed=$(printf '%s' "$out" | cut -f 1)
+  [ "$pushed" = "$(git rev-parse HEAD)" ] &&
+    { echo "already pushed"; exit 0; }
+  [ -z "$pushed" ] ||
+    { echo "$BR is already pushed; use Push a later round"; exit 1; }
+  sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
+  git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
+    { echo "$PARENT moved; carry its commit to this PR first"
+      exit 1; }
+  git reset -q --soft "$REMOTE/$PARENT" || exit 1
+  git commit -q -F "$D/FILE" || exit 1
+  git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/$BR" ||
+    exit 1
+}
+
+# Saves the request as request.sh, with its own body file, so the
+# identical command can run again later. A changed command or body is
+# a new request, so both are written only before the first filing or
+# after a refusal. A run cut off before its result reruns the saved
+# request. Exit 3 leaves no mark, so a rerun reads the result. Once
+# the PR is open, a rerun skips the saved request, which would run
+# again after it expires.
+step_request() {
+  grep -q '^exit 0 ' "$D/request.result" 2>/dev/null && exit 0
+  if [ ! -e "$D/request.sh" ] ||
+    grep -q '^exit 2 ' "$D/request.result" 2>/dev/null; then
+    tail -n +3 "$D/FILE" > "$D/request.body" || exit 1
+    {
+      printf 'cd %q || exit 1\n' "$W"
+      printf 'pde-gh-write pr create --base %q --title %q' \
+        "$PARENT" "$(head -n 1 "$D/FILE")"
+      printf ' --body-file %q\n' "$D/request.body"
+      printf 'rc=$?\n'
+      printf 'echo "exit $rc at $(date -u +%%FT%%TZ)" > %q\n' \
+        "$D/request.result"
+      printf 'exit $rc\n'
+    } > "$D/request.sh" || exit 1
+  fi
+  bash "$D/request.sh"
+  rc=$?
+  case $rc in
+    0) exit 0 ;;
+    3) echo "waiting for the user's approval"; exit 3 ;;
+    4) echo "declined; park this PR and its children"; exit 1 ;;
+    6) echo "interrupted, never retried; ask the user"; exit 1 ;;
+    2) echo "refused; fix the command, then rerun"; exit 1 ;;
+    *) echo "exit $rc from gh; put its output on the roadmap page"
+       exit 1 ;;
+  esac
+}
+
+run_step "$log" tree
+run_step "$log" text
+run_step "$log" push
+run_step "$log" request
+# A later round while the request waited left newer PR text in BODY.
+if ! grep -q '^exit 0 ' "$D/request.result" 2>/dev/null; then
+  keep NEXT 'rerun ship.sh to read the request'
+elif [ -e "$D/BODY" ] && ! cmp -s "$D/BODY" "$D/request.body"; then
+  keep NEXT 'update the PR text with pde-gh-write pr edit unless done'
+else
+  keep NEXT 'queue the comment review'
+fi
+status_line 2>> "$log" ||
+  { echo "STOPPED at status: see $log"; exit 1; }
+SH
+bash "$D/ship.sh"
 ```
 
-A later round, after the first push, adds a commit: use the same
-script, but replace everything from `git ls-remote` on with
-`git push -u "$REMOTE" "HEAD:refs/heads/$BR"`, then update the
-PR text with `pde-gh-write pr edit NUMBER --body-file "$D/BODY"`, and
-print the status line.
+It prints the PR's status line, or one line
+`STOPPED at <step>: <reason>`. The full output is in `ship.log` in
+the run folder. To resume, fix the cause and run
+`bash <run folder>/ship.sh`. It checks the tree and lints the PR
+text on every run, and skips each other step it finished for this
+version of the plan.
 
-## File the PR request
-
-This saves the request as a script, so the identical command can run
-again later. Each run writes its exit code to `$D/request.result`:
-
-```sh
-. <run folder>/env
-{ [ -n "$W" ] && [ "$W" != null ]; } || { echo "no worktree: '$W'"; exit 1; }
-tail -n +3 "$D/FILE" > "$D/BODY" || exit 1
-{
-  printf 'cd %q || exit 1\n' "$W"
-  printf 'pde-gh-write pr create --base %q --title %q --body-file %q\n' \
-    "$PARENT" "$(head -n 1 "$D/FILE")" "$D/BODY"
-  printf 'rc=$?\necho "exit $rc at $(date -u +%%FT%%TZ)" > %q\nexit $rc\n' \
-    "$D/request.result"
-} > "$D/request.sh"
-bash "$D/request.sh"
-echo "exit $?"
-```
+- `tree`: the branch lacks the plan's last revision. Run Apply a fix
+  round, then rerun.
+- `text`: fix `$D/FILE`, then rerun.
+- `push`: follow the reason. A failed check is never minor. When the
+  parent moved, run Carry a parent's commit to a child, then rerun.
+- `request`: the reason gives the PR request's result, below.
 
 Put `bash <run folder>/request.sh` on the roadmap page. Rerunning it
 reads the result:
 
 - `0`, or `already ran <id>, exit 0`: the PR is open.
-- `3`: it waits for the user; say so once and move on.
+- `3`: it waits for the user; say so once and move on. ship.sh still
+  prints the status line.
 - `4`, `declined <id>`: park this PR and its children.
 - `6`, `interrupted <id>`: it is never retried; ask the user.
-- `2`: the command was refused; fix it, rewrite the script, run it.
+- `2`: the command was refused; fix it, then rerun ship.sh, which
+  writes `request.sh` again.
 - Anything else is from `gh`; put its output on the roadmap page.
 
 A request expires four hours after it is filed. Rerunning the script
-after that files a fresh request.
+after that files a fresh request. ship.sh keeps the request's first
+text, reruns the saved script while the request waits, and skips it
+once the PR is open, so a later round never files a second PR
+request.
+
+## Push a later round
+
+After the first push, each change adds a commit, and ship.sh stops at
+`push`. Update `$D/FILE`, then push the commit with this:
+
+```sh
+. <run folder>/env
+python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
+python3 "$M" lint --pr "$D/FILE" || exit 1
+tail -n +3 "$D/FILE" > "$D/BODY" || exit 1
+{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
+  { echo "no worktree: '$W'"; exit 1; }
+[ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
+  { echo "not on $BR"; exit 1; }
+[ -z "$(git status --porcelain)" ] ||
+  { echo "worktree not clean"; exit 1; }
+sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
+git fetch -q "$REMOTE" || exit 1
+git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
+  { echo "$PARENT moved; carry its commit to this PR first"; exit 1; }
+git push -u "$REMOTE" "HEAD:refs/heads/$BR" || exit 1
+```
+
+Then update the PR text with
+`pde-gh-write pr edit NUMBER --body-file "$D/BODY"`, and print the
+status line. While the PR request waits, there is no PR to edit yet;
+update its text once the PR opens. ship.sh's status line then names
+`pr edit` as the next step.
 
 ## Print a PR's status line
 
@@ -322,20 +504,7 @@ page:
 ```sh
 . <run folder>/env
 keep NEXT '<next step>'
-{ [ -n "$W" ] && [ "$W" != null ]; } ||
-  { echo "$BR: not built; next: $NEXT"; exit 0; }
-cd "$W" || exit 1
-git fetch -q "$REMOTE" || exit 1
-head=$(git rev-parse HEAD) || exit 1
-out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
-pushed=$(printf '%s' "$out" | cut -f 1)
-same=no
-[ "$head" = "$pushed" ] && same=yes
-mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
-n=$(changed . "$mb" HEAD) || exit 1
-req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
-echo "$BR: pushed ${pushed:-none}; local equals pushed: $same;" \
-  "$n changed lines against $PARENT; request: $req; next: $NEXT"
+status_line
 ```
 
 `local equals pushed: no` means a commit is not pushed: push it
@@ -405,5 +574,6 @@ grep -qx "Base commit: $nb" "$P" ||
 keep B "$nb"
 ```
 
-Then run the plan's checks and Ship's later round. A failed
+Then rerun ship.sh before the branch's first push, or run Push a
+later round after it; both run the plan's checks. A failed
 `planner check` is a conflict: never resolve it by hand.

@@ -71,9 +71,11 @@ commands in [references/build.md](references/build.md).
    the review's report file and your decision on each optional item.
    Then run the design check below on the revised plan before you
    build.
-3. **Build.** Export each plan step's tree and commit it with
-   `git commit-tree` on the step before, starting at the plan's base.
-   Make the PR's worktree with `wt` and move it to the last commit. A
+3. **Build.** Write each plan step's commit message, then run
+   build.md's build script. It commits each step's tree on the step
+   before, starting at the plan's base, makes the PR's worktree with
+   `wt` and runs the plan's checks. A stop at `check` or `lint` needs
+   a fix to the plan or a message, then a rerun. Any other
    failed build command means a stale plan or a broken tool: stop
    this PR and its children, put the error on the roadmap page as a
    blocking question, and keep building other stacks.
@@ -90,10 +92,11 @@ commands in [references/build.md](references/build.md).
    lines, one at a time, with build.md's Plant a bug, and check that a
    test fails for each. For each deleted test, plant the bug it caught
    and check that the named test fails.
-7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
-   failed check, the wrong branch, a parent that moved or a branch
-   already pushed; it squashes onto the parent and pushes. Then save
-   and run the PR request script, which calls
+7. **Ship.** Write the PR text, then run build.md's ship script. It
+   stops when the branch's tree differs from the plan, on bad PR text,
+   a failed check, the wrong branch, a parent that moved or a branch
+   already pushed. It squashes onto the parent, pushes, and saves and
+   runs the PR request script, which calls
    `pde-gh-write pr create --base <parent branch>`.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `draft`, your `set` rewords,
@@ -192,7 +195,9 @@ entries parked.
 - Let an agent review its own plan or code.
 - Hand-edit a plan's diffs or the branch's files. Every build commit
   comes from `planner export`.
-- Create, copy, edit or commit a `.code-comments.json`.
+- Create, copy, edit or commit a `.code-comments.json`. The copy that
+  the `wt` hook puts in each new worktree is expected; never edit or
+  commit it.
 - Remove a fixed `/tmp` path. Every agent works in its own folder from
   `mktemp -d`.
 
