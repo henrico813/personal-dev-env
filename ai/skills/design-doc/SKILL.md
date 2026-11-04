@@ -23,7 +23,9 @@ When another agent gave you this task, research directly instead of
 starting the parallel agents in Step 3. In Step 1, state your
 understanding of the problem in your report and continue instead of
 waiting for the user to confirm it. Write the doc to the path you were
-given, report open questions, and do not start reviewers.
+given, and do not start reviewers. Report only the open questions that
+pass the test in Step 2, each with its example and your
+recommendation.
 
 ## Writing for Humans
 
@@ -82,7 +84,13 @@ With context gathered, analyze before proposing solutions:
 - **Map the blast radius.** Which teams, services, and systems are affected? What's the rollback story?
 - **Surface competing timeframes.** What does "done by Friday" look like vs "done right for the next two years"? Name the tradeoff explicitly.
 - **Catalog existing patterns.** What conventions does the codebase already follow? A design doc that fights the codebase's grain needs strong justification.
-- **List open questions.** What do you still not know? What assumptions are you making?
+- **List open questions.** What do you still not know? What
+  assumptions are you making? Test each question before you bring it
+  to the user: would either answer change an interface, a data model,
+  or a tradeoff a future reader needs to see? If not, it is an
+  implementation question; decide it yourself and record the
+  decision. For each question that passes, give a concrete example
+  and your recommendation in the same message you ask it in.
 
 ### Step 3: Spawn Parallel Agents for Comprehensive Research
 
@@ -168,7 +176,9 @@ After drafting the doc, review it against these quality lenses. These catch prob
 - Read the doc start to finish. Does it tell a coherent story — from problem through reasoning to solution — or does it read like a filled-in template? If the latter, rewrite the connective tissue until a human would actually want to read it.
 - Are decisions explained with their history and reasoning, or just stated as conclusions? Every "we will do X" needs a "because Y" that the reader can evaluate.
 
-After this review, revise the doc and present the final version to the user. Flag any unresolved tensions or open questions that need human judgment.
+After this review, revise the doc and present the final version to the
+user. Flag any unresolved tensions, and any open questions that pass
+the test in Step 2.
 
 ## Common Mistakes
 
@@ -179,3 +189,15 @@ After this review, revise the doc and present the final version to the user. Fla
 - **Ignoring existing patterns.** A novel approach in a codebase with established conventions needs explicit justification. Don't fight Conway's Law without good reason.
 - **Skipping alternatives.** If you only considered one approach, you didn't design — you guessed.
 - **Writing a filled-in template.** If the doc reads as disconnected sections with no narrative thread, humans will skim it and miss the reasoning. The sections should flow into each other — the problem motivates the goals, the goals constrain the solution, the solution addresses the risks.
+
+## Remembering corrections
+
+Follow every lesson in the Lessons section below. Each is a correction
+the user made, so a lesson wins when it disagrees with the text above.
+When the user corrects how you research, structure or write a design
+doc, or how you ask them questions about it, follow
+[skill-lessons](../skill-lessons/SKILL.md) with the skill name
+`design-doc`, and offer once to save the correction as a lesson.
+
+## Lessons
+<!-- skill-lessons: filled from the local store; do not edit -->
