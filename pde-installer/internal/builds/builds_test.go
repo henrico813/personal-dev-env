@@ -51,7 +51,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next",
+		"pde-comment-checker", "pde-comment-review-next", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -76,7 +76,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next",
+		"pde-comment-checker", "pde-comment-review-next", "prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -241,7 +241,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next",
+		"pde-comment-checker", "pde-comment-review-next", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -291,7 +291,7 @@ func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
 	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "fail-help"), "fail\n", 0o644)
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
-		"pde-comment-review", "pde-comment-review-next", "skill-lessons", "pde-comment-checker",
+		"pde-comment-review", "pde-comment-review-next", "skill-lessons", "pde-comment-checker", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -357,7 +357,7 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
 		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
-		"pde-comment-review-rs",
+		"pde-comment-review-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -707,6 +707,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"pde-comment-review": "go", "skill-lessons": "python",
 		"pde-comment-checker":     "python",
 		"pde-comment-review-next": "cargo",
+		"prs":                     "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}
