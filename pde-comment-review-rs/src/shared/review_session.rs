@@ -73,6 +73,8 @@ pub fn save_user_feedback(
         .any(|feedback| matches!(feedback, UserFeedback::Note(_)));
     if every_request_has_feedback && any_note {
         review_session.status = ReviewStatus::UserNotesWaiting;
+        // The next list the user sees is the agent's new one, whose write never failed.
+        review_session.write_error = None;
     }
     let status = review_session.status;
     lock.save()?;
@@ -182,6 +184,10 @@ pub struct ReviewSession {
     pub origin: ReviewOrigin,
     pub lists: Vec<FeedbackRequestList>,
     pub feedback: BTreeMap<RequestId, UserFeedback>,
+    /// Says why the last write failed, while the list waits for the user again.
+    /// A missing field reads as no failed write.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_error: Option<WriteError>,
 }
 
 impl ReviewSession {
@@ -293,6 +299,15 @@ pub enum SuggestionKind {
     Keep,
     Cut,
     Reword { text: String },
+}
+
+/// Holds why a write failed, as its error code and the message it refused
+/// with.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WriteError {
+    pub code: ErrorCode,
+    pub detail: String,
 }
 
 /// Holds the lock until dropped, with the Review Session read under it.

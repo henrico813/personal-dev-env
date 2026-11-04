@@ -7,8 +7,9 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use common::TempFolder;
+use common::{TempFolder, find_waiting_worktrees, save_write_error, use_test_waiting_list};
 use pde_comment_review::shared::git::{find_shared_git_folder, find_worktree_git_folder};
+use pde_comment_review::shared::review_session::add_to_waiting_list;
 use pde_comment_review::shared::{Error, ErrorCode};
 use pde_comment_review::steps::write_user_feedback::{WriteResult, write_user_feedback};
 use serde_json::{Value, json};
@@ -26,6 +27,7 @@ const EDITED: &str = "package store\n\n// Saves it, edited by hand.\nfunc Save()
 
 /// Makes a Git repository holding each file with its source.
 fn make_repo(files: &[(&str, &str)]) -> TempFolder {
+    use_test_waiting_list();
     let repo = TempFolder::new();
     let output = Command::new("git")
         .args(["init", "--quiet"])
@@ -94,6 +96,14 @@ fn read_review(repo: &Path) -> Value {
     serde_json::from_slice(&fs::read(find_review_file(repo)).unwrap()).unwrap()
 }
 
+/// Returns the saved Review Session as JSON, leaving out why its last write
+/// failed.
+fn read_review_without_write_error(repo: &Path) -> Value {
+    let mut review = read_review(repo);
+    review.as_object_mut().unwrap().remove("write_error");
+    review
+}
+
 /// Returns where the clone's decisions are saved, in its shared Git folder.
 fn find_approvals_file(repo: &Path) -> PathBuf {
     find_shared_git_folder(repo)
@@ -158,6 +168,11 @@ fn make_reworded_review(files: &[(&str, &str)]) -> (TempFolder, Value) {
 /// cannot go back.
 fn write_while_first_file_is_edited() -> (TempFolder, Value, Error) {
     let (repo, review) = make_reworded_review(&[("a.go", SAVE), ("b.go", SAVE)]);
+    // An earlier failed write left its reason, which this write drops when it starts.
+    save_write_error(
+        repo.path(),
+        json!({ "code": "write_failed", "detail": "Cannot write b.go." }),
+    );
     let approvals_folder = find_shared_git_folder(repo.path()).unwrap().join("pde");
     fs::create_dir_all(&approvals_folder).unwrap();
     // The held approvals lock stops `write_user_feedback` once it has written both files.
@@ -263,25 +278,27 @@ mod write_user_feedback {
         assert_eq!(second, WriteResult::AlreadyWritten);
     }
 
-    /// `write_user_feedback` must remove the saved originals once every file is written.
-    /// Otherwise the next write in this worktree would stop and ask the user about them.
+    /// `write_user_feedback` must remove the saved originals and take the worktree off the waiting list once every file is written.
+    /// Otherwise the next write in this worktree would stop and ask the user about them, or Ctrl+b e would offer a finished Review Session.
     #[test]
-    fn removes_backup_once_every_file_is_written() {
+    fn removes_backup_and_takes_worktree_off_list() {
         let (repo, _) = make_reworded_review(&[("a.go", SAVE)]);
+        // Step 5 put the worktree on the waiting list when it sent the list.
+        add_to_waiting_list(repo.path()).unwrap();
 
         write_user_feedback(repo.path()).unwrap();
 
         assert!(!find_backup_folder(repo.path()).exists());
+        assert!(find_waiting_worktrees(repo.path()).is_empty());
     }
 
-    /// `write_user_feedback` must refuse to write when a comment changed after the user answered it, and keep the User Feedback.
-    /// Otherwise the write would replace the agent's new text, or lose the user's work.
+    /// `write_user_feedback` must write no file when a comment changed after the user answered it.
+    /// Otherwise the write would replace the agent's new text, or leave part of the User Feedback in the code.
     #[test]
-    fn reworded_comment_refuses_write_and_keeps_feedback() {
+    fn reworded_comment_writes_no_file() {
         let (repo, _) = make_reworded_review(&[("a.go", SAVE), ("b.go", SAVE)]);
         let reworded = SAVE.replace("Saves it.", "Saves it now.");
         fs::write(repo.path().join("b.go"), &reworded).unwrap();
-        let saved_before = fs::read(find_review_file(repo.path())).unwrap();
 
         let error = write_user_feedback(repo.path()).unwrap_err();
 
@@ -291,8 +308,33 @@ mod write_user_feedback {
             fs::read_to_string(repo.path().join("b.go")).unwrap(),
             reworded
         );
-        let saved_after = fs::read(find_review_file(repo.path())).unwrap();
-        assert_eq!(saved_after, saved_before);
+    }
+
+    /// `write_user_feedback` must give every Feedback Request in a file with a changed comment the program's User Note, keep the answers in other files, and hand the Review Session to the agent, off the waiting list.
+    /// Otherwise the user would lose answers in files that never changed, or the Review Session would stall with Ctrl+b e still offering it.
+    #[test]
+    fn changed_comment_returns_only_its_files_requests() {
+        let repo = make_answered_review();
+        // Step 5 put the worktree on the waiting list when it sent the list.
+        add_to_waiting_list(repo.path()).unwrap();
+        let reworded = STORE.replace("Loads it.", "Loads it now.");
+        fs::write(repo.path().join("store.go"), reworded).unwrap();
+
+        let error = write_user_feedback(repo.path()).unwrap_err();
+
+        assert_eq!(error.code, ErrorCode::TextChanged, "{}", error.message);
+        let saved = read_review(repo.path());
+        assert_eq!(saved["status"], "user_notes_waiting");
+        // Each Feedback Request in the changed file comes back, even one whose comment did not change.
+        for id in ["1", "2", "3", "4"] {
+            assert!(saved["feedback"][id]["note"].is_string(), "request {id}");
+        }
+        assert_eq!(saved["feedback"]["5"], json!({ "answer": "keep" }));
+        assert_eq!(
+            saved["feedback"]["6"],
+            json!({ "answer": { "edited": { "text": "Keeps its line ends." } } })
+        );
+        assert!(find_waiting_worktrees(repo.path()).is_empty());
     }
 
     /// `write_user_feedback` must refuse with `TextChanged` when a file it would write is gone.
@@ -398,14 +440,52 @@ mod write_user_feedback {
         assert_eq!(mode & 0o777, 0o755);
         assert_eq!(fs::read_to_string(locked.join("b.go")).unwrap(), SAVE);
         assert!(!find_approvals_file(repo.path()).exists());
-        assert_eq!(read_review(repo.path()), review);
+        assert_eq!(read_review_without_write_error(repo.path()), review);
         assert!(!find_backup_folder(repo.path()).exists());
+    }
+
+    /// `write_user_feedback` must keep the list with the user after a failed write, saving why and leaving the worktree on the waiting list.
+    /// Otherwise a failed write would look like a crash, or Ctrl+b e could lose the list.
+    #[test]
+    fn failed_write_returns_list_to_user() {
+        let (repo, _) = make_reworded_review(&[("a.go", SAVE), ("locked/b.go", SAVE)]);
+        let locked = repo.path().join("locked");
+        // A file cannot be replaced in a folder that cannot be written.
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        // Step 5 put the worktree on the waiting list when it sent the list.
+        add_to_waiting_list(repo.path()).unwrap();
+
+        let error = write_user_feedback(repo.path()).unwrap_err();
+
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        let saved = read_review(repo.path());
+        assert_eq!(saved["status"], "waiting_for_user_feedback");
+        assert_eq!(
+            saved["write_error"],
+            json!({ "code": "write_failed", "detail": error.message })
+        );
+        assert_eq!(find_waiting_worktrees(repo.path()).len(), 1);
+    }
+
+    /// `write_user_feedback` must drop why the last write failed once the user's next try works.
+    /// Otherwise the user would hear of a failure after the write worked.
+    #[test]
+    fn retried_write_drops_last_write_error() {
+        let (repo, _) = make_reworded_review(&[("a.go", SAVE)]);
+        save_write_error(
+            repo.path(),
+            json!({ "code": "write_failed", "detail": "Cannot write a.go." }),
+        );
+
+        write_user_feedback(repo.path()).unwrap();
+
+        assert_eq!(read_review(repo.path()).get("write_error"), None);
     }
 
     /// `write_user_feedback` must put every file back and let the user try again when the decisions cannot be saved.
     /// Otherwise the code would keep the User Feedback while its decisions are lost, so the user would be asked again.
     #[test]
-    fn failed_approval_save_restores_files_and_allows_retry() {
+    fn failed_approval_save_puts_files_back() {
         let (repo, review) = make_reworded_review(&[("a.go", SAVE)]);
         // A folder named like the approvals file makes `approvals::add` fail.
         fs::create_dir_all(find_approvals_file(repo.path())).unwrap();
@@ -414,7 +494,7 @@ mod write_user_feedback {
 
         assert_eq!(error.code, ErrorCode::WriteFailed, "{}", error.message);
         assert_eq!(fs::read_to_string(repo.path().join("a.go")).unwrap(), SAVE);
-        assert_eq!(read_review(repo.path()), review);
+        assert_eq!(read_review_without_write_error(repo.path()), review);
         assert!(!find_backup_folder(repo.path()).exists());
     }
 

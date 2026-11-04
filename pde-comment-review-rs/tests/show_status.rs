@@ -1,6 +1,7 @@
 mod common;
 
-use common::{APPROVED, make_repo, request_json, save_review};
+use common::{APPROVED, make_repo, request_json, save_review, save_write_error};
+use pde_comment_review::shared::ErrorCode;
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::show_status::{Waiting, show_status};
 use serde_json::{Value, json};
@@ -78,4 +79,29 @@ fn points_to_check_comments_without_review_session() {
 
     assert_eq!(output.next, NextStep::CheckComments);
     assert_eq!(describe_waiting(output.result.waiting), json!(null));
+}
+
+/// `show_status` must report why the last write failed in its result, not as an error, while the list waits for the user again.
+/// Otherwise an agent or `cleanup-plan` would see a failed call, not a review still waiting for the user.
+#[test]
+fn reports_failed_write_while_list_waits() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+    save_review(
+        dir,
+        "waiting_for_user_feedback",
+        &[requests],
+        json!({"1": {"answer": "keep"}}),
+    );
+    save_write_error(
+        dir,
+        json!({"code": "write_failed", "detail": "Cannot write review_store.go."}),
+    );
+
+    let output = show_status(dir).unwrap();
+
+    assert_eq!(output.next, NextStep::TellUserAndWait);
+    let write_error = output.result.write_error.unwrap();
+    assert_eq!(write_error.code, ErrorCode::WriteFailed);
 }

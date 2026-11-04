@@ -7,13 +7,15 @@ use std::path::Path;
 
 use super::{NextStep, StepOutput};
 use crate::shared::Error;
-use crate::shared::review_session::{self, RequestId, ReviewStatus};
+use crate::shared::review_session::{self, RequestId, ReviewStatus, WriteError};
 use crate::shared::user_feedback::{UserFeedback, UserNote};
 
-/// Returns what this worktree's review waits on and the step the agent runs
-/// next.
+/// Returns what this worktree's review waits on, why its last write failed,
+/// and the step the agent runs next.
 pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
-    let (waiting, next) = match review_session::load(dir)? {
+    let mut review = review_session::load(dir)?;
+    let write_error = review.as_mut().and_then(|saved| saved.write_error.take());
+    let (waiting, next) = match review {
         None => (Waiting::Nothing, NextStep::CheckComments),
         Some(review) => match review.status {
             ReviewStatus::WaitingForUserFeedback => {
@@ -45,15 +47,21 @@ pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
         },
     };
     Ok(StepOutput {
-        result: StatusResult { waiting },
+        result: StatusResult {
+            waiting,
+            write_error,
+        },
         next,
     })
 }
 
-/// Holds what the review waits on.
+/// Holds what the review waits on, and why its last write failed.
 #[derive(Debug)]
 pub struct StatusResult {
     pub waiting: Waiting,
+    /// Holds `None` unless the list waits for the user again after a failed
+    /// write.
+    pub write_error: Option<WriteError>,
 }
 
 /// Says who the review waits on, and for which requests.
