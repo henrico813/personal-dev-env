@@ -154,8 +154,8 @@ bindsym Print exec --no-startup-id xfce4-screenshooter
 bindsym Shift+Print exec --no-startup-id xfce4-screenshooter -r
 
 # ---------- THIS MACHINE ----------
-# Outputs, workspaces, the monitor layout and the terminal key. It comes before
-# autostart, so autorandr sets the layout before the wallpaper and polybar read it.
+# Outputs, workspaces, the monitor layout and the terminal key. i3 does not wait
+# for autorandr, so wallpaper.sh waits for it before reading the outputs.
 include ~/.config/i3/local.conf
 
 # ---------- AUTOSTART ----------
