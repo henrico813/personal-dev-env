@@ -6,7 +6,7 @@ rust-version = "1.90"
 publish = false
 
 [[bin]]
-name = "pde-comment-review-next"
+name = "pde-comment-review"
 path = "src/main.rs"
 
 [dependencies]

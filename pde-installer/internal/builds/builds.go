@@ -146,8 +146,8 @@ func (m Manager) Reconcile(selected profile.Profile) (*fsutil.Journal, error) {
 		}
 	}()
 	cargoTargets := map[string]string{
-		"vibe":                    filepath.Join(stageRoot, "vibe-target"),
-		"pde-comment-review-next": filepath.Join(stageRoot, "comment-review-target"),
+		"vibe":               filepath.Join(stageRoot, "vibe-target"),
+		"pde-comment-review": filepath.Join(stageRoot, "comment-review-target"),
 	}
 	for _, spec := range specs {
 		if err := fsutil.GuardHome(m.Home, stageRoot); err != nil {
@@ -659,25 +659,12 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 		},
 		{
 			name:   "pde-comment-review",
-			source: filepath.Join(m.RepoRoot, "pde-comment-review"),
-			output: filepath.Join(stageRoot, "pde-comment-review"),
-			command: run.Command{
-				Name: goBinary,
-				Args: []string{
-					"build", "-mod=readonly", "-o", filepath.Join(stageRoot, "pde-comment-review"), ".",
-				},
-				Dir: filepath.Join(m.RepoRoot, "pde-comment-review"), Env: environment,
-			},
-			verifyArg: "help",
-		},
-		{
-			name:   "pde-comment-review-next",
 			source: filepath.Join(m.RepoRoot, "pde-comment-review-rs"),
-			output: filepath.Join(stageRoot, "comment-review-target", "release", "pde-comment-review-next"),
+			output: filepath.Join(stageRoot, "comment-review-target", "release", "pde-comment-review"),
 			command: run.Command{
 				Name: cargo,
 				Args: []string{
-					"build", "--locked", "--release", "--bin", "pde-comment-review-next", "--target-dir", filepath.Join(stageRoot, "comment-review-target"),
+					"build", "--locked", "--release", "--bin", "pde-comment-review", "--target-dir", filepath.Join(stageRoot, "comment-review-target"),
 				},
 				Dir: filepath.Join(m.RepoRoot, "pde-comment-review-rs"), Env: environment,
 			},
@@ -694,23 +681,6 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			},
 			verifyArg:     "--version",
 			pythonPackage: "skill_lessons",
-		},
-		{
-			name:   "pde-comment-checker",
-			source: filepath.Join(m.RepoRoot, "pde-comment-checker"),
-			output: filepath.Join(stageRoot, "pde-comment-checker"),
-			command: run.Command{
-				Name: m.python,
-				Args: []string{
-					"-I",
-					"build.py",
-					filepath.Join(stageRoot, "pde-comment-checker"),
-				},
-				Dir: filepath.Join(m.RepoRoot, "pde-comment-checker"),
-				Env: environment,
-			},
-			verifyArg:     "version",
-			pythonPackage: "comment_checker",
 		},
 		{
 			name:   "prs",

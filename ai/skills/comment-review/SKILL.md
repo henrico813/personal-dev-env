@@ -10,95 +10,114 @@ description: Saves code comments as a review that the user answers one
 # Comment Review
 
 The user reviews comments one per screen, on a phone or in a
-terminal, with `pde-comment-review`. You save your proposals as a
-review; the user answers each one; after the last answer the tool
-writes the answers into the code and approves the answered comments,
-so the comment checker stops later agents from changing them.
+terminal, with `pde-comment-review`. You send a Feedback Request
+List, with your Agent Suggestion to keep, cut or reword each comment;
+the user answers each Feedback Request; after the last answer the
+tool writes the answers into the code and approves the answered
+comments, so `check-comments` stops later agents from changing them.
 
-If your harness lists the MCP tools `review_status`, `review_draft`,
-`review_set` and `review_submit`, perhaps with a prefix, use them in
-place of `status`, `draft`, `set` and `submit`. Each takes `dir`, the
-checkout's absolute path, and `review_set` also takes `id`, `answer`
-and `text`. They reply with the same JSON as the commands, naming
-tools as next steps.
+If your harness lists the MCP tools `check_comments`,
+`make_feedback_request_list`, `send_agent_suggestions` and
+`show_status`, perhaps with a prefix, use them in place of the
+commands below. Each takes `dir`, the checkout's absolute path.
+`check_comments` and `make_feedback_request_list` also take `base`,
+`make_feedback_request_list` takes `change_requests`, and
+`send_agent_suggestions` takes `list`, the list itself. They give the
+same JSON as the commands.
 
-The tool supports Go comments today. Until it supports a language,
-show that language's comments to the user in the pull request or
-the chat instead.
+The tool reads Go, Python and Rust comments. Show the comments of
+other languages to the user in the pull request or the chat instead.
 
 ## Steps
 
-`status`, `draft`, `set` and `submit` each print JSON: the review's
-`state`, the `items` or `notes` to act on, any `problems`, and
-`next`, the step to take.
+Run each command in the task's worktree. Each prints JSON: the
+review's `status`, the `result`, an `error` with a `code` and a
+`message` when it refused, and `next`, the step to take.
 
 1. Never edit a comment the user approved, even when a plan says
-   to: propose your change in step 8. Optional: before `draft`, have
-   a fresh reviewer, such as a new agent session given only the
-   changed code, shorten or cut the comments you wrote the way the
-   user's earlier notes asked.
-2. On the task's branch, in the repository, run:
+   to: ask to change it in step 3. Optional: before step 2, have a
+   fresh reviewer, such as a new agent session given only the changed
+   code, shorten or cut the comments you wrote the way the user's
+   earlier notes asked.
+2. Run the comment check of the `code-documentation` skill until it
+   reports no failures. `<task start>` is the commit your task
+   started from:
 
    ```bash
-   pde-comment-review draft
+   pde-comment-review check-comments --base <task start>
    ```
 
-   It finds every Go comment the user must answer: comments the
-   branch added or changed, approved comments that were edited or
-   renamed, and approved comments whose code was removed, which the
-   user can only drop (`code_removed`). It saves them as the draft
-   of a new review named after the branch. If `state` is `done`,
-   tell the user there is nothing to review.
-   When it refuses, it names each problem and saves nothing; fix them
-   and run it again. If a round waits for the user, run
-   `pde-comment-review status` and follow `next`.
-3. Optional: change an item's proposal to `keep`, `cut`, or `reword`
-   with the new wording as plain sentences, without `//`; the tool
-   wraps and indents it. Leave `code_removed` items as `cut`:
+3. Build the Feedback Request List. This saves nothing:
 
    ```bash
-   pde-comment-review set 2 reword "Returns the total, in cents."
+   pde-comment-review make-feedback-request-list --base <task start>
    ```
 
-4. Send the round to the user:
+   `result.list` holds a Feedback Request for each comment the branch
+   added or changed, and each comment that goes against an approval
+   or cut. Its `reason` is `new`, `was_cut` (the user cut it before),
+   `differs_from_approved` (the user approved other text) or
+   `agent_wants_change`. If `next` is
+   `finish_without_feedback_requests`, tell the user there is nothing
+   to review and stop.
+   To change a comment the user approved, write an input file outside
+   the repository, such as in a folder from `mktemp -d`, and pass it
+   with `--input FILE`. Each `file` and `name` is as the comment's
+   entry in the approvals file shows it. Read that file only, at
+   `$(git rev-parse --git-common-dir)/pde/code-comments.json`:
+
+   ```json
+   {"change_requests": [{"file": "store.go", "name": "LoadAnswers"}]}
+   ```
+
+   The list then holds an `agent_wants_change` request for it. While
+   a list waits for the user, this step refuses with
+   `waiting_for_user_feedback`; list the change in your final message
+   instead.
+4. Save `result.list` to a file outside the repository, and give each
+   request a `suggestion`, changing nothing else:
+
+   ```json
+   {"kind": "keep", "reasoning": "Says what it returns.", "also_at": []}
+   ```
+
+   `kind` is `"keep"`, `"cut"` or
+   `{"reword": {"text": "Returns the total, in cents."}}`, the new
+   wording as plain sentences without `//` or `#`; the tool wraps and
+   indents it. A request whose `can_reword` is false takes only keep
+   or cut. `reasoning` is one or two sentences the user sees as
+   `why:`. `also_at` lists other places that say the same thing, as
+   `file:line`.
+5. Send the list to the user:
 
    ```bash
-   pde-comment-review submit
+   pde-comment-review send-agent-suggestions <list file>
    ```
 
-   When it names problems, it saved nothing: fix them and follow
-   `next`. If you changed code to fix them, run `draft` again and
-   repeat your `set` changes. If a comment has the same wording as
-   another comment in its file, or as the approved text of one you
-   edited, change an unapproved copy's wording in the code. Then tell
-   the user what `next` says: "Review shop is ready: press Ctrl+b e in
-   Herdr, or Ctrl+b E for a full tab, or run
-   `pde-comment-review open shop`." Do not run `open`
-   yourself: it takes over the terminal it runs in. Do not edit the
-   listed comments before the last answer: the write refuses an
-   edited one or puts the user's answer over your edit.
-5. When the user says there are notes, run `pde-comment-review
-   status`. Answer each note with `set` and the item's `id`, without
-   editing the comment in the code, then `submit` once. Only those
-   items need a new answer; every other answer stays. If the user
-   asks for removed code back, put it back with its approved comment,
-   then `set` the item to `keep`.
-6. Never commit `.code-comments.json`, the tool's file at the repo root.
-7. Never edit a review's saved files in
-   `~/.local/state/pde/comment-review/`: change a review only with
-   these commands and `add`, and leave the answers and notes to the
-   user.
-8. To change an approved comment the draft did not list, do this
-   after `submit` and before you tell the user. Write a proposals file
-   with one item for it outside the repository, such as in a folder
-   from `mktemp -d`, as
-   [references/proposals-file.md](references/proposals-file.md) says,
-   and save it with `add`, using the `review` the JSON shows as NAME.
-   Give the item the next unused `id`, one above the highest `id` in
-   the review's `round-N.json` files in
-   `~/.local/state/pde/comment-review/NAME/` (read them only). To send
-   a listed comment again, keep its `id` and `name`, with its current
-   text in the file as `old`.
+   When it refuses with `list_changed`, the code changed: run step 3
+   again with the same input file, then step 4. When it refuses a
+   suggestion, fix what its `message` names and send again. Follow
+   `next` on any other refusal, such as `check_failed` or
+   `waiting_for_user_feedback`. When `next` is `tell_user_and_wait`,
+   tell the user: "A comment review is ready: press Ctrl+b e in Herdr,
+   or Ctrl+b E for a full tab, or run
+   `pde-comment-review open <branch>`." Do not run `open` yourself: it
+   takes over the terminal it runs in. Do not edit the listed comments
+   before the last answer: the write refuses a comment that changed.
+6. When the user says there are User Notes, run
+   `pde-comment-review show-status`; `result.waiting.user_notes`
+   holds each note by request ID. Run step 3 again: it returns the
+   noted requests with their IDs. Answer each note in that request's
+   Agent Suggestion, without editing the comment in the code, then
+   step 5 once. Only those requests need a new answer; every other
+   answer stays.
+7. Never commit `.code-comments.json` or anything in `.git/pde/`.
+   Never edit the review's saved files, `review.json` in the
+   worktree's Git folder or `pde/code-comments.json` in the clone's
+   shared Git folder: change a review only with these commands, and
+   leave the answers and notes to the user.
+8. Run `pde-comment-review show-status` at any time to see what the
+   review waits on and the step to take next.
 
 ## When the tool is missing
 
