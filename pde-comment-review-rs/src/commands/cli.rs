@@ -23,7 +23,7 @@ use crate::steps::make_feedback_request_list::ChangeRequest;
 /// work on the current folder.
 #[derive(Debug, Parser)]
 #[command(
-    name = "pde-comment-review-next",
+    name = "pde-comment-review",
     disable_help_flag = true,
     disable_help_subcommand = true
 )]
@@ -140,7 +140,7 @@ pub fn print_reply(reply: &Reply) -> ExitCode {
 
 /// Prints each command with its description, from `list_commands`.
 pub fn print_help() -> ExitCode {
-    let mut help = String::from("Usage: pde-comment-review-next COMMAND\n");
+    let mut help = String::from("Usage: pde-comment-review COMMAND\n");
     for command in list_commands() {
         help.push_str(&format!(
             "\n{}\n    {}\n",
@@ -202,7 +202,7 @@ mod tests {
         ];
 
         for (case, args, expected) in cases {
-            let args: Vec<OsString> = ["pde-comment-review-next"]
+            let args: Vec<OsString> = ["pde-comment-review"]
                 .into_iter()
                 .chain(args)
                 .map(OsString::from)

@@ -73,6 +73,8 @@ Before changing anything:
 Run these checks before removing a worktree:
 - If a target worktree exists, check `git status --short` inside it.
 - If a target worktree exists, run the worktree-removal procedure and check locked state, detached HEAD, or submodule state that may represent unfinished work.
+- If a target worktree exists, check whether its review still waits,
+  as "A review still waiting" below says.
 - If a branch exists, check whether it has commits not present on the fetched base branch.
 - If a main checkout exists, inspect it for tracked changes, untracked files that collide with incoming paths, missing upstream, or divergence.
 - If a main checkout exists, use the main-sync procedure below after confirming its branch and upstream.
@@ -160,9 +162,9 @@ Classify every remaining ignored file in this order:
    `test -f pde-comment-review-rs/Cargo.toml`. For a `target/` at the
    worktree root, run `test -f Cargo.toml`. For `ai/.venv/`, run
    `test -f ai/pyproject.toml`.
-3. Allow the root `.code-comments.json` only after "Keep the owner's
-   comment approvals" below has backed it up and, for a merged pull
-   request, merged it.
+3. Allow the root `.code-comments.json`, the old comment checker's
+   file, only after "Keep the owner's comment approvals" below has
+   backed it up.
 4. Block every other ignored path.
 
 Interpret the result:
@@ -179,43 +181,43 @@ Interpret the result:
 Files with tracked local changes or non-ignored untracked status are blockers if removing the worktree would delete them.
 Untracked files outside the artifact being updated or removed do not block unrelated cleanup actions unless that action would overwrite or remove them.
 
+### A review still waiting
+
+A worktree's Review Session, with any User Notes, lives in that
+worktree's Git folder, so removing the worktree drops it. Before
+removal, run this in the target worktree:
+
+```bash
+pde-comment-review show-status
+```
+
+If its `status` is `waiting_for_user_feedback`, `user_notes_waiting`
+or `writing_user_feedback`, ask the user: "A review is still waiting.
+Remove the worktree anyway?" A yes lets removal go on, which drops
+the review; a no keeps the worktree. If the command is missing or
+its reply has an `error`, report that and ask the same question.
+
 ### Keep the owner's comment approvals
 
-A worktree's root `.code-comments.json` holds the comment text the
-owner approved there, and removing the worktree loses it. When the
+The review tool keeps the owner's approvals in
+`.git/pde/code-comments.json`, which every worktree of the clone
+shares, so removing a worktree loses none of them. A worktree's root
+`.code-comments.json` is the old comment checker's file. When the
 target worktree has one, after main synchronization:
 
-1. From the main checkout, back up both copies:
+1. From the main checkout, back up the worktree's copy:
 
    ```bash
    dir=~/.local/state/pde/approval-backups
    mkdir -p "$dir"
    backup=$(mktemp -d "$dir/$(date +%Y%m%d-%H%M%S)-XXXX")
-   mkdir "$backup/worktree"
-   cp -p <worktree path>/.code-comments.json "$backup/worktree/"
-   [ ! -f .code-comments.json ] || cp -p .code-comments.json "$backup/"
+   cp -p <worktree path>/.code-comments.json "$backup/"
    ```
 
-   If any of these commands fails, stop: do not merge or remove the
-   worktree, and report the failure.
-2. Read the pull request with
-   `gh pr view <pr> --json state,mergeCommit`. If there is no merged
-   pull request, skip the merge; the backup keeps the approvals.
-3. Otherwise load the `code-documentation` skill to learn its folder,
-   and bring the approvals in with the comment checker there:
-
-   ```bash
-   python3 <that skill's folder>/scripts/check_comments.py \
-     --repo . --merge-approvals <worktree path> <merge commit>
-   ```
-
-4. Exit 0 means the approvals are kept. Report its output, including
-   skipped and dropped entries, and the backup folder. Any other exit
-   blocks worktree removal; report the output. If it refuses a comment
-   that a later merged pull request also reworded, clean up that later
-   pull request's worktree first, then run this again.
-5. Apart from the backups and the worktree removal, never copy, edit
-   or delete a `.code-comments.json`.
+   If any of these commands fails, stop: do not remove the worktree,
+   and report the failure. Otherwise report the backup folder.
+2. Apart from the backup and the worktree removal, never copy, edit
+   or delete a `.code-comments.json` or anything in `.git/pde/`.
 
 ### 3. Finish housekeeping
 

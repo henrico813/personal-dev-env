@@ -1,7 +1,7 @@
 .PHONY: build check test try-screen
 
 build:
-	cargo build --locked --release --bin pde-comment-review-next
+	cargo build --locked --release --bin pde-comment-review
 
 check:
 	cargo fmt --check
@@ -15,7 +15,7 @@ try-screen:
 	cargo run --quiet --example made_up_review -- "$$folder" && \
 	cd "$$folder/store-review" && \
 	XDG_STATE_HOME="$$folder/state" cargo run --quiet \
-		--manifest-path "$(CURDIR)/Cargo.toml" --bin pde-comment-review-next -- open; \
+		--manifest-path "$(CURDIR)/Cargo.toml" --bin pde-comment-review -- open; \
 	echo "The made-up reviews are in $$folder"
 
 test:

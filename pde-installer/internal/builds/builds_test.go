@@ -51,7 +51,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next", "prs",
+		"prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -76,7 +76,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next", "prs",
+		"prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -206,8 +206,8 @@ func TestOnlyPythonInputsTriggerRebuild(t *testing.T) {
 		{"bytecode cache", "skill-lessons/src/skill_lessons/__pycache__/cli.cpython-310.pyc", false},
 		{"test", "skill-lessons/tests/test_cli.py", false},
 		{
-			name:    "checker source in a subfolder",
-			path:    "pde-comment-checker/src/comment_checker/languages/go.py",
+			name:    "source in a subfolder",
+			path:    "skill-lessons/src/skill_lessons/store/files.py",
 			rebuild: true,
 		},
 	}
@@ -241,7 +241,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "pde-comment-review", "skill-lessons",
-		"pde-comment-checker", "pde-comment-review-next", "prs",
+		"prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -283,15 +283,16 @@ func TestClientBlinkPinMatchesBuildPin(t *testing.T) {
 	}
 }
 
-// Keeps a failed install of the new program from breaking today's review tools.
-func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
+// A failed check of the Rust review tool must put back every old tool,
+// including the Go review tool it replaces, or Ctrl+b e stops opening.
+func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
 	manager := newFixtureManager(t, home, repoRoot, filepath.Join(t.TempDir(), "build.log"))
 	writeBuildFile(t, filepath.Join(repoRoot, "pde-comment-review-rs", "fail-help"), "fail\n", 0o644)
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
-		"pde-comment-review", "pde-comment-review-next", "skill-lessons", "pde-comment-checker", "prs",
+		"pde-comment-review", "skill-lessons", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -300,8 +301,8 @@ func TestBrokenNextReviewRestoresEveryTool(t *testing.T) {
 
 	_, err := manager.Reconcile("full")
 
-	if err == nil || !strings.Contains(err.Error(), "verify pde-comment-review-next") {
-		t.Fatalf("Reconcile() error = %v, want the new review check to fail", err)
+	if err == nil || !strings.Contains(err.Error(), "verify pde-comment-review") {
+		t.Fatalf("Reconcile() error = %v, want the review tool check to fail", err)
 	}
 	for _, name := range names {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
@@ -356,8 +357,7 @@ func newCommittedManager(t *testing.T) (manager Manager, repoRoot, logPath strin
 func writeBuildSources(t *testing.T, repoRoot string) {
 	t.Helper()
 	for _, source := range []string{
-		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review",
-		"pde-comment-review-rs", "prs",
+		"planner", "nvim-plugins/opencode-inline.nvim", "vibe", "pdev2", "pde-comment-review-rs", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(repoRoot, source, "input.txt"), source+" source\n", 0o644)
 	}
@@ -365,14 +365,6 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
-	checker := filepath.Join(repoRoot, "pde-comment-checker")
-	writeBuildFile(t, filepath.Join(checker, "build.py"), "build\n", 0o644)
-	writeBuildFile(
-		t,
-		filepath.Join(checker, "src", "comment_checker", "languages", "go.py"),
-		"go\n",
-		0o644,
-	)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -674,7 +666,7 @@ printf '%%s\n' cache > "$CARGO_HOME/content"
 output=$target/release/$name
 mkdir -p "$(dirname "$output")"
 printf '%%s\n' '#!/bin/sh' 'exit 0' '# built by cargo' > "$output"
-if [ "$name" = pde-comment-review-next ] && [ -f fail-help ]; then
+if [ "$name" = pde-comment-review ] && [ -f fail-help ]; then
   printf '%%s\n' '#!/bin/sh' 'exit 1' > "$output"
 fi
 chmod +x "$output"
@@ -703,11 +695,13 @@ func writeBuildFile(t *testing.T, path, content string, mode os.FileMode) {
 func assertBuildOutputs(t *testing.T, home string) {
 	t.Helper()
 	for name, tool := range map[string]string{
-		"planner": "go", "opencode-inline-shim": "go", "vibe": "cargo", "pde-gh-write": "go",
-		"pde-comment-review": "go", "skill-lessons": "python",
-		"pde-comment-checker":     "python",
-		"pde-comment-review-next": "cargo",
-		"prs":                     "go",
+		"planner":              "go",
+		"opencode-inline-shim": "go",
+		"vibe":                 "cargo",
+		"pde-gh-write":         "go",
+		"pde-comment-review":   "cargo",
+		"skill-lessons":        "python",
+		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")
 	}

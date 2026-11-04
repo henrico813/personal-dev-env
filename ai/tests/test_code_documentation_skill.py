@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -46,42 +45,3 @@ class TestSkillText:
         missing = [line for line in original if line not in current]
 
         assert missing == []
-
-
-class TestWrappers:
-    """Keep the skill's old script names running the checker command."""
-
-    @pytest.mark.parametrize(
-        ("script", "passed"),
-        [
-            ("check_comments.py", "--repo ."),
-            ("check_python_rules.py", "python-rules --repo ."),
-        ],
-    )
-    def test_wrapper_passes_arguments_but_refuses_loops(
-        self, tmp_path: Path, script: str, passed: str
-    ) -> None:
-        """Pass the arguments on, and stop if the command runs it again.
-
-        The old pde-comment-checker script ran the skill's script, so a
-        machine with both looped forever and hung every review.
-        """
-        wrapper = ROOT / "ai/skills/code-documentation/scripts" / script
-        fake = tmp_path / "pde-comment-checker"
-        fake.write_text(
-            f'#!/bin/sh\necho "$*"\nexec "{sys.executable}" "{wrapper}" "$@"\n'
-        )
-        fake.chmod(0o755)
-        path = f"{tmp_path}{os.pathsep}{os.environ['PATH']}"
-
-        result = subprocess.run(
-            [sys.executable, str(wrapper), "--repo", "."],
-            env={**os.environ, "PATH": path},
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        assert result.stdout == f"{passed}\n"
-        assert result.returncode == 2
-        assert "run pde-installer" in result.stderr
