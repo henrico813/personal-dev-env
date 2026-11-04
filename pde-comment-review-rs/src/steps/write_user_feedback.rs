@@ -3,8 +3,10 @@
 //! the user answered it sends every Feedback Request in its file back to the
 //! agent instead. A stop signal waits until every file is written or back and
 //! the Review Session is saved, so one after the last file still ends with all
-//! User Feedback written. Read the
+//! User Feedback written. Step 5 runs the same rewrite in memory first, with
+//! every Agent Suggestion accepted. Read the
 //! `write_user_feedback(dir)`,
+//! `check_suggestions_can_be_written(dir, list)`,
 //! `write_files_and_decisions(lock, root, backup_folder, files, decisions, signals)`,
 //! and `write_every_file(backup, signals)` functions to understand the module.
 
@@ -24,9 +26,10 @@ use crate::shared::approvals::{self, Approval};
 use crate::shared::comments::{self, CommentEdit, RewrittenFile};
 use crate::shared::git;
 use crate::shared::review_session::{
-    self, AnsweredRequest, FeedbackRequest, RequestId, ReviewSessionLock, ReviewStatus, WriteError,
+    self, AnsweredRequest, FeedbackRequest, FeedbackRequestList, RequestId, ReviewSessionLock,
+    ReviewStatus, WriteError,
 };
-use crate::shared::user_feedback::{UserFeedback, UserNote, choose_new_text};
+use crate::shared::user_feedback::{UserAnswer, UserFeedback, UserNote, choose_new_text};
 use crate::shared::{Error, ErrorCode};
 
 /// Names the folder beside `review.json` that holds each file's original while
@@ -85,7 +88,7 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
     let files = match rewrite_answered_requests(&root, &answered) {
         Ok(RewriteOutcome::Files(files)) => files,
         // Only the agent can send the changed file's Feedback Requests to the user again.
-        Ok(RewriteOutcome::CommentChanged(file)) => {
+        Ok(RewriteOutcome::CommentChanged { file, .. }) => {
             return return_requests_to_agent(&mut lock, &root, &file);
         }
         // Nothing is written yet, so every answer stays, and a `WriteFailed` also saves why.
@@ -100,6 +103,93 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
         deliver_held_signal(signal);
     }
     result
+}
+
+/// Rewrites every file in memory with each Agent Suggestion accepted, as step 7
+/// would, so step 5 can refuse a list the user could not have written. Writes
+/// nothing.
+///
+/// # Errors
+///
+/// Refuses with `WouldNotWrite` when a reword or cut drops a note tools read,
+/// such as Go's `Deprecated:`, when a reword changes a code example in a doc
+/// comment, or when step 7 would refuse the list for any reason.
+pub(crate) fn check_suggestions_can_be_written(
+    dir: &Path,
+    list: &FeedbackRequestList,
+) -> Result<(), Error> {
+    let accept = UserAnswer::Accept;
+    for request in &list.requests {
+        let new_text = choose_new_text(request, &accept);
+        // A cut keeps no note, so it drops every note the comment holds.
+        let kept_notes =
+            comments::list_tool_notes(&request.file, new_text.as_deref().unwrap_or_default());
+        let old_notes = comments::list_tool_notes(&request.file, &request.text);
+        let count =
+            |notes: &[String], note: &String| notes.iter().filter(|kept| *kept == note).count();
+        // Counting refuses a reword that turns two notes into one.
+        let dropped_note = old_notes
+            .iter()
+            .find(|note| count(&kept_notes, note) < count(&old_notes, note));
+        if let Some(note) = dropped_note {
+            return Err(Error {
+                code: ErrorCode::WouldNotWrite,
+                message: format!(
+                    "The Agent Suggestion for Feedback Request {} in {} drops the {note} note that tools read. Keep the note.",
+                    request.id.0,
+                    request.file.display()
+                ),
+            });
+        }
+        // A cut removes the whole comment, examples included, in plain sight of the user.
+        let Some(new_text) = new_text else {
+            continue;
+        };
+        let old_tests = comments::list_doc_tests(&request.file, &request.text);
+        if comments::list_doc_tests(&request.file, &new_text) != old_tests {
+            return Err(Error {
+                code: ErrorCode::WouldNotWrite,
+                message: format!(
+                    "The reword of Feedback Request {} in {} changes a code example in its doc comment. Keep each example as it is.",
+                    request.id.0,
+                    request.file.display()
+                ),
+            });
+        }
+    }
+    let root = git::find_root(dir)?;
+    let answered: Vec<AnsweredRequest> = list
+        .requests
+        .iter()
+        .map(|request| AnsweredRequest {
+            request,
+            answer: &accept,
+        })
+        .collect();
+    let refusal = match rewrite_answered_requests(&root, &answered) {
+        Ok(RewriteOutcome::Files(_)) => return Ok(()),
+        Ok(RewriteOutcome::CommentChanged { file, id }) => {
+            let request = list
+                .requests
+                .iter()
+                .find(|request| request.id == id)
+                .expect("the trial matches only the list's own requests");
+            let comment = match &request.name {
+                Some(name) => format!("the comment on {name}"),
+                None => format!("the comment at line {}", request.line),
+            };
+            format!(
+                "Step 7 would not find {comment} in {}, so Feedback Request {} cannot be written. It changed while the list was checked, or, having no name, it shares its line with another comment and needs a line of its own.",
+                file.display(),
+                id.0
+            )
+        }
+        Err(error) => error.message,
+    };
+    Err(Error {
+        code: ErrorCode::WouldNotWrite,
+        message: refusal,
+    })
 }
 
 /// Writes the files and saves the decisions, or puts every file back.
@@ -413,7 +503,10 @@ fn rewrite_answered_requests(
         for (answered_request, comment) in answered_requests.into_iter().zip(matched) {
             let request = answered_request.request;
             let Some(comment) = comment else {
-                return Ok(RewriteOutcome::CommentChanged(file.to_owned()));
+                return Ok(RewriteOutcome::CommentChanged {
+                    file: file.to_owned(),
+                    id: request.id,
+                });
             };
             let new_text = choose_new_text(request, answered_request.answer)
                 .map(|new_text| comments::match_line_ends(new_text, request, &comment));
@@ -448,8 +541,9 @@ fn rewrite_matched_comments(
 enum RewriteOutcome {
     /// Holds each file the Answered Requests change, in memory.
     Files(Vec<RewrittenFile>),
-    /// Names a file whose answered comment is gone or holds other text.
-    CommentChanged(PathBuf),
+    /// Names a file whose answered comment is gone or holds other text, and the
+    /// first Feedback Request in it whose comment step 7 cannot find.
+    CommentChanged { file: PathBuf, id: RequestId },
 }
 
 /// Returns the decision each named Answered Request saves, with an empty text

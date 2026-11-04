@@ -1,5 +1,9 @@
-//! Finds Rust's line comments, block comments and `#[doc]`. Rust's
-//! tools read attributes, so no Rust comment is a tool line.
+//! This module finds Rust's line comments, block comments and `#[doc]`, names
+//! the code each describes, and lists the code examples rustdoc reads as Rust
+//! code. Rust's tools read attributes, so no Rust comment is a tool line. Read
+//! the `RustRules::classify_node(node, source)`,
+//! `RustRules::name_code_below(code, source)` and `RustRules::list_doc_tests(text)`
+//! functions to understand the module.
 
 use std::iter::successors;
 use std::path::Path;
@@ -15,6 +19,18 @@ use crate::shared::style_rules::Rule;
 
 /// Words that start a comment line a tool reads, in any case.
 const TOOL_MARKS: [&str; 1] = ["safety:"];
+
+/// Lists the words in a code fence's info string that make rustdoc read the
+/// block as Rust. `edition2021` and `ignore-wasm32` match by their start.
+const RUST_FENCE_WORDS: [&str; 7] = [
+    "rust",
+    "ignore",
+    "no_run",
+    "should_panic",
+    "compile_fail",
+    "test_harness",
+    "standalone_crate",
+];
 
 pub struct RustRules;
 
@@ -114,6 +130,131 @@ impl LanguageRules for RustRules {
                 .any(|mark| words.to_lowercase().starts_with(mark))
         })
     }
+
+    /// Returns each block of a `///` or `//!` comment that rustdoc reads as
+    /// Rust code, its fence lines included, with each line's end trimmed.
+    fn list_doc_tests(&self, text: &str) -> Vec<String> {
+        let marker = find_line_marker(text);
+        // `find_line_marker` gives `//` for every other comment, block comments too. rustdoc reads
+        // only `///` and `//!` here, since a block doc comment takes no reword.
+        if marker == "//" || text.trim_start().starts_with("////") {
+            return Vec::new();
+        }
+        let bodies: Option<Vec<String>> = text
+            .lines()
+            .map(|line| {
+                let body = line.trim_start().strip_prefix(marker)?;
+                Some(body.replace('\t', "    ").trim_end().to_owned())
+            })
+            .collect();
+        bodies.map_or_else(Vec::new, |bodies| find_doc_test_blocks(&bodies))
+    }
+}
+
+/// Returns the code blocks in doc comment lines, read as rustdoc reads them
+/// after it removes the lines' shared indentation.
+fn find_doc_test_blocks(bodies: &[String]) -> Vec<String> {
+    let shared_indent = bodies
+        .iter()
+        .filter(|body| !body.is_empty())
+        .map(|body| body.len() - body.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let mut blocks = Vec::new();
+    let mut fence: Option<Fence> = None;
+    let mut indented: Vec<&str> = Vec::new();
+    let mut in_paragraph = false;
+    for body in bodies {
+        let line = body.get(shared_indent..).unwrap_or("");
+        if let Some(open) = &mut fence {
+            open.lines.push(line);
+            if open.is_closed_by(line) {
+                if open.is_rust {
+                    blocks.push(open.lines.join("\n"));
+                }
+                fence = None;
+            }
+            continue;
+        }
+        let indent = line.len() - line.trim_start().len();
+        // An indented line inside a paragraph only continues it.
+        if indent >= 4 && !in_paragraph {
+            indented.push(line);
+            continue;
+        }
+        if line.is_empty() {
+            if !indented.is_empty() {
+                indented.push(line);
+            }
+            in_paragraph = false;
+            continue;
+        }
+        if !indented.is_empty() {
+            blocks.push(indented.join("\n").trim_end().to_owned());
+            indented.clear();
+        }
+        fence = Fence::open(line);
+        in_paragraph = fence.is_none() && !line.trim_start().starts_with('#');
+    }
+    // An unclosed fence runs to the end of the comment.
+    if let Some(open) = fence
+        && open.is_rust
+    {
+        blocks.push(open.lines.join("\n"));
+    }
+    if !indented.is_empty() {
+        blocks.push(indented.join("\n").trim_end().to_owned());
+    }
+    blocks
+}
+
+/// Holds an open code fence, its mark, and the lines read so far.
+struct Fence<'a> {
+    mark: char,
+    length: usize,
+    is_rust: bool,
+    lines: Vec<&'a str>,
+}
+
+impl<'a> Fence<'a> {
+    /// Returns the fence `line` opens, or `None` when it opens none.
+    fn open(line: &'a str) -> Option<Self> {
+        let trimmed = line.trim_start();
+        let mark = trimmed
+            .chars()
+            .next()
+            .filter(|mark| ['`', '~'].contains(mark))?;
+        let length = trimmed.len() - trimmed.trim_start_matches(mark).len();
+        let info = &trimmed[length..];
+        if line.len() - trimmed.len() >= 4 || length < 3 || (mark == '`' && info.contains('`')) {
+            return None;
+        }
+        let words: Vec<&str> = info
+            .split(|letter: char| letter == ',' || letter.is_whitespace())
+            .filter(|word| !word.is_empty())
+            .collect();
+        // rustdoc reads a block as Rust unless every word names something else.
+        let is_rust = words.is_empty() || words.iter().any(|word| is_rust_fence_word(word));
+        Some(Self {
+            mark,
+            length,
+            is_rust,
+            lines: vec![line],
+        })
+    }
+
+    /// Returns true when `line` closes this fence.
+    fn is_closed_by(&self, line: &str) -> bool {
+        let trimmed = line.trim_start();
+        line.len() - trimmed.len() < 4
+            && trimmed.len() >= self.length
+            && trimmed.chars().all(|letter| letter == self.mark)
+    }
+}
+
+/// Returns true for an info string word that makes rustdoc read a block as Rust.
+fn is_rust_fence_word(word: &str) -> bool {
+    RUST_FENCE_WORDS.contains(&word) || word.starts_with("edition") || word.starts_with("ignore-")
 }
 
 /// Returns true for `//!`, `/*! */` and `#![doc]`, which describe the
@@ -196,5 +337,52 @@ fn find_line_marker(text: &str) -> &'static str {
         "///"
     } else {
         "//"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod list_doc_tests {
+        use super::*;
+
+        /// `list_doc_tests` must list each block rustdoc reads as Rust, fenced or indented, and no other block.
+        /// Otherwise a reword could change a doc test unchecked, or be refused over a block that is not code.
+        #[test]
+        fn lists_only_blocks_rustdoc_reads_as_rust() {
+            let fence = |info: &str| {
+                format!(
+                    "/// Adds one.\n///\n/// ```{info}\n/// add(1);\n/// ```\n/// Returns two.\n"
+                )
+            };
+            let block = |info: &str| format!("```{info}\nadd(1);\n```");
+            let cases = [
+                ("no-tag", fence(""), vec![block("")]),
+                (
+                    "rust-and-no-run",
+                    fence("rust,no_run"),
+                    vec![block("rust,no_run")],
+                ),
+                ("ignore", fence("ignore"), vec![block("ignore")]),
+                ("edition", fence("edition2021"), vec![block("edition2021")]),
+                ("text", fence("text"), vec![]),
+                (
+                    "indented",
+                    "/// Adds one.\n///\n///     add(1);\n".to_owned(),
+                    vec!["    add(1);".to_owned()],
+                ),
+                (
+                    "paragraph-continuation",
+                    "/// Adds\n///     one.\n".to_owned(),
+                    vec![],
+                ),
+                ("line-comment", fence("").replace("///", "//"), vec![]),
+            ];
+
+            for (case, text, expected) in cases {
+                assert_eq!(RustRules.list_doc_tests(&text), expected, "{case}");
+            }
+        }
     }
 }
