@@ -18,6 +18,9 @@
   When the steps don't fit, put them in a new script in the home
   folder, named so it replaces no file there, and give
   `bash ~/<name>.sh`. Never put a secret value in the script.
+- Print counts and the first few failures, never whole lists such as
+  every worktree. Count or filter with `jq` or `awk` first, since every
+  later turn re-reads what you print.
 
 ## Skill Routing
 
@@ -26,6 +29,7 @@
   identified work with the available skill descriptions.
 - Load each skill applicable to the requested or discovered work before
   repository research, planning, review, implementation, or substantive advice.
+- Load a skill a handoff names for a later step when that step comes.
 - Recheck skill applicability after a handoff, compaction, material goal change,
   or discovery of another domain the response will plan, review, implement, or
   test.
@@ -64,6 +68,9 @@
 ## Code Search
 
 Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. Before deleting or renaming a file, search for its path and file name.
+
+Read a large plan with narrow `rg` for the names you need, not a broad
+pattern over the whole file.
 
 ## Testing
 

@@ -44,6 +44,10 @@ The prompt was one line: "Read the handoff at <path> and follow it.
 Load the skills it names first. Start by proposing the design layout.
 Do not edit the design yet."
 
+Loading every skill first kept them all in context for the whole
+session. Now the handoff names each skill with the step that needs
+it, and the prompt says "Load each skill it names when it says."
+
 ```sh
 test "${HERDR_ENV:-}" = 1
 herdr agent get "$HERDR_PANE_ID"    # .result.agent.agent is opencode

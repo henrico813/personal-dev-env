@@ -87,8 +87,21 @@ steps' defaults.
 
 1. Fetch. Build FILE from the PR's current title and description, not a local
    copy: `gh pr view NUMBER --json title,body --jq '.title + "\n\n" + .body' > FILE`.
-2. Run the repository tests; stop if any fail. Confirm required checks pass, and
-   list exact files with `gh pr diff NUMBER --name-only`.
+2. Run the repository tests on the PR merged into the default branch,
+   from the repository, with each test command as one argument:
+
+   ```sh
+   O=$(mktemp -d)
+   git fetch -q <remote> pull/NUMBER/head
+   bash ~/.agents/skills/pull-request/scripts/merge-check.sh \
+     <remote>/<default> FETCH_HEAD "$O" '<test command>'
+   ```
+
+   It tests in a scratch clone, so no checkout changes, and prints
+   `$O/summary.txt`, with one `exit` line per command; full output is
+   in `$O/test<N>.log`. Stop if any line shows a nonzero exit or no
+   clean merge. Confirm required checks pass, and list exact files
+   with `gh pr diff NUMBER --name-only`.
 3. Run `python3 ~/.agents/skills/git-messages/scripts/msg squash FILE > SQUASH`,
    then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
    fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.

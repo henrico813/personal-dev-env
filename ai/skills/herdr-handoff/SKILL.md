@@ -47,6 +47,10 @@ Herdr's skill says to create a workspace only when the user asks.
    such as a sops file the new session reads with `pde-sops-peek`.
 5. Reread it as a reader with no earlier context. Explain each label
    and use absolute paths.
+6. Name each skill the work needs with the step that needs it, such
+   as "Load `pull-request` before you open the PR." Name a skill to
+   load at the start only when the first step needs it, since every
+   loaded skill is re-read on each turn.
 
 ## Split ownership
 
@@ -59,6 +63,14 @@ Herdr's skill says to create a workspace only when the user asks.
 - After the handoff, stop changing what you handed over.
 - When ownership moves later, tell the new session with
   `herdr agent prompt <name> "<message>"`, and tell the user.
+- The handoff tells the new session to write progress-only news, such
+  as "rehearsal passed", to its own status file. It tells the new
+  session to prompt this session with a question, a blocker, or
+  finished work this session waits on, such as a PR opening or a step
+  finishing. Each prompt makes this session re-read its whole context.
+- A question the new session sends you with `herdr agent prompt` is
+  yours to answer. An approval or question shown in its own pane
+  while it is `blocked` stays the user's.
 
 ## Start the session
 
@@ -90,8 +102,8 @@ Herdr's skill says to create a workspace only when the user asks.
    OpenCode has no model flag, so it uses the `model` set in
    `~/.config/opencode/opencode.json`.
 5. Send a short prompt that points to the file, such as "Read the
-   handoff at <path> and follow it. Load the skills it names first.
-   Start by <step>. Do not edit <file> yet." Keep the brief in the
+   handoff at <path> and follow it. Load each skill it names when it
+   says. Start by <step>. Do not edit <file> yet." Keep the brief in the
    file, since a file can be reread after compaction and a long
    pasted prompt is hard to check:
 
@@ -152,13 +164,20 @@ or revising this skill.
 - Use the `herdr` CLI, not a harness plugin, so this works in any
   agent.
 - Never close the new workspace or agent. They belong to the user.
-- Never answer the new agent's approval or question prompts.
+- Never answer an approval or question shown in the new agent's
+  pane. Answer only what it sends you with `herdr agent prompt`.
+- Filter `herdr agent list` with `jq`, and never print the whole
+  list. It adds thousands of tokens that every later turn re-reads.
+
+      herdr agent list | jq -r '.result.agents[] |
+        select(.name) | "\(.name) \(.agent_status)"'
 
 ## Remembering corrections
 
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
-except that you still never answer the new agent's prompts. When the
+except that you still never answer an approval or question shown in
+the new agent's pane. When the
 user corrects how you write a handoff, start the new session or split
 ownership, follow [skill-lessons](../skill-lessons/SKILL.md) with the
 skill name `herdr-handoff`, and offer once to save the correction as a
