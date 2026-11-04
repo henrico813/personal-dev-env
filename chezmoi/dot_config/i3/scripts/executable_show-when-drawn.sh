@@ -28,13 +28,16 @@ done
 
 xprop -id "$id" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 0
 i3-msg "[id=$id] scratchpad show, move position center" >/dev/null
-# GTK sets the opaque region on its first draw. Wait for it for both tools,
-# and show the window after about 5 s even without one.
-if [[ $1 == gnome-control-center || $1 == pde-displays ]]; then
+# GNOME Settings sets the opaque region on its first draw, so wait up to about
+# 5 s for it. Xfce's GTK 3 Displays sets it before mapping, so it gets a longer
+# fixed wait instead.
+if [[ $1 == gnome-control-center ]]; then
     tries=100
     while ((tries-- > 0)) && [[ $(xprop -id "$id" _NET_WM_OPAQUE_REGION) != *"= "[0-9]* ]]; do
         sleep 0.05
     done
+    sleep 0.2
+else
+    sleep 0.5
 fi
-sleep 0.2
 xprop -id "$id" -f _NET_WM_WINDOW_OPACITY 32c -set _NET_WM_WINDOW_OPACITY 4294967295

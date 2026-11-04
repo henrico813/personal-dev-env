@@ -1,10 +1,11 @@
 #!/bin/bash
 # Plays the first .mp4, then the first .webm, in ~/.config/wallpapers as the
 # wallpaper on every output: mpvpaper on Sway, xwinwrap with mpv on i3.
-# Without a video it shows Ubuntu's default image.
+# Without a video it shows a plain dark background.
 
 WALLPAPER_DIR="$HOME/.config/wallpapers"
-FALLBACK_IMAGE=/usr/share/backgrounds/warty-final-ubuntu.png
+# The dark background of the i3 and Sway window colors.
+BACKGROUND_COLOR='#2d353b'
 # mpvpaper is called by path because the session PATH may lack ~/.local/bin;
 # xwinwrap is looked up on PATH.
 MPVPAPER="$HOME/.local/bin/mpvpaper"
@@ -42,7 +43,7 @@ play_on_x() {
 warn_missing() {
     local video="$1" player="$2"
     if [[ -n "$video" ]]; then
-        echo "wallpaper.sh: $player is missing, so showing $FALLBACK_IMAGE" >&2
+        echo "wallpaper.sh: $player is missing, so showing a plain background" >&2
     fi
 }
 
@@ -54,15 +55,22 @@ if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
         play_on_wayland "$video"
     else
         warn_missing "$video" "$MPVPAPER"
-        swaybg -i "$FALLBACK_IMAGE" -m fill &
+        swaybg -c "$BACKGROUND_COLOR" &
     fi
 else
+    # i3 starts autorandr and this script together at login. Wait up to about
+    # 5 s for it, or the video starts before the outputs are set up.
+    tries=50
+    while ((tries-- > 0)) && pgrep -f 'bin/autorandr' >/dev/null; do
+        sleep 0.1
+    done
     pkill -x xwinwrap
     if [[ -n "$video" ]] && command -v "$XWINWRAP" >/dev/null; then
         play_on_x "$video"
     else
-        # No video to play, or no xwinwrap: show the image instead.
+        # No video to play, or no xwinwrap: show the color instead. hsetroot,
+        # unlike xsetroot, sets the root image that picom draws.
         warn_missing "$video" "$XWINWRAP"
-        feh --bg-fill "$FALLBACK_IMAGE"
+        hsetroot -solid "$BACKGROUND_COLOR"
     fi
 fi

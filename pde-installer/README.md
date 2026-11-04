@@ -98,7 +98,7 @@ entry; log in with the `i3` or `sway` session that Ubuntu's packages add.
 
 The wallpaper plays the first `.mp4` file in `~/.config/wallpapers/`, or the
 first `.webm` file when there is no `.mp4`. Copy a video there yourself. Without
-one, the desktop shows Ubuntu's default image.
+one, the desktop shows a plain dark background.
 
 Settings for one machine go in `~/.config/i3/local.conf`: the monitor names,
 which workspace goes on which monitor, the monitor layout command and the
