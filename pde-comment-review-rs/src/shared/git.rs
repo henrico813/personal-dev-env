@@ -295,6 +295,17 @@ pub fn read_current_branch(dir: &Path) -> Result<String, Error> {
     Ok(read_text(output)?.trim_end_matches('\n').to_owned())
 }
 
+/// Lists the top folder of every worktree of the clone, the main checkout
+/// first, as Git lists them. A worktree whose folder is gone is still listed.
+pub(crate) fn list_worktrees(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    let output = run_git(dir, &["worktree", "list", "--porcelain", "-z"])?;
+    Ok(output
+        .split(|byte| *byte == 0)
+        .filter_map(|field| field.strip_prefix(b"worktree "))
+        .map(|path| PathBuf::from(OsString::from_vec(path.to_vec())))
+        .collect())
+}
+
 /// Returns the top folder of each worktree of the clone that has `branch`
 /// checked out, which `open NAME` reads.
 pub(crate) fn find_worktrees_on_branch(dir: &Path, branch: &str) -> Result<Vec<PathBuf>, Error> {
