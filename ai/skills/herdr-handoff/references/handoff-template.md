@@ -11,6 +11,10 @@ You are a new session. The user asked for this work in a new Herdr
 workspace. Another session ("<its name>", Herdr workspace `<label>`)
 wrote this handoff and keeps the work listed under Coordination.
 
+Load `<skill the first step needs>` now. Load `<skill>` before <the
+step that needs it>. Load nothing else up front: every loaded skill
+is re-read on each turn.
+
 ## The project
 
 <What it is and does, in a few lines. Absolute paths to the
@@ -48,6 +52,9 @@ new session asks these first.>
 - <Which session owns each file, branch and worktree.>
 - **<What the new session must not touch, until when.>**
 - <Who records ownership changes on the tracking page, if any.>
+- Write progress-only news to <your status file>. Prompt
+  "<this session's agent name>" with a question, a blocker, or
+  finished work it waits on, such as a PR opening or a step finishing.
 
 ## Rules for the files you edit
 
@@ -60,4 +67,5 @@ use or avoid, or a line width.>
 cannot see anywhere else. Copy them in full.>
 ```
 
-Before saving, check that the file names every skill the work needs.
+Before saving, check that the file names every skill the work needs,
+each with the step that needs it.

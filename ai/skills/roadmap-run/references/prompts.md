@@ -5,7 +5,9 @@ and you load them too. Start every brief with "Read <rules file>
 first and follow it for the whole task. Write your full report to
 <report file>." `<rules file>` is the run's `rules.md`, from
 SKILL.md's Before you start. `<design digest>` is the PR's file from
-build.md's Write a design digest.
+build.md's Write a design digest. `<suites summary>` is the PR's
+`<run folder>/suites.txt`, from build.md's Run the suites once per
+plan version, for the plan version the agent reads.
 `<report file>` stands for a new file in the PR's run folder, such as
 `<run folder>/plan-review-1.md`. The first planner starts before that
 folder exists, so give it a file in a folder you make with `mktemp -d`.
@@ -36,6 +38,8 @@ from the roadmap page too.
     then only the references your step needs. Send test, lint and
     build output to a log file in your folder, and read only its
     summary lines, such as counts and the names of failed tests.
+    Never run a whole test suite or linter; a script runs them once
+    for each plan version.
     Reply in at most 20 lines, starting with the report's path.
 
 Reviewers also get:
@@ -51,7 +55,9 @@ Reviewers also get:
     for the new, runs the test command, and passes only when a test
     fails. The new text must still build, or a build error passes
     the line with no test catching the bug. Do not run the lines; a
-    script runs them after the build.
+    script runs them after the build. Read the test and lint results
+    in the suites summary, and run at most the one test a finding
+    needs.
 
 ## Planner
 
@@ -77,7 +83,8 @@ Reviewers also get:
 
     Under `### Bugs to put back` in the notes, write a `plant` line
     for each bug the tests must catch, as the rules file tells
-    reviewers. Run the tests and linters once on your export.
+    reviewers. Run no test suite or linter; a script runs them once on
+    your plan afterwards.
 
     List each place the plan differs from the design under
     `### Design edits to apply` in `## Notes for agents`. For each,
@@ -98,13 +105,13 @@ new planner needs no earlier session.
     code-documentation, behavior-focused-testing.
 
     Plan: <path> (base on its `Base commit:` line).
-    Design: <design digest>.
+    Design: <design digest>. Test results: <suites summary>.
     What it does: <two sentences>. Check especially: <the ways it
     could lose the user's data or do the wrong thing>.
 
-    Run `planner check`, export the tree, and run the tests and
-    linters once. Check that the plan's `plant` lines catch the bugs
-    most likely to hurt, and write a line for each claim you doubt.
+    Run `planner check` and export the tree. Check that the plan's
+    `plant` lines catch the bugs most likely to hurt, and write a
+    line for each claim you doubt.
 
 ## Skill review
 
@@ -116,6 +123,7 @@ change description and its own focus:
 
     Change: branch <branch>, worktree <path>, `git diff <parent>
     HEAD`. Plan: <path>. Known: <findings to ignore, and why>.
+    Test results: <suites summary>.
 
     Focus: <see below>.
 
@@ -123,8 +131,8 @@ change description and its own focus:
   scratch home and state folder. Can the user's data be lost, sent
   twice, or changed unseen?
 - Each language skill: idiom, names, error handling, package
-  boundaries, the tests with the race detector or type checker, and
-  `plant` lines for claims the plan's lines miss.
+  boundaries, the race detector or type checker results in the
+  suites summary, and `plant` lines for claims the plan's lines miss.
 - `code-documentation`: every comment and doc line added or touched,
   as keep, shorten (with the exact text) or cut, with a reason. Text
   in touched code that became false, and approved text that needs a
@@ -157,22 +165,24 @@ out the part in brackets.
     the worktree.] Revise the plan only, and apply only the items
     below; the reviewers' reports in <report files> give their
     evidence. Design: <design digest>.
-    `planner check` must pass. Run the tests and linters once on your
-    export, and update the `plant` lines a fix changes, without
-    running them.
+    `planner check` must pass. Run no test suite or linter, since a
+    script runs them once on the revised plan. Update the `plant` lines
+    a fix changes, without running them.
 
     Required: <numbered, each with evidence and the fix>.
     Decided: <optional items you chose, and how reviewers' conflicts
     were settled>. Record each decision in the plan's
     `## Notes for agents`.
 
-    Report: new size, test results, changed `plant` lines,
+    Report: new size, changed `plant` lines,
     `planner check` result, and anything not applied and why.
 
 ## Local model
 
 A local model runs only a job a script checks: tests and linters,
-`plant` lines, a carry, or the checks before a merge. Plans, design
+`plant` lines, or the checks before a merge. build.md's
+`suites.sh` and `plants.sh` and the pull-request skill's
+`merge-check.sh` are such scripts. Plans, design
 checks, reviews, PR text and decisions stay on cloud models, and you
 build and ship. Write the job as one script that sends long output to
 a log and writes a summary file whose last line is `done`. The model
