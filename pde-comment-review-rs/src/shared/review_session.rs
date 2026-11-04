@@ -288,6 +288,18 @@ impl ReviewSessionLock {
     }
 }
 
+/// Saves a Review Session moved from the old review tool and returns true, or
+/// returns false and keeps the saved one when the worktree already has one.
+pub(crate) fn add_moved_review_session(dir: &Path, moved: ReviewSession) -> Result<bool, Error> {
+    let mut lock = lock(dir)?;
+    if lock.review_session.is_some() {
+        return Ok(false);
+    }
+    lock.review_session = Some(moved);
+    lock.save()?;
+    Ok(true)
+}
+
 /// Adds the worktree that holds `dir` to the end of the waiting list, for
 /// Ctrl+b e, unless it is listed already.
 pub fn add_to_waiting_list(dir: &Path) -> Result<(), Error> {
@@ -659,7 +671,7 @@ enum LeftOut {
 /// Returns the Review Session's origin from Git and the agent's environment.
 /// The repository takes its main checkout's folder name, and the agent session
 /// is `OPENCODE_SESSION_ID`, empty when unset.
-fn find_review_origin(root: &Path) -> Result<ReviewOrigin, Error> {
+pub(crate) fn find_review_origin(root: &Path) -> Result<ReviewOrigin, Error> {
     let shared = git::find_shared_git_folder(root)?;
     // A worktree's folder is often named after its branch, so the main checkout names the repository.
     let main_checkout = shared
