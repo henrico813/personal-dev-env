@@ -1,13 +1,16 @@
 //! This module loads and saves each worktree's Review Session under a lock,
-//! so two screens lose no User Feedback. Read the
-//! `save_user_feedback(dir, shown_request, feedback)`, `lock(dir)`, and
-//! `load(dir)` functions to understand the module.
+//! so two screens lose no User Feedback, and it keeps the waiting list that
+//! Ctrl+b e reads. Read the `save_user_feedback(dir, shown_request, feedback)`,
+//! `lock(dir)`, `load(dir)`, `add_to_waiting_list(dir)`, and
+//! `read_waiting_list()` functions to understand the module.
 
 use std::collections::BTreeMap;
+use std::env;
 use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,11 +22,18 @@ const REVIEW_FILE: &str = "review.json";
 const LOCK_FILE: &str = "review.json.lock";
 const TEMP_FILE: &str = "review.json.tmp";
 const UNREADABLE_FILE: &str = "review.json.unreadable";
+const WAITING_LIST_FILE: &str = "waiting-list.json";
+const WAITING_LIST_LOCK_FILE: &str = "waiting-list.json.lock";
+const WAITING_LIST_TEMP_FILE: &str = "waiting-list.json.tmp";
+
+/// Holds the folder that tests give the waiting list in place of the user's own.
+static TEST_WAITING_LIST_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
-/// Feedback Request changed since the screen showed it. Sets
-/// `user_notes_waiting` once every Feedback Request has User Feedback and any
-/// of it is a User Note.
+/// Feedback Request changed since the screen showed it. Once every Feedback
+/// Request has User Feedback and any of it is a User Note, sets
+/// `user_notes_waiting` and then takes the worktree off the waiting list, so a
+/// waiting-list error comes after the save and the User Feedback is kept.
 pub fn save_user_feedback(
     dir: &Path,
     shown_request: &FeedbackRequest,
@@ -66,6 +76,12 @@ pub fn save_user_feedback(
     }
     let status = review_session.status;
     lock.save()?;
+    if status == ReviewStatus::UserNotesWaiting {
+        // Saving first means a failed change to the waiting list loses no User Feedback.
+        // The Review Session's lock is still held, so the worktree stays listed for the
+        // agent's next Feedback Request List.
+        remove_from_waiting_list(dir)?;
+    }
     Ok(status)
 }
 
@@ -126,6 +142,36 @@ impl ReviewSessionLock {
         write_and_sync(&temp_path, &text).map_err(|error| save_error(&temp_path, error))?;
         fs::rename(&temp_path, &path).map_err(|error| save_error(&path, error))
     }
+}
+
+/// Adds the worktree that holds `dir` to the end of the waiting list, for
+/// Ctrl+b e, unless it is listed already.
+pub fn add_to_waiting_list(dir: &Path) -> Result<(), Error> {
+    change_waiting_list(dir, |worktrees, worktree| {
+        if !worktrees.contains(&worktree) {
+            worktrees.push(worktree);
+        }
+    })
+}
+
+/// Takes the worktree that holds `dir` off the waiting list.
+pub(crate) fn remove_from_waiting_list(dir: &Path) -> Result<(), Error> {
+    change_waiting_list(dir, |worktrees, worktree| {
+        worktrees.retain(|listed| *listed != worktree);
+    })
+}
+
+/// Lists the worktrees on the waiting list in the order they were added,
+/// skipping any that no longer exist.
+pub fn read_waiting_list() -> Result<Vec<PathBuf>, Error> {
+    let path = find_waiting_list_folder()?.join(WAITING_LIST_FILE);
+    // Each change renames a whole new list into place, so reading needs no lock.
+    let saved = read_saved_waiting_list(&path)?;
+    Ok(saved
+        .worktrees
+        .into_iter()
+        .filter(|worktree| worktree.exists())
+        .collect())
 }
 
 /// Holds one worktree's Review Session, saved in its own Git folder.
@@ -336,4 +382,131 @@ fn late_error(message: &str) -> Error {
         code: ErrorCode::LateUserFeedback,
         message: message.to_owned(),
     }
+}
+
+/// Holds the worktrees on the waiting list, saved in `waiting-list.json`.
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedWaitingList {
+    worktrees: Vec<PathBuf>,
+}
+
+/// Takes the waiting list's lock, reads the list again under it, changes it
+/// for the worktree that holds `dir`, and saves it through a synced temporary
+/// file. Keeps every other entry, even one it cannot reach now, such as a
+/// worktree on a drive that is not mounted.
+fn change_waiting_list(
+    dir: &Path,
+    change: impl FnOnce(&mut Vec<PathBuf>, PathBuf),
+) -> Result<(), Error> {
+    // A worktree's subfolders share its Review Session, so the list holds the top folder.
+    let worktree = git::find_root(dir)?;
+    let folder = find_waiting_list_folder()?;
+    // `_lock` holds the lock until this function returns, after the save.
+    let _lock = lock_waiting_list(&folder)?;
+    let mut saved = read_saved_waiting_list(&folder.join(WAITING_LIST_FILE))?;
+    change(&mut saved.worktrees, worktree);
+    write_saved_waiting_list(&folder, &saved)
+}
+
+/// Returns `$XDG_STATE_HOME/pde/comment-review`, or
+/// `~/.local/state/pde/comment-review` without it.
+fn find_waiting_list_folder() -> Result<PathBuf, Error> {
+    if cfg!(feature = "test-util") {
+        // Failing here stops a test that forgot its folder from changing the user's list.
+        let folder = TEST_WAITING_LIST_FOLDER.get().expect(
+            "a test must call set_test_waiting_list_folder before it reaches the waiting list",
+        );
+        return Ok(folder.clone());
+    }
+    // An empty or relative folder counts as unset, as the XDG rules say.
+    let absolute_folder = |name| {
+        env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|folder| folder.is_absolute())
+    };
+    let state = absolute_folder("XDG_STATE_HOME")
+        .or_else(|| absolute_folder("HOME").map(|home| home.join(".local/state")))
+        .ok_or_else(|| Error {
+            code: ErrorCode::SaveFailed,
+            message: "Cannot find the waiting list, because neither XDG_STATE_HOME nor HOME is an absolute path.".to_owned(),
+        })?;
+    Ok(state.join("pde/comment-review"))
+}
+
+/// Locks a file beside the waiting list, since each save replaces the list
+/// and a lock on the old one guards nothing.
+fn lock_waiting_list(folder: &Path) -> Result<File, Error> {
+    fs::create_dir_all(folder).map_err(|error| waiting_list_save_error(folder, error))?;
+    let lock_path = folder.join(WAITING_LIST_LOCK_FILE);
+    let lock_file =
+        File::create(&lock_path).map_err(|error| waiting_list_save_error(&lock_path, error))?;
+    lock_file
+        .lock()
+        .map_err(|error| waiting_list_save_error(&lock_path, error))?;
+    Ok(lock_file)
+}
+
+/// Reads the waiting list, or an empty one when it is missing.
+fn read_saved_waiting_list(path: &Path) -> Result<SavedWaitingList, Error> {
+    let saved = match fs::read(path) {
+        Ok(saved) => saved,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(SavedWaitingList::default());
+        }
+        Err(error) => return Err(waiting_list_read_error(path, error)),
+    };
+    serde_json::from_slice(&saved).map_err(|error| {
+        if !is_from_newer_version(&error) {
+            return waiting_list_read_error(path, error);
+        }
+        Error {
+            code: ErrorCode::UnknownSavedField,
+            message: format!(
+                "{} holds a field or value this version does not know. Run pde-installer to update it. {error}",
+                path.display()
+            ),
+        }
+    })
+}
+
+/// Replaces the waiting list with a synced temporary file, so a crash leaves
+/// a whole list, old or new.
+fn write_saved_waiting_list(folder: &Path, saved: &SavedWaitingList) -> Result<(), Error> {
+    let path = folder.join(WAITING_LIST_FILE);
+    let mut text =
+        serde_json::to_vec_pretty(saved).map_err(|error| waiting_list_save_error(&path, error))?;
+    text.push(b'\n');
+    let temp_path = folder.join(WAITING_LIST_TEMP_FILE);
+    write_and_sync(&temp_path, &text)
+        .map_err(|error| waiting_list_save_error(&temp_path, error))?;
+    fs::rename(&temp_path, &path).map_err(|error| waiting_list_save_error(&path, error))
+}
+
+fn waiting_list_read_error(path: &Path, error: impl Display) -> Error {
+    Error {
+        code: ErrorCode::SavedFileUnreadable,
+        message: format!(
+            "Cannot read the waiting list in {}. {error}",
+            path.display()
+        ),
+    }
+}
+
+fn waiting_list_save_error(path: &Path, error: impl Display) -> Error {
+    Error {
+        code: ErrorCode::SaveFailed,
+        message: format!(
+            "Cannot save the waiting list in {}. {error}",
+            path.display()
+        ),
+    }
+}
+
+/// Makes every waiting-list call in this process use `folder`, so tests never
+/// change the user's own list. The first call wins.
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub fn set_test_waiting_list_folder(folder: &Path) {
+    TEST_WAITING_LIST_FOLDER.get_or_init(|| folder.to_path_buf());
 }
