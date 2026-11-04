@@ -85,7 +85,8 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
 - Plans, issues, design docs, and research docs belong in the default
   vault. Find its folder with `nobs vault path` and documents in it with
   `nobs find`.
-- Read `Projects/AGENTS.md` before writing to the vault.
+- Read `500 Zettelkasten/Projects/AGENTS.md`, relative to the vault
+  root, before writing to the vault.
 - Implementation plans are issues, not design docs.
 - Use the project issue naming convention for implementation plans.
 - Never commit vault documents to pull request branches.
