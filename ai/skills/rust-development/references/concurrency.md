@@ -6,12 +6,32 @@ the Tokio references explain examples, not a requirement to add Tokio.
 
 ## Contents
 
+- [Shared state, async, and performance](#shared-state-async-and-performance)
 - [Choose ownership and synchronization separately](#choose-ownership-and-synchronization-separately)
 - [Respect Send, Sync, and lifetimes](#respect-send-sync-and-lifetimes)
 - [Borrow with scoped work when it fits](#borrow-with-scoped-work-when-it-fits)
 - [Keep locks and blocking work bounded](#keep-locks-and-blocking-work-bounded)
 - [Own task completion and cancellation](#own-task-completion-and-cancellation)
 - [Verify observable behavior](#verify-observable-behavior)
+
+## Shared state, async, and performance
+
+Use `Rc` for shared ownership within a thread and `Arc` when ownership must be
+shared across threads and the contained type supports it. Neither alone makes
+arbitrary inner data safe to mutate concurrently. Understand `Send` and `Sync`
+before changing cross-thread APIs, and prefer inferred implementations.
+
+Keep lock scopes short. Avoid holding a blocking lock guard across `.await`;
+use an appropriate async lock only when the operation genuinely needs it.
+Do not run blocking I/O or prolonged CPU work on an async executor's worker
+without the runtime's intended mechanism. Give tasks an owner, bounded resource
+use, and explicit completion, cancellation, error, and shutdown behavior.
+Read the checklist below when this code is required; do not introduce it
+into a sequential task without a reason.
+
+Measure before adding custom allocators, intricate lifetime arrangements, or
+other performance-driven complexity. Record what the measurement demonstrates.
+Prefer an established safe implementation when it meets the requirement.
 
 ## Choose ownership and synchronization separately
 

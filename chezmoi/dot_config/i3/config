@@ -54,8 +54,6 @@ bindsym $mod+Ctrl+comma move container to output left
 bindsym $mod+Ctrl+period move container to output right
 
 # ---------- APPLICATIONS ----------
-# Super+t opens the terminal.
-bindsym $mod+t exec --no-startup-id alacritty
 # Super+q lists the apps and the four desktop tools; each tool also has a key.
 bindsym $mod+q exec --no-startup-id ~/.config/i3/scripts/desktop-menu.sh
 bindsym $mod+Tab exec --no-startup-id rofi -show window -show-icons
@@ -156,7 +154,7 @@ bindsym Print exec --no-startup-id xfce4-screenshooter
 bindsym Shift+Print exec --no-startup-id xfce4-screenshooter -r
 
 # ---------- THIS MACHINE ----------
-# Outputs, workspaces, and the monitor layout. It comes before
+# Outputs, workspaces, the monitor layout and the terminal key. It comes before
 # autostart, so autorandr sets the layout before the wallpaper and polybar read it.
 include ~/.config/i3/local.conf
 

@@ -50,11 +50,8 @@ pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, 
     }
     let mut rewritten = Vec::new();
     for (file, file_edits) in edits_by_file {
-        if let Some(new_contents) = rewrite_file(dir, file, &file_edits)? {
-            rewritten.push(RewrittenFile {
-                path: file.to_path_buf(),
-                new_contents,
-            });
+        if let Some(rewritten_file) = rewrite_file(dir, file, &file_edits)? {
+            rewritten.push(rewritten_file);
         }
     }
     Ok(rewritten)
@@ -68,6 +65,60 @@ pub fn to_plain_words(file: &Path, text: &str) -> String {
         Some(rules) => rules.to_plain_words(text),
         None => text.to_owned(),
     }
+}
+
+/// Returns the `def` or `class` line a docstring describes, as `source` has
+/// it, or `None` for any other comment, such as a module docstring.
+pub(crate) fn find_function_definition_line<'a>(
+    comment: &Comment,
+    source: &'a str,
+) -> Option<&'a str> {
+    let rules = find_rules_for(&comment.file)?;
+    let tree = parse_source(rules, source);
+    let (definition, _) = find_docstring_owner(rules, tree.root_node(), comment, source)?;
+    source.lines().nth(definition.start_position().row)
+}
+
+/// Returns true for a docstring that is the only statement in its block, so
+/// cutting it would leave its definition with no body.
+pub(crate) fn is_only_statement_in_block(comment: &Comment, source: &str) -> bool {
+    let Some(rules) = find_rules_for(&comment.file) else {
+        return false;
+    };
+    let tree = parse_source(rules, source);
+    let Some((_, body)) = find_docstring_owner(rules, tree.root_node(), comment, source) else {
+        return false;
+    };
+    let mut cursor = body.walk();
+    // A comment beside the docstring is an extra node, not a statement.
+    body.named_children(&mut cursor)
+        .filter(|child| !child.is_extra())
+        .count()
+        == 1
+}
+
+/// Returns the definition a docstring sits in, and the definition's child
+/// that holds the docstring, which is its body.
+fn find_docstring_owner<'tree>(
+    rules: &dyn LanguageRules,
+    root: Node<'tree>,
+    comment: &Comment,
+    source: &str,
+) -> Option<(Node<'tree>, Node<'tree>)> {
+    if comment.style != CommentStyle::Docstring {
+        return None;
+    }
+    // A docstring's text starts at its line, so its quotes start after the indent.
+    let indent = comment.text.len() - comment.text.trim_start().len();
+    let quotes = comment.byte_range.start + indent;
+    let mut child = root.named_descendant_for_byte_range(quotes, quotes)?;
+    while let Some(parent) = child.parent() {
+        if rules.name_docstring_owner(parent, source).is_some() {
+            return Some((parent, child));
+        }
+        child = parent;
+    }
+    None
 }
 
 /// Returns `words` as comment lines laid out like `old_text`, with its
@@ -94,6 +145,106 @@ pub(crate) fn read_version_comments(
 /// it is absent. `root` is the worktree's top folder.
 pub(crate) fn read_comments_on_disk(root: &Path, file: &Path) -> Result<FileComments, Error> {
     read_version_comments(file, git::read_file_on_disk(root, file)?)
+}
+
+/// Reads a root-relative file as it is on disk and takes the comment each
+/// request asked about. The file keeps its own line ends, so each comment's
+/// byte range fits it. A named request takes the comment with its name. An
+/// unnamed one takes only the unnamed comment now at its saved line, never a
+/// same-text comment elsewhere. A request gets `None` when that comment is gone
+/// or its text, with `\r\n` read as `\n`, differs, and step 7 then refuses.
+/// Refuses with `FileUnreadable` when the file does not parse.
+pub(crate) fn match_requests_on_disk(
+    root: &Path,
+    file: &Path,
+    requests: &[&FeedbackRequest],
+) -> Result<Vec<Option<Comment>>, Error> {
+    let Some(source) = git::read_file_on_disk(root, file)?.text else {
+        // A gone file holds no answered comment, so its requests count as changed.
+        return Ok(requests.iter().map(|_| None).collect());
+    };
+    let found = find_comments(file, &source).map_err(|error| Error {
+        code: ErrorCode::FileUnreadable,
+        message: format!(
+            "Cannot read the comments in {}, since {error}.",
+            file.display()
+        ),
+    })?;
+    let matched = match_at_saved_line(&found, requests);
+    let mut comments: Vec<Option<Comment>> = found.into_iter().map(Some).collect();
+    Ok(matched
+        .into_iter()
+        .zip(requests)
+        .map(|(slot, request)| {
+            let comment = comments[slot?].take()?;
+            // Requests hold `\n` line ends, so a file with `\r\n` ones still matches.
+            (comment.text.replace("\r\n", "\n") == request.text).then_some(comment)
+        })
+        .collect())
+}
+
+/// Returns the new text with `\r\n` line ends when the old comment had any, or
+/// the old text as it is when the words did not change.
+pub(crate) fn match_line_ends(
+    new_text: String,
+    request: &FeedbackRequest,
+    comment: &Comment,
+) -> String {
+    if new_text == request.text {
+        comment.text.clone()
+    } else if comment.text.contains("\r\n") {
+        new_text.replace('\n', "\r\n")
+    } else {
+        new_text
+    }
+}
+
+/// Returns each code example in a comment that the file's language reads as
+/// code, such as a Rust doc test, or none.
+pub(crate) fn list_doc_tests(file: &Path, text: &str) -> Vec<String> {
+    find_rules_for(file).map_or_else(Vec::new, |rules| rules.list_doc_tests(text))
+}
+
+/// Returns the word that starts each note in a comment that the file's
+/// language's tools read, such as Go's `Deprecated:`, or none.
+pub(crate) fn list_tool_notes(file: &Path, text: &str) -> Vec<String> {
+    find_rules_for(file).map_or_else(Vec::new, |rules| rules.list_tool_notes(text))
+}
+
+/// Returns the file's comments with `new_text` in place of `comment`, and the
+/// reworded comment's index, so a reword is checked where it would sit. Runs
+/// no formatter and writes nothing.
+///
+/// # Errors
+///
+/// Refuses with `WouldNotWrite` when the text does not read back as a comment
+/// in that place.
+pub(crate) fn read_comments_with_reword(
+    now: &FileComments,
+    comment: &Comment,
+    new_text: &str,
+) -> Result<(FileComments, usize), Error> {
+    let would_not_write = || {
+        refuse(
+            ErrorCode::WouldNotWrite,
+            &now.file,
+            "The reword does not read back as a comment in its place.",
+        )
+    };
+    let Some(source) = &now.source else {
+        return Err(would_not_write());
+    };
+    let mut reworded_source = source.clone();
+    reworded_source.replace_range(comment.byte_range.clone(), new_text);
+    let file_label = now.file.display().to_string();
+    let reworded = find_file_comments(&now.file, Some(reworded_source), &file_label)
+        .map_err(|_| would_not_write())?;
+    let index = reworded
+        .comments
+        .iter()
+        .position(|found| found.byte_range.start == comment.byte_range.start)
+        .ok_or_else(would_not_write)?;
+    Ok((reworded, index))
 }
 
 /// Finds the comments in a root-relative file as it was at `commit`, or none
@@ -148,7 +299,7 @@ pub(crate) fn list_paragraphs(comment: &Comment) -> Vec<String> {
 
 /// One comment, where it is in its file, and the code it describes.
 /// Lines count from 1.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Comment {
     pub file: PathBuf,
     /// The key approvals use for this comment. It is `None` when no
@@ -240,6 +391,9 @@ pub struct CommentEdit {
 #[derive(Debug)]
 pub struct RewrittenFile {
     pub path: PathBuf,
+    /// The contents the rewrite started from, so a write can refuse a file
+    /// that changed since.
+    pub(crate) old_contents: String,
     pub new_contents: String,
 }
 
@@ -264,24 +418,29 @@ impl FileComments {
 
     /// Returns the comment each request matches, never reusing a comment for two
     /// requests. A named request matches by name; otherwise it takes the nearest
-    /// comment with the same text, or the unnamed comment at its line.
+    /// comment with the same text, closest pairs first, or the unnamed comment at
+    /// its line.
     pub(crate) fn match_requests(&self, requests: &[&FeedbackRequest]) -> Vec<Option<&Comment>> {
         let mut matched = vec![None; requests.len()];
         let mut taken = vec![false; self.comments.len()];
-        for (slot, request) in matched.iter_mut().zip(requests) {
-            let nearest = self
-                .comments
-                .iter()
-                .enumerate()
-                .filter(|(index, comment)| {
-                    !taken[*index]
-                        && comment.name == request.name
-                        && (request.name.is_some() || comment.text == request.text)
-                })
-                .min_by_key(|(_, comment)| comment.line.abs_diff(request.line));
-            if let Some((index, _)) = nearest {
-                taken[index] = true;
-                *slot = Some(index);
+        let mut pairs = Vec::new();
+        for (request_index, request) in requests.iter().enumerate() {
+            for (comment_index, comment) in self.comments.iter().enumerate() {
+                if comment.name == request.name
+                    && (request.name.is_some() || comment.text == request.text)
+                {
+                    let distance = comment.line.abs_diff(request.line);
+                    pairs.push((distance, request_index, comment_index));
+                }
+            }
+        }
+        // Closest pairs go first, so an earlier request cannot take a later one's own comment.
+        // Of two equally near pairs, the earlier request, then the earlier comment, wins.
+        pairs.sort_unstable();
+        for (_, request_index, comment_index) in pairs {
+            if matched[request_index].is_none() && !taken[comment_index] {
+                taken[comment_index] = true;
+                matched[request_index] = Some(comment_index);
             }
         }
         // A comment reworded in place keeps its request, unless another request took it.
@@ -590,7 +749,11 @@ fn unname_shared_names(comments: &mut [Comment]) {
 }
 
 /// Returns one file's new contents, or `None` when its edits change nothing.
-fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Option<String>, Error> {
+fn rewrite_file(
+    dir: &Path,
+    file: &Path,
+    edits: &[&CommentEdit],
+) -> Result<Option<RewrittenFile>, Error> {
     let path = dir.join(file);
     let source = fs::read_to_string(&path).map_err(|error| refuse_unreadable(file, error))?;
     let comments = find_comments(file, &source).map_err(|error| refuse_unreadable(file, error))?;
@@ -679,7 +842,11 @@ fn rewrite_file(dir: &Path, file: &Path, edits: &[&CommentEdit]) -> Result<Optio
     if new_code != old_code {
         return Err(would_change_code());
     }
-    Ok(Some(finished))
+    Ok(Some(RewrittenFile {
+        path: file.to_path_buf(),
+        old_contents: source,
+        new_contents: finished,
+    }))
 }
 
 fn refuse_unreadable(file: &Path, error: impl fmt::Display) -> Error {
@@ -715,12 +882,12 @@ fn check_reword(
             "A tool would read the new text.",
         ));
     }
-    // Python reads a carriage return as a line end, and Rust rejects one in a doc comment.
-    if new_text.contains(['\r', '\0']) {
+    // Python reads a lone carriage return as a line end, and Rust rejects one in a doc comment.
+    if new_text.replace("\r\n", "\n").contains(['\r', '\0']) {
         return Err(refuse(
             ErrorCode::WouldNotWrite,
             file,
-            "The new text holds a carriage return or a NUL.",
+            "The new text holds a carriage return outside a line end, or a NUL.",
         ));
     }
     // rustc rejects these in a comment, since they make code read unlike how it runs.
@@ -808,6 +975,25 @@ fn read_code_shape<'source>(
         nodes.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
     }
     Ok(shape)
+}
+
+/// Returns the index of the comment each request matches, by name or, for an
+/// unnamed request, only the unnamed comment at its saved line. No comment goes
+/// to two requests.
+fn match_at_saved_line(comments: &[Comment], requests: &[&FeedbackRequest]) -> Vec<Option<usize>> {
+    let mut taken = vec![false; comments.len()];
+    requests
+        .iter()
+        .map(|request| {
+            let index = comments.iter().enumerate().position(|(index, comment)| {
+                !taken[index]
+                    && comment.name == request.name
+                    && (request.name.is_some() || comment.line == request.line)
+            })?;
+            taken[index] = true;
+            Some(index)
+        })
+        .collect()
 }
 
 fn find_file_comments(
@@ -1392,6 +1578,31 @@ mod tests {
 
             assert_eq!(plain_words, words, "{text}");
             assert_eq!(laid_out, text, "{text}");
+        }
+    }
+
+    /// `find_function_definition_line` must return the `def` or `class` line holding the docstring.
+    /// Otherwise the Review Screen names the wrong function, such as a method's class.
+    #[test]
+    fn find_function_definition_line_names_docstring_owner() {
+        let source = "\"\"\"Keeps notes.\"\"\"\n\n\n@dataclass\nclass NoteBook:\n    \"\"\"Holds notes.\"\"\"\n\n    async def save(\n        self,\n    ):\n        # Writes them.\n        \"\"\"Writes every note.\"\"\"\n        write(self)\n";
+        let comments = find_comments(Path::new("notes.py"), source).expect("the sample parses");
+        let cases = [
+            ("module", "Keeps notes", None),
+            ("class", "Holds notes", Some("class NoteBook:")),
+            ("method", "Writes every", Some("    async def save(")),
+            ("not a docstring", "Writes them", None),
+        ];
+
+        for (case, words, expected) in cases {
+            let comment = comments
+                .iter()
+                .find(|comment| comment.text.contains(words))
+                .expect("each case's comment is in the source");
+
+            let definition_line = find_function_definition_line(comment, source);
+
+            assert_eq!(definition_line, expected, "{case}");
         }
     }
 }

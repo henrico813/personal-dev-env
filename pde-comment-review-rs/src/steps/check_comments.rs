@@ -7,17 +7,20 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
 use super::{NextStep, StepOutput};
 use crate::shared::approvals::{self, Approvals, DecisionMatch};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git::{self, CommitId};
+use crate::shared::review_session;
 use crate::shared::style_rules::{Finding, Outcome, Rule, StyleCheck, TextAtBase};
 use crate::shared::{Error, ErrorCode};
 
 /// Returns step 2's failures and reported findings for changes since `base`,
-/// or since the branch start when it is `None`. Refuses a `base` that HEAD
-/// does not build on, and a changed file that does not parse now or at
-/// `base`, naming the file.
+/// or since the branch start when it is `None`, with the Review Session's
+/// status. Refuses a `base` that HEAD does not build on, and a changed file
+/// that does not parse now or at `base`, naming the file.
 pub fn check_comments(
     dir: &Path,
     base: Option<CommitId>,
@@ -98,6 +101,7 @@ pub fn check_comments(
         NextStep::CheckComments
     };
     Ok(StepOutput {
+        status: review_session::read_status(dir)?,
         result: CheckResult {
             failures,
             reported,
@@ -108,7 +112,7 @@ pub fn check_comments(
 }
 
 /// Holds what step 2 found.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct CheckResult {
     pub failures: Vec<Finding>,
     /// Lists the style findings the agent reports but need not fix.

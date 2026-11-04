@@ -20,9 +20,14 @@ const LINTER_MARKS: [&str; 3] = ["nolint", "#nosec", "lint:ignore"];
 /// Lists the words that start a function `go test` runs, such as `TestTotal`.
 const TEST_PREFIXES: [&str; 4] = ["Test", "Benchmark", "Fuzz", "Example"];
 
+/// Starts a Go paragraph that gopls and pkg.go.dev read to mark code deprecated.
+const DEPRECATED_NOTE: &str = "Deprecated:";
+
 /// Matches a Go paragraph that Go's tools read, whose colon and length stay.
-static DOC_NOTE_MARKER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(?:Deprecated|BUG\([^)]*\)):").expect("the pattern is valid"));
+static DOC_NOTE_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    let pattern = format!(r"^(?:{}|BUG\([^)]*\):)", regex::escape(DEPRECATED_NOTE));
+    Regex::new(&pattern).expect("the pattern is valid")
+});
 
 static GENERATED_MARKER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^// Code generated .* DO NOT EDIT\.$").expect("the pattern is valid")
@@ -155,6 +160,15 @@ impl LanguageRules for GoRules {
 
     fn is_exempt_note(&self, paragraph: &str) -> bool {
         DOC_NOTE_MARKER.is_match(paragraph)
+    }
+
+    /// Returns `Deprecated:` once for each paragraph it starts.
+    fn list_tool_notes(&self, text: &str) -> Vec<String> {
+        self.to_paragraphs(text)
+            .into_iter()
+            .filter(|paragraph| paragraph.starts_with(DEPRECATED_NOTE))
+            .map(|_| DEPRECATED_NOTE.to_owned())
+            .collect()
     }
 
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
