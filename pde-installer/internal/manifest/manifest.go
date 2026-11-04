@@ -123,13 +123,11 @@ func Items() []Item {
 		{Name: "planner", Owner: Local, Tier: profile.Development}, {Name: "pde-gh-write", Owner: Local, Tier: profile.Development}, {Name: "opencode-inline-shim", Owner: Local, Tier: profile.Development},
 		{Name: "vibe", Owner: Local, Tier: profile.Development}, {Name: "blink.cmp", Owner: Local, Tier: profile.Development},
 		{Name: "pde-comment-review", Owner: Local, Tier: profile.Development},
-		{Name: "pde-comment-review-next", Owner: Local, Tier: profile.Development},
 		{
 			Name:  "skill-lessons",
 			Owner: Local,
 			Tier:  profile.Workstation,
 		},
-		{Name: "pde-comment-checker", Owner: Local, Tier: profile.Development},
 		{Name: "prs", Owner: Local, Tier: profile.Development},
 		{Name: "xwinwrap", Owner: Local, Tier: profile.Terminal, Desktop: "i3"},
 		{Name: "mpvpaper", Owner: Local, Tier: profile.Terminal, Desktop: "sway"},
