@@ -37,6 +37,27 @@ A doc comment may open with a verb and no subject, such as
 "Returns ...". Name the subject in every later sentence, because the
 sentence before it may have a different subject.
 
+## Cut AI filler
+
+- Filler words, such as "comprehensive", "robust", "seamless",
+  "leverage" and "ensure". Bad: "A robust fix to ensure seamless
+  resumes." Better: "Resuming skips files already copied."
+- Hedges. Bad: "This should probably fix it, I think." Better: "The
+  new test passes. I did not run it on Windows."
+- Restating the question. Bad: "You asked what batch 2 is. Batch 2
+  is ..." Better: "Batch 2 is ..."
+- "Great question" and other praise. Bad: "Great question! Batch 2
+  ..." Better: "Batch 2 ..."
+- Closing offers. Bad: "Let me know if you want any changes!"
+  Better: end on the last fact or the next step.
+- Summaries of summaries. Bad: "In summary, two PRs are ready" after
+  the list that says so. Better: cut it.
+- Emojis, including check marks and warning signs. Bad: a check-mark
+  emoji before "Merged". Better: "Merged".
+- The words "canonical" and "contract". Bad: "the canonical config",
+  "the API contract". Better: "the main config", "what the API
+  accepts".
+
 ## Break down a hard sentence
 
 When the user asks why a sentence is hard to read, take it apart in
@@ -103,6 +124,7 @@ one run."
 - "must" marks only real requirements.
 - The rewrite keeps every requirement, and its claims match the code.
 - Code comments still meet the `code-documentation` limits.
+- No filler word, hedge, closing offer, emoji or banned word is left.
 
 ## Reference
 
