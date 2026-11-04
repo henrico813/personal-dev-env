@@ -1,8 +1,7 @@
 //! This module runs step 5, which checks the agent's Feedback Request List and
-//! sends it to the user. It builds the list again, checks each Agent
-//! Suggestion and each reword's style, and tries the suggestions in memory as
-//! step 7 would write them, so only a list the user can answer reaches the
-//! screen. Read the `send_agent_suggestions(dir, list)` and
+//! tries its Agent Suggestions in memory as step 7 would write them, so only a
+//! list the user can answer reaches the screen. Read the
+//! `send_agent_suggestions(dir, list)` and
 //! `find_reword_failures(root, approvals, list)` functions to understand the
 //! module.
 
@@ -29,13 +28,11 @@ use crate::shared::{Error, ErrorCode};
 ///
 /// # Errors
 ///
-/// Refuses with `ListChanged` when step 3 would now build another list or
-/// another call changed the Review Session meanwhile, `MissingSuggestion` for a
-/// request with no Agent Suggestion, `BadInput` for a reword the user could not
-/// take, `RewordFailsRules` for a reword that breaks a style rule, and
-/// `WouldNotWrite` for a suggestion step 7 could not write. Step 3's refusals
-/// pass through. `WaitingForUserFeedback` comes from step 3, or from
-/// `add_list` when another call sent a list meanwhile.
+/// Refuses with `ListChanged` when step 3 would now build another list or the
+/// Review Session changed meanwhile. Refuses with `MissingSuggestion`,
+/// `BadInput`, `RewordFailsRules` or `WouldNotWrite` when an Agent Suggestion
+/// is missing or the user could not take it as it is. Step 3's refusals, such
+/// as `WaitingForUserFeedback`, pass through.
 pub fn send_agent_suggestions(
     dir: &Path,
     list: FeedbackRequestList,
@@ -127,7 +124,6 @@ fn find_reword_failures(
     Ok(failures)
 }
 
-/// Holds step 5's result.
 #[derive(Debug, Serialize)]
 pub struct SendResult {
     /// Numbers this list among the lists sent in its Review Session, from 1.
@@ -205,7 +201,6 @@ fn refuse_unusable_suggestion(request: &FeedbackRequest) -> Result<(), Error> {
     Ok(())
 }
 
-/// Returns true when the request's Agent Suggestion is a reword.
 fn is_reword(request: &FeedbackRequest) -> bool {
     matches!(
         request

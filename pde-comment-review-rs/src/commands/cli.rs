@@ -1,7 +1,7 @@
-//! This module reads the command line and prints each reply as JSON. The exit
-//! code is 0 for no error, 1 for an error code, and 2 for bad arguments,
-//! because scripts read success from it. Read the `parse_command(args)` and
-//! `print_reply(reply)` functions to understand the module.
+//! This module reads the command line and prints each reply as JSON, with exit
+//! code 0 for no error, 1 for an error code and 2 for bad arguments, which
+//! scripts read. Read the `parse_command(args)` and `print_reply(reply)`
+//! functions to understand the module.
 
 use std::ffi::OsString;
 use std::fmt;
@@ -115,8 +115,7 @@ impl fmt::Display for UsageError {
     }
 }
 
-/// Reads the command line, whose first item is the program's name. On a
-/// `UsageError`, `main` exits with 2.
+/// Reads the command line, whose first item is the program's name.
 pub fn parse_command(args: &[OsString]) -> Result<Command, UsageError> {
     Command::try_parse_from(args).map_err(|error| UsageError(error.render().to_string()))
 }
@@ -158,7 +157,6 @@ pub fn print_help() -> ExitCode {
 
 /// Returns the change requests in the `--input` file, or none without one.
 pub fn read_change_requests(input_file: Option<&Path>) -> Result<Vec<ChangeRequest>, Error> {
-    /// Holds the input file, which has only change requests.
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct InputFile {
@@ -171,7 +169,6 @@ pub fn read_change_requests(input_file: Option<&Path>) -> Result<Vec<ChangeReque
     }
 }
 
-/// Returns the Feedback Request List in `file`.
 pub fn read_list_file(file: &Path) -> Result<FeedbackRequestList, Error> {
     read_json_file(file)
 }

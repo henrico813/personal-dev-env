@@ -1,7 +1,6 @@
-//! This module sends each command to its step of the Review Process, in step
-//! order, so this one file shows the whole process. `commands/mcp.rs` must send
-//! each MCP tool to the same step, or MCP and the CLI give agents different
-//! replies. Read the `main()` function to understand the module.
+//! This module sends each command to its review step, and `commands/mcp.rs`
+//! must send each MCP tool to the same step, or the CLI and MCP give agents
+//! different replies. Read the `main()` function to understand the module.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -16,7 +15,6 @@ use pde_comment_review::steps::make_feedback_request_list::make_feedback_request
 use pde_comment_review::steps::send_agent_suggestions::send_agent_suggestions;
 use pde_comment_review::steps::show_status::show_status;
 
-/// Runs the command, which is usually one step of the Review Process.
 fn main() -> ExitCode {
     #[cfg(feature = "test-util")]
     pde_comment_review::shared::review_session::use_test_waiting_list_from_environment();
