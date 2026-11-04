@@ -16,9 +16,8 @@ use super::herdr::{
 };
 use super::picker::{Waiting, WaitingReview, find_waiting_reviews};
 use super::result::ReviewResult;
-use super::{
-    RawTerminal, ScreenKind, StartFailure, pick_review, show_picked_review, show_review_screen,
-};
+use super::{RawTerminal, StartFailure, pick_review, show_picked_review, show_review_screen};
+use crate::commands::cli::ScreenKind;
 use crate::shared::git;
 use crate::shared::review_session::read_waiting_list;
 
