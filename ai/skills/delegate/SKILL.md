@@ -19,7 +19,8 @@ bring it to the user.
 1. Brief a subagent. Use the model the user names, or the one their
    notes give for that kind of work. Give it the goal, the inputs,
    what to leave alone, which instructions it must load, and the report
-   it must return.
+   it must return. When the report counts things, give the count you
+   expect, such as "expect 2 clones".
 2. When it reports, check that it loaded the instructions you named,
    and check its claims against the real files, tests and systems
    before trusting them.
@@ -36,6 +37,8 @@ bring it to the user.
   push, merge, deploy or delete.
 - If the agent hits something unexpected, have it stop and report
   rather than improvise a fix.
+- Check a count a second way, such as `ls` and `git worktree list`,
+  before you report it, and tell the agent to do the same.
 - When the work changes code comments, bring the comments to the user
   for review last, after behavior and names are done.
 - Make minor decisions yourself and say so. Ask only about real ones.
