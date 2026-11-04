@@ -45,6 +45,13 @@ answering the comment reviews you queued.
    on it; PRs that do not can run in parallel stacks.
 7. Add a status line for each PR to the roadmap page. Back up the page
    before every edit.
+8. Make one folder for the whole run with `mktemp -d` under
+   `~/.local/state`, and write the run's rules file, `rules.md`, in
+   it: prompts.md's rules every agent gets, the user's style rules and
+   feedback list, and each role's model. Parallel sessions of the run
+   share it, so write its path on the roadmap page. Send each model
+   the run will use a one-line job, "reply OK", and write in
+   `rules.md` which answered.
 
 ## The loop for each PR
 
@@ -52,22 +59,30 @@ Run every step for one PR before its child PR starts building. The
 prompts are in [references/prompts.md](references/prompts.md) and the
 commands in [references/build.md](references/build.md).
 
-1. **Plan.** Delegate the plan with `create-plan`. The planner reads
-   the design's index note, its Dictionary, every part its PR touches
-   and each design-edits entry those parts point to, or all of a
-   design kept in one note.
+1. **Plan.** Write the PR's design digest with build.md's Write a
+   design digest, then delegate the plan with `create-plan`. The
+   planner and the plan reviewers read the digest, not the design
+   notes.
    The plan lists each place it differs from the design under
    `### Design edits to apply` in its `## Notes for agents`. A child
    of an unbuilt parent is written against a commit of the parent's
    planned tree, made as build.md says.
+   Run build.md's Set up a PR's run folder as soon as the plan file
+   exists, since the setup reads the plan's key. Until then, the
+   first planner writes its report to a folder you make with
+   `mktemp -d`.
 2. **Fresh plan review.** A new agent reviews the plan with
-   `review-plan` and the domain skills, and reads the same design
-   notes as the planner. Send its findings, with your decision on each
-   optional item, back to the planner's session in one message. Then
-   run the design check below on the revised plan before you build.
-3. **Build.** Export each plan step's tree and commit it with
-   `git commit-tree` on the step before, starting at the plan's base.
-   Make the PR's worktree with `wt` and move it to the last commit. A
+   `review-plan` and the domain skills, and reads the PR's design
+   digest. When it asks for changes, start a new
+   planner with prompts.md's revision message, which names the plan,
+   the review's report file and your decision on each optional item.
+   Then run the design check below on the revised plan before you
+   build.
+3. **Build.** Write each plan step's commit message, then run
+   build.md's build script. It commits each step's tree on the step
+   before, starting at the plan's base, makes the PR's worktree with
+   `wt` and runs the plan's checks. A stop at `check` or `lint` needs
+   a fix to the plan or a message, then a rerun. Any other
    failed build command means a stale plan or a broken tool: stop
    this PR and its children, put the error on the roadmap page as a
    blocking question, and keep building other stacks.
@@ -75,19 +90,24 @@ commands in [references/build.md](references/build.md).
    `review-plan`, each language skill, `code-documentation` and
    `behavior-focused-testing`. Wait for all of them.
 5. **Revise.** Settle disagreements between reviewers, decide the
-   optional items, and send one message to the planner. Run the design
+   optional items, and start a new planner for the fixes. Run the design
    check on the revised plan, then commit its tree as one fix commit.
    A test may be deleted only when a reviewer's finding names it and
    names the test that still covers its behavior.
 6. **Final pass.** Run the tests, linters, comment checker and any
-   comparison script the plan names. Put back two bugs the reviewers
-   found, one at a time, and check that a test fails for each. For
-   each deleted test, plant the bug it caught and check that the
-   named test fails.
-7. **Ship.** Run build.md's Ship script. It stops on bad PR text, a
-   failed check, the wrong branch, a parent that moved or a branch
-   already pushed; it squashes onto the parent and pushes. Then save
-   and run the PR request script, which calls
+   comparison script the plan names, with output to a log in the run
+   folder, and read only its summary lines. For each deleted test,
+   write a `plant` line for the bug it caught, run by the test the
+   reviewer named, in a `.md` file in the run folder. Then run
+   build.md's Put back the bugs, and send each `FAIL` line to a new
+   planner as a fix. Handle each `stale` line yourself, as build.md
+   says. A local model may run these scripts, as prompts.md's Local
+   model says.
+7. **Ship.** Write the PR text, then run build.md's ship script. It
+   stops when the branch's tree differs from the plan, on bad PR text,
+   a failed check, the wrong branch, a parent that moved or a branch
+   already pushed. It squashes onto the parent, pushes, and saves and
+   runs the PR request script, which calls
    `pde-gh-write pr create --base <parent branch>`. A child PR that
    cannot run until its parent merges waits under pull-request
    Guardrail 4; do not open it untested.
@@ -98,13 +118,17 @@ commands in [references/build.md](references/build.md).
    commands on the roadmap page, keep any proposals file in its run
    folder, and run them after the user answers the parent's review.
 
-Before a child PR builds, set its plan's `Base commit:` line to the
-parent's final commit and run `planner check` again.
+Before a child PR builds, run build.md's Move a child's base. It sets
+the plan's `Base commit:` line to the parent's final commit and runs
+`planner check` again.
 
 ## After a PR opens
 
+- Work on a PR after it ships, such as a fix round or a carry,
+  starts in a new session that reads the run folder's `status.txt`,
+  the plan and the rules file, not in the session that built it.
 - Every later change, whether a fix, a quality pass or a parent's new
-  commit, goes through the same loop: the planner revises the plan, a
+  commit, goes through the same loop: a new planner revises the plan, a
   fresh agent reviews it, you run the design check, commit the plan's
   tree from `planner export` as a new commit, push it, and update the
   PR text.
@@ -118,8 +142,8 @@ parent's final commit and run `planner check` again.
 - When the user gives feedback on one PR, write it as a list on the
   roadmap page. Have a fresh agent check every other open PR in the
   run against that list, and fix what it finds through the loop above
-  before the user reviews those PRs. Add the list to every later
-  planner and reviewer brief.
+  before the user reviews those PRs. Add the list to the run's rules
+  file, which every later brief names.
 
 ## Design check
 
@@ -134,7 +158,8 @@ from the plan, so the check before Ship is the PR's design check.
    in any part, not only in the parts the plan cites.
 2. Search the whole design with `rg -n` for each file, type,
    function, command, flag and error code the plan adds or changes.
-   Read every passage that names one.
+   Read every passage that names one. Add each one the digest's terms
+   lack, and write the digest again for later planners and reviewers.
 3. Send each difference to the planner as a fix. When the plan is
    better than the design and the difference is minor, have the
    planner add it to `### Design edits to apply` instead, with the
@@ -151,8 +176,8 @@ from the plan, so the check before Ship is the PR's design check.
 
 The design-edits section is its own part note in a split design, or
 the last section of a design kept in one note. You read all of it;
-planners and reviewers read the entries that pointers in their parts
-lead to. Add it if the design has none, and back up the design before
+planners and reviewers read the entries the digest copies. Add it if
+the design has none, and back up the design before
 every edit. Each entry names the PR, the design text it replaces and
 the new text, and the replaced text gets a short pointer to the
 entry. An entry replaces the text it names; the rest of the design
@@ -187,7 +212,9 @@ entries parked.
 - Let an agent review its own plan or code.
 - Hand-edit a plan's diffs or the branch's files. Every build commit
   comes from `planner export`.
-- Create, copy, edit or commit a `.code-comments.json`.
+- Create, copy, edit or commit a `.code-comments.json`. The copy that
+  the `wt` hook puts in each new worktree is expected; never edit or
+  commit it.
 - Remove a fixed `/tmp` path. Every agent works in its own folder from
   `mktemp -d`.
 
@@ -197,15 +224,29 @@ entries parked.
 - Keep one bullet per PR on the roadmap page current. Detail belongs
   in the plans, not in chat.
 - Write each PR's status line from the output of build.md's status
-  line snippet, never by hand. Rerun it after every push.
+  line snippet, never by hand. Rerun it before each loop step and
+  after every push, with NEXT set to the step that comes next. It
+  also writes the line at the top of the run folder's `status.txt`.
+  Below it, keep at most 19 lines: agents running and their report
+  files, results you have not read, and open questions. A new
+  session resumes from that file, the plan and the rules file.
+- When your context grows past about 150k tokens, or after it is
+  summarized, use the `herdr-handoff` skill to offer the user a new
+  session. Offer once.
 
 ## When something goes wrong
 
 Read [references/pitfalls.md](references/pitfalls.md). It covers
 duplicate agents after a restart, agents sharing a scratch folder, a
 lint failure that did not stop a script, a moved base commit, a
-stale approval that fails the comment checker, and work done after the
-PRs opened.
+stale approval that fails the comment checker, work done after the
+PRs opened, and a cloud model that hits a limit.
+
+Each of your turns re-reads your whole context. When you need more
+than two commands or file reads to find why something failed or
+changed, hand that search to a new agent. Brief it as prompts.md's
+opening says, and read only its report file. The checks this skill
+tells you to do yourself stay with you.
 
 ## Finishing
 

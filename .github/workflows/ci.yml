@@ -22,6 +22,24 @@ jobs:
       - name: check
         run: make check
 
+  prs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: prs/go.mod
+          # prs has no dependencies and so no go.sum, which the cache is keyed on.
+          cache: false
+      - name: install golangci-lint
+        run: make init
+      - name: check
+        run: make check
+      - run: go test -race -count=3 ./...
+
   pdev2:
     runs-on: ubuntu-latest
     defaults:
@@ -128,6 +146,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: terminal installation
         run: ./pde-installer/test/run-tests.sh terminal
+
+  # The desktop files are checked with the i3 and shellcheck that Ubuntu
+  # 24.04, the desktops' oldest release, ships.
+  pde-installer-desktop-files:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: install checkers
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends i3-wm shellcheck
+      - name: check desktop files
+        run: ./pde-installer/test/check-desktop-files.sh
 
   vibe:
     runs-on: ubuntu-latest
