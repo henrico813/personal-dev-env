@@ -12,6 +12,7 @@ use common::{
 use pde_comment_review::shared::ErrorCode;
 use pde_comment_review::shared::git::resolve_commit;
 use pde_comment_review::shared::review_session::{FeedbackRequest, RequestId};
+use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::make_feedback_request_list::{
     ChangeRequest, make_feedback_request_list,
 };
@@ -649,5 +650,39 @@ fn change_request_needs_approved_rewordable_comment() {
         let error = make_feedback_request_list(dir, None, &[change_request]).unwrap_err();
 
         assert_eq!(error.code, ErrorCode::BadInput, "{case}");
+    }
+}
+
+/// `make_feedback_request_list` must name `send_agent_suggestions` next for an empty list only while User Notes wait.
+/// Otherwise Ctrl+b e would show the user a review with nothing to answer, or a review whose noted comments were all deleted would never be written.
+#[test]
+fn empty_list_sent_only_after_user_notes() {
+    let cases = [
+        (
+            "finished-review",
+            "done",
+            json!({"1": {"answer": "keep"}}),
+            NextStep::FinishWithoutFeedbackRequests,
+        ),
+        (
+            "user-notes-waiting",
+            "user_notes_waiting",
+            json!({"1": {"note": "Cut it."}}),
+            NextStep::SendAgentSuggestions,
+        ),
+    ];
+
+    for (case, status, feedback, next) in cases {
+        let repo = make_repo();
+        let dir = repo.path();
+        let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+        save_review(dir, status, &[requests], feedback);
+        // The agent deletes the comment, so no Feedback Request is left to send.
+        write_store(dir, "", "");
+
+        let output = make_feedback_request_list(dir, None, &[]).unwrap();
+
+        assert!(output.result.list.requests.is_empty(), "{case}");
+        assert_eq!(output.next, next, "{case}");
     }
 }

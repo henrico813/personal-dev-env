@@ -2,6 +2,7 @@ mod common;
 
 use common::{APPROVED, make_repo, request_json, save_review, save_write_error};
 use pde_comment_review::shared::ErrorCode;
+use pde_comment_review::shared::review_session::ReviewStatus;
 use pde_comment_review::steps::NextStep;
 use pde_comment_review::steps::show_status::{Waiting, show_status};
 use serde_json::{Value, json};
@@ -104,4 +105,18 @@ fn reports_failed_write_while_list_waits() {
     assert_eq!(output.next, NextStep::TellUserAndWait);
     let write_error = output.result.write_error.unwrap();
     assert_eq!(write_error.code, ErrorCode::WriteFailed);
+}
+
+/// `show_status` must return the status the Review Session saved.
+/// Otherwise an agent that checks the status before removing a worktree would see a waiting review as absent.
+#[test]
+fn reports_review_session_status() {
+    let repo = make_repo();
+    let dir = repo.path();
+    let requests = json!([request_json(1, Some("SaveAnswer"), APPROVED, 3)]);
+    save_review(dir, "waiting_for_user_feedback", &[requests], json!({}));
+
+    let output = show_status(dir).unwrap();
+
+    assert_eq!(output.status, Some(ReviewStatus::WaitingForUserFeedback));
 }

@@ -9,6 +9,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use serde::Serialize;
+
 use super::make_feedback_request_list::{ChangeRequest, make_feedback_request_list};
 use super::write_user_feedback::check_suggestions_can_be_written;
 use super::{NextStep, StepOutput};
@@ -16,7 +18,7 @@ use crate::shared::approvals::{self, Approvals};
 use crate::shared::comments;
 use crate::shared::git;
 use crate::shared::review_session::{
-    self, FeedbackRequest, FeedbackRequestList, RequestReason, SuggestionKind,
+    self, FeedbackRequest, FeedbackRequestList, RequestReason, ReviewStatus, SuggestionKind,
 };
 use crate::shared::style_rules::{Finding, Outcome, StyleCheck, TextAtBase};
 use crate::shared::user_feedback::{UserAnswer, choose_new_text};
@@ -75,6 +77,8 @@ pub fn send_agent_suggestions(
         message: format!("The Feedback Request List was saved. {}", error.message),
     })?;
     Ok(StepOutput {
+        // `add_list` saved this status, and only the user changes it next.
+        status: Some(ReviewStatus::WaitingForUserFeedback),
         result: SendResult { list_number },
         next: NextStep::TellUserAndWait,
     })
@@ -124,7 +128,7 @@ fn find_reword_failures(
 }
 
 /// Holds step 5's result.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SendResult {
     /// Numbers this list among the lists sent in its Review Session, from 1.
     pub list_number: usize,

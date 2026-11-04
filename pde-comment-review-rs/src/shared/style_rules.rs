@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
+use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 use super::approvals::{Approvals, DecisionMatch};
 use super::comments::{self, Comment, CommentStyle, Definition, FileComments, NameCheck};
@@ -271,8 +272,29 @@ pub struct Finding {
     pub detail: Option<String>,
 }
 
+/// Writes a finding as agents read it, with the skill sentence its rule checks.
+/// `note` says why a finding is only reported, and is null for a failure.
+impl Serialize for Finding {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let note = match self.outcome {
+            Outcome::Fails => None,
+            Outcome::Reported(note) => Some(note),
+        };
+        let mut finding = serializer.serialize_struct("Finding", 7)?;
+        finding.serialize_field("file", &self.file)?;
+        finding.serialize_field("name", &self.name)?;
+        finding.serialize_field("line", &self.line)?;
+        finding.serialize_field("rule", &self.rule)?;
+        finding.serialize_field("note", &note)?;
+        finding.serialize_field("detail", &self.detail)?;
+        finding.serialize_field("sentence", self.rule.sentence())?;
+        finding.end()
+    }
+}
+
 /// Names each rule a comment or name can break.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Rule {
     /// Marks a changed comment whose name has approved texts, none equal to its text.
     Approved,
@@ -338,7 +360,8 @@ pub enum Outcome {
 }
 
 /// Says why a finding is only reported.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ReportNote {
     /// Marks text that matches an approval, which the agent may not change.
     Approved,
@@ -1291,5 +1314,34 @@ def database():
             .collect();
 
         assert_eq!(unquoted, []);
+    }
+
+    /// `Finding` must reach agents with its rule's name, why it is only reported, and its skill sentence.
+    /// Otherwise an agent could not tell a reported finding from a failure, or which rule it broke.
+    #[test]
+    fn finding_json_names_rule_note_and_sentence() {
+        let finding = Finding {
+            file: PathBuf::from("answer.go"),
+            name: Some("Total".to_owned()),
+            line: 3,
+            rule: Rule::VerbFirst,
+            outcome: Outcome::Reported(ReportNote::ReportOnly),
+            detail: None,
+        };
+
+        let written = serde_json::to_value(&finding).unwrap();
+
+        assert_eq!(
+            written,
+            json!({
+                "file": "answer.go",
+                "name": "Total",
+                "line": 3,
+                "rule": "verb-first",
+                "note": "report_only",
+                "detail": null,
+                "sentence": Rule::VerbFirst.sentence(),
+            })
+        );
     }
 }

@@ -210,7 +210,10 @@ fn write_saved_file(folder: &Path, saved: &SavedFile) -> io::Result<()> {
 fn read_error(path: &Path, error: impl Display) -> Error {
     Error {
         code: ErrorCode::SavedFileUnreadable,
-        message: format!("Cannot read the approvals in {}. {error}", path.display()),
+        message: format!(
+            "Cannot read the approvals in {}. Tell the user to fix the file. {error}",
+            path.display()
+        ),
     }
 }
 

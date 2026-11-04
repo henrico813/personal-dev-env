@@ -202,6 +202,28 @@ pub fn load(dir: &Path) -> Result<Option<ReviewSession>, Error> {
     Ok(lock(dir)?.review_session)
 }
 
+/// Returns the saved Review Session's status without taking the lock or
+/// changing any file. Returns `None` when there is no Review Session, or when
+/// its file cannot be read, since step 3 moves such a file aside.
+pub(crate) fn read_status(dir: &Path) -> Result<Option<ReviewStatus>, Error> {
+    /// Holds only the status, so a newer version's other fields still read.
+    #[derive(Deserialize)]
+    struct SavedStatus {
+        status: ReviewStatus,
+    }
+
+    let path = git::find_worktree_git_folder(dir)?
+        .join("pde")
+        .join(REVIEW_FILE);
+    // Each save renames a whole new file into place, so reading needs no lock.
+    let Ok(saved) = fs::read(path) else {
+        return Ok(None);
+    };
+    Ok(serde_json::from_slice::<SavedStatus>(&saved)
+        .ok()
+        .map(|saved| saved.status))
+}
+
 impl ReviewSessionLock {
     /// Returns the folder that holds `review.json`, in the worktree's own Git
     /// folder.
@@ -407,7 +429,14 @@ fn read_review_session(folder: &Path) -> Result<Option<ReviewSession>, Error> {
     let saved = match fs::read(&path) {
         Ok(saved) => saved,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(read_error(&path, error)),
+        // Only a file with broken JSON is moved aside, so the user must fix a file
+        // that cannot be read at all.
+        Err(error) => {
+            return Err(read_error(
+                &path,
+                format!("Tell the user to fix the file. {error}"),
+            ));
+        }
     };
     let error = match serde_json::from_slice(&saved) {
         Ok(review_session) => return Ok(Some(review_session)),
@@ -427,7 +456,10 @@ fn read_review_session(folder: &Path) -> Result<Option<ReviewSession>, Error> {
     fs::rename(&path, &unreadable_path).map_err(|error| save_error(&path, error))?;
     Err(read_error(
         &path,
-        format!("Moved it to {}. {error}", unreadable_path.display()),
+        format!(
+            "Moved it to {}. Build the Feedback Request List again. {error}",
+            unreadable_path.display()
+        ),
     ))
 }
 
@@ -713,7 +745,7 @@ fn waiting_list_read_error(path: &Path, error: impl Display) -> Error {
     Error {
         code: ErrorCode::SavedFileUnreadable,
         message: format!(
-            "Cannot read the waiting list in {}. {error}",
+            "Cannot read the waiting list in {}. Tell the user to fix the file. {error}",
             path.display()
         ),
     }
@@ -735,4 +767,20 @@ fn waiting_list_save_error(path: &Path, error: impl Display) -> Error {
 #[doc(hidden)]
 pub fn set_test_waiting_list_folder(folder: &Path) {
     TEST_WAITING_LIST_FOLDER.get_or_init(|| folder.to_path_buf());
+}
+
+/// Names the variable that gives the test build's binary its waiting-list
+/// folder, since a child process cannot see the test's own setting.
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub const TEST_WAITING_LIST_VARIABLE: &str = "PDE_COMMENT_REVIEW_TEST_WAITING_LIST";
+
+/// Makes this process use the waiting-list folder that
+/// `TEST_WAITING_LIST_VARIABLE` names, when it is set.
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub fn use_test_waiting_list_from_environment() {
+    if let Some(folder) = env::var_os(TEST_WAITING_LIST_VARIABLE) {
+        set_test_waiting_list_folder(Path::new(&folder));
+    }
 }
