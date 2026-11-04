@@ -20,15 +20,20 @@ steps' defaults.
 3. Before opening a PR, pushing a review round, or merging, run repository tests
    covering the change. If any fail, stop and report them; never call a failure
    expected or correct in PR text.
-4. Before opening a PR, and before Merge step 5, deploy the change where it
-   runs and check the changed behavior itself, not only that nothing else
-   broke. A deploy that never runs the changed files, such as an install on a
-   machine that does not use them, does not count. Send the evidence, such as
-   results or screenshots, with the request. A skill or prompt runs when an
-   agent follows it: install it and run it once. If the change only runs
-   after merge, such as CI config, or never runs, such as docs, say which in
-   Testing and how you checked it. If the change runs somewhere you cannot
-   reach yet, say so in your report and do not send the request.
+4. Before opening a PR, and before Merge step 5, deploy the change
+   where it runs and try the changed behavior itself, not only that
+   nothing else broke. A deploy that never runs the changed files,
+   such as an install on a machine that does not use them, does not
+   count. For a skill or prompt, deploy it by installing it, and have
+   a fresh agent follow it on one real task. Put a one-line result in
+   Testing, and give the rest, such as screenshots, in your message to
+   the user. If the change only runs after its own merge, such as a
+   job that runs only on the default branch, or never runs, such as
+   docs, say which in Testing and how you checked it. If the change
+   runs somewhere you cannot reach yet, including a stacked PR that
+   needs its parent merged, tell the user and do not send the
+   request. To undo a test install, install again from the default
+   branch.
 
 ## Discover
 
@@ -86,8 +91,8 @@ steps' defaults.
 3. Run `python3 ~/.agents/skills/git-messages/scripts/msg squash FILE > SQUASH`,
    then `python3 ~/.agents/skills/git-messages/scripts/msg lint SQUASH`. If lint
    fails, stop and fix the PR Overview by updating the PR; do not edit SQUASH.
-4. Show the exact SQUASH message, file list, check and test results, and the
-   live evidence from Guardrail 4.
+4. Show the exact SQUASH message, file list, check and test results,
+   and the result from Guardrail 4.
    The popup or phone approval in step 5 is the user's approval for the
    merge.
 5. Run `tail -n +3 SQUASH > BODY`, then run
