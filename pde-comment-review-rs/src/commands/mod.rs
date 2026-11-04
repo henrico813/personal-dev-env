@@ -97,6 +97,16 @@ pub fn list_commands() -> &'static [CommandInfo] {
             description: "Shows the status and next step (any time)",
         },
         CommandInfo {
+            cli_usage: "screen --popup|--tab",
+            mcp_name: None,
+            description: "Shows the Review Screen in Herdr",
+        },
+        CommandInfo {
+            cli_usage: "open [NAME]",
+            mcp_name: None,
+            description: "Shows branch NAME's review in a plain terminal",
+        },
+        CommandInfo {
             cli_usage: "mcp",
             mcp_name: None,
             description: "Serves the four MCP tools",
