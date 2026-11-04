@@ -25,16 +25,11 @@ parent makes a new commit, and a child plan may name a scratch commit.
 Move the child's `Base commit:` line to the parent's final commit and
 run `planner check` before building.
 
-**The comment checker fails on a lower PR's change.** A PR that
-removes code with an approved comment makes the checker fail in every
-PR above it, until the user's comment review of that PR records the
-removal. Name it as known in every brief, so reviewers do not chase
-it.
-
 **A parent's new comment becomes false in a child.** It is not
 approved until the parent's comment review, which comes first. Do not
-edit it in the child's code. Add a reword to the child's comment
-review, with the text the parent's review approved as `old`.
+edit it in the child's code. After that review, ask to change it in
+the child's comment review with a change request in its `--input`
+file, and reword it in the request's Agent Suggestion.
 
 **A reviewer writes outside its folder.** A failed `cd` once wrote a
 file into the worktrees folder. After reviews, run `git status` in the

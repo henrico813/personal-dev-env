@@ -201,11 +201,12 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".config/systemd/user/opencode-web-health.timer",
 		".local/bin/surveil",
 		".local/state/surveil",
+		".local/bin/pde-comment-checker",
+		".local/bin/pde-comment-review-next",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
-		".local/bin/pde-comment-checker",
 		".local/bin/prs",
 	}
 	retiredAgentFiles := []string{
@@ -268,6 +269,9 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/git-messages/scripts/check-message",
 		".agents/skills/code-search",
 		".agents/skills/code-documentation/scripts/comment_checker",
+		".agents/skills/code-documentation/scripts/check_comments.py",
+		".agents/skills/code-documentation/scripts/check_python_rules.py",
+		".agents/skills/comment-review/references/proposals-file.md",
 	}
 	join := func(lists ...[]string) []string {
 		var result []string

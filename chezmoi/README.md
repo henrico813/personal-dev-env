@@ -162,10 +162,8 @@ in a fresh `zsh -c` that `wt switch --create docs/x` makes `worktrees/docs-x`
 and `wt switch --create Bad_Name` is refused, since a renamed setting would
 otherwise go unnoticed.
 
-A new worktree starts with a copy of the main checkout's
-`.code-comments.json`, your approved comments, when Git ignores that
-file. Removing a worktree with the `cleanup-plan` skill brings its
-approvals back to the main checkout.
+Every worktree of a clone shares your approved comments in the clone's
+`.git/pde/code-comments.json`, so removing a worktree loses none of them.
 
 ## Terminal Workspaces
 
@@ -209,8 +207,8 @@ the [approval docs](../pdev2/docs/README.md).
 ## Comment review
 
 The full profile binds Ctrl+b e, in place of Herdr's scrollback editor, to a
-phone-sized Herdr popup for deciding on an AI's proposals for Go comments, and
-Ctrl+b E to the same screen in a Herdr tab; see the
-[comment review docs](../pde-comment-review/docs/README.md). Client machines
+phone-sized Herdr popup for deciding on an AI's proposals for Go, Python and
+Rust comments, and Ctrl+b E to the same screen in a Herdr tab; run
+`pde-comment-review help` for its commands. Client machines
 share that Herdr config but not the popup. There Ctrl+b e opens the comment
 review of the machine Herdr shows, and fails on the laptop's own sessions.

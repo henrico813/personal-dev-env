@@ -55,7 +55,7 @@ fn find_test_waiting_list_folder() -> PathBuf {
 
 /// Returns a command that runs the program in `dir`, with this test process's waiting list, never the user's own.
 pub fn make_program_command(dir: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_pde-comment-review-next"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pde-comment-review"));
     command
         .current_dir(dir)
         .env(TEST_WAITING_LIST_VARIABLE, find_test_waiting_list_folder());

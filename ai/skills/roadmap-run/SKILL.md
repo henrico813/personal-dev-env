@@ -33,19 +33,14 @@ answering the comment reviews you queued.
    `nobs`, `jq`, `rg` and `python3` are on `PATH`. If one is missing,
    say which and stop. Do not run `pde-gh-write pr ...` to test it:
    any `pr` command, even with `--help`, files an approval request.
-4. Run build.md's comment-review file check for each repository. It
-   checks that `.code-comments.json` exists in the main checkout and
-   that git ignores it there.
-5. Check that the user allowed this run to push branches and file PR
-   requests. If not, or if step 4 failed, ask once, in one message.
-   Without permission, plan and review the plans, but stop each PR
-   before Build. Without the file, list each PR's comment review on the
-   roadmap page and run none.
-6. Group the PRs into stacks. A PR that needs another PR's code stacks
+4. Check that the user allowed this run to push branches and file PR
+   requests. If not, ask once, in one message. Without permission,
+   plan and review the plans, but stop each PR before Build.
+5. Group the PRs into stacks. A PR that needs another PR's code stacks
    on it; PRs that do not can run in parallel stacks.
-7. Add a status line for each PR to the roadmap page. Back up the page
+6. Add a status line for each PR to the roadmap page. Back up the page
    before every edit.
-8. Make one folder for the whole run with `mktemp -d` under
+7. Make one folder for the whole run with `mktemp -d` under
    `~/.local/state`, and write the run's rules file, `rules.md`, in
    it: prompts.md's rules every agent gets, the user's style rules and
    feedback list, and each role's model. Parallel sessions of the run
@@ -110,11 +105,13 @@ commands in [references/build.md](references/build.md).
    runs the PR request script, which calls
    `pde-gh-write pr create --base <parent branch>`.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
-   `comment-review` in its worktree now: `draft`, your `set` rewords,
-   `submit`, and `add` for an approved comment the draft did not
-   list. For a child, run nothing yet: put its worktree and those
-   commands on the roadmap page, keep any proposals file in its run
-   folder, and run them after the user answers the parent's review.
+   `comment-review` in its worktree now: `check-comments`,
+   `make-feedback-request-list`, with an `--input` file of change
+   requests for approved comments to change, your Agent Suggestions,
+   and `send-agent-suggestions`. For a child, run nothing yet: put its
+   worktree and those commands on the roadmap page, keep its input
+   file in its run folder, and run them after the user answers the
+   parent's review.
 
 Before a child PR builds, run build.md's Move a child's base. It sets
 the plan's `Base commit:` line to the parent's final commit and runs
@@ -210,9 +207,7 @@ entries parked.
 - Let an agent review its own plan or code.
 - Hand-edit a plan's diffs or the branch's files. Every build commit
   comes from `planner export`.
-- Create, copy, edit or commit a `.code-comments.json`. The copy that
-  the `wt` hook puts in each new worktree is expected; never edit or
-  commit it.
+- Create, copy, edit or commit a `.code-comments.json`.
 - Remove a fixed `/tmp` path. Every agent works in its own folder from
   `mktemp -d`.
 
@@ -236,9 +231,8 @@ entries parked.
 
 Read [references/pitfalls.md](references/pitfalls.md). It covers
 duplicate agents after a restart, agents sharing a scratch folder, a
-lint failure that did not stop a script, a moved base commit, a
-stale approval that fails the comment checker, work done after the
-PRs opened, and a cloud model that hits a limit.
+lint failure that did not stop a script, a moved base commit, work
+done after the PRs opened, and a cloud model that hits a limit.
 
 Each of your turns re-reads your whole context. When you need more
 than two commands or file reads to find why something failed or

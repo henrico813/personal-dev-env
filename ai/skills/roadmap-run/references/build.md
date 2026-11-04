@@ -9,7 +9,6 @@ run the lines after a failed one by hand.
 
 ## Contents
 
-- Check the comment-review file
 - Write a design digest
 - Set up a PR's run folder
 - Build the PR
@@ -21,25 +20,6 @@ run the lines after a failed one by hand.
 - Base a child on an unbuilt parent
 - Move a child's base
 - Carry a parent's commit to a child
-
-## Check the comment-review file
-
-Before the run, check each repository's main checkout. Never create
-the file; ask the user about every line this prints:
-
-```sh
-rc=0
-for r in '<repository root>'; do
-  m=$(git -C "$r" rev-parse --path-format=absolute --git-common-dir) || exit 1
-  m=$(dirname "$m")
-  if [ ! -f "$m/.code-comments.json" ]; then
-    echo "missing: $m/.code-comments.json"; rc=1
-  elif ! git -C "$m" check-ignore -q .code-comments.json; then
-    echo "not ignored: $m/.code-comments.json"; rc=1
-  fi
-done
-exit $rc
-```
 
 ## Write a design digest
 

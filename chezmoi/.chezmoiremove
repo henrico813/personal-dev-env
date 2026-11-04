@@ -5,7 +5,6 @@
 {{ if not (has "development" .pde.tiers) }}
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
-.local/bin/pde-comment-checker
 .local/bin/prs
 {{ end }}
 {{ if has "workstation" .pde.tiers }}
@@ -73,7 +72,13 @@ Projects/CLAUDE.md
 .agents/skills/git-messages/scripts/check-message
 .agents/skills/code-search
 .agents/skills/code-documentation/scripts/comment_checker
+.agents/skills/code-documentation/scripts/check_comments.py
+.agents/skills/code-documentation/scripts/check_python_rules.py
+.agents/skills/comment-review/references/proposals-file.md
 {{ end }}
 
 .local/bin/surveil
 .local/state/surveil
+# The review tool replaced the comment checker and its -next name.
+.local/bin/pde-comment-checker
+.local/bin/pde-comment-review-next

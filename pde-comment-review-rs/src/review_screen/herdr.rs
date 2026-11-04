@@ -109,10 +109,7 @@ impl Herdr {
     /// Opens the plugin's `popup` or `tab` pane, which runs this program's
     /// `screen` command again, and returns the new pane's tab.
     fn open_screen_pane(&self, kind: ScreenKind) -> Result<String, HerdrError> {
-        let (entrypoint, placement) = match kind {
-            ScreenKind::Popup => ("popup", "popup"),
-            ScreenKind::Tab => ("tab", "tab"),
-        };
+        let (entrypoint, placement) = choose_screen_pane(kind);
         let opened = self.send(
             "plugin.pane.open",
             json!({
@@ -239,8 +236,18 @@ pub(super) fn build_record_name(origin: &ReviewOrigin) -> String {
     format!("{PREFIX}{}", cut_middle(&name, room))
 }
 
+/// Returns the plugin pane that shows `kind`, as its entrypoint and its
+/// placement. The Herdr plugin file must have a pane with that entrypoint.
+fn choose_screen_pane(kind: ScreenKind) -> (&'static str, &'static str) {
+    match kind {
+        ScreenKind::Popup => ("popup", "popup"),
+        ScreenKind::Tab => ("tab", "tab"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
     use std::process::Command;
@@ -248,6 +255,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::commands::cli::{self, parse_command};
 
     /// A temporary folder for a made-up Herdr socket, deleted when dropped.
     struct SocketFolder(PathBuf);
@@ -356,6 +364,72 @@ mod tests {
         let requests = server.join().unwrap();
         assert_eq!(list_methods(&requests), ["tab.list", "tab.focus"]);
         assert_eq!(requests[1]["params"]["tab_id"], "t7");
+    }
+
+    /// `choose_screen_pane` and `parse_command` must agree with the Herdr plugin file on the plugin
+    /// id, each pane's id and placement, and the screen each key opens. Otherwise Ctrl+b e or
+    /// Ctrl+b E runs a pane or a command this program does not have, and no review opens.
+    #[test]
+    fn plugin_manifest_matches_screen_panes_and_keys() {
+        let manifest_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../chezmoi/dot_local/share/pde/herdr-plugins/pde-comment-review/herdr-plugin.toml.tmpl"
+        );
+        let manifest = fs::read_to_string(manifest_path).unwrap();
+        let entries: Vec<&str> = manifest.split("\n\n").collect();
+
+        // The plugin id is the one this program asks Herdr for.
+        assert_eq!(read_field(entries[0], "id"), format!("\"{PLUGIN_ID}\""));
+        // Each pane this program opens runs the screen it was opened for.
+        for kind in [ScreenKind::Popup, ScreenKind::Tab] {
+            let (entrypoint, placement) = choose_screen_pane(kind);
+            let pane = find_entry(&entries, "[[panes]]", entrypoint);
+            assert_eq!(read_field(pane, "placement"), format!("\"{placement}\""));
+            assert_eq!(read_screen_kind(pane), kind, "pane {entrypoint}");
+        }
+        // Herdr's keys run the `open` action for Ctrl+b e and `open-tab` for Ctrl+b E.
+        for (action, kind) in [("open", ScreenKind::Popup), ("open-tab", ScreenKind::Tab)] {
+            let entry = find_entry(&entries, "[[actions]]", action);
+            assert_eq!(read_screen_kind(entry), kind, "action {action}");
+        }
+    }
+
+    /// Returns the `[[panes]]` or `[[actions]]` entry of the plugin file whose id is `id`.
+    fn find_entry<'a>(entries: &[&'a str], table: &str, id: &str) -> &'a str {
+        let id_line = format!("\nid = \"{id}\"\n");
+        entries
+            .iter()
+            .find(|entry| entry.starts_with(table) && entry.contains(&id_line))
+            .unwrap_or_else(|| panic!("no {table} entry with id {id}"))
+    }
+
+    /// Returns the value of the `key = value` line in a plugin file entry, quotes included.
+    fn read_field<'a>(entry: &'a str, key: &str) -> &'a str {
+        let prefix = format!("{key} = ");
+        entry
+            .lines()
+            .find_map(|line| line.strip_prefix(prefix.as_str()))
+            .unwrap_or_else(|| panic!("no {key} in {entry}"))
+    }
+
+    /// Returns the screen a plugin file entry's command opens, as `parse_command` reads it.
+    fn read_screen_kind(entry: &str) -> ScreenKind {
+        let command = read_field(entry, "command");
+        let args: Vec<OsString> = command
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(", ")
+            .map(|arg| OsString::from(arg.trim_matches('"')))
+            .collect();
+        let program = args[0].to_string_lossy();
+        assert!(
+            program.ends_with("/.local/bin/pde-comment-review"),
+            "{command}"
+        );
+        match parse_command(&args) {
+            Ok(cli::Command::Screen { kind }) => kind,
+            other => panic!("{command} is not a screen command, {other:?}"),
+        }
     }
 
     /// `save_popup_record` must save the `pid`, `workspace_id` and `name` the
