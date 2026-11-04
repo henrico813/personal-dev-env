@@ -12,11 +12,12 @@
   would. Run `pde-sops-peek FILE [KEY.PATH]` for a sops file's keys or one
   non-secret value. Tool output shows hidden values as `[redacted]`; never
   write that marker into a file.
-- Keep each command you give the user in chat to one phone line,
-  about 35 characters. A `cd` line is a command too, and full
-  paths count toward its length. For longer steps, write a script
-  in the home folder with a name no file there uses yet, and give
-  `bash ~/<name>.sh`. Never write a secret value into it.
+- The user reads chat on a narrow screen and copies commands from
+  it. Write each command you give in chat so it pastes whole: one
+  line under about 35 characters, with a `cd` as its own command.
+  When the steps don't fit, put them in a new script in the home
+  folder, named so it replaces no file there, and give
+  `bash ~/<name>.sh`. Never put a secret value in the script.
 
 ## Skill Routing
 
