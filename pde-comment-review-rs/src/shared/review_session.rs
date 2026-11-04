@@ -124,28 +124,10 @@ pub fn save_user_feedback(
     shown_request: &FeedbackRequest,
     feedback: UserFeedback,
 ) -> Result<ReviewStatus, Error> {
-    let mut lock = lock(dir)?;
-    let Some(review_session) = lock.review_session_mut() else {
-        return Err(late_error("No Review Session takes User Feedback here."));
-    };
-    if review_session.status != ReviewStatus::WaitingForUserFeedback {
-        return Err(late_error(
-            "This Review Session no longer takes User Feedback.",
-        ));
-    }
-    // A screen left open may still show an older version of this Feedback Request.
-    let newest_request = review_session
-        .lists
-        .iter()
-        .rev()
-        .flat_map(|list| &list.requests)
-        .find(|request| request.id == shown_request.id);
-    if newest_request != Some(shown_request) {
-        return Err(Error {
-            code: ErrorCode::RequestChanged,
-            message: "The Feedback Request changed after the screen showed it.".to_owned(),
-        });
-    }
+    let mut lock = lock_shown_request(dir, shown_request)?;
+    let review_session = lock
+        .review_session_mut()
+        .expect("lock_shown_request returns only a lock that holds a Review Session");
     review_session.feedback.insert(shown_request.id, feedback);
     let every_request_has_feedback = review_session
         .lists
@@ -170,6 +152,59 @@ pub fn save_user_feedback(
         remove_from_waiting_list(dir)?;
     }
     Ok(status)
+}
+
+/// Removes the User Note the screen showed on a Feedback Request, under the
+/// same checks as `save_user_feedback`, so an empty note leaves the request
+/// with no User Feedback.
+pub(crate) fn remove_user_note(
+    dir: &Path,
+    shown_request: &FeedbackRequest,
+) -> Result<ReviewStatus, Error> {
+    let mut lock = lock_shown_request(dir, shown_request)?;
+    let review_session = lock
+        .review_session_mut()
+        .expect("lock_shown_request returns only a lock that holds a Review Session");
+    if matches!(
+        review_session.feedback.get(&shown_request.id),
+        Some(UserFeedback::Note(_))
+    ) {
+        review_session.feedback.remove(&shown_request.id);
+    }
+    let status = review_session.status;
+    lock.save()?;
+    Ok(status)
+}
+
+/// Takes the lock once the Review Session waits for User Feedback and still
+/// holds `shown_request` as the newest version of its Feedback Request.
+fn lock_shown_request(
+    dir: &Path,
+    shown_request: &FeedbackRequest,
+) -> Result<ReviewSessionLock, Error> {
+    let mut lock = lock(dir)?;
+    let Some(review_session) = lock.review_session_mut() else {
+        return Err(late_error("No Review Session takes User Feedback here."));
+    };
+    if review_session.status != ReviewStatus::WaitingForUserFeedback {
+        return Err(late_error(
+            "This Review Session no longer takes User Feedback.",
+        ));
+    }
+    // A screen left open may still show an older version of this Feedback Request.
+    let newest_request = review_session
+        .lists
+        .iter()
+        .rev()
+        .flat_map(|list| &list.requests)
+        .find(|request| request.id == shown_request.id);
+    if newest_request != Some(shown_request) {
+        return Err(Error {
+            code: ErrorCode::RequestChanged,
+            message: "The Feedback Request changed after the screen showed it.".to_owned(),
+        });
+    }
+    Ok(lock)
 }
 
 /// Takes the lock and reads `review.json` again under it. Waits while any
@@ -318,7 +353,7 @@ pub enum ReviewStatus {
 }
 
 /// Names the repository, branch and agent session the Review Session came from.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewOrigin {
     pub repo: String,
@@ -645,6 +680,12 @@ fn find_waiting_list_folder() -> Result<PathBuf, Error> {
         );
         return Ok(folder.clone());
     }
+    Ok(find_pde_state_folder()?.join("comment-review"))
+}
+
+/// Returns `$XDG_STATE_HOME/pde`, or `~/.local/state/pde` without it. The
+/// waiting list and the popup record live under it.
+pub(crate) fn find_pde_state_folder() -> Result<PathBuf, Error> {
     // An empty or relative folder counts as unset, as the XDG rules say.
     let absolute_folder = |name| {
         env::var_os(name)
@@ -655,9 +696,9 @@ fn find_waiting_list_folder() -> Result<PathBuf, Error> {
         .or_else(|| absolute_folder("HOME").map(|home| home.join(".local/state")))
         .ok_or_else(|| Error {
             code: ErrorCode::SaveFailed,
-            message: "Cannot find the waiting list, because neither XDG_STATE_HOME nor HOME is an absolute path.".to_owned(),
+            message: "Cannot find the state folder, because neither XDG_STATE_HOME nor HOME is an absolute path.".to_owned(),
         })?;
-    Ok(state.join("pde/comment-review"))
+    Ok(state.join("pde"))
 }
 
 /// Locks a file beside the waiting list, since each save replaces the list
