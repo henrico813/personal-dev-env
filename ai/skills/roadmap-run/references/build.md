@@ -394,6 +394,8 @@ cat > "$D/ship.sh" <<'SH'
 # Check that the branch holds the plan's tree, lint the PR text,
 # squash onto the parent, push, file the PR request and print the
 # status line. Rerun to resume or to read a waiting request.
+# Before the first request, it stops after the push until `tested`
+# names the pushed commit.
 . "$(dirname "$0")/env" || exit 1
 log=$D/ship.log
 
@@ -448,12 +450,14 @@ step_push() {
 # after a refusal. A run cut off before its result reruns the saved
 # request. Exit 3 leaves no mark, so a rerun reads the result. Once
 # the PR is open, a rerun skips the saved request, which would run
-# again after it expires.
+# again after it expires. Writing the request also writes BODY, since
+# FILE is the newest text.
 step_request() {
   grep -q '^exit 0 ' "$D/request.result" 2>/dev/null && exit 0
   if [ ! -e "$D/request.sh" ] ||
     grep -q '^exit 2 ' "$D/request.result" 2>/dev/null; then
     tail -n +3 "$D/FILE" > "$D/request.body" || exit 1
+    cp "$D/request.body" "$D/BODY" || exit 1
     {
       printf 'cd %q || exit 1\n' "$W"
       printf 'pde-gh-write pr create --base %q --title %q' \
@@ -481,6 +485,17 @@ step_request() {
 run_step "$log" tree
 run_step "$log" text
 run_step "$log" push
+# pull-request Guardrail 4 holds the first request until the pushed
+# commit is deployed and tried, and its result is written to tested.
+if [ ! -e "$D/request.sh" ] &&
+  ! grep -qF "$(git -C "$W" rev-parse HEAD)" "$D/tested" 2>/dev/null
+then
+  keep NEXT \
+    'try the pushed commit, then add its result to FILE and tested'
+  status_line 2>> "$log" ||
+    { echo "STOPPED at status: see $log"; exit 1; }
+  exit 0
+fi
 run_step "$log" request
 # A later round while the request waited left newer PR text in BODY.
 if ! grep -q '^exit 0 ' "$D/request.result" 2>/dev/null; then
@@ -508,6 +523,10 @@ version of the plan.
 - `text`: fix `$D/FILE`, then rerun.
 - `push`: follow the reason. A failed check is never minor. When the
   parent moved, run Carry a parent's commit to a child, then rerun.
+- The stop after `push`: deploy and try the pushed commit, add the
+  one-line result to Testing in `$D/FILE`, write the same line,
+  starting with the full hash from `git -C "$W" rev-parse HEAD`,
+  to `$D/tested`, then rerun.
 - `request`: the reason gives the PR request's result, below.
 
 Put `bash <run folder>/request.sh` on the roadmap page. Rerunning it

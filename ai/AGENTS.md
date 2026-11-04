@@ -201,3 +201,5 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   guidance, use the `promote-memory` skill.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
+- Before sending a request to open or merge a PR, follow Guardrail 4
+  of the `pull-request` skill.
