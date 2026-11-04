@@ -58,6 +58,12 @@ if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
         swaybg -c "$BACKGROUND_COLOR" &
     fi
 else
+    # i3 starts autorandr and this script together at login. Wait up to about
+    # 5 s for it, or the video starts before the outputs are set up.
+    tries=50
+    while ((tries-- > 0)) && pgrep -f 'bin/autorandr' >/dev/null; do
+        sleep 0.1
+    done
     pkill -x xwinwrap
     if [[ -n "$video" ]] && command -v "$XWINWRAP" >/dev/null; then
         play_on_x "$video"
