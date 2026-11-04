@@ -5,11 +5,27 @@ or supported Rust versions.
 
 ## Contents
 
+- [Cargo and dependencies](#cargo-and-dependencies)
 - [Inspect the existing build](#inspect-the-existing-build)
 - [Add dependencies for a concrete benefit](#add-dependencies-for-a-concrete-benefit)
 - [Keep features additive](#keep-features-additive)
 - [Use workspaces without hiding configuration](#use-workspaces-without-hiding-configuration)
 - [Verify the supported builds](#verify-the-supported-builds)
+
+## Cargo and dependencies
+
+Reuse the standard library and existing dependencies when they fit. Add a crate
+when it avoids substantial fragile code, not for a trivial helper. Check its
+maintenance, license, security advisories, supported compiler, features, and
+platform requirements. Keep test-only dependencies in `dev-dependencies`.
+
+Respect the project's minimum supported Rust version (MSRV), edition, feature
+resolver, and lockfile policy. Use workspace configuration for genuinely shared
+settings. Design features to add capabilities rather than disable others; document
+supported combinations and check optional dependencies with defaults disabled.
+Read the checklist below before changing these areas.
+Do not claim that a host
+build verifies other targets or that one feature selection covers every build.
 
 ## Inspect the existing build
 

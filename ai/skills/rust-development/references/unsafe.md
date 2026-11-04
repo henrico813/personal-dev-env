@@ -6,11 +6,26 @@ Do not introduce these techniques merely to satisfy this checklist.
 
 ## Contents
 
+- [Unsafe code and FFI](#unsafe-code-and-ffi)
 - [Establish the need and the boundary](#establish-the-need-and-the-boundary)
 - [Write a concrete safety argument](#write-a-concrete-safety-argument)
 - [Example: copy a foreign buffer](#example-copy-a-foreign-buffer)
 - [Check foreign requirements explicitly](#check-foreign-requirements-explicitly)
 - [Validate without overstating the result](#validate-without-overstating-the-result)
+
+## Unsafe code and FFI
+
+Prefer safe Rust.
+When unsafe code or FFI is necessary, read the checklist below
+before editing. Keep unsafe operations narrow and explain the concrete safety
+conditions next to them. A safe public API must uphold those conditions itself;
+a comment cannot transfer memory-safety obligations to a safe caller.
+
+Check pointer validity, lifetimes, aliasing, initialization, ownership, cleanup,
+and foreign calling conventions as applicable. Never add an unchecked cast,
+`transmute`, or `unsafe impl Send/Sync` merely to suppress a compiler error.
+Run relevant tests and Miri where supported. Passing tests is evidence, not a
+proof that every permitted call is safe; report unsupported validation clearly.
 
 ## Establish the need and the boundary
 

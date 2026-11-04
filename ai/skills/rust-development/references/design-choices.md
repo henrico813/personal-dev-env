@@ -7,6 +7,7 @@ must go through.
 
 ## Contents
 
+- [Objects, structs, and enums](#objects-structs-and-enums)
 - [Start with a function](#start-with-a-function)
 - [Use a struct for data that belongs together](#use-a-struct-for-data-that-belongs-together)
 - [Compose types without hiding the call](#compose-types-without-hiding-the-call)
@@ -14,6 +15,37 @@ must go through.
 - [Add a trait when a caller needs shared behavior](#add-a-trait-when-a-caller-needs-shared-behavior)
 - [Choose how the caller supplies an implementation](#choose-how-the-caller-supplies-an-implementation)
 - [Use a configuration struct or builder when it earns its place](#use-a-configuration-struct-or-builder-when-it-earns-its-place)
+
+## Objects, structs, and enums
+
+Use structs for related data and `impl` blocks for associated behavior. Rust does
+not use class inheritance: compose types by storing one inside another and
+calling its methods. Use a free function when there is no meaningful state or
+type-specific behavior to attach it to.
+
+Use enums for distinct alternatives instead of conflicting boolean flags. Give
+fields the narrowest visibility needed. Keep fields private when callers must
+not bypass validation or when representation should remain changeable. Public
+fields can suit deliberately exposed, unconstrained data.
+
+Use constructors to establish required guarantees. Add `Default` only when a
+sensible default exists. Derive standard traits when their meaning fits the type;
+do not add traits, getters, setters, builders, or wrappers automatically.
+Add a getter, setter, builder, wrapper, custom trait or handwritten
+trait implementation only when code in the change uses it. The
+[where-is-it-used
+check](../SKILL.md#check-where-each-new-public-item-is-used)
+confirms this.
+A constructor with three clear required values can be easier to use than a
+builder. A long sequence of boolean arguments can be harder to read than a named
+configuration struct. Choose from the caller's needs, not a fixed pattern.
+Use a builder when numerous optional settings make construction hard to read.
+
+Use a newtype, a struct wrapping another value, when it prevents mixing IDs,
+units, or validated and unvalidated data. A type alias only adds a name; it does
+not create a distinct type. Prefer existing meaningful types such as `Duration`
+over inventing another wrapper for the same purpose. Keep validation true across
+constructors, conversions, setters, and deserialization, not just at creation.
 
 ## Start with a function
 

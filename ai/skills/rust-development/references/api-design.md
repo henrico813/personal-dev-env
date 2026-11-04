@@ -7,12 +7,46 @@ framework.
 
 ## Contents
 
+- [Traits](#traits)
 - [Model meaningful distinctions](#model-meaningful-distinctions)
 - [Choose standard traits deliberately](#choose-standard-traits-deliberately)
 - [Conversions and borrowed views](#conversions-and-borrowed-views)
 - [Design custom traits around callers](#design-custom-traits-around-callers)
 - [Imports, visibility, and compatibility](#imports-visibility-and-compatibility)
 - [Verify the requirements](#verify-the-requirements)
+
+## Traits
+
+A trait describes behavior that implementing types provide; it does not store
+instance fields. Reuse standard traits such as `Read`, `Write`, `Display`, and
+`From` when they express the intended conversion semantics.
+
+Introduce a custom trait for useful interchangeable behavior, an extension point,
+or a dependency that genuinely needs substitution. Do not create one for every
+struct or solely to satisfy a mocking framework. Keep traits small and coherent.
+
+Use a concrete type when no abstraction is needed. Use `impl Trait` or a named
+generic parameter for compile-time selection; use `dyn Trait` when runtime
+selection is useful and the trait is dyn-compatible (usable as a trait object).
+Return-position `impl Trait` hides one concrete return type, not arbitrary
+unrelated types selected at runtime. A borrowed `&dyn Trait` does not
+require a heap allocation. Add only the bounds the operation needs. Use an
+associated type for a type chosen by the implementation; use a trait parameter
+when implementations need to vary with that parameter. Use `Fn`, `FnMut`, or
+`FnOnce` for callbacks according to how they access their captures.
+
+The [summary example](design-choices.md#add-a-trait-when-a-caller-needs-shared-behavior)
+starts with a report, adds a trait when several types need summary output, and
+uses borrowed trait objects when the caller has different item types in one list.
+These are different requirements, not a prescribed path toward more abstraction.
+
+Derive standard traits when their generated behavior is correct. `Copy` permits
+implicit duplication; `Clone` makes duplication explicit but may still share an
+underlying resource. `Debug` is for diagnostics and `Display` is for people.
+Equality, hashing, and ordering must agree. Use `From` for infallible conversions
+and `TryFrom` when validation or conversion can fail.
+Read the checklist below for
+these requirements before implementing them manually.
 
 ## Model meaningful distinctions
 

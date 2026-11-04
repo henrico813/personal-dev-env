@@ -4,6 +4,35 @@ Load and follow the `behavior-focused-testing` skill for test purpose, scope,
 naming, observable assertions, doubles, determinism, and regression coverage.
 This reference covers Rust-specific test organization and mechanics.
 
+## Contents
+
+- [Test organization](#test-organization)
+- [Use tables for comparable cases](#use-tables-for-comparable-cases)
+- [Control a dependency with a trait](#control-a-dependency-with-a-trait)
+- [Put tests in the right place](#put-tests-in-the-right-place)
+
+## Test organization
+
+Load and follow `behavior-focused-testing` when writing, updating, or reviewing
+tests. This section adds Rust-specific organization and tooling guidance.
+
+Use `#[cfg(test)] mod tests` beside a module's implementation for local tests.
+Use `tests/` for integration tests that exercise the library as a consumer.
+Place genuinely shared integration-test helpers in `tests/common/mod.rs` and
+import them with `mod common;`. Use doctests for API examples. For a CLI, include
+process-level tests for important arguments, output, and exit behavior.
+
+Use small table-driven tests when cases share the same setup and assertion.
+Identify the failing case in assertion messages. Split tables when cases require
+conditional assertions or different setup. Borrow this principle from Uber's Go
+guide, not Go's syntax or testing APIs.
+
+Test newtype validation and custom error behavior through supported entry points.
+For handwritten equality, hashing, or ordering, test the promised relationships.
+Test cleanup and partial failures when they affect observable behavior. Use property
+checks or fuzzing when input combinations exceed useful hand-written cases;
+do not add tests that merely repeat a standard derive implementation.
+
 ## Use tables for comparable cases
 
 A table fits when each case uses the same setup, operation, and assertion:

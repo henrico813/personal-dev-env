@@ -6,11 +6,31 @@ are not obvious from its types and names.
 
 ## Contents
 
+- [Documentation](#documentation)
 - [Document behavior, not the signature](#document-behavior-not-the-signature)
 - [Use an example that demonstrates a reason to call the API](#use-an-example-that-demonstrates-a-reason-to-call-the-api)
 - [Separate usage behavior from a language explanation](#separate-usage-behavior-from-a-language-explanation)
 - [Write comments that survive a refactor](#write-comments-that-survive-a-refactor)
 - [Explain the decision in the handoff](#explain-the-decision-in-the-handoff)
+
+## Documentation
+
+Use `//!` to explain a crate or module and `///` for documented items. Document
+public APIs and non-obvious internal requirements. Start with a short sentence
+saying what the item does. Explain required inputs, units, side effects, and
+important guarantees where they matter.
+
+Include a small usage example for APIs whose use is not obvious. Add `# Errors`,
+`# Panics`, and `# Safety` sections when applicable; do not add empty sections.
+Keep examples compilable and use documentation tests where practical. Explain
+parameters in prose rather than repeating their types in a parameter table.
+Link related Rust items with rustdoc links such as ``[`Report`]``. Use `no_run`
+only when an example should compile but not execute; use `compile_fail` for an
+intentional compiler rejection. Do not hide broken examples with `ignore`.
+
+Comments should explain constraints, intent, or surprising decisions, not
+restate the next line. Update documentation when behavior changes. Do not add
+change diaries, self-reviews, or claims about following this skill to project docs.
 
 ## Document behavior, not the signature
 

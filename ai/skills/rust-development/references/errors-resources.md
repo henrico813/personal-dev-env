@@ -4,12 +4,45 @@ Read this before changing failure handling, resource ownership, or cleanup.
 
 ## Contents
 
+- [Errors and resource cleanup](#errors-and-resource-cleanup)
 - [Give callers usable errors](#give-callers-usable-errors)
 - [Example: keep the underlying error](#example-keep-the-underlying-error)
 - [Distinguish bugs from expected failures](#distinguish-bugs-from-expected-failures)
 - [Make ownership perform cleanup](#make-ownership-perform-cleanup)
 - [Make fallible completion explicit](#make-fallible-completion-explicit)
 - [Verify the behavior](#verify-the-behavior)
+
+## Errors and resource cleanup
+
+Use `Option` for absence and `Result` for recoverable failure. Use `?` to propagate
+errors when appropriate. Preserve useful error context. Choose typed errors when
+callers need to distinguish failures; application-level error wrappers can suit
+errors that are mainly reported. Follow the project's existing error approach.
+Derive `Debug` on every error type, because `unwrap` and `expect` need
+it. Implement `Display` and `Error` when something prints the error for
+people, another crate receives it, or another error wraps it. In those
+cases, return the underlying error from `source()` when there is one.
+Some errors end up only as an exit code and a message. Such an error
+can be a struct that derives only `Debug`. Write the cause into its
+message. Add actionable context without exposing secrets.
+
+A parse failure should remain distinguishable from a read failure when the
+caller handles them differently. A function with one useful existing error type
+may simply return it. The
+[error example](#example-keep-the-underlying-error)
+shows when another type becomes useful and what `map_err`, `?`, and `source()` do.
+
+Do not use panics for expected bad input or ordinary I/O failures. Use `expect`
+only for a condition the program already guarantees, or for test setup. Its
+message should explain the guarantee. Do not silently discard a fallible result.
+
+Use owned resources and guards so normal scope exit, early returns, and `?` clean
+up automatically. This is resource acquisition is initialization (RAII): resource
+lifetime follows its owner. Fields already clean themselves up; add `Drop` only
+for cleanup the owned fields do not provide. Keep destructors non-panicking.
+Use an explicit `flush`, `finish`, `close`, or `shutdown` operation when completion
+can fail or needs async work. `Drop` cannot return a `Result`, and it is not a
+guarantee of successful persistence or cleanup after a process abort.
 
 ## Give callers usable errors
 
