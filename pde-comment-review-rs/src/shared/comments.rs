@@ -1,6 +1,5 @@
-//! This module finds each comment in a file's syntax tree, names the code it
-//! describes, and rewrites comments in memory until a later step writes them.
-//! It is the only file that calls `language_rules/`. Read the
+//! This module, the only caller of `language_rules/`, finds each comment in a
+//! file, names the code it describes, and rewrites comments in memory. Read the
 //! `find_comments(file, source)`, `rewrite(dir, edits)`,
 //! `to_plain_words(file, text)`, and `read_version_comments(file, version)`
 //! functions to understand the module.
@@ -35,10 +34,9 @@ pub fn find_comments(file: &Path, source: &str) -> Result<Vec<Comment>, FindComm
 ///
 /// # Errors
 ///
-/// Refuses with `TextChanged` when a comment is no longer in its file as it
-/// was read. Refuses with `WouldNotWrite` when an edit would change more than
-/// its comment, changes a comment the user can only keep, rewords a comment
-/// the user can only keep or cut, or fails the language's checks. Fails with
+/// Refuses with `TextChanged` when a comment changed since it was read, and
+/// with `WouldNotWrite` when an edit would change code, make a change the
+/// comment does not allow, or fail the language's checks. Fails with
 /// `FileUnreadable` when a file cannot be read or does not parse.
 pub fn rewrite(dir: &Path, edits: &[CommentEdit]) -> Result<Vec<RewrittenFile>, Error> {
     let mut edits_by_file: BTreeMap<&Path, Vec<&CommentEdit>> = BTreeMap::new();
@@ -147,13 +145,11 @@ pub(crate) fn read_comments_on_disk(root: &Path, file: &Path) -> Result<FileComm
     read_version_comments(file, git::read_file_on_disk(root, file)?)
 }
 
-/// Reads a root-relative file as it is on disk and takes the comment each
-/// request asked about. The file keeps its own line ends, so each comment's
-/// byte range fits it. A named request takes the comment with its name. An
-/// unnamed one takes only the unnamed comment now at its saved line, never a
-/// same-text comment elsewhere. A request gets `None` when that comment is gone
-/// or its text, with `\r\n` read as `\n`, differs, and step 7 then refuses.
-/// Refuses with `FileUnreadable` when the file does not parse.
+/// Takes the comment each request asked about from a root-relative file on
+/// disk, by name or, for an unnamed request, only the unnamed comment at its
+/// saved line. A request gets `None` when that comment is gone or its text
+/// differs, and step 7 then refuses. Fails with `FileUnreadable` when the
+/// file does not parse.
 pub(crate) fn match_requests_on_disk(
     root: &Path,
     file: &Path,
@@ -260,7 +256,6 @@ pub(crate) fn read_comments_at_commit(
     find_file_comments(file, source, &file_label)
 }
 
-/// Returns true when a language rule reads the file.
 pub(crate) fn is_supported(file: &Path) -> bool {
     find_rules_for(file).is_some()
 }
@@ -599,7 +594,6 @@ fn find_comments_and_tree(
     Ok((comments, tree))
 }
 
-/// Parses `source` with the language's grammar.
 fn parse_source(rules: &dyn LanguageRules, source: &str) -> Tree {
     let mut parser = Parser::new();
     parser
@@ -610,7 +604,6 @@ fn parse_source(rules: &dyn LanguageRules, source: &str) -> Tree {
         .expect("parsing fails only after a timeout or cancel, and neither is set")
 }
 
-/// Adds the comments in `node` and its children to `comments`.
 fn collect_comments(
     rules: &dyn LanguageRules,
     file: &Path,

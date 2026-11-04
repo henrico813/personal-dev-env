@@ -81,7 +81,6 @@ struct Part {
     text: String,
 }
 
-/// Splits a whole docstring into its quotes and the words between them.
 fn split_docstring(text: &str) -> Option<(Quotes<'_>, &str)> {
     let rest = text.trim_start_matches([' ', '\t']);
     let indent = &text[..text.len() - rest.len()];
@@ -103,7 +102,6 @@ fn split_docstring(text: &str) -> Option<(Quotes<'_>, &str)> {
     Some((quotes, body))
 }
 
-/// Returns the parts of a docstring's words.
 fn read_docstring_parts(body: &str, indent: &str) -> Vec<Part> {
     let mut parts: Vec<Part> = Vec::new();
     // Lines deeper than this follow an example heading or a line ending in `::`.
@@ -267,9 +265,8 @@ fn read_plain_parts(words: &str) -> Vec<Part> {
     trim_blank_parts(parts)
 }
 
-/// Returns `parts` as a docstring. Paragraphs wrap, and section entries are
-/// indented four spaces, with their later lines four more. One short
-/// paragraph stays on one line.
+/// Returns `parts` as a docstring, with section entries indented four spaces
+/// and their later lines four more. One short paragraph stays on one line.
 fn write_docstring(parts: &[Part], quotes: &Quotes) -> String {
     let Some(first) = parts.first() else {
         return String::new();

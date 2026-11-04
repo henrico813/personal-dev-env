@@ -1,6 +1,6 @@
-//! This module loads, adds, and compares comments. Read the `load(dir)`,
-//! `add(dir, new_approvals)`, and `Approvals::compare(comment)` functions to
-//! understand the module.
+//! This module loads and adds the user's decisions on comments, and compares
+//! each comment with them. Read the `load(dir)`, `add(dir, new_approvals)`,
+//! and `Approvals::compare(comment)` functions to understand the module.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
@@ -25,9 +25,7 @@ pub fn load(dir: &Path) -> Result<Approvals, Error> {
     load_file(&find_approvals_folder(dir)?.join(APPROVALS_FILE))
 }
 
-/// Loads the decisions from one approvals file, or none when it is missing.
-/// Refuses a field it does not know, so an older program cannot drop it when
-/// it adds decisions.
+/// Loads the decisions from one approvals file, as `load` does.
 pub(crate) fn load_file(path: &Path) -> Result<Approvals, Error> {
     Ok(read_saved_file(path)?.into_approvals())
 }
@@ -122,7 +120,6 @@ pub enum DecisionMatch {
 struct SavedFile {
     #[serde(default)]
     approved: Vec<SavedApproval>,
-    /// Maps each word agents should not use to what to say instead.
     #[serde(default)]
     avoid: BTreeMap<String, String>,
     /// Collects fields this program does not know, so reading can refuse
@@ -437,8 +434,8 @@ mod tests {
         }
     }
 
-    /// The user may approve a comment and later approve a new text, and both must pass.
-    /// Any other text must fail, or an agent could quietly rewrite what the user approved.
+    /// `Approvals::compare` must pass every text the user approved for a comment and fail any other text.
+    /// Otherwise an agent could quietly rewrite what the user approved.
     #[test]
     fn approved_texts_pass_and_other_texts_fail() {
         // The user approved one text, then a second one later.
@@ -472,7 +469,7 @@ mod tests {
         );
     }
 
-    /// When the user changes their mind about a comment, their newest decision must count.
+    /// `Approvals::compare` must count only the newest decision for a comment.
     /// Otherwise a comment the user cut would still pass, or one they approved again would still count as cut.
     #[test]
     fn the_newest_decision_wins() {
@@ -501,8 +498,8 @@ mod tests {
         }
     }
 
-    /// Many files have a comment with the same name, such as the comment at the top of each file.
-    /// A decision for one file must not count for another, or approving one would fail the rest.
+    /// `Approvals::compare` must count a decision only in its own file.
+    /// Otherwise approving one file's module doc would fail the module docs of every other file.
     #[test]
     fn a_decision_counts_only_in_its_own_file() {
         let approvals = Approvals {

@@ -41,8 +41,8 @@ impl Drop for TempFolder {
     }
 }
 
-/// Keeps this test process's waiting list in a folder of its own in the build's temporary folder, never the user's own.
-/// The folder is set once per test process, but any test may run first, so every test that reaches the waiting list calls this.
+/// Points this test process's waiting list at its own folder, never the user's own.
+/// Every test that reaches the waiting list calls this, since any test may run first.
 pub fn use_test_waiting_list() {
     set_test_waiting_list_folder(&find_test_waiting_list_folder());
 }
@@ -108,12 +108,12 @@ pub fn make_repo() -> TempFolder {
     folder
 }
 
-/// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
+/// Returns Go source with `comment` above a function whose body is `body`.
 pub fn store_source(comment: &str, body: &str) -> String {
     format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
 }
 
-/// Writes `store_source(comment, body)` to the store file on disk.
+/// Writes `store_source(comment, body)` to the Go file most tests change.
 pub fn write_store(dir: &Path, comment: &str, body: &str) {
     fs::write(dir.join(STORE), store_source(comment, body)).unwrap();
 }
@@ -151,7 +151,7 @@ pub fn save_review(dir: &Path, status: &str, lists: &[Value], feedback: Value) {
     fs::write(dir.join(".git/pde/review.json"), review.to_string()).unwrap();
 }
 
-/// Returns a sent Feedback Request for the store file, with reason `new` and a keep Agent Suggestion.
+/// Returns a sent Feedback Request for the Go file most tests change, with reason `new` and a keep Agent Suggestion.
 pub fn request_json(id: u32, name: Option<&str>, text: &str, line: usize) -> Value {
     json!({
         "id": id,

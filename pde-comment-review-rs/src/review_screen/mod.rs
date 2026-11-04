@@ -40,7 +40,6 @@ pub use start::{run_open_command, run_screen_command};
 /// Turns on mouse reports for taps and wheel turns only, sent as text such as
 /// `\x1b[<65;20;5M`. A phone app sends a swipe as wheel turns.
 const MOUSE_ON: &str = "\x1b[?1000h\x1b[?1006h";
-/// Turns off the mouse reports `MOUSE_ON` turned on.
 const MOUSE_OFF: &str = "\x1b[?1006l\x1b[?1000l";
 
 /// Says why a command could not show the screen, in words for the user.
@@ -108,9 +107,8 @@ fn show_review(terminal: &mut RawTerminal, dir: &Path) -> io::Result<()> {
 }
 
 /// Returns what the Review Result Screen says about a Review Session with
-/// nothing for the user to answer, or `None` while a request waits for User
-/// Feedback. Runs step 7 when every request has an answer, such as after an
-/// empty list or a failed write, so opening the review again is the retry.
+/// nothing for the user to answer, or `None` while a request waits. Runs step 7
+/// when every request has an answer, so opening the review again retries a write.
 fn find_result_before_review(root: &Path, review_session: &ReviewSession) -> Option<ReviewResult> {
     if let Some(result) = ReviewResult::from_status(root, review_session.status) {
         return Some(result);
@@ -282,7 +280,6 @@ struct RawTerminal {
 }
 
 impl RawTerminal {
-    /// Turns on raw mode, the alternate screen and mouse reports.
     fn start() -> io::Result<Self> {
         let raw_terminal = RawTerminal { was_left: false };
         raw_terminal.enter()?;
