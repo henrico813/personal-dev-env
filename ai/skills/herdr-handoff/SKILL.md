@@ -63,6 +63,7 @@ Herdr's skill says to create a workspace only when the user asks.
 - After the handoff, stop changing what you handed over.
 - When ownership moves later, tell the new session with
   `herdr agent prompt <name> "<message>"`, and tell the user.
+  When a hub runs, tell the hub too.
 - The handoff tells the new session to write progress-only news, such
   as "rehearsal passed", to its own status file. It tells the new
   session to prompt this session with a question, a blocker, or
@@ -128,7 +129,12 @@ To start the session on another saved machine, add
 6, with the label from `herdr machine list`. First copy the handoff
 file to the same path on that machine, since a remote session cannot
 read a local path. The remote `--cwd` must be an absolute path or
-start with `~/`. Read pane IDs from that machine's replies.
+start with `~/`. Read pane IDs from that machine's replies. An
+OpenCode session there may ask to access the handoff folder before
+it reads the file. Tell the user so, since that approval is theirs
+to give. When the machine's data must stay on it, the handoff asks
+for counts and pass or fail results in reports, never lists of
+names or file contents.
 
 ## Tell the user
 
