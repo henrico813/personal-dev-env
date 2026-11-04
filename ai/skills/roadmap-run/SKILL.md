@@ -101,9 +101,17 @@ commands in [references/build.md](references/build.md).
 7. **Ship.** Write the PR text, then run build.md's ship script. It
    stops when the branch's tree differs from the plan, on bad PR text,
    a failed check, the wrong branch, a parent that moved or a branch
-   already pushed. It squashes onto the parent, pushes, and saves and
-   runs the PR request script, which calls
-   `pde-gh-write pr create --base <parent branch>`.
+   already pushed. It squashes onto the parent, pushes, and stops.
+   Deploy the pushed commit and try it, as pull-request Guardrail 4
+   says. Add the one-line result to Testing in `$D/FILE`. Write the
+   same line, starting with the pushed commit's full hash, to
+   `tested` in the run folder. Then rerun ship.sh. The rerun saves
+   and runs the PR request script, which calls
+   `pde-gh-write pr create --base <parent branch>`. When a child PR
+   cannot run until its parent merges, you hold it. For a held PR, set
+   NEXT to `held until <parent branch> merges`, print its status
+   line, and file no request. After rerunning ship.sh on a held PR,
+   set NEXT back to held and print the status line again.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `check-comments`,
    `make-feedback-request-list`, with an `--input` file of change
@@ -248,16 +256,21 @@ handle it as build.md says. Then rerun the status line snippet for
 each PR and write its output to the roadmap page. List the scripts on
 the roadmap page in stack order, so the user, or an agent they ask,
 can rerun them in the morning to file fresh requests.
+For a held PR, write on the roadmap page what to do after its
+parent merges: set PARENT to the default branch with `keep`, run
+build.md's Carry a parent's commit to a child and Push a later
+round, then deploy and try it, add the result to Testing and
+`tested`, and run `bash <run folder>/ship.sh`.
 
 End with one message:
 
 - a table of the PRs: what each does and its changed lines
 - the stacks, such as "A, B, C" and "A, D", each PR on the one before
 - the worst bugs the reviews caught
-- each PR request's state: open, waiting, declined or parked
+- each PR request's state: open, waiting, held, declined or parked
 - what the user must do, in order: rerun expired PR requests and
-  approve them, answer blocking questions, then do the comment
-  reviews
+  approve them, merge parents of held PRs, answer blocking
+  questions, then do the comment reviews
 - your own slips, and work left for later
 
 ## Remembering corrections
