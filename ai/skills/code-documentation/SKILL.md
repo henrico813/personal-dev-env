@@ -168,8 +168,8 @@ if wrote_any_bytes:
 In Rust and TypeScript, use no colon in a comment, doc comments
 included, except inside code or a URL. Go and Python have the same
 rule below. A Rust `// SAFETY:` comment keeps its colon, because
-Clippy looks for it. The comment checker does not read these
-languages, so check them yourself.
+Clippy looks for it. The comment checker does not check colons in
+these languages, so check them yourself.
 
 ## Function names
 
@@ -254,11 +254,11 @@ When source code or tests change:
    makes it misleading for safe use, or an applicable convention violation;
    otherwise leave it byte-for-byte unchanged. Do not broaden, reformat, or
    polish it merely because more implementation details could be stated.
-   The owner is the person who approved text in `.code-comments.json`
-   at the repository root. Never change that text or that file, even
-   when the text seems false; report it instead. The exceptions: run
-   the checker's `--approve` when the owner asks you to, and its
-   `--merge-approvals` as the `cleanup-plan` skill says.
+   The owner is the person who approved text in the review tool's
+   approvals file, `.git/pde/code-comments.json` in the main checkout,
+   which every worktree of the clone shares. Never change that text or
+   that file, even when the text seems false; report it instead, or
+   ask to change it as the `comment-review` skill says.
 6. Keep edits within the task's scope.
 7. Verify documentation claims against the implementation and tests when
    practical.
@@ -321,60 +321,56 @@ comment in the code.
 
 ## Comment checker
 
-For Go or Python files whose comments you write or review, run the
-checker in this skill's `scripts/` folder, with Python 3.10 or later:
+For Go, Python or Rust files whose comments you write or review, run
+the review tool's comment check in the repository:
 
 ```bash
-python3 <this skill's folder>/scripts/check_comments.py \
-  --repo <repository root> --base <commit your task started from> \
-  <Go or Python files>
+pde-comment-review check-comments --base <commit your task started from>
 ```
 
-Each finding names the rule it checks, and the output ends by quoting
-that rule's sentence from this skill. Act on each finding:
+Without `--base`, it checks the changes since the branch start, where
+the branch split from main. If your harness lists the MCP tool
+`check_comments`, perhaps with a prefix, use it instead, with `dir`
+set to the checkout's absolute path and `base` to that commit. Both
+give the same JSON.
 
-- `approved`: you changed, removed, or put back a comment the owner
-  approved or cut. Restore the owner's text. This fails the run.
-  If your task renamed the code, keep the owner's text on the new
-  name, changing only the renamed identifiers, and report the finding.
-  In your final message, list each rename as an exact
-  `--rename OLD=NEW` pair for the owner's `--approve`, quoting names
-  with spaces, such as `--rename 'const Red=const Crimson'`. A gone
-  comment's finding may add `possibly now <name> at <line>` with the
-  pair to record. List a hinted pair only if your task made that
-  rename.
-- `filler` or `avoided-word` in a sentence your task added or changed:
-  fix the sentence. This fails the run. `avoid` in
-  `.code-comments.json` gives the word to use instead.
-- `restated-name`: reported, never failed.
-- `seven-words`, `starts-with-name`, `comment-length` or
-  `comment-colon` on a Go name or comment your task added or changed:
-  rename the function or fix the comment. This fails the run.
-- `verb-first`: reported, never failed. Rename the function when the
-  word is not a verb, and when it is, keep the name and list the
-  finding in your final message.
-- `filler`, `avoided-word` or a Go comment rule marked `report only`:
-  the sentence is approved text, a license header, or was there
-  before your task.
-  List it in your final message, and edit it only as step 5 of Editing
-  and review allows.
+It checks every Go, Python and Rust file the branch changed, and
+writes nothing. Act on its JSON:
 
-Run the checker again until it exits 0. If it still fails only with
-`approved comment is gone` or `approved file is gone` because your
-task renamed, moved or deleted that code, keep the owner's text and
-list those findings in your final message for the owner.
+- `result.failures`: fix each one, then run the check again. Each
+  names its `rule` and quotes that rule's `sentence` from this skill.
+- `result.reported`: list each one in your final message, and edit
+  its text only as step 5 of Editing and review allows. Its `note`
+  says why it does not fail: `approved` text, `existing` text from
+  before your task, a license `header`, or a `report_only` rule.
+- `result.unsupported`: changed files the check cannot read. Check
+  their comments yourself.
+- `error`: the check did not run. Do what its `message` says, such
+  as fixing a file that does not parse.
 
-If Python cannot read a file, fix its syntax, or report it when the
-file needs a newer Python than the checker's `python3`. Never edit
-approved text to get past it.
+Act on each failure by its rule:
 
-Only the owner runs the checker with `--approve`, or an agent the
-owner asked to. It rewrites `.code-comments.json` itself, so no one
-types entries by hand. Pass `--rename OLD=NEW` once for each renamed
-comment, so its approved or cut entry moves to the new name, and a
-pair of paths, relative to `--repo`, for a moved file. For many
-renames, put one `--rename=OLD=NEW` per line in a file and pass
-`@<file>`.
+- `approved`: you changed a comment the owner approved. Put back the
+  owner's text, or ask to change it as the `comment-review` skill
+  says.
+- `approved-removed`: you removed a comment the owner approved, and
+  its code stays. Put the comment back.
+- `filler` or `avoided-word`: fix the sentence. `avoid` in the
+  approvals file gives the word to use instead.
+- Any other rule: rename the function or fix the comment.
+
+`verb-first` and `restated-name` are reported, never failed. Rename
+the function when the word is not a verb, and when it is, keep the
+name and list the finding in your final message.
+
+Run the check again until `result.failures` is empty. `next` is then
+`make_feedback_request_list`, even when findings are reported. Never
+edit approved text to get past a failure. A function you renamed
+keeps its comment without a failure, and the owner is asked about
+that comment as a new one, so you list no renames.
+
+If `pde-comment-review` is not on `PATH`, say in your final message
+that the comment check did not run, and check these rules yourself.
 
 ## Go and Python rules
 
@@ -387,9 +383,10 @@ In Go and Python, these rules apply on top of the ones above:
 
 In Go, `main`, `init`, getters with no arguments and names that
 start with `New` need no verb, and a `Deprecated:` or `BUG(who):`
-note may keep its colon and length. The comment checker checks Go
-files for these rules, the seven-word limit and doc comments that
-start with their name, and with `--base` only new names and comments.
+note may keep its colon and length. `check-comments` checks these
+rules and the seven-word limit in Go and Python files, and doc
+comments that start with their name in Rust files too, only on the
+names and comments your task added or changed.
 
 ## Python rules
 
@@ -405,25 +402,12 @@ win:
 - Never invent a docstring section, such as `Why it matters:`; write a
   plain paragraph instead.
 
-For Python files you add or change, run the rule checker in this
-skill's `scripts/` folder:
-
-```bash
-python3 <this skill's folder>/scripts/check_python_rules.py \
-  --repo <repository root> --base <commit your task started from> \
-  <Python files>
-```
-
-It needs Python 3.10 or later. It checks only code your task added
-or changed. Changing any line of an old function makes the checker
-ask for its docstring, so add one. Leave docstrings on old functions
-you did not touch for a separate change. Move files with `git mv`, so
-the checker compares a moved file with its old path. Each
-finding names the rule it checks, and the output ends by quoting that
-rule's sentence. Fix each finding and run the checker again until it
-exits 0. `verb-first` is reported, never failed: rename the function
-when the word is not a verb, and when it is, keep the name and list
-the finding in your final message.
+For Python files you add or change, `check-comments` also checks
+these rules, only in code your task added or changed. Changing any
+line of an old function makes it ask for that function's docstring,
+so add one. Leave docstrings on old functions you did not touch for
+a separate change. A function moved from a deleted file into a new
+one counts as old, with or without `git mv`.
 
 ## Completion check
 
@@ -437,10 +421,9 @@ Before declaring source or test work complete, check:
 - every test has a short doc, and every test helper and fixture a
   one-line doc
 - the amount of documentation fits the code's complexity and risk
-- for Go or Python files, the comment checker exits 0, or fails only
-  on renamed, moved or deleted approved comments that you reported
-- for Python files, the rule checker exits 0, and each `verb-first`
-  finding is renamed or, for a real verb, listed in your final message
+- for Go, Python or Rust files, `check-comments` reports no
+  failures, and each `verb-first` finding is renamed or, for a real
+  verb, listed in your final message
 
 Fix supported in-scope issues once. Do not start an open-ended prose polishing
 loop.
@@ -450,7 +433,7 @@ loop.
 Follow every lesson in the Lessons section below. Each is a correction
 the user made, so a lesson wins when it disagrees with the text above,
 except that you still never edit a comment the owner approved or
-`.code-comments.json`. When the user corrects how you write or review
+the approvals file. When the user corrects how you write or review
 code comments, docstrings or function names, follow
 [skill-lessons](../skill-lessons/SKILL.md) with the skill name
 `code-documentation`, and offer once to save the correction as a lesson.
