@@ -95,6 +95,16 @@ pub trait LanguageRules {
     /// Returns true for a comment node that a cut could turn into different
     /// code, such as one inside a macro call.
     fn is_keep_only(&self, comment: Node, source: &str) -> bool;
+    /// Returns each code example in a comment that the language's doc tool
+    /// reads as code, in order, or none in a language without them.
+    fn list_doc_tests(&self, _text: &str) -> Vec<String> {
+        Vec::new()
+    }
+    /// Returns the word that starts each note in a comment that the language's
+    /// tools read, such as Go's `Deprecated:`, or none in a language without them.
+    fn list_tool_notes(&self, _text: &str) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Returns the rules for the file's language, if supported.

@@ -28,4 +28,7 @@ pub enum ErrorCode {
     WriteNotFinished,
     NothingToWrite,
     WriteFailed,
+    ListChanged,
+    MissingSuggestion,
+    RewordFailsRules,
 }

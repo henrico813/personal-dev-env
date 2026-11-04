@@ -31,22 +31,8 @@ pub fn make_feedback_request_list(
     change_requests: &[ChangeRequest],
 ) -> Result<StepOutput<FeedbackRequestListResult>, Error> {
     let review = review_session::load(dir)?;
-    match review.as_ref().map(|review| review.status) {
-        Some(ReviewStatus::WaitingForUserFeedback) => {
-            return Err(Error {
-                code: ErrorCode::WaitingForUserFeedback,
-                message: "A Feedback Request List waits for the user. Tell them to press Ctrl+b e, then wait."
-                    .to_owned(),
-            });
-        }
-        Some(ReviewStatus::WritingUserFeedback) => {
-            return Err(Error {
-                code: ErrorCode::WriteNotFinished,
-                message: "A write into the code did not finish. Ask the user to check git status."
-                    .to_owned(),
-            });
-        }
-        _ => {}
+    if let Some(review) = &review {
+        review_session::refuse_busy_status(review.status)?;
     }
     let noted_review = review.filter(|review| review.status == ReviewStatus::UserNotesWaiting);
     // While User Notes wait, the Review Session keeps its task's base, so a
