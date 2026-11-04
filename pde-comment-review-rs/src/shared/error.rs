@@ -1,5 +1,7 @@
 //! Carries each failure or refusal as a code and a message.
 
+use serde::{Deserialize, Serialize};
+
 /// Carries a failure code and a message for the caller.
 #[derive(Debug)]
 pub struct Error {
@@ -8,7 +10,8 @@ pub struct Error {
 }
 
 /// Identifies failures without making callers inspect messages.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     BadInput,
     NotAGitCheckout,
