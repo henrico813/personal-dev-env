@@ -55,6 +55,9 @@
 - When asked to build several pull requests of an approved roadmap
   without the user reviewing each step, load and follow the
   `roadmap-run` skill.
+- When asked to review a session for token use, efficiency, skill
+  lessons or local model handoff, load and follow the
+  `session-review` skill.
 - When writing a status update, progress report, recap or handoff
   message to the user, load and follow the `status-updates` skill.
 - When asked to hand work to a new session in Herdr, load and follow
