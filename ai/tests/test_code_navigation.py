@@ -144,12 +144,12 @@ def test_listed_paths_normalizes_locations(tmp_path: Path) -> None:
     assert listed_paths(text, tmp_path) == {"src/result.txt"}
 
 
-def run_opencode(prompt: str, cwd: Path, binary: Path) -> list[dict[str, Any]] | None:
+def run_opencode(prompt: str, cwd: Path) -> list[dict[str, Any]] | None:
     """Run OpenCode, returning ``None`` when the model call times out."""
     try:
         result = subprocess.run(
             ["opencode", "run", "--standalone", "--auto", "--model", os.environ.get(MODEL_ENV_VAR, "goog/qwen3.8"), "--format", "json", prompt],
-            cwd=cwd, env={**os.environ, "PATH": f"{binary.parent}:{os.environ['PATH']}", "PWD": str(cwd)},
+            cwd=cwd, env={**os.environ, "PWD": str(cwd)},
             capture_output=True, text=True, timeout=MODEL_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
@@ -208,7 +208,7 @@ def arm_status(mode: str, repo: Path) -> dict[str, Any] | None:
         return {"skip": f"{name} preflight failed: {error}"}
 
 
-def arm_instruction(mode: str, binary: Path, repo: Path, task: Path, context: Path, trace: Path) -> str:
+def arm_instruction(mode: str, repo: Path, task: Path, context: Path, trace: Path) -> str:
     """Build a tool-only instruction before the shared question is appended."""
     if mode == "grep":
         return "Use only grep -r from the current project directory to find relevant files. Do not use git grep."
@@ -263,7 +263,7 @@ def timed_out_result(question: dict[str, Any], status: dict[str, Any] | None, mo
     }
 
 
-def run_agent(binary: Path, repo: Path, task_dir: Path, question: dict[str, Any], mode: str) -> dict[str, Any]:
+def run_agent(repo: Path, task_dir: Path, question: dict[str, Any], mode: str) -> dict[str, Any]:
     """Run one explicit search instruction and score its final answer."""
     task_dir.mkdir()
     task = task_dir / "task.json"
@@ -272,9 +272,9 @@ def run_agent(binary: Path, repo: Path, task_dir: Path, question: dict[str, Any]
     status = arm_status(mode, repo)
     if status and status.get("skip"):
         return {"skip": status["skip"], "model": model_name(), "used_assigned_tool": None}
-    instruction = arm_instruction(mode, binary, repo, task, context, trace)
+    instruction = arm_instruction(mode, repo, task, context, trace)
     prompt = f"{instruction} List every matching path for: {question['question']}"
-    events = run_opencode(prompt, repo, binary)
+    events = run_opencode(prompt, repo)
     if events is None:
         return timed_out_result(question, status, mode)
     counts = tool_counts(events)
@@ -475,7 +475,7 @@ def test_git_key_commands_match_code_questions() -> None:
 def test_replacement_arms_have_exact_commands() -> None:
     """Keep each replacement instruction tied to its documented tool."""
     question = {"question": "Where is state_dir?"}
-    values = {mode: arm_instruction(mode, Path("unused-tool"), Path("."), Path("task"), Path("context"), Path("trace")) for mode in ARMS}
+    values = {mode: arm_instruction(mode, Path("."), Path("task"), Path("context"), Path("trace")) for mode in ARMS}
     assert "grep -r" in values["grep"]
     assert "Search with rg" in values["grep+rule"] and "git grep" in values["grep+rule"]
     assert "--compress" in values["repomix"] and "--stdout" in values["repomix"]
@@ -497,7 +497,7 @@ def test_arms_share_question_without_terms() -> None:
     for question in questions:
         prompts = []
         for mode in ARMS:
-            instruction = arm_instruction(mode, Path("unused-tool"), Path("."), Path("task"), Path("context"), Path("trace"))
+            instruction = arm_instruction(mode, Path("."), Path("task"), Path("context"), Path("trace"))
             prompt = f"{instruction} List every matching path for: {question['question']}"
             prompts.append(prompt)
             for term in question["terms"]:
@@ -565,8 +565,7 @@ def test_agent_search_comparison(tmp_path: Path) -> None:
     fixed prompt overhead from the reported median search cost.
     """
     ensure_history()
-    binary = None
-    baseline = token_total(run_opencode("Reply exactly: ok. Do not use tools.", tmp_path, binary))
+    baseline = token_total(run_opencode("Reply exactly: ok. Do not use tools.", tmp_path))
     results_path = Path(os.environ.get(RESULTS_ENV_VAR, str(tmp_path / "navigation-agent-results.jsonl")))
     results_path.write_text("", encoding="utf-8")
     code_questions = [question for question in load_questions() if question["kind"] == "code"]
@@ -577,7 +576,7 @@ def test_agent_search_comparison(tmp_path: Path) -> None:
             project.mkdir()
             materialize(str(question["commit"]), project)
             for attempt in range(3):
-                run = run_agent(binary, project, tmp_path / f"{mode}-task-{number}-{attempt}", question, mode)
+                run = run_agent(project, tmp_path / f"{mode}-task-{number}-{attempt}", question, mode)
                 append_result(results_path, {"question": question["question"], "kind": question["kind"], "mode": mode, "attempt": attempt, "expected": question["expected"], **run})
     records = load_result_records(results_path)
     question_rows = summarize_results(records, baseline)
