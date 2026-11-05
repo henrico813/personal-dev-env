@@ -1,8 +1,10 @@
 ---
 name: promote-lessons
 description: Folds the lessons saved for one skill into that skill's
-  source text, ships the change, and retires the lessons. Use when the
-  user asks to promote, fold in or clear out a skill's lessons.
+  source text, ships the change, and retires the lessons. Also turns
+  one saved memory or preference into a rule in a skill or AGENTS.md.
+  Use when the user asks to promote, fold in or clear out a skill's
+  lessons, or to promote a memory into source-controlled guidance.
 metadata:
   pde-workflow: "true"
 ---
@@ -81,6 +83,26 @@ install its skills, follow it in steps 1 and 6. Otherwise:
    It refuses until the remote's default branch has the source as
    CHECKOUT's HEAD has it, so run it after the push or the merge. Tell
    the user the result in one line.
+
+## From a memory
+
+A memory is a preference saved in an agent's memory, not under a
+skill. Promote one only when the user asks; saving it never asks.
+
+1. Write it as one short rule an agent would follow in any task.
+2. Work in a personal-dev-env worktree, from any repository, unless
+   the user asks for a rule in the current one.
+3. Search `ai/skills/` and pick the narrowest home:
+   - The skill it fits, in the section and step it changes.
+   - A new `ai/skills/<name>/SKILL.md` for a reusable behavior. List
+     it where other skills are listed, such as the README tables,
+     `ai/README.md`, `chezmoi/.chezmoiremove` and the installer test.
+   - One short routing line in `ai/AGENTS.md`, which every session
+     loads, so keep the steps in the skill.
+4. Check that `git config user.email` matches the last commit's
+   author, as `promote-start` does for lessons.
+5. Show the diff, and on `ok` ship it as step 6 says. There is
+   nothing to retire.
 
 ## Guardrails
 

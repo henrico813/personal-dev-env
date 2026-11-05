@@ -68,7 +68,7 @@ existing `~/.opencode-mem/` data remains on disk but is not loaded. Shared
 memory instructions apply only when a memory tool is available; this
 installation does not configure one for OpenCode.
 
-The `promote-memory` skill turns an explicitly requested learning into a
-reviewed source change. It targets this repository by default from any
-checkout, writes the skill under `skills/`; it needs no install entry, and
-opens a pull request with Git author email `***REMOVED***`.
+The `promote-lessons` skill also turns a learning the user asks to keep
+into a reviewed rule in a skill or `ai/AGENTS.md`. It targets this
+repository by default from any checkout and ships through a pull
+request.
