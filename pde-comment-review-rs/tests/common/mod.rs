@@ -43,8 +43,11 @@ impl Drop for TempFolder {
 
 /// Keeps this test process's waiting list in a folder of its own in the build's temporary folder, never the user's own.
 /// The folder is set once per test process, but any test may run first, so every test that reaches the waiting list calls this.
-pub fn use_test_waiting_list() {
-    set_test_waiting_list_folder(&find_test_waiting_list_folder());
+/// Returns the folder, so a test can write the list file itself.
+pub fn use_test_waiting_list() -> PathBuf {
+    let folder = find_test_waiting_list_folder();
+    set_test_waiting_list_folder(&folder);
+    folder
 }
 
 /// Returns this test process's waiting-list folder in the build's temporary folder.
