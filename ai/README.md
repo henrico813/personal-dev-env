@@ -29,9 +29,10 @@ Shared workflow skills include `create-plan` for implementation proposals,
 `research-codebase` for as-is codebase research, `delegate` for
 handing a task to an agent and reviewing it, `herdr-handoff` for
 handing work to a new session in a new Herdr workspace, `herdr-hub`
-for the session that coordinates other Herdr sessions, and
+for the session that coordinates other Herdr sessions,
 `roadmap-run` for building a roadmap's pull requests while the user
-is away; they
+is away, and `promote-lessons` for folding a skill's saved lessons
+into its text; they
 install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions
 require skill selection after reading supplied context and before domain work.

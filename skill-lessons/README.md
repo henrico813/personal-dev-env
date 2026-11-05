@@ -78,9 +78,10 @@ leaves such skills untouched.
 
 ## Promotion checks
 
-These commands expect skills at `skills/<name>/SKILL.md` in the
-checkout, so they cannot yet promote into this repository, which uses
-`ai/skills/`.
+These commands find a skill's source at `ai/skills/<name>/SKILL.md` in
+the checkout, as in this repository, or else at
+`skills/<name>/SKILL.md`. The `promote-lessons` skill runs them in
+order.
 
 `promote-start` and `promote-check` help fold lessons into a skill's
 source. `promote-start` refuses a dirty checkout, a source without the
@@ -93,9 +94,12 @@ epic" or "this ticket", since such a lesson rarely becomes skill text.
 five words in a row from a lesson, when the source's Lessons section is
 not empty, or when the skill grew without `--growth-reason`; when it
 passes, it prints the diff and line counts.
-`retire --after-push --checkout PATH` refuses unless the checkout's HEAD
-is on its upstream branch (`origin/main` when it has none), so a rule is
-never only in an unpushed commit.
+`retire --after-push --checkout PATH` fetches the default branch of the
+remote the checkout's branch tracks (`origin` when it tracks none). It
+refuses unless that branch has the skill's source as the checkout's
+HEAD has it. A direct push passes, and so does a merged pull request,
+squash merges included, so lessons stay while the rule is only on an
+unmerged branch.
 
 ## Development
 
