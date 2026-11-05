@@ -26,7 +26,8 @@ Shared workflow skills include `create-plan` for implementation proposals,
 `cleanup-plan` for plan teardown, `design-doc` for design documents,
 `research-codebase` for as-is codebase research, `delegate` for
 handing a task to an agent and reviewing it, `herdr-handoff` for
-handing work to a new session in a new Herdr workspace, and
+handing work to a new session in a new Herdr workspace, `herdr-hub`
+for the session that coordinates other Herdr sessions, and
 `roadmap-run` for building a roadmap's pull requests while the user
 is away; they
 install only to

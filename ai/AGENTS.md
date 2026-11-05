@@ -59,6 +59,8 @@
   message to the user, load and follow the `status-updates` skill.
 - When asked to hand work to a new session in Herdr, load and follow
   the `herdr-handoff` skill.
+- When the user or a handoff makes this session the hub of other
+  Herdr sessions, load and follow the `herdr-hub` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are

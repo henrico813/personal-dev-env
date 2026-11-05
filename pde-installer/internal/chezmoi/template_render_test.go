@@ -222,6 +222,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".agents/skills/git-messages",
 		".agents/skills/go-development",
 		".agents/skills/herdr-handoff",
+		".agents/skills/herdr-hub",
 		".agents/skills/implement-plan",
 		".agents/skills/promote-memory",
 		".agents/skills/pull-request",
