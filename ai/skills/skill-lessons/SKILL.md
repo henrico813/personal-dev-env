@@ -91,5 +91,5 @@ agent, unless the linking skill names someone else.
 
 - Never edit a Lessons section by hand. `skill-lessons` fills it from
   the local store.
-- Lessons become rules in a skill's text only through a pull request
-  the user asks for.
+- Lessons become rules in a skill's text only when the user asks.
+  Promote them with [promote-lessons](../promote-lessons/SKILL.md).
