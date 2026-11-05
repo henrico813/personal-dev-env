@@ -103,6 +103,7 @@ Vibe binaries plus repo-managed AI config.
 | Herdr handoff | `ai/skills/herdr-handoff/` | `~/.agents/skills/herdr-handoff/` | Shared workflow skill for handing work to a new session in a new Herdr workspace |
 | Herdr hub | `ai/skills/herdr-hub/` | `~/.agents/skills/herdr-hub/` | Shared workflow skill for the session that coordinates other Herdr sessions |
 | Roadmap run | `ai/skills/roadmap-run/` | `~/.agents/skills/roadmap-run/` | Shared workflow skill for building a roadmap's pull requests as a stack while the user is away |
+| Session review | `ai/skills/session-review/` | `~/.agents/skills/session-review/` | Shared workflow skill for reviewing a session's token use, lessons and local model jobs |
 | Behavior-focused testing | `ai/skills/behavior-focused-testing/` | `~/.agents/skills/behavior-focused-testing/` | Shared test-writing guidance |
 | Code documentation | `ai/skills/code-documentation/` | `~/.agents/skills/code-documentation/` | Proportional source and test explanations |
 | Plain direct English | `ai/skills/plain-direct-english/` | `~/.agents/skills/plain-direct-english/` | Clear sentences in comments, docs and other prose, and breakdowns of hard ones |
@@ -180,6 +181,7 @@ loads `~/.agents/skills/`.
 | `herdr-handoff` | Hand work to a new session in a new Herdr workspace, with a handoff file it reads first | "Hand the docs work to a new session" |
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `roadmap-run` | Plan, build, review and file the remaining PRs of an approved roadmap as a stack | "Build the rest of the roadmap overnight" |
+| `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the
