@@ -45,7 +45,8 @@ waiting on the user.>
 ## Questions for the user
 
 <Each open question, the choices, and this session's proposal. The
-new session asks these first.>
+new session asks these first. When a hub runs, the new session
+sends them to the hub instead.>
 
 ## Coordination
 
@@ -55,6 +56,10 @@ new session asks these first.>
 - Write progress-only news to <your status file>. Prompt
   "<this session's agent name>" with a question, a blocker, or
   finished work it waits on, such as a PR opening or a step finishing.
+- <When a hub runs: the hub's agent name, in place of this session's
+  name in the line above, and that the new session messages only the
+  hub. The new session never uses an interactive question tool, since
+  Herdr then rejects every message to it.>
 
 ## Rules for the files you edit
 
