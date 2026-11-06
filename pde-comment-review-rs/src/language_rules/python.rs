@@ -1,6 +1,9 @@
-//! Finds Python's `#` comments and docstrings. Each keeps the text that
-//! today's comment checker gives it, except around a tool line, so older
-//! approvals still match.
+//! This module finds Python's `#` comments and docstrings, and each keeps the
+//! text today's comment checker gives it, except around a tool line, so older
+//! approvals still match. Read the `PythonRules::classify_node(node, source)`,
+//! `PythonRules::name_comment(comment, code_below, source)` and
+//! `PythonRules::list_definitions(file, root, source)` functions to understand
+//! the module.
 
 use std::collections::BTreeSet;
 use std::iter::successors;
@@ -227,12 +230,9 @@ impl LanguageRules for PythonRules {
         }
     }
 
-    /// Refuses new text that Python cannot compile or that adds a warning,
-    /// such as an invalid escape. Warnings already in the file stay allowed.
-    ///
-    /// When this machine's Python cannot compile the old file, such as one
-    /// that needs a newer Python, only a new backslash is refused, since a
-    /// backslash could start an escape that no Python compiles.
+    /// Refuses new text that Python cannot compile or that adds a warning, such
+    /// as an invalid escape. When this machine's Python cannot compile the old
+    /// file, only a new backslash is refused, since it could start an escape.
     fn finish_rewrite(&self, folder: &Path, old: &str, new: &str) -> Result<String, Error> {
         if read_file_header(old) != read_file_header(new) {
             return Err(Error {

@@ -1,5 +1,6 @@
-//! Prints each named comment in the given files as `file:line name`,
-//! to compare with the names today's comment checker lists.
+//! This module prints each named comment in the given files as
+//! `file:line name`, to compare with the names today's comment checker lists.
+//! Read the `main()` function to understand the module.
 
 use std::env;
 use std::fs;

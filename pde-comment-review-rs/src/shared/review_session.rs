@@ -38,10 +38,8 @@ static TEST_WAITING_LIST_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 ///
 /// # Errors
 ///
-/// Refuses with `WaitingForUserFeedback` while a list waits for the user, and
-/// with `WriteNotFinished` while a write is unfinished. Refuses with
-/// `ListChanged` when the Review Session is no longer as `seen`, such as after
-/// another call sent a list.
+/// Refuses with `WaitingForUserFeedback` or `WriteNotFinished` while the
+/// Review Session is busy, and with `ListChanged` when it changed since `seen`.
 pub(crate) fn add_list(
     dir: &Path,
     list: FeedbackRequestList,
@@ -171,8 +169,7 @@ pub fn restore(dir: &Path) -> Result<(), Error> {
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
 /// Feedback Request changed since the screen showed it. Once every Feedback
 /// Request has User Feedback and any of it is a User Note, sets
-/// `user_notes_waiting` and then takes the worktree off the waiting list, so a
-/// waiting-list error comes after the save and the User Feedback is kept.
+/// `user_notes_waiting` and takes the worktree off the waiting list.
 pub fn save_user_feedback(
     dir: &Path,
     shown_request: &FeedbackRequest,
@@ -364,7 +361,6 @@ pub fn add_to_waiting_list(dir: &Path) -> Result<(), Error> {
     })
 }
 
-/// Takes the worktree that holds `dir` off the waiting list.
 pub(crate) fn remove_from_waiting_list(dir: &Path) -> Result<(), Error> {
     change_waiting_list(dir, |worktrees, worktree| {
         worktrees.retain(|listed| *listed != worktree);

@@ -1,10 +1,11 @@
-//! Carries each failure or refusal as a code and a message.
+//! This module carries each failure or refusal as an error code and a
+//! message. Read the `ErrorCode::next_step()` function to understand the
+//! module.
 
 use serde::{Deserialize, Serialize};
 
 use crate::steps::NextStep;
 
-/// Carries a failure code and a message for the caller.
 #[derive(Debug, Serialize)]
 pub struct Error {
     pub code: ErrorCode,

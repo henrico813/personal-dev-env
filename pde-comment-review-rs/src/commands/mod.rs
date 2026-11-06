@@ -1,6 +1,5 @@
-//! This module takes calls from the command line and MCP, and builds the
-//! `{status, result, error, next}` reply both give. Steps return plain Rust
-//! values and never build a reply themselves. Read the
+//! This module builds the `{status, result, error, next}` reply that the
+//! command line and MCP both give, from a step's plain Rust result. Read the
 //! `Reply::from_outcome(outcome)` and `list_commands()` functions to
 //! understand the module.
 
