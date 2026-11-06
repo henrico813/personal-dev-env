@@ -195,6 +195,14 @@ pattern over the whole file.
 - Verify the exact files in a PR diff before merging.
 - Use squash merges only.
 
+## Context Size
+
+- At each milestone, such as a merged PR, an approved plan or a
+  delegated step's report, run `pde-context` where it is installed.
+  When it says the context is above the 200k handoff level, propose
+  handing the remaining work to a new session with `herdr-handoff`
+  instead of waiting for compaction.
+
 ## Self Improvement
 
 - At the start of each OpenCode session, when the `memory` tool is available,
