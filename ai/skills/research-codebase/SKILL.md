@@ -19,6 +19,13 @@ When another agent gave you this task, research directly instead of
 starting the parallel Task agents described below. Return the findings,
 and write a research document only when the task gives a path.
 
+When the task asks for web checks, such as confirming each cited
+paper's title, year and claims, still send them to one subagent, such
+as web-search-researcher. Ask it for a short table of verdicts with
+links. Full search results then stay out of your context, which every
+later step reads again. Without a subagent tool, check directly; start
+no other agent session.
+
 ## CRITICAL: YOUR ONLY JOB IS TO DOCUMENT AND EXPLAIN THE CODEBASE AS IT EXISTS TODAY
 - DO NOT suggest improvements or changes unless the user explicitly asks for them
 - DO NOT perform root cause analysis unless the user explicitly asks for them
