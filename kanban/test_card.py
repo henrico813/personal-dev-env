@@ -266,6 +266,31 @@ class TestMove:
             f"- {TODAY} ready: by user for the user. Clear enough\n"
         )
 
+    def test_move_pauses_active_card_without_criteria(
+        self, projects: Path
+    ) -> None:
+        """The staff agent can pause active work, even with no criteria.
+
+        Paused work goes back to ready to wait for a free slot, and
+        adopted work may have no criteria yet. A refusal would leave
+        paused work counted as active against the work limit.
+        """
+        path = write_card(projects, KEY, "active")
+
+        code = run_card(
+            projects,
+            "move",
+            KEY,
+            "ready",
+            "--why",
+            "paused, handoff kb-1.md",
+            "--by",
+            "general-staff",
+        )
+
+        assert code == 0
+        assert "stage: ready\n" in path.read_text()
+
     def test_move_refuses_without_author(self, projects: Path) -> None:
         """A move with no --by and no Herdr agent name fails.
 

@@ -71,7 +71,8 @@ Everything else it handles itself or leaves alone.
   agent passes `--user` only after the user said so in this session.
 - The staff agent moves `ready -> active` when a worker starts,
   `active -> review` when a worker reports ready with a PR or other
-  evidence, and `ready -> draft` when a card has a gap.
+  evidence, `active -> ready` when work is paused, with `--why`
+  naming its handoff, and `ready -> draft` when a card has a gap.
 - Before `active -> review`, the staff agent checks the work itself,
   not only the report. The PR or branch must exist, and its tests must
   pass.

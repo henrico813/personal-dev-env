@@ -89,6 +89,7 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 | `draft` -> `ready` | user | an Acceptance Criteria checkbox |
 | `ready` -> `draft` | user or staff | |
 | `ready` -> `active` | staff; the user past the work limit | a free slot, unless `--user` |
+| `active` -> `ready` | staff | work paused; `--why` names its handoff |
 | `active` -> `draft` | user | |
 | `active` -> `review` | staff | |
 | `review` -> `active` | user | |
@@ -98,8 +99,11 @@ agent's kind and session id from `herdr agent get AGENT`, such as
 | new card -> `active` or `review` | user, by adoption | |
 
 "user" moves need `--user`. "staff" moves are the staff agent's,
-and `card` makes them without `--user`. Any move not in the table is
-refused. The **work limit** is 8 cards in `active` plus `review`,
+and `card` makes them without `--user`. The user can make a staff
+move too, with `--user`, so the Log says the user decided. Any move
+not in the table is refused. Only `draft` -> `ready` needs a
+checkbox, so paused work with no criteria can still go back to
+`ready`. The **work limit** is 8 cards in `active` plus `review`,
 counted across every project. Adoption skips the limit and the
 Acceptance Criteria check.
 
