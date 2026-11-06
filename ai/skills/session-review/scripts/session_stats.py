@@ -2,10 +2,13 @@
 
 Reads one OpenCode session from the local database, read-only, and
 prints about twenty plain lines. Read ``report_session`` first.
+``--context`` prints one line instead, from ``describe_context``, which
+the ``pde-context`` command runs.
 
 Example:
     python3 ~/.agents/skills/session-review/scripts/session_stats.py
     python3 session_stats.py --session ses_abc123
+    python3 session_stats.py --context
 """
 
 import argparse
@@ -20,6 +23,9 @@ from pathlib import Path
 
 DB = Path.home() / ".local/share/opencode/opencode.db"
 SKILLS = Path.home() / ".agents/skills"
+MODELS = Path.home() / ".cache/opencode/models.json"
+# Agents hand the rest of their work to a new session above this context.
+HANDOFF_LEVEL = 200_000
 # A successful read prints the skill's unindented frontmatter, maybe after a
 # line number from the read tool or cat -n. Skill tool output starts with its
 # tag, so a tag quoted inside other output does not count.
@@ -88,6 +94,44 @@ def report_session(db: sqlite3.Connection, session: str) -> list[str]:
     ]
 
 
+def describe_context(db: sqlite3.Connection, session: str) -> str | None:
+    """Describe the session's latest context and its share of the window.
+
+    Args:
+        db: Read-only connection to the OpenCode database.
+        session: OpenCode session ID.
+
+    Returns:
+        A line such as ``250k of 1M (25%), above the 200k handoff
+        level``, or None when the session is not in the database.
+    """
+    row = db.execute(
+        "select model from session_v2 where id = ?", (session,)
+    ).fetchone()
+    if row is None:
+        return None
+    steps = [
+        (seq, json.loads(data))
+        for seq, data in db.execute(
+            "select seq, data from session_message"
+            " where session_id = ? and type = 'assistant' order by seq",
+            (session,),
+        )
+    ]
+    sizes = list_trusted_sizes(steps)
+    context = sizes[-1][1] if sizes else 0
+    window = find_context_window(row[0])
+    line = format_tokens(context)
+    if window:
+        share = round(context * 100 / window)
+        line += f" of {format_tokens(window)} ({share}%)"
+    else:
+        line += ", window unknown"
+    if context > HANDOFF_LEVEL:
+        line += f", above the {format_tokens(HANDOFF_LEVEL)} handoff level"
+    return line
+
+
 def count_context_tokens(step: dict) -> int:
     """Return the tokens a model step read, or 0 when none were logged.
 
@@ -106,12 +150,30 @@ def count_context_tokens(step: dict) -> int:
     )
 
 
-def describe_peak(steps: list[tuple[int, dict]]) -> str:
-    """Describe the largest context one model step read.
+def list_trusted_sizes(steps: list[tuple[int, dict]]) -> list[tuple[int, int]]:
+    """Return the context of each step whose token count can be trusted.
 
     The claude-code provider logs some steps with zero tokens and adds
     them to the next step, so that next step can read twice the real
-    context. Steps right after a zero step are left out.
+    context. Zero steps and the steps right after them are left out.
+
+    Args:
+        steps: Sequence number and data of each assistant message.
+
+    Returns:
+        Sequence number and context tokens of each step kept, in order.
+    """
+    sizes, after_zero = [], False
+    for seq, step in steps:
+        size = count_context_tokens(step)
+        if size and not after_zero:
+            sizes.append((seq, size))
+        after_zero = size == 0
+    return sizes
+
+
+def describe_peak(steps: list[tuple[int, dict]]) -> str:
+    """Describe the largest context one model step read.
 
     Args:
         steps: Sequence number and data of each assistant message.
@@ -120,14 +182,10 @@ def describe_peak(steps: list[tuple[int, dict]]) -> str:
         One line with the approximate peak and the step's sequence
         number.
     """
-    peak, peak_seq, after_zero = 0, None, False
-    for seq, step in steps:
-        size = count_context_tokens(step)
-        if size > peak and not after_zero:
-            peak, peak_seq = size, seq
-        after_zero = size == 0
-    if peak_seq is None:
+    sizes = list_trusted_sizes(steps)
+    if not sizes:
         return "peak context none"
+    peak_seq, peak = max(sizes, key=lambda item: item[1])
     return f"peak context about {peak:,} tokens at seq {peak_seq}"
 
 
@@ -291,6 +349,48 @@ def format_model(model: str | None) -> str:
     return f"{data.get('providerID', '?')}/{data['id']}"
 
 
+def find_context_window(model: str | None) -> int | None:
+    """Return a session's context window from OpenCode's model list.
+
+    The claude-code provider is not in the list, and its IDs add a
+    suffix such as ``[1m]``. So when the exact ID is missing, the lookup
+    tries the ID without the suffix, under the session's provider first.
+
+    Args:
+        model: The JSON the database stores, or None.
+
+    Returns:
+        The window in tokens, or None when the list or model is missing.
+    """
+    data = json.loads(model or "{}")
+    if not data.get("id") or not MODELS.is_file():
+        return None
+    providers = json.loads(MODELS.read_text())
+    own = providers.get(data.get("providerID")) or {}
+    bare = data["id"].split("[")[0]
+    candidates = [
+        (provider.get("models") or {}).get(model_id)
+        for model_id in (data["id"], bare)
+        for provider in [own, *providers.values()]
+    ]
+    found = next((entry for entry in candidates if entry), {})
+    return (found.get("limit") or {}).get("context")
+
+
+def format_tokens(count: int) -> str:
+    """Return a token count rounded for reading, such as ``245k`` or ``1M``.
+
+    Args:
+        count: Number of tokens.
+
+    Returns:
+        Thousands below a million, else millions to three digits.
+    """
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.3g}M"
+    return f"{round(count / 1000)}k"
+
+
 def main() -> None:
     """Print the review lines, or exit 1 with a reason on stderr."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -299,13 +399,23 @@ def main() -> None:
         default=os.environ.get("OPENCODE_SESSION_ID"),
         help="session ID; defaults to $OPENCODE_SESSION_ID",
     )
-    session = parser.parse_args().session
+    parser.add_argument(
+        "--context",
+        action="store_true",
+        help="print only the latest context and its share of the window",
+    )
+    args = parser.parse_args()
+    session = args.session
     if not session:
         sys.exit("no session ID; pass --session or run inside OpenCode")
     if not DB.is_file():
         sys.exit(f"no OpenCode database at {DB}")
     with closing(sqlite3.connect(f"file:{DB}?mode=ro", uri=True)) as db:
-        lines = report_session(db, session)
+        if args.context:
+            line = describe_context(db, session)
+            lines = [line] if line else []
+        else:
+            lines = report_session(db, session)
     if not lines:
         sys.exit(f"session {session} is not in {DB}")
     print("\n".join(lines))
