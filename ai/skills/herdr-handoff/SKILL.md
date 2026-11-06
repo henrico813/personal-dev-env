@@ -1,12 +1,14 @@
 ---
 name: herdr-handoff
 description: Hands part or all of a session's work to a new agent
-  session in a new Herdr workspace. A handoff file carries everything
+  session in a new Herdr workspace, or a tab of the hub's workspace
+  when a hub runs. A handoff file carries everything
   the new session needs, since it starts with no earlier context. Use
   when the user asks to hand work off to a new session, to start a new
   session in a new Herdr workspace, or to move work out because it is
-  independent or this session's context is full. For a subagent whose
-  work the session reviews, use delegate.
+  independent or this session's context is full. Also use when the
+  user asks to prepare long, repetitive work for a cheaper or local
+  model. For a subagent whose work the session reviews, use delegate.
 metadata:
   pde-workflow: "true"
 ---
@@ -15,8 +17,9 @@ metadata:
 
 Herdr is a terminal workspace manager with workspaces, tabs and panes,
 and a `herdr` CLI that starts and watches coding agents. This skill
-covers handing work to a new agent session in a new Herdr workspace.
-The new session remembers nothing of this one, so a handoff file
+covers handing work to a new agent session in a new Herdr workspace,
+or in a new tab of the hub's workspace when a hub runs. The new
+session remembers nothing of this one, so a handoff file
 gives it everything it needs.
 
 For command syntax, read Herdr's own skill with `herdr --skill`, but
@@ -31,7 +34,18 @@ rather than trusting the examples here.
 - Your context is nearly full and the rest needs a fresh start.
 
 When the user has not asked, propose the handoff and wait for a yes.
-Herdr's skill says to create a workspace only when the user asks.
+Herdr's skill says to create a workspace or tab only when the user
+asks.
+
+## Prepare the work for a cheaper model
+
+Use this part only when the user asks to prepare long, repetitive
+work for a smaller or local model. A review that repeats one check
+for each of many tickets is such work. Follow
+[references/cheaper-model.md](references/cheaper-model.md) before you
+write the handoff file. That page moves the judgment, facts and tool
+steps out of this conversation into the work's own log, so a smaller
+model can run the loop from them.
 
 ## Write the handoff file
 
@@ -55,23 +69,43 @@ Herdr's skill says to create a workspace only when the user asks.
 ## Split ownership
 
 - Two sessions never edit the same file, branch or worktree at once.
+  When both need one file, split the file first, or run the sessions
+  one after the other.
+- The handoff lists the exact files the new session may read and the
+  files it may edit, such as "Edit only docs/restore.md. Read
+  src/restore.rs." A folder or a phrase such as "the docs" is not a
+  list.
 - The handoff names which session owns each one, and when ownership
   moves, such as "Do not edit the design until the other session says
   its new section is done."
 - If the project has a tracking page, such as a roadmap note, record
   the ownership change there too.
 - After the handoff, stop changing what you handed over.
-- When ownership moves later, tell the new session with
-  `herdr agent prompt <name> "<message>"`, and tell the user.
-  When a hub runs, tell the hub too.
+- When ownership moves later, tell the user. Tell the new session,
+  and the hub when one runs, with `scripts/send.sh` of
+  [herdr-hub](../herdr-hub/SKILL.md), as its Send to a session says.
+  The script waits while the session is `blocked` or the user is in
+  its pane.
 - The handoff tells the new session to write progress-only news, such
-  as "rehearsal passed", to its own status file. It tells the new
-  session to prompt this session with a question, a blocker, or
-  finished work this session waits on, such as a PR opening or a step
-  finishing. Each prompt makes this session re-read its whole context.
-- A question the new session sends you with `herdr agent prompt` is
-  yours to answer. An approval or question shown in its own pane
-  while it is `blocked` stays the user's.
+  as "rehearsal passed", to its own status file. It names a report
+  file, `report-<name>.md` in this session's run folder or the
+  handoff folder, for a question, a blocker, or finished work this
+  session waits on, such as a PR opening. The new session overwrites
+  the report and ends its turn. It never prompts this session.
+- When this session keeps nothing and no hub runs, the handoff names
+  no report file. The new session asks the user in its own pane.
+- Learn of a report with one background command:
+
+      herdr agent wait <name> --until idle --until done \
+        --until blocked
+
+  When it returns at `blocked`, tell the user. Otherwise read the
+  report, then rename it to `report-<name>.read`. No report file
+  means no news. Watch each session of herdr-hub covers a session
+  that is already `idle` or `blocked`, or runs on another machine.
+- A question in the new session's report is yours to answer. An
+  approval or question shown in its own pane while it is `blocked`
+  stays the user's.
 
 ## Start the session
 
@@ -86,18 +120,37 @@ Herdr's skill says to create a workspace only when the user asks.
    or else your own. If that command fails, or the kind is not in the
    list `herdr agent start --help` prints, ask the user which kind to
    start.
-3. Create the workspace, and read the new pane from
-   `.result.root_pane.pane_id`:
+3. Create the new session's place, and read its pane from
+   `.result.root_pane.pane_id`. When a hub runs, make a tab in the
+   hub's workspace. The hub reads it from `$HERDR_WORKSPACE_ID`, and
+   another session from `.result.agent.workspace_id` of
+   `herdr agent get <hub>`.
+   Give the tab and the agent the same short name, `<run>-<role>`,
+   such as `docs-p2`. The hub keeps tab 1.
+
+       herdr tab create --no-focus --workspace <hub workspace> \
+         --label <name> --cwd <the folder the new session works in>
+
+   Without a hub, make a new workspace. `--no-focus` keeps the user's
+   screen where it was, so the new pane is not focused:
 
        herdr workspace create --no-focus --label <label> \
          --cwd <the folder the new session works in>
 
-   `--no-focus` keeps the user's screen where it was.
 4. Start the agent. Its name must match `[a-z][a-z0-9_-]{0,31}` and
    be unique among live agents:
 
        herdr agent start <name> --kind <kind> --pane <pane> \
          --timeout 90000
+
+   For OpenCode, add `-- --auto` at the end, so the new session
+   approves its own tool permissions instead of stopping at each one.
+   Check that `.result.argv` in the reply includes `--auto`. If it
+   does not, tell the user the session will stop at permission
+   prompts. `--auto` still obeys rules that deny a command, and a
+   pull request write still waits for the user through
+   `pde-gh-write`. Give other kinds no approval flag unless the user
+   names one.
 
    To choose a model, pass the agent's own model flag after `--`.
    OpenCode has no model flag, so it uses the `model` set in
@@ -129,18 +182,19 @@ To start the session on another saved machine, add
 6, with the label from `herdr machine list`. First copy the handoff
 file to the same path on that machine, since a remote session cannot
 read a local path. The remote `--cwd` must be an absolute path or
-start with `~/`. Read pane IDs from that machine's replies. An
-OpenCode session there may ask to access the handoff folder before
-it reads the file. Tell the user so, since that approval is theirs
-to give. When the machine's data must stay on it, the handoff asks
-for counts and pass or fail results in reports, never lists of
-names or file contents.
+start with `~/`. Read pane IDs from that machine's replies. A remote
+session cannot be a tab in a local hub's workspace, so make it a new
+workspace on that machine. An OpenCode session there without `--auto`
+may ask to access the handoff folder first. Tell the user so, since
+that approval is theirs to give. When the machine's data must stay on
+it, the handoff asks for counts and pass or fail results in reports,
+never lists of names or file contents.
 
 ## Tell the user
 
 Write the message by the `status-updates` skill. Give:
 
-- the workspace label and the agent name
+- the workspace or tab label and the agent name
 - the handoff file path
 - the model the new session runs, and that the user can pick another
   in that session
@@ -160,18 +214,23 @@ or revising this skill.
 - It holds no secret.
 - It explains every label, and every path in it is absolute.
 - It names which session owns each file, branch and worktree.
+- It lists the exact files the new session may read and may edit.
+- An OpenCode session started with `--auto` in `.result.argv`.
+- It names the new session's report file, unless this session keeps
+  nothing and no hub runs.
 - The new agent was seen `working`, or `idle` or `done` after
   finishing.
-- The message to the user names the workspace, the agent, the
+- The message to the user names the workspace or tab, the agent, the
   handoff file and the model.
 
 ## Rules
 
 - Use the `herdr` CLI, not a harness plugin, so this works in any
   agent.
-- Never close the new workspace or agent. They belong to the user.
+- Never close the new workspace, tab or agent. They belong to the
+  user.
 - Never answer an approval or question shown in the new agent's
-  pane. Answer only what it sends you with `herdr agent prompt`.
+  pane. Answer only what it writes in its report.
 - Filter `herdr agent list` with `jq`, and never print the whole
   list. It adds thousands of tokens that every later turn re-reads.
 

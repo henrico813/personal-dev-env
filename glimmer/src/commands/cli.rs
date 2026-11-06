@@ -58,6 +58,16 @@ pub enum Command {
     Open {
         name: Option<String>,
     },
+    /// Dismisses the review of branch `name`, or of this worktree with no
+    /// `name`.
+    Dismiss {
+        name: Option<String>,
+    },
+    /// Restores the dismissed review of branch `name`, or of this worktree
+    /// with no `name`.
+    Restore {
+        name: Option<String>,
+    },
     DropGoneApprovals,
     /// Needs no Git checkout, Herdr or saved review, because the installer
     /// runs it to check each install.

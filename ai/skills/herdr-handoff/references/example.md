@@ -56,7 +56,7 @@ herdr workspace create \
   --label pdev-design-process --no-focus
 # .result.root_pane.pane_id gives <pane>
 herdr agent start design-process --kind opencode --pane <pane> \
-  --timeout 90000
+  --timeout 90000 -- --auto
 herdr agent prompt design-process "<prompt>" --wait \
   --timeout 60000
 herdr agent get design-process      # agent_status is working
