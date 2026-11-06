@@ -17,6 +17,7 @@ def make_db(
     home: Path,
     messages: list[tuple[str, dict]],
     subagents: tuple[tuple[str, int], ...] = (("opus", 4),),
+    model: str = "opus",
 ) -> None:
     """Write a database with session ``ses_main``, its subagents and messages.
 
@@ -25,6 +26,7 @@ def make_db(
         messages: Type and data of each message of ``ses_main``.
         subagents: Model and cache reads of each subagent, named
             ``ses_sub1``, ``ses_sub2`` and so on.
+        model: Model ID of ``ses_main``, under provider ``test``.
     """
     path = home / ".local/share/opencode/opencode.db"
     path.parent.mkdir(parents=True)
@@ -39,7 +41,7 @@ def make_db(
             "create table session_message"
             " (session_id, type, seq, data, time_created)"
         )
-        rows = [("ses_main", None, "Main", "opus", 4)] + [
+        rows = [("ses_main", None, "Main", model, 4)] + [
             (f"ses_sub{n}", "ses_main", f"Sub {n}", model, read)
             for n, (model, read) in enumerate(subagents, 1)
         ]
@@ -63,6 +65,14 @@ def make_db(
                 for seq, (kind, data) in enumerate(messages, 1)
             ],
         )
+
+
+def make_models(home: Path) -> None:
+    """OpenCode's model list, with a 1M window for ``opus`` under anthropic."""
+    path = home / ".cache/opencode/models.json"
+    path.parent.mkdir(parents=True)
+    opus = {"limit": {"context": 1_000_000}}
+    path.write_text(json.dumps({"anthropic": {"models": {"opus": opus}}}))
 
 
 def make_step(context: int, *calls: dict) -> tuple[str, dict]:
@@ -311,3 +321,55 @@ class TestReportLines:
 
         assert find_line(lines, "repeated commands") == "repeated commands 1"
         assert "  2x git status" in lines
+
+
+class TestContextLine:
+    """The one line ``--context`` prints, which agents hand off from."""
+
+    @pytest.mark.parametrize(
+        "steps,expected",
+        [
+            pytest.param(
+                [150_000, 120_000], "120k of 1M (12%)", id="latest-step"
+            ),
+            pytest.param(
+                [100_000, 0, 250_000],
+                "100k of 1M (10%)",
+                id="skips-step-after-zero",
+            ),
+        ],
+    )
+    def test_context_reports_latest_trusted_step_share(
+        self, tmp_path: Path, steps: list[int], expected: str
+    ) -> None:
+        """Show the latest trusted step as a share of the model's window.
+
+        Agents hand off to a new session when this line passes the
+        level. Context drops below its peak after a compaction, and the
+        doubled step after a zero step must not set off an early
+        handoff. The claude-code provider's IDs carry a suffix,
+        such as ``opus[1m]``, which must still find the window.
+        """
+        make_db(tmp_path, [make_step(n) for n in steps], model="opus[1m]")
+        make_models(tmp_path)
+
+        result = run_stats(tmp_path, "--context")
+
+        assert result.stdout == f"{expected}\n"
+
+    def test_context_without_models_still_reports_level(
+        self, tmp_path: Path
+    ) -> None:
+        """Print the context and level when OpenCode's model list is missing.
+
+        The list is a cache OpenCode downloads, so a new machine can
+        lack it. The handoff level needs only the token count, so the
+        command must not fail there.
+        """
+        make_db(tmp_path, [make_step(250_000)])
+
+        result = run_stats(tmp_path, "--context")
+
+        assert result.stdout == (
+            "250k, window unknown, above the 200k handoff level\n"
+        )
