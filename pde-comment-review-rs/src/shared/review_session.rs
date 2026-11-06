@@ -161,7 +161,11 @@ pub fn restore(dir: &Path) -> Result<(), Error> {
     };
     review_session.status = ReviewStatus::WaitingForUserFeedback;
     lock.save()?;
-    add_to_waiting_list(dir)
+    // The status is saved by now, so a waiting-list error must not read as nothing restored.
+    add_to_waiting_list(dir).map_err(|error| Error {
+        code: error.code,
+        message: format!("The review was restored. {}", error.message),
+    })
 }
 
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
