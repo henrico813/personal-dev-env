@@ -81,6 +81,9 @@ Projects/CLAUDE.md
 
 .local/bin/surveil
 .local/state/surveil
-# The review tool replaced the comment checker and its -next name.
+# pde-comment-review replaced the comment checker and its -next name.
 .local/bin/pde-comment-checker
 .local/bin/pde-comment-review-next
+# glimmer replaced pde-comment-review and its Herdr plugin folder.
+.local/bin/pde-comment-review
+.local/share/pde/herdr-plugins/pde-comment-review

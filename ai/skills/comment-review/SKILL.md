@@ -1,7 +1,7 @@
 ---
 name: comment-review
 description: Saves code comments as a review that the user answers one
-  comment per screen with pde-comment-review; the answers are then
+  comment per screen with glimmer; the answers are then
   written into the code with no AI involved. Use when you want to put
   code comments in front of the user for review, or a task's last step
   is the user's review of the comments.
@@ -10,7 +10,7 @@ description: Saves code comments as a review that the user answers one
 # Comment Review
 
 The user reviews comments one per screen, on a phone or in a
-terminal, with `pde-comment-review`. You send a Feedback Request
+terminal, with `glimmer`. You send a Feedback Request
 List, with your Agent Suggestion to keep, cut or reword each comment;
 the user answers each Feedback Request; after the last answer the
 tool writes the answers into the code and approves the answered
@@ -44,13 +44,13 @@ review's `status`, the `result`, an `error` with a `code` and a
    started from:
 
    ```bash
-   pde-comment-review check-comments --base <task start>
+   glimmer check-comments --base <task start>
    ```
 
 3. Build the Feedback Request List. This saves nothing:
 
    ```bash
-   pde-comment-review make-feedback-request-list --base <task start>
+   glimmer make-feedback-request-list --base <task start>
    ```
 
    `result.list` holds a Feedback Request for each comment the branch
@@ -91,7 +91,7 @@ review's `status`, the `result`, an `error` with a `code` and a
 5. Send the list to the user:
 
    ```bash
-   pde-comment-review send-agent-suggestions <list file>
+   glimmer send-agent-suggestions <list file>
    ```
 
    When it refuses with `list_changed`, the code changed: run step 3
@@ -101,11 +101,11 @@ review's `status`, the `result`, an `error` with a `code` and a
    `waiting_for_user_feedback`. When `next` is `tell_user_and_wait`,
    tell the user: "A comment review is ready: press Ctrl+b e in Herdr,
    or Ctrl+b E for a full tab, or run
-   `pde-comment-review open <branch>`." Do not run `open` yourself: it
+   `glimmer open <branch>`." Do not run `open` yourself: it
    takes over the terminal it runs in. Do not edit the listed comments
    before the last answer: the write refuses a comment that changed.
 6. When the user says there are User Notes, run
-   `pde-comment-review show-status`; `result.waiting.user_notes`
+   `glimmer show-status`; `result.waiting.user_notes`
    holds each note by request ID. Run step 3 again: it returns the
    noted requests with their IDs. Answer each note in that request's
    Agent Suggestion, without editing the comment in the code, then
@@ -116,11 +116,11 @@ review's `status`, the `result`, an `error` with a `code` and a
    worktree's Git folder or `pde/code-comments.json` in the clone's
    shared Git folder: change a review only with these commands, and
    leave the answers and notes to the user.
-8. Run `pde-comment-review show-status` at any time to see what the
+8. Run `glimmer show-status` at any time to see what the
    review waits on and the step to take next.
 
 ## When the tool is missing
 
-If `pde-comment-review` is not on `PATH`, tell the user that the
+If `glimmer` is not on `PATH`, tell the user that the
 comment review tool is not installed, and show the comments to the
 user in the pull request or the chat instead.

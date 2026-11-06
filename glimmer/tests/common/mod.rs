@@ -1,0 +1,169 @@
+// Each test file uses only some of these helpers.
+#![allow(dead_code)]
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use glimmer::shared::approvals::{self, Approval};
+use glimmer::shared::git::resolve_commit;
+use glimmer::shared::review_session::{
+    TEST_WAITING_LIST_VARIABLE, read_waiting_list, set_test_waiting_list_folder,
+};
+use serde_json::{Value, json};
+
+/// Names the Go file most tests change.
+pub const STORE: &str = "review_store.go";
+/// Holds the comment text the user approved.
+pub const APPROVED: &str = "// Saves the answer under the lock.\n";
+/// Holds an agent's new wording of the approved comment.
+pub const REWORDED: &str = "// Writes the answer while holding the lock.\n";
+
+/// Makes an empty temporary folder and deletes it when dropped.
+pub struct TempFolder(PathBuf);
+
+impl TempFolder {
+    pub fn new() -> Self {
+        let output = Command::new("mktemp").arg("-d").output().unwrap();
+        assert!(output.status.success());
+        let path = String::from_utf8(output.stdout).unwrap();
+        Self(PathBuf::from(path.trim_end_matches('\n')))
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempFolder {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Keeps this test process's waiting list in a folder of its own in the build's temporary folder, never the user's own.
+/// The folder is set once per test process, but any test may run first, so every test that reaches the waiting list calls this.
+/// Returns the folder, so a test can write the list file itself.
+pub fn use_test_waiting_list() -> PathBuf {
+    let folder = find_test_waiting_list_folder();
+    set_test_waiting_list_folder(&folder);
+    folder
+}
+
+/// Returns this test process's waiting-list folder in the build's temporary folder.
+fn find_test_waiting_list_folder() -> PathBuf {
+    let folder = format!("waiting-list-{}", std::process::id());
+    Path::new(env!("CARGO_TARGET_TMPDIR")).join(folder)
+}
+
+/// Returns a command that runs the program in `dir`, with this test process's waiting list, never the user's own.
+pub fn make_program_command(dir: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_glimmer"));
+    command
+        .current_dir(dir)
+        .env(TEST_WAITING_LIST_VARIABLE, find_test_waiting_list_folder());
+    command
+}
+
+/// Returns the worktrees on the waiting list inside `folder`, since tests that run at once share one waiting list.
+pub fn find_waiting_worktrees(folder: &Path) -> Vec<PathBuf> {
+    let folder = fs::canonicalize(folder).unwrap();
+    read_waiting_list()
+        .unwrap()
+        .into_iter()
+        .filter(|worktree| worktree.starts_with(&folder))
+        .collect()
+}
+
+/// Saves `write_error` in the Review Session, as a failed write leaves it.
+pub fn save_write_error(dir: &Path, write_error: Value) {
+    let review_file = dir.join(".git/pde/review.json");
+    let mut review: Value = serde_json::from_slice(&fs::read(&review_file).unwrap()).unwrap();
+    review["write_error"] = write_error;
+    fs::write(review_file, review.to_string()).unwrap();
+}
+
+/// Runs Git without the test machine's own settings, so they cannot change the result.
+pub fn run_git(dir: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_AUTHOR_NAME", "Review Test")
+        .env("GIT_AUTHOR_EMAIL", "review@example.invalid")
+        .env("GIT_COMMITTER_NAME", "Review Test")
+        .env("GIT_COMMITTER_EMAIL", "review@example.invalid")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{:?}: {:?}", args, output);
+}
+
+/// Makes main hold one Go file with one comment, then starts a branch from it.
+pub fn make_repo() -> TempFolder {
+    let folder = TempFolder::new();
+    let dir = folder.path();
+    run_git(dir, &["init", "-b", "main"]);
+    write_store(dir, APPROVED, "");
+    commit_all(dir);
+    run_git(dir, &["checkout", "-b", "review-comments"]);
+    folder
+}
+
+/// Returns Go source with `comment` above a `SaveAnswer` function whose body is `body`.
+pub fn store_source(comment: &str, body: &str) -> String {
+    format!("package review\n\n{comment}func SaveAnswer() {{{body}}}\n")
+}
+
+/// Writes `store_source(comment, body)` to the store file on disk.
+pub fn write_store(dir: &Path, comment: &str, body: &str) {
+    fs::write(dir.join(STORE), store_source(comment, body)).unwrap();
+}
+
+/// Commits every change, or makes an empty commit when nothing changed.
+pub fn commit_all(dir: &Path) {
+    run_git(dir, &["add", "--all"]);
+    run_git(dir, &["commit", "--allow-empty", "-m", "Change the store"]);
+}
+
+/// Saves the user's approval of `text` for `name`, or a cut when `text` is empty.
+pub fn add_decision(dir: &Path, file: &str, name: &str, text: &str) {
+    let decision = Approval {
+        file: PathBuf::from(file),
+        name: name.to_owned(),
+        text: text.to_owned(),
+    };
+    approvals::add(dir, &[decision]).unwrap();
+}
+
+/// Saves a Review Session in `status` that sent each of `lists` from HEAD, with `feedback` by request ID.
+pub fn save_review(dir: &Path, status: &str, lists: &[Value], feedback: Value) {
+    let base = resolve_commit(dir, "HEAD").unwrap();
+    let lists: Vec<Value> = lists
+        .iter()
+        .map(|requests| json!({"base": base.as_str(), "requests": requests}))
+        .collect();
+    let review = json!({
+        "status": status,
+        "origin": {"repo": "personal-dev-env", "branch": "review-comments", "agent_session": "ses_123"},
+        "lists": lists,
+        "feedback": feedback,
+    });
+    fs::create_dir_all(dir.join(".git/pde")).unwrap();
+    fs::write(dir.join(".git/pde/review.json"), review.to_string()).unwrap();
+}
+
+/// Returns a sent Feedback Request for the store file, with reason `new` and a keep Agent Suggestion.
+pub fn request_json(id: u32, name: Option<&str>, text: &str, line: usize) -> Value {
+    json!({
+        "id": id,
+        "file": STORE,
+        "name": name,
+        "reason": "new",
+        "text": text,
+        "can_reword": true,
+        "line": line,
+        "suggestion": {"kind": "keep", "reasoning": "Says what it does.", "also_at": []},
+    })
+}
