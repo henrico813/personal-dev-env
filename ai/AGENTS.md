@@ -62,7 +62,8 @@
   wrap up a session, load and follow the `conclude-session` skill.
 - When writing a status update, progress report, recap or handoff
   message to the user, load and follow the `status-updates` skill.
-- When asked to hand work to a new session in Herdr, load and follow
+- When asked to hand work to a new session in Herdr, or to prepare
+  long, repetitive work for a cheaper or local model, load and follow
   the `herdr-handoff` skill.
 - When the user or a handoff makes this session the hub of other
   Herdr sessions, load and follow the `herdr-hub` skill.

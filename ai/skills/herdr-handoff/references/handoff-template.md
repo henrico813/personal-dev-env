@@ -50,6 +50,9 @@ sends them to the hub instead.>
 
 ## Coordination
 
+- Read: <each file the new session may read, by absolute path.>
+- Edit: <each file it may edit, by absolute path. No other session
+  edits these files.>
 - <Which session owns each file, branch and worktree.>
 - **<What the new session must not touch, until when.>**
 - <Who records ownership changes on the tracking page, if any.>

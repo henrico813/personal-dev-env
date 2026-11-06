@@ -85,6 +85,10 @@ job, point to the Local model section of
 than restating it. Keep cheap cloud models, such as
 `openai/gpt-6-luna`, apart from local ones, such as `goog/qwen3.8`:
 only a local model keeps working when cloud access fails.
+For long, repetitive work, such as an audit that repeats one check
+for each ticket, follow
+[herdr-handoff's page](../herdr-handoff/references/cheaper-model.md)
+to prepare it for a cheaper model.
 
 ### 5. Write the review and have it checked
 
