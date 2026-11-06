@@ -31,7 +31,8 @@ rather than trusting the examples here.
 
 - The user asks for it.
 - Part of the work is independent of yours and can run alongside it.
-- Your context is nearly full and the rest needs a fresh start.
+- Your context is above the 200k handoff level. Run `pde-context` at
+  each milestone, such as a merged PR, to check.
 
 When the user has not asked, propose the handoff and wait for a yes.
 Herdr's skill says to create a workspace or tab only when the user

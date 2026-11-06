@@ -205,6 +205,7 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/bin/pde-comment-review-next",
 	}
 	developmentTools := []string{
+		".local/bin/pde-context",
 		".local/bin/pde-gh-write",
 		".local/bin/pde-pr-approve",
 		".local/bin/prs",

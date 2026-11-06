@@ -3,6 +3,7 @@
 .config/systemd/user/opencode-web-health.service
 .config/systemd/user/opencode-web-health.timer
 {{ if not (has "development" .pde.tiers) }}
+.local/bin/pde-context
 .local/bin/pde-gh-write
 .local/bin/pde-pr-approve
 .local/bin/prs
