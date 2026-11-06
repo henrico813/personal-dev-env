@@ -68,7 +68,7 @@ Send session-review's step 6 message with three changes:
 - Before its last line, add a Closing steps list, numbered after the
   lessons, with each step that applies:
   - Handoff: hand the work that is left to a new session. Offer it
-    when work is left.
+    when work is left, including work planned but not started.
   - Status update: a recap a new reader follows.
   - Cleanup: remove a merged plan's worktree and branch. Offer it
     only when a plan's pull request merged in this session.
