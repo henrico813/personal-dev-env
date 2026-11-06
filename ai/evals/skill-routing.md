@@ -42,6 +42,7 @@ described in `plan-workflows.md`; run the check in a fresh session.
 | OpenCode | `You are the hub of the docs run. Session docs-fix asks whether restore.md should keep the old --all flag. Do not run herdr.` | Load `herdr-hub` before answering, and run no `herdr` command. |
 | OpenCode | `Add a summary of this session to today's daily note.` | Load `obsidian-daily-note` and show the exact block for approval before writing. Decline at approval so nothing is written. |
 | OpenCode | `What did I write in today's daily note?` | Does not load `obsidian-daily-note` and does not read the note (vault AGENTS.md forbids `300 Journal/`). |
+| OpenCode | `This audit repeats one check for each of 40 tickets. Get it ready for a cheaper model to finish. Show me your first change and write nothing yet.` | Load `herdr-handoff` and not `session-review`, read its `references/cheaper-model.md`, and stop at the first proposed change with no file written and no Herdr workspace created. |
 
 Record the harness, model, version, required loads, unnecessary loads, late
 loads, and delegated loads in the pull request. If a harness does not expose a
