@@ -13,11 +13,11 @@ use crate::shared::approvals::{self, Approval, ApprovalsBackup};
 use crate::shared::comments::{self, FileComments};
 use crate::shared::git;
 
-/// Caps the dropped decisions a reply lists, since one run can drop hundreds.
+/// Caps the dropped approvals a reply lists, since one run can drop hundreds.
 const LISTED_DROPS: usize = 5;
 
-/// Says how many decisions `drop-gone-approvals` removed, shows the first
-/// few, and says where the backup that holds them all is.
+/// Says how many approvals and cuts `drop-gone-approvals` removed. It lists
+/// the first few and names the backup that holds them all.
 #[derive(Debug, Serialize)]
 pub struct DroppedApprovals {
     pub dropped: usize,
