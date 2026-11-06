@@ -5,8 +5,9 @@ description: Hands part or all of a session's work to a new agent
   the new session needs, since it starts with no earlier context. Use
   when the user asks to hand work off to a new session, to start a new
   session in a new Herdr workspace, or to move work out because it is
-  independent or this session's context is full. For a subagent whose
-  work the session reviews, use delegate.
+  independent or this session's context is full. Also use when the
+  user asks to prepare long, repetitive work for a cheaper or local
+  model. For a subagent whose work the session reviews, use delegate.
 metadata:
   pde-workflow: "true"
 ---
@@ -33,6 +34,16 @@ rather than trusting the examples here.
 When the user has not asked, propose the handoff and wait for a yes.
 Herdr's skill says to create a workspace only when the user asks.
 
+## Prepare the work for a cheaper model
+
+Use this part only when the user asks to prepare long, repetitive
+work for a smaller or local model. A review that repeats one check
+for each of many tickets is such work. Follow
+[references/cheaper-model.md](references/cheaper-model.md) before you
+write the handoff file. That page moves the judgment, facts and tool
+steps out of this conversation into the work's own log, so a smaller
+model can run the loop from them.
+
 ## Write the handoff file
 
 1. Save it as `~/.local/state/pde/handoffs/<date>-<slug>.md`, such as
@@ -55,6 +66,12 @@ Herdr's skill says to create a workspace only when the user asks.
 ## Split ownership
 
 - Two sessions never edit the same file, branch or worktree at once.
+  When both need one file, split the file first, or run the sessions
+  one after the other.
+- The handoff lists the exact files the new session may read and the
+  files it may edit, such as "Edit only docs/restore.md. Read
+  src/restore.rs." A folder or a phrase such as "the docs" is not a
+  list.
 - The handoff names which session owns each one, and when ownership
   moves, such as "Do not edit the design until the other session says
   its new section is done."
@@ -99,6 +116,15 @@ Herdr's skill says to create a workspace only when the user asks.
        herdr agent start <name> --kind <kind> --pane <pane> \
          --timeout 90000
 
+   For OpenCode, add `-- --auto` at the end, so the new session
+   approves its own tool permissions instead of stopping at each one.
+   Check that `.result.argv` in the reply includes `--auto`. If it
+   does not, tell the user the session will stop at permission
+   prompts. `--auto` still obeys rules that deny a command, and a
+   pull request write still waits for the user through
+   `pde-gh-write`. Give other kinds no approval flag unless the user
+   names one.
+
    To choose a model, pass the agent's own model flag after `--`.
    OpenCode has no model flag, so it uses the `model` set in
    `~/.config/opencode/opencode.json`.
@@ -130,8 +156,8 @@ To start the session on another saved machine, add
 file to the same path on that machine, since a remote session cannot
 read a local path. The remote `--cwd` must be an absolute path or
 start with `~/`. Read pane IDs from that machine's replies. An
-OpenCode session there may ask to access the handoff folder before
-it reads the file. Tell the user so, since that approval is theirs
+OpenCode session there without `--auto` may ask to access the
+handoff folder first. Tell the user so, since that approval is theirs
 to give. When the machine's data must stay on it, the handoff asks
 for counts and pass or fail results in reports, never lists of
 names or file contents.
@@ -160,6 +186,8 @@ or revising this skill.
 - It holds no secret.
 - It explains every label, and every path in it is absolute.
 - It names which session owns each file, branch and worktree.
+- It lists the exact files the new session may read and may edit.
+- An OpenCode session started with `--auto` in `.result.argv`.
 - The new agent was seen `working`, or `idle` or `done` after
   finishing.
 - The message to the user names the workspace, the agent, the
