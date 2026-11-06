@@ -47,6 +47,8 @@ pub fn show_status(dir: &Path) -> Result<StepOutput<StatusResult>, Error> {
             // The user checks git status before any step runs again.
             ReviewStatus::WritingUserFeedback => (Waiting::Nothing, NextStep::TellUserAndWait),
             ReviewStatus::Done => (Waiting::Nothing, NextStep::CheckComments),
+            // A dismissed review must not come back unless someone restores it.
+            ReviewStatus::Dismissed => (Waiting::Nothing, NextStep::FinishWithoutFeedbackRequests),
         },
     };
     Ok(StepOutput {
