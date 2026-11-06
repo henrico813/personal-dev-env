@@ -28,7 +28,8 @@ plan_tree() {
 
 # Put back one bug, run the test command, and restore the file.
 # Returns 1 when the test command passes, since no test caught the
-# bug, and 2 when FILE is gone or OLD does not appear exactly once.
+# bug, 2 when FILE is gone or OLD does not appear exactly once, and 3
+# when the test command could not run (exit 126 or 127).
 plant() {
   local file=$1 old=$2 new=$3 backup rc
   shift 3
@@ -41,9 +42,14 @@ text = open(path).read()
 assert text.count(old) == 1, "old text must appear exactly once"
 open(path, "w").write(text.replace(old, new))
 EOF
-  "$@"
+  # A test command given as one quoted string runs through sh.
+  if [ "$#" -eq 1 ]; then sh -c "$1"; else "$@"; fi
   rc=$?
   cp "$backup" "$file" && rm -f "$backup"
+  if [ "$rc" -eq 126 ] || [ "$rc" -eq 127 ]; then
+    echo "plant: test command did not run, exit $rc"
+    return 3
+  fi
   if [ "$rc" -eq 0 ]; then
     echo "plant: no test failed for $file"
     return 1
