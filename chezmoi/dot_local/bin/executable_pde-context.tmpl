@@ -1,3 +1,5 @@
+{{- /* Renders empty outside full, which alone has session-review, so chezmoi removes it there. */ -}}
+{{- if has "development" .pde.tiers -}}
 #!/bin/sh
 # Print this agent session's context and its share of the model's window,
 # such as "250k of 1M (25%)". Above 200k it adds a note to hand off.
@@ -5,3 +7,4 @@
 #   pde-context                      # the session in $OPENCODE_SESSION_ID
 #   pde-context --session ses_abc123 # another session
 exec python3 "$HOME/.agents/skills/session-review/scripts/session_stats.py" --context "$@"
+{{ end -}}
