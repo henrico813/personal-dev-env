@@ -56,6 +56,13 @@ fn tells_agent_what_comes_next() {
             NextStep::CheckComments,
             json!(null),
         ),
+        (
+            "dismissed",
+            "dismissed",
+            json!({"1": keep()}),
+            NextStep::FinishWithoutFeedbackRequests,
+            json!(null),
+        ),
     ];
 
     for (case, status, feedback, next, waiting) in cases {
