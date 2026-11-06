@@ -77,7 +77,7 @@ for mapping in tokyo-night:tokyonight everforest-dark:everforest gruvbox-dark:gr
 	theme="${mapping#*:}"
 	rendered="$(render_opencode_cli "$profile")"
 	jq -e --arg theme "$theme" \
-		'.theme.name == $theme and .mouse == false and .scroll.speed == 2 and .keybinds["agent.list"] == "ctrl+a" and .keybinds["agent.cycle"] == "tab" and .keybinds["agent.cycle.reverse"] == "shift+tab"' \
+		'.theme.name == $theme and .tabs.mode == "off" and .mouse == false and .scroll.speed == 2 and .keybinds["agent.list"] == "ctrl+a" and .keybinds["agent.cycle"] == "tab" and .keybinds["agent.cycle.reverse"] == "shift+tab"' \
 		<<<"$rendered" >/dev/null
 done
 printf '[]\n' >"$cli_home/.config/opencode/cli.json"
@@ -94,7 +94,7 @@ fi
 grep -Fxq '{"keybinds":[]}' "$cli_home/.config/opencode/cli.json"
 rm "$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
-jq -e '. == {"theme":{"name":"everforest"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
+jq -e '. == {"theme":{"name":"everforest"},"tabs":{"mode":"off"},"keybinds":{"agent.cycle":"tab","agent.cycle.reverse":"shift+tab"}}' <<<"$rendered" >/dev/null
 printf '{"plugins":["x","./herdr-opencode"]}\n' >"$cli_home/.config/opencode/cli.json"
 rendered="$(render_opencode_cli everforest-dark)"
 jq -e '.plugins == ["x","./herdr-opencode","-herdr.opencode.session-selection","./pde-herdr-opencode"]' <<<"$rendered" >/dev/null

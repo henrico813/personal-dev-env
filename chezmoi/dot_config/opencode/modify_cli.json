@@ -15,6 +15,9 @@
 {{- fail "OpenCode CLI keybinds must be an object" -}}
 {{- end -}}
 {{- $config = $config | setValueAtPath "theme.name" $colors.opencode -}}
+{{- /* A tap on the session tab bar from a phone switches the pane to
+another session, so the bar stays off. */ -}}
+{{- $config = $config | setValueAtPath "tabs.mode" "off" -}}
 {{- $keybinds = mergeOverwrite $keybinds (dict "agent.cycle" "tab" "agent.cycle.reverse" "shift+tab") -}}
 {{- $config = set $config "keybinds" $keybinds -}}
 {{- /* Herdr's ./herdr-opencode stays so Herdr reports its integration current.
