@@ -1,0 +1,32 @@
+id = "pde.comment-review"
+name = "PDE comment review"
+# Raise the version with each change, so the next install links it again.
+version = "0.4.0"
+min_herdr_version = "0.9.1"
+platforms = ["linux"]
+
+[[panes]]
+id = "popup"
+title = "Comment review"
+placement = "popup"
+width = 40
+height = 16
+command = ["{{ .chezmoi.destDir }}/.local/bin/glimmer", "screen", "--popup"]
+
+[[panes]]
+id = "tab"
+title = "Comment review"
+placement = "tab"
+command = ["{{ .chezmoi.destDir }}/.local/bin/glimmer", "screen", "--tab"]
+
+[[actions]]
+id = "open"
+title = "Open comment review"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/glimmer", "screen", "--popup"]
+
+[[actions]]
+id = "open-tab"
+title = "Open comment review in a tab"
+contexts = ["workspace"]
+command = ["{{ .chezmoi.destDir }}/.local/bin/glimmer", "screen", "--tab"]

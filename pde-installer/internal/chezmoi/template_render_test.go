@@ -203,6 +203,8 @@ func TestRemoveListMatchesEachProfile(t *testing.T) {
 		".local/state/surveil",
 		".local/bin/pde-comment-checker",
 		".local/bin/pde-comment-review-next",
+		".local/bin/pde-comment-review",
+		".local/share/pde/herdr-plugins/pde-comment-review",
 	}
 	developmentTools := []string{
 		".local/bin/pde-gh-write",

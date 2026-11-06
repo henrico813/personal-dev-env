@@ -114,7 +114,7 @@ func TestDryRunKeepsEachProfilesDecisions(t *testing.T) {
 				"build and atomically activate opencode-inline-shim",
 				"build and atomically activate vibe",
 				"build and atomically activate pde-gh-write",
-				"build and atomically activate pde-comment-review",
+				"build and atomically activate glimmer",
 				"build and atomically activate skill-lessons",
 				"build and atomically activate prs",
 				"migrate legacy PDE configuration",

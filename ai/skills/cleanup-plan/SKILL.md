@@ -158,13 +158,13 @@ Classify every remaining ignored file in this order:
      `pyproject.toml`
 
    Run the parent check from the worktree root. For
-   `pde-comment-review-rs/target/`, run
-   `test -f pde-comment-review-rs/Cargo.toml`. For a `target/` at the
+   `glimmer/target/`, run
+   `test -f glimmer/Cargo.toml`. For a `target/` at the
    worktree root, run `test -f Cargo.toml`. For `ai/.venv/`, run
    `test -f ai/pyproject.toml`.
-3. Allow the root `.code-comments.json`, the old comment checker's
-   file, only after "Keep the owner's comment approvals" below has
-   backed it up.
+3. Allow the root `.code-comments.json`, the approvals file of the
+   deleted Python comment checker, only after "Keep the owner's
+   comment approvals" below has backed it up.
 4. Block every other ignored path.
 
 Interpret the result:
@@ -188,7 +188,7 @@ worktree's Git folder, so removing the worktree drops it. Before
 removal, run this in the target worktree:
 
 ```bash
-pde-comment-review show-status
+glimmer show-status
 ```
 
 If its `status` is `waiting_for_user_feedback`, `user_notes_waiting`
@@ -202,8 +202,9 @@ its reply has an `error`, report that and ask the same question.
 The review tool keeps the owner's approvals in
 `.git/pde/code-comments.json`, which every worktree of the clone
 shares, so removing a worktree loses none of them. A worktree's root
-`.code-comments.json` is the old comment checker's file. When the
-target worktree has one, after main synchronization:
+`.code-comments.json` is the approvals file of the deleted Python
+comment checker, and no tool reads it now.
+When the target worktree has one, after main synchronization:
 
 1. From the main checkout, back up the worktree's copy:
 

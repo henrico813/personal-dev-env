@@ -124,7 +124,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 				"opencode-inline-shim",
 				"vibe",
 				"blink.cmp",
-				"pde-comment-review",
+				"glimmer",
 				"prs",
 				"go",
 				"rust",
