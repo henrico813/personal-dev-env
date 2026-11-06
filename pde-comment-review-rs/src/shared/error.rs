@@ -34,6 +34,8 @@ pub enum ErrorCode {
     ListChanged,
     MissingSuggestion,
     RewordFailsRules,
+    NothingToDismiss,
+    NothingToRestore,
     /// Marks an MCP call whose `dir` is not a full path.
     DirNotAbsolute,
 }
@@ -64,6 +66,8 @@ impl ErrorCode {
             | Self::LateUserFeedback
             | Self::NothingToWrite
             | Self::WriteFailed
+            | Self::NothingToDismiss
+            | Self::NothingToRestore
             | Self::DirNotAbsolute => None,
         }
     }
@@ -111,6 +115,8 @@ mod tests {
             (ErrorCode::LateUserFeedback, None),
             (ErrorCode::NothingToWrite, None),
             (ErrorCode::WriteFailed, None),
+            (ErrorCode::NothingToDismiss, None),
+            (ErrorCode::NothingToRestore, None),
             (ErrorCode::DirNotAbsolute, None),
         ];
 

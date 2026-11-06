@@ -8,8 +8,13 @@ knows nothing of this one, and may reread the file after compaction.
 # Handoff: <the work, in a few words>
 
 You are a new session. The user asked for this work in a new Herdr
-workspace. Another session ("<its name>", Herdr workspace `<label>`)
-wrote this handoff and keeps the work listed under Coordination.
+workspace or tab. Another session ("<its name>", Herdr workspace or
+tab `<label>`) wrote this handoff and keeps the work listed under
+Coordination.
+
+Load `<skill the first step needs>` now. Load `<skill>` before <the
+step that needs it>. Load nothing else up front: every loaded skill
+is re-read on each turn.
 
 ## The project
 
@@ -41,13 +46,30 @@ waiting on the user.>
 ## Questions for the user
 
 <Each open question, the choices, and this session's proposal. The
-new session asks these first.>
+new session asks these first. When a hub runs, the new session
+writes them to its report file instead.>
 
 ## Coordination
 
+- Read: <each file the new session may read, by absolute path.>
+- Edit: <each file it may edit, by absolute path. No other session
+  edits these files.>
 - <Which session owns each file, branch and worktree.>
 - **<What the new session must not touch, until when.>**
 - <Who records ownership changes on the tracking page, if any.>
+- Write progress-only news to <your status file>. Write a question,
+  a blocker, or finished work "<this session's agent name>" waits on,
+  such as a PR opening, to <report file>, then end your turn. Replace
+  the file's old text each time. Never prompt "<this session's agent
+  name>"; it learns of your report when your turn ends.
+- <When this session keeps nothing and no hub runs: leave out the
+  report line above, and say the new session asks the user in its
+  own pane.>
+- <When a hub runs: the hub's agent name in place of this session's
+  name in the line above, a report file in the hub's run folder, and
+  that the new session reports only to the hub. The new session never
+  uses an interactive question tool, since Herdr then rejects every
+  message to it.>
 
 ## Rules for the files you edit
 
@@ -60,4 +82,5 @@ use or avoid, or a line width.>
 cannot see anywhere else. Copy them in full.>
 ```
 
-Before saving, check that the file names every skill the work needs.
+Before saving, check that the file names every skill the work needs,
+each with the step that needs it.

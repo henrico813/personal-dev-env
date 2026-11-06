@@ -7,6 +7,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use pde_comment_review::commands::cli::{self, Command};
+use pde_comment_review::commands::dismiss::{dismiss_review, restore_review};
 use pde_comment_review::commands::move_old_approvals::move_old_approvals;
 use pde_comment_review::commands::{Reply, mcp, resolve_base};
 use pde_comment_review::review_screen::{StartFailure, run_open_command, run_screen_command};
@@ -43,6 +44,8 @@ fn main() -> ExitCode {
         ),
         Command::Screen { kind } => return report_screen_outcome(run_screen_command(kind)),
         Command::Open { name } => return report_screen_outcome(run_open_command(name.as_deref())),
+        Command::Dismiss { name } => Reply::from_outcome(dismiss_review(dir, name.as_deref())),
+        Command::Restore { name } => Reply::from_outcome(restore_review(dir, name.as_deref())),
         Command::MoveOldApprovals => Reply::from_move_outcome(move_old_approvals(dir)),
         Command::ShowStatus => Reply::from_outcome(show_status(dir)),
         Command::Mcp => {

@@ -12,6 +12,15 @@
   would. Run `pde-sops-peek FILE [KEY.PATH]` for a sops file's keys or one
   non-secret value. Tool output shows hidden values as `[redacted]`; never
   write that marker into a file.
+- The user reads chat on a narrow screen and copies commands from
+  it. Write each command you give in chat so it pastes whole: one
+  line under about 35 characters, with a `cd` as its own command.
+  When the steps don't fit, put them in a new script in the home
+  folder, named so it replaces no file there, and give
+  `bash ~/<name>.sh`. Never put a secret value in the script.
+- Print counts and the first few failures, never whole lists such as
+  every worktree. Count or filter with `jq` or `awk` first, since every
+  later turn re-reads what you print.
 
 ## Skill Routing
 
@@ -20,6 +29,7 @@
   identified work with the available skill descriptions.
 - Load each skill applicable to the requested or discovered work before
   repository research, planning, review, implementation, or substantive advice.
+- Load a skill a handoff names for a later step when that step comes.
 - Recheck skill applicability after a handoff, compaction, material goal change,
   or discovery of another domain the response will plan, review, implement, or
   test.
@@ -45,10 +55,18 @@
 - When asked to build several pull requests of an approved roadmap
   without the user reviewing each step, load and follow the
   `roadmap-run` skill.
+- When asked to review a session for token use, efficiency, skill
+  lessons or local model handoff, load and follow the
+  `session-review` skill.
+- When the user types `conclude-session` or asks to close out or
+  wrap up a session, load and follow the `conclude-session` skill.
 - When writing a status update, progress report, recap or handoff
   message to the user, load and follow the `status-updates` skill.
-- When asked to hand work to a new session in Herdr, load and follow
+- When asked to hand work to a new session in Herdr, or to prepare
+  long, repetitive work for a cheaper or local model, load and follow
   the `herdr-handoff` skill.
+- When the user or a handoff makes this session the hub of other
+  Herdr sessions, load and follow the `herdr-hub` skill.
 - When delegating domain work, include an `Applicable skills:` line in the
   delegation prompt with each skill's exact name. Require the subagent to load
   available skills before working and to report required skills that are
@@ -58,6 +76,9 @@
 ## Code Search
 
 Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. Before deleting or renaming a file, search for its path and file name.
+
+Read a large plan with narrow `rg` for the names you need, not a broad
+pattern over the whole file.
 
 ## Testing
 
@@ -195,3 +216,5 @@ Search with `rg`; for work tied to a commit, use `git grep <pattern> <commit>`. 
   guidance, use the `promote-memory` skill.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
+- Before sending a request to open or merge a PR, follow Guardrail 4
+  of the `pull-request` skill.

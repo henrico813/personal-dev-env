@@ -35,6 +35,7 @@ use picker::{AfterPick, ReviewSessionPicker, Waiting, WaitingReview};
 use result::{ResultScreen, ReviewResult, write_and_explain};
 use screen::{AfterKey, ReviewScreen};
 
+pub(crate) use start::find_worktrees_by_branch;
 pub use start::{run_open_command, run_screen_command};
 
 /// Turns on mouse reports for taps and wheel turns only, sent as text such as
@@ -227,6 +228,12 @@ fn pick_review(reviews: Vec<WaitingReview>) -> io::Result<Option<WaitingReview>>
             AfterPick::Stay => {}
             AfterPick::Quit => return Ok(None),
             AfterPick::Open => return Ok(Some(picker.into_chosen())),
+            AfterPick::Dismiss => {
+                picker.dismiss_chosen();
+                if picker.is_empty() {
+                    return Ok(None);
+                }
+            }
         }
     }
 }

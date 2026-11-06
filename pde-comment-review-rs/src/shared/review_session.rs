@@ -69,7 +69,7 @@ pub(crate) fn add_list(
         add_list_after_user_notes(&root, review_session, list)?;
         review_session.lists.len()
     } else {
-        // Past the refusal above, there is no Review Session or only a done one.
+        // Past the refusal above, there is no Review Session or only a done or dismissed one.
         lock.review_session = Some(ReviewSession {
             status: ReviewStatus::WaitingForUserFeedback,
             origin: find_review_origin(&root)?,
@@ -108,8 +108,62 @@ pub(crate) fn refuse_busy_status(status: ReviewStatus) -> Result<(), Error> {
             message: "A write into the code did not finish. Ask the user to check git status."
                 .to_owned(),
         }),
-        ReviewStatus::UserNotesWaiting | ReviewStatus::Done => Ok(()),
+        ReviewStatus::UserNotesWaiting | ReviewStatus::Done | ReviewStatus::Dismissed => Ok(()),
     }
+}
+
+/// Sets a Review Session that waits for User Feedback to `dismissed`, so
+/// Ctrl+b e stops showing it. Keeps its lists, its User Feedback and its place
+/// on the waiting list, so `restore` can bring it back from any folder. Saves
+/// the waiting list too, which drops removed worktrees from it, but a failed
+/// save of the list does not fail the dismissal.
+///
+/// # Errors
+///
+/// Refuses with `NothingToDismiss` unless the Review Session waits for User
+/// Feedback.
+pub fn dismiss(dir: &Path) -> Result<(), Error> {
+    let mut lock = lock(dir)?;
+    let Some(review_session) = lock
+        .review_session_mut()
+        .filter(|review_session| review_session.status == ReviewStatus::WaitingForUserFeedback)
+    else {
+        return Err(Error {
+            code: ErrorCode::NothingToDismiss,
+            message: "Only a review that waits for the user's answers can be dismissed.".to_owned(),
+        });
+    };
+    review_session.status = ReviewStatus::Dismissed;
+    lock.save()?;
+    // The review is dismissed already, so a list that cannot be saved only keeps removed worktrees longer.
+    let _ = change_waiting_list(dir, |_, _| {});
+    Ok(())
+}
+
+/// Sets a dismissed Review Session back to `waiting_for_user_feedback` and
+/// puts its worktree on the waiting list, in case it left the list.
+///
+/// # Errors
+///
+/// Refuses with `NothingToRestore` unless the Review Session was dismissed.
+pub fn restore(dir: &Path) -> Result<(), Error> {
+    let mut lock = lock(dir)?;
+    let Some(review_session) = lock
+        .review_session_mut()
+        .filter(|review_session| review_session.status == ReviewStatus::Dismissed)
+    else {
+        return Err(Error {
+            code: ErrorCode::NothingToRestore,
+            message: "No dismissed review is here to restore.".to_owned(),
+        });
+    };
+    review_session.status = ReviewStatus::WaitingForUserFeedback;
+    lock.save()?;
+    // The status is saved by now, so a waiting-list error must not read as nothing restored.
+    add_to_waiting_list(dir).map_err(|error| Error {
+        code: error.code,
+        message: format!("The review was restored. {}", error.message),
+    })
 }
 
 /// Saves User Feedback unless the Review Session stopped waiting for it or the
@@ -380,6 +434,9 @@ pub enum ReviewStatus {
     /// Marks a write into the code that is running, crashed or could not be undone.
     WritingUserFeedback,
     Done,
+    /// Marks a review the user or agent took off Ctrl+b e's list. `restore`
+    /// sets it back to waiting, and a new list starts a new Review Session.
+    Dismissed,
 }
 
 /// Names the repository, branch and agent session the Review Session came from.
@@ -685,7 +742,8 @@ pub(crate) fn find_review_origin(root: &Path) -> Result<ReviewOrigin, Error> {
     })
 }
 
-/// Holds the worktrees on the waiting list, saved in `waiting-list.json`.
+/// Holds the worktrees on the waiting list, saved in `waiting-list.json`. A
+/// worktree with a dismissed review stays listed, so `restore NAME` finds it.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SavedWaitingList {
@@ -694,8 +752,8 @@ struct SavedWaitingList {
 
 /// Takes the waiting list's lock, reads the list again under it, changes it
 /// for the worktree that holds `dir`, and saves it through a synced temporary
-/// file. Keeps every other entry, even one it cannot reach now, such as a
-/// worktree on a drive that is not mounted.
+/// file. Drops each removed worktree, but keeps an entry it cannot reach now,
+/// such as a worktree on a drive that is not mounted.
 fn change_waiting_list(
     dir: &Path,
     change: impl FnOnce(&mut Vec<PathBuf>, PathBuf),
@@ -706,8 +764,18 @@ fn change_waiting_list(
     // `_lock` holds the lock until this function returns, after the save.
     let _lock = lock_waiting_list(&folder)?;
     let mut saved = read_saved_waiting_list(&folder.join(WAITING_LIST_FILE))?;
+    saved
+        .worktrees
+        .retain(|listed| !is_removed_worktree(listed));
     change(&mut saved.worktrees, worktree);
     write_saved_waiting_list(&folder, &saved)
+}
+
+/// Returns true when `worktree` is gone but the folder that held it is still
+/// there, as after `git worktree remove`. A worktree whose parent folder is
+/// gone too, such as one inside a drive that is not mounted, stays listed.
+fn is_removed_worktree(worktree: &Path) -> bool {
+    !worktree.exists() && worktree.parent().is_some_and(Path::exists)
 }
 
 /// Returns `$XDG_STATE_HOME/pde/comment-review`, or
