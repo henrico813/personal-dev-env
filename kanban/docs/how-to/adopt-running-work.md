@@ -22,25 +22,31 @@ Read the session's pane or its latest report file.
 Name the project folder, a short title, and a reason for the Log:
 
 ```sh
-card new DevEnv "Fix login timeout" --adopt active --user --by user --why "session fix-login running since 11-03"
+card new DevEnv "Fix login timeout" --adopt active --user --by user --why "session fix-login running since 11-03" --session fix-login
 ```
+
+`--session fix-login` records the Herdr agent `fix-login`'s session
+in the card's `sessions` field, such as `opencode ses_...`, so the
+card points at the session that does the work.
 
 Add `--kind research` when the work ends in a document or a decision
 rather than a change. `card` prints the new card's name, such as
 `PDEV-KB-013 Fix login timeout`. The card's Log line reads
-`- 2026-11-06 active: adopted by user for the user. session ...`.
+`- 2026-11-06 active: adopted by user for the user. session ...`,
+then `- 2026-11-06 session: fix-login (opencode ses_...)`.
 
-Adoption skips the work limit and the check for an Outcome, since the
-work is already running. The board can then show more than 8 cards
-in `active` plus `review`. Until the count drops below 8, the staff
-agent starts no new card.
+Adoption skips the work limit and the check for acceptance criteria,
+since the work is already running. The board can then show more than 8
+cards in `active` plus `review`. Until the count drops below 8, the
+staff agent starts no new card.
 
-## 3. Fill in Why and Outcome
+## 3. Fill in Context and Acceptance Criteria
 ---
 
-Open the card in Obsidian and write a line under **Why** and under
-**Outcome**, from what the session is doing. Without an Outcome there
-is nothing to check the work against when it reaches `review`.
+Open the card in Obsidian. Write why the work matters under
+**Context**, and one `- [ ]` line per condition under **Acceptance
+Criteria**, from what the session is doing. Without criteria there is
+nothing to check the work against when it reaches `review`.
 
 ## 4. Link its plan and pull request
 ---

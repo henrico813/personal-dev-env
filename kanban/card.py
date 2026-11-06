@@ -17,15 +17,18 @@ Usage::
 
     card new PROJECT TITLE [--kind K] [--user]  make a card in draft
     card new PROJECT TITLE --adopt STAGE --user [--why TEXT]
+                                       [--session [AGENT]]
     card list [--stage S] [--project P] [--kind K]
     card board                         counts and the review queue
     card show KEY [--section S]
     card grep PATTERN [--section S] [--stage S] [--project P]
-    card move KEY STAGE [--user] [--why TEXT]
+    card move KEY STAGE [--user] [--why TEXT] [--session [AGENT]]
     card note KEY TEXT [--needs-you | --answered]
-    card add KEY SECTION TEXT          add a bullet to a section
+    card add KEY SECTION TEXT          add a bullet or criteria checkbox
+    card edit KEY SECTION N TEXT|--remove  replace or remove item N
     card set KEY title|kind VALUE
     card link KEY PLAN|PR_URL
+    card link KEY --session [AGENT]    record a Herdr agent's session
     card delete KEY --user
     card check                         cards with a broken layout
     card template                      print the Obsidian template
@@ -61,11 +64,13 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 # A move missing here is refused, so accepted is final and follow-up
-# work gets a new card. "user" moves need --user.
+# work gets a new card. "user" moves need --user, and "staff" moves
+# take it when the user makes them.
 MOVES = {
     ("draft", "ready"): "user",
     ("ready", "draft"): "staff",
     ("ready", "active"): "staff",
+    ("active", "ready"): "staff",
     ("active", "draft"): "user",
     ("active", "review"): "staff",
     ("review", "active"): "user",
@@ -95,20 +100,17 @@ FIELDS = [
     "date_created",
     "plans",
     "prs",
+    "sessions",
     "topics",
 ]
-# Hints sit in Obsidian comments, which reading view hides and which
-# do not count as text when card checks for an Outcome.
-SECTIONS = {
-    "Why": "Who is affected and what happens today, with links to files,"
-    " notes and related cards.",
-    "Outcome": "What done looks like, so the user can check it."
-    " Needed before the card moves to ready.",
-    "Open questions": "Questions still to answer."
-    " Move each answer to Decisions.",
-    "Decisions": "One line each, with the date and who decided.",
-    "Log": "Stage moves and notes, added by card.",
-}
+SECTIONS = [
+    "Context",
+    "Acceptance Criteria",
+    "Open Questions",
+    "Decisions",
+    "Log",
+]
+CRITERIA = "Acceptance Criteria"
 
 WIDTH = 60
 BOARD_WIDTH = 40
@@ -118,7 +120,9 @@ PROJECT_CODE_RE = re.compile(r"Project code:\s*`?([A-Z][A-Z0-9]*)`?")
 FIELD_RE = re.compile(r"^([A-Za-z_][\w-]*):(.*)$")
 LIST_ITEM_RE = re.compile(r"^\s+-\s+(.*)$")
 HEADING_RE = re.compile(r"^(#{1,2})\s+(.*?)\s*$")
-HINT_RE = re.compile(r"%%.*?%%", re.S)
+CHECKBOX_RE = re.compile(r"^\s*- \[[ xX]\] \S", re.M)
+# A section item's bullet or checkbox, then its words.
+ITEM_PREFIX_RE = re.compile(r"^(- \[[ xX]\] |[-*] )?(.*)$")
 # Characters Obsidian refuses in file names, plus link syntax.
 BAD_NAME_CHARS_RE = re.compile(r'[\\/:*?"<>|#^\[\]]')
 
@@ -162,6 +166,18 @@ class Card:
         """The title from the first heading, else from the file name."""
         title = read_title(self.text, self.key)
         return title or self.path.stem.removeprefix(self.key).strip()
+
+
+@dataclass(frozen=True)
+class AgentSession:
+    """A Herdr agent's name and its entry for the sessions field.
+
+    The entry is the agent kind and session id, such as
+    ``opencode ses_e4dc27c20ffeJkm3JZ8dwLh7rW``.
+    """
+
+    name: str
+    entry: str
 
 
 def main(argv: list[str], projects: Path | None = None) -> int:
@@ -222,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="start here, for work already under way; needs --user",
     )
     new.add_argument("--why", help="a reason for the Log line")
+    add_session_option(new, "with --adopt, ")
     add_author(new)
     new.set_defaults(run=run_new)
 
@@ -257,6 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="the user made this move; agents pass it only when told",
     )
     move.add_argument("--why", help="a reason for the Log line")
+    add_session_option(move, "with a move to active, ")
     add_author(move)
     move.set_defaults(run=run_move)
 
@@ -275,7 +293,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_author(note)
     note.set_defaults(run=run_note)
 
-    add = commands.add_parser("add", help="add a bullet to a section")
+    add = commands.add_parser(
+        "add", help="add a bullet, or a criteria checkbox, to a section"
+    )
     add.add_argument("key")
     add.add_argument(
         "section", choices=[name for name in SECTIONS if name != "Log"]
@@ -283,15 +303,33 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("text")
     add.set_defaults(run=run_add)
 
+    edit = commands.add_parser(
+        "edit",
+        help="replace or remove one item of a section",
+        description="N is the item's number in card show KEY --section S.",
+    )
+    edit.add_argument("key")
+    edit.add_argument(
+        "section", choices=[name for name in SECTIONS if name != "Log"]
+    )
+    edit.add_argument("number", type=int, metavar="N")
+    edit.add_argument("text", nargs="?", help="the item's new text")
+    edit.add_argument("--remove", action="store_true", help="remove item N")
+    add_author(edit)
+    edit.set_defaults(run=run_edit)
+
     set_ = commands.add_parser("set", help="change the title or kind")
     set_.add_argument("key")
     set_.add_argument("field", choices=["title", "kind"])
     set_.add_argument("value")
     set_.set_defaults(run=run_set)
 
-    link = commands.add_parser("link", help="link a plan note or PR URL")
+    link = commands.add_parser(
+        "link", help="link a plan note, a PR URL or a Herdr session"
+    )
     link.add_argument("key")
-    link.add_argument("target", help="plan note name, or a PR URL")
+    link.add_argument("target", nargs="?", help="plan note name, or a PR URL")
+    add_session_option(link, "")
     link.set_defaults(run=run_link)
 
     delete = commands.add_parser("delete", help="remove a card note")
@@ -318,6 +356,23 @@ def add_author(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_session_option(parser: argparse.ArgumentParser, when: str) -> None:
+    """Add the --session option, which records a Herdr agent's session.
+
+    Args:
+        parser: The command's parser.
+        when: When the option applies, such as ``"with --adopt, "``.
+    """
+    parser.add_argument(
+        "--session",
+        nargs="?",
+        const="",
+        metavar="AGENT",
+        help=f"{when}add the agent's session to sessions;"
+        " no AGENT means this pane's agent",
+    )
+
+
 def add_filters(parser: argparse.ArgumentParser) -> None:
     """Add the --stage, --project and --kind filters.
 
@@ -335,7 +390,10 @@ def format_moves() -> str:
     Returns:
         The help text.
     """
-    lines = ["moves (user moves need --user):"]
+    lines = [
+        "moves (user moves need --user; the user also makes staff moves,"
+        " with --user):"
+    ]
     for (source, target), who in MOVES.items():
         lines.append(f"  {source} -> {target}: {who}")
     lines.append(
@@ -361,13 +419,21 @@ def run_new(args: argparse.Namespace, projects: Path) -> int:
             "only the user adopts work already under way."
             " Pass --user only when the user said so."
         )
+    if args.session is not None and not args.adopt:
+        raise CardError(
+            "--session goes with --adopt. A draft card gets its session"
+            " when it moves to active."
+        )
     stage = args.adopt or STAGES[0]
     verb = "adopted by" if args.adopt else "by"
     entry = format_log_entry(
         stage, f"{verb} {find_author(args)}", args.user, args.why
     )
+    session = None
+    if args.session is not None:
+        session = find_agent_session(args.session)
     path = create_card(
-        projects, args.project, args.title, args.kind, stage, entry
+        projects, args.project, args.title, args.kind, stage, entry, session
     )
     print(path.stem)
     return 0
@@ -380,6 +446,7 @@ def create_card(
     kind: str,
     stage: str,
     log_entry: str,
+    session: AgentSession | None = None,
 ) -> Path:
     """Take the next key in a project and write a new card.
 
@@ -394,6 +461,7 @@ def create_card(
         kind: One of KINDS.
         stage: The first stage, draft unless the card is adopted.
         log_entry: The first Log line, without its date.
+        session: A Herdr agent session to record, or None.
 
     Returns:
         The new card's path.
@@ -406,6 +474,7 @@ def create_card(
     name = BAD_NAME_CHARS_RE.sub("", title).strip()
     if not name:
         raise CardError("the title needs a letter or digit")
+    today = date.today().isoformat()
     with hold_lock(STATE_DIR / "new.lock"):
         key = f"{code}-KB-{find_next_number(folder, code):03d}"
         path = folder / f"{key} {name}.md"
@@ -414,10 +483,12 @@ def create_card(
             title=title.strip(),
             project=folder.name,
             kind=kind,
-            today=date.today().isoformat(),
+            today=today,
             stage=stage,
             log_entry=log_entry,
         )
+        if session:
+            text = add_session(text, today, session)
         write_safely(path, key, text)
     holders = list_key_holders(folder, key)
     if len(holders) > 1:
@@ -507,7 +578,20 @@ def run_show(args: argparse.Namespace, projects: Path) -> int:
     text = read_section(card.text, args.section)
     if text is None:
         raise CardError(f"{card.key} has no {args.section} section")
-    print(f"## {args.section}\n{text.strip()}")
+    lines = card.text.split("\n")
+    numbers = {
+        start: number
+        for number, (start, _) in enumerate(list_items(lines, args.section), 1)
+    }
+    bounds = find_section(lines, args.section)
+    assert bounds is not None, "read_section found the section"
+    shown = [
+        f"{numbers[index]}. {lines[index]}"
+        if index in numbers
+        else lines[index]
+        for index in range(*bounds)
+    ]
+    print(f"## {args.section}\n" + "\n".join(shown).strip())
     return 0
 
 
@@ -580,11 +664,16 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
     Returns:
         The exit code.
     """
+    if args.session is not None and args.stage != "active":
+        raise CardError("--session goes with a move to active")
     card = find_card(projects, args.key)
     today = date.today().isoformat()
     entry = format_log_entry(
         args.stage, f"by {find_author(args)}", args.user, args.why
     )
+    session = None
+    if args.session is not None:
+        session = find_agent_session(args.session)
 
     def change(text: str) -> str:
         """Check the move against the card as it is now, then make it."""
@@ -592,7 +681,8 @@ def run_move(args: argparse.Namespace, projects: Path) -> int:
         check_move(text, current, args.stage, args.user, projects)
         text = set_field(text, "stage", args.stage)
         text = set_field(text, "stage_date", today)
-        return add_to_section(text, "Log", f"- {today} {entry}")
+        text = add_to_section(text, "Log", f"- {today} {entry}")
+        return add_session(text, today, session) if session else text
 
     update_card(card, change)
     print(f"{card.key} {args.stage}")
@@ -647,8 +737,14 @@ def check_move(
             f"only the user moves {current} -> {target}."
             " Pass --user only when the user said so."
         )
-    if target == "ready" and not read_section_words(text, "Outcome"):
-        raise CardError("write the Outcome before moving to ready")
+    # Only the user's release needs criteria. Paused work may be adopted
+    # work that has none yet.
+    if (current, target) == ("draft", "ready") and not CHECKBOX_RE.search(
+        read_section(text, CRITERIA) or ""
+    ):
+        raise CardError(
+            f"add a '- [ ] ...' item to {CRITERIA} before moving to ready"
+        )
     if current == "ready" and target == "active" and not user:
         busy = sum(
             card.stage in ("active", "review")
@@ -685,7 +781,7 @@ def run_note(args: argparse.Namespace, projects: Path) -> int:
 
 
 def run_add(args: argparse.Namespace, projects: Path) -> int:
-    """Add a bullet to a section, making the section if it is missing.
+    """Add a bullet, or a checkbox in Acceptance Criteria, to a section.
 
     Args:
         args: The parsed arguments.
@@ -695,10 +791,134 @@ def run_add(args: argparse.Namespace, projects: Path) -> int:
         The exit code.
     """
     card = find_card(projects, args.key)
-    entry = f"- {args.text}"
+    entry = (
+        f"- [ ] {args.text}" if args.section == CRITERIA else f"- {args.text}"
+    )
     update_card(card, lambda text: add_to_section(text, args.section, entry))
     print(f"{card.key} {args.section}: {entry}")
     return 0
+
+
+def run_edit(args: argparse.Namespace, projects: Path) -> int:
+    """Replace or remove one numbered item of a section, and log it.
+
+    A replaced item keeps its bullet or checkbox, with its tick.
+
+    Args:
+        args: The parsed arguments.
+        projects: The vault's Projects folder.
+
+    Returns:
+        The exit code.
+    """
+    if (args.text is None) != args.remove:
+        raise CardError("give either the new text or --remove")
+    if args.text is not None and not split_item(args.text.strip())[1]:
+        raise CardError("the new text is empty; use --remove")
+    card = find_card(projects, args.key)
+    today = date.today().isoformat()
+    author = find_author(args)
+    lines = card.text.split("\n")
+    old = lines[find_item(lines, card.key, args.section, args.number)[0]]
+    prefix, old_words = split_item(old)
+    label = f"{args.section} item {args.number}"
+    if args.remove:
+        note = f"removed {label}, {json.dumps(old_words)}"
+    else:
+        note = f"replaced {label}, was {json.dumps(old_words)}"
+    entry = f"- {today} note ({author}): {note}"
+
+    def change(text: str) -> str:
+        """Edit the item, unless someone changed it since card read it."""
+        lines = text.split("\n")
+        start, stop = find_item(lines, card.key, args.section, args.number)
+        if lines[start] != old:
+            raise CardError(f"{card.key} {label} changed; run card show again")
+        if args.remove:
+            del lines[start:stop]
+            # Keep one blank line where the item was.
+            if 0 < start < len(lines) and not (
+                lines[start - 1].strip() or lines[start].strip()
+            ):
+                del lines[start]
+        else:
+            # The item keeps its own bullet or box, so a given one is
+            # used only on a plain line.
+            given_prefix, words = split_item(args.text.strip())
+            lines[start] = (prefix or given_prefix) + words
+        return add_to_section("\n".join(lines), "Log", entry)
+
+    update_card(card, change)
+    print(f"{card.key} Log: {entry}")
+    return 0
+
+
+def list_items(lines: list[str], section: str) -> list[tuple[int, int]]:
+    """List where each item of a section starts and stops.
+
+    An item is a line that is not blank or indented, with the indented
+    lines right after it. ``card show --section`` numbers these from 1.
+
+    Args:
+        lines: The card text split into lines.
+        section: The section name.
+
+    Returns:
+        Start and stop indexes per item, none when the section is
+        missing.
+    """
+    bounds = find_section(lines, section)
+    if bounds is None:
+        return []
+    items: list[tuple[int, int]] = []
+    for index in range(*bounds):
+        line = lines[index]
+        if not line.strip():
+            continue
+        if not line[:1].isspace():
+            items.append((index, index + 1))
+        elif items and items[-1][1] == index:
+            items[-1] = (items[-1][0], index + 1)
+    return items
+
+
+def split_item(line: str) -> tuple[str, str]:
+    """Split an item line into its bullet or checkbox and its words.
+
+    Args:
+        line: The item's first line, such as ``- [ ] Tests pass.``.
+
+    Returns:
+        The prefix, empty for a plain line, and the words.
+    """
+    match = ITEM_PREFIX_RE.match(line)
+    assert match, "the pattern matches any line"
+    return match[1] or "", match[2]
+
+
+def find_item(
+    lines: list[str], key: str, section: str, number: int
+) -> tuple[int, int]:
+    """Return where item ``number`` of a section starts and stops.
+
+    Args:
+        lines: The card text split into lines.
+        key: The card key, for the error.
+        section: The section name.
+        number: The item number, from 1.
+
+    Returns:
+        Start and stop indexes.
+
+    Raises:
+        CardError: The section has no such item.
+    """
+    items = list_items(lines, section)
+    if not 1 <= number <= len(items):
+        raise CardError(
+            f"{key} {section} has {len(items)} items, so no item {number}"
+        )
+    return items[number - 1]
 
 
 def run_set(args: argparse.Namespace, projects: Path) -> int:
@@ -734,7 +954,7 @@ def run_set(args: argparse.Namespace, projects: Path) -> int:
 
 
 def run_link(args: argparse.Namespace, projects: Path) -> int:
-    """Add a plan link to ``plans``, or a PR URL to ``prs``.
+    """Add a plan link to ``plans``, a PR URL to ``prs``, or a session.
 
     Args:
         args: The parsed arguments.
@@ -743,7 +963,18 @@ def run_link(args: argparse.Namespace, projects: Path) -> int:
     Returns:
         The exit code.
     """
+    if (args.target is None) == (args.session is None):
+        raise CardError("give a plan, a PR URL or --session")
     card = find_card(projects, args.key)
+    if args.session is not None:
+        session = find_agent_session(args.session)
+        today = date.today().isoformat()
+        written = update_card(
+            card, lambda text: add_session(text, today, session)
+        )
+        already = "" if written else " (already)"
+        print(f"{card.key} sessions: {session.entry}{already}")
+        return 0
     target = args.target.strip()
     if target.startswith(("http://", "https://")):
         field, value = "prs", target
@@ -761,6 +992,25 @@ def run_link(args: argparse.Namespace, projects: Path) -> int:
     written = update_card(card, change)
     print(f"{card.key} {field}: {value}{'' if written else ' (already)'}")
     return 0
+
+
+def add_session(text: str, today: str, session: AgentSession) -> str:
+    """Append a session to ``sessions`` and log it, unless already there.
+
+    Args:
+        text: The card text.
+        today: The date, as YYYY-MM-DD.
+        session: The Herdr agent session.
+
+    Returns:
+        The new card text, the same text when the card has the session.
+    """
+    values = as_list(read_fields(text).get("sessions"))
+    if session.entry in values:
+        return text
+    text = set_field(text, "sessions", [*values, session.entry])
+    line = f"- {today} session: {session.name} ({session.entry})"
+    return add_to_section(text, "Log", line)
 
 
 def run_delete(args: argparse.Namespace, projects: Path) -> int:
@@ -860,16 +1110,15 @@ def render_card(
         "date_created": today,
         "plans": [],
         "prs": [],
+        "sessions": [],
         "topics": [f"[[{project}]]"],
     }
     lines = ["---"]
     for name in FIELDS:
         lines += render_field(name, values[name])
     lines += ["---", "", f"# {key} {title}", "---", ""]
-    for name, hint in SECTIONS.items():
+    for name in SECTIONS:
         lines += [f"## {name}", "---", ""]
-        if hint:
-            lines += [f"%% {hint} %%", ""]
     lines.append(f"- {today} {log_entry}")
     return "\n".join(lines) + "\n"
 
@@ -1037,6 +1286,9 @@ def render_field(name: str, value: str | list[str]) -> list[str]:
 def set_field(text: str, name: str, value: str | list[str]) -> str:
     """Replace one frontmatter field and leave the other lines as they are.
 
+    A missing field goes after the field that FIELDS puts before it,
+    such as ``sessions`` after ``prs``, else at the end.
+
     Args:
         text: The card text.
         name: The field name.
@@ -1052,23 +1304,41 @@ def set_field(text: str, name: str, value: str | list[str]) -> str:
     end = find_frontmatter_end(lines)
     if not end:
         raise CardError("the card has no frontmatter; fix it by hand")
-    start = next(
-        (
-            index
-            for index in range(1, end)
-            if (field := FIELD_RE.match(lines[index])) and field[1] == name
-        ),
-        None,
-    )
-    new_lines = render_field(name, value)
-    if start is None:
-        lines[end:end] = new_lines
-        return "\n".join(lines)
-    stop = start + 1
-    while stop < end and lines[stop][:1] in (" ", "\t"):
-        stop += 1
-    lines[start:stop] = new_lines
+    bounds = find_field(lines, end, name)
+    if bounds is None:
+        earlier = FIELDS[: FIELDS.index(name)] if name in FIELDS else []
+        found = [
+            other_bounds
+            for other in reversed(earlier)
+            if (other_bounds := find_field(lines, end, other))
+        ]
+        place = found[0][1] if found else end
+        bounds = (place, place)
+    lines[bounds[0] : bounds[1]] = render_field(name, value)
     return "\n".join(lines)
+
+
+def find_field(
+    lines: list[str], end: int, name: str
+) -> tuple[int, int] | None:
+    """Return the lines a frontmatter field spans, list items included.
+
+    Args:
+        lines: The card text split into lines.
+        end: The index of the line that closes the frontmatter.
+        name: The field name.
+
+    Returns:
+        Start and stop indexes, or None when the field is missing.
+    """
+    for start in range(1, end):
+        field = FIELD_RE.match(lines[start])
+        if field and field[1] == name:
+            stop = start + 1
+            while stop < end and lines[stop][:1] in (" ", "\t"):
+                stop += 1
+            return start, stop
+    return None
 
 
 def read_title(text: str, key: str) -> str:
@@ -1171,19 +1441,6 @@ def read_section(text: str, name: str) -> str | None:
     if bounds is None:
         return None
     return "\n".join(lines[bounds[0] : bounds[1]])
-
-
-def read_section_words(text: str, name: str) -> str:
-    """Return a section's text without hints and blank space.
-
-    Args:
-        text: The card text.
-        name: The section name.
-
-    Returns:
-        The text, empty when the section is missing or holds only hints.
-    """
-    return HINT_RE.sub("", read_section(text, name) or "").strip()
 
 
 def add_to_section(text: str, name: str, entry: str) -> str:
@@ -1514,6 +1771,41 @@ def find_author(args: argparse.Namespace) -> str:
     if not names or not names[0]:
         raise CardError(f"no named Herdr agent in pane {pane}. {hint}")
     return names[0]
+
+
+def find_agent_session(agent: str) -> AgentSession:
+    """Ask Herdr for an agent's kind and session id.
+
+    Args:
+        agent: A Herdr agent name or pane, or an empty string for the
+            agent in this pane.
+
+    Returns:
+        The session. Its name is the target when the agent has none.
+
+    Raises:
+        CardError: There is no target, or Herdr has no session for it.
+    """
+    target = agent or os.environ.get("HERDR_PANE_ID", "")
+    if not target:
+        raise CardError("no Herdr pane, so pass --session AGENT")
+    command = ["herdr", "agent", "get", target]
+    try:
+        proc = subprocess.run(
+            command, capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise CardError(f"{' '.join(command)} failed: {error}") from error
+    try:
+        found = json.loads(proc.stdout)["result"]["agent"]
+        kind = found["agent"]
+        session_id = found["agent_session"]["value"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise CardError(
+            f"{' '.join(command)} gave no session:"
+            f" {(proc.stderr or proc.stdout).strip()}"
+        ) from error
+    return AgentSession(found.get("name") or target, f"{kind} {session_id}")
 
 
 def rank_stage(stage: str) -> int:

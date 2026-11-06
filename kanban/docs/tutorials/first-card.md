@@ -35,16 +35,21 @@ setup, or `research` for work that ends in a document or a decision.
 ---
 
 Open the card in Obsidian. It is in
-`500 Zettelkasten/Projects/DevEnv/`. In editing view, each section
-starts with a hint between `%%` marks that says what goes there.
-Reading view hides the hints. Write a sentence under **Why**: who is affected
-and what happens today. Then write a sentence under **Outcome**: what
-done looks like, so you can check it later.
+`500 Zettelkasten/Projects/DevEnv/`. Under **Context**, write why the
+work matters: the problem, and links to anything related. Under
+**Acceptance Criteria**, write what must be true when it is done, one
+checkbox line each, such as:
 
-From the shell, you can read a section back:
+```markdown
+- [ ] `card board` lists the new card under ready.
+- [ ] Relevant tests and validation pass.
+```
+
+The [reference](../reference/card.md#sections) says what each section
+holds. From the shell, you can read a section back:
 
 ```sh
-card show PDEV-KB-005 --section Outcome
+card show PDEV-KB-005 --section "Acceptance Criteria"
 ```
 
 Use the key `card new` printed for you.
@@ -54,7 +59,8 @@ Use the key `card new` printed for you.
 
 Releasing a card moves it from `draft` to `ready`, which tells the
 staff agent the card may start. Only you can release a card, and
-`card` refuses while the Outcome is empty.
+`card` refuses until Acceptance Criteria holds at least one `- [ ]`
+line.
 
 ```sh
 card move PDEV-KB-005 ready --by user --user
