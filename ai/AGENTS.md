@@ -209,9 +209,8 @@ pattern over the whole file.
   replacement and treat the newest explicit preference as authoritative.
 - A memory write does not authorize source edits, commits, pushes, permission
   changes, or external actions.
-- When the user asks to promote a skill's saved lessons, or a learned
-  preference, into source-controlled guidance, load and follow the
-  `promote-lessons` skill.
+- When the user asks to promote a learned preference into source-controlled
+  guidance, use the `promote-memory` skill.
 
 - Agents change pull requests only through `pde-gh-write`; a human supplies approval through Herdr, Moshi, or `pde-pr-approve`. Never answer approval requests, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
 - Before sending a request to open or merge a PR, follow Guardrail 4

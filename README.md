@@ -116,7 +116,7 @@ Vibe binaries plus repo-managed AI config.
 | TypeScript development | `ai/skills/typescript-development/` | `~/.agents/skills/typescript-development/` | Shared JavaScript and TypeScript development guidance |
 | Pull request | `ai/skills/pull-request/` | `~/.agents/skills/pull-request/` | Pull-request procedure |
 | Git messages | `ai/skills/git-messages/` | `~/.agents/skills/git-messages/` | Shared commit and PR guidance |
-| Promote lessons | `ai/skills/promote-lessons/` | `~/.agents/skills/promote-lessons/` | Shared workflow skill for folding saved lessons or a memory into skill text |
+| Promote memory | `ai/skills/promote-memory/` | `~/.agents/skills/promote-memory/` | Reviewed memory-to-skill promotion |
 | Obsidian Zettel | `ai/skills/obsidian-zettel/` | `~/.agents/skills/obsidian-zettel/` | Template-aligned vault note creation |
 | Obsidian daily note | `ai/skills/obsidian-daily-note/` | `~/.agents/skills/obsidian-daily-note/` | Approved sections appended to today's daily note |
 | OpenCode | `ai/opencode/`, `chezmoi/` | `~/.config/opencode/{agents,commands,cli.json,pde-herdr-opencode}`, `opencode.json` permission merge | OpenCode commands, agents, synchronized TUI theme, bidirectional agent cycling (`Tab` next, `Shift+Tab` previous), and a Herdr pane that stays working while background subagents run |
@@ -182,7 +182,6 @@ loads `~/.agents/skills/`.
 | `herdr-hub` | Coordinate other Herdr sessions: pass messages, answer their questions, run merges | "You are the hub of this run" |
 | `roadmap-run` | Plan, build, review and file the remaining PRs of an approved roadmap as a stack | "Build the rest of the roadmap overnight" |
 | `session-review` | Review a session for token use, lessons to save and jobs a local model could run, then wait for your pick | "Review this session for token usage, skill lessons and local model handoff" |
-| `promote-lessons` | Fold a skill's saved lessons, or one memory, into skill text through a PR | "Promote the pull-request lessons" |
 | `review-plan` | Review a plan, PR, commit, or diff for architecture, bugs, completeness | "Use review-plan on docs/design-auth.md with focus on security" |
 
 The skills are installed to `~/.agents/skills/`, and the installer copies the

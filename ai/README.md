@@ -29,10 +29,9 @@ Shared workflow skills include `create-plan` for implementation proposals,
 `research-codebase` for as-is codebase research, `delegate` for
 handing a task to an agent and reviewing it, `herdr-handoff` for
 handing work to a new session in a new Herdr workspace, `herdr-hub`
-for the session that coordinates other Herdr sessions,
+for the session that coordinates other Herdr sessions, and
 `roadmap-run` for building a roadmap's pull requests while the user
-is away, and `promote-lessons` for folding a skill's saved lessons
-into its text; they
+is away; they
 install only to
 `~/.agents/skills/`, and the OpenCode commands load them. Shared instructions
 require skill selection after reading supplied context and before domain work.
@@ -68,7 +67,7 @@ existing `~/.opencode-mem/` data remains on disk but is not loaded. Shared
 memory instructions apply only when a memory tool is available; this
 installation does not configure one for OpenCode.
 
-The `promote-lessons` skill also turns a learning the user asks to keep
-into a reviewed rule in a skill or `ai/AGENTS.md`. It targets this
-repository by default from any checkout and ships through a pull
-request.
+The `promote-memory` skill turns an explicitly requested learning into a
+reviewed source change. It targets this repository by default from any
+checkout, writes the skill under `skills/`; it needs no install entry, and
+opens a pull request with Git author email `***REMOVED***`.

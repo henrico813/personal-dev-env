@@ -80,8 +80,8 @@ leaves such skills untouched.
 
 These commands find a skill's source at `ai/skills/<name>/SKILL.md` in
 the checkout, as in this repository, or else at
-`skills/<name>/SKILL.md`. The `promote-lessons` skill runs them in
-order.
+`skills/<name>/SKILL.md`. Run `promote-start`, then
+`promote-check`, then `retire`.
 
 `promote-start` and `promote-check` help fold lessons into a skill's
 source. `promote-start` refuses a dirty checkout, a source without the
