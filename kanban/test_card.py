@@ -1,6 +1,7 @@
 """Tests for the card command, run against a made-up Projects folder."""
 
 import os
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -27,17 +28,17 @@ prs: []
 # PDEV-KB-001 Kanban demo
 ---
 
-## Why
+## Context
 ---
 
 Cards have no tool yet.
 
-## Outcome
+## Acceptance Criteria
 ---
 
-The user makes cards from the shell.
+- [ ] The user makes cards from the shell.
 
-## Open questions
+## Open Questions
 ---
 
 ## Decisions
@@ -80,10 +81,10 @@ def write_card(
     projects: Path,
     key: str,
     stage: str,
-    outcome: str = "",
+    criteria: str = "",
     stage_date: str = "2026-11-06",
 ) -> Path:
-    """Write a card note at a stage, with an optional Outcome."""
+    """Write a card note at a stage, with optional criteria lines."""
     text = card.render_card(
         key=key,
         title="Some work",
@@ -94,9 +95,9 @@ def write_card(
         log_entry=f"{stage}: by user",
     )
     text = card.set_field(text, "stage_date", stage_date)
-    if outcome:
+    if criteria:
         text = text.replace(
-            "## Open questions", f"{outcome}\n\n## Open questions"
+            "## Open Questions", f"{criteria}\n\n## Open Questions"
         )
     path = projects / "DevEnv" / f"{key} Some work.md"
     path.write_text(text)
@@ -181,19 +182,31 @@ class TestMove:
     """Moves follow the stage table, and only the user makes some moves."""
 
     @pytest.mark.parametrize(
-        ("stage", "target", "flags", "outcome"),
+        ("stage", "target", "flags", "criteria"),
         [
             pytest.param(
-                "review", "accepted", [], "Done.", id="user-move-without-user"
+                "review",
+                "accepted",
+                [],
+                "- [ ] Done.",
+                id="user-move-without-user",
             ),
             pytest.param(
-                "draft", "active", ["--user"], "Done.", id="skips-ready"
+                "draft", "active", ["--user"], "- [ ] Done.", id="skips-ready"
             ),
             pytest.param(
-                "draft", "ready", ["--user"], "", id="ready-without-outcome"
+                "draft",
+                "ready",
+                ["--user"],
+                "- Done.",
+                id="ready-without-checkbox",
             ),
             pytest.param(
-                "accepted", "dropped", ["--user"], "Done.", id="accepted-final"
+                "accepted",
+                "dropped",
+                ["--user"],
+                "- [ ] Done.",
+                id="accepted-final",
             ),
         ],
     )
@@ -203,17 +216,18 @@ class TestMove:
         stage: str,
         target: str,
         flags: list[str],
-        outcome: str,
+        criteria: str,
     ) -> None:
         """A refused move fails and does not touch the note.
 
         Accepting work and releasing a card are the user's decisions.
         An agent that could make them, or a card released with no
-        Outcome, would take those decisions away from the user. A move
-        missing from the table, such as skipping ready or reopening an
-        accepted card, would let work bypass those decisions.
+        acceptance checkbox, would take those decisions away from the
+        user. A move missing from the table, such as skipping ready or
+        reopening an accepted card, would let work bypass those
+        decisions.
         """
-        path = write_card(projects, KEY, stage, outcome)
+        path = write_card(projects, KEY, stage, criteria)
         before = path.read_text()
 
         code = run_card(
@@ -229,24 +243,28 @@ class TestMove:
         The staff agent rebuilds its picture of the work from the cards
         after a restart, so the stage and the Log must both change. The
         board and the Base sort by stage_date, which every move updates.
+        The user releasing a card with one checkbox must also work.
         """
-        path = write_card(projects, KEY, "active")
+        path = write_card(projects, KEY, "draft", "- [ ] Done.")
 
         code = run_card(
             projects,
             "move",
             KEY,
-            "review",
+            "ready",
+            "--user",
             "--why",
-            "PR open",
+            "Clear enough",
             "--by",
-            "general-staff",
+            "user",
         )
 
         assert code == 0
         text = path.read_text()
-        assert f"stage: review\nstage_date: {TODAY}\n" in text
-        assert text.endswith(f"- {TODAY} review: by general-staff. PR open\n")
+        assert f"stage: ready\nstage_date: {TODAY}\n" in text
+        assert text.endswith(
+            f"- {TODAY} ready: by user for the user. Clear enough\n"
+        )
 
     def test_move_refuses_without_author(self, projects: Path) -> None:
         """A move with no --by and no Herdr agent name fails.
@@ -280,7 +298,7 @@ class TestMove:
         """
         for number in range(2, 2 + card.WORK_LIMIT):
             write_card(projects, f"PDEV-KB-{number:03d}", "review")
-        path = write_card(projects, KEY, "ready", "Done.")
+        path = write_card(projects, KEY, "ready", "- [ ] Done.")
 
         code = run_card(
             projects, "move", KEY, "active", *flags, "--by", "general-staff"
@@ -288,6 +306,167 @@ class TestMove:
 
         assert code == exit_code
         assert f"stage: {stage}\n" in path.read_text()
+
+
+@pytest.fixture
+def fake_herdr(projects: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A herdr that reports agent worker-1 in session opencode ses_abc."""
+    # Needs projects first, since projects clears HERDR_PANE_ID.
+    monkeypatch.setenv("HERDR_PANE_ID", "w4X:p2")
+    herdr_answer = (
+        '{"result": {"agent": {"name": "worker-1", "agent": "opencode",'
+        ' "agent_session": {"value": "ses_abc"}}}}'
+    )
+    monkeypatch.setattr(
+        card.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, herdr_answer, ""
+        ),
+    )
+
+
+@pytest.mark.usefixtures("fake_herdr")
+class TestSessions:
+    """A card records the Herdr sessions that worked on it."""
+
+    def test_link_session_records_entry_once(self, projects: Path) -> None:
+        """Linking a session twice gives one sessions entry and one Log line.
+
+        The staff agent finds a card's workers through sessions after a
+        restart, and agents may link the same session again. A doubled
+        entry or Log line would make one worker look like two.
+        """
+        path = write_card(projects, KEY, "active")
+
+        first = run_card(projects, "link", KEY, "--session")
+        second = run_card(projects, "link", KEY, "--session")
+
+        assert (first, second) == (0, 0)
+        text = path.read_text()
+        assert 'prs: []\nsessions:\n  - "opencode ses_abc"\ntopics:' in text
+        assert text.count("session: worker-1 (opencode ses_abc)") == 1
+        assert text.endswith(
+            f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
+        )
+
+    @pytest.mark.parametrize(
+        ("stage", "argv", "stage_line"),
+        [
+            pytest.param(
+                "ready",
+                ["move", KEY, "active"],
+                "active: by user",
+                id="start",
+            ),
+            pytest.param(
+                "",
+                ["new", "DevEnv", "Some work", "--adopt", "active", "--user"],
+                "active: adopted by user for the user",
+                id="adopt",
+            ),
+        ],
+    )
+    def test_start_with_session_records_entry(
+        self, projects: Path, stage: str, argv: list[str], stage_line: str
+    ) -> None:
+        """Starting or adopting a card with --session records the worker.
+
+        The staff agent starts each worker with card move KEY active
+        --session, and the user adopts running work the same way. If
+        the session were dropped, the card would not say which worker
+        holds it.
+        """
+        if stage:
+            write_card(projects, KEY, stage, "- [ ] Done.")
+
+        code = run_card(projects, *argv, "--session", "--by", "user")
+
+        assert code == 0
+        text = (projects / "DevEnv" / f"{KEY} Some work.md").read_text()
+        assert 'sessions:\n  - "opencode ses_abc"\n' in text
+        assert text.endswith(
+            f"- {TODAY} {stage_line}\n"
+            f"- {TODAY} session: worker-1 (opencode ses_abc)\n"
+        )
+
+
+class TestEdit:
+    """One numbered item of a section can be replaced or removed."""
+
+    @pytest.mark.parametrize(
+        ("flags", "criteria", "note"),
+        [
+            pytest.param(
+                ["- [ ] Second, sharper."],
+                "- [x] First.\n- [ ] Second, sharper.\n- [ ] Third.\n",
+                'replaced Acceptance Criteria item 2, was "Second."',
+                id="replace",
+            ),
+            pytest.param(
+                ["--remove"],
+                "- [x] First.\n- [ ] Third.\n",
+                'removed Acceptance Criteria item 2, "Second."',
+                id="remove",
+            ),
+        ],
+    )
+    def test_edit_changes_item_n_and_logs(
+        self, projects: Path, flags: list[str], criteria: str, note: str
+    ) -> None:
+        """Editing item 2 changes that item only, keeps its box, and logs it.
+
+        Agents fix vague criteria by the numbers card show prints. An
+        off-by-one would rewrite the wrong criterion, a lost checkbox
+        would hide it from the ready check, and the Log line is the only
+        record of the old words.
+        """
+        path = write_card(projects, KEY, "ready", "- [ ] First.")
+        path.write_text(
+            path.read_text().replace(
+                "- [ ] First.\n", "- [x] First.\n- [ ] Second.\n- [ ] Third.\n"
+            )
+        )
+
+        code = run_card(
+            projects,
+            "edit",
+            KEY,
+            "Acceptance Criteria",
+            "2",
+            *flags,
+            "--by",
+            "kanban-rollout-2",
+        )
+
+        assert code == 0
+        text = path.read_text()
+        assert f"---\n\n{criteria}\n## Open Questions" in text
+        assert text.endswith(f"- {TODAY} note (kanban-rollout-2): {note}\n")
+
+    def test_show_section_numbers_items_for_edit(
+        self, projects: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The numbers card show prints are the ones card edit takes.
+
+        Agents read the number from card show and pass it to card edit.
+        If the two counted differently, an agent would rewrite the
+        wrong criterion on a real card.
+        """
+        path = write_card(projects, KEY, "ready", "- [ ] First.")
+        path.write_text(
+            path.read_text().replace(
+                "- [ ] First.\n", "- [ ] First.\n  more words\n- [ ] Second.\n"
+            )
+        )
+
+        code = run_card(projects, "show", KEY, "--section", card.CRITERIA)
+
+        assert code == 0
+        assert capsys.readouterr().out == (
+            f"## {card.CRITERIA}\n"
+            "1. - [ ] First.\n  more words\n2. - [ ] Second.\n"
+        )
 
 
 class TestBoard:
@@ -369,7 +548,9 @@ class TestHandEditedCard:
             if not saved:
                 saved = True
                 path.write_text(
-                    text.replace("## Outcome", "Hand edit.\n\n## Outcome")
+                    text.replace(
+                        "## Open Questions", "Hand edit.\n\n## Open Questions"
+                    )
                 )
                 # Some file systems keep coarse times, so force a change.
                 os.utime(path, ns=(1, 1))

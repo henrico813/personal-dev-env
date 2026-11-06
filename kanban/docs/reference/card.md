@@ -26,20 +26,24 @@ named vault.
 | Command | What it does |
 | --- | --- |
 | `card new PROJECT TITLE [--kind K] [--user] [--why TEXT]` | Makes a card in `draft` and prints its name. |
-| `card new PROJECT TITLE --adopt STAGE --user [--why TEXT]` | Makes a card straight in `active` or `review`, for work already under way. |
+| `card new PROJECT TITLE --adopt STAGE --user [--why TEXT] [--session [AGENT]]` | Makes a card straight in `active` or `review`, for work already under way. `--session` also records the agent's session, as `card link --session` does. |
 | `card list [--stage S] [--project P] [--kind K]` | Prints one line per card: key, stage, kind and title, in stage order. |
 | `card board` | Prints the count per stage, active plus review against the work limit, and the review queue by `stage_date`, oldest first. |
-| `card show KEY [--section S]` | Prints the whole card, or one section. |
+| `card show KEY [--section S]` | Prints the whole card, or one section with its items numbered from 1. |
 | `card grep PATTERN [--section S] [--stage S] [--project P] [--kind K]` | Prints each line that matches a regular expression, in any case, as `KEY Section: line`. Exits 1 when nothing matches. |
 | `card move KEY STAGE [--user] [--why TEXT]` | Moves a card, sets `stage_date` to today and adds a Log line. |
+| `card move KEY active --session [AGENT]` | Starts a card and records the worker's session in the same write. |
 | `card note KEY TEXT` | Adds a dated note to the Log. |
 | `card note KEY TEXT --needs-you` | Logs a question, approval or failure that waits on the user. |
 | `card note KEY TEXT --answered` | Logs the user's answer. |
-| `card add KEY SECTION TEXT` | Adds a bullet to Why, Outcome, Open questions or Decisions. |
+| `card add KEY SECTION TEXT` | Adds a bullet to Context, Open Questions or Decisions, or a `- [ ]` item to Acceptance Criteria. |
+| `card edit KEY SECTION N TEXT` | Replaces the words of item N, as `card show KEY --section SECTION` numbers it. A checkbox or bullet stays, with its tick. Logs the old words. |
+| `card edit KEY SECTION N --remove` | Removes item N and logs its words. |
 | `card set KEY title VALUE` | Changes the title heading and renames the file. |
 | `card set KEY kind VALUE` | Changes the kind. |
 | `card link KEY PLAN` | Adds `[[PLAN]]` to `plans`. |
 | `card link KEY URL` | Adds a pull request URL to `prs`. |
+| `card link KEY --session [AGENT]` | Adds a Herdr agent's session to `sessions` and logs it. Without AGENT, it uses the agent in the current pane. |
 | `card delete KEY --user` | Deletes the note. Use `dropped` instead to keep a record. |
 | `card check` | Lists cards with a broken layout, an unknown stage or kind, or a key two files share. Exits 1 when it finds one. |
 | `card template` | Prints the Obsidian template, `001.09 Zettel-Kanban.md`. |
@@ -47,16 +51,29 @@ named vault.
 `--user` records that the user decided. The tool cannot tell who
 types, so an agent passes it only when the user said so.
 
-`new`, `move` and plain notes need an author for the Log. `--by NAME`
-gives one; otherwise `card` uses the name of the Herdr agent in its
-pane. With neither, `card` stops. The user passes `--by user`.
+An **item** of a section is a line that is not blank or indented,
+with the indented lines right after it. `card edit` refuses an item
+that changed since `card` read the card, so a hand edit is never
+replaced by mistake. Replacing changes only the item's first line;
+`--remove` also removes its indented lines. `card edit` takes no Log
+items, though each edit adds a note line to the Log.
+
+`new`, `move`, `edit` and plain notes need an author for the Log.
+`--by NAME` gives one; otherwise `card` uses the name of the Herdr
+agent in its pane. With neither, `card` stops. The user passes
+`--by user`.
+
+`--session AGENT` takes a Herdr agent name or pane. `card` reads the
+agent's kind and session id from `herdr agent get AGENT`, such as
+`opencode ses_e4dc27c20ffeJkm3JZ8dwLh7rW`. A session already in
+`sessions` is not added or logged again.
 
 ## Stages
 ---
 
 | Stage | Meaning |
 | --- | --- |
-| `draft` | Why and Outcome are still being written. |
+| `draft` | Context and Acceptance Criteria are still being written. |
 | `ready` | The user released it; it waits for a free work slot. |
 | `active` | A worker plans and builds it, or does the research. |
 | `review` | The worker finished; it waits for the user to accept. |
@@ -69,7 +86,7 @@ pane. With neither, `card` stops. The user passes `--by user`.
 | Move | Who | Needs |
 | --- | --- | --- |
 | new card -> `draft` | user or staff | |
-| `draft` -> `ready` | user | an Outcome |
+| `draft` -> `ready` | user | an Acceptance Criteria checkbox |
 | `ready` -> `draft` | user or staff | |
 | `ready` -> `active` | staff; the user past the work limit | a free slot, unless `--user` |
 | `active` -> `draft` | user | |
@@ -84,7 +101,7 @@ pane. With neither, `card` stops. The user passes `--by user`.
 and `card` makes them without `--user`. Any move not in the table is
 refused. The **work limit** is 8 cards in `active` plus `review`,
 counted across every project. Adoption skips the limit and the
-Outcome check.
+Acceptance Criteria check.
 
 ## Frontmatter
 ---
@@ -101,6 +118,7 @@ kind: build
 date_created: 2026-11-06
 plans: []
 prs: []
+sessions: []
 topics:
   - "[[DevEnv]]"
 ```
@@ -117,6 +135,7 @@ topics:
 | `date_created` | The day the card was made. |
 | `plans` | Links to plan notes, added by `card link`. |
 | `prs` | Pull request URLs, added by `card link`. |
+| `sessions` | The agent sessions that worked on the card, as `KIND SESSION_ID`, added by `--session`. |
 | `topics` | A link to the project, and any other topics. |
 
 The key has no field. `card` reads it from the file name, and the
@@ -126,9 +145,33 @@ names and keeps every other line, including fields added by hand.
 ## Sections
 ---
 
-Why, Outcome, Open questions, Decisions and Log, in that order. Hints
-between `%%` marks do not count as text, so a card whose Outcome holds
-only its hint cannot move to `ready`.
+A card has these sections, in this order. A new card has the headings
+only, with no hint or placeholder text.
+
+| Section | What it holds |
+| --- | --- |
+| Context | Why does this work matter? Describe the problem, motivation, relevant background, and constraints. Include links to relevant code, documentation, issues, or prior work. |
+| Acceptance Criteria | What must be true for this issue to be considered complete? Each item is an observable, verifiable condition; relevant tests and validation pass. |
+| Open Questions | What remains unresolved that could affect the implementation or outcome? |
+| Decisions | Record significant decisions made while working on this issue, including rationale when useful. |
+| Log | Record meaningful progress, findings, and milestones that future contributors need to understand. |
+
+Each acceptance criterion is a checkbox line, and the last one is
+usually the tests:
+
+```markdown
+- [ ] <observable, verifiable condition>
+- [ ] Relevant tests and validation pass.
+```
+
+A card moves to `ready` only when Acceptance Criteria holds at least
+one checkbox line. `card add KEY "Acceptance Criteria" TEXT` adds one
+as `- [ ] TEXT`.
+
+Cards made before this layout have Why, Outcome and "Open questions"
+sections, hints between `%%` marks, and no `sessions` field.
+`kanban/migrate_sections.py` moves them to this layout; see its
+`--help`. A second run changes nothing.
 
 ## Log lines
 ---
@@ -143,6 +186,8 @@ Each line starts with `- YYYY-MM-DD`. Text in brackets is optional.
 | `card note --needs-you` | `needs-you: TEXT` |
 | `card note --answered` | `answered: TEXT` |
 | `card note` | `note (NAME): TEXT` |
+| `card edit` | `note (NAME): replaced SECTION item N, was "OLD"` or `note (NAME): removed SECTION item N, "OLD"` |
+| `--session` | `session: NAME (KIND SESSION_ID)` |
 | the Obsidian template | `draft: by the user in Obsidian` |
 
 Cards made before these forms existed start with
