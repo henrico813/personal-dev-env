@@ -325,7 +325,7 @@ For Go, Python or Rust files whose comments you write or review, run
 the review tool's comment check in the repository:
 
 ```bash
-pde-comment-review check-comments --base <commit your task started from>
+glimmer check-comments --base <commit your task started from>
 ```
 
 Without `--base`, it checks the changes since the branch start, where
@@ -369,7 +369,7 @@ edit approved text to get past a failure. A function you renamed
 keeps its comment without a failure, and the owner is asked about
 that comment as a new one, so you list no renames.
 
-If `pde-comment-review` is not on `PATH`, say in your final message
+If `glimmer` is not on `PATH`, say in your final message
 that the comment check did not run, and check these rules yourself.
 
 ## Go and Python rules

@@ -2,17 +2,14 @@
 
 The local backend builds repository applications: `planner`,
 `opencode-inline-shim`, `vibe`, `pde-gh-write` (also linked as
-`pde-pr-approve`), `pde-comment-review`, `skill-lessons` and `prs`.
+`pde-pr-approve`), `glimmer`, `skill-lessons` and `prs`.
 `skill-lessons` has a `build.py` that packs it into one file run by
 `/usr/bin/python3`. Client builds only `skill-lessons`, and terminal builds
 no local applications.
 
-The installer builds `pde-comment-review` from the Rust source in
-`pde-comment-review-rs/` with Cargo and checks it with `help` after activation.
+The installer builds `glimmer` from the Rust source in `glimmer/`
+with Cargo and checks it with `help` after activation.
 A failed check restores the previous tools through the installer's journal.
-If a stage after chezmoi fails, the journal brings the Go tool back, but Herdr
-keeps the new plugin, whose `screen` command the Go tool lacks, so Ctrl+b e
-fails until the next install that succeeds.
 
 1. Change the application source in its repository directory.
 2. If an application is added or removed, update the build specifications in
