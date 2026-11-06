@@ -57,32 +57,52 @@ def skills(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path / "skills"
 
 
+@pytest.fixture(params=["ai/skills", "skills"], ids=["ai-skills", "skills"])
+def layout(request: pytest.FixtureRequest) -> str:
+    """Return the folder that holds skill sources in the checkout.
+
+    This repository keeps skills in ``ai/skills`` and other checkouts in
+    ``skills``, so every promotion test runs once for each.
+    """
+    return request.param
+
+
 @pytest.fixture
 def checkout(
-    skills: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    skills: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: str,
 ) -> Path:
-    """Return a clean checkout holding the demo source, pushed to origin.
+    """Return a clean checkout holding the demo source, pushed to its remote.
 
-    Origin is a local bare repository. The demo skill is also installed,
-    and the user's git config is ignored so hooks or signing cannot
-    change what a test sees.
+    The remote is a local bare repository named ``github``, as in this
+    repository, so a command that assumes ``origin`` fails. The demo
+    skill is also installed, and the user's git config is ignored so
+    hooks or signing cannot change what a test sees.
     """
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "gitconfig"))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    origin = tmp_path / "origin.git"
+    remote = tmp_path / "remote.git"
     root = tmp_path / "checkout"
-    run_git(tmp_path, "init", "--quiet", "--bare", "-b", "main", str(origin))
+    run_git(tmp_path, "init", "--quiet", "--bare", "-b", "main", str(remote))
     run_git(tmp_path, "init", "--quiet", "-b", "main", str(root))
     run_git(root, "config", "user.email", "dev@example.com")
     run_git(root, "config", "user.name", "Dev")
-    (root / "skills" / "demo").mkdir(parents=True)
-    (root / "skills" / "demo" / "SKILL.md").write_text(SOURCE)
+    (root / layout / "demo").mkdir(parents=True)
+    (root / layout / "demo" / "SKILL.md").write_text(SOURCE)
     run_git(root, "add", ".")
     run_git(root, "commit", "--quiet", "-m", "Add demo")
-    run_git(root, "remote", "add", "origin", str(origin))
-    run_git(root, "push", "--quiet", "-u", "origin", "main")
+    run_git(root, "remote", "add", "github", str(remote))
+    run_git(root, "push", "--quiet", "-u", "github", "main")
     install(skills, "demo", SOURCE)
     return root
+
+
+@pytest.fixture
+def source(checkout: Path, layout: str) -> Path:
+    """Return the demo skill's source file in the checkout."""
+    return checkout / layout / "demo" / "SKILL.md"
 
 
 def run_git(where: Path, *args: str) -> None:
@@ -275,19 +295,19 @@ class TestRetire:
         self,
         run: Run,
         checkout: Path,
+        source: Path,
         skills: Path,
         tmp_path: Path,
         pushed: bool,
         returncode: int,
         installed: str,
     ) -> None:
-        """``retire --after-push`` keeps lessons until origin has HEAD.
+        """``retire --after-push`` keeps lessons until the push lands.
 
         The promotion commit is the only other copy of a promoted rule,
         so retiring before the push lands could lose the rule.
         """
         assert add_lesson(run, tmp_path).returncode == 0
-        source = checkout / "skills" / "demo" / "SKILL.md"
         source.write_text(SOURCE.replace("work.", "work well."))
         run_git(checkout, "commit", "--quiet", "-am", "Promote")
         if pushed:
@@ -301,6 +321,49 @@ class TestRetire:
         assert (skills / "demo" / "SKILL.md").read_text() == installed
         assert run("render").returncode == 0
         assert (skills / "demo" / "SKILL.md").read_text() == installed
+
+    def test_after_push_waits_for_squash_merge(
+        self,
+        run: Run,
+        checkout: Path,
+        source: Path,
+        skills: Path,
+        tmp_path: Path,
+    ) -> None:
+        """``retire --after-push`` waits until a pull request is merged.
+
+        A pull request leaves the rule on a pushed branch until a squash
+        merge, which puts a new commit on the default branch. Retiring
+        before the merge would lose the rule if the pull request closed,
+        and refusing after it would keep the lessons forever.
+        """
+        assert add_lesson(run, tmp_path).returncode == 0
+        installed = skills / "demo" / "SKILL.md"
+        # Push the promotion on its own branch, as a pull request does.
+        run_git(checkout, "switch", "--quiet", "-c", "promote")
+        source.write_text(SOURCE.replace("work.", "work well."))
+        run_git(checkout, "commit", "--quiet", "-am", "Promote")
+        run_git(checkout, "push", "--quiet", "-u", "github", "HEAD")
+
+        before_merge = run(
+            "retire", "demo", "L1", "--after-push", "--checkout", str(checkout)
+        )
+        kept = installed.read_text()
+        # Squash merge the branch into main, as the forge does.
+        run_git(checkout, "switch", "--quiet", "main")
+        run_git(checkout, "merge", "--quiet", "--squash", "promote")
+        run_git(checkout, "commit", "--quiet", "-m", "Promote (#1)")
+        run_git(checkout, "push", "--quiet")
+        run_git(checkout, "switch", "--quiet", "promote")
+        after_merge = run(
+            "retire", "demo", "L1", "--after-push", "--checkout", str(checkout)
+        )
+
+        assert before_merge.returncode == 1
+        assert "default branch" in before_merge.stderr
+        assert kept == render(LESSON_LINE)
+        assert after_merge.returncode == 0, after_merge.stderr
+        assert installed.read_text() == SOURCE
 
 
 class TestRender:
@@ -456,7 +519,12 @@ class TestPromoteCheck:
         ],
     )
     def test_reports_mechanical_rule_breaks(
-        self, run: Run, checkout: Path, new_text: str, problem: str
+        self,
+        run: Run,
+        checkout: Path,
+        source: Path,
+        new_text: str,
+        problem: str,
     ) -> None:
         """Each mechanical promotion rule fails the check when broken.
 
@@ -469,7 +537,6 @@ class TestPromoteCheck:
             "text": "Always show the full draft before you create a ticket.",
         }
         assert run("add", "-", stdin=json.dumps(lesson)).returncode == 0
-        source = checkout / "skills" / "demo" / "SKILL.md"
         source.write_text(SOURCE.replace("Do the work.", new_text))
 
         result = run("promote-check", "demo", "--checkout", str(checkout))
@@ -478,14 +545,13 @@ class TestPromoteCheck:
         assert problem in result.stderr
 
     def test_clean_edit_prints_diff_and_counts(
-        self, run: Run, checkout: Path
+        self, run: Run, checkout: Path, source: Path
     ) -> None:
         """A clean edit passes and prints what the user approves.
 
         The agent relays this output as is, so it must hold the real
         diff and both line counts.
         """
-        source = checkout / "skills" / "demo" / "SKILL.md"
         source.write_text(SOURCE.replace("work.", "work well."))
 
         result = run("promote-check", "demo", "--checkout", str(checkout))

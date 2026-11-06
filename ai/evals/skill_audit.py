@@ -11,15 +11,12 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-DB = Path.home() / ".local/share/opencode/opencode.db"
-SKILLS = Path.home() / ".agents/skills"
-# A successful read prints the skill's unindented frontmatter, maybe after a
-# line number from the read tool or cat -n; the skill tool prints a tag.
-NAME = re.compile(
-    r"^(?:\s*\d+(?::\s|\t))?name: ([\w-]+)\s*$"
-    r'|<skill_content name="([\w-]+)"',
-    re.M,
-)
+# The session-review skill owns the skill-load matcher, so both tools
+# count the same loads.
+SCRIPTS = Path(__file__).resolve().parents[1] / "skills/session-review/scripts"
+sys.path.insert(0, str(SCRIPTS))
+from session_stats import DB, find_skill_loads  # noqa: E402
+
 # A heredoc body is data, so a push or ">" inside it does not count.
 HEREDOC = re.compile(
     r"(<<-?\s*['\"]?(\w+)['\"]?[^\n]*)\n.*?^\s*\2\s*$", re.S | re.M
@@ -63,10 +60,8 @@ def audit(db: sqlite3.Connection, session: str) -> str:
             output = "".join(
                 c.get("text", "") for c in state.get("content") or []
             )
-            for match in NAME.finditer(output):
-                skill = match[1] or match[2]
-                installed = (SKILLS / skill / "SKILL.md").is_file()
-                if installed and skill not in before + after:
+            for skill in find_skill_loads(output):
+                if skill not in before + after:
                     (after if edited else before).append(skill)
             command = str((state.get("input") or {}).get("command", ""))
             command = QUOTED.sub("''", HEREDOC.sub(r"\1", command))

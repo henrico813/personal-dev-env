@@ -16,11 +16,13 @@
 .agents/skills/cleanup-plan
 .agents/skills/code-documentation
 .agents/skills/comment-review
+.agents/skills/conclude-session
 .agents/skills/create-plan
 .agents/skills/design-doc
 .agents/skills/git-messages
 .agents/skills/go-development
 .agents/skills/herdr-handoff
+.agents/skills/herdr-hub
 .agents/skills/implement-plan
 .agents/skills/promote-memory
 .agents/skills/pull-request
@@ -29,6 +31,7 @@
 .agents/skills/review-plan
 .agents/skills/roadmap-run
 .agents/skills/rust-development
+.agents/skills/session-review
 .agents/skills/typescript-development
 .config/opencode/commands/cleanup_plan.md
 .config/opencode/commands/create_plan.md

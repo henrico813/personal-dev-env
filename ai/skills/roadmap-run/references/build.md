@@ -7,10 +7,16 @@ after the setup with `. <run folder>/env`, using the path the setup
 printed. Each snippet stops with `exit 1` on the first failure; never
 run the lines after a failed one by hand.
 
+The setup copies this skill's scripts into the run folder: `fns.sh`,
+`build.sh`, `ship.sh`, `plants.sh` and `suites.sh`. Run each as the
+section below says. You need not read them: each prints a short
+result and logs the rest in the run folder.
+
 ## Contents
 
 - Write a design digest
 - Set up a PR's run folder
+- Run the suites once per plan version
 - Build the PR
 - Apply a fix round
 - Put back the bugs
@@ -18,7 +24,7 @@ run the lines after a failed one by hand.
 - Push a later round
 - Print a PR's status line
 - Base a child on an unbuilt parent
-- Move a child's base
+- Move a PR's base
 - Carry a parent's commit to a child
 
 ## Write a design digest
@@ -81,7 +87,8 @@ set `BR` to a branch that starts with the ticket key the plan names,
 in the form the pattern asks for, with words after it, and ask the
 user when the plan names none; `K` and the run folder still come
 from `planner key`. `CHECK` is the plan's test and
-lint command. Keep each value in single quotes, since vault paths
+lint command, with any race detector or type checker the language
+skills ask for. Keep each value in single quotes, since vault paths
 have spaces; use double quotes for a value that holds a single quote
 or `$K`.
 
@@ -91,111 +98,7 @@ P='<plan file>'
 K=$(planner key "$P") || exit 1
 mkdir -p "$S" && D=$(mktemp -d "$S/roadmap-run.$K.XXXXXX") || exit 1
 printf 'D=%q\n. "$D/fns.sh"\n' "$D" > "$D/env"
-cat > "$D/fns.sh" <<'FNS'
-# Set a variable here and save it for later tool calls; a later value
-# wins.
-keep() { eval "$1=\$2"; printf '%s=%q\n' "$1" "$2" >> "$D/env"; }
-
-# Print the hash of the tree the plan makes through STEP. The tree is
-# written through a scratch index, so no checkout changes.
-plan_tree() {
-  local plan=$1 repo=$2 base=$3 step=$4 tmp git_dir rc
-  tmp=$(mktemp -d) || return 1
-  if ! planner export "$plan" --repo "$repo" --base-commit "$base" \
-    --out "$tmp/tree" --through "$step" >/dev/null; then
-    rm -rf "$tmp"
-    return 1
-  fi
-  git_dir=$(git -C "$repo" rev-parse --path-format=absolute --git-common-dir)
-  (
-    cd "$tmp/tree" &&
-      GIT_INDEX_FILE="$tmp/index" git --git-dir "$git_dir" --work-tree . add -A -f . &&
-      GIT_INDEX_FILE="$tmp/index" git --git-dir "$git_dir" --work-tree . write-tree
-  )
-  rc=$?
-  rm -rf "$tmp"
-  return $rc
-}
-
-# Put back one bug, run the test command, and restore the file.
-# Returns 1 when the test command passes, since no test caught the
-# bug, and 2 when FILE is gone or OLD does not appear exactly once.
-plant() {
-  local file=$1 old=$2 new=$3 backup rc
-  shift 3
-  backup=$(mktemp "$D/plant.XXXXXX") || return 1
-  cp "$file" "$backup" || { rm "$backup"; return 2; }
-  python3 - "$file" "$old" "$new" <<'EOF' || { rm "$backup"; return 2; }
-import sys
-path, old, new = sys.argv[1:]
-text = open(path).read()
-assert text.count(old) == 1, "old text must appear exactly once"
-open(path, "w").write(text.replace(old, new))
-EOF
-  "$@"
-  rc=$?
-  cp "$backup" "$file" && rm -f "$backup"
-  if [ "$rc" -eq 0 ]; then
-    echo "plant: no test failed for $file"
-    return 1
-  fi
-  echo "plant: tests failed as expected, exit $rc"
-}
-
-# Print the lines added plus deleted in REPO between FROM and TO.
-changed() {
-  local out
-  out=$(git -C "$1" diff --numstat "$2" "$3") || return 1
-  printf '%s\n' "$out" | awk '{n += $1 + $2} END {print n + 0}'
-}
-
-# Run function step_NAME of build.sh or ship.sh in a subshell, with
-# its output added to LOG. The step's mark holds the plan's hash, so a
-# rerun skips it until the plan changes. A step that exits 3 ran but
-# leaves no mark. Any other failure prints one STOPPED line and ends
-# the script.
-run_step() {
-  local log=$1 name=$2 h rc
-  h=$(git hash-object "$P") ||
-    { echo "STOPPED at $name: cannot read $P"; exit 1; }
-  [ "$(cat "$D/done.$name" 2>/dev/null)" = "$h" ] && return 0
-  echo "== $name $(date -u +%FT%TZ)" >> "$log"
-  ( . "$D/env" && "step_$name" ) >> "$log" 2>&1
-  rc=$?
-  case $rc in
-    0) echo "$h" > "$D/done.$name" ;;
-    3) ;;
-    *) echo "STOPPED at $name: $(tail -n 1 "$log")"; exit 1 ;;
-  esac
-}
-
-# Replace the first line of status.txt and print it.
-st() {
-  touch "$D/status.txt" &&
-    { printf '%s\n' "$1"; sed 1d "$D/status.txt"; } > "$D/status.new" &&
-    mv "$D/status.new" "$D/status.txt" && printf '%s\n' "$1"
-}
-
-# Print the roadmap's status line for this PR, ending with NEXT, and
-# write it as the first line of status.txt.
-status_line() (
-  { [ -n "$W" ] && [ "$W" != null ]; } ||
-    { st "$BR: not built; next: $NEXT"; exit $?; }
-  cd "$W" || exit 1
-  git fetch -q "$REMOTE" || exit 1
-  head=$(git rev-parse HEAD) || exit 1
-  out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
-  pushed=$(printf '%s' "$out" | cut -f 1)
-  same=no
-  [ "$head" = "$pushed" ] && same=yes
-  mb=$(git merge-base "$REMOTE/$PARENT" HEAD) || exit 1
-  n=$(changed . "$mb" HEAD) || exit 1
-  req=$(cat "$D/request.result" 2>/dev/null) || req="not filed"
-  line="$BR: pushed ${pushed:-none}; local equals pushed: $same;"
-  line="$line $n changed lines against $PARENT; request: $req"
-  st "$line; next: $NEXT"
-)
-FNS
+cp "$HOME/.agents/skills/roadmap-run/scripts/"*.sh "$D/" || exit 1
 . "$D/env"
 keep R '<repository root>'
 keep P "$P"
@@ -210,85 +113,37 @@ echo "run folder: $D"
 
 Write the run folder's path on the roadmap page next to the PR.
 
+## Run the suites once per plan version
+
+Each plan version a reviewer reads gets one run of the test and lint
+suites, after `planner check` passes on it. Planners and reviewers
+run no test suites or linters, since one script runs them once per
+plan version. Reviewers read its summary and run at most the one test
+a finding needs. Hand the job to a cheap or local
+model with prompts.md's Local model brief, the command
+`bash <run folder>/suites.sh` and the summary file
+`<run folder>/suites.txt`. Then name that file in each reviewer's
+brief.
+
+suites.sh exports the plan's tree through its last step, commits it
+on `B` without touching any checkout, and runs `CHECK` on it in a
+scratch clone with the pull-request skill's `merge-check.sh`. The
+first line of `suites.txt` is `plan: <hash>`, the plan file's
+`git hash-object`; the summary holds only for that version of the
+plan, and only when its last line is `done`. Each `exit` line gives
+the exit code and the last output line; the full output is in
+`<run folder>/suites/<key>/test1.log`, where the key hashes the plan
+and `CHECK`. A rerun for the same plan version and `CHECK` prints the
+saved summary and runs nothing.
+
 ## Build the PR
 
 Write `$D/MSG<step>` for each `### <step>.` heading in the plan,
-following `git-messages`. Then run this block. It saves `build.sh` in
-the run folder and runs it:
+following `git-messages`. Run Move a PR's base right before, since the
+parent branch may have moved since the plan was written. Then run:
 
 ```sh
-. <run folder>/env
-cat > "$D/build.sh" <<'SH'
-# Check the plan, lint the commit messages, commit each step's tree on
-# the step before, make the worktree and run CHECK. Rerun to resume.
-. "$(dirname "$0")/env" || exit 1
-log=$D/build.log
-
-step_check() {
-  planner check "$P" --repo "$R" --json-errors >/dev/null ||
-    { echo "planner check failed; its errors are in build.log"
-      exit 1; }
-  rg -o '^### ([0-9]+)\.' -r '$1' "$P" > "$D/steps" || exit 1
-}
-
-step_lint() {
-  for s in $(cat "$D/steps"); do
-    [ -s "$D/MSG$s" ] || { echo "missing: $D/MSG$s"; exit 1; }
-    python3 "$M" fmt "$D/MSG$s" >/dev/null || exit 1
-    python3 "$M" lint "$D/MSG$s" ||
-      { echo "lint failed: step $s"; exit 1; }
-  done
-}
-
-# Starts at $B on every run, since commit-tree makes new hashes.
-step_build() {
-  prev=$B
-  for s in $(cat "$D/steps"); do
-    t=$(plan_tree "$P" "$R" "$B" "$s") ||
-      { echo "export failed: step $s"; exit 1; }
-    echo "$t" > "$D/tree$s"
-    prev=$(git -C "$R" commit-tree "$t" -p "$prev" -F "$D/MSG$s") ||
-      exit 1
-    echo "$prev" > "$D/commit$s"
-  done
-}
-
-# Reuses the branch's worktree when an earlier run made it.
-step_worktree() {
-  last=$(tail -n 1 "$D/steps")
-  W=$(wt -C "$R" list --format=json | jq -r --arg b "$BR" \
-    '.items[] | select(.branch == $b) | .worktree.path // empty')
-  if [ -z "$W" ]; then
-    wt -C "$R" switch --create "$BR" --base "$B" --no-cd \
-      --format=json > "$D/wt.json" || exit 1
-    W=$(jq -r .path "$D/wt.json")
-  fi
-  { [ -n "$W" ] && [ "$W" != null ]; } ||
-    { echo "no worktree for $BR"; exit 1; }
-  keep W "$W"
-  git -C "$W" merge -q --ff-only "$(cat "$D/commit$last")" ||
-    { echo "$BR holds another build; use Apply a fix round"; exit 1; }
-  t=$(cat "$D/tree$last")
-  [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$t" ] ||
-    { echo "branch tree differs from the plan"; exit 1; }
-}
-
-# ship.sh runs CHECK again, after the fix commits.
-step_test() {
-  { [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
-    { echo "no worktree: '$W'"; exit 1; }
-  sh -c "$CHECK" || { echo "CHECK failed in $W"; exit 1; }
-}
-
-run_step "$log" check
-run_step "$log" lint
-run_step "$log" build
-run_step "$log" worktree
-run_step "$log" test
-. "$D/env"
-echo "built $BR in $W: $(changed "$W" "$B" HEAD) changed lines"
-SH
-bash "$D/build.sh"
+bash <run folder>/build.sh
 ```
 
 It prints `built <branch> in <worktree>: <n> changed lines`, or one
@@ -340,39 +195,11 @@ step.
 This runs every `plant` line in the plan and in the run folder's
 reports, one at a time, and writes one `pass`, `FAIL` or `stale`
 line per `plant` line to `$D/plants.txt`, ending with `done`. Their
-output goes to `$D/plants.log`. A line that passed before is skipped,
-so a later round runs only new or changed lines:
+output goes to `$D/plants.log`. A passed line is skipped only while
+the plan is unchanged. A plan change runs every line again:
 
 ```sh
-. <run folder>/env
-{ [ -n "$W" ] && [ "$W" != null ] && cd "$W"; } ||
-  { echo "no worktree: '$W'"; exit 1; }
-rg -N --no-filename --sort path --max-depth 1 -g '*.md' '^plant ' \
-  "$P" "$D" > "$D/plants" || { echo "no plant lines found"; exit 1; }
-touch "$D/plants.passed" && : > "$D/plants.txt" || exit 1
-n=0
-while IFS= read -r line <&3; do
-  n=$((n + 1))
-  if grep -qxF -e "$line" "$D/plants.passed"; then
-    echo "skip $n: passed before" >> "$D/plants.txt"
-    continue
-  fi
-  echo "## $n: $line" >> "$D/plants.log"
-  eval "$line" < /dev/null >> "$D/plants.log" 2>&1
-  case $? in
-    0) r=pass ;;
-    2) r=stale ;;
-    *) r=FAIL ;;
-  esac
-  [ -z "$(git status --porcelain)" ] || {
-    echo "worktree not clean after line $n" >> "$D/plants.txt"
-    exit 1
-  }
-  echo "$r $n: $line" >> "$D/plants.txt"
-  [ "$r" != pass ] || printf '%s\n' "$line" >> "$D/plants.passed"
-done 3< "$D/plants"
-echo done >> "$D/plants.txt"
-cat "$D/plants.txt"
+bash <run folder>/plants.sh
 ```
 
 A `FAIL` line means no test caught that bug. A `stale` line means
@@ -384,116 +211,11 @@ a new `plant` line for it in a `.md` file in the run folder. Send only
 ## Ship
 
 Run this after the final pass. Write the PR text to `$D/FILE` first,
-so it can give the final pass's real numbers. The block saves
-`ship.sh` in the run folder and runs it. ship.sh squashes only before
-the branch's first push:
+so it can give the final pass's real numbers. ship.sh squashes only
+before the branch's first push:
 
 ```sh
-. <run folder>/env
-cat > "$D/ship.sh" <<'SH'
-# Check that the branch holds the plan's tree, lint the PR text,
-# squash onto the parent, push, file the PR request and print the
-# status line. Rerun to resume or to read a waiting request.
-. "$(dirname "$0")/env" || exit 1
-log=$D/ship.log
-
-# Exits 3 when the trees match, so every run checks again.
-step_tree() {
-  { [ -n "$W" ] && [ "$W" != null ]; } ||
-    { echo "no worktree: '$W'"; exit 1; }
-  last=$(rg -o '^### ([0-9]+)\.' -r '$1' "$P" | tail -n 1)
-  t=$(plan_tree "$P" "$R" "$B" "$last") ||
-    { echo "export failed: step $last"; exit 1; }
-  [ "$(git -C "$W" rev-parse 'HEAD^{tree}')" = "$t" ] ||
-    { echo "branch tree differs from the plan"; exit 1; }
-  exit 3
-}
-
-# Exits 3 after a clean lint, so every run lints FILE again.
-step_text() {
-  python3 "$M" fmt "$D/FILE" >/dev/null || exit 1
-  python3 "$M" lint --pr "$D/FILE" ||
-    { echo "lint failed: $D/FILE"; exit 1; }
-  exit 3
-}
-
-# A push that worked before its mark was written counts as done.
-# CHECK runs again, since fix commits came after build.sh.
-step_push() {
-  cd "$W" || exit 1
-  [ "$(git symbolic-ref -q --short HEAD)" = "$BR" ] ||
-    { echo "not on $BR"; exit 1; }
-  [ -z "$(git status --porcelain)" ] ||
-    { echo "worktree not clean"; exit 1; }
-  git fetch -q "$REMOTE" || exit 1
-  out=$(git ls-remote "$REMOTE" "refs/heads/$BR") || exit 1
-  pushed=$(printf '%s' "$out" | cut -f 1)
-  [ "$pushed" = "$(git rev-parse HEAD)" ] &&
-    { echo "already pushed"; exit 0; }
-  [ -z "$pushed" ] ||
-    { echo "$BR is already pushed; use Push a later round"; exit 1; }
-  sh -c "$CHECK" || { echo "checks failed; not pushing"; exit 1; }
-  git merge-base --is-ancestor "$REMOTE/$PARENT" HEAD ||
-    { echo "$PARENT moved; carry its commit to this PR first"
-      exit 1; }
-  git reset -q --soft "$REMOTE/$PARENT" || exit 1
-  git commit -q -F "$D/FILE" || exit 1
-  git push --force-with-lease -u "$REMOTE" "HEAD:refs/heads/$BR" ||
-    exit 1
-}
-
-# Saves the request as request.sh, with its own body file, so the
-# identical command can run again later. A changed command or body is
-# a new request, so both are written only before the first filing or
-# after a refusal. A run cut off before its result reruns the saved
-# request. Exit 3 leaves no mark, so a rerun reads the result. Once
-# the PR is open, a rerun skips the saved request, which would run
-# again after it expires.
-step_request() {
-  grep -q '^exit 0 ' "$D/request.result" 2>/dev/null && exit 0
-  if [ ! -e "$D/request.sh" ] ||
-    grep -q '^exit 2 ' "$D/request.result" 2>/dev/null; then
-    tail -n +3 "$D/FILE" > "$D/request.body" || exit 1
-    {
-      printf 'cd %q || exit 1\n' "$W"
-      printf 'pde-gh-write pr create --base %q --title %q' \
-        "$PARENT" "$(head -n 1 "$D/FILE")"
-      printf ' --body-file %q\n' "$D/request.body"
-      printf 'rc=$?\n'
-      printf 'echo "exit $rc at $(date -u +%%FT%%TZ)" > %q\n' \
-        "$D/request.result"
-      printf 'exit $rc\n'
-    } > "$D/request.sh" || exit 1
-  fi
-  bash "$D/request.sh"
-  rc=$?
-  case $rc in
-    0) exit 0 ;;
-    3) echo "waiting for the user's approval"; exit 3 ;;
-    4) echo "declined; park this PR and its children"; exit 1 ;;
-    6) echo "interrupted, never retried; ask the user"; exit 1 ;;
-    2) echo "refused; fix the command, then rerun"; exit 1 ;;
-    *) echo "exit $rc from gh; put its output on the roadmap page"
-       exit 1 ;;
-  esac
-}
-
-run_step "$log" tree
-run_step "$log" text
-run_step "$log" push
-run_step "$log" request
-# A later round while the request waited left newer PR text in BODY.
-if ! grep -q '^exit 0 ' "$D/request.result" 2>/dev/null; then
-  keep NEXT 'rerun ship.sh to read the request'
-elif [ -e "$D/BODY" ] && ! cmp -s "$D/BODY" "$D/request.body"; then
-  keep NEXT 'update the PR text with pde-gh-write pr edit unless done'
-else
-  keep NEXT 'queue the comment review'
-fi
-status_line 2>> "$log" ||
-  { echo "STOPPED at status: see $log"; exit 1; }
-SH
-bash "$D/ship.sh"
+bash <run folder>/ship.sh
 ```
 
 It prints the PR's status line, or one line
@@ -508,6 +230,10 @@ version of the plan.
 - `text`: fix `$D/FILE`, then rerun.
 - `push`: follow the reason. A failed check is never minor. When the
   parent moved, run Carry a parent's commit to a child, then rerun.
+- The stop after `push`: deploy and try the pushed commit, add the
+  one-line result to Testing in `$D/FILE`, write the same line,
+  starting with the full hash from `git -C "$W" rev-parse HEAD`,
+  to `$D/tested`, then rerun.
 - `request`: the reason gives the PR request's result, below.
 
 Put `bash <run folder>/request.sh` on the roadmap page. Rerunning it
@@ -572,8 +298,9 @@ keep NEXT '<next step>'
 status_line
 ```
 
-`local equals pushed: no` means a commit is not pushed: push it
-before anything else, and never deploy it.
+After the PR's first push, `local equals pushed: no` means a new
+commit is not pushed: push it before anything else, and never deploy
+it. Before that first push, ship.sh pushes the built PR.
 
 ## Base a child on an unbuilt parent
 
@@ -589,16 +316,19 @@ git -C "$R" commit-tree "$pt" -p "$B" -m "Planned tree of $(basename "$P")"
 Give the printed commit to the child's planner as its base. No branch
 points at it, so `git gc` may delete it after two weeks.
 
-## Move a child's base
+## Move a PR's base
 
-After the parent ships, run this in the child's run folder. It sets
-the child plan's `Base commit:` line to the parent's final commit,
-saves that commit, and runs `planner check`:
+Run this in the PR's run folder right before build.sh, for every PR.
+The parent branch may have moved since the plan was written, and a
+child's parent has just shipped. It fetches the parent branch, sets
+the plan's `Base commit:` line to the parent's tip, saves that
+commit, and runs `planner check`:
 
 ```sh
-. <child's run folder>/env
-nb='<final commit of the parent>'
-nb=$(git -C "$R" rev-parse --verify "$nb^{commit}") || exit 1
+. <run folder>/env
+git -C "$R" fetch -q "$REMOTE" || exit 1
+nb=$(git -C "$R" rev-parse --verify "$REMOTE/$PARENT^{commit}") ||
+  exit 1
 sed -i "0,/^Base commit: .*/s//Base commit: $nb/" "$P" || exit 1
 grep -qx "Base commit: $nb" "$P" ||
   { echo "no Base commit: line in $P"; exit 1; }
@@ -607,9 +337,9 @@ planner check "$P" --repo "$R" --json-errors >/dev/null ||
   { echo "plan does not apply on $nb"; exit 1; }
 ```
 
-If the check passes, the child's diffs apply unchanged. If it fails,
-the parent changed after the child was written: start a new planner
-for the child with the errors.
+If the check passes, the plan's diffs apply unchanged. If it fails,
+the parent changed after the plan was written: start a new planner
+with the errors.
 
 ## Carry a parent's commit to a child
 

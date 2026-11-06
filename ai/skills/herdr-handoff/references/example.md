@@ -44,6 +44,10 @@ The prompt was one line: "Read the handoff at <path> and follow it.
 Load the skills it names first. Start by proposing the design layout.
 Do not edit the design yet."
 
+Loading every skill first kept them all in context for the whole
+session. Now the handoff names each skill with the step that needs
+it, and the prompt says "Load each skill it names when it says."
+
 ```sh
 test "${HERDR_ENV:-}" = 1
 herdr agent get "$HERDR_PANE_ID"    # .result.agent.agent is opencode
@@ -52,7 +56,7 @@ herdr workspace create \
   --label pdev-design-process --no-focus
 # .result.root_pane.pane_id gives <pane>
 herdr agent start design-process --kind opencode --pane <pane> \
-  --timeout 90000
+  --timeout 90000 -- --auto
 herdr agent prompt design-process "<prompt>" --wait \
   --timeout 60000
 herdr agent get design-process      # agent_status is working

@@ -14,6 +14,7 @@ use crate::shared::{Error, ErrorCode};
 use crate::steps::{NextStep, StepOutput};
 
 pub mod cli;
+pub mod dismiss;
 pub mod mcp;
 pub mod move_old_approvals;
 mod old_reviews;
@@ -106,6 +107,16 @@ pub fn list_commands() -> &'static [CommandInfo] {
             cli_usage: "open [NAME]",
             mcp_name: None,
             description: "Shows branch NAME's review in a plain terminal",
+        },
+        CommandInfo {
+            cli_usage: "dismiss [NAME]",
+            mcp_name: None,
+            description: "Takes branch NAME's review off Ctrl+b e's list",
+        },
+        CommandInfo {
+            cli_usage: "restore [NAME]",
+            mcp_name: None,
+            description: "Puts a dismissed review back on the list",
         },
         CommandInfo {
             cli_usage: "mcp",

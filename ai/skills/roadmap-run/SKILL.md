@@ -54,6 +54,12 @@ Run every step for one PR before its child PR starts building. The
 prompts are in [references/prompts.md](references/prompts.md) and the
 commands in [references/build.md](references/build.md).
 
+Planners and reviewers run no test suites or linters, since a script
+runs them once per plan version. Before an agent reviews a plan
+version, a cheap or local model runs the suites on it once, as
+build.md's Run the suites once per plan version says. Reviewers read
+that summary and run at most the one test a finding needs.
+
 1. **Plan.** Write the PR's design digest with build.md's Write a
    design digest, then delegate the plan with `create-plan`. The
    planner and the plan reviewers read the digest, not the design
@@ -89,9 +95,10 @@ commands in [references/build.md](references/build.md).
    check on the revised plan, then commit its tree as one fix commit.
    A test may be deleted only when a reviewer's finding names it and
    names the test that still covers its behavior.
-6. **Final pass.** Run the tests, linters, comment checker and any
-   comparison script the plan names, with output to a log in the run
-   folder, and read only its summary lines. For each deleted test,
+6. **Final pass.** Run the suites on the plan's last version, as
+   build.md says, and the comment checker and any comparison script
+   the plan names, with output to a log in the run folder. Read only
+   the summary lines. For each deleted test,
    write a `plant` line for the bug it caught, run by the test the
    reviewer named, in a `.md` file in the run folder. Then run
    build.md's Put back the bugs, and send each `FAIL` line to a new
@@ -101,9 +108,17 @@ commands in [references/build.md](references/build.md).
 7. **Ship.** Write the PR text, then run build.md's ship script. It
    stops when the branch's tree differs from the plan, on bad PR text,
    a failed check, the wrong branch, a parent that moved or a branch
-   already pushed. It squashes onto the parent, pushes, and saves and
-   runs the PR request script, which calls
-   `pde-gh-write pr create --base <parent branch>`.
+   already pushed. It squashes onto the parent, pushes, and stops.
+   Deploy the pushed commit and try it, as pull-request Guardrail 4
+   says. Add the one-line result to Testing in `$D/FILE`. Write the
+   same line, starting with the pushed commit's full hash, to
+   `tested` in the run folder. Then rerun ship.sh. The rerun saves
+   and runs the PR request script, which calls
+   `pde-gh-write pr create --base <parent branch>`. When a child PR
+   cannot run until its parent merges, you hold it. For a held PR, set
+   NEXT to `held until <parent branch> merges`, print its status
+   line, and file no request. After rerunning ship.sh on a held PR,
+   set NEXT back to held and print the status line again.
 8. **Queue the comment review.** For the bottom PR of a stack, follow
    `comment-review` in its worktree now: `check-comments`,
    `make-feedback-request-list`, with an `--input` file of change
@@ -113,9 +128,10 @@ commands in [references/build.md](references/build.md).
    file in its run folder, and run them after the user answers the
    parent's review.
 
-Before a child PR builds, run build.md's Move a child's base. It sets
-the plan's `Base commit:` line to the parent's final commit and runs
-`planner check` again.
+Right before each PR's build script, run build.md's Move a PR's base.
+It fetches the parent branch, sets the plan's `Base commit:` line to
+the parent's tip and runs `planner check` again, so a parent that
+moved stops the PR before the build, not at Ship.
 
 ## After a PR opens
 
@@ -192,6 +208,17 @@ entries parked.
 - A question that blocks one PR parks only that PR; keep building the
   others. Put non-blocking questions in the roadmap page as "your
   call".
+- Sessions of one run send the hub a question, a blocker, or finished
+  work it waits on, such as a PR opening or a step finishing.
+  Progress-only news, such as a passed rehearsal, goes only in the
+  session's own status file. The hub answers from the user's standing
+  decisions first. When none applies, it picks the simplest option
+  and records what it loses as a known limit in the plan's notes. It
+  asks the user only when the answer changes what the user sees.
+- Do not add code, steps or questions to carry old data, such as old
+  reviews or approvals, into a new tool unless the design or roadmap
+  asks for it. When old data blocks the new tool, leave it behind and
+  write that as a known limit.
 
 ## Never
 
@@ -223,9 +250,15 @@ entries parked.
   Below it, keep at most 19 lines: agents running and their report
   files, results you have not read, and open questions. A new
   session resumes from that file, the plan and the rules file.
-- When your context grows past about 150k tokens, or after it is
-  summarized, use the `herdr-handoff` skill to offer the user a new
-  session. Offer once.
+- A session writes progress-only news, such as "rehearsal passed", to
+  its own `status.txt`. It prompts the hub with a question, a blocker,
+  or finished work the hub waits on, such as a PR opening or a step
+  finishing. Each prompt makes the hub re-read its whole context.
+- When your context grows past about 150k tokens, after it is
+  summarized, and always after the build script, use the
+  `herdr-handoff` skill to offer the user a new session. Keep the run
+  going while the offer waits for the user's answer. Offer once each
+  time.
 
 ## When something goes wrong
 
@@ -248,16 +281,21 @@ handle it as build.md says. Then rerun the status line snippet for
 each PR and write its output to the roadmap page. List the scripts on
 the roadmap page in stack order, so the user, or an agent they ask,
 can rerun them in the morning to file fresh requests.
+For a held PR, write on the roadmap page what to do after its
+parent merges: set PARENT to the default branch with `keep`, run
+build.md's Carry a parent's commit to a child and Push a later
+round, then deploy and try it, add the result to Testing and
+`tested`, and run `bash <run folder>/ship.sh`.
 
 End with one message:
 
 - a table of the PRs: what each does and its changed lines
 - the stacks, such as "A, B, C" and "A, D", each PR on the one before
 - the worst bugs the reviews caught
-- each PR request's state: open, waiting, declined or parked
+- each PR request's state: open, waiting, held, declined or parked
 - what the user must do, in order: rerun expired PR requests and
-  approve them, answer blocking questions, then do the comment
-  reviews
+  approve them, merge parents of held PRs, answer blocking
+  questions, then do the comment reviews
 - your own slips, and work left for later
 
 ## Remembering corrections
