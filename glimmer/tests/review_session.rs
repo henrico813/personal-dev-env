@@ -10,7 +10,7 @@ use common::{TempFolder, commit_all, find_waiting_worktrees, run_git, use_test_w
 use glimmer::shared::ErrorCode;
 use glimmer::shared::git::find_worktree_git_folder;
 use glimmer::shared::review_session::{
-    FeedbackRequest, ReviewStatus, add_to_waiting_list, load, save_user_feedback,
+    FeedbackRequest, ReviewStatus, add_to_waiting_list, dismiss, load, save_user_feedback,
 };
 use glimmer::shared::user_feedback::{UserAnswer, UserFeedback, UserNote};
 use serde_json::{Value, json};
@@ -356,28 +356,81 @@ fn read_waiting_list_returns_each_worktree_once() {
     assert_eq!(find_waiting_worktrees(repo.path()), [root]);
 }
 
-/// `add_to_waiting_list` must keep a listed worktree it cannot reach while another worktree adds itself.
-/// Otherwise a worktree that was briefly out of reach, such as on a drive that is not mounted, would leave Ctrl+b e for good.
+/// `add_to_waiting_list` must drop a removed worktree but keep one it cannot reach while another worktree adds itself.
+/// Otherwise the list would fill with removed worktrees, or a worktree on a drive that is not mounted would leave Ctrl+b e for good.
 #[test]
-fn add_to_waiting_list_keeps_unreachable_worktree() {
+fn add_to_waiting_list_prunes_only_removed() {
     use_test_waiting_list();
     let folder = TempFolder::new();
-    run_git(folder.path(), &["init", "--quiet", "first"]);
+    run_git(folder.path(), &["init", "--quiet", "drive/first"]);
+    run_git(folder.path(), &["init", "--quiet", "removed"]);
     run_git(folder.path(), &["init", "--quiet", "second"]);
-    let first = folder.path().join("first");
-    add_to_waiting_list(&first).unwrap();
+    let drive = folder.path().join("drive");
+    let removed = folder.path().join("removed");
+    add_to_waiting_list(&drive.join("first")).unwrap();
+    add_to_waiting_list(&removed).unwrap();
 
-    // The first worktree is out of reach while the second adds itself, then comes back.
+    // The drive is out of reach and the other worktree is removed while the second adds itself.
     let away = folder.path().join("away");
-    fs::rename(&first, &away).unwrap();
+    fs::rename(&drive, &away).unwrap();
+    fs::remove_dir_all(&removed).unwrap();
     add_to_waiting_list(&folder.path().join("second")).unwrap();
-    fs::rename(&away, &first).unwrap();
+
+    // The drive comes back, and a new checkout takes the removed worktree's folder.
+    fs::rename(&away, &drive).unwrap();
+    run_git(folder.path(), &["init", "--quiet", "removed"]);
 
     let real_folder = fs::canonicalize(folder.path()).unwrap();
     assert_eq!(
         find_waiting_worktrees(folder.path()),
-        [real_folder.join("first"), real_folder.join("second")]
+        [real_folder.join("drive/first"), real_folder.join("second")]
     );
+}
+
+/// `dismiss` must drop removed worktrees from the waiting list and keep the dismissed one listed.
+/// Otherwise removed worktrees would stay in the file until an agent sends a review, or `restore NAME` could not find the dismissed one.
+#[test]
+fn dismiss_drops_removed_worktrees_from_list() {
+    use_test_waiting_list();
+    let folder = TempFolder::new();
+    run_git(folder.path(), &["init", "--quiet", "removed"]);
+    run_git(folder.path(), &["init", "--quiet", "dismissed"]);
+    let removed = folder.path().join("removed");
+    let dismissed = folder.path().join("dismissed");
+    add_to_waiting_list(&removed).unwrap();
+    add_to_waiting_list(&dismissed).unwrap();
+    write_review_session(
+        &dismissed,
+        &make_review_session("waiting_for_user_feedback", 1).to_string(),
+    );
+    fs::remove_dir_all(&removed).unwrap();
+
+    dismiss(&dismissed).unwrap();
+
+    // A new checkout in the removed worktree's folder shows whether its entry was dropped.
+    run_git(folder.path(), &["init", "--quiet", "removed"]);
+    let real_folder = fs::canonicalize(folder.path()).unwrap();
+    assert_eq!(
+        find_waiting_worktrees(folder.path()),
+        [real_folder.join("dismissed")]
+    );
+}
+
+/// `dismiss` must leave a review whose write did not finish as it was.
+/// Otherwise the review would leave Ctrl+b e, and the user would never be told to check the files it was half-way through writing.
+#[test]
+fn dismiss_refuses_unfinished_write() {
+    let repo = make_repo();
+    write_review_session(
+        repo.path(),
+        &make_review_session("writing_user_feedback", 1).to_string(),
+    );
+
+    let error = dismiss(repo.path()).unwrap_err();
+
+    assert_eq!(error.code, ErrorCode::NothingToDismiss);
+    let status = load(repo.path()).unwrap().unwrap().status;
+    assert_eq!(status, ReviewStatus::WritingUserFeedback);
 }
 
 /// `add_to_waiting_list` must keep every worktree when several worktrees add to the waiting list at once.

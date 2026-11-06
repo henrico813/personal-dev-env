@@ -20,6 +20,8 @@ const DONE: &str = "Done. Your answers are in the code. Press d to see the chang
 /// Shows once the last User Feedback hands the Review Session to the agent.
 const NOTES_WAIT: &str =
     "Your User Notes went to the agent, so nothing is written yet. Tell the agent to answer them.";
+/// Shows when `open NAME` finds a dismissed review.
+const DISMISSED: &str = "This review was dismissed. Run glimmer restore NAME to answer it.";
 /// Shows after step 7 refuses with `text_changed`.
 const TEXT_CHANGED: &str = "A comment changed after the agent sent it, so nothing was written. Those Feedback Requests went back to the agent. Tell the agent to send the list again.";
 /// Shows after step 7 refuses with `write_failed`, and the list waits again.
@@ -61,6 +63,7 @@ impl ReviewResult {
                 message: DONE.to_owned(),
             }),
             ReviewStatus::UserNotesWaiting => Some(Self::not_written(NOTES_WAIT)),
+            ReviewStatus::Dismissed => Some(Self::not_written(DISMISSED)),
             ReviewStatus::WritingUserFeedback => {
                 Some(Self::not_written(explain_unfinished_write(root)))
             }
