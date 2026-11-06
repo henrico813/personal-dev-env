@@ -23,7 +23,7 @@
 .agents/skills/herdr-handoff
 .agents/skills/herdr-hub
 .agents/skills/implement-plan
-.agents/skills/promote-lessons
+.agents/skills/promote-memory
 .agents/skills/pull-request
 .agents/skills/python-development
 .agents/skills/research-codebase
@@ -73,7 +73,6 @@ Projects/CLAUDE.md
 .claude/commands/README.md
 .agents/skills/git-messages/scripts/check-message
 .agents/skills/code-search
-.agents/skills/promote-memory
 .agents/skills/code-documentation/scripts/comment_checker
 .agents/skills/code-documentation/scripts/check_comments.py
 .agents/skills/code-documentation/scripts/check_python_rules.py
