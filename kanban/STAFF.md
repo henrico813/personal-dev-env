@@ -71,7 +71,8 @@ Everything else it handles itself or leaves alone.
   agent passes `--user` only after the user said so in this session.
 - The staff agent moves `ready -> active` when a worker starts,
   `active -> review` when a worker reports ready with a PR or other
-  evidence, and `ready -> draft` when a card has a gap.
+  evidence, `active -> ready` when work is paused, with `--why`
+  naming its handoff, and `ready -> draft` when a card has a gap.
 - Before `active -> review`, the staff agent checks the work itself,
   not only the report. The PR or branch must exist, and its tests must
   pass.
@@ -107,10 +108,12 @@ is missing, then renames the report to `report-<name>.read`.
 | --- | --- |
 | Make a card | `card new DevEnv "title" --kind build` |
 | See the board | `card board`, `card list --stage active` |
-| Find text | `card grep "nobs" --section Outcome` |
+| Find text | `card grep "nobs" --section Context` |
 | Move a card | `card move KEY review --why "PR #450 open"` |
+| Fix one item | `card show KEY --section "Acceptance Criteria"`, then `card edit KEY "Acceptance Criteria" N "new text"` or `N --remove` |
 | Record a question or answer | `card note KEY --needs-you "..."` |
-| Link work | `card link KEY "PDEV-415 Title"`, `card link KEY URL` |
+| Start a worker's card | `card move KEY active --session WORKER` |
+| Link work | `card link KEY "PDEV-415 Title"`, `card link KEY URL`, `card link KEY --session WORKER` |
 | Check hand edits | `card check` |
 | Find who needs the user | `fleet next` |
 | Send a worker the user's answer | `herdr agent prompt NAME "..."` |
