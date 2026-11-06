@@ -78,6 +78,9 @@ pub fn write_user_feedback(dir: &Path) -> Result<WriteResult, Error> {
         ReviewStatus::UserNotesWaiting => {
             return Err(nothing_to_write("User Notes wait for the agent."));
         }
+        ReviewStatus::Dismissed => {
+            return Err(nothing_to_write("This review was dismissed."));
+        }
         ReviewStatus::WaitingForUserFeedback => {}
     }
     let Some(answered) = review_session.answered_requests() else {

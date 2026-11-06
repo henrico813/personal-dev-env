@@ -31,6 +31,6 @@ pub enum NextStep {
     /// Tells the user what to do, then waits, since only the user can act.
     TellUserAndWait,
     /// Tells the agent to end the review with nothing sent, since no comment
-    /// needs User Feedback and no User Notes wait.
+    /// needs User Feedback and no User Notes wait, or the review was dismissed.
     FinishWithoutFeedbackRequests,
 }

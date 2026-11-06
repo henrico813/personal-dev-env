@@ -118,6 +118,11 @@ review's `status`, the `result`, an `error` with a `code` and a
    leave the answers and notes to the user.
 8. Run `pde-comment-review show-status` at any time to see what the
    review waits on and the step to take next.
+9. When the user tells you to drop the review, run
+   `pde-comment-review dismiss` in the worktree, so Ctrl+b e stops
+   showing it; `pde-comment-review restore` brings it back. The user
+   can also press `x` in Ctrl+b e's list. A `dismissed` status means
+   send nothing more unless the user asks for a new review.
 
 ## When the tool is missing
 
