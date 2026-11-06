@@ -117,7 +117,8 @@ pub(crate) fn refuse_busy_status(status: ReviewStatus) -> Result<(), Error> {
 /// Sets a Review Session that waits for User Feedback to `dismissed`, so
 /// Ctrl+b e stops showing it. Keeps its lists, its User Feedback and its place
 /// on the waiting list, so `restore` can bring it back from any folder. Saves
-/// the waiting list too, which drops removed worktrees from it.
+/// the waiting list too, which drops removed worktrees from it, but a failed
+/// save of the list does not fail the dismissal.
 ///
 /// # Errors
 ///
@@ -136,8 +137,9 @@ pub fn dismiss(dir: &Path) -> Result<(), Error> {
     };
     review_session.status = ReviewStatus::Dismissed;
     lock.save()?;
-    // Otherwise removed worktrees stay in the file until an agent sends a review.
-    change_waiting_list(dir, |_, _| {})
+    // The review is dismissed already, so a list that cannot be saved only keeps removed worktrees longer.
+    let _ = change_waiting_list(dir, |_, _| {});
+    Ok(())
 }
 
 /// Sets a dismissed Review Session back to `waiting_for_user_feedback` and
