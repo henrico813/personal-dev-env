@@ -164,6 +164,11 @@ otherwise go unnoticed.
 
 Every worktree of a clone shares your approved comments in the clone's
 `.git/pde/code-comments.json`, so removing a worktree loses none of them.
+After a merge that deletes code, run `glimmer drop-gone-approvals`. It
+drops each approval whose code no worktree still has, so code that
+exists only on a branch without a worktree loses its approvals too.
+Before it drops anything, it copies the approvals file to the first
+free `code-comments.json.backup` name next to it.
 
 ## Terminal Workspaces
 
@@ -209,6 +214,6 @@ the [approval docs](../pdev2/docs/README.md).
 The full profile binds Ctrl+b e, in place of Herdr's scrollback editor, to a
 phone-sized Herdr popup for deciding on an AI's proposals for Go, Python and
 Rust comments, and Ctrl+b E to the same screen in a Herdr tab; run
-`pde-comment-review help` for its commands. Client machines
+`glimmer help` for its commands. Client machines
 share that Herdr config but not the popup. There Ctrl+b e opens the comment
 review of the machine Herdr shows, and fails on the laptop's own sessions.
