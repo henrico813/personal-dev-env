@@ -333,28 +333,44 @@ def run_git(checkout: Path, *args: str) -> str:
     return result.stdout
 
 
-def require_pushed(checkout: Path) -> None:
-    """Refuse unless the checkout's HEAD is on its remote branch.
+def find_remote(checkout: Path) -> str:
+    """Return the remote that HEAD's branch tracks, or ``origin``.
 
-    Fetches ``origin`` first. The remote branch is the upstream of the
-    current branch, or ``origin/main`` when it has none.
+    ``git fetch`` with no arguments picks the same remote.
+    """
+    branch = run_git(checkout, "rev-parse", "--symbolic-full-name", "HEAD")
+    remote = run_git(
+        checkout,
+        "for-each-ref",
+        "--format=%(upstream:remotename)",
+        branch.strip(),
+    )
+    return remote.strip() or "origin"
+
+
+def require_on_default_branch(checkout: Path, relative: str) -> None:
+    """Refuse unless the remote's default branch has HEAD's ``relative``.
+
+    Fetches the default branch of ``find_remote``'s remote. Comparing
+    the file, not commits, also passes after a pull request is squash
+    merged, which leaves HEAD's commit off that branch.
 
     Raises:
-        LessonError: The fetch failed or HEAD is not on that branch.
+        LessonError: The fetch failed or the two files differ.
     """
-    run_git(checkout, "fetch", "--quiet", "origin")
+    remote = find_remote(checkout)
+    run_git(checkout, "fetch", "--quiet", remote, "HEAD")
+    committed = run_git(checkout, "rev-parse", f"HEAD:{relative}")
     try:
-        remote = run_git(checkout, "rev-parse", "--abbrev-ref", "@{upstream}")
+        landed = run_git(checkout, "rev-parse", f"FETCH_HEAD:{relative}")
     except LessonError:
-        remote = "origin/main"
-    remote = remote.strip()
-    try:
-        run_git(checkout, "merge-base", "--is-ancestor", "HEAD", remote)
-    except LessonError as error:
+        landed = None
+    if landed != committed:
         raise LessonError(
-            f"HEAD in {checkout} is not on {remote}; ask the user to push "
-            "it, then retire again."
-        ) from error
+            f"The default branch of {remote} does not have the {relative} "
+            f"that HEAD in {checkout} has; push it or merge its pull "
+            "request, then retire again."
+        )
 
 
 def retire(
@@ -363,15 +379,17 @@ def retire(
     """Remove lessons and re-render their skill.
 
     Every ID is checked before any lesson is removed, so a typo retires
-    nothing. With ``checkout``, the git checkout at that path must
-    have pushed its HEAD first; see ``require_pushed``.
+    nothing. With ``checkout``, the remote's default branch must already
+    have the skill's source as that checkout's HEAD has it; see
+    ``require_on_default_branch``.
 
     Returns:
         A one-line result for the user.
 
     Raises:
         LessonError: The skill is not installed or has no marker, an ID
-            names no lesson, or the commit is not pushed.
+            names no lesson, the checkout has no source for the skill,
+            or the default branch lacks HEAD's source.
     """
     check_skill_name(skill)
     path, text = read_marked_skill(skill)
@@ -379,7 +397,8 @@ def retire(
     lesson_ids = list(dict.fromkeys(lesson_ids))
     lessons = [find_lesson(store, skill, each) for each in lesson_ids]
     if checkout is not None:
-        require_pushed(Path(checkout).expanduser())
+        root = Path(checkout).expanduser()
+        require_on_default_branch(root, find_source_path(root, skill))
     for lesson in lessons:
         store["lessons"].remove(lesson)
     save_store(skill, store)
@@ -387,25 +406,36 @@ def retire(
     return f"Retired {', '.join(lesson_ids)} from {skill}."
 
 
-def make_source_path(skill: str) -> str:
-    """Return the path of a skill's source, relative to the checkout."""
-    return f"skills/{check_skill_name(skill)}/SKILL.md"
+def find_source_path(checkout: Path, skill: str) -> str:
+    """Return the path of a skill's source, relative to the checkout.
+
+    The source is ``ai/skills/<skill>/SKILL.md``, or else
+    ``skills/<skill>/SKILL.md``.
+
+    Raises:
+        LessonError: Neither file exists.
+    """
+    check_skill_name(skill)
+    paths = (f"ai/skills/{skill}/SKILL.md", f"skills/{skill}/SKILL.md")
+    for relative in paths:
+        if (checkout / relative).is_file():
+            return relative
+    raise LessonError(
+        f"{skill} has no source at {paths[0]} or {paths[1]} in {checkout}."
+    )
 
 
-def read_source(checkout: Path, skill: str) -> str:
-    """Return the source ``SKILL.md`` of ``skill`` in ``checkout``.
+def read_source(checkout: Path, skill: str) -> tuple[str, str]:
+    """Return the source path of ``skill`` in ``checkout`` and its text.
 
     Raises:
         LessonError: The file is missing or has no marker.
     """
-    path = checkout / make_source_path(skill)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError as error:
-        raise LessonError(f"{skill} has no source at {path}.") from error
+    relative = find_source_path(checkout, skill)
+    text = (checkout / relative).read_text(encoding="utf-8")
     if find_marker(text.splitlines()) is None:
         raise LessonError(f"{skill} does not take lessons; it has no marker.")
-    return text
+    return relative, text
 
 
 def promote_start(skill: str, checkout: str) -> str:
@@ -430,7 +460,7 @@ def promote_start(skill: str, checkout: str) -> str:
         raise LessonError(f"{root} is not a git checkout.") from error
     if run_git(root, "status", "--porcelain"):
         raise LessonError(f"{root} has uncommitted changes.")
-    text = read_source(root, skill)
+    relative, text = read_source(root, skill)
     try:
         email = run_git(root, "config", "user.email").strip()
     except LessonError:
@@ -449,9 +479,7 @@ def promote_start(skill: str, checkout: str) -> str:
         lines.append(line)
     if not lines:
         lines.append(f"{skill} has no lessons.")
-    lines.append(
-        f"{make_source_path(skill)} has {len(text.splitlines())} lines."
-    )
+    lines.append(f"{relative} has {len(text.splitlines())} lines.")
     return "\n".join(lines)
 
 
@@ -514,12 +542,8 @@ def promote_check(
         LessonError: One line per problem, or the source is missing.
     """
     root = Path(checkout).expanduser()
-    relative = make_source_path(skill)
-    path = root / relative
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError as error:
-        raise LessonError(f"{skill} has no source at {path}.") from error
+    relative = find_source_path(root, skill)
+    text = (root / relative).read_text(encoding="utf-8")
     before = len(run_git(root, "show", f"HEAD:{relative}").splitlines())
     after = len(text.splitlines())
     diff_lines = run_git(
@@ -613,7 +637,7 @@ def build_parser() -> argparse.ArgumentParser:
     retire_parser.add_argument(
         "--after-push",
         action="store_true",
-        help="first check that --checkout pushed its HEAD",
+        help="first check the default branch has --checkout's source",
     )
     retire_parser.add_argument("--checkout")
     commands.add_parser("render", help="re-fill every marked skill")
