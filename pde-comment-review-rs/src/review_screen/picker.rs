@@ -35,7 +35,7 @@ pub(super) enum Waiting {
 
 /// Returns each waiting worktree's Review Session that waits for User Feedback
 /// or whose last write did not finish, newest first. Skips a worktree with no
-/// Review Session or one that waits for nothing from the user.
+/// Review Session, a dismissed one, or one that waits for nothing from the user.
 pub(super) fn find_waiting_reviews(worktrees: Vec<PathBuf>) -> Vec<WaitingReview> {
     let mut waiting = Vec::new();
     // The waiting list keeps the order reviews were sent, and the newest shows first.
@@ -72,7 +72,9 @@ pub(super) fn find_waiting_reviews(worktrees: Vec<PathBuf>) -> Vec<WaitingReview
                     request_count,
                 }
             }
-            ReviewStatus::Done | ReviewStatus::UserNotesWaiting => continue,
+            ReviewStatus::Done | ReviewStatus::UserNotesWaiting | ReviewStatus::Dismissed => {
+                continue;
+            }
             // Only the user can check what a write that did not finish left behind.
             ReviewStatus::WritingUserFeedback => Waiting::WriteNotFinished {
                 origin: loaded.origin,
@@ -93,6 +95,7 @@ pub(super) enum AfterPick {
     Quit,
     /// Opens the chosen review.
     Open,
+    Dismiss,
 }
 
 /// Lists the waiting Review Sessions grouped by the agent session that
@@ -102,6 +105,8 @@ pub(super) struct ReviewSessionPicker {
     /// the order shown.
     groups: Vec<(String, Vec<WaitingReview>)>,
     index: usize,
+    /// Shows in place of the Key Help until the next key, such as after `x`.
+    notice: String,
     pub(super) cols: usize,
     pub(super) rows: usize,
 }
@@ -135,6 +140,7 @@ impl ReviewSessionPicker {
         Self {
             groups,
             index: 0,
+            notice: String::new(),
             cols,
             rows,
         }
@@ -154,17 +160,53 @@ impl ReviewSessionPicker {
             .expect("the picker keeps its index inside its reviews")
     }
 
-    /// Acts on one key. `j` and `k` move, Enter opens, `q` or Ctrl-C closes.
+    /// Returns true once every review is dismissed.
+    pub(super) fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+
+    /// Acts on one key. `j` and `k` move, Enter opens, `x` dismisses, `q` or
+    /// Ctrl-C closes.
     pub(super) fn press_key(&mut self, key: Key) -> AfterPick {
         let last = self.reviews().count().saturating_sub(1);
+        self.notice.clear();
         match key {
             Key::Interrupt | Key::Char('q') => return AfterPick::Quit,
             Key::Enter => return AfterPick::Open,
+            Key::Char('x') => return AfterPick::Dismiss,
             Key::Char('j') | Key::ScrollDown => self.index = (self.index + 1).min(last),
             Key::Char('k') | Key::ScrollUp => self.index = self.index.saturating_sub(1),
             _ => {}
         }
         AfterPick::Stay
+    }
+
+    /// Dismisses the chosen review and takes it off the list, or says why not
+    /// in place of the Key Help.
+    pub(super) fn dismiss_chosen(&mut self) {
+        // The index counts reviews across groups, so find its group first.
+        let mut group_index = 0;
+        let mut position = self.index;
+        while position >= self.groups[group_index].1.len() {
+            position -= self.groups[group_index].1.len();
+            group_index += 1;
+        }
+        let reviews = &mut self.groups[group_index].1;
+        if let Err(error) = review_session::dismiss(&reviews[position].root) {
+            // The screen keeps to its own short words, as the Review Result Screen does.
+            self.notice = if error.code == ErrorCode::NothingToDismiss {
+                "Only a waiting review can be dismissed.".to_owned()
+            } else {
+                "Can't dismiss. Try the dismiss command.".to_owned()
+            };
+            return;
+        }
+        reviews.remove(position);
+        if reviews.is_empty() {
+            self.groups.remove(group_index);
+        }
+        self.index = self.index.min(self.reviews().count().saturating_sub(1));
+        self.notice = "Dismissed. Run restore NAME to undo.".to_owned();
     }
 
     /// Returns one row per terminal row. Each review takes two rows, its label
@@ -228,10 +270,12 @@ impl ReviewSessionPicker {
         while screen.len() < self.rows.saturating_sub(1) {
             screen.push(Row::new(Style::Plain, String::new()));
         }
-        screen.push(Row::new(
-            Style::Faded,
-            clip("j k move Enter open q quit", self.cols).to_owned(),
-        ));
+        let key_help = if self.notice.is_empty() {
+            "j k move Enter open x dismiss q quit"
+        } else {
+            &self.notice
+        };
+        screen.push(Row::new(Style::Faded, clip(key_help, self.cols).to_owned()));
         screen
     }
 }
@@ -285,6 +329,8 @@ mod tests {
         empty_list.save_review("waiting_for_user_feedback", vec![], json!({}));
         let writing = MadeUpRepo::new("feat/writing", &[]);
         writing.save_review("writing_user_feedback", vec![], json!({}));
+        let dismissed = MadeUpRepo::new("feat/dismissed", &[]);
+        dismissed.save_review("dismissed", vec![], json!({}));
         let unreadable = MadeUpRepo::new("feat/unreadable", &[]);
         unreadable.save_review("waiting_for_user_feedback", vec![], json!({}));
         fs::write(unreadable.path().join(".git/pde/review.json"), "{").unwrap();
@@ -294,6 +340,7 @@ mod tests {
             &notes_wait,
             &empty_list,
             &writing,
+            &dismissed,
             &unreadable,
         ]
         .map(|repo| repo.path().to_owned())
@@ -350,5 +397,29 @@ mod tests {
                 "    two · 0/2 answered",
             ]
         );
+    }
+
+    /// `ReviewSessionPicker::dismiss_chosen` must save the chosen review as dismissed and take it off the list, keeping the others.
+    /// Otherwise `x` would dismiss the wrong review, or one the user dismissed would stay on the screen.
+    #[test]
+    fn dismiss_chosen_saves_and_drops_chosen_review() {
+        let first = MadeUpRepo::new("feat/first", &[]);
+        first.save_review("waiting_for_user_feedback", vec![], json!({}));
+        let second = MadeUpRepo::new("feat/second", &[]);
+        second.save_review("waiting_for_user_feedback", vec![], json!({}));
+        let reviews = find_waiting_reviews(vec![first.path().to_owned(), second.path().to_owned()]);
+        let mut picker = ReviewSessionPicker::new(reviews, (40, 16));
+
+        // The second review shows first, so `j` chooses the first.
+        picker.press_key(Key::Char('j'));
+        picker.dismiss_chosen();
+
+        assert_eq!(first.read_review()["status"], "dismissed");
+        assert_eq!(second.read_review()["status"], "waiting_for_user_feedback");
+        let roots: Vec<_> = picker
+            .reviews()
+            .map(|review| review.root.as_path())
+            .collect();
+        assert_eq!(roots, [second.path()]);
     }
 }

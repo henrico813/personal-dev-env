@@ -155,7 +155,7 @@ fn find_waiting_reviews_or_say_why() -> Result<Vec<WaitingReview>, StartFailure>
 /// Returns every worktree on the waiting list with `branch` checked out, or
 /// when none is listed, those of the clone that holds `here`. The second look
 /// finds a Review Session whose waiting-list change failed.
-pub(super) fn find_worktrees_by_branch(
+pub(crate) fn find_worktrees_by_branch(
     branch: &str,
     waiting: &[PathBuf],
     here: &Path,
