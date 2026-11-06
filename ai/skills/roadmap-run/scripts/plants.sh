@@ -21,6 +21,7 @@ while IFS= read -r line <&3; do
   case $? in
     0) r=pass ;;
     2) r=stale ;;
+    3) r=broken ;;
     *) r=FAIL ;;
   esac
   [ -z "$(git status --porcelain)" ] || {

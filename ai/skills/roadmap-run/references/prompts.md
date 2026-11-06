@@ -49,7 +49,9 @@ Reviewers also get:
     agents. Report in review-plan's format with file:line evidence.
     For each bug you want put back in the final pass, write a line to
     run as is from the repository root:
-    `plant <file> '<old text>' '<new text>' <test command>`. Put each
+    `plant <file> '<old text>' '<new text>' <test command>`, where the
+    test command is its words, or one quoted string run by `sh -c`,
+    such as `'cd app && npm test'`. Put each
     line in a `sh` code block, starting with `plant`. The plant
     function swaps the old text, which must appear once in the file,
     for the new, runs the test command, and passes only when a test

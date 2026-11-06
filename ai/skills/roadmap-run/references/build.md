@@ -193,8 +193,8 @@ step.
 ## Put back the bugs
 
 This runs every `plant` line in the plan and in the run folder's
-reports, one at a time, and writes one `pass`, `FAIL` or `stale`
-line per `plant` line to `$D/plants.txt`, ending with `done`. Their
+reports, one at a time, and writes one `pass`, `FAIL`, `stale` or
+`broken` line per `plant` line to `$D/plants.txt`, ending with `done`. Their
 output goes to `$D/plants.log`. A passed line is skipped only while
 the plan is unchanged. A plan change runs every line again:
 
@@ -205,8 +205,10 @@ bash <run folder>/plants.sh
 A `FAIL` line means no test caught that bug. A `stale` line means
 its file is gone or its old text no longer appears once, because a
 fix round changed it. When a `stale` line's bug still matters, write
-a new `plant` line for it in a `.md` file in the run folder. Send only
-`FAIL` lines to a planner.
+a new `plant` line for it in a `.md` file in the run folder. A
+`broken` line's test command could not run, such as a misspelled
+command; fix the line the same way. Send only `FAIL` lines to a
+planner.
 
 ## Ship
 
