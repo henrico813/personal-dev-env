@@ -359,7 +359,7 @@ fn read_waiting_list_returns_each_worktree_once() {
 /// `add_to_waiting_list` must drop a removed worktree but keep one it cannot reach while another worktree adds itself.
 /// Otherwise the list would fill with removed worktrees, or a worktree on a drive that is not mounted would leave Ctrl+b e for good.
 #[test]
-fn add_to_waiting_list_drops_only_removed_worktrees() {
+fn add_to_waiting_list_prunes_removed_worktrees() {
     use_test_waiting_list();
     let folder = TempFolder::new();
     run_git(folder.path(), &["init", "--quiet", "drive/first"]);
