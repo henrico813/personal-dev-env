@@ -64,11 +64,13 @@ KINDS = {
     "research": "ends in a document or a decision",
 }
 # A move missing here is refused, so accepted is final and follow-up
-# work gets a new card. "user" moves need --user.
+# work gets a new card. "user" moves need --user, and "staff" moves
+# take it when the user makes them.
 MOVES = {
     ("draft", "ready"): "user",
     ("ready", "draft"): "staff",
     ("ready", "active"): "staff",
+    ("active", "ready"): "staff",
     ("active", "draft"): "user",
     ("active", "review"): "staff",
     ("review", "active"): "user",
@@ -388,7 +390,10 @@ def format_moves() -> str:
     Returns:
         The help text.
     """
-    lines = ["moves (user moves need --user):"]
+    lines = [
+        "moves (user moves need --user; the user also makes staff moves,"
+        " with --user):"
+    ]
     for (source, target), who in MOVES.items():
         lines.append(f"  {source} -> {target}: {who}")
     lines.append(
@@ -732,7 +737,9 @@ def check_move(
             f"only the user moves {current} -> {target}."
             " Pass --user only when the user said so."
         )
-    if target == "ready" and not CHECKBOX_RE.search(
+    # Only the user's release needs criteria. Paused work may be adopted
+    # work that has none yet.
+    if (current, target) == ("draft", "ready") and not CHECKBOX_RE.search(
         read_section(text, CRITERIA) or ""
     ):
         raise CardError(
