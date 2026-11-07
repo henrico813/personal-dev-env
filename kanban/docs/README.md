@@ -1,7 +1,8 @@
 # Kanban card documentation
 
 `card` keeps kanban cards as notes in the Obsidian vault. Commands on
-these pages run in any shell where `card` is on `PATH`.
+these pages run in any shell where `card` is on `PATH`, which
+`pde-installer install full` sets up.
 
 - New to cards? Start with the tutorial,
   [Your first card](tutorials/first-card.md).
