@@ -1,0 +1,4 @@
+{{- /* Renders empty outside full, which alone has the kanban skills, so chezmoi removes the link there. */ -}}
+{{- if has "development" .pde.tiers -}}
+{{ env "PDE_REPO_ROOT" }}/kanban/card.py
+{{ end -}}
