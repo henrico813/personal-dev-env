@@ -7,6 +7,38 @@ if [ ! -x "$binary" ]; then
     exit 127
 fi
 
+# `opencode --model provider/model[#variant] ...` opens the TUI on that model,
+# which OpenCode's TUI cannot do itself. Herdr handoffs rely on this.
+if [ "${1:-}" = --model ] && [ $# -ge 2 ]; then
+    model="$2"
+    shift 2
+    model_ref="${model%%#*}"
+    variant=""
+    case "$model" in
+        *#*) variant="${model#*#}" ;;
+    esac
+    # OpenCode lists no models for a folder until that folder finishes loading,
+    # which takes a few seconds.
+    tries=0
+    until "$binary" models 2>/dev/null | grep -Fqx -- "$model_ref"; do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 15 ]; then
+            printf '%s\n' "PDE OpenCode launcher: $model_ref is not in 'opencode models'. Close names:" >&2
+            "$binary" models 2>/dev/null | grep -F -- "${model_ref##*/}" | head -n 5 >&2
+            exit 2
+        fi
+        sleep 1
+    done
+    body=$(jq -cn --arg provider "${model_ref%%/*}" --arg id "${model_ref#*/}" \
+        --arg variant "$variant" --arg directory "$(pwd)" \
+        '{model: ({providerID: $provider, id: $id} + (if $variant == "" then {} else {variant: $variant} end)), location: {directory: $directory}}')
+    session=$("$binary" api post /api/session --data "$body" | jq -er .data.id) || {
+        printf '%s\n' "PDE OpenCode launcher: could not create a session on $model." >&2
+        exit 1
+    }
+    set -- --session "$session" "$@"
+fi
+
 # Nested launches inherit the enclosing scope rather than creating another cap.
 if [ -n "${OPENCODE_MEMCAP_SCOPE:-}" ]; then
     exec "$binary" "$@"

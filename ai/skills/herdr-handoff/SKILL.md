@@ -154,8 +154,14 @@ model can run the loop from them.
    names one.
 
    To choose a model, pass the agent's own model flag after `--`.
-   OpenCode has no model flag, so it uses the `model` set in
-   `~/.config/opencode/opencode.json`.
+   For OpenCode, put `--model <provider>/<model>` first, such as
+   `-- --model github-copilot/claude-sonnet-5 --auto`. Names differ
+   between machines, so take one from `opencode models` on the machine
+   that runs the session. PDE's `opencode` launcher makes a session on
+   that model and opens it. For a name not in that list, it prints
+   close names and exits, so the start fails; read them with
+   `herdr pane read <pane>`. Without `--model`, OpenCode uses the
+   `model` set in `~/.config/opencode/opencode.json`.
 5. Send a short prompt that points to the file, such as "Read the
    handoff at <path> and follow it. Load each skill it names when it
    says. Start by <step>. Do not edit <file> yet." Keep the brief in the

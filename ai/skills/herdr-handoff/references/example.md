@@ -72,7 +72,7 @@ herdr agent prompt design-process "<prompt>" --wait \
   --until working --until blocked --timeout 30000
 ```
 
-OpenCode has no model flag, so the new session ran the default model
+The handoff named no model, so the new session ran the default model
 from `~/.config/opencode/opencode.json`.
 
 ## The message to the user
