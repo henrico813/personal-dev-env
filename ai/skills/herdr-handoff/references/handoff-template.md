@@ -73,7 +73,8 @@ writes them to its report file instead.>
   after the hub tells it the user reviewed that pull request. When its
   card is accepted or dropped, or once it has written a handoff that
   pauses the card, it checks that it holds nothing unsaved, such as
-  uncommitted files or an unpushed branch, and closes its own tab with
+  uncommitted files or an unpushed branch, or, for a pause, that its
+  handoff lists each one. Then it closes its own tab with
   `herdr tab close <tab>`, the tab being `.result.agent.tab_id` of
   `herdr agent get "$HERDR_PANE_ID"`.>
 
