@@ -156,18 +156,18 @@ whether the message arrived. Then delete
 
 ## Waiting on the user
 
-When a session waits on the user, mark it, so the sidebar shows
+When a session waits on the user, flag it, so the sidebar shows
 "needs you" in place of its state:
 
-    hub needs-you <name>
+    hub flag <name>
 
 A session waits on the user when it is `blocked` at an approval or a
 question in its pane, or when you bring the user a question from its
 report. A blocked session's mark goes away by itself once it works
-again. Clear any other mark when you send the session the user's
+again. Unflag any other session when you send it the user's
 answer:
 
-    hub needs-you --clear <name>
+    hub unflag <name>
 
 When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
