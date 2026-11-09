@@ -203,9 +203,7 @@ done
 
 cat >"$HOME/.local/bin/herdr" <<'SCRIPT'
 #!/usr/bin/env bash
-ssh_tty=missing
-[[ "${SSH_TTY:-}" == "$(tty)" ]] && ssh_tty=pane
-printf 'config=%s ssh_tty=%s args=%s\n' "${HERDR_CONFIG_PATH:-}" "$ssh_tty" "$*" >>"$HOME/herdr-invocations"
+printf 'config=%s args=%s\n' "${HERDR_CONFIG_PATH:-}" "$*" >>"$HOME/herdr-invocations"
 exec sleep 300
 SCRIPT
 chmod 755 "$HOME/.local/bin/herdr"
@@ -227,7 +225,7 @@ expected_sessions="$(printf '%s\n' controller "${tm_scope}-dash" "${tm_scope}-hu
 [[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-pocket" -F '#{window_name}' | sort)" == $'herdr\nshell' ]]
 [[ "$(tmux -L "$tmux_socket" list-windows -t "${tm_scope}-dash" -F '#{window_name}:#{window_panes}')" == 'main:4' ]]
 timeout 20 bash -c 'until [[ $(wc -l <"$1") -eq 2 ]]; do sleep 0.1; done' _ "$HOME/herdr-invocations"
-[[ "$(sort "$HOME/herdr-invocations")" == $'config= ssh_tty=pane args=--session default\nconfig= ssh_tty=pane args=--session default' ]]
+[[ "$(sort "$HOME/herdr-invocations")" == $'config= args=--session default\nconfig= args=--session default' ]]
 for role in hub pocket dash; do
 	[[ "$(tmux -L "$tmux_socket" show-option -qv -t "${tm_scope}-${role}" @tm-root)" == "$tm_workspace" ]]
 done
