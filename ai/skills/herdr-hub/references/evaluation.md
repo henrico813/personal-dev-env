@@ -107,7 +107,7 @@ Checks:
 1. The run never runs `herdr agent list` without a `jq` filter.
 2. It runs `hub send` to `docs-fix` with the rebase message.
 3. It tries no `herdr agent send-keys` and no `herdr agent prompt`.
-4. It runs `hub needs-you docs-fix`.
+4. It runs `hub flag docs-fix`.
 5. The reply names `docs-fix`, states its question and gives a
    recommendation.
 6. The reply says the rebase message goes out once the question is
