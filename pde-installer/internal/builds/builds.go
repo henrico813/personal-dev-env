@@ -683,6 +683,18 @@ func (m Manager) listBuildSpecs(selected profile.Profile, stageRoot string) []bu
 			pythonPackage: "skill_lessons",
 		},
 		{
+			name:   "hub",
+			source: filepath.Join(m.RepoRoot, "hub"),
+			output: filepath.Join(stageRoot, "hub"),
+			command: run.Command{
+				Name: m.python,
+				Args: []string{"-I", "build.py", filepath.Join(stageRoot, "hub")},
+				Dir:  filepath.Join(m.RepoRoot, "hub"), Env: environment,
+			},
+			verifyArg:     "--version",
+			pythonPackage: "hub",
+		},
+		{
 			name:   "prs",
 			source: filepath.Join(m.RepoRoot, "prs"),
 			output: filepath.Join(stageRoot, "prs"),

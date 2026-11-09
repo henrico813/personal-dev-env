@@ -102,6 +102,7 @@ func TestEachProfileAddsRecordedItems(t *testing.T) {
 				"obsidian-headless",
 				"@anthropic-ai/claude-code",
 				"skill-lessons",
+				"hub",
 				"FiraCode",
 				"JetBrainsMono",
 				"neovim",
