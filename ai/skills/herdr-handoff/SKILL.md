@@ -57,7 +57,11 @@ model can run the loop from them.
    [references/handoff-template.md](references/handoff-template.md).
 3. Copy into it every result that lives only in this conversation,
    such as subagent reports and review findings. The new session
-   cannot see them, so they are lost otherwise.
+   cannot see them, so they are lost otherwise. When the handoff
+   pauses the work and no session takes it now, also list each
+   uncommitted file, unpushed branch and worktree you leave, and each
+   question waiting on the user, word for word. Leave the files as
+   they are.
 4. Never write a secret into it. Name where the secret lives instead,
    such as a sops file the new session reads with `pde-sops-peek`.
 5. Reread it as a reader with no earlier context. Explain each label
@@ -220,6 +224,11 @@ the `card` command:
   handoff:
 
       card move <KEY> ready --why "Paused; handoff <handoff path>"
+
+  A card in review cannot move back to ready. It stays in review,
+  with only the note:
+
+      card note <KEY> "Paused; handoff <handoff path>"
 
 ## Tell the user
 

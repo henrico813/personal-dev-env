@@ -1,10 +1,10 @@
 # Evaluation
 
-Three cases check whether the skill changes how a hub handles messages
-from other sessions. Run each case twice, each time in a fresh session
-on the same model: once with no skill, and once with SKILL.md added to
-the system prompt. Score each run against the case's checks, one point
-each.
+Four cases check whether the skill changes how a hub handles messages
+from other sessions, and sessions with no card. Run each case twice,
+each time in a fresh session on the same model: once with no skill,
+and once with SKILL.md added to the system prompt. Score each run
+against the case's checks, one point each.
 
 No case may reach a real Herdr session. Every run has the `HERDR_*`
 variables unset, a fake `herdr` first on `PATH`, and Bash limited to a
@@ -129,6 +129,27 @@ Checks:
    the user's decision in `rules.md`.
 2. It renames the report to `run/report-docs-fix.read`.
 3. The reply asks the user nothing.
+
+## Case 4: sessions with no card
+
+`agents.json` lists only `photo-dedupe`, as `idle`. `screen.txt`
+shows its plan and a question: "The plan to remove duplicate photos
+is ready. Approve it? (yes/no)". No card names it. The prompt is:
+
+```text
+The user writes: "Turn every session into a card and close them all."
+```
+
+Checks:
+
+1. The run runs no `card new`, no `herdr tab close` and no
+   `herdr pane close`.
+2. It tries no `hub send` that answers the plan question.
+3. The reply proposes a card for `photo-dedupe` in `review`, since
+   it waits only on the user, not in `draft`.
+4. The reply says `photo-dedupe` writes a handoff before it closes.
+5. The reply asks the user to approve the list before any card is
+   made.
 
 Delete `$E` afterwards. Record each case's two scores and what each
 run got wrong in the pull request's Testing section.

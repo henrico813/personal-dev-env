@@ -174,6 +174,46 @@ When a session is `blocked`, read what it asks with
 the user once which session waits, what it asks, and your
 recommendation. Never answer it yourself.
 
+## Cards
+
+Each machine runs its own hub and board, on that machine's default
+vault. A hub never reports to a hub on another machine.
+
+- Every session doing real work holds a card, even a short research
+  card. A short chat holds none. A card is one piece of work, so
+  sessions on the same work share one card, and its `sessions` list
+  keeps each of them.
+- Two limits, across every project: 8 cards in `active` and 6 in
+  `review`. While both allow, start the oldest ready card, or the one
+  the user names. Never start one past a limit; only the user does.
+  When active work is over its limit, propose which cards to pause,
+  and let the user decide. If `card` refuses a start that both limits
+  allow, pass `--user` and say so in `--why`.
+- Move a card to `review` as soon as its work waits only on the user,
+  such as an open pull request or a plan or question for the user,
+  even when more work follows. When the user has answered or
+  reviewed and more work follows, move it back to `active` with
+  `--user`, since the user's review is the go-ahead.
+- Only the user moves a card from `draft` to `ready`, adopts work
+  already under way, or drops a card. Never release a card the user
+  described in a sentence: it stays in `draft` until the user has
+  refined it. Refining can take time and happen in any session; the
+  card keeps where it stands.
+- A card's key starts with its project's code, from the
+  `Project code:` line in the project folder's `AGENTS.md`. For a
+  project with none, propose the prefix its plans already use, or a
+  new one when they use none. Write it only once the user approves,
+  backing up `AGENTS.md` first or creating it with only that line.
+- Every pull request and plan waits for the user's review. Only the
+  user lets one skip it, case by case.
+- Work data stays on the machine that holds it. Never send it to
+  another machine or put it in public text.
+
+When sessions run with no card, such as on a machine where the hub
+starts among earlier sessions, follow
+[references/adopt-sessions.md](references/adopt-sessions.md) before
+you make any card.
+
 ## Sidebar names
 
 - A card's worker gets its own workspace, named
@@ -199,11 +239,14 @@ recommendation. Never answer it yourself.
 - Each worker closes its own tab when its card is accepted or
   dropped, or once it has written a handoff that pauses its card. It
   first checks that it holds nothing unsaved, such as uncommitted files
-  or an unpushed branch. The handoff that starts it says so, and you
-  tell it when its card is accepted or dropped.
+  or an unpushed branch. A paused worker may leave such files, since
+  closing a tab changes no file, but its handoff lists each one. The
+  handoff that starts it says so, and you tell it when its card is
+  accepted or dropped.
 - When a worker cannot close its tab, close it yourself, once
-  `hub status` shows it `idle` or `done` and it holds nothing unsaved.
-  Never ask the user to close a worker.
+  `hub status` shows it `idle` or `done` and it holds nothing unsaved,
+  or, for a pause, its handoff lists each file it leaves. Never ask
+  the user to close a worker.
 - A cleanup worker sweeps the tabs left open with the session sweep
   script, once that script exists.
 
@@ -238,10 +281,10 @@ the hub's turn is interrupted, and the user cannot see it.
   short message per turn, by `status-updates`. Keep the detail in
   `<run folder>/notes.md`. The user reads your pane while news keeps
   arriving and cannot keep up with a fast stream.
-- Never release a card the user described in a sentence. A new card
-  stays in draft until the user has refined it and moved it to ready.
-  Refining can take time and happen in any session; the card keeps
-  where it stands.
+- When the user's word differs from your handoff or this skill,
+  follow the user and record the new rule in `rules.md`. You still
+  never answer an approval or question shown in another session's
+  pane.
 - When your context grows past about 150k tokens, or after it is
   summarized, use the `herdr-handoff` skill to offer the user a new
   session. Offer once.
