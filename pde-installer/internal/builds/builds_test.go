@@ -51,7 +51,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	// Files from the previous install, including a plain-file pde-pr-approve.
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"prs",
+		"hub", "prs",
 	} {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
 	}
@@ -76,7 +76,7 @@ func TestReconcileBuildsAndRollsBack(t *testing.T) {
 	}
 	for _, name := range []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"prs",
+		"hub", "prs",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n")
 	}
@@ -241,7 +241,7 @@ func TestBrokenSkillLessonsRevertsEveryTool(t *testing.T) {
 	writeBuildFixture(t, manager.python, "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 1' > \"$3\"\nchmod +x \"$3\"\n")
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve", "glimmer", "skill-lessons",
-		"prs",
+		"hub", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -292,7 +292,7 @@ func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 	writeBuildFile(t, filepath.Join(repoRoot, "glimmer", "fail-help"), "fail\n", 0o644)
 	names := []string{
 		"planner", "opencode-inline-shim", "vibe", "pde-gh-write", "pde-pr-approve",
-		"glimmer", "skill-lessons", "prs",
+		"glimmer", "skill-lessons", "hub", "prs",
 	}
 	for _, name := range names {
 		writeBuildFile(t, filepath.Join(home, ".local", "bin", name), "old "+name+"\n", 0o755)
@@ -314,9 +314,9 @@ func TestBrokenReviewToolRestoresEveryTool(t *testing.T) {
 	}
 }
 
-// A client laptop has no Go or Rust, so any build but skill-lessons, which
-// only zips Python files, would fail every client install.
-func TestClientBuildsOnlySkillLessons(t *testing.T) {
+// A client laptop has no Go or Rust, so any build but skill-lessons and hub,
+// which only zip Python files, would fail every client install.
+func TestClientBuildsOnlyPythonTools(t *testing.T) {
 	home, repoRoot := t.TempDir(), t.TempDir()
 	writeBuildSources(t, repoRoot)
 	logPath := filepath.Join(t.TempDir(), "build.log")
@@ -330,8 +330,8 @@ func TestClientBuildsOnlySkillLessons(t *testing.T) {
 	if err := journal.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if got := readBuildLog(t, logPath); got != "python\n" {
-		t.Fatalf("build log = %q, want one python build", got)
+	if got := readBuildLog(t, logPath); got != "python\npython\n" {
+		t.Fatalf("build log = %q, want two python builds", got)
 	}
 }
 
@@ -365,6 +365,9 @@ func writeBuildSources(t *testing.T, repoRoot string) {
 	writeBuildFile(t, filepath.Join(root, "build.py"), "build\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "src", "skill_lessons", "cli.py"), "cli\n", 0o644)
 	writeBuildFile(t, filepath.Join(root, "tests", "test_cli.py"), "tests\n", 0o644)
+	hub := filepath.Join(repoRoot, "hub")
+	writeBuildFile(t, filepath.Join(hub, "build.py"), "build\n", 0o644)
+	writeBuildFile(t, filepath.Join(hub, "src", "hub", "cli.py"), "cli\n", 0o644)
 }
 
 func newFixtureManager(t *testing.T, home, repoRoot, logPath string) Manager {
@@ -701,6 +704,7 @@ func assertBuildOutputs(t *testing.T, home string) {
 		"pde-gh-write":         "go",
 		"glimmer":              "cargo",
 		"skill-lessons":        "python",
+		"hub":                  "python",
 		"prs":                  "go",
 	} {
 		assertBuildFile(t, filepath.Join(home, ".local", "bin", name), "#!/bin/sh\nexit 0\n# built by "+tool+"\n")

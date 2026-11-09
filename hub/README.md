@@ -2,17 +2,16 @@
 
 A small command for the hub, the one Herdr session that other agent
 sessions report to. It shows every session on one short table, sends
-messages without losing them, and wakes the hub when a session has
-news. The `herdr-hub` skill says when to use each command.
+messages without losing them, wakes the hub when a session has news,
+and marks sessions that wait on the user. The `herdr-hub` skill says
+when to use each command.
 
-## Build
+## Install
 
-`build.py` packs the `.py` files in `src/hub/` into one file that runs
-with `/usr/bin/python3`, so a machine needs only Python 3.10 or later:
-
-```sh
-python3 build.py ~/.local/bin/hub
-```
+`pde-installer install` builds and installs it on the client and full
+profiles, at `~/.local/bin/hub`. `build.py` packs the `.py` files in
+`src/hub/` into one file that runs with `/usr/bin/python3`, so a
+machine needs only Python 3.10 or later.
 
 ## Commands
 
@@ -20,6 +19,7 @@ python3 build.py ~/.local/bin/hub
 hub [--machine LABEL] status --run DIR   sessions, then active cards
 hub [--machine LABEL] send --run DIR NAME MESSAGE
 hub next --run DIR [--timeout SECONDS]   wait for news, print one line
+hub [--machine LABEL] needs-you [--clear] NAME
 hub --version
 ```
 
@@ -48,6 +48,9 @@ machine to every `herdr` call, as `herdr --machine` does.
   Herdr refused a waiting message before taking it, or
   `unsure NAME: REASON` when it may have arrived. `timeout` means
   `--timeout` ran out. `HUB_POLL_SECONDS` changes how often it checks.
+- `needs-you` makes the pane show "needs you" in place of its state:
+  while `blocked` when it is blocked now, else while `idle` or `done`.
+  `--clear` removes it.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` call
 failed, with Herdr's message on standard error, and 2 when refused.
