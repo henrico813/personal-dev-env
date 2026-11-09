@@ -69,7 +69,13 @@ writes them to its report file instead.>
   name in the line above, a report file in the hub's run folder, and
   that the new session reports only to the hub. The new session never
   uses an interactive question tool, since Herdr then rejects every
-  message to it.>
+  message to it. It sends a merge or pull request edit request only
+  after the hub tells it the user reviewed that pull request. When its
+  card is accepted or dropped, or once it has written a handoff that
+  pauses the card, it checks that it holds nothing unsaved, such as
+  uncommitted files or an unpushed branch, and closes its own tab with
+  `herdr tab close <tab>`, the tab being `.result.agent.tab_id` of
+  `herdr agent get "$HERDR_PANE_ID"`.>
 
 ## Rules for the files you edit
 

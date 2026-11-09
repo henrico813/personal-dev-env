@@ -83,10 +83,15 @@ model can run the loop from them.
   the ownership change there too.
 - After the handoff, stop changing what you handed over.
 - When ownership moves later, tell the user. Tell the new session,
-  and the hub when one runs, with `scripts/send.sh` of
-  [herdr-hub](../herdr-hub/SKILL.md), as its Send to a session says.
-  The script waits while the session is `blocked` or the user is in
-  its pane.
+  and the hub when one runs, with `hub send`, as Send to a session of
+  [herdr-hub](../herdr-hub/SKILL.md) says. It holds the message while
+  the session is busy or the user is in its pane, and a hub's
+  `hub next` sends it later. Without a hub, nothing sends a held
+  message, so first wait in the background with
+  `herdr agent wait <name> --until idle --until done`, then run
+  `hub send` with the handoff folder as its run folder. If it prints
+  `held`, the user is in the pane. Delete
+  `<handoff folder>/send-<name>.json` and try again later.
 - The handoff tells the new session to write progress-only news, such
   as "rehearsal passed", to its own status file. It names a report
   file, `report-<name>.md` in this session's run folder or the
@@ -102,8 +107,10 @@ model can run the loop from them.
 
   When it returns at `blocked`, tell the user. Otherwise read the
   report, then rename it to `report-<name>.read`. No report file
-  means no news. Watch each session of herdr-hub covers a session
-  that is already `idle` or `blocked`, or runs on another machine.
+  means no news. Never start it on a session that is already `idle`
+  or `done`, since it returns at once. After it returns at `blocked`,
+  wait with only `--until idle` and `--until done`. A hub learns of
+  reports with `hub next` instead, as Wake on news of herdr-hub says.
 - A question in the new session's report is yours to answer. An
   approval or question shown in its own pane while it is `blocked`
   stays the user's.
@@ -197,6 +204,23 @@ that approval is theirs to give. When the machine's data must stay on
 it, the handoff asks for counts and pass or fail results in reports,
 never lists of names or file contents.
 
+## Record the handoff on its card
+
+When the work has a kanban card, record the handoff on the card with
+the `card` command:
+
+- When a new session takes the work, once it works, add a Log note
+  with the handoff file's path, then link the new session:
+
+      card note <KEY> "Handoff <handoff path>"
+      card link <KEY> --session <name>
+
+- When the work pauses with a handoff and no session takes it now,
+  move the card from active back to ready with a note that names the
+  handoff:
+
+      card move <KEY> ready --why "Paused; handoff <handoff path>"
+
 ## Tell the user
 
 Write the message by the `status-updates` skill. Give:
@@ -229,13 +253,19 @@ or revising this skill.
   finishing.
 - The message to the user names the workspace or tab, the agent, the
   handoff file and the model.
+- When a hub runs, the handoff says the new session sends a merge or
+  pull request edit request only after the hub says the user reviewed
+  that pull request.
+- When the work has a card, the card has the handoff's Log note and
+  the new session, or is back in ready with a note naming the handoff.
 
 ## Rules
 
 - Use the `herdr` CLI, not a harness plugin, so this works in any
   agent.
-- Never close the new workspace, tab or agent. They belong to the
-  user.
+- Never close the new session's workspace, tab or agent. When a hub
+  runs, the new session closes its own tab, as Cleanup of herdr-hub
+  says. Otherwise they belong to the user.
 - Never answer an approval or question shown in the new agent's
   pane. Answer only what it writes in its report.
 - Filter `herdr agent list` with `jq`, and never print the whole
