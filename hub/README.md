@@ -19,7 +19,8 @@ machine needs only Python 3.10 or later.
 hub [--machine LABEL] status --run DIR   sessions, then active cards
 hub [--machine LABEL] send --run DIR NAME MESSAGE
 hub next --run DIR [--timeout SECONDS]   wait for news, print one line
-hub [--machine LABEL] needs-you [--clear] NAME
+hub [--machine LABEL] flag NAME
+hub [--machine LABEL] unflag NAME
 hub --version
 ```
 
@@ -48,9 +49,9 @@ machine to every `herdr` call, as `herdr --machine` does.
   Herdr refused a waiting message before taking it, or
   `unsure NAME: REASON` when it may have arrived. `timeout` means
   `--timeout` ran out. `HUB_POLL_SECONDS` changes how often it checks.
-- `needs-you` makes the pane show "needs you" in place of its state:
+- `flag` makes the pane show "needs you" in place of its state:
   while `blocked` when it is blocked now, else while `idle` or `done`.
-  `--clear` removes it.
+  `unflag` removes it.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` call
 failed, with Herdr's message on standard error, and 2 when refused.

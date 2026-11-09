@@ -672,8 +672,8 @@ class TestNext:
         assert not (run_folder / "send-docs-fix.json").exists()
 
 
-class TestNeedsYou:
-    """``hub needs-you``, the sidebar mark for sessions the user owes."""
+class TestFlag:
+    """``hub flag`` and ``hub unflag``, the sidebar mark for sessions."""
 
     @pytest.mark.parametrize(
         ("status", "labels"),
@@ -695,10 +695,10 @@ class TestNeedsYou:
             ),
         ],
     )
-    def test_needs_you_marks_and_clears_pane(
+    def test_flag_marks_pane_and_unflag_clears(
         self, hub: Run, fake_tools: Path, status: str, labels: list[str]
     ) -> None:
-        """The label goes on the session's pane, and clearing removes it.
+        """The label goes on the session's pane, and unflag removes it.
 
         Herdr refuses the pane ID after --source, so a wrong order would
         leave the sidebar without the mark. A blocked session is marked
@@ -707,8 +707,8 @@ class TestNeedsYou:
         """
         set_agents(fake_tools, [make_agent("docs-fix", status)])
 
-        marked = hub("needs-you", "docs-fix")
-        cleared = hub("needs-you", "--clear", "docs-fix")
+        marked = hub("flag", "docs-fix")
+        cleared = hub("unflag", "docs-fix")
 
         assert (marked.returncode, cleared.returncode) == (0, 0)
         pane = [

@@ -5,7 +5,8 @@ Usage::
     hub [--machine LABEL] status --run DIR   sessions, then active cards
     hub [--machine LABEL] send --run DIR NAME MESSAGE
     hub next --run DIR [--timeout SECONDS]   wait for news, print one line
-    hub [--machine LABEL] needs-you [--clear] NAME
+    hub [--machine LABEL] flag NAME
+    hub [--machine LABEL] unflag NAME
     hub --version
 
 Read ``main`` first, then the ``run_<command>`` function of each command.
@@ -32,8 +33,8 @@ import sys
 from pathlib import Path
 
 from hub import __version__
+from hub.flag import run_flag, run_unflag
 from hub.herdr import HerdrError
-from hub.needs_you import run_needs_you
 from hub.send import run_next, run_send
 from hub.status import run_status
 
@@ -91,9 +92,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     wait.add_argument("--timeout", type=float, help="give up after SECONDS")
     wait.set_defaults(command=run_next)
 
-    label = commands.add_parser("needs-you", help="mark a session's pane")
-    label.add_argument("--clear", action="store_true")
-    label.add_argument("name")
-    label.set_defaults(command=run_needs_you)
+    flag = commands.add_parser("flag", help="mark a session's pane")
+    flag.add_argument("name")
+    flag.set_defaults(command=run_flag)
+
+    unflag = commands.add_parser("unflag", help="clear a session's mark")
+    unflag.add_argument("name")
+    unflag.set_defaults(command=run_unflag)
 
     return parser.parse_args(argv)
