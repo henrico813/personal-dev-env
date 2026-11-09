@@ -56,6 +56,8 @@ elif args[:2] == ["agent", "prompt"]:
     if refusal.exists():
         refuse(**json.loads(refusal.read_text()))
     print(json.dumps({"result": {}}))
+elif args[:2] == ["pane", "report-metadata"]:
+    print(json.dumps({"result": {}}))
 else:
     print(f"unknown command {args}", file=sys.stderr)
     sys.exit(2)
@@ -666,3 +668,55 @@ class TestNext:
         kept = json.loads((run_folder / left).read_text())
         assert kept["message"] == "Rebase."
         assert not (run_folder / "send-docs-fix.json").exists()
+
+
+class TestNeedsYou:
+    """``hub needs-you``, the sidebar mark for sessions the user owes."""
+
+    @pytest.mark.parametrize(
+        ("status", "labels"),
+        [
+            pytest.param(
+                "idle",
+                [
+                    "--state-label",
+                    "idle=needs you",
+                    "--state-label",
+                    "done=needs you",
+                ],
+                id="idle",
+            ),
+            pytest.param(
+                "blocked",
+                ["--state-label", "blocked=needs you"],
+                id="blocked",
+            ),
+        ],
+    )
+    def test_needs_you_marks_and_clears_pane(
+        self, hub: Run, fake: Path, status: str, labels: list[str]
+    ) -> None:
+        """The label goes on the session's pane, and clearing removes it.
+
+        Herdr refuses the pane ID after --source, so a wrong order would
+        leave the sidebar without the mark. A blocked session is marked
+        only while blocked, so the mark does not stay once the user has
+        answered and it works on.
+        """
+        set_agents(fake, [make_agent("docs-fix", status)])
+
+        marked = hub("needs-you", "docs-fix")
+        cleared = hub("needs-you", "--clear", "docs-fix")
+
+        assert (marked.returncode, cleared.returncode) == (0, 0)
+        pane = [
+            "pane",
+            "report-metadata",
+            "w1:docs-fix",
+            "--source",
+            "pde-hub",
+        ]
+        assert [call for call in read_calls(fake) if call[0] == "pane"] == [
+            [*pane, *labels],
+            [*pane, "--clear-state-labels"],
+        ]

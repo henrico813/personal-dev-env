@@ -22,7 +22,8 @@ MAIN = "import sys\nfrom hub.cli import main\nsys.exit(main())\n"
 def build_packed_file(output: Path) -> None:
     """Write the runnable file to ``output`` and make it executable.
 
-    Links and folders in ``src/hub/`` are left out. A link at
+    Links and folders in ``src/hub/`` are left out. pde-installer
+    hashes the same files to decide when to rebuild. A link at
     ``output`` is removed first rather than written through.
 
     Args:
