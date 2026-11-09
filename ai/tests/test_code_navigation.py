@@ -50,6 +50,13 @@ def ensure_history() -> None:
         pytest.skip(message)
 
 
+def materialize(commit: str, destination: Path) -> None:
+    """Extract one pinned commit into a temporary project."""
+    archive = subprocess.run(
+        ["git", "archive", commit], cwd=source_root(), check=True, capture_output=True
+    )
+    subprocess.run(["tar", "-x", "-C", str(destination)], input=archive.stdout, check=True)
+
 
 def walk_values(value: Any) -> list[dict[str, Any]]:
     """Collect nested JSON objects for usage and event inspection."""
@@ -399,7 +406,7 @@ def rollup_results(records: list[dict[str, Any]], baseline: int, kind: str | Non
         runs = [record for record in selected if record["mode"] == mode]
         if not runs:
             continue
-        completed = [run for run in runs if not run.get("timed_out")]
+        completed = [run for run in runs if not run.get("timed_out") and "skip" not in run]
         complete_runs = [run for run in runs if complete_run(run)]
         recalls = [len(run.get("found", [])) / len(run["expected"]) for run in runs]
         precisions = [run_precision(run) for run in runs]
@@ -442,6 +449,9 @@ def print_gate(rollups: list[dict[str, Any]]) -> None:
     print("Gate verdicts (all runs)")
     for row in rollups:
         if row["mode"] in {"grep", "grep+rule"} or row["kind"] != "all":
+            continue
+        if row["median_tokens"] is None:
+            print(f"{row['mode']} | SKIP: no completed runs")
             continue
         token_delta = (row["median_tokens"] - baseline["median_tokens"]) / baseline["median_tokens"]
         code_base = next(item for item in rollups if item["kind"] == "code" and item["mode"] == "grep+rule")
