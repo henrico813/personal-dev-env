@@ -696,7 +696,7 @@ class TestNeedsYou:
         ],
     )
     def test_needs_you_marks_and_clears_pane(
-        self, hub: Run, fake: Path, status: str, labels: list[str]
+        self, hub: Run, fake_tools: Path, status: str, labels: list[str]
     ) -> None:
         """The label goes on the session's pane, and clearing removes it.
 
@@ -705,7 +705,7 @@ class TestNeedsYou:
         only while blocked, so the mark does not stay once the user has
         answered and it works on.
         """
-        set_agents(fake, [make_agent("docs-fix", status)])
+        set_agents(fake_tools, [make_agent("docs-fix", status)])
 
         marked = hub("needs-you", "docs-fix")
         cleared = hub("needs-you", "--clear", "docs-fix")
@@ -718,7 +718,9 @@ class TestNeedsYou:
             "--source",
             "pde-hub",
         ]
-        assert [call for call in read_calls(fake) if call[0] == "pane"] == [
+        assert [
+            call for call in read_calls(fake_tools) if call[0] == "pane"
+        ] == [
             [*pane, *labels],
             [*pane, "--clear-state-labels"],
         ]
