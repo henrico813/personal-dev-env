@@ -104,8 +104,8 @@ def packed(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def fake(tmp_path: Path) -> Path:
-    """Return the fakes' folder, with fake herdr and card in its ``bin``.
+def fake_tools(tmp_path: Path) -> Path:
+    """Return a folder of fake herdr and card commands and their answers.
 
     Args:
         tmp_path: The test's own folder.
@@ -140,14 +140,14 @@ def run_folder(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def hub(packed: Path, fake: Path) -> Run:
+def hub(packed: Path, fake_tools: Path) -> Run:
     """Return a function that runs hub with the fake herdr.
 
     The hub's own pane is ``w1:kanban-hub``.
 
     Args:
         packed: The packed hub.
-        fake: The fakes' folder, whose ``bin`` goes first on PATH.
+        fake_tools: The fakes' folder, whose ``bin`` goes first on PATH.
 
     Returns:
         The function, which takes hub's arguments.
@@ -163,8 +163,8 @@ def hub(packed: Path, fake: Path) -> Run:
             The finished process, with its output as text.
         """
         env = os.environ | {
-            "FAKE": str(fake),
-            "PATH": f"{fake / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            "FAKE": str(fake_tools),
+            "PATH": f"{fake_tools / 'bin'}{os.pathsep}{os.environ['PATH']}",
             "HERDR_PANE_ID": "w1:kanban-hub",
         }
         return subprocess.run(
@@ -178,11 +178,13 @@ def hub(packed: Path, fake: Path) -> Run:
     return run
 
 
-def write_card(fake: Path, key: str, sessions: list[str], log: str) -> None:
+def write_card(
+    fake_tools: Path, key: str, sessions: list[str], log: str
+) -> None:
     """Add an active card for the fake card command to show.
 
     Args:
-        fake: The fakes' folder.
+        fake_tools: The fakes' folder.
         key: The card's key, such as ``DEMO-KB-001``.
         sessions: Its session IDs, oldest first.
         log: The lines of its Log section.
@@ -192,24 +194,24 @@ def write_card(fake: Path, key: str, sessions: list[str], log: str) -> None:
         f"---\nstage: active\nsessions:\n{items}topics: []\n---\n\n"
         f"# {key} A card\n---\n\n## Log\n---\n\n{log}"
     )
-    (fake / "cards" / f"{key}.md").write_text(note)
+    (fake_tools / "cards" / f"{key}.md").write_text(note)
 
 
-def set_agents(fake: Path, agents: list[dict]) -> None:
+def set_agents(fake_tools: Path, agents: list[dict]) -> None:
     """Make the fake herdr list these agents.
 
     Args:
-        fake: The fake herdr's folder.
+        fake_tools: The fake herdr's folder.
         agents: The agents, as ``herdr agent list`` shows them.
     """
-    (fake / "agents.json").write_text(json.dumps(agents))
+    (fake_tools / "agents.json").write_text(json.dumps(agents))
 
 
 class TestStatus:
     """``hub status``, the hub's one look at all its sessions."""
 
     def test_status_shows_session_rows_except_hub(
-        self, hub: Run, fake: Path, run_folder: Path
+        self, hub: Run, fake_tools: Path, run_folder: Path
     ) -> None:
         """Each named session gets one row with what the hub acts on.
 
@@ -219,7 +221,7 @@ class TestStatus:
         itself.
         """
         set_agents(
-            fake,
+            fake_tools,
             [
                 make_agent("kanban-hub", "working", pane_id="w1:kanban-hub"),
                 make_agent(
@@ -231,7 +233,7 @@ class TestStatus:
                 {"agent_status": "idle", "pane_id": "w2:p1"},
             ],
         )
-        (fake / "screens" / "demo-kb-007-impl").write_text(
+        (fake_tools / "screens" / "demo-kb-007-impl").write_text(
             "  esc interrupt   12.0K (1%)\n  ~/repo   98.3K (10%)\n"
         )
         (run_folder / "report-demo-kb-007-impl.md").write_text("Done.\n")
@@ -256,7 +258,7 @@ class TestStatus:
         ]
 
     def test_card_rows_show_session_and_waiter(
-        self, hub: Run, fake: Path, run_folder: Path
+        self, hub: Run, fake_tools: Path, run_folder: Path
     ) -> None:
         """Each active card shows whether its session waits on the user.
 
@@ -268,7 +270,7 @@ class TestStatus:
         A card shows its newest live session.
         """
         set_agents(
-            fake,
+            fake_tools,
             [
                 make_agent(
                     "demo-kb-001-impl",
@@ -303,22 +305,22 @@ class TestStatus:
                 ),
             ],
         )
-        write_card(fake, "DEMO-KB-001", ["ses_a"], "")
-        write_card(fake, "DEMO-KB-002", ["ses_old", "ses_b"], "")
+        write_card(fake_tools, "DEMO-KB-001", ["ses_a"], "")
+        write_card(fake_tools, "DEMO-KB-002", ["ses_old", "ses_b"], "")
         write_card(
-            fake,
+            fake_tools,
             "DEMO-KB-003",
             ["ses_c"],
             "- 2026-11-06 needs-you: which?\n- 2026-11-06 answered: yes\n",
         )
         write_card(
-            fake,
+            fake_tools,
             "DEMO-KB-004",
             ["ses_d"],
             "- 2026-11-06 answered: yes\n- 2026-11-06 needs-you: which?\n",
         )
-        write_card(fake, "DEMO-KB-005", ["ses_gone"], "")
-        write_card(fake, "DEMO-KB-006", ["ses_f"], "")
+        write_card(fake_tools, "DEMO-KB-005", ["ses_gone"], "")
+        write_card(fake_tools, "DEMO-KB-006", ["ses_f"], "")
         for name in ("demo-kb-003-impl", "demo-kb-006-impl"):
             (run_folder / f"report-{name}.read").write_text("PR open.\n")
 
@@ -350,15 +352,15 @@ class TestStatus:
         assert result.stderr == "hub: herdr server is not running\n"
 
     def test_status_keeps_sessions_when_card_fails(
-        self, hub: Run, fake: Path, run_folder: Path
+        self, hub: Run, fake_tools: Path, run_folder: Path
     ) -> None:
         """A failing card command still leaves the session table.
 
         Machines without the vault have no working card command, and
         the hub must still see its sessions there.
         """
-        set_agents(fake, [make_agent("docs-fix", "idle")])
-        (fake / "card-fails").touch()
+        set_agents(fake_tools, [make_agent("docs-fix", "idle")])
+        (fake_tools / "card-fails").touch()
 
         result = hub("status", "--run", str(run_folder))
 
