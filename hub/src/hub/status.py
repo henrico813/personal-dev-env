@@ -15,6 +15,7 @@ from hub.herdr import (
     list_agents,
     read_label,
 )
+from hub.send import describe_send
 
 # OpenCode's footer shows the context size as "98.3K (10%)".
 CONTEXT_SIZE = re.compile(r"(\d+(?:\.\d+)?[KM]) \(\d+%\)")
@@ -44,7 +45,7 @@ def run_status(args: argparse.Namespace) -> int:
         0, after printing the tables.
     """
     agents = list_agents(args.machine)
-    rows = [("NAME", "STATE", "CTX", "CARD", "REPORT", "LABEL")]
+    rows = [("NAME", "STATE", "CTX", "CARD", "REPORT", "SEND", "LABEL")]
     for agent in agents:
         name = agent["name"]
         card = CARD_KEY.match(name)
@@ -56,6 +57,7 @@ def run_status(args: argparse.Namespace) -> int:
                 read_context_size(args.machine, name),
                 card.group().upper() if card else "-",
                 "unread" if report.exists() else "-",
+                describe_send(args.run, name),
                 read_label(agent),
             )
         )

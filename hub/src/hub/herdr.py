@@ -48,6 +48,24 @@ def list_agents(machine: str | None) -> list[dict]:
     ]
 
 
+def get_agent(machine: str | None, name: str) -> dict:
+    """Look up one agent.
+
+    Args:
+        machine: A saved Herdr machine, or None for this one.
+        name: The agent's name.
+
+    Returns:
+        The agent as ``herdr agent get`` prints it.
+
+    Raises:
+        HerdrError: No live agent has that name.
+    """
+    return json.loads(call_herdr(machine, "agent", "get", name))["result"][
+        "agent"
+    ]
+
+
 def read_label(agent: dict) -> str:
     """Read the label the pane shows for its present state.
 
