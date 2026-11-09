@@ -1,12 +1,12 @@
 ---
 name: herdr-hub
 description: Runs the hub, the one Herdr session that other sessions
-  in a long run report to. The hub keeps the list of sessions and what
-  each owns, passes messages, answers questions from the user's
-  decisions, and runs every merge through a subagent. Use when the
-  user or a handoff makes this session the hub of several Herdr
-  sessions. To start one new session, use herdr-handoff; to build a
-  roadmap's pull requests, use roadmap-run.
+  in a long run report to. The hub watches its sessions with the hub
+  command, passes messages, answers questions from the user's
+  decisions, and keeps the sidebar named and tidy. Use when the user
+  or a handoff makes this session the hub of several Herdr sessions.
+  To start one new session, use herdr-handoff; to build a roadmap's
+  pull requests, use roadmap-run.
 metadata:
   pde-workflow: "true"
 ---
@@ -24,63 +24,94 @@ update after each step of delegated work.
 Load `status-updates` at the start. Load each other skill only when
 its step comes, such as `herdr-handoff` when you start a session.
 
-## The session list
+## The sessions
 
 The hub's run folder is the one its handoff names. Without one, make
 it at the start with `mktemp -d ~/.local/state/herdr-hub.XXXXXX`.
-Its `status.txt` is the hub's own file, separate from the run folder
-and `status.txt` of any roadmap-run pull request.
+Record the user's standing decisions in its `rules.md`, the pull
+requests that wait for the user's review in `reviews.md`, and detail
+the user need not read in `notes.md`.
 
-The hub's `status.txt` is the one current list of sessions. Give each
-session one line: agent name, workspace, what it owns, and handoff
-path. Keep the file to about 20 lines. Record the user's standing
-decisions there, or in the run's rules file when they do not fit. A
-tracking page, such as a roadmap note, keeps its dated ownership
-notes as the user's log.
+Keep no list of sessions of your own. Herdr's session names and the
+kanban cards are the record: a card's worker is named after the card,
+such as `demo-kb-007-impl`, and the card logs its sessions. See every
+session with the `hub` command, instead of `ls`, `cat` or
+`herdr agent list`:
 
-Before you rely on a session, or promise the user something from it,
-check that it still runs. No output means it is gone. An error from
-`herdr` means the check failed, not that the session is gone, except
-`agent_not_found`, which means it is gone. Never print the whole
-list.
+    hub status --run "<run folder>"
 
-    herdr agent list | jq -r '.result.agents[]
-      | select(.name == "<name>") | .agent_status'
+It prints one line for every named session except the hub:
+
+    NAME              STATE  CTX    CARD         REPORT  SEND  LABEL
+    demo-kb-007-impl  idle   98.3K  DEMO-KB-007  unread  -     needs you
+
+CTX is the context size from the session's footer. REPORT is `unread`
+while `report-<name>.md` waits in the run folder. SEND is `held` while
+a message waits for the session, `failed` when Herdr refused one, and
+`unsure` when a send stopped part way. A named session missing from
+the table is gone.
+
+Below it comes one line per active card, with the card's newest live
+session:
+
+    CARD         SESSION           STATE  WAITS
+    DEMO-KB-007  demo-kb-007-impl  idle   you
+
+WAITS is `hub` when the session waits on you, and `you` when it waits
+on the user, even when it does not report to you. A session waits on
+the user when:
+
+- it is blocked, or marked "needs you"
+- its card has a needs-you note with no answer
+- it sits idle and has never reported to you
+
+Run `hub status` at the start and on each turn. Tell the user once
+what each `you` session waits on. When such a session has never
+reported to you, bring it under the hub at once: send it the new
+rules that Rules gives for a worker the user hands you.
 
 When you hand work to a new session with `herdr-handoff`, its
 Coordination section names you as the one session it reports to,
-gives its report file, such as `<run folder>/report-<name>.md`, and
-names no other owner. Workers never message each other. Add the new
-session's line to `status.txt`.
+gives its report file, `<run folder>/report-<name>.md`, and names no
+other owner. Workers never message each other.
 
-## Watch each session
+## Wake on news
 
-A session writes its report and ends its turn. Learn of it with one
-background command per session, started once the session works:
+Keep one `hub next` running in the background at all times, started
+once the first session works:
 
-    herdr agent wait <name> --until idle --until done \
-      --until blocked >"<run folder>/watch-<name>.txt" 2>&1
+    hub next --run "<run folder>"
 
-When the wait returns at `blocked`, read the pane as Send to a
-session says. Otherwise read the report file, handle it as Reports
-from sessions says, then rename it to `report-<name>.read`. No report
-file means the turn ended with no news. Never start a watch on an
-`idle` or `done` session, since it returns at once. Such a session
-waits for your next message, and `send.sh` watches that turn. After
-a watch returns at `blocked`, watch with only `--until idle` and
-`--until done`, since a `blocked` session matches `--until blocked`
-at once.
+It waits until a session has news, prints one line and ends, so its
+end starts your turn. While it waits it sends held messages. Handle
+the line, then start it again:
+
+- `report <name>`: read `<run folder>/report-<name>.md`, handle it as
+  Reports from sessions says, then rename it to `report-<name>.read`.
+- `blocked <name>`: the session waits at an approval or question in
+  its pane. Handle it as Waiting on the user says.
+- `failed <name>: <reason>`: Herdr refused a held message before
+  taking it. Read the message in `<run folder>/send-<name>.failed`,
+  check the session, and send it again.
+- `unsure <name>: <reason>`: a held message may have arrived. Handle
+  it as an `unsure` send, as Send to a session says.
+
+It prints each blocked state once, so a session that stays blocked
+does not wake you again.
 
 A session started with `herdr --machine <label>` runs on that
-machine's Herdr server, and you cannot read its files. Write in its
-handoff that it ends each turn with its report. Watch it with the
-command above, with `--machine <label>` after `herdr`. Read the
-report with the first command below. To check that the session still
-runs, pipe the second command into the `jq` filter above.
+machine's Herdr server, and you cannot read its files, so `hub next`
+does not see it. Write in its handoff that it ends each turn with its
+report. Learn of the turn's end with one background command, and read
+the report with the second:
 
+    herdr --machine <label> agent wait <name> --until idle \
+      --until done --until blocked
     herdr --machine <label> agent read <name> \
       --source recent-unwrapped --lines 80
-    herdr --machine <label> agent list
+
+`hub --machine <label> status --run "<run folder>"` lists that
+machine's sessions.
 
 ## Reports from sessions
 
@@ -88,67 +119,129 @@ runs, pipe the second command into the `jq` filter above.
   the repository's usual practice or the run's design document
   settles it. Bring the user only a question whose answer changes
   what the user sees, with your recommendation.
-- Finished work, such as an open pull request: record it in
-  `status.txt`, then start the next step.
-- Status-only news: record it in one line of `status.txt`. Tell the
-  user nothing about it.
-- A change of owner: update `status.txt`, and tell each session whose
-  work changes.
+- A request to go on with a routine step: tell the worker to go
+  ahead. A merge or pull request edit is never a routine step, as
+  Merges says.
+- Finished work: start the next step. For an open pull request, add
+  it to the review list, as Merges says.
+- A merged pull request: check the merge, and its install where there
+  is one, then accept the work yourself, such as by moving its card to
+  accepted. Do not ask the user, who already approved the merge.
+- Status-only news, such as a passed rehearsal: send the worker
+  nothing, and tell the user nothing about it.
+- A change of owner: note it on the card with `card note`, and tell
+  each session whose work changes.
 
 ## Send to a session
 
-Send every message, such as an answer, with this skill's
-`scripts/send.sh`, run in the background. Start it at once, even when
-the session is busy or `blocked`:
+Send every message, such as an answer, with `hub send`:
 
-    bash <this skill's folder>/scripts/send.sh <name> \
-      "<run folder>" "<message>"
+    hub send --run "<run folder>" <name> "<message>"
 
-For a session on another machine, put `--machine <label>` before
-`<name>`. The script waits until the session is `idle` or `done`,
-since `herdr agent prompt` rejects every message to a `blocked`
-session. It also waits while the user is in the session's pane. Then
-it sends the message and waits until the session ends that turn, so
-it also watches that turn. A busy session gets the message after its
-current turn, up to 30 minutes later.
+It sends at once when the session is `idle` or `done` and the user is
+not in its pane, and prints `sent <name>`. Otherwise it prints
+`held <name>` and keeps the message in the run folder, and the
+running `hub next` sends it when the session is free. For a session
+on another machine, put `--machine <label>` after `hub`.
 
-It writes to `<run folder>/send-<name>.txt`, which ends with an
-`exit` line when the send is over:
+`hub send` exits 1 with Herdr's reason when Herdr refuses the
+message. When Herdr gives up after taking it, the send shows as
+`unsure`, since the message may have arrived. `hub send` refuses a
+second message, with exit code 2, while one to that session is held
+or `unsure`. Wait for the held one to go out.
+For `unsure`, read the pane with
+`herdr agent read <name> --source recent-unwrapped --lines 40` to see
+whether the message arrived. Then delete
+`<run folder>/send-<name>.sending` and send again only if it did not.
 
-- No `exit` line: the send is pending. Never send the message again
-  by hand, and never start a second send to that session. The script
-  refuses one with exit code 2.
-- `exit 0`: read the state with `herdr agent get <name>`, and handle
-  it as a returned watch.
-- Any other `exit` line: the message may not have been sent. Check the
-  session with `herdr agent get <name>` before sending again.
-- No file: the script never ran, so run it once more. If your harness
-  refuses it again, tell the user.
+## Waiting on the user
 
-If the file still has no `exit` line when `herdr agent get <name>`
-shows the session idle with `.focused` false, read the file once
-more. Then tell the user the message may not have been sent.
+When a session waits on the user, flag it, so the sidebar shows
+"needs you" in place of its state:
+
+    hub flag <name>
+
+A session waits on the user when it is `blocked` at an approval or a
+question in its pane, or when you bring the user a question from its
+report. A blocked session's mark goes away by itself once it works
+again. Unflag any other session when you send it the user's
+answer:
+
+    hub unflag <name>
 
 When a session is `blocked`, read what it asks with
 `herdr agent read <name> --source recent-unwrapped --lines 40`. Tell
 the user once which session waits, what it asks, and your
 recommendation. Never answer it yourself.
 
+## Sidebar names
+
+- A card's worker gets its own workspace, named
+  `<card key> <one word>`, such as `demo-kb-007 approvals`. Cards that
+  belong together share one workspace, named `<project> <topic>`, such
+  as `demo review-tools`. When you start a card's worker with
+  `herdr-handoff`, make its place by this rule, not as a tab in your
+  workspace. Work with no card gets a tab in your workspace.
+- Name each tab after its agent. Name a card's agent
+  `<card key>-<role>`, such as `demo-kb-007-impl`, so `hub status`
+  maps it to its card. This holds for every worker, adopted sessions
+  included. When you adopt a session whose name lacks its card key,
+  rename the agent and its tab to `<card key>-<role>`. The tab ID is
+  `.result.agent.tab_id` of `herdr agent get <old name>`:
+
+      herdr agent rename <old name> <card key>-<role>
+      herdr tab rename <tab ID> <card key>-<role>
+- No name holds a status word, such as done, paused or waiting.
+  Herdr's state and the "needs you" mark show status.
+
+## Cleanup
+
+- Each worker closes its own tab when its card is accepted or
+  dropped, or once it has written a handoff that pauses its card. It
+  first checks that it holds nothing unsaved, such as uncommitted files
+  or an unpushed branch. The handoff that starts it says so, and you
+  tell it when its card is accepted or dropped.
+- When a worker cannot close its tab, close it yourself, once
+  `hub status` shows it `idle` or `done` and it holds nothing unsaved.
+  Never ask the user to close a worker.
+- A cleanup worker sweeps the tabs left open with the session sweep
+  script, once that script exists.
+
 ## Merges
 
-The hub runs every merge, in a background subagent that starts with a
-small context. Load `pull-request` yourself, then brief the subagent
-to load it and run Merge steps 1 to 3 and Guardrail 4. It writes the
-results to files in a new folder and reports in at most 20 lines.
-Show the user what Merge step 4 lists, from those files. Then have
-the same subagent run steps 5 and 6.
+Each card's worker opens its own pull request by `pull-request`. Keep
+one list of the pull requests that wait for the user's review, in
+`<run folder>/reviews.md`, and bring the whole list to the user in
+one message. A merge or pull request edit request is never a routine
+step. A worker sends one only after you tell it the user reviewed
+that pull request, so tell it once the user has, and take the pull
+request off the list. The worker then merges and reports once it has
+merged.
+
+Hand any other merge to a new Herdr session started with
+`herdr-handoff`, never to a subagent of the hub. A subagent ends when
+the hub's turn is interrupted, and the user cannot see it.
 
 ## Rules
 
 - Never answer an approval or question shown in another session's
   pane, run `pde-pr-approve`, or set `PDE_GH_WRITE`.
-- Never close a workspace or agent. They belong to the user.
-- Write each update to the user by `status-updates`.
+- Never do a worker's task yourself, even when the user asks you to
+  manage it. Send it to the worker that owns it. When you need a
+  tool, have a worker build it.
+- When the user hands you a worker that was told to wait for the
+  user's yes on routine steps, send it new rules at once: do routine
+  steps without asking, report to the hub, and bring other questions
+  to the hub instead of its pane. Approvals that only a human may give
+  still go to the user.
+- Write to the user only when the user must act or decide, in one
+  short message per turn, by `status-updates`. Keep the detail in
+  `<run folder>/notes.md`. The user reads your pane while news keeps
+  arriving and cannot keep up with a fast stream.
+- Never release a card the user described in a sentence. A new card
+  stays in draft until the user has refined it and moved it to ready.
+  Refining can take time and happen in any session; the card keeps
+  where it stands.
 - When your context grows past about 150k tokens, or after it is
   summarized, use the `herdr-handoff` skill to offer the user a new
   session. Offer once.
