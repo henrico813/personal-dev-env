@@ -2130,8 +2130,9 @@ class TestClean:
                 lambda worktree: (worktree / ".git").write_text(
                     "gitdir: missing"
                 ),
-                "kept demo-kb-001-impl: git failed, fatal: not a git"
-                " repository: {worktree}/missing\nnothing to close\n",
+                # Git versions word this error differently.
+                "kept demo-kb-001-impl: git failed, fatal: .+\n"
+                "nothing to close\n",
                 id="git-failed",
             ),
         ],
@@ -2174,7 +2175,7 @@ class TestClean:
         result = hub("clean")
 
         assert result.returncode == 0
-        assert result.stdout == expected.format(worktree=worktree)
+        assert re.fullmatch(expected, result.stdout)
         assert read_closed_tabs(fake_tools) == []
 
     def test_clean_closes_agentless_tab_at_prompt(
