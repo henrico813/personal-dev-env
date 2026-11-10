@@ -87,8 +87,14 @@ It waits until a session has news, prints one line and ends, so its
 end starts your turn. While it waits it sends held messages. Handle
 the line, then start it again:
 
-- `report <name>`: read `<run folder>/report-<name>.md`, handle it as
-  Reports from sessions says, then rename it to `report-<name>.read`.
+- `report <name>`: run `hub read --run "<run folder>" <name>`. It
+  prints the report, renames it to `report-<name>.<HHMM>.read`, and
+  ends with `unread:` and the other unread reports, or `-`. Handle it
+  as Reports from sessions says. `--note "<line>"` adds a timed line
+  to `notes.md`, so use it for the report before: when `unread:`
+  names another report, read that one in the step that acts on this
+  one, with a note on what you did. When it says `-`, add your line
+  to `notes.md` yourself, as `- HHMM <line>`.
 - `blocked <name>`: the session waits at an approval or question in
   its pane. Handle it as Waiting on the user says.
 - `failed <name>: <reason>`: Herdr refused a held message before
