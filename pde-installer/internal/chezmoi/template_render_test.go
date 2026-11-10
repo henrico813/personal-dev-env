@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+	"time"
 
 	"pde-installer/internal/colorprofile"
 	"pde-installer/internal/profile"
@@ -472,7 +473,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"alias vim=",
 				"vibe() (",
 				"EDITOR=$(which nvim)",
-				"plan() {",
+				"notes() {",
 				"/aqua.yaml",
 				"/aqua-checksums.json",
 				"local -a roles=(work test shell)",
@@ -488,7 +489,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				"aqua-terminal.yaml",
 				"alias vim='nvim'",
 				"EDITOR=$(which nvim)",
-				"plan() {",
+				"notes() {",
 			},
 			omit: []string{
 				"keychain --eval",
@@ -508,7 +509,7 @@ func TestZshTemplateProfiles(t *testing.T) {
 				".left // \"\"",
 				"prd() (",
 				"command gh pr diff \"$@\" --color=never | command delta --navigate",
-				"plan() {",
+				"notes() {",
 			},
 			omit: []string{
 				"vibe() (",
@@ -606,6 +607,210 @@ func TestPRDPropagatesGitHubFailure(t *testing.T) {
 	if output, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("prd succeeded: %s", output)
 	}
+}
+
+// A wrong type letter hides a note from its list, and a wrong path opens the
+// wrong note.
+func TestNotesOpensPickFromLabeledList(t *testing.T) {
+	tests := map[string]struct {
+		script    string
+		wantInput string
+		wantArgs  string
+	}{
+		"type c lists only cards": {
+			script:    `n c card`,
+			wantInput: "c\tExample/A card.md\n",
+			wantArgs:  "--query\ncard\n",
+		},
+		"no type lists every note": {
+			script: `notes`,
+			wantInput: "c\tExample/A card.md\n" +
+				"r\tExample/Research.md\n" +
+				"-\tExample/Design.md\n" +
+				"p\tExample/A plan.md\n",
+			wantArgs: "--query\n\n",
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			writeOpenCodeZshRuntime(
+				t,
+				home,
+			)
+			writeNotesVault(
+				t,
+				home,
+			)
+			writeNotesTools(
+				t,
+				home,
+			)
+
+			command := openCodeZshCommand(
+				home,
+				tt.script,
+			)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf(
+					"%s failed: %v\n%s",
+					tt.script,
+					err,
+					output,
+				)
+			}
+
+			input := readHomeFile(
+				t,
+				home,
+				"fzf-input",
+			)
+			if input != tt.wantInput {
+				t.Errorf(
+					"fzf input = %q, want %q",
+					input,
+					tt.wantInput,
+				)
+			}
+			args := readHomeFile(
+				t,
+				home,
+				"fzf-arguments",
+			)
+			if !strings.Contains(
+				args,
+				tt.wantArgs,
+			) {
+				t.Errorf(
+					"fzf arguments = %q, want %q",
+					args,
+					tt.wantArgs,
+				)
+			}
+			wantOpened := filepath.Join(
+				home,
+				"vault/500 Zettelkasten/Projects/Example/A card.md",
+			) + "\n"
+			opened := readHomeFile(
+				t,
+				home,
+				"nvim-arguments",
+			)
+			if opened != wantOpened {
+				t.Errorf(
+					"nvim arguments = %q, want %q",
+					opened,
+					wantOpened,
+				)
+			}
+		})
+	}
+}
+
+// Writes four notes oldest first, one per type, with a type line quoted in a
+// body and Windows line endings.
+func writeNotesVault(t *testing.T, home string) {
+	t.Helper()
+	projects := filepath.Join(
+		home,
+		"vault",
+		"500 Zettelkasten",
+		"Projects",
+		"Example",
+	)
+	notes := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "A plan.md",
+			content: "---\ntype: issue\n---\n\n# A plan\n",
+		},
+		{
+			name:    "Design.md",
+			content: "---\nproject: Example\n---\n\n```yaml\ntype: card\n```\n",
+		},
+		{
+			name:    "Research.md",
+			content: "---\ntype: research\n---\n\n# Research\n",
+		},
+		{
+			name:    "A card.md",
+			content: "---\r\ntype: \"card\"\r\nstage: ready\r\n---\r\n\r\n# A card\r\n",
+		},
+	}
+	modified := time.Now().Add(-time.Hour)
+	for _, note := range notes {
+		path := filepath.Join(
+			projects,
+			note.name,
+		)
+		writeApplyFile(
+			t,
+			path,
+			note.content,
+		)
+		if err := os.Chtimes(
+			path,
+			modified,
+			modified,
+		); err != nil {
+			t.Fatal(err)
+		}
+		modified = modified.Add(time.Minute)
+	}
+}
+
+// Writes fake nobs, fzf and nvim that save what they receive, with fzf picking
+// the first line.
+func writeNotesTools(t *testing.T, home string) {
+	t.Helper()
+	bin := filepath.Join(
+		home,
+		".local",
+		"bin",
+	)
+	writeExecutable(
+		t,
+		filepath.Join(
+			bin,
+			"nobs",
+		),
+		"#!/bin/sh\nprintf '%s\\n' \"$HOME/vault\"\n",
+	)
+	writeExecutable(
+		t,
+		filepath.Join(
+			bin,
+			"fzf",
+		),
+		`#!/bin/sh
+cat >"$HOME/fzf-input"
+printf '%s\n' "$@" >"$HOME/fzf-arguments"
+head -n 1 "$HOME/fzf-input"
+`,
+	)
+	writeExecutable(
+		t,
+		filepath.Join(
+			bin,
+			"nvim",
+		),
+		"#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$HOME/nvim-arguments\"\n",
+	)
+}
+
+// Returns the text of a file a fake tool wrote under home.
+func readHomeFile(t *testing.T, home, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(
+		home,
+		name,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func agentZshCommand(home, script string) *exec.Cmd {
