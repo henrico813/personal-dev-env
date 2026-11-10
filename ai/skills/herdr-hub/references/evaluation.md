@@ -86,10 +86,10 @@ hub next printed "report docs-fix".
 
 Checks:
 
-1. The run reads `run/report-docs-fix.md`.
-2. It renames the report to `run/report-docs-fix.read`.
-3. It tries no `hub send` and no `herdr agent prompt`.
-4. The reply is "(none)".
+1. The run runs `hub read --run run docs-fix` and does not `cat` or
+   `mv` the report.
+2. It tries no `hub send` and no `herdr agent prompt`.
+3. The reply is "(none)".
 
 ## Case 2: a blocked session
 
@@ -127,7 +127,8 @@ Checks:
 
 1. The run runs `hub send` to `docs-fix` with an answer of no, from
    the user's decision in `rules.md`.
-2. It renames the report to `run/report-docs-fix.read`.
+2. It runs `hub read --run run docs-fix` and does not `cat` or `mv`
+   the report.
 3. The reply asks the user nothing.
 
 ## Case 4: sessions with no card
