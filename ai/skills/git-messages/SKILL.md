@@ -9,6 +9,9 @@ Follow the repository's documented style first. Otherwise use these defaults.
 
 1. Use `<type>[(scope)][!]: <summary>` with `feat`, `fix`, `docs`, `test`,
    `refactor`, `perf`, `build`, `ci`, `chore`, `style`, or `revert`.
+   Use `docs` only when no behavior changes. Skills, prompts and agent
+   instructions control what an agent does, so changing them is `feat`
+   or `fix`; `msg lint` refuses `docs` for them.
    Before writing a title, run
    `git config --local --get msg.titlePrefix`. A value is a regex for a
    prefix allowed before the type, which `msg lint` enforces.
@@ -32,8 +35,10 @@ Follow the repository's documented style first. Otherwise use these defaults.
 
 8. Run `python3 ~/.agents/skills/git-messages/scripts/msg fmt FILE`, then
    `python3 ~/.agents/skills/git-messages/scripts/msg lint [--pr] FILE`.
-   `fmt` wraps text and `lint` reports exact counts. Recheck up to three times,
-   fixing only reported lines. Repositories may keep their own copy.
+   `fmt` wraps text and `lint` reports exact counts. For a stacked PR,
+   add `--base PARENT` to `lint` so it counts only this PR's files.
+   Recheck up to three times, fixing only reported lines. Repositories
+   may keep their own copy.
 
 Example commit:
 
