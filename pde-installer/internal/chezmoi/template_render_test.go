@@ -609,8 +609,8 @@ func TestPRDPropagatesGitHubFailure(t *testing.T) {
 	}
 }
 
-// A wrong type letter hides a note from its list, and a wrong path opens the
-// wrong note.
+// Each fzf line starts with c, p or r for a card, plan or research note. A
+// wrong one hides a note from its list, and a wrong path opens the wrong note.
 func TestNotesOpensPickFromLabeledList(t *testing.T) {
 	tests := map[string]struct {
 		script    string
