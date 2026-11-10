@@ -6,6 +6,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -60,7 +61,12 @@ elif args[:2] == ["agent", "prompt"]:
     if refusal.exists():
         refuse(**json.loads(refusal.read_text()))
     print(json.dumps({"result": {}}))
-elif args[:2] in (["pane", "report-metadata"], ["agent", "start"]):
+elif args[:2] in (
+    ["pane", "report-metadata"],
+    ["agent", "start"],
+    ["agent", "send-keys"],
+    ["agent", "wait"],
+):
     print(json.dumps({"result": {}}))
 elif args[:2] == ["tab", "create"]:
     print(json.dumps({"result": {"root_pane": {"pane_id": "w1:new"}}}))
@@ -282,6 +288,35 @@ def refuse_prompts(fake_tools: Path, code: str, message: str) -> None:
     (fake_tools / "prompt-refusal.json").write_text(json.dumps(refusal))
 
 
+def write_messages(
+    fake_tools: Path, session: str, messages: list[tuple[str, int, dict]]
+) -> None:
+    """Log a session's messages in a fake OpenCode database.
+
+    Args:
+        fake_tools: The fakes' folder, which is HOME in tests.
+        session: The OpenCode session ID.
+        messages: Each message's type, last change in milliseconds
+            since 1970, and data, oldest first.
+    """
+    folder = fake_tools / ".local" / "share" / "opencode"
+    folder.mkdir(parents=True)
+    with sqlite3.connect(folder / "opencode.db") as database:
+        database.execute(
+            "create table session_message (id text, session_id text,"
+            " type text, seq integer, time_created integer,"
+            " time_updated integer, data text)"
+        )
+        database.executemany(
+            "insert into session_message values (?, ?, ?, ?, ?, ?, ?)",
+            [
+                (f"msg_{seq}", session, kind, seq, at, at, json.dumps(data))
+                for seq, (kind, at, data) in enumerate(messages)
+            ],
+        )
+    database.close()
+
+
 class TestStatus:
     """``hub status``, the hub's one look at all its sessions."""
 
@@ -308,9 +343,6 @@ class TestStatus:
                 {"agent_status": "idle", "pane_id": "w2:p1"},
             ],
         )
-        (fake_tools / "screens" / "demo-kb-007-impl").write_text(
-            "  esc interrupt   12.0K (1%)\n  ~/repo   98.3K (10%)\n"
-        )
         (run_folder / "report-demo-kb-007-impl.md").write_text("Done.\n")
         (run_folder / "send-docs-fix.json").write_text("{}\n")
 
@@ -324,7 +356,7 @@ class TestStatus:
             [
                 "demo-kb-007-impl",
                 "idle",
-                "98.3K",
+                "-",
                 "DEMO-KB-007",
                 "unread",
                 "-",
@@ -332,6 +364,54 @@ class TestStatus:
                 "you",
             ],
             ["docs-fix", "working", "-", "-", "-", "held", "-"],
+        ]
+
+    def test_status_ctx_drops_double_counted_step(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """CTX leaves out a zero-token step and the step after it.
+
+        The claude-code provider logs some steps with zero tokens and
+        adds them to the next step. The footer showed a worker at 217.7K
+        that really held 107.8K, so the hub would hand off a worker that
+        still had room.
+        """
+        set_agents(
+            fake_tools,
+            [make_agent("docs-fix", "idle", agent_session={"value": "ses_a"})],
+        )
+        zero = {"input": 0, "cache": {"read": 0, "write": 0}}
+        write_messages(
+            fake_tools,
+            "ses_a",
+            [
+                ("user", 1, {}),
+                (
+                    "assistant",
+                    2,
+                    {
+                        "tokens": {
+                            "input": 800,
+                            "cache": {"read": 100_000, "write": 7_000},
+                        }
+                    },
+                ),
+                ("assistant", 3, {"tokens": zero}),
+                (
+                    "assistant",
+                    4,
+                    {"tokens": {"input": 0, "cache": {"read": 217_700}}},
+                ),
+            ],
+        )
+
+        result = hub("status", "--run", str(run_folder))
+
+        sessions = result.stdout.split("\n\n")[0]
+        assert sessions.splitlines()[1].split()[:3] == [
+            "docs-fix",
+            "idle",
+            "108k",
         ]
 
     def test_card_rows_show_session_and_waiter(
@@ -469,14 +549,15 @@ class TestSend:
         assert prompts[0][:4] == ["agent", "prompt", "docs-fix", message]
         assert list(run_folder.iterdir()) == []
 
-    def test_send_keeps_message_when_prompt_stalls(
+    def test_send_marks_unsure_when_nothing_pasted(
         self, hub: Run, fake_tools: Path, run_folder: Path
     ) -> None:
-        """A stalled prompt leaves the message marked unsure.
+        """A stall with no pasted text leaves the message marked unsure.
 
         Herdr reports a stall after the text went in, so the session
         may have it. Without the mark the hub would send it again and
-        the session would get it twice.
+        the session would get it twice. No key is pressed, since Enter
+        would send whatever the user typed in the box.
         """
         set_agents(fake_tools, [make_agent("docs-fix", "idle")])
         refuse_prompts(fake_tools, "agent_prompt_stalled", "prompt stalled")
@@ -486,6 +567,30 @@ class TestSend:
         assert result.returncode == 1
         sending = run_folder / "send-docs-fix.sending"
         assert json.loads(sending.read_text())["message"] == "Rebase."
+        assert not [c for c in read_calls(fake_tools) if "send-keys" in c]
+
+    def test_send_submits_stalled_paste_once(
+        self, hub: Run, fake_tools: Path, run_folder: Path
+    ) -> None:
+        """A stalled prompt whose text sits pasted is sent with one Enter.
+
+        In an auto run a worker sat done with "[Pasted ~1 lines]" in its
+        input box, and the hub thought the message might have arrived.
+        A second Enter could send the user's own typing.
+        """
+        set_agents(fake_tools, [make_agent("docs-fix", "done")])
+        refuse_prompts(fake_tools, "agent_prompt_stalled", "prompt stalled")
+        (fake_tools / "screens" / "docs-fix").write_text(
+            "┃  [Pasted ~1 lines]\n"
+        )
+
+        result = hub("send", "--run", str(run_folder), "docs-fix", "Rebase.")
+
+        assert result.returncode == 0
+        assert result.stdout == "sent docs-fix\n"
+        keys = [c for c in read_calls(fake_tools) if "send-keys" in c]
+        assert keys == [["agent", "send-keys", "docs-fix", "Enter"]]
+        assert list(run_folder.iterdir()) == []
 
     @pytest.mark.parametrize(
         "agent",
@@ -1355,3 +1460,119 @@ class TestAuto:
 
         assert result.returncode == 2
         assert not (run_folder / "brief-now.md").exists()
+
+
+# A finished step that ran the shell tool, logged before the newest one.
+SHELL_STEP = {
+    "time": {"completed": 1},
+    "content": [
+        {"type": "text"},
+        {"type": "tool", "name": "shell", "state": {"status": "completed"}},
+    ],
+}
+
+
+class TestAlive:
+    """``hub alive``, which tells the hub whether a session still works."""
+
+    @pytest.mark.parametrize(
+        ("kind", "minutes_ago", "data", "tool", "word"),
+        [
+            pytest.param(
+                "idle",
+                10,
+                {"outcome": "succeeded"},
+                "shell",
+                "finished",
+                id="turn-succeeded",
+            ),
+            pytest.param(
+                "idle",
+                0,
+                {"outcome": "interrupted"},
+                "shell",
+                "stopped",
+                id="turn-interrupted",
+            ),
+            pytest.param(
+                "assistant",
+                10,
+                {
+                    "content": [
+                        {
+                            "type": "tool",
+                            "name": "subagent",
+                            "state": {"status": "running"},
+                        }
+                    ]
+                },
+                "subagent",
+                "working",
+                id="quiet-tool-running",
+            ),
+            pytest.param(
+                "user", 0, {}, "shell", "working", id="recent-message"
+            ),
+            pytest.param(
+                "assistant",
+                10,
+                {"content": [{"type": "text"}]},
+                "shell",
+                "stopped",
+                id="quiet-unfinished-step",
+            ),
+        ],
+    )
+    def test_alive_word_follows_newest_message(
+        self,
+        hub: Run,
+        fake_tools: Path,
+        kind: str,
+        minutes_ago: int,
+        data: dict,
+        tool: str,
+        word: str,
+    ) -> None:
+        """The last word says whether the session works, finished or stopped.
+
+        The hub runs this before telling the user a session died. Old
+        sessions killed in the middle of a step keep an unfinished step,
+        and a parent that waits on a subagent changes nothing for
+        minutes, so neither the step nor the time decides alone.
+        """
+        now_ms = int(time.time() * 1000)
+        newest = now_ms - minutes_ago * 60_000
+        write_messages(
+            fake_tools,
+            "ses_a",
+            [
+                ("assistant", now_ms - 20 * 60_000, SHELL_STEP),
+                (kind, newest, data),
+            ],
+        )
+
+        result = hub("alive", "ses_a")
+
+        assert result.returncode == 0
+        assert re.fullmatch(
+            rf"2 messages, newest \d\d:\d\d:\d\d, last tool {tool}, {word}\n",
+            result.stdout,
+        )
+
+    def test_alive_unknown_session_exits_with_error(
+        self, hub: Run, fake_tools: Path
+    ) -> None:
+        """A session missing from the database exits 1 with a reason.
+
+        A mistyped session ID must not read as a stopped session, or the
+        hub would tell the user a working session died.
+        """
+        write_messages(fake_tools, "ses_a", [("user", 1, {})])
+
+        result = hub("alive", "ses_b")
+
+        assert result.returncode == 1
+        assert result.stdout == ""
+        assert result.stderr == (
+            "hub: no OpenCode session ses_b on this machine\n"
+        )

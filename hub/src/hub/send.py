@@ -26,6 +26,8 @@ from hub.herdr import (
 UNSURE_ERRORS = ("agent_prompt_stalled", "timeout")
 # Long enough for a session to start its turn, as herdr-handoff waits.
 PROMPT_TIMEOUT_MS = "30000"
+# OpenCode's input box shows a long message as "[Pasted ~1 lines]".
+PASTED_TEXT = "[Pasted "
 
 
 def run_send(args: argparse.Namespace) -> int:
@@ -220,6 +222,9 @@ def describe_state(agent: dict) -> str:
 def prompt_agent(machine: str | None, name: str, message: str) -> None:
     """Send a message and wait until the session starts on it.
 
+    A stalled prompt can leave the message pasted in the input box but
+    not sent. One Enter key press then sends it.
+
     Args:
         machine: A saved Herdr machine, or None for this one.
         name: The agent's name.
@@ -229,20 +234,62 @@ def prompt_agent(machine: str | None, name: str, message: str) -> None:
         HerdrError: Herdr refused the message, or the session did not
             start on it in time.
     """
-    call_herdr(
-        machine,
-        "agent",
-        "prompt",
-        name,
-        message,
-        "--wait",
-        "--until",
-        "working",
-        "--until",
-        "blocked",
-        "--timeout",
-        PROMPT_TIMEOUT_MS,
-    )
+    try:
+        call_herdr(
+            machine,
+            "agent",
+            "prompt",
+            name,
+            message,
+            "--wait",
+            "--until",
+            "working",
+            "--until",
+            "blocked",
+            "--timeout",
+            PROMPT_TIMEOUT_MS,
+        )
+    except HerdrError as error:
+        if error.code != "agent_prompt_stalled":
+            raise
+        if not submit_pasted_text(machine, name):
+            raise
+
+
+def submit_pasted_text(machine: str | None, name: str) -> bool:
+    """Press Enter once when the session's input box holds pasted text.
+
+    Args:
+        machine: A saved Herdr machine, or None for this one.
+        name: The agent's name.
+
+    Returns:
+        True when the session started on the text after the key press.
+        False when the screen showed no pasted text or a herdr call
+        failed, so the message may or may not have arrived.
+    """
+    try:
+        screen = call_herdr(
+            machine, "agent", "read", name, "--source", "visible"
+        )
+        if PASTED_TEXT not in screen:
+            return False
+        call_herdr(machine, "agent", "send-keys", name, "Enter")
+        call_herdr(
+            machine,
+            "agent",
+            "wait",
+            name,
+            "--until",
+            "working",
+            "--until",
+            "blocked",
+            "--timeout",
+            PROMPT_TIMEOUT_MS,
+        )
+    except HerdrError:
+        return False
+    return True
 
 
 def write_file_whole(path: Path, text: str) -> None:

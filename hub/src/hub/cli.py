@@ -6,6 +6,7 @@ Usage::
     hub [--machine LABEL] send --run DIR NAME MESSAGE
     hub next --run DIR [--timeout SECONDS]   wait for news, print one line
     hub read --run DIR NAME [--note TEXT]    print, archive, log a report
+    hub alive SESSION                        working, finished or stopped
     hub [--machine LABEL] flag NAME
     hub [--machine LABEL] unflag NAME
     hub handoff --run DIR NAME HANDOFF       start the next hub
@@ -49,6 +50,7 @@ import sys
 from pathlib import Path
 
 from hub import __version__
+from hub.alive import run_alive
 from hub.auto import run_approve, run_check, run_now, run_ready
 from hub.brief import run_brief
 from hub.flag import run_flag, run_unflag
@@ -117,6 +119,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     read.add_argument("name")
     read.add_argument("--note", help="a line to add to notes.md")
     read.set_defaults(command=run_read)
+
+    alive = commands.add_parser("alive", help="whether a session still works")
+    alive.add_argument("session", help="an OpenCode session ID")
+    alive.set_defaults(command=run_alive)
 
     flag = commands.add_parser("flag", help="mark a session's pane")
     flag.add_argument("name")
