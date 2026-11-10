@@ -21,6 +21,8 @@ hub [--machine LABEL] send --run DIR NAME MESSAGE
 hub next --run DIR [--timeout SECONDS]   wait for news, print one line
 hub [--machine LABEL] flag NAME
 hub [--machine LABEL] unflag NAME
+hub handoff --run DIR NAME HANDOFF       start the next hub
+hub morning --run DIR                    what waits on the user
 hub --version
 ```
 
@@ -52,6 +54,23 @@ machine to every `herdr` call, as `herdr --machine` does.
 - `flag` makes the pane show "needs you" in place of its state:
   while `blocked` when it is blocked now, else while `idle` or `done`.
   `unflag` removes it.
+- `handoff`, run in the old hub's pane, starts the next hub NAME in a
+  new tab of the old hub's workspace, on the model of the last `--model
+  '...'` in `DIR/rules.md`, and sends it the HANDOFF file. Before that
+  prompt it writes the old hub's session review handoff in
+  `~/.local/state/pde/handoffs/` and adds to HANDOFF how to close the
+  old hub's tab and start that review. It exits 2 when the next hub's
+  first reply, read from OpenCode's database, ran at another reasoning
+  effort than the model's `#<effort>`, or came not at all, or when Herdr
+  fails after the start. Its message then starts with `started NAME,
+  but`, since the next hub runs and a second `hub handoff` would start
+  another. It also exits 2, before starting anything, when it finds no
+  model, no HANDOFF file, no Herdr pane, or no OpenCode session for the
+  old hub.
+- `morning` prints `DIR/reviews.md`, then every entry of
+  `DIR/decisions.md` in full. It exits 2, printing nothing, when an
+  entry lacks its question, two choices, `Recommended:` or
+  `If no reply:`.
 
 Exit codes are 0 when the command did its work, 1 when a `herdr` call
 failed, with Herdr's message on standard error, and 2 when refused.
@@ -65,6 +84,9 @@ failed, with Herdr's message on standard error, and 2 when refused.
 | `send-NAME.sending` | A message being sent. One left behind means a send stopped part way, and the message may have arrived. |
 | `send-NAME.failed` | A message Herdr refused before taking it, with its reason. |
 | `next-seen.json` | The blocked states `hub next` already printed. |
+| `rules.md` | The user's standing decisions, written by the hub. |
+| `reviews.md` | Pull requests that wait for the user's review. |
+| `decisions.md` | One `## <title>` entry per question for the user. `src/hub/morning.py` shows the form. |
 
 ## Tests
 
@@ -73,5 +95,5 @@ uv sync --locked
 uv run --locked pytest
 ```
 
-The tests build the packed file and run it against a fake `herdr`, so
-they never reach a real session.
+The tests build the packed file and run it against a fake `herdr` and
+a fake OpenCode database, so they never reach a real session.
