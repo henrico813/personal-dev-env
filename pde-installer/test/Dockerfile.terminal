@@ -9,11 +9,19 @@ ARG UBUNTU_MIRROR=
 RUN printf 'Acquire::Retries "5";\n' >/etc/apt/apt.conf.d/80-retries \
 	&& if [ -n "$UBUNTU_MIRROR" ]; then \
 		for list in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do \
-			if [ -f "$list" ]; then sed -i "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" "$list"; fi; \
+			if [ -f "$list" ]; then sed -i \
+				-e "s|http://archive.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" \
+				-e "s|http://security.ubuntu.com/ubuntu|$UBUNTU_MIRROR|" "$list"; fi; \
 		done; \
 	fi
 
-RUN apt-get update && apt-get install -y --no-install-recommends sudo \
+# A mirror mid-sync can list packages it does not have yet, which apt
+# reports as 404 and does not retry. A later apt-get update clears it.
+RUN for attempt in 1 2 3; do \
+		apt-get update && apt-get install -y --no-install-recommends sudo && break; \
+		if [ "$attempt" = 3 ]; then exit 1; fi; \
+		sleep 60; \
+	done \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd -m -s /bin/bash testuser \
 	&& printf 'testuser ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/testuser \
