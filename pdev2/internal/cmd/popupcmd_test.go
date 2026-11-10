@@ -85,7 +85,7 @@ func TestPopupRecordsItsWorkspaceWhileOpen(t *testing.T) {
 	master, _ := queueTwoMerges(t)
 	// Herdr passes the workspace only in the plugin context, as in this
 	// trimmed copy from a real popup.
-	t.Setenv("HERDR_PLUGIN_CONTEXT_JSON", `{"workspace_id":"w1G","workspace_label":"home-hermes-stash","tab_id":"w1G:t1","focused_pane_id":"w1G:p1","invocation_source":"api","correlation_id":"plugin-pane"}`)
+	t.Setenv("HERDR_PLUGIN_CONTEXT_JSON", `{"workspace_id":"w1G","workspace_label":"home-docs-stash","tab_id":"w1G:t1","focused_pane_id":"w1G:p1","invocation_source":"api","correlation_id":"plugin-pane"}`)
 	done := make(chan int, 1)
 	go func() { done <- approvePopup("first") }()
 

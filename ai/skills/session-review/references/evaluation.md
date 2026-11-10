@@ -87,7 +87,7 @@ local model handoff". You saved the review file already; write only
 the message.
 
 The script printed to stderr and exited 1:
-no OpenCode database at /home/sam/.local/share/opencode/opencode.db
+no OpenCode database at /home/user/.local/share/opencode/opencode.db
 
 Conversation notes:
 - You ran the test suite three times with the same command.

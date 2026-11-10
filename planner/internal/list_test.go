@@ -35,7 +35,7 @@ func projectsFixture(t *testing.T) string {
 	writeNote(t, filepath.Join(root, "DevEnv", "TASK-005 Unknown.md"), issue("mystery", "2026-01-06"))
 	writeNote(t, filepath.Join(root, "DevEnv", "DESIGN-Thing.md"), "---\ntags: []\n---\n# Design\n")
 	writeNote(t, filepath.Join(root, "DevEnv", "Notes.md"), "# No frontmatter\n")
-	writeNote(t, filepath.Join(root, "Homelab", "HOME-001 Done.md"), issue("done", "2026-02-01"))
+	writeNote(t, filepath.Join(root, "Garden", "GARD-001 Done.md"), issue("done", "2026-02-01"))
 	writeNote(t, filepath.Join(root, "Empty", "Notes.md"), "# Just notes\n")
 	writeNote(t, filepath.Join(root, ".obsidian", "hidden.md"), issue("open", "2026-01-01"))
 	writeNote(t, filepath.Join(root, "loose.md"), issue("open", "2026-01-01"))
@@ -70,13 +70,13 @@ func TestListJSONCountsIncludedIssues(t *testing.T) {
 	if view.View != "projects" || len(view.Projects) != 2 {
 		t.Fatalf("projects view = %+v", view)
 	}
-	var devenv, homelab projectSummary
+	var devenv, garden projectSummary
 	for _, project := range view.Projects {
 		switch project.ProjectDir {
 		case "DevEnv":
 			devenv = project
-		case "Homelab":
-			homelab = project
+		case "Garden":
+			garden = project
 		}
 	}
 	wantStatuses := []planStatus{statusOpen, statusInProgress, statusDone, statusWontDo, statusUnknown}
@@ -89,9 +89,9 @@ func TestListJSONCountsIncludedIssues(t *testing.T) {
 	if devenv.Total != 5 || !slices.Equal(statuses, wantStatuses) || !slices.Equal(counts, []int{1, 1, 1, 1, 1}) {
 		t.Fatalf("DevEnv counts = %+v", devenv)
 	}
-	if homelab.Total != 1 || len(homelab.StatusCounts) != 4 ||
-		homelab.StatusCounts[2] != (statusCount{Status: statusDone, Count: 1}) {
-		t.Fatalf("Homelab counts = %+v", homelab)
+	if garden.Total != 1 || len(garden.StatusCounts) != 4 ||
+		garden.StatusCounts[2] != (statusCount{Status: statusDone, Count: 1}) {
+		t.Fatalf("Garden counts = %+v", garden)
 	}
 }
 
@@ -139,7 +139,7 @@ func TestListStatusAliasAndInvalidInput(t *testing.T) {
 		t.Fatalf("cross-project status view = %+v", view)
 	}
 	projects := []string{view.Plans[0].Project, view.Plans[1].Project}
-	if !slices.Contains(projects, "DevEnv") || !slices.Contains(projects, "Homelab") {
+	if !slices.Contains(projects, "DevEnv") || !slices.Contains(projects, "Garden") {
 		t.Fatalf("status results are not cross-project: %v", projects)
 	}
 	for _, plan := range view.Plans {
